@@ -6,6 +6,7 @@ replay, plugins, local logs, and server verification.
 Each folder owns one boundary:
 
 - `capture`: platform-neutral capture records and sources;
+- `network`: link/IP/TCP decoding and bounded directional stream reconstruction;
 - `protocol`: lossless packet evidence and protocol-pack routing;
 - `events`: region-aware canonical events and ordered run timelines;
 - `plugin-api`: public manifests, permissions, and subscriptions;
@@ -17,4 +18,3 @@ Each folder owns one boundary:
 - `submission`: resumable upload state and integrity contracts.
 
 Feature code must not bypass canonical events to read mutable parser state.
-

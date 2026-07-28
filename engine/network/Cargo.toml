@@ -1,0 +1,19 @@
+[package]
+name = "rlogs-network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bytes.workspace = true
+etherparse.workspace = true
+rlogs-capture = { path = "../capture" }
+serde.workspace = true
+
+[dev-dependencies]
+criterion = "0.7.0"
+
+[[bench]]
+name = "packet_pipeline"
+harness = false

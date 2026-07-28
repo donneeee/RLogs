@@ -10,8 +10,12 @@
 
 ## Parser
 
-- implement TCP reconstruction and BPSR framing once;
-- add offline pcap and native RLogs replay;
+- stream offline pcap and pcapng replay;
+- decode Ethernet, Linux cooked capture, loopback, IPv4/IPv6, and TCP;
+- reconstruct bounded directional TCP streams with loss evidence;
+- add bounded IP fragment reconstruction;
+- implement BPSR framing once;
+- add native RLogs replay;
 - build immutable protocol packs per region and client build;
 - map packets to typed canonical events;
 - measure route, byte, and event coverage continuously.
@@ -32,4 +36,3 @@
 - region-aware character claims;
 - server-side log replay and verification;
 - profiles, reports, rankings, and public APIs.
-

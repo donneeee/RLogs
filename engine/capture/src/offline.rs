@@ -5,6 +5,7 @@ use std::{
     path::Path,
 };
 
+use bytes::Bytes;
 use pcap_parser::{
     Block, PcapBlockOwned, PcapError, create_reader,
     traits::{PcapNGPacketBlock, PcapReaderIterator},
@@ -37,17 +38,17 @@ enum BlockEffect {
         seconds: u32,
         fraction: u32,
         original_length: u32,
-        bytes: Vec<u8>,
+        bytes: Bytes,
     },
     EnhancedPacket {
         interface_id: u32,
         raw_timestamp: u64,
         original_length: u32,
-        bytes: Vec<u8>,
+        bytes: Bytes,
     },
     SimplePacket {
         original_length: u32,
-        bytes: Vec<u8>,
+        bytes: Bytes,
     },
     Ignore,
 }
@@ -353,7 +354,7 @@ impl OfflineCapture {
         link_type: CaptureLinkType,
         source_timestamp_nanos: Option<i64>,
         original_length: u32,
-        bytes: Vec<u8>,
+        bytes: Bytes,
     ) -> Result<CapturedFrame, CaptureError> {
         let captured_length =
             u32::try_from(bytes.len()).map_err(|_| CaptureError::InvalidReplay {
@@ -439,7 +440,7 @@ fn block_effect(block: PcapBlockOwned<'_>) -> BlockEffect {
             seconds: packet.ts_sec,
             fraction: packet.ts_usec,
             original_length: packet.origlen,
-            bytes: packet.data.to_vec(),
+            bytes: Bytes::copy_from_slice(packet.data),
         },
         PcapBlockOwned::NG(Block::SectionHeader(_)) => BlockEffect::PcapNgSection,
         PcapBlockOwned::NG(Block::InterfaceDescription(interface)) => {
@@ -453,11 +454,11 @@ fn block_effect(block: PcapBlockOwned<'_>) -> BlockEffect {
             interface_id: packet.if_id,
             raw_timestamp: (u64::from(packet.ts_high) << 32) | u64::from(packet.ts_low),
             original_length: packet.origlen,
-            bytes: packet.packet_data().to_vec(),
+            bytes: Bytes::copy_from_slice(packet.packet_data()),
         },
         PcapBlockOwned::NG(Block::SimplePacket(packet)) => BlockEffect::SimplePacket {
             original_length: packet.origlen,
-            bytes: packet.packet_data().to_vec(),
+            bytes: Bytes::copy_from_slice(packet.packet_data()),
         },
         // Metadata, name resolution, custom blocks, and decryption-secret
         // blocks are deliberately not exposed as captured frames.
@@ -596,10 +597,10 @@ mod tests {
         assert_eq!(frames[0].sequence, 1);
         assert_eq!(frames[0].observed_micros, 0);
         assert_eq!(frames[0].source_timestamp_nanos, Some(1_000_100_000));
-        assert_eq!(frames[0].bytes, [0x10, 0x20, 0x30, 0x40]);
+        assert_eq!(frames[0].bytes.as_ref(), [0x10, 0x20, 0x30, 0x40]);
         assert_eq!(frames[1].observed_micros, 500);
         assert_eq!(frames[1].original_length, 5);
-        assert_eq!(frames[1].bytes, [0xaa, 0xbb, 0xcc]);
+        assert_eq!(frames[1].bytes.as_ref(), [0xaa, 0xbb, 0xcc]);
         assert_eq!(frames[1].interface_id, None);
     }
 
@@ -611,11 +612,11 @@ mod tests {
         assert_eq!(metadata.link_types, vec![CaptureLinkType::Ethernet]);
         assert_eq!(frames.len(), 2);
         assert_eq!(frames[0].source_timestamp_nanos, Some(1_000_100_000));
-        assert_eq!(frames[0].bytes, [0x10, 0x20, 0x30, 0x40]);
+        assert_eq!(frames[0].bytes.as_ref(), [0x10, 0x20, 0x30, 0x40]);
         assert_eq!(frames[0].interface_id, Some(0));
         assert_eq!(frames[1].observed_micros, 500);
         assert_eq!(frames[1].original_length, 5);
-        assert_eq!(frames[1].bytes, [0xaa, 0xbb, 0xcc]);
+        assert_eq!(frames[1].bytes.as_ref(), [0xaa, 0xbb, 0xcc]);
         assert_eq!(frames[1].interface_id, Some(0));
     }
 
@@ -630,7 +631,7 @@ mod tests {
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].interface_id, Some(1));
         assert_eq!(frames[0].link_type, CaptureLinkType::RawIp);
-        assert_eq!(frames[0].bytes, [0x45, 0x00, 0x00, 0x14]);
+        assert_eq!(frames[0].bytes.as_ref(), [0x45, 0x00, 0x00, 0x14]);
     }
 
     #[test]
@@ -647,7 +648,7 @@ mod tests {
         fs::remove_file(&path).unwrap();
 
         let (first, metadata) = result.unwrap();
-        assert_eq!(first.bytes, [0x10, 0x20, 0x30, 0x40]);
+        assert_eq!(first.bytes.as_ref(), [0x10, 0x20, 0x30, 0x40]);
         assert_eq!(metadata.file_format, Some(CaptureFileFormat::PcapNg));
     }
 

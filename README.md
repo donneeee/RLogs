@@ -30,6 +30,12 @@ The first offline capture slice can stream and inspect pcap/pcapng files:
 cargo run -p rlogs-capture-inspect -- capture.pcapng
 ```
 
+The next native slice decodes link/IP/TCP headers and reconstructs bounded
+directional TCP streams. It shares immutable payload storage from capture
+through reconstruction, and reports fragmentation, retransmissions, overlaps,
+evictions, and memory-pressure gaps instead of hiding them. See
+[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+
 ## Repository map
 
 | Folder | Purpose |
@@ -54,6 +60,7 @@ on Windows and libpcap on Linux, with pcap/pcapng replay on either platform.
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
+cargo bench -p rlogs-network --bench packet_pipeline
 ```
 
 Raw packet captures are private research artifacts and are ignored by Git.

@@ -26,5 +26,9 @@ native capture driver. It preserves:
 - original on-wire length when a capture was truncated;
 - raw link-layer frame bytes.
 
+Frame storage is immutable and reference-counted. Offline replay copies each
+packet once out of the streaming parser's temporary buffer; downstream network
+decoding takes shared byte-range views without copying payloads again.
+
 Non-packet pcapng metadata—including name-resolution and decryption-secret
 blocks—is ignored and never exposed as a captured frame.

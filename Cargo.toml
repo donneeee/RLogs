@@ -2,6 +2,7 @@
 members = [
     "engine/capture",
     "engine/events",
+    "engine/network",
     "engine/plugin-api",
     "engine/protocol",
     "engine/submission",
@@ -17,6 +18,8 @@ rust-version = "1.85"
 version = "0.1.0"
 
 [workspace.dependencies]
+bytes = { version = "1.12.1", features = ["serde"] }
+etherparse = "0.21.0"
 pcap-parser = "0.17.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

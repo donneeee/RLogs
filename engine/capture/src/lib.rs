@@ -2,6 +2,7 @@
 
 mod offline;
 
+use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -82,7 +83,9 @@ pub struct CapturedFrame {
     pub link_type: CaptureLinkType,
     /// The on-wire size before capture snap-length truncation.
     pub original_length: u32,
-    pub bytes: Vec<u8>,
+    /// Shared immutable frame storage. Capture adapters perform the only
+    /// required ownership copy; downstream layers take O(1) slices.
+    pub bytes: Bytes,
 }
 
 pub trait CaptureSource: Send {
@@ -191,7 +194,7 @@ mod tests {
             interface_id: None,
             link_type: CaptureLinkType::Ethernet,
             original_length: 3,
-            bytes: vec![1, 2, 3],
+            bytes: Bytes::from_static(&[1, 2, 3]),
         }
     }
 

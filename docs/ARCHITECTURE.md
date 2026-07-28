@@ -8,6 +8,9 @@ RLogs has one packet-processing pipeline:
 capture source
     |
     v
+link / IP / TCP decode
+    |
+    v
 TCP stream reconstruction
     |
     v
@@ -36,7 +39,8 @@ Only responsibilities that must be consistent and security-sensitive belong
 in the trusted core:
 
 - cross-platform capture-source interfaces;
-- stream reconstruction, framing, and bounded decompression;
+- allocation-conscious network decoding, bounded stream reconstruction,
+  framing, and bounded decompression;
 - protocol-pack selection and decoding;
 - region and client-build evidence;
 - canonical event ordering and provenance;

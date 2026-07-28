@@ -25,8 +25,10 @@ preserves capture truncation and original timestamps, and produces
 deterministic monotonic replay time.
 
 `tools/capture-inspect` provides a payload-free validation summary. Live Npcap
-and libpcap adapters, TCP reconstruction, and BPSR frame decoding are later
-slices.
+and libpcap adapters and BPSR frame decoding are later slices. The downstream
+`engine/network` crate now handles allocation-conscious link/IP/TCP decoding
+and bounded deterministic TCP reconstruction for both replay and future live
+sources.
 
 ## Stored formats
 

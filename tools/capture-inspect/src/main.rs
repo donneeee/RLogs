@@ -217,7 +217,7 @@ mod tests {
             interface_id: None,
             link_type: CaptureLinkType::Ethernet,
             original_length,
-            bytes: vec![0; captured_length],
+            bytes: vec![0; captured_length].into(),
         }
     }
 
