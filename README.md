@@ -24,6 +24,12 @@ cross-platform capture pipeline are implemented independently.
 The project is intentionally early. Packet coverage, plugin compatibility, and
 ranked-log verification are not yet complete.
 
+The first offline capture slice can stream and inspect pcap/pcapng files:
+
+```text
+cargo run -p rlogs-capture-inspect -- capture.pcapng
+```
+
 ## Repository map
 
 | Folder | Purpose |

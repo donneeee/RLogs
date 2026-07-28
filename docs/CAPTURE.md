@@ -17,6 +17,17 @@ Pcap and pcapng are capture-file formats, not a second parser. Imported frames
 enter the exact same validation, reconstruction, protocol, event, and plugin
 pipeline as live frames.
 
+## Current implementation
+
+The pure-Rust offline reader is implemented in `engine/capture`. It streams
+legacy pcap and pcapng, supports pcapng sections and multiple interfaces,
+preserves capture truncation and original timestamps, and produces
+deterministic monotonic replay time.
+
+`tools/capture-inspect` provides a payload-free validation summary. Live Npcap
+and libpcap adapters, TCP reconstruction, and BPSR frame decoding are later
+slices.
+
 ## Stored formats
 
 Pcapng is preferred for opt-in protocol research because it can preserve
@@ -44,4 +55,3 @@ frame sources, not alternate decoders. The canonical pipeline remains singular.
 
 Npcap redistribution and installer terms must be reviewed before RLogs bundles
 an installer. Early development may require users to install Npcap separately.
-

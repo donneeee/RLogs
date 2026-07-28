@@ -1,7 +1,11 @@
 //! Platform-neutral packet capture and replay contracts.
 
+mod offline;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+pub use offline::OfflineCapture;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -13,11 +17,37 @@ pub enum CaptureSourceKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CaptureLinkType {
+    NullLoopback,
     Ethernet,
     RawIp,
+    RawIpv4,
+    RawIpv6,
     LinuxCookedV1,
     LinuxCookedV2,
-    Unknown(u32),
+    Unknown(i32),
+}
+
+impl CaptureLinkType {
+    pub fn from_pcap_link_type(link_type: i32) -> Self {
+        match link_type {
+            0 | 108 => Self::NullLoopback,
+            1 => Self::Ethernet,
+            101 => Self::RawIp,
+            113 => Self::LinuxCookedV1,
+            228 => Self::RawIpv4,
+            229 => Self::RawIpv6,
+            276 => Self::LinuxCookedV2,
+            other => Self::Unknown(other),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CaptureFileFormat {
+    Pcap,
+    PcapNg,
+    RlogsEvidence,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,7 +55,17 @@ pub struct CaptureSourceMetadata {
     pub source_id: String,
     pub display_name: String,
     pub kind: CaptureSourceKind,
-    pub link_type: CaptureLinkType,
+    /// Filled as interfaces are discovered. Pcapng may contain more than one.
+    pub link_types: Vec<CaptureLinkType>,
+    pub file_format: Option<CaptureFileFormat>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimestampNormalization {
+    Exact,
+    ClampedBackward,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -34,7 +74,14 @@ pub struct CapturedFrame {
     pub sequence: u64,
     /// Monotonic time relative to the start of this capture.
     pub observed_micros: u64,
+    /// Original wall-clock timestamp retained independently from replay timing.
+    pub source_timestamp_nanos: Option<i64>,
+    pub timestamp_normalization: TimestampNormalization,
+    /// Pcapng interface index. Legacy pcap has one implicit interface.
+    pub interface_id: Option<u32>,
     pub link_type: CaptureLinkType,
+    /// The on-wire size before capture snap-length truncation.
+    pub original_length: u32,
     pub bytes: Vec<u8>,
 }
 
@@ -49,6 +96,12 @@ pub trait CaptureSource: Send {
 pub enum CaptureError {
     #[error("capture adapter {adapter} failed: {message}")]
     Adapter { adapter: String, message: String },
+
+    #[error("could not open offline capture: {message}")]
+    ReplayOpen { message: String },
+
+    #[error("invalid offline capture: {message}")]
+    InvalidReplay { message: String },
 
     #[error("capture adapter emitted invalid sequence: expected {expected}, received {actual}")]
     InvalidSequence { expected: u64, actual: u64 },
@@ -133,7 +186,11 @@ mod tests {
         CapturedFrame {
             sequence,
             observed_micros,
+            source_timestamp_nanos: Some(observed_micros as i64 * 1_000),
+            timestamp_normalization: TimestampNormalization::Exact,
+            interface_id: None,
             link_type: CaptureLinkType::Ethernet,
+            original_length: 3,
             bytes: vec![1, 2, 3],
         }
     }
@@ -144,7 +201,8 @@ mod tests {
                 source_id: "fixture".into(),
                 display_name: "test fixture".into(),
                 kind: CaptureSourceKind::Replay,
-                link_type: CaptureLinkType::Ethernet,
+                link_types: vec![CaptureLinkType::Ethernet],
+                file_format: None,
             },
             frames: frames.into(),
         }
