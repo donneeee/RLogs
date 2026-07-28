@@ -8,7 +8,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use etherparse::{PacketBuilder, TcpHeader};
 use rlogs_capture::{CaptureLinkType, CapturedFrame, TimestampNormalization};
 use rlogs_network::{
-    DecodeResult, FrameDecoder, IpEndpoint, TcpFlags, TcpFlowKey, TcpReassembler, TcpSegment,
+    DecodeResult, FrameDecoder, IpEndpoint, IpFragment, IpFragmentKey, IpFragmentReassembler,
+    TcpFlags, TcpFlowKey, TcpReassembler, TcpSegment,
 };
 
 fn captured_frame(payload: &[u8]) -> CapturedFrame {
@@ -133,6 +134,43 @@ fn benchmark(c: &mut Criterion) {
                 },
             );
             black_box(reassembler.metrics().stream_bytes);
+        });
+    });
+
+    let first_fragment = Bytes::from_static(&[7; 1_024]);
+    let final_fragment = Bytes::from_static(&[7; 376]);
+    let fragment_key = IpFragmentKey::Ipv4 {
+        source: Ipv4Addr::new(10, 0, 0, 1),
+        destination: Ipv4Addr::new(10, 0, 0, 2),
+        protocol: 6,
+        identification: 7,
+    };
+    c.bench_function("reassemble_ipv4_1400b_from_2_fragments", |b| {
+        b.iter(|| {
+            let mut reassembler = IpFragmentReassembler::new();
+            for fragment in [
+                IpFragment {
+                    key: fragment_key,
+                    offset: 1_024,
+                    more_fragments: false,
+                    capture_sequence: 1,
+                    observed_micros: 1,
+                    payload: final_fragment.clone(),
+                },
+                IpFragment {
+                    key: fragment_key,
+                    offset: 0,
+                    more_fragments: true,
+                    capture_sequence: 2,
+                    observed_micros: 2,
+                    payload: first_fragment.clone(),
+                },
+            ] {
+                reassembler.process(fragment, |event| {
+                    black_box(event);
+                });
+            }
+            black_box(reassembler.metrics().datagram_bytes_completed);
         });
     });
 }

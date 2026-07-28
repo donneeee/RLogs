@@ -9,6 +9,9 @@ without an explicit provenance and license review. Behavioral observations and
 independently produced packet captures must be documented as research
 evidence, not represented as original protocol certainty.
 
+The maintained parser catalog and immutable audit pins are in
+[`PARSER_REFERENCES.md`](PARSER_REFERENCES.md).
+
 ## Resonance Logs CN reference baseline
 
 When comparing observable features or documented protocol behavior, use the

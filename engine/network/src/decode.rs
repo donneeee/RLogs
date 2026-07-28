@@ -1,10 +1,16 @@
 use std::net::IpAddr;
 
-use etherparse::{EtherType, NetSlice, SlicedPacket, TransportSlice};
+use bytes::Bytes;
+use etherparse::{
+    EtherType, IpNumber, Ipv4ExtensionsSlice, Ipv4Slice, Ipv6ExtensionSlice, Ipv6ExtensionsSlice,
+    Ipv6Slice, NetSlice, SlicedPacket, TcpSlice, TransportSlice, ip_number,
+};
 use rlogs_capture::{CaptureLinkType, CapturedFrame};
 use serde::{Deserialize, Serialize};
 
-use crate::{IpEndpoint, TcpFlags, TcpFlowKey, TcpSegment};
+use crate::{
+    IpEndpoint, IpFragment, IpFragmentKey, ReassembledIpDatagram, TcpFlags, TcpFlowKey, TcpSegment,
+};
 
 const LINUX_SLL2_HEADER_LEN: usize = 20;
 const NULL_LOOPBACK_HEADER_LEN: usize = 4;
@@ -23,6 +29,7 @@ pub enum DecodeIssue {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DecodeResult {
     Tcp(TcpSegment),
+    Fragment(IpFragment),
     Ignored(DecodeIssue),
 }
 
@@ -36,6 +43,8 @@ pub struct DecodeMetrics {
     pub ip_version_mismatches: u64,
     pub non_ip_frames: u64,
     pub fragmented_ip_frames: u64,
+    pub reassembled_datagrams_seen: u64,
+    pub reassembled_tcp_segments: u64,
     pub non_tcp_frames: u64,
 }
 
@@ -69,29 +78,123 @@ impl FrameDecoder {
             return self.ignore(DecodeIssue::IpVersionMismatch);
         }
 
-        let (source_address, destination_address, fragmented) = match parsed.net.as_ref() {
+        let (source_address, destination_address) = match parsed.net.as_ref() {
+            Some(NetSlice::Ipv4(ip)) if ip.is_payload_fragmented() => {
+                return match ipv4_fragment(frame, ip) {
+                    Ok(fragment) => self.fragment(fragment),
+                    Err(issue) => self.ignore(issue),
+                };
+            }
+            Some(NetSlice::Ipv6(ip)) if ip.is_payload_fragmented() => {
+                return match ipv6_fragment(frame, ip) {
+                    Ok(fragment) => self.fragment(fragment),
+                    Err(issue) => self.ignore(issue),
+                };
+            }
             Some(NetSlice::Ipv4(ip)) => (
                 IpAddr::V4(ip.header().source_addr()),
                 IpAddr::V4(ip.header().destination_addr()),
-                ip.is_payload_fragmented(),
             ),
             Some(NetSlice::Ipv6(ip)) => (
                 IpAddr::V6(ip.header().source_addr()),
                 IpAddr::V6(ip.header().destination_addr()),
-                ip.is_payload_fragmented(),
             ),
             _ => return self.ignore(DecodeIssue::NonIpPacket),
         };
-
-        if fragmented {
-            return self.ignore(DecodeIssue::FragmentedIpPacket);
-        }
 
         let Some(TransportSlice::Tcp(tcp)) = parsed.transport else {
             return self.ignore(DecodeIssue::NonTcpPacket);
         };
 
         let payload = frame.bytes.slice_ref(tcp.payload());
+        self.tcp(
+            source_address,
+            destination_address,
+            tcp,
+            frame.sequence,
+            frame.observed_micros,
+            payload,
+            false,
+        )
+    }
+
+    pub fn decode_reassembled(&mut self, datagram: ReassembledIpDatagram) -> DecodeResult {
+        self.metrics.reassembled_datagrams_seen =
+            self.metrics.reassembled_datagrams_seen.saturating_add(1);
+
+        let (source_address, destination_address, next_header, payload) = match datagram.key {
+            IpFragmentKey::Ipv4 {
+                source,
+                destination,
+                protocol,
+                ..
+            } => {
+                let Ok((_, next_header, payload)) =
+                    Ipv4ExtensionsSlice::from_slice(IpNumber(protocol), &datagram.payload)
+                else {
+                    return self.ignore(DecodeIssue::MalformedPacket);
+                };
+                (
+                    IpAddr::V4(source),
+                    IpAddr::V4(destination),
+                    next_header,
+                    payload,
+                )
+            }
+            IpFragmentKey::Ipv6 {
+                source,
+                destination,
+                next_header,
+                ..
+            } => {
+                let Ok((_, next_header, payload)) =
+                    Ipv6ExtensionsSlice::from_slice(IpNumber(next_header), &datagram.payload)
+                else {
+                    return self.ignore(DecodeIssue::MalformedPacket);
+                };
+                (
+                    IpAddr::V6(source),
+                    IpAddr::V6(destination),
+                    next_header,
+                    payload,
+                )
+            }
+        };
+
+        if next_header != ip_number::TCP {
+            return self.ignore(DecodeIssue::NonTcpPacket);
+        }
+        let Ok(tcp) = TcpSlice::from_slice(payload) else {
+            return self.ignore(DecodeIssue::MalformedPacket);
+        };
+        let tcp_payload = datagram.payload.slice_ref(tcp.payload());
+        self.tcp(
+            source_address,
+            destination_address,
+            tcp,
+            datagram.completed_capture_sequence,
+            datagram.completed_observed_micros,
+            tcp_payload,
+            true,
+        )
+    }
+
+    fn fragment(&mut self, fragment: IpFragment) -> DecodeResult {
+        self.metrics.fragmented_ip_frames = self.metrics.fragmented_ip_frames.saturating_add(1);
+        DecodeResult::Fragment(fragment)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn tcp(
+        &mut self,
+        source_address: IpAddr,
+        destination_address: IpAddr,
+        tcp: TcpSlice<'_>,
+        capture_sequence: u64,
+        observed_micros: u64,
+        payload: Bytes,
+        reassembled: bool,
+    ) -> DecodeResult {
         let segment = TcpSegment {
             flow: TcpFlowKey::new(
                 IpEndpoint::new(source_address, tcp.source_port()),
@@ -110,8 +213,8 @@ impl FrameDecoder {
                 ece: tcp.ece(),
                 cwr: tcp.cwr(),
             },
-            capture_sequence: frame.sequence,
-            observed_micros: frame.observed_micros,
+            capture_sequence,
+            observed_micros,
             payload,
         };
 
@@ -120,6 +223,10 @@ impl FrameDecoder {
             .metrics
             .tcp_payload_bytes
             .saturating_add(segment.payload.len() as u64);
+        if reassembled {
+            self.metrics.reassembled_tcp_segments =
+                self.metrics.reassembled_tcp_segments.saturating_add(1);
+        }
         DecodeResult::Tcp(segment)
     }
 
@@ -135,6 +242,90 @@ impl FrameDecoder {
         *counter = counter.saturating_add(1);
         DecodeResult::Ignored(issue)
     }
+}
+
+fn ipv4_fragment(frame: &CapturedFrame, ip: &Ipv4Slice<'_>) -> Result<IpFragment, DecodeIssue> {
+    let header = ip.header();
+    let packet_start =
+        subslice_start(&frame.bytes, header.slice()).ok_or(DecodeIssue::MalformedPacket)?;
+    let payload_start = packet_start
+        .checked_add(header.slice().len())
+        .ok_or(DecodeIssue::MalformedPacket)?;
+    let packet_end = packet_start
+        .checked_add(usize::from(header.total_len()))
+        .ok_or(DecodeIssue::MalformedPacket)?;
+    let payload = frame
+        .bytes
+        .get(payload_start..packet_end)
+        .ok_or(DecodeIssue::MalformedPacket)?;
+
+    Ok(IpFragment {
+        key: IpFragmentKey::Ipv4 {
+            source: header.source_addr(),
+            destination: header.destination_addr(),
+            protocol: header.protocol().0,
+            identification: header.identification(),
+        },
+        offset: u32::from(header.fragments_offset().value()) * 8,
+        more_fragments: header.more_fragments(),
+        capture_sequence: frame.sequence,
+        observed_micros: frame.observed_micros,
+        payload: frame.bytes.slice_ref(payload),
+    })
+}
+
+fn ipv6_fragment(frame: &CapturedFrame, ip: &Ipv6Slice<'_>) -> Result<IpFragment, DecodeIssue> {
+    let header = ip.header();
+    if header.payload_length() == 0 {
+        return Err(DecodeIssue::MalformedPacket);
+    }
+    let fragment_header = ip
+        .extensions()
+        .clone()
+        .into_iter()
+        .find_map(|extension| match extension {
+            Ipv6ExtensionSlice::Fragment(fragment) if fragment.is_fragmenting_payload() => {
+                Some(fragment)
+            }
+            _ => None,
+        })
+        .ok_or(DecodeIssue::FragmentedIpPacket)?;
+    let packet_start =
+        subslice_start(&frame.bytes, header.slice()).ok_or(DecodeIssue::MalformedPacket)?;
+    let packet_end = packet_start
+        .checked_add(header.slice().len())
+        .and_then(|length| length.checked_add(usize::from(header.payload_length())))
+        .ok_or(DecodeIssue::MalformedPacket)?;
+    let payload_start = subslice_start(&frame.bytes, fragment_header.slice())
+        .and_then(|start| start.checked_add(fragment_header.slice().len()))
+        .ok_or(DecodeIssue::MalformedPacket)?;
+    let payload = frame
+        .bytes
+        .get(payload_start..packet_end)
+        .ok_or(DecodeIssue::MalformedPacket)?;
+
+    Ok(IpFragment {
+        key: IpFragmentKey::Ipv6 {
+            source: header.source_addr(),
+            destination: header.destination_addr(),
+            next_header: fragment_header.next_header().0,
+            identification: fragment_header.identification(),
+        },
+        offset: u32::from(fragment_header.fragment_offset().value()) * 8,
+        more_fragments: fragment_header.more_fragments(),
+        capture_sequence: frame.sequence,
+        observed_micros: frame.observed_micros,
+        payload: frame.bytes.slice_ref(payload),
+    })
+}
+
+fn subslice_start(container: &[u8], subslice: &[u8]) -> Option<usize> {
+    let container_start = container.as_ptr() as usize;
+    let container_end = container_start.checked_add(container.len())?;
+    let subslice_start = subslice.as_ptr() as usize;
+    let subslice_end = subslice_start.checked_add(subslice.len())?;
+    (subslice_start >= container_start && subslice_end <= container_end)
+        .then_some(subslice_start - container_start)
 }
 
 fn parse_frame(frame: &CapturedFrame) -> Result<SlicedPacket<'_>, DecodeIssue> {
@@ -291,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn fragmented_ip_is_reported_instead_of_misparsed_as_tcp() {
+    fn fragmented_ip_is_extracted_without_misparsing_it_as_tcp() {
         let mut frame = ethernet_tcp_frame(b"fragment");
         // IPv4 flags/fragment-offset field after the 14-byte Ethernet header.
         frame.bytes = {
@@ -301,10 +492,12 @@ mod tests {
         };
         let mut decoder = FrameDecoder::new();
 
-        assert_eq!(
-            decoder.decode(&frame),
-            DecodeResult::Ignored(DecodeIssue::FragmentedIpPacket)
-        );
+        let DecodeResult::Fragment(fragment) = decoder.decode(&frame) else {
+            panic!("expected an IP fragment");
+        };
+        assert_eq!(fragment.offset, 0);
+        assert!(fragment.more_fragments);
+        assert_eq!(fragment.payload, &frame.bytes[34..]);
         assert_eq!(decoder.metrics().fragmented_ip_frames, 1);
     }
 

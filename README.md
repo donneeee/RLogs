@@ -30,11 +30,17 @@ The first offline capture slice can stream and inspect pcap/pcapng files:
 cargo run -p rlogs-capture-inspect -- capture.pcapng
 ```
 
-The next native slice decodes link/IP/TCP headers and reconstructs bounded
-directional TCP streams. It shares immutable payload storage from capture
-through reconstruction, and reports fragmentation, retransmissions, overlaps,
-evictions, and memory-pressure gaps instead of hiding them. See
-[`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+The native pipeline now decodes link/IP/TCP headers, reconstructs bounded IPv4
+and IPv6 fragments, rebuilds directional TCP streams, and frames BPSR
+messages. It shares immutable payload storage from capture through framing
+when data is contiguous, and reports fragmentation, retransmissions, overlaps,
+resynchronization, decompression failures, evictions, and memory-pressure gaps
+instead of hiding them. See [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+
+External parser audit pins are maintained in
+[`docs/PARSER_REFERENCES.md`](docs/PARSER_REFERENCES.md). The language-neutral
+engine and locale-pack boundary are documented in
+[`docs/LOCALIZATION.md`](docs/LOCALIZATION.md).
 
 ## Repository map
 
@@ -42,6 +48,7 @@ evictions, and memory-pressure gaps instead of hiding them. See
 | --- | --- |
 | [`apps/`](apps/) | User-facing desktop and future command-line applications |
 | [`engine/`](engine/) | Trusted capture, protocol, event, log, and plugin-host foundations |
+| [`locales/`](locales/) | First-party interface translations, separate from canonical IDs |
 | [`plugins/`](plugins/) | Bundled first-party plugins built on the public plugin API |
 | [`protocol-packs/`](protocol-packs/) | Region- and build-specific protocol knowledge |
 | [`sdk/`](sdk/) | Plugin SDKs and examples for supported languages |
@@ -61,6 +68,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 cargo bench -p rlogs-network --bench packet_pipeline
+cargo bench -p rlogs-protocol --bench framing
 ```
 
 Raw packet captures are private research artifacts and are ignored by Git.
