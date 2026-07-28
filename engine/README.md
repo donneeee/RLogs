@@ -9,6 +9,7 @@ Each folder owns one boundary:
 - `network`: link/IP/TCP decoding and bounded directional stream reconstruction;
 - `protocol`: lossless packet evidence and protocol-pack routing;
 - `events`: region-aware canonical events and ordered run timelines;
+- `game-data`: validated, indexed runtime end products for IDs, localization, and assets;
 - `plugin-api`: public manifests, permissions, and subscriptions;
 - `core`: future orchestration and isolated plugin hosting;
 - `combat`: future deterministic encounter reducers;

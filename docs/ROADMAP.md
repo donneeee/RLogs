@@ -19,6 +19,10 @@
 - build immutable protocol packs per region and client build;
 - map packets to typed canonical events;
 - measure route, byte, and event coverage continuously.
+- compile human-readable game-data/localization/icon end products into indexed
+  build artifacts;
+- expand selective decoders across every reviewed scene, map, dungeon, entity,
+  monster, skill, status, equipment, profile, party, and permitted chat route.
 
 ## Native plugins
 

@@ -20,7 +20,7 @@ popularity and activity are only discovery signals and will change.
 | [BPSR-Meter](https://github.com/mrsnakke/BPSR-Meter) | `a393f1a9c0651ddf74ce5d64ab295c95cc116d63` | Active StarResonanceDamageCounter-derived feature lineage |
 | [BPSR-ZDPS](https://github.com/Blue-Protocol-Source/BPSR-ZDPS) | stable `v0.1.7.3` at `c0a375cc8b858562e6d381a4357e10955a80340c` | Independent C# framing, TCP reconstruction, message routing, and broad feature coverage |
 | [resonance-logs-cn](https://github.com/fudiyangjin/resonance-logs-cn) | `0.2.0` at `ccdeef23c7806be5072f95a9e80b103794af3544` | Pinned CN-region protocol and feature baseline |
-| [resonance-logs](https://github.com/resonance-logs/resonance-logs) | `f4aff36e573674e04db1bb09216c603ddf9fb7f6` | Original native meter, profile, encounter, upload, and website integration behavior |
+| [resonance-logs](https://github.com/resonance-logs/resonance-logs) | `f4aff36e573674e04db1bb09216c603ddf9fb7f6` | Historical native meter and character projection evidence: profile identity, level, fight power, gear/equipment structures, progression, encounter upload, and website integration |
 | [BPSR-Meter by Denoder](https://github.com/Denoder/BPSR-Meter) | `c8c4518c36de9145362b1cabee7652905559aa99` | StarResonanceDamageCounter-derived behavior and compatibility changes |
 | [BlueMeter](https://github.com/caaatto/BlueMeter) | `c29251637b2a74567ca21028fe57ed415e3fc7aa` | Independent C# combat meter and desktop workflow |
 | [StarResonanceDps](https://github.com/DannyDog/StarResonanceDps) | `1063994fc531633c40a8164a39f3bfc0d97545bb` | C# parser behavior and English-localization branch |
@@ -30,6 +30,12 @@ popularity and activity are only discovery signals and will change.
 
 Projects discovered later are added with an immutable pin and lineage note
 before their behavior is treated as evidence.
+
+The original Resonance Logs pin is historical only. Its last public release
+predates the current game by months, so its character fields—including owned
+Imagines, equipment, level, seasonal progression/power, and related profile
+surfaces—are extraction requirements and schema hypotheses until reverified
+against a current client build. RLogs does not fork or import its parser.
 
 ## Current framing consensus and variants
 

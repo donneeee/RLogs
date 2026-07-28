@@ -25,6 +25,12 @@ vary by deployment, client build, and official localization. A protocol pack
 maps wire IDs to language-neutral IDs. A region/build game-data pack supplies
 localized names for those IDs.
 
+Official localization exported from the game is a preferred reviewed end
+product. It is organized under
+`game-data/<deployment>/<build>/localization/<locale>/` and compiled into the
+same digested game-data artifact as its IDs. Acquisition and extraction remain
+outside RLogs.
+
 ## Stable key rules
 
 - Keys describe meaning, not English wording: `combat.damage.total`, not

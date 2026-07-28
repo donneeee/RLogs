@@ -63,6 +63,10 @@ Normal plugins receive canonical events, never credentials, login payloads, or
 unreviewed raw packets. Protocol research is a separate developer capability
 and cannot publish raw evidence.
 
+Chat events are local-sensitive canonical events. A plugin must receive a
+separate chat-read grant, and submission builders reject them. Direct/private
+message routes remain prohibited.
+
 The plugin API version, canonical event schema version, `.rlog` format version,
 and protocol-pack version evolve independently. A game update should normally
 require a new protocol pack, not changes to every plugin.

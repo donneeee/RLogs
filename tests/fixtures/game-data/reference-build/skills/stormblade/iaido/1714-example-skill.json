@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "kind": "skill",
+  "id": 1714,
+  "stable_key": "skill.stormblade.iaido.1714",
+  "localization_key": "game.skill.1714",
+  "icon": "icons/skills/stormblade/iaido/1714-example-skill.svg",
+  "attributes": {
+    "class_key": "stormblade",
+    "spec_key": "iaido"
+  },
+  "provenance": {
+    "source": "reviewed-game-data",
+    "reference": "skills/stormblade/iaido/1714-example-skill.json",
+    "confidence": "verified"
+  }
+}

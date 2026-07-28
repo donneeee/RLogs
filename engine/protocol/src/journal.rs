@@ -5,8 +5,12 @@ use crate::{CaptureAdapter, CaptureRecord, CaptureRecordDraft};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameBuild {
-    /// Deployment family such as `global`, `china`, or `unknown`.
-    pub region: String,
+    /// Deployment family such as `global`, `cn`, or `unknown`.
+    #[serde(alias = "region")]
+    pub deployment_id: String,
+    /// Geographic/shard region when it has been resolved from capture evidence.
+    #[serde(default)]
+    pub region_id: Option<String>,
     /// Distribution channel such as `steam`, `standalone`, or `unknown`.
     pub channel: String,
     /// Exact launcher/client build identifier.
@@ -129,7 +133,8 @@ mod tests {
             capture_id: "test-capture".into(),
             started_unix_micros: Some(1_000),
             game_build: GameBuild {
-                region: "global".into(),
+                deployment_id: "global".into(),
+                region_id: Some("north-america".into()),
                 channel: "steam".into(),
                 build_id: "24252055".into(),
                 executable_version: None,

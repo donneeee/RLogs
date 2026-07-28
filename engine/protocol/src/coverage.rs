@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::{
     CaptureGapKind, CaptureRecord, CaptureRecordKind, CompressionState, FragmentKind,
-    PacketDirection, PacketEnvelope, RouteCatalog, RouteKey,
+    PacketDirection, PacketEnvelope, ProtocolFeature, ProtocolPack, ProtocolPackRouteDisposition,
+    RouteCatalog, RouteKey,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -131,6 +132,46 @@ impl CoverageReport {
 
         summary
     }
+
+    pub fn summarize_pack(&self, pack: &ProtocolPack) -> ProtocolPackCoverageSummary {
+        let mut summary = ProtocolPackCoverageSummary {
+            routes: self.summarize(pack.catalog()),
+            ..ProtocolPackCoverageSummary::default()
+        };
+        for (route, coverage) in &self.routes {
+            let Some(mapping) = pack.route(route) else {
+                continue;
+            };
+            match mapping.disposition {
+                ProtocolPackRouteDisposition::Allowed { .. } => {
+                    summary.allowed_packets += coverage.packet_count;
+                }
+                ProtocolPackRouteDisposition::Opaque => {
+                    summary.opaque_packets += coverage.packet_count;
+                }
+                ProtocolPackRouteDisposition::Prohibited { .. } => {
+                    summary.prohibited_packets += coverage.packet_count;
+                }
+            }
+            for feature in &mapping.features {
+                let feature_coverage = summary.features.entry(*feature).or_default();
+                feature_coverage.route_count += 1;
+                feature_coverage.packet_count += coverage.packet_count;
+                match mapping.disposition {
+                    ProtocolPackRouteDisposition::Allowed { .. } => {
+                        feature_coverage.allowed_packets += coverage.packet_count;
+                    }
+                    ProtocolPackRouteDisposition::Opaque => {
+                        feature_coverage.opaque_packets += coverage.packet_count;
+                    }
+                    ProtocolPackRouteDisposition::Prohibited { .. } => {
+                        feature_coverage.prohibited_packets += coverage.packet_count;
+                    }
+                }
+            }
+        }
+        summary
+    }
 }
 
 fn packet_direction(packet: &PacketEnvelope) -> PacketDirection {
@@ -160,6 +201,24 @@ pub struct CoverageSummary {
     pub unknown_routes: u64,
     pub known_packets: u64,
     pub unknown_packets: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProtocolPackCoverageSummary {
+    pub routes: CoverageSummary,
+    pub allowed_packets: u64,
+    pub opaque_packets: u64,
+    pub prohibited_packets: u64,
+    pub features: BTreeMap<ProtocolFeature, ProtocolFeatureCoverage>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ProtocolFeatureCoverage {
+    pub route_count: u64,
+    pub packet_count: u64,
+    pub allowed_packets: u64,
+    pub opaque_packets: u64,
+    pub prohibited_packets: u64,
 }
 
 #[cfg(test)]
@@ -266,5 +325,50 @@ mod tests {
             1
         );
         assert_eq!(report.unclassified_fragment_packet_count, 0);
+    }
+
+    #[test]
+    fn pack_summary_separates_decoded_opaque_and_feature_coverage() {
+        let pack = crate::ProtocolPack::from_json(include_bytes!(
+            "../../../protocol-packs/global/reference-v1/pack.json"
+        ))
+        .unwrap();
+        let enter_scene = RouteKey::new(
+            PacketDirection::ServerToClient,
+            FragmentKind::Notify,
+            1_664_308_034,
+            3,
+        );
+        let chat = RouteKey::new(
+            PacketDirection::ServerToClient,
+            FragmentKind::Notify,
+            164_931_432,
+            1,
+        );
+        let mut report = CoverageReport::default();
+        report.observe(&record(1, Some(enter_scene), 10));
+        report.observe(&record(2, Some(chat), 20));
+
+        let summary = report.summarize_pack(&pack);
+
+        assert_eq!(summary.routes.known_packets, 2);
+        assert_eq!(summary.allowed_packets, 1);
+        assert_eq!(summary.opaque_packets, 1);
+        assert_eq!(
+            summary
+                .features
+                .get(&crate::ProtocolFeature::Scene)
+                .unwrap()
+                .allowed_packets,
+            1
+        );
+        assert_eq!(
+            summary
+                .features
+                .get(&crate::ProtocolFeature::PublicChat)
+                .unwrap()
+                .opaque_packets,
+            1
+        );
     }
 }

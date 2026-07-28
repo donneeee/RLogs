@@ -10,11 +10,18 @@ It currently provides:
 - append-only capture journals;
 - bounded-memory streaming JSONL research journals;
 - route catalogs with mapping provenance;
+- exact-build protocol-pack selection and content digests;
+- automatic region endpoint rules with ambiguity rejection;
+- selective privacy-reviewed protobuf decoders;
+- exact entity UUIDs paired with bounded log-local actor IDs;
+- canonical scene, entity, attribute, position, combat, cooldown, revive, and
+  character-profile drafts;
 - packet, byte, known-route, and unknown-route coverage.
 
-It deliberately does not decode protobuf messages yet. The next protocol slice
-will connect protocol-pack route definitions to decoders without changing these
-evidence types.
+Unknown, opaque, and prohibited routes are never sent through the selective
+decoders. Their local wire evidence remains available to protocol research.
+The first reference pack is deliberately unselectable for live capture until
+its routes are replay-verified against an exact current client build.
 
 ## Core rule
 

@@ -14,6 +14,7 @@ pub enum PluginCapability {
     EventsRead,
     EncountersRead,
     CharacterProfilesRead,
+    LocalChatRead,
     OverlayPublish,
     ScopedStorage,
     NetworkAccess,
@@ -64,6 +65,11 @@ impl PluginManifest {
         let requests_network = self.capabilities.contains(&PluginCapability::NetworkAccess);
         if !requests_network && !self.allowed_network_domains.is_empty() {
             return Err(ManifestError::NetworkDomainsWithoutCapability);
+        }
+        if self.subscriptions.contains(&EventTopic::Chat)
+            && !self.capabilities.contains(&PluginCapability::LocalChatRead)
+        {
+            return Err(ManifestError::ChatSubscriptionWithoutCapability);
         }
 
         let requests_native = self
@@ -118,6 +124,9 @@ pub enum ManifestError {
 
     #[error("network domains require the network_access capability")]
     NetworkDomainsWithoutCapability,
+
+    #[error("chat subscriptions require the local_chat_read capability")]
+    ChatSubscriptionWithoutCapability,
 
     #[error("native developer plugins must request unsafe_native_execution")]
     NativeRuntimeWithoutCapability,
@@ -204,5 +213,18 @@ mod tests {
         let decoded: PluginManifest = serde_json::from_str(&json).unwrap();
 
         assert_eq!(decoded, plugin);
+    }
+
+    #[test]
+    fn chat_events_require_a_separate_local_capability() {
+        let mut plugin = manifest(PluginRuntime::WasmComponent);
+        plugin.subscriptions.insert(EventTopic::Chat);
+
+        assert_eq!(
+            plugin.validate(),
+            Err(ManifestError::ChatSubscriptionWithoutCapability)
+        );
+        plugin.capabilities.insert(PluginCapability::LocalChatRead);
+        assert_eq!(plugin.validate(), Ok(()));
     }
 }

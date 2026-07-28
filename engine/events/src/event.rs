@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{AbilityId, ActorId, EventTopic, SceneId, StatusEffectId};
+use crate::{AbilityId, EntityRef, EventTopic, MonsterId, SceneId, StatusEffectId};
 
 /// Capture-observed time is monotonic within a log. Game time is optional
 /// because not every packet carries an authoritative server timestamp.
@@ -22,8 +22,9 @@ pub enum EvidenceConfidence {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EvidenceSource {
     Wire {
-        context_id: u32,
-        wire_sequence: Option<u64>,
+        capture_sequence: u64,
+        connection_id: u64,
+        stream_id: u64,
     },
     Derived {
         rule_id: String,
@@ -41,12 +42,13 @@ pub struct EventProvenance {
 }
 
 impl EventProvenance {
-    pub fn wire(context_id: u32, wire_sequence: Option<u64>) -> Self {
+    pub fn wire(capture_sequence: u64, connection_id: u64, stream_id: u64) -> Self {
         Self {
             confidence: EvidenceConfidence::Exact,
             source: EvidenceSource::Wire {
-                context_id,
-                wire_sequence,
+                capture_sequence,
+                connection_id,
+                stream_id,
             },
         }
     }
@@ -86,12 +88,14 @@ pub enum TimelineEventKind {
         reason: BoundaryReason,
     },
     Actor(ActorEvent),
+    EntityAttributes(EntityAttributeEvent),
     Cast(CastEvent),
+    Cooldown(CooldownEvent),
     Damage(DamageEvent),
     Healing(HealingEvent),
     Shield(ShieldEvent),
     Life {
-        actor: ActorId,
+        actor: EntityRef,
         state: LifeState,
     },
     Status(StatusEvent),
@@ -105,8 +109,11 @@ impl TimelineEventKind {
             Self::RunBoundary { .. }
             | Self::EncounterBoundary { .. }
             | Self::CombatBoundary { .. } => EventTopic::Encounter,
-            Self::Actor(_) | Self::Life { .. } | Self::Position(_) => EventTopic::Actor,
+            Self::Actor(_) | Self::EntityAttributes(_) | Self::Life { .. } | Self::Position(_) => {
+                EventTopic::Actor
+            }
             Self::Cast(_)
+            | Self::Cooldown(_)
             | Self::Damage(_)
             | Self::Healing(_)
             | Self::Shield(_)
@@ -158,10 +165,22 @@ pub enum CombatState {
 #[serde(rename_all = "snake_case")]
 pub enum ActorKind {
     Player,
-    Mob,
+    Monster,
     Npc,
-    Object,
-    Unknown,
+    SceneObject,
+    Zone,
+    Projectile,
+    Pet,
+    TrainingDummy,
+    Drop,
+    Field,
+    Trap,
+    Collection,
+    StaticObject,
+    Vehicle,
+    Toy,
+    Housing,
+    Unknown(i32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -175,11 +194,42 @@ pub enum ActorState {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActorEvent {
-    pub actor: ActorId,
+    pub actor: EntityRef,
     pub state: ActorState,
+    /// Exact protocol enum value retained even when `kind` is normalized.
+    pub entity_type_id: i32,
     pub kind: ActorKind,
+    pub monster_id: Option<MonsterId>,
+    pub display_name: Option<String>,
     pub class_id: Option<i32>,
     pub level: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EntityAttributeEvent {
+    pub actor: EntityRef,
+    pub attributes: Vec<EntityAttribute>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EntityAttribute {
+    pub attribute_id: i32,
+    /// Exact attribute payload after protobuf field decoding.
+    pub raw_value: Vec<u8>,
+    pub decoded: Option<EntityAttributeValue>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum EntityAttributeValue {
+    Integer(i64),
+    Text(String),
+    Position {
+        x: f32,
+        y: f32,
+        z: f32,
+        facing_radians: Option<f32>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -193,46 +243,66 @@ pub enum CastState {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CastEvent {
-    pub source: ActorId,
+    pub source: EntityRef,
     pub ability: AbilityId,
-    pub target: Option<ActorId>,
+    pub target: Option<EntityRef>,
     pub state: CastState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CooldownEvent {
+    pub actor: EntityRef,
+    pub ability: AbilityId,
+    pub begin_time_millis: Option<i64>,
+    pub duration_millis: Option<i32>,
+    pub valid_duration_millis: Option<i32>,
+    pub cooldown_type: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DamageFlags {
-    pub critical: bool,
-    pub lucky: bool,
-    pub blocked: bool,
-    pub periodic: bool,
+    pub critical: Option<bool>,
+    pub lucky: Option<bool>,
+    pub blocked: Option<bool>,
+    pub periodic: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DamageEvent {
-    pub source: ActorId,
-    pub target: ActorId,
-    pub ability: AbilityId,
+    /// Owner or top-summoner attribution used for totals.
+    pub source: EntityRef,
+    /// Immediate wire attacker when it differs from the attributed source.
+    pub direct_source: Option<EntityRef>,
+    pub target: EntityRef,
+    pub ability: Option<AbilityId>,
+    /// Primary amount reported by the game.
     pub amount: i64,
-    pub absorbed: i64,
-    pub shield_break: bool,
+    pub actual_amount: Option<i64>,
+    pub hp_loss: Option<i64>,
+    pub shield_loss: Option<i64>,
+    pub hit_event_id: Option<i32>,
+    pub damage_source: Option<i32>,
+    pub damage_type: Option<i32>,
     pub flags: DamageFlags,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HealingEvent {
-    pub source: ActorId,
-    pub target: ActorId,
-    pub ability: AbilityId,
+    pub source: EntityRef,
+    pub direct_source: Option<EntityRef>,
+    pub target: EntityRef,
+    pub ability: Option<AbilityId>,
     pub amount: i64,
-    pub overheal: i64,
-    pub critical: bool,
-    pub periodic: bool,
+    pub effective_amount: Option<i64>,
+    pub overheal: Option<i64>,
+    pub critical: Option<bool>,
+    pub periodic: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShieldEvent {
-    pub source: ActorId,
-    pub target: ActorId,
+    pub source: EntityRef,
+    pub target: EntityRef,
     pub ability: AbilityId,
     pub amount: i64,
 }
@@ -256,8 +326,8 @@ pub enum StatusState {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StatusEvent {
-    pub source: Option<ActorId>,
-    pub target: ActorId,
+    pub source: Option<EntityRef>,
+    pub target: EntityRef,
     pub effect: StatusEffectId,
     pub state: StatusState,
     pub stacks: Option<u32>,
@@ -266,7 +336,7 @@ pub struct StatusEvent {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PositionEvent {
-    pub actor: ActorId,
+    pub actor: EntityRef,
     pub x: f32,
     pub y: f32,
     pub z: f32,
@@ -286,6 +356,7 @@ pub enum DataGapKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataGapEvent {
     pub kind: DataGapKind,
-    pub context_id: Option<u32>,
+    pub connection_id: Option<u64>,
+    pub stream_id: Option<u64>,
     pub detail: String,
 }

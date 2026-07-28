@@ -1,20 +1,26 @@
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::RouteKey;
 
 /// Product domains that may be schema-decoded after an explicit route review.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AllowedDataDomain {
     Combat,
     Encounter,
+    ActorState,
     CharacterProfile,
     WorldState,
+    PublicChat,
+    PartyChat,
 }
 
 /// Private data classes that RLogs must never schema-decode or normalize.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProhibitedDataClass {
     PasswordOrCredential,
     AuthenticationToken,

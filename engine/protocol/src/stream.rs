@@ -313,7 +313,8 @@ mod tests {
             capture_id: "stream-test".into(),
             started_unix_micros: Some(100),
             game_build: GameBuild {
-                region: "global".into(),
+                deployment_id: "global".into(),
+                region_id: Some("north-america".into()),
                 channel: "steam".into(),
                 build_id: "test".into(),
                 executable_version: None,

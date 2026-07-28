@@ -89,8 +89,8 @@ pub enum TimelineError {
 mod tests {
     use super::*;
     use crate::{
-        AbilityId, ActorId, BoundaryReason, CombatState, DamageEvent, DamageFlags, EventProvenance,
-        EventTime, LifeState, TimelineEventKind,
+        AbilityId, ActorId, BoundaryReason, CombatState, DamageEvent, DamageFlags, EntityRef,
+        EntityUuid, EventProvenance, EventTime, LifeState, TimelineEventKind,
     };
 
     fn draft(observed_micros: u64, kind: TimelineEventKind) -> TimelineEventDraft {
@@ -99,7 +99,7 @@ mod tests {
                 observed_micros,
                 game_time_millis: None,
             },
-            provenance: EventProvenance::wire(7, None),
+            provenance: EventProvenance::wire(7, 1, 1),
             kind,
         }
     }
@@ -121,7 +121,10 @@ mod tests {
             .push(draft(
                 100,
                 TimelineEventKind::Life {
-                    actor: ActorId(2),
+                    actor: EntityRef {
+                        actor_id: ActorId(2),
+                        entity_uuid: EntityUuid(200),
+                    },
                     state: LifeState::Died,
                 },
             ))
@@ -168,8 +171,14 @@ mod tests {
     #[test]
     fn a_minimal_combat_sequence_is_representable() {
         let mut timeline = RunTimeline::new();
-        let player = ActorId(1);
-        let boss = ActorId(2);
+        let player = EntityRef {
+            actor_id: ActorId(1),
+            entity_uuid: EntityUuid(100),
+        };
+        let boss = EntityRef {
+            actor_id: ActorId(2),
+            entity_uuid: EntityUuid(200),
+        };
 
         timeline
             .push(draft(
@@ -185,13 +194,18 @@ mod tests {
                 1_100,
                 TimelineEventKind::Damage(DamageEvent {
                     source: player,
+                    direct_source: None,
                     target: boss,
-                    ability: AbilityId(55),
+                    ability: Some(AbilityId(55)),
                     amount: 12_345,
-                    absorbed: 0,
-                    shield_break: false,
+                    actual_amount: None,
+                    hp_loss: Some(12_345),
+                    shield_loss: None,
+                    hit_event_id: None,
+                    damage_source: None,
+                    damage_type: None,
                     flags: DamageFlags {
-                        critical: true,
+                        critical: Some(true),
                         ..DamageFlags::default()
                     },
                 }),
@@ -228,9 +242,12 @@ mod tests {
                 observed_micros: 42,
                 game_time_millis: Some(9001),
             },
-            provenance: EventProvenance::wire(4, Some(8)),
+            provenance: EventProvenance::wire(4, 8, 9),
             kind: TimelineEventKind::Life {
-                actor: ActorId(3),
+                actor: EntityRef {
+                    actor_id: ActorId(3),
+                    entity_uuid: EntityUuid(300),
+                },
                 state: LifeState::Revived,
             },
         };

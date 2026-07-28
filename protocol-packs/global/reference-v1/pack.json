@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "pack_id": "global-reference-v1-not-for-live",
+  "target": {
+    "deployment_id": "global",
+    "region_id": null,
+    "channel": "reference",
+    "build_id": "reference-not-for-live-capture",
+    "executable_version": null
+  },
+  "provenance": [
+    {
+      "source": "global-feature-reference",
+      "reference": "donneeee/resonance-logs-global@77380cabdc8505267a8971022e38859b9400dd28"
+    },
+    {
+      "source": "historical-profile-reference",
+      "reference": "resonance-logs/resonance-logs@f4aff36e573674e04db1bb09216c603ddf9fb7f6"
+    }
+  ],
+  "routes": [
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 3
+      },
+      "service_name": "WorldNtf",
+      "method_name": "EnterScene",
+      "message_name": "EnterScene",
+      "confidence": "imported",
+      "features": ["scene", "map", "entity_lifecycle", "character_identity"],
+      "disposition": "allowed",
+      "domain": "world_state",
+      "decoder": "enter_scene_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 6
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncNearEntities",
+      "message_name": "SyncNearEntities",
+      "confidence": "imported",
+      "features": ["entity_lifecycle", "entity_attributes", "character_identity", "monster_identity", "position"],
+      "disposition": "allowed",
+      "domain": "actor_state",
+      "decoder": "sync_near_entities_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 21
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncContainerData",
+      "message_name": "SyncContainerData",
+      "confidence": "imported",
+      "features": ["character_profile", "scene", "map", "equipment", "profession", "talent"],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "sync_container_data_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 45
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncNearDeltaInfo",
+      "message_name": "SyncNearDeltaInfo",
+      "confidence": "imported",
+      "features": ["entity_attributes", "position", "skill", "damage", "healing", "shield", "death", "status_effect"],
+      "disposition": "allowed",
+      "domain": "combat",
+      "decoder": "sync_near_delta_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 46
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncToMeDeltaInfo",
+      "message_name": "SyncToMeDeltaInfo",
+      "confidence": "imported",
+      "features": ["entity_attributes", "position", "skill", "cooldown", "damage", "healing", "shield", "death", "status_effect"],
+      "disposition": "allowed",
+      "domain": "combat",
+      "decoder": "sync_to_me_delta_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 39
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyReviveUser",
+      "message_name": "NotifyReviveUser",
+      "confidence": "imported",
+      "features": ["revive"],
+      "disposition": "allowed",
+      "domain": "combat",
+      "decoder": "notify_revive_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 1
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncSubSceneAttrs",
+      "message_name": "SyncSubSceneAttrs",
+      "confidence": "candidate",
+      "features": ["scene", "entity_attributes"],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 7
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncSceneAttrs",
+      "message_name": "SyncSceneAttrs",
+      "confidence": "candidate",
+      "features": ["scene", "map", "entity_attributes"],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 8
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncSceneEvents",
+      "message_name": "SyncSceneEvents",
+      "confidence": "candidate",
+      "features": ["scene", "map", "dungeon_objective", "world_state"],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 23
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncDungeonData",
+      "message_name": "SyncDungeonData",
+      "confidence": "candidate",
+      "features": ["dungeon", "dungeon_objective"],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 24
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncDungeonDirtyData",
+      "message_name": "SyncDungeonDirtyData",
+      "confidence": "candidate",
+      "features": ["dungeon", "dungeon_objective"],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 64
+      },
+      "service_name": "WorldNtf",
+      "method_name": "BuffInfoSync",
+      "message_name": "BuffInfoSync",
+      "confidence": "candidate",
+      "features": ["status_effect"],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 67
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncClientUseSkill",
+      "message_name": "SyncClientUseSkill",
+      "confidence": "candidate",
+      "features": ["skill"],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 1664308034,
+        "method_id": 79
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifySceneLineInfo",
+      "message_name": "NotifySceneLineInfo",
+      "confidence": "candidate",
+      "features": ["scene", "map", "world_state"],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 164931432,
+        "method_id": 1
+      },
+      "service_name": "ChitChatNtf",
+      "method_name": "NotifyNewestChitChatMsgs",
+      "message_name": "NotifyNewestChitChatMsgs",
+      "confidence": "candidate",
+      "features": ["public_chat", "party_chat", "guild_chat", "system_message"],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 966773353,
+        "method_id": 2
+      },
+      "service_name": "GrpcTeamNtf",
+      "method_name": "NoticeUpdateTeamMemberInfo",
+      "message_name": "NoticeUpdateTeamMemberInfo",
+      "confidence": "candidate",
+      "features": ["party", "character_profile"],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 625772963,
+        "method_id": 1
+      },
+      "service_name": "SocialNtf",
+      "method_name": "NotifySocialData",
+      "message_name": "NotifySocialData",
+      "confidence": "candidate",
+      "features": ["social", "character_profile"],
+      "disposition": "opaque"
+    }
+  ]
+}

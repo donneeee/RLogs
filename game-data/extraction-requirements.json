@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "purpose": "Build-scoped ledger of useful end products to obtain from reviewed game-file research. This file records what RLogs needs, never how to extract it.",
+  "requirements": [
+    {
+      "domain": "entity_identity",
+      "status": "needed",
+      "outputs": [
+        "entity type enum values",
+        "entity UUID bit layout by build",
+        "template ID to entity kind relations",
+        "summon and owner relations"
+      ]
+    },
+    {
+      "domain": "classes_and_skills",
+      "status": "needed",
+      "outputs": [
+        "class IDs",
+        "specialization IDs",
+        "skill and skill-level IDs",
+        "passive skill IDs",
+        "cooldown groups",
+        "damage and hit-event relations",
+        "support and modifier relations"
+      ]
+    },
+    {
+      "domain": "status_effects",
+      "status": "needed",
+      "outputs": [
+        "buff and debuff IDs",
+        "stacking rules",
+        "durations",
+        "source skill relations",
+        "stat and mitigation effects"
+      ]
+    },
+    {
+      "domain": "world_and_instances",
+      "status": "needed",
+      "outputs": [
+        "scene IDs",
+        "map IDs",
+        "dungeon IDs",
+        "difficulty IDs",
+        "objective IDs",
+        "boss and phase relations",
+        "region and channel metadata"
+      ]
+    },
+    {
+      "domain": "monsters_and_mechanics",
+      "status": "needed",
+      "outputs": [
+        "monster and NPC template IDs",
+        "boss and elite classification",
+        "monster skill IDs",
+        "projectile IDs",
+        "trap and mechanic IDs",
+        "localized names and icons"
+      ]
+    },
+    {
+      "domain": "character_profile",
+      "status": "needed",
+      "outputs": [
+        "character level and progression fields",
+        "character-facing gender, body, face, color, avatar, card-style, and frame IDs",
+        "season ID, level, strength, and power fields",
+        "combat power fields",
+        "owned and equipped Imagine IDs",
+        "equipment instances, slots, levels, refinement, enchantments, and sets",
+        "combat-profession levels, experience, active/slotted skills, talents, and skins",
+        "life-profession levels, experience, specializations, recipes, and targets",
+        "owned cosmetics, dyes, mounts, weapon skins, and collection totals",
+        "guild, title, and medal display fields"
+      ],
+      "historical_reference": "resonance-logs/resonance-logs@f4aff36e573674e04db1bb09216c603ddf9fb7f6"
+    },
+    {
+      "domain": "chat_and_social",
+      "status": "needed",
+      "outputs": [
+        "public, nearby, party, guild, and system channel IDs",
+        "message type IDs",
+        "sender character relations",
+        "private-message route classification for prohibition"
+      ]
+    },
+    {
+      "domain": "localization",
+      "status": "needed",
+      "outputs": [
+        "official locale identifiers",
+        "official localized strings keyed by stable game IDs",
+        "fallback and deployment differences"
+      ]
+    },
+    {
+      "domain": "icons_and_assets",
+      "status": "needed",
+      "outputs": [
+        "skill icons",
+        "status-effect icons",
+        "class and specialization icons",
+        "monster and NPC icons",
+        "map and dungeon images",
+        "item, equipment, Imagine, profession, talent, and cosmetic icons"
+      ]
+    }
+  ]
+}

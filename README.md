@@ -40,7 +40,10 @@ instead of hiding them. See [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 External parser audit pins are maintained in
 [`docs/PARSER_REFERENCES.md`](docs/PARSER_REFERENCES.md). The language-neutral
 engine and locale-pack boundary are documented in
-[`docs/LOCALIZATION.md`](docs/LOCALIZATION.md).
+[`docs/LOCALIZATION.md`](docs/LOCALIZATION.md). Human-readable, build-scoped
+game-data rules are in [`game-data/README.md`](game-data/README.md), and the
+automated profile field census is in
+[`docs/CHARACTER_PROFILE_COVERAGE.md`](docs/CHARACTER_PROFILE_COVERAGE.md).
 
 ## Repository map
 
@@ -48,6 +51,7 @@ engine and locale-pack boundary are documented in
 | --- | --- |
 | [`apps/`](apps/) | User-facing desktop and future command-line applications |
 | [`engine/`](engine/) | Trusted capture, protocol, event, log, and plugin-host foundations |
+| [`game-data/`](game-data/) | Reviewed, human-readable IDs, localization, and asset end products |
 | [`locales/`](locales/) | First-party interface translations, separate from canonical IDs |
 | [`plugins/`](plugins/) | Bundled first-party plugins built on the public plugin API |
 | [`protocol-packs/`](protocol-packs/) | Region- and build-specific protocol knowledge |

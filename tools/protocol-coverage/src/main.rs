@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use rlogs_protocol::{
     CaptureGapKind, CompressionState, FragmentKind, JsonlJournalReader, JsonlJournalSummary,
-    PacketDirection,
+    PacketDirection, ProtocolFeature, ProtocolPack, ProtocolPackCoverageSummary,
 };
 use serde::Serialize;
 
@@ -17,52 +17,76 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let (json, path) = arguments()?;
+    let arguments = arguments()?;
+    let path = arguments.capture_path;
     let file = File::open(&path)?;
     let summary = JsonlJournalReader::new(BufReader::new(file)).summarize()?;
+    let pack = arguments
+        .pack_path
+        .as_ref()
+        .map(|path| std::fs::read(path).map_err(Box::<dyn std::error::Error>::from))
+        .transpose()?
+        .map(|json| ProtocolPack::from_json(&json))
+        .transpose()?;
 
-    if json {
-        print_json(&path, &summary)?;
+    if arguments.json {
+        print_json(&path, &summary, pack.as_ref())?;
     } else {
-        print_text(&path, &summary);
+        print_text(&path, &summary, pack.as_ref());
     }
     Ok(())
 }
 
-fn arguments() -> Result<(bool, PathBuf), String> {
+#[derive(Debug, PartialEq, Eq)]
+struct Arguments {
+    json: bool,
+    pack_path: Option<PathBuf>,
+    capture_path: PathBuf,
+}
+
+fn arguments() -> Result<Arguments, String> {
     parse_arguments(std::env::args_os().skip(1))
 }
 
-fn parse_arguments(
-    arguments: impl IntoIterator<Item = OsString>,
-) -> Result<(bool, PathBuf), String> {
+fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Arguments, String> {
     let mut json = false;
-    let mut path = None;
+    let mut pack_path = None;
+    let mut capture_path = None;
+    let mut arguments = arguments.into_iter();
 
-    for argument in arguments {
+    while let Some(argument) = arguments.next() {
         if argument == OsStr::new("--json") {
             json = true;
-        } else if path.is_none() {
-            path = Some(PathBuf::from(argument));
+        } else if argument == OsStr::new("--pack") {
+            if pack_path.is_some() {
+                return Err(usage());
+            }
+            pack_path = Some(PathBuf::from(arguments.next().ok_or_else(usage)?));
+        } else if capture_path.is_none() {
+            capture_path = Some(PathBuf::from(argument));
         } else {
             return Err(usage());
         }
     }
 
-    path.map(|path| (json, path)).ok_or_else(usage)
+    Ok(Arguments {
+        json,
+        pack_path,
+        capture_path: capture_path.ok_or_else(usage)?,
+    })
 }
 
 fn usage() -> String {
-    "usage: rlogs-protocol-coverage [--json] <capture.jsonl>".into()
+    "usage: rlogs-protocol-coverage [--json] [--pack <pack.json>] <capture.jsonl>".into()
 }
 
-fn print_text(path: &Path, summary: &JsonlJournalSummary) {
+fn print_text(path: &Path, summary: &JsonlJournalSummary, pack: Option<&ProtocolPack>) {
     let coverage = &summary.coverage;
     println!("Capture: {}", path.display());
     println!("Capture ID: {}", summary.session.capture_id);
     println!(
         "Build: {}/{}/{}",
-        summary.session.game_build.region,
+        summary.session.game_build.deployment_id,
         summary.session.game_build.channel,
         summary.session.game_build.build_id
     );
@@ -124,14 +148,47 @@ fn print_text(path: &Path, summary: &JsonlJournalSummary) {
             counts.application_bytes,
         );
     }
+
+    if let Some(pack) = pack {
+        let summary = coverage.summarize_pack(pack);
+        println!();
+        println!("Protocol pack: {}", pack.definition().pack_id);
+        println!("Protocol pack digest: {}", pack.digest());
+        println!("Known packets: {}", summary.routes.known_packets);
+        println!("Unknown packets: {}", summary.routes.unknown_packets);
+        println!("Allowed decoder packets: {}", summary.allowed_packets);
+        println!("Opaque research packets: {}", summary.opaque_packets);
+        println!("Prohibited packets: {}", summary.prohibited_packets);
+        println!();
+        println!(
+            "{:<24} {:>8} {:>10} {:>10} {:>10} {:>10}",
+            "feature", "routes", "packets", "allowed", "opaque", "prohibited"
+        );
+        for (feature, counts) in &summary.features {
+            println!(
+                "{:<24} {:>8} {:>10} {:>10} {:>10} {:>10}",
+                feature_name(*feature),
+                counts.route_count,
+                counts.packet_count,
+                counts.allowed_packets,
+                counts.opaque_packets,
+                counts.prohibited_packets,
+            );
+        }
+    }
 }
 
-fn print_json(path: &Path, summary: &JsonlJournalSummary) -> Result<(), serde_json::Error> {
+fn print_json(
+    path: &Path,
+    summary: &JsonlJournalSummary,
+    pack: Option<&ProtocolPack>,
+) -> Result<(), serde_json::Error> {
     let coverage = &summary.coverage;
     let report = JsonReport {
         capture_path: path.display().to_string(),
         capture_id: summary.session.capture_id.clone(),
-        region: summary.session.game_build.region.clone(),
+        deployment_id: summary.session.game_build.deployment_id.clone(),
+        region_id: summary.session.game_build.region_id.clone(),
         channel: summary.session.game_build.channel.clone(),
         build_id: summary.session.game_build.build_id.clone(),
         record_count: summary.record_count,
@@ -185,10 +242,37 @@ fn print_json(path: &Path, summary: &JsonlJournalSummary) -> Result<(), serde_js
                 last_sequence: counts.last_sequence,
             })
             .collect(),
+        protocol_pack: pack.map(|pack| json_pack_report(pack, &coverage.summarize_pack(pack))),
     };
 
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
+}
+
+fn json_pack_report(pack: &ProtocolPack, summary: &ProtocolPackCoverageSummary) -> JsonPackReport {
+    JsonPackReport {
+        pack_id: pack.definition().pack_id.clone(),
+        digest: pack.digest().to_owned(),
+        known_routes: summary.routes.known_routes,
+        unknown_routes: summary.routes.unknown_routes,
+        known_packets: summary.routes.known_packets,
+        unknown_packets: summary.routes.unknown_packets,
+        allowed_packets: summary.allowed_packets,
+        opaque_packets: summary.opaque_packets,
+        prohibited_packets: summary.prohibited_packets,
+        features: summary
+            .features
+            .iter()
+            .map(|(feature, counts)| JsonFeatureCoverage {
+                feature: *feature,
+                route_count: counts.route_count,
+                packet_count: counts.packet_count,
+                allowed_packets: counts.allowed_packets,
+                opaque_packets: counts.opaque_packets,
+                prohibited_packets: counts.prohibited_packets,
+            })
+            .collect(),
+    }
 }
 
 fn direction_name(direction: PacketDirection) -> &'static str {
@@ -232,11 +316,19 @@ fn gap_name(kind: CaptureGapKind) -> &'static str {
     }
 }
 
+fn feature_name(feature: ProtocolFeature) -> String {
+    serde_json::to_value(feature)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| format!("{feature:?}"))
+}
+
 #[derive(Serialize)]
 struct JsonReport {
     capture_path: String,
     capture_id: String,
-    region: String,
+    deployment_id: String,
+    region_id: Option<String>,
     channel: String,
     build_id: String,
     record_count: u64,
@@ -250,6 +342,7 @@ struct JsonReport {
     gaps: Vec<JsonGap>,
     fragments: Vec<JsonFragment>,
     routes: Vec<JsonRoute>,
+    protocol_pack: Option<JsonPackReport>,
 }
 
 #[derive(Serialize)]
@@ -288,6 +381,30 @@ struct JsonRoute {
     last_sequence: u64,
 }
 
+#[derive(Serialize)]
+struct JsonPackReport {
+    pack_id: String,
+    digest: String,
+    known_routes: u64,
+    unknown_routes: u64,
+    known_packets: u64,
+    unknown_packets: u64,
+    allowed_packets: u64,
+    opaque_packets: u64,
+    prohibited_packets: u64,
+    features: Vec<JsonFeatureCoverage>,
+}
+
+#[derive(Serialize)]
+struct JsonFeatureCoverage {
+    feature: ProtocolFeature,
+    route_count: u64,
+    packet_count: u64,
+    allowed_packets: u64,
+    opaque_packets: u64,
+    prohibited_packets: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,15 +421,27 @@ mod tests {
     fn arguments_accept_text_and_json_modes() {
         assert_eq!(
             parse_arguments(args(&["capture.jsonl"])).unwrap(),
-            (false, PathBuf::from("capture.jsonl"))
+            Arguments {
+                json: false,
+                pack_path: None,
+                capture_path: PathBuf::from("capture.jsonl")
+            }
         );
         assert_eq!(
             parse_arguments(args(&["--json", "capture.jsonl"])).unwrap(),
-            (true, PathBuf::from("capture.jsonl"))
+            Arguments {
+                json: true,
+                pack_path: None,
+                capture_path: PathBuf::from("capture.jsonl")
+            }
         );
         assert_eq!(
-            parse_arguments(args(&["capture.jsonl", "--json"])).unwrap(),
-            (true, PathBuf::from("capture.jsonl"))
+            parse_arguments(args(&["capture.jsonl", "--json", "--pack", "pack.json"])).unwrap(),
+            Arguments {
+                json: true,
+                pack_path: Some(PathBuf::from("pack.json")),
+                capture_path: PathBuf::from("capture.jsonl")
+            }
         );
     }
 

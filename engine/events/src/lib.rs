@@ -4,18 +4,30 @@ mod envelope;
 mod event;
 mod identity;
 mod ids;
+mod profile;
 mod timeline;
+mod world;
 
-pub use envelope::{CanonicalEvent, EVENT_SCHEMA_VERSION, EventEnvelope, EventTopic};
+pub use envelope::{
+    CanonicalEvent, CanonicalEventDraft, CanonicalEventDraftKind, EVENT_SCHEMA_VERSION,
+    EventEnvelope, EventEnvelopeFactory, EventSensitivity, EventSequenceError, EventTopic,
+};
 pub use event::{
     ActorEvent, ActorKind, ActorState, BoundaryReason, CastEvent, CastState, CombatState,
-    DamageEvent, DamageFlags, DataGapEvent, DataGapKind, EncounterState, EventProvenance,
-    EventTime, EvidenceConfidence, EvidenceSource, HealingEvent, LifeState, PositionEvent,
-    RunState, ShieldEvent, StatusEvent, StatusState, TimelineEvent, TimelineEventDraft,
-    TimelineEventKind,
+    CooldownEvent, DamageEvent, DamageFlags, DataGapEvent, DataGapKind, EncounterState,
+    EntityAttribute, EntityAttributeEvent, EntityAttributeValue, EventProvenance, EventTime,
+    EvidenceConfidence, EvidenceSource, HealingEvent, LifeState, PositionEvent, RunState,
+    ShieldEvent, StatusEvent, StatusState, TimelineEvent, TimelineEventDraft, TimelineEventKind,
 };
 pub use identity::{
     CharacterIdentity, RegionContext, RegionEvidence, RegionEvidenceKind, RegionIdentity,
 };
-pub use ids::{AbilityId, ActorId, SceneId, StatusEffectId};
+pub use ids::{
+    AbilityId, ActorId, DungeonId, EntityRef, EntityUuid, MapId, MonsterId, SceneId, StatusEffectId,
+};
+pub use profile::{
+    CharacterProfilePatch, CosmeticOwnership, EquipmentItem, ImagineOwnership, SeasonProfile,
+    SkillLevel, TalentLevel, WorldContext,
+};
 pub use timeline::{RunTimeline, TimelineError};
+pub use world::{ChatChannel, ChatEvent, DungeonEvent, DungeonEventKind, MapEvent, MapEventKind};
