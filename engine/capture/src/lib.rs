@@ -1,12 +1,25 @@
 //! Platform-neutral packet capture and replay contracts.
 
+mod dumpcap;
 mod offline;
+mod pcap_writer;
+mod process_filter;
+#[cfg(windows)]
+mod windows;
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub use dumpcap::DumpcapLiveConfig;
 pub use offline::OfflineCapture;
+pub use pcap_writer::{PcapWriteError, PcapWriter};
+pub use process_filter::{
+    OwnedProcessCapture, OwnedProcessCaptureConfig, OwnedProcessCaptureConfigError,
+    OwnedProcessCaptureMetrics, ProcessSocketOwner, TcpConnection, TcpEndpoint,
+};
+#[cfg(windows)]
+pub use windows::{WindowsOwnedDumpcapCapture, WindowsProcessSocketOwner};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -39,6 +52,19 @@ impl CaptureLinkType {
             229 => Self::RawIpv6,
             276 => Self::LinuxCookedV2,
             other => Self::Unknown(other),
+        }
+    }
+
+    pub const fn to_pcap_link_type(self) -> Option<i32> {
+        match self {
+            Self::NullLoopback => Some(0),
+            Self::Ethernet => Some(1),
+            Self::RawIp => Some(101),
+            Self::LinuxCookedV1 => Some(113),
+            Self::RawIpv4 => Some(228),
+            Self::RawIpv6 => Some(229),
+            Self::LinuxCookedV2 => Some(276),
+            Self::Unknown(_) => None,
         }
     }
 }

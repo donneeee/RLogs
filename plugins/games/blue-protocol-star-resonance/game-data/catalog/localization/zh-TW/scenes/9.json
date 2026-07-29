@@ -1,0 +1,776 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.1031.name",
+    "text": "極限·蒂娜·精神之界",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104465791",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.1033.name",
+    "text": "極限·蒂娜·精神之界",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104465793",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.1111.name",
+    "text": "不穩定空間·巨塔遺跡",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104466814",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.12022.name",
+    "text": "協會狩獵·普通",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-727963057",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.12023.name",
+    "text": "協會狩獵·困難",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-727963058",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.1301.name",
+    "text": "黯影堡壘",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104468959",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.13013.name",
+    "text": "決戰！幻花沉眠之地",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-727998962",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.1321.name",
+    "text": "不穩定空間·黯影堡壘",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104469025",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.1333.name",
+    "text": "極限·黯影堡壘",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104469060",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.1411.name",
+    "text": "不穩定空間·幻華流月之野",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104470081",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.15003.name",
+    "text": "記憶9：暗淡的討伐記憶",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-728070803",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.15005.name",
+    "text": "記憶31：暗淡的討伐記憶",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-728070805",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.15008.name",
+    "text": "記憶22：暗淡的討伐記憶",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-728070808",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.17003.name",
+    "text": "記憶11：暗淡的征討記憶",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-728142677",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.18504.name",
+    "text": "記憶37：明亮的治癒記憶",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-728184060",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.23702.name",
+    "text": "力量之路29：怪物討伐",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-729192472",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.24106.name",
+    "text": "輔助之路18：團隊治療",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-729221879",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.24203.name",
+    "text": "輔助之路17：團隊治療",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-729222965",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.24503.name",
+    "text": "輔助之路22：團隊治療",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-729226232",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.24602.name",
+    "text": "輔助之路8：團隊治療",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-729227320",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.30108.name",
+    "text": "司第門遺跡8層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730264054",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.30128.name",
+    "text": "司第門遺跡28層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730264120",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.30140.name",
+    "text": "司第門遺跡40層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730264178",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.30149.name",
+    "text": "司第門遺跡49層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730264187",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.30155.name",
+    "text": "司第門遺跡55層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730264216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.30169.name",
+    "text": "司第門遺跡69層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730264253",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.30170.name",
+    "text": "司第門遺跡70層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730264277",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.30173.name",
+    "text": "司第門遺跡73層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730264280",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.31127.name",
+    "text": "司第門遺跡27層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730300056",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.31144.name",
+    "text": "司第門遺跡44層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730300119",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.31154.name",
+    "text": "司第門遺跡54層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730300152",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.32108.name",
+    "text": "司第門遺跡8層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730335928",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.32115.name",
+    "text": "司第門遺跡15層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730335958",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.32120.name",
+    "text": "司第門遺跡20層",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-730335986",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.5501.name",
+    "text": "巨龍爪痕",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104614885",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.6022.name",
+    "text": "極限·卡尼曼試煉",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104645444",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.6221.name",
+    "text": "極限·衰敗深處",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104647621",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.6222.name",
+    "text": "極限·衰敗深處",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104647622",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.6332.name",
+    "text": "極限·噬光牢籠",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104648744",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.6542.name",
+    "text": "不穩定空間·隱霧獵場",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104650955",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.7075.name",
+    "text": "亞人生態問答",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104681549",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.7077.name",
+    "text": "亞人生態問答",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104681551",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "scene.7103.name",
+    "text": "空中巡航",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2104682405",
+      "confidence": "verified"
+    }
+  }
+]

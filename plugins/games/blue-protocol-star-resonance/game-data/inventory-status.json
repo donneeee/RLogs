@@ -1,0 +1,214 @@
+{
+  "schema_version": 2,
+  "source_build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "client_build": "24252055"
+  },
+  "catalog": {
+    "path": "game-data/catalog",
+    "region_partitioned": false,
+    "records": 36136,
+    "localization_entries": 172502,
+    "assets": 54,
+    "compiled_shards": 1737,
+    "compiled_digest": "sha256:23cf320c6d3205981f1de14dba23391fdca296c11dd852e49a8990e605caec98"
+  },
+  "inventory": "research/game-file-inventory/global/steam-24252055",
+  "domains": [
+    {
+      "domain": "table_identity",
+      "state": "named_schema_inference_complete",
+      "evidence": {
+        "confirmed_tables": 4239,
+        "named_tables": 565,
+        "unresolved_tables": 3674,
+        "confirmed_rows": 329764,
+        "distinct_row_ids": 153905,
+        "named_rows_evaluated": 260189,
+        "corroborated_semantic_fields": 864,
+        "validated_row_key_tables": 548,
+        "rejected_or_unresolved_semantic_seeds": 52,
+        "exact_pool_reference_candidates": 1448,
+        "unaligned_exact_candidates": 293,
+        "schema_index": "research/game-file-inventory/global/steam-24252055/schemas/index.json"
+      },
+      "next": "review candidate relations, expand typed fields, and recover identities for unresolved tables"
+    },
+    {
+      "domain": "character_profile",
+      "state": "first_static_definitions_promoted",
+      "evidence": {
+        "candidate_tables": 113,
+        "named_domain_tables": 31,
+        "promoted_records": {
+          "profile_images": 809,
+          "name_cards": 3,
+          "medals": 183,
+          "guild_icons": 41
+        },
+        "worklist": "research/game-file-inventory/global/steam-24252055/schemas/review-worklist.json",
+        "reviewed_examples": [
+          "ProfileImageTable.ctb",
+          "ProfileAttrTable.ctb",
+          "ProfileImageTargetTable.ctb",
+          "MedalTable.ctb",
+          "NameCardTable.ctb",
+          "PlayerLevelTable.ctb",
+          "SeasonLevelTable.ctb",
+          "ProfessionSystemTable.ctb"
+        ]
+      },
+      "next": "correlate selection, ownership, public guild identity/display, progression, and other character fields with consented current-build routes"
+    },
+    {
+      "domain": "items_and_equipment",
+      "state": "first_static_definitions_promoted",
+      "evidence": {
+        "named_domain_tables": 60,
+        "promoted_records": {
+          "equipment_models": 4862,
+          "weapon_equipment": 722
+        },
+        "reviewed_examples": [
+          "EquipTable.ctb",
+          "EquipWeaponTable.ctb",
+          "EquipPartTable.ctb",
+          "FashionTable.ctb",
+          "FashionCollectTable.ctb",
+          "ItemTypeTable.ctb",
+          "WeaponSkinTable.ctb",
+          "VehicleBaseTable.ctb"
+        ]
+      },
+      "next": "type item/equipment relations for stats, slots, parts, refinement, enchantment, appearance, and runtime ownership"
+    },
+    {
+      "domain": "combat_and_support",
+      "state": "class_and_core_catalog_promoted",
+      "evidence": {
+        "named_domain_tables": 76,
+        "promoted_records": {
+          "classes": 13,
+          "specializations": 20,
+          "talents": 648,
+          "skills": 4796,
+          "skill_effects": 4813,
+          "status_effects": 10008,
+          "recount_groups": 349
+        },
+        "ownership": {
+          "direct_class_skill_relations": 168,
+          "skill_graph_class_relations": 123,
+          "talents_classified_by_spec": 578,
+          "talents_shared_by_class": 40,
+          "talents_shared_across_classes": 6,
+          "talents_unclassified": 24,
+          "direct_spec_skill_relations": 30,
+          "spec_skill_graph_relations": 20,
+          "ambiguous_direct_spec_skill_relations_preserved": 6,
+          "classified_skill_effects": 300,
+          "classified_status_effects": 581,
+          "classified_status_effects_by_spec": 564,
+          "ambiguous_skill_graph_records_preserved": 1,
+          "spec_specific_skills": "promoted_only_from_unique_current_build_talent_or_skill_graph relations"
+        },
+        "reviewed_examples": [
+          "ProfessionSystemTable.ctb",
+          "ProfessionTable.ctb",
+          "TalentSchoolTable.ctb",
+          "SkillTable.ctb",
+          "SkillFightLevelTable.ctb",
+          "SkillEffectTable.ctb",
+          "BuffTable.ctb",
+          "DamageAttrTable.ctb",
+          "RecountTable.ctb",
+          "FightAttrTable.ctb",
+          "TempAttrTable.ctb",
+          "ModTable.ctb",
+          "ModEffectTable.ctb"
+        ],
+        "recount_relation": "recount ID to localized name to signed 64-bit damage ID array",
+        "relation_index": "research/game-file-inventory/global/steam-24252055/relationships/schema-relations.json",
+        "id_namespaces": "research/game-file-inventory/global/steam-24252055/relationships/id-namespaces.json"
+      },
+      "next": "correlate modifier providers, recipients, stat and mitigation deltas, timing windows, overlap, and packet/runtime evidence for support attribution"
+    },
+    {
+      "domain": "world_and_instances",
+      "state": "first_core_catalog_promoted",
+      "evidence": {
+        "named_domain_tables": 49,
+        "promoted_records": {
+          "scenes": 610,
+          "maps": 203,
+          "dungeons": 589
+        },
+        "reviewed_examples": [
+          "SceneTable.ctb",
+          "DungeonsTable.ctb",
+          "MapInfoTable.ctb",
+          "SceneAreaTable.ctb",
+          "DungeonStageTable.ctb",
+          "DungeonTitleTable.ctb",
+          "RaidDungeonTable.ctb"
+        ]
+      },
+      "next": "type remaining objectives, bosses, phases, region selectors, and unresolved array fields"
+    },
+    {
+      "domain": "entities",
+      "state": "first_core_catalog_promoted",
+      "evidence": {
+        "named_domain_tables": 37,
+        "promoted_records": {
+          "monsters": 3128,
+          "npcs": 4339
+        },
+        "reviewed_examples": [
+          "MonsterTable.ctb",
+          "NpcTable.ctb",
+          "MonsterEntityGlobalTable.ctb",
+          "NpcEntityGlobalTable.ctb",
+          "SceneObjectEntityGlobalTable.ctb",
+          "ZoneEntityGlobalTable.ctb"
+        ],
+        "identity_boundary": "entity-definition IDs and static positions are not runtime entity UUIDs"
+      },
+      "next": "type summons, entity owners, static entity-definition relations, and runtime UUID layouts without conflating row keys"
+    },
+    {
+      "domain": "localization",
+      "state": "referenced_core_localization_promoted",
+      "evidence": {
+        "locales": 11,
+        "union_ids": 171474,
+        "promoted_referenced_ids": 15723,
+        "compiled_entries": 172502,
+        "unresolved_official_references_preserved_as_ids": 41,
+        "runtime_ownership_target": "data-only locale add-ons under plugins/builtin/localization/<locale>"
+      },
+      "next": "continue mapping beside the catalog, then move stable-key JSON shards into per-locale game namespaces and add UI namespaces"
+    },
+    {
+      "domain": "assets_and_icons",
+      "state": "class_and_guild_icons_promoted",
+      "evidence": {
+        "addresses": 215756,
+        "sprites": 9019,
+        "distinct_addressed_bundles": 154625,
+        "class_icons_promoted": 13,
+        "guild_icons_promoted": 41,
+        "icon_layout": "assets/shared/blue-protocol-star-resonance/icons/classes/<class>/horizontal.png",
+        "guild_icon_layout": "assets/shared/blue-protocol-star-resonance/icons/guilds/badges/<id>-<name>.png",
+        "compiled_assets": 54
+      },
+      "next": "resolve skill, status, equipment, imagine, entity, map, and profile icons into matching searchable domain folders"
+    },
+    {
+      "domain": "network_protocol",
+      "state": "not_decoded_by_game_file_scan",
+      "next": "correlate protocol references and controlled captures with table/schema identities"
+    }
+  ]
+}

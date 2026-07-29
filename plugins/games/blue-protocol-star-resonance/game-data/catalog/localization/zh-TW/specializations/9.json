@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "specialization.110.name",
+    "text": "懲擊流",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989366",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "specialization.116.name",
+    "text": "馭獸流",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989372",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "specialization.129.name",
+    "text": "赤紅流",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989408",
+      "confidence": "verified"
+    }
+  }
+]

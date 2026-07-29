@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "class.12.description",
+    "text": "擅长<color=#fcbe03>近距离</color>作战，以<color=#fcbe03>剑盾</color>为武器。运用光铸造铠甲，拥有出色的<color=#fcbe03>防御</color>和<color=#fcbe03>自愈</color>能力。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154215",
+      "confidence": "verified"
+    }
+  }
+]

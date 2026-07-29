@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "class.2.description",
+    "text": "擅長<color=#fcbe03>遠距離</color>作戰，以<color=#fcbe03>冰魔杖</color>為武器。掌控寒冰的力量，擁有出色的<color=#fcbe03>大範圍攻擊</color>和<color=#fcbe03>控制</color>能力。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367318",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "class.8.description",
+    "text": "擅長<color=#fcbe03>遠距離</color>作戰，擁有出色的攻擊能力。<br>可以在遠處以高頻攻擊打擊大範圍的敵人。追求<color=#fcbe03>刻印機率加成</color>提高觸發頻率。<br>也可以在近處<color=#fcbe03>蓄力</color>，打出極高的爆發傷害。追求<color=#fcbe03>暴擊機率</color>帶來的強大收益。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367324",
+      "confidence": "verified"
+    }
+  }
+]

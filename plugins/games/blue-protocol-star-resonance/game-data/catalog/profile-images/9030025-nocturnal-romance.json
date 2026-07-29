@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "kind": "profile_image",
+  "id": 9030025,
+  "stable_key": "profile_image.9030025",
+  "localization_key": "profile_image.9030025.name",
+  "icon": null,
+  "attributes": {
+    "profile_image_id": 9030025,
+    "name_id": 131420803,
+    "acquisition_description_id": 1867365194,
+    "name_localization_key": "profile_image.9030025.name",
+    "acquisition_localization_key": "profile_image.9030025.acquisition"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ProfileImageTable",
+    "reference": "client-build:global/steam/24252055@sha256:851ca4beabe31e112468ac4fee592d677c533013cd20d777d9f046645004da49",
+    "confidence": "corroborated"
+  }
+}

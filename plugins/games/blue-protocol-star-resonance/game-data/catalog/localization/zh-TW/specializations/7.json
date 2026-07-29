@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "specialization.102.name",
+    "text": "月刃召喚流",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989335",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "specialization.113.name",
+    "text": "岩盾流",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989369",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.1.description",
+    "text": "<color=#fcbe03>月鎌刀</color>を武器とした<color=#fcbe03>近接戦闘</color>を得意とする。長刀と鎌を自在に切り替えながら戦うことができ、<color=#fcbe03>小範囲への攻撃</color>に優れている。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367317",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.12.description",
+    "text": "Führt <color=#fcbe03>Schwert und Schild</color>, die sich hervorragend für den <color=#fcbe03>Nahkampf</color> eignen. Trägt eine strahlende, lichtgeschmiedete Rüstung, bietet außergewöhnliche <color=#fcbe03>Verteidigung</color> und <color=#fcbe03>Selbstheilung</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154215",
+      "confidence": "verified"
+    }
+  }
+]

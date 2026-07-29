@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "kind": "recount_group",
+  "id": 299,
+  "stable_key": "recount_group.299",
+  "localization_key": "recount_group.299.name",
+  "icon": null,
+  "attributes": {
+    "recount_id": 299,
+    "name_id": 828543984,
+    "damage_ids": [
+      "110110110101",
+      "2211013003"
+    ],
+    "name_localization_key": "recount_group.299.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.RecountTable",
+    "reference": "client-build:global/steam/24252055@sha256:c866b295a318dfd5f4d1c6fc45af5a41260161bbcae7f7ce56422ce5b4819370",
+    "confidence": "corroborated"
+  }
+}

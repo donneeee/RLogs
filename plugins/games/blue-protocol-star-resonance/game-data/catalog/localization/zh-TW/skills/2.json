@@ -1,0 +1,1388 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1005808.description",
+    "text": "虛蝕衝撞",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-25156559",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1008640.description",
+    "text": "共鳴精英·火焰巫師哥布林的力量，召喚隕石從天而降，造成<style=\"magic\">魔法傷害</style>。技能釋放後，一段時間內你的<style=\"accent-gn\">智力</style>獲得提升。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-25262316",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1011002.description",
+    "text": "神罰",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26190014",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1011016.description",
+    "text": "神罰",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26190051",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1011104.name",
+    "text": "絕技！劍刃風暴",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643297539",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1011209.name",
+    "text": "突進",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643298633",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1011903.name",
+    "text": "紅光，爆燃！",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643306250",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1011911.name",
+    "text": "烈火普攻",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643306281",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.101224.description",
+    "text": "恐怖嘶吼",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-781697939",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.102655.name",
+    "text": "猛豬衝擊！",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1906717982",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1090702.description",
+    "text": "對敵方目標造成<style=\"accent-gn\">100%</style>攻擊力<style=\"physical\">物理傷害</style>，跟隨<style=\"accent-gn\">普通攻擊</style>技能升級/進階進行成長。<br>施放後立即回復<style=\"accent-gn\">10</style>點<style=\"accent-gn\">勇氣</style>。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35649068",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1090802.name",
+    "text": "獸群狂奔",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-652756591",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1091102.name",
+    "text": "森之祈願",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-652784905",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.110771.name",
+    "text": "肉鴿大秘境s3事件機器人癱瘓",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1907833180",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1410.name",
+    "text": "風神·破陣之風",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946609",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1420.description",
+    "text": "施放後震懾前方的敵人，對其造成一次<style=\"physical\">物理傷害</style>。效果啟動期間持續回復<style=\"accent-gn\">105</style>點<style=\"accent-gn\">勇氣值</style>，並使自身力量提高。<br>技能可以充能<style=\"accent-gn\">2</style>層。<br><br><size=22><style=\"tipsYellow\">攻略：勇氣較低時施放。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341136",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1553.name",
+    "text": "治癒脈動",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947833",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1556.name",
+    "text": "繁花種子",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947836",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1561.name",
+    "text": "奶環（來回造成傷害和治療）",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947864",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1606.description",
+    "text": "短暫蓄力後向前踏步猛烈斬擊目標，對敵人造成<style=\"physical\">物理傷害</style>，回復<style=\"accent-gn\">25</style>點<style=\"accent-gn\">炎魂</style>。若攻擊命中目標，立即回復<style=\"physical\">5%</style>自身最大生命值。<br><br><size=22><style=\"tipsYellow\">攻略：在輸出中間穿插可以有效提升存活能力，也可以在迷狂炎舞後使用，補充一些血量的消耗。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505343254",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1614.description",
+    "text": "釋放你的力量向目標進行強力跳劈，對落點周圍4公尺的敵人造成<style=\"physical\">物理傷害</style>。並在落地後產生赤紅之地，赤紅之地在5秒內對周圍4公尺內的所有敵人造成額外<style=\"physical\">物理傷害</style>，回復<style=\"accent-gn\">15</style>點<style=\"accent-gn\">炎魂</style>。<br><br><size=22><style=\"tipsYellow\">攻略：起手接近目標和回復炎魂的手段，需要爆發時提前釋放以便自身處於赤紅之地內。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505343285",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.170107.name",
+    "text": "虛蝕の咆哮！",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914941947",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.170210.name",
+    "text": "虛蝕半滅死域！",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914943062",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1740.name",
+    "text": "雷霆之鐮",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949975",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1807.description",
+    "text": "<style=\"accent-gn\">雷彈穿行</style><br>持續不間斷的施放追蹤雷彈，追蹤雷彈命中後造成<style=\"electro\">雷元素傷害</style>，該技能可透過長按來持續消耗熱力槽來延長技能時間。<br><br><size=22><style=\"tipsYellow\">大神攻略：攢滿能量後長按技能鍵一次性施放後收效巨大。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505345433",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1926.description",
+    "text": "消耗<style=\"accent-gn\">30</style>點<style=\"accent-gn\">怒氣</style>，揮舞武器產生空氣負壓。將周圍的敵人聚集至自己身邊，造成<style=\"physical\">物理傷害</style>並<linktext=3000><style=\"ItemQuality_5\">打斷</style></linktext>目標，並使其降低<style=\"accent-gn\">70%</style>移動速度，持續<style=\"accent-gn\">8</style>秒。<br><br><size=22><style=\"tipsYellow\">攻略：在面對多個敵人時，可以有效的把怪物聚集在一起，便於快速擊敗敵人。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346587",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1931.description",
+    "text": "消耗<style=\"accent-gn\">40</style>點<style=\"accent-gn\">怒氣</style>，猛烈下砸武器，對自身周圍的敵人造成<style=\"physical\">物理傷害</style>，同時進入<style=\"accent-gn\">格擋衝擊</style>狀態。持續時間內格擋機率+<style=\"accent-gn\">100%</style>，格擋所受的<style=\"physical\">物理傷害</style>降低<style=\"accent-gn\">30%</style>。<br><br><size=22><style=\"tipsYellow\">攻略：在面對物理傷害居多的環境時很有效，技能施放後格擋機率提升，穩定減少受到的物理傷害。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346615",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.1999.description",
+    "text": "造成傷害時獲得<style=\"accent-gn\">怒氣</style>，如果傷害產生<style=\"accent-gn\">暴擊</style>，可獲得更多，<style=\"accent-gn\">怒氣</style>滿後可強化下一次下落攻擊和重擊，使其在施放過程中獲得<style=\"ItemQuality_5\">霸體</style>，並在施放後獲得<style=\"accent-gn\">岩沙纏繞</style>。<br><style=\"accent-gn\">岩沙纏繞</style>：生成一個強力護盾。<br><br><size=22><style=\"tipsYellow\">大神攻略：適當的暴擊率可以使一套普通攻擊後立刻施放次要技能正好施放一次超重擊。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346821",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2001732.name",
+    "text": "織夢師瞬步劈砍",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933586218",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2002840.description",
+    "text": "共鳴首領·風哥布林王的力量，在自身周圍召喚持續<style=\"accent-gn\">10</style>秒的漩渦領域，領域中隊友獲得<style=\"accent-gn\">移動速度</style>和<style=\"accent-gn\">急速</style>提升，離開領域後，效果可繼續持續<style=\"accent-gn\">10</style>秒。<br><style=\"accent-gn\">【不可疊加，同效果僅生效一個】</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316516841",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2108.name",
+    "text": "神靈憑依",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817979254",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2221.description",
+    "text": "快速拉弓對目標射出<style=\"accent-gn\">5</style>支箭，每支箭對敵人造成<style=\"physical\">物理傷害</style>並累計<style=\"accent-gn\">1</style>點<style=\"accent-gn\">光能</style>。<br>技能可以充能<style=\"accent-gn\">2</style>層。<br><style=\"accent-gn\">光能</style>達到上限時，<style=\"accent-gn\">暴風箭矢</style>立即獲得<style=\"accent-gn\">2</style>層充能，同時充能層數提升為<style=\"accent-gn\">5</style>層。<br><br><size=22><style=\"tipsYellow\">攻略：暴風箭矢在進入光能重鑄狀態後的5次施放後還是會繼續充能的，可以搭配其他技能給暴風箭矢的充能爭取時間。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374896",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2222.description",
+    "text": "側滑向敵人快速射出<style=\"accent-gn\">2</style>箭，造成<style=\"physical\">物理傷害</style>。<br>在<style=\"accent-gn\">光能重鑄</style>狀態下，<style=\"accent-gn\">二連矢</style>進化為<style=\"accent-gn\">光意·四連矢</style>，躍至空中射出強力<style=\"accent-gn\">4</style>箭，造成高額物理傷害，該傷害的暴擊機率翻倍。<br>技能可以充能<style=\"accent-gn\">3</style>層。<br><br><size=22><style=\"tipsYellow\">攻略：注意控制光能重鑄狀態，及時施放光意·四連矢。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374897",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2222.name",
+    "text": "二連矢",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980403",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2235.name",
+    "text": "威懾射擊",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980439",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2309.name",
+    "text": "烈焰狂想",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981433",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2350.name",
+    "text": "傳奇野豬-嚎叫",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981589",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2364.name",
+    "text": "升格·勁爆全場copy",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981626",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2408.description",
+    "text": "將盾牌旋轉投出，對盾牌碰到的敵人造成<style=\"physical\">物理傷害</style>並<linktext=3000><style=\"ItemQuality_5\">打斷</style></linktext>目標，並使其在接下來<style=\"accent-gn\">10</style>秒內，對自身造成的所有傷害降低。<br><br><size=22><style=\"tipsYellow\">攻略：提升生存能力的同時大範圍的傷害在多目標環境下可以有著不錯的表現，可以根據自身的生存條件或者戰鬥環境進行施放。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377015",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.2900441.name",
+    "text": "蓄力雷炮",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138281935",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3021.description",
+    "text": "<style=\"accent-gn\">召喚</style>首領·雷電食人魔，引雷霆之力，召喚雷霆旋渦，持續吸引目標附近的敵人，持續時間結束後，造成範圍<style=\"magic\">魔法傷害</style>。<br><br><style=\"accent-gn\">技能不受冷卻效果影響</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505408655",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3027.description",
+    "text": "<style=\"accent-gn\">召喚</style>艾露娜，短暫吟唱後，復活周圍的部分隊友。<br><style=\"accent-gn\">虛弱：60秒內無法受到同類型效果影響（虛弱效果在噩夢難度團隊副本中會被放大）</style><br><br><style=\"accent-gn\">技能不受冷卻效果影響</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505408661",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3350006.name",
+    "text": "多輪轟炸",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200862668",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3350103.name",
+    "text": "迷亂吼叫",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200863754",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3350123.name",
+    "text": "沉眠淪陷",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200863820",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3614.description",
+    "text": "立即恢復<style=\"accent-gn\">50%</style>體力值，並且增加<style=\"accent-gn\">15%</style>移動速度，持續<style=\"accent-gn\">5</style>秒。<br><br><style=\"accent-gn\">技能不受冷卻效果影響</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505415159",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3914.description",
+    "text": "<style=\"accent-gn\">召喚</style>精英·哥布林護衛，對前方進行多次劍氣攻擊，造成<style=\"physical\">物理傷害</style>，劍氣命中時會降低目標<style=\"accent-gn\">物理防禦力</style>。<br><style=\"accent-gn\">【不可疊加，同效果僅生效一個】</style><br>技能釋放後，一段時間內你的<style=\"accent-gn\">格擋減傷</style>獲得提升。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418426",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3920.name",
+    "text": "奧義！生命祈願",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023961",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3927.description",
+    "text": "<style=\"accent-gn\">召喚</style>精英·叢林哥布林戰士，發出怒吼。<br>技能釋放後，一段時間內你的<style=\"accent-gn\">力量</style>獲得提升，並且持續期間下一次造成傷害時對首個目標周圍小範圍額外造成一次<style=\"physical\">物理傷害</style>並<linktext=3000><style=\"ItemQuality_5\">打斷</style></linktext>目標。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418462",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3953.name",
+    "text": "奧義！無雙突刺",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024063",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.3960.name",
+    "text": "絕技！劍刃風暴",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024093",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4030.description",
+    "text": "強力一擊",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505444624",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4041.name",
+    "text": "放置爆桶",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.420135.name",
+    "text": "虛弱狀態",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2026418618",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4309.name",
+    "text": "發射泡泡",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818053307",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4311.name",
+    "text": "搖擺共舞",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818053332",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4513.description",
+    "text": "蓄勢待發！按下後機像前爪刨地蓄力，抓準時機鬆開技能按鍵可快速衝出，並減少獵手撲衝技能大量冷卻時間",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450006",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4513.name",
+    "text": "掘影突襲",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055512",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4682.name",
+    "text": "悠遊獻禮",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056831",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4702.name",
+    "text": "游龍幻形·尾",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057656",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4703.name",
+    "text": "游龍幻形·首",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057657",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4706.description",
+    "text": "釋放後獲得額外的騰躍氣力，跳躍距離和高度獲得大幅度提升",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452154",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4708.description",
+    "text": "開啟後，可與附近駕馭瑞獅祈陽的玩家產生共鳴，彼此間可吸附連接，同步跟隨目標移動<br><style=\"accent-gn\">最大連接數上限為2人</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452156",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.4713.name",
+    "text": "音軌滑行",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057690",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.5113.name",
+    "text": "幽靈手牌",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818087093",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.5250.name",
+    "text": "腳踢",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818088311",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.5520.name",
+    "text": "冰爆",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091479",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.6007.description",
+    "text": "引爆",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505516406",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.6503.description",
+    "text": "取消變身，恢復人類狀態。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521847",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.6504.description",
+    "text": "<style=\"physical\">變身為選中物件。</style><br>潛行者的鏡頭中心點擁有指標，指標觸碰的物件進入被選中狀態。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521848",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.6525.description",
+    "text": "隨機召喚一名替身，本局內生效：<br><style=\"physical\">10%</style>的機率召喚艾露娜：<style=\"physical\">受到致死傷害不會死亡</style>，保留1點生命值並<style=\"physical\">無敵5秒</style>；<br><style=\"physical\">30%</style>的機率召喚蒂娜：當附近有逐影獵手，增加<style=\"physical\">20%</style>的移速；<br><style=\"physical\">30%</style>的機率召喚博伊斯：有<style=\"physical\">20%</style>的機率冰凍攻擊者<style=\"physical\">2秒</style>；<br><style=\"physical\">30%</style>的機率召喚奧爾維拉：她會在場地上自由移動，清除場上的召喚物，你可以使用該技能變成奧爾維拉。 <br>一局遊戲只能使用一次。<br><i><style=\"text_third_gray\">「替身會互相吸引！」</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521915",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.6526.description",
+    "text": "瞬間移動至前方<style=\"physical\">10公尺</style>處。</style><br>無法穿越牆體。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521916",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.6527.name",
+    "text": "複製魔法",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127423",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.6529.name",
+    "text": "奧爾維拉變身",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127425",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.6704.name",
+    "text": "紫勁之巔",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818129532",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.8110904.name",
+    "text": "連續跳砸",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1132746898",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "skill.920001.name",
+    "text": "魂火環繞",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-74610743",
+      "confidence": "verified"
+    }
+  }
+]

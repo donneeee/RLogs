@@ -1,0 +1,1352 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1032.name",
+    "text": "Tinas Gedankenwelt",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074505045",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.11002.description",
+    "text": "Fangspiel – Sternenland-Strand",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1665943549",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1111.description",
+    "text": "Die geheimnisvollen Ruinen der Bapharischen Göttlichen. Niemand weiß, warum sie existieren ... denn niemand, der hineinging, ist je wieder herausgekommen.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766311053",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1151.type_name",
+    "text": "Schwer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1944158153",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1152.description",
+    "text": "<style=\"tipsYellow\">Empfohlen:<b> Illusionsbruch-Stärke 1.120</b></style><br>Die geheimnisvollen Ruinen der Bapharischen Göttlichen. Niemand weiß, warum sie existieren ... denn niemand, der hineinging, ist je wieder herausgekommen.<br><style=\"tipsYellow\">Tipps: Nutze Essen und Tränke, um deine Kampfeffektivität vorübergehend zu steigern und Herausforderungen besser zu meistern.</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766311186",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1211.name",
+    "text": "Instabil – Drachenklauen-Tal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074507156",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1212.description",
+    "text": "Das geheimnisvolle Land der Drachenklaue. <br><style=\"tipsYellow\">Tipps: Nutze Essen und Tränke, um deine Stärke vorübergehend zu steigern.</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766312143",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1221.name",
+    "text": "Drachenklauen-Tal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074507189",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1301.description",
+    "text": "Erkunde das verborgene unterirdische Dunkelnebel-Lager, dringe durch die Leerenverderbnis vor und finde und besiege Denvel.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766313198",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1521.description",
+    "text": "Bahne dir deinen Weg durch die furchterregende Mine und hüte dich vor den Schlangen, die darin lauern.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766315442",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1533.name",
+    "text": "Hort der Steinschlange",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074510491",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1533.type_name",
+    "text": "Meister 1",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1944162445",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.16002.name",
+    "text": "Erinnerung 14 – Fortgeschritten",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1099140456",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.16004.name",
+    "text": "Erinnerung 36 – Normal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1099140458",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.16006.name",
+    "text": "Überlebens-Verifizierungsvorlage für Große Dungeons",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1099140460",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.1632.name",
+    "text": "Leere – Tinas Gedankenwelt",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074511579",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.19004.name",
+    "text": "Erinnerung 29 – Fortgeschritten",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1099248269",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.20101.description",
+    "text": "Empfehlung: <style=\"cryo\">Wächter</style><br>Beschütze deinen Partner, besiege alle Monster und minimiere dabei den LP-Verlust deines Partners.<br><br><size=22><style=\"tipsYellow\">Tipps:\n Ziehe die Aufmerksamkeit der Monster auf dich und beschütze Verbündete vor Schaden.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667094621",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.20501.description",
+    "text": "Empfehlung: <style=\"cryo\">Wächter</style><br>Beschütze deine Verbündeten, besiege alle Monster und minimiere dabei den LP-Verlust deiner Verbündeten.<br><br><size=22><style=\"tipsYellow\">Tipps: Nutze SCH-Reduktion-Fähigkeiten, um die tödlichen Fähigkeiten von Monstern zu kontern.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667098977",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.20701.description",
+    "text": "Empfehlung: <style=\"cryo\">Wächter</style><br>Beschütze deine Verbündeten, besiege alle Monster und minimiere dabei den LP-Verlust deiner Verbündeten.<br><br><size=22><style=\"tipsYellow\">Strategieleitfaden: Halte dich von Verbündeten fern, wenn Monster gezielte Fähigkeiten einsetzen. Bleibe in ihrer Nähe, um Schaden zu teilen.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667101155",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.21201.description",
+    "text": "Empfehlung: <style=\"cryo\">Wächter</style><br>Beschütze deine Verbündeten, besiege alle Monster und minimiere den LP-Verlust deiner Verbündeten.<br><br><size=22><style=\"tipsYellow\">Tipps: Nutze Stille-Fähigkeiten, um mächtige Gesang-Fähigkeiten von Gegnern zu unterbrechen.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667131647",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.21304.name",
+    "text": "Wächter 24",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100149961",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.21307.name",
+    "text": "Wächter 9",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100149964",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.22202.description",
+    "text": "Empfehlung: <style=\"pyro\">Angriff</style><br>Folge dem Mentor, um mächtige Gegner zu besiegen, und versuche, selbst keinen Schaden zu erleiden<br><br><size=22><style=\"tipsYellow\">Tipps:\n Es ist sehr gefährlich, dem Monster von vorn gegenüberzutreten. Greife es am besten von hinten an.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667167585",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.22301.description",
+    "text": "Empfehlung: <style=\"pyro\">Angriff</style><br>Besiege mächtige Gegner und versuche, selbst keinen Schaden zu erleiden<br><br><size=22><style=\"tipsYellow\">Tipps:\n Monster haben starke Angriffe. Durchbrich ihre Super-Rüstung, bevor du angreifst.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667168673",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.22701.name",
+    "text": "Angriff 8",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100190251",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.23601.name",
+    "text": "Angriff 16",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100225099",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.30106.name",
+    "text": "Ebene 6",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297769",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.30107.name",
+    "text": "Ebene 7",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297770",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.30141.name",
+    "text": "Ebene 41",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297896",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.30165.name",
+    "text": "Ebene 65",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297966",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.31110.name",
+    "text": "Stimen-Gewölbe – Ebene 10",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333733",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.31123.name",
+    "text": "Stimen-Gewölbe – Ebene 23",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333769",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.31126.name",
+    "text": "Stimen-Gewölbe – Ebene 26",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333772",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.31133.description",
+    "text": "<style=\"tipsYellow\">Empfohlen: <b>[Illusionsstärke] 1.400</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668316580",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.31133.name",
+    "text": "Stimen-Gewölbe – Ebene 33",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333802",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.31139.name",
+    "text": "Stimen-Gewölbe – Ebene 39",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333808",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.31142.description",
+    "text": "<style=\"tipsYellow\">Empfohlen: <b>[Illusionsstärke] 1.700</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668316612",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.31143.name",
+    "text": "Stimen-Gewölbe – Ebene 43",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333835",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.31154.name",
+    "text": "Ebene 54",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333869",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.31159.name",
+    "text": "Ebene 59",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333874",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.32108.name",
+    "text": "Ebene 8",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369645",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.32115.name",
+    "text": "Ebene 15",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369675",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.32118.name",
+    "text": "Ebene 18",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369678",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.32125.name",
+    "text": "Ebene 25",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369708",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.32127.description",
+    "text": "<style=\"tipsYellow\">Empfohlen:<b> Illusionsbruch-Stärke 1.950</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668352488",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.32133.description",
+    "text": "<style=\"tipsYellow\">Empfohlen:<b> Illusionsbruch-Stärke 2.100</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668352517",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.32136.description",
+    "text": "<style=\"tipsYellow\">Empfohlen:<b> Illusionsbruch-Stärke 2.260</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668352520",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.32146.name",
+    "text": "Ebene 46",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369775",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.32158.description",
+    "text": "<style=\"tipsYellow\">Empfohlen:<b> Illusionsbruch-Stärke 3.090</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668352588",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.32159.description",
+    "text": "<style=\"tipsYellow\">Empfohlen:<b> Illusionsbruch-Stärke 3.090</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668352589",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.5033.description",
+    "text": "Turmruinen",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766453780",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.60004.name",
+    "text": "Finale des tosenden Meeres",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1104854441",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6005.name",
+    "text": "Instabil – Goblinversteck",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074684634",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6022.description",
+    "text": "Kanamias jährliche Prüfung. Nur einer von Tausenden Kriegern verdient sich hier Anerkennung. <br><style=\"tipsYellow\">Tipps:\n Nutze Essen und Tränke, um deine Stärke vorübergehend zu steigern.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766489683",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6040.description",
+    "text": "Lautlose Stadt – Linear",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766489747",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6045.description",
+    "text": "Lautlose Stadt – Hölle",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766489752",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6121.type_name",
+    "text": "Normal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1944337739",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6122.name",
+    "text": "Geisterschrein",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074685786",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6123.name",
+    "text": "Geisterschrein",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074685787",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6123.type_name",
+    "text": "Meister 1",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1944337741",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6333.name",
+    "text": "Verschlingerkäfig",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074687998",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6423.type_name",
+    "text": "Meister 1",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1944341008",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6523.type_name",
+    "text": "Normal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1944342097",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6525.name",
+    "text": "Mecha-Fabrik",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074690145",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.6544.description",
+    "text": "<style=\"tipsYellow\">Empfohlen:<b> Illusionsbruch-Stärke 1.170</b></style><br>Abenteurer, die in den dichten Nebel eindringen, sind Jäger und Beute zugleich.<br><style=\"tipsYellow\">Tipps: Nutze Essen und Tränke, um deine Kampfeffektivität vorübergehend zu steigern und Herausforderungen besser zu meistern.</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766495196",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.7004.description",
+    "text": "Parkour",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766525556",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.7060.description",
+    "text": "Der Leerenboss",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766525750",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.7102.description",
+    "text": "Auftragsuntersuchung",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766526643",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.7150.description",
+    "text": "Wilder Boss",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766526806",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.7152.name",
+    "text": "Weltenherrscher",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074721822",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.8001.name",
+    "text": "Dorfverteidigungskampf",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074756504",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.8052.name",
+    "text": "Riss des Chaos",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074756670",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.9201.description",
+    "text": "Freizeitaktivität",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766599605",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "dungeon.9205.name",
+    "text": "Illusionsschleierwald (Leicht)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074794623",
+      "confidence": "verified"
+    }
+  }
+]

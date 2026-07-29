@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "confirmed_tables": 4239,
+  "named_tables": 565,
+  "unresolved_tables": 3674,
+  "quarantined_candidates": 1,
+  "name_mapping": {
+    "schema_version": 1,
+    "script_names": 10997,
+    "table_shapes": 4239,
+    "named_tables": 565,
+    "unresolved_tables": 3674,
+    "unity_hash_matches": 565,
+    "reviewed_vocabulary_matches": 17,
+    "verified_by_both": 17,
+    "name_collisions": 0,
+    "collisions": [],
+    "method": "Candidate MonoScript names are suffixed with .ctb and matched by the package hash33 key. Hash matches remain corroborated until field schemas or runtime behavior confirm meaning."
+  },
+  "named_shards": [
+    {
+      "domain": "character-profile",
+      "file": "named/character-profile.json",
+      "tables": 31
+    },
+    {
+      "domain": "combat",
+      "file": "named/combat.json",
+      "tables": 76
+    },
+    {
+      "domain": "entities",
+      "file": "named/entities.json",
+      "tables": 37
+    },
+    {
+      "domain": "housing",
+      "file": "named/housing.json",
+      "tables": 19
+    },
+    {
+      "domain": "items-and-equipment",
+      "file": "named/items-and-equipment.json",
+      "tables": 60
+    },
+    {
+      "domain": "localization",
+      "file": "named/localization.json",
+      "tables": 5
+    },
+    {
+      "domain": "presentation",
+      "file": "named/presentation.json",
+      "tables": 22
+    },
+    {
+      "domain": "professions",
+      "file": "named/professions.json",
+      "tables": 21
+    },
+    {
+      "domain": "quests-and-rewards",
+      "file": "named/quests-and-rewards.json",
+      "tables": 26
+    },
+    {
+      "domain": "social",
+      "file": "named/social.json",
+      "tables": 25
+    },
+    {
+      "domain": "system-and-other",
+      "file": "named/system-and-other.json",
+      "tables": 194
+    },
+    {
+      "domain": "world-and-instances",
+      "file": "named/world-and-instances.json",
+      "tables": 49
+    }
+  ],
+  "unknown_shards": [
+    {
+      "prefix": "0",
+      "file": "unknown/0.json",
+      "tables": 237
+    },
+    {
+      "prefix": "1",
+      "file": "unknown/1.json",
+      "tables": 215
+    },
+    {
+      "prefix": "2",
+      "file": "unknown/2.json",
+      "tables": 233
+    },
+    {
+      "prefix": "3",
+      "file": "unknown/3.json",
+      "tables": 255
+    },
+    {
+      "prefix": "4",
+      "file": "unknown/4.json",
+      "tables": 220
+    },
+    {
+      "prefix": "5",
+      "file": "unknown/5.json",
+      "tables": 239
+    },
+    {
+      "prefix": "6",
+      "file": "unknown/6.json",
+      "tables": 226
+    },
+    {
+      "prefix": "7",
+      "file": "unknown/7.json",
+      "tables": 225
+    },
+    {
+      "prefix": "8",
+      "file": "unknown/8.json",
+      "tables": 224
+    },
+    {
+      "prefix": "9",
+      "file": "unknown/9.json",
+      "tables": 214
+    },
+    {
+      "prefix": "a",
+      "file": "unknown/a.json",
+      "tables": 228
+    },
+    {
+      "prefix": "b",
+      "file": "unknown/b.json",
+      "tables": 252
+    },
+    {
+      "prefix": "c",
+      "file": "unknown/c.json",
+      "tables": 214
+    },
+    {
+      "prefix": "d",
+      "file": "unknown/d.json",
+      "tables": 246
+    },
+    {
+      "prefix": "e",
+      "file": "unknown/e.json",
+      "tables": 227
+    },
+    {
+      "prefix": "f",
+      "file": "unknown/f.json",
+      "tables": 219
+    }
+  ],
+  "rule": "Unknown hashes remain first-class inventory records until a name and schema are corroborated."
+}

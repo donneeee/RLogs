@@ -4,7 +4,9 @@
 
 1. **Private acquisition workspace** discovers and exports candidate end
    products. It is not part of RLogs.
-2. **Human-readable reviewed game data** lives under `game-data/<deployment>/<build>/`.
+2. **Human-readable reviewed game data** lives under each trusted game plug-in,
+   currently
+   `plugins/games/blue-protocol-star-resonance/game-data/catalog/`.
    Reviewers can navigate classes, specs, skills, monsters, maps, dungeons,
    icons, and official localization without opening generated indexes.
 3. **Compiled runtime artifact** is produced by `rlogs-game-data-build`.
@@ -27,7 +29,7 @@ current record without fresh game-data or packet evidence.
 
 ## Organization and performance gates
 
-- one build per source folder and compiled digest;
+- one shared source catalog with explicit per-record build availability;
 - one symbol per readable JSON file;
 - class/spec folders are mandatory for skills and class-owned effects;
 - official localization and icons mirror the same hierarchy;
@@ -36,6 +38,10 @@ current record without fresh game-data or packet evidence.
 - compiled payloads are deterministically sorted and SHA-256 addressed;
 - runtime indexes are built once and provide direct ID/key lookup;
 - capture threads never parse source JSON or touch the source folder tree.
+
+Build-specific evidence remains separated under `research/`. The reviewed
+catalog is not separated by player region. Region still belongs to canonical
+capture identity and future submission routing.
 
 ## UUID rule
 

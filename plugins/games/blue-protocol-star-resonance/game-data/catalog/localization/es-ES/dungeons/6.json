@@ -1,0 +1,1100 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.10005.name",
+    "text": "Instancia especial para prueba de lógica",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1098924837",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.1011.description",
+    "text": "Entra al Reino Mental de Tina, despiértala y ayúdala a deshacerse de la corrupción del engrama del vacío.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766309964",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.1033.description",
+    "text": "Entra al Reino Mental de Tina, despiértala y ayúdala a deshacerse de la corrupción del engrama del vacío. <br><style=\"tipsYellow\">Consejo: Usa comida y pociones para aumentar tu fuerza temporalmente.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766310032",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.1101.description",
+    "text": "Las misteriosas ruinas de las Divinos bafarianos. Nadie sabe por qué existen... porque nadie que ha entrado ha regresado jamás.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766311020",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.1102.name",
+    "text": "Ruina Imponente",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074506035",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.1122.name",
+    "text": "Ruina Imponente",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074506101",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.12000.name",
+    "text": "Salón Gremial",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1098996706",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.12015.description",
+    "text": "¡Forma equipo con camaradas gremiales para ir a las tierras de caza, cumplir objetivos comunes y ganar recompensas de desafío!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1665979522",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.12018.name",
+    "text": "Cacería del gremio - Normal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1098996747",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.12022.name",
+    "text": "Cacería Gremial (normal)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1098996774",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.1221.type_name",
+    "text": "Normal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1944159143",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.1222.name",
+    "text": "Valle Garra Dragontina",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074507190",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.13013.name",
+    "text": "¡Purga! Ruinas Floroníricas",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1099032679",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.1321.description",
+    "text": "Explora el campamento subterráneo oculto de Niebla Oscura y atraviesa la corrupción del vacío para encontrar a Denvel y derrotarlo.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766313264",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.1333.description",
+    "text": "Explora el campamento subterráneo oculto de la Niebla Oscura, avanza a través de la corrupción del vacío y derrota a Denvel. <br><style=\"tipsYellow\">Consejo: Usa comida y pociones para aumentar tu fuerza temporalmente.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766313299",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.15010.name",
+    "text": "Recuerdo 48 (normal)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1099104550",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.1632.type_name",
+    "text": "Difícil",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1944163533",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.17505.name",
+    "text": "Recuerdo 19: Toma de Territorio (normal)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1099181841",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.20501.name",
+    "text": "Senda del Guardián 7",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100116199",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.20702.name",
+    "text": "Senda del Guardián 20",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100118378",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.20802.description",
+    "text": "Recomendado: <style=\"cryo\">Guardián</style><br>Protege a tu aliado y derrota a todos los monstruos mientras minimizas la pérdida de PS de los aliados.<br><br><size=22><style=\"tipsYellow\">Consejo: Guía a los monstruos para que usen sus habilidades de DÑO-P lejos de los aliados y mantente fuera de las áreas de daño.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667102245",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.20802.name",
+    "text": "Senda del Guardián 17",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100119467",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.22402.description",
+    "text": "Recomendado: <style=\"pyro\">Ataque</style><br>Derriba tantos maniquís de entrenamiento como puedas.<br><br><size=22><style=\"tipsYellow\">Consejo: Usa habilidades de área o a distancia para lidiar con los maniquís dispersos.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667169763",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.22402.name",
+    "text": "Ataque 19",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100186985",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.22602.name",
+    "text": "Ataque 14",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100189163",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.23101.description",
+    "text": "Recomendado: <style=\"pyro\">Ataque</style><br>Derrota al maniquí.<br><br><size=22><style=\"tipsYellow\">Consejo: Usa habilidades de alto daño.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667202432",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.23302.description",
+    "text": "Recomendado: <style=\"pyro\">Ataque</style><br>Sigue al mentor para derrotar a enemigos poderosos sin recibir daño.<br><br><size=22><style=\"tipsYellow\">Consejo: Es muy peligroso enfrentarse al monstruo, intenta atacarlo por detrás.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667204611",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.23602.name",
+    "text": "Ataque 28",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100225100",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.24105.description",
+    "text": "Rol recomendado: <style=\"pyro\">Apoyo</style><br>Ayuda a los aliados a derrotar enemigos poderosos<br><br><size=22><style=\"tipsYellow\">Consejo: Procura mantener los PS de los aliados.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667238373",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.24107.description",
+    "text": "Rol recomendado: <style=\"pyro\">Apoyo</style><br>Ayuda a los aliados a derrotar enemigos poderosos<br><br><size=22><style=\"tipsYellow\">Consejo: Procura mantener los PS de los aliados.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667238375",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.24110.description",
+    "text": "Rol recomendado: <style=\"pyro\">Apoyo</style><br>Ayuda a los aliados a derrotar enemigos poderosos<br><br><size=22><style=\"tipsYellow\">Consejo: Procura mantener los PS de los aliados.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667238401",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.24403.description",
+    "text": "Rol recomendado: <style=\"pyro\">Apoyo</style><br>Ayuda a los aliados a derrotar enemigos poderosos<br><br><size=22><style=\"tipsYellow\">Consejo: Procura mantener los PS de los aliados.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667241638",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.30118.name",
+    "text": "Piso 18",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297804",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.30154.name",
+    "text": "Piso 54",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297932",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.30167.name",
+    "text": "Piso 67",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297968",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.30168.name",
+    "text": "Piso 68",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297969",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.31102.name",
+    "text": "Bóvedas de Stimen (piso 2)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333702",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.31108.description",
+    "text": "<style=\"tipsYellow\">Fuerza ilusoria recomendada: <b>680</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668316486",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.31124.description",
+    "text": "<style=\"tipsYellow\">Fuerza ilusoria recomendada: <b>1200</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668316548",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.31139.description",
+    "text": "<style=\"tipsYellow\">Fuerza ilusoria recomendada: <b>1500</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668316586",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.31152.description",
+    "text": "<style=\"tipsYellow\">Fuerza ilusoria recomendada: <b>2050</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668316645",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.31153.name",
+    "text": "Bóvedas de Stimen (piso 53)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333868",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.32106.name",
+    "text": "Piso 6",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369643",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.32111.description",
+    "text": "<style=\"tipsYellow\">Recomendado:<b> 1080 de fuerza rompeilusiones</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668352449",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.32137.name",
+    "text": "Piso 37",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369743",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.32138.description",
+    "text": "<style=\"tipsYellow\">Recomendado:<b> 2260 de fuerza rompeilusiones</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668352522",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.32139.name",
+    "text": "Piso 39",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369745",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.32141.name",
+    "text": "Piso 41",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369770",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.5200.description",
+    "text": "Oficina de Lamond",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766455856",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.5211.description",
+    "text": "Oficina de Lamond",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766455890",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.5501.name",
+    "text": "Valle Garra Dragontina",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074654138",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.5813.description",
+    "text": "Explora las ruinas extrañas.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766462426",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.5901.name",
+    "text": "Coto de Caza Velo de Niebla",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074658494",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.6031.description",
+    "text": "La prueba anual de kanamia. Solo un guerrero de entre un millón se gana el reconocimiento.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766489715",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.6221.name",
+    "text": "Profundidades Decadentes",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074686874",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.7002.name",
+    "text": "Parkour",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074720568",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.7150.name",
+    "text": "Dominador del Mundo",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074721820",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.8002.name",
+    "text": "Arena de Gólems",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074756505",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.8021.description",
+    "text": "Duelo de semihumanos",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766561556",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.9001.description",
+    "text": "Actividad recreativa",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766597427",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "dungeon.9206.description",
+    "text": "<color=#f04f84>Recomendado: [Fuerza Rompeilusiones] 2650.</color><br><i><style=\"text_third_gray\">El misterioso poder del bosque otorga habilidades adicionales a diferentes roles:<br>Guardia: cuando las Habilidades de Clase infligen daño, aplican una instancia extra de daño fijo equivalente a un porcentaje de DEF y PS.<br>Soporte: al lanzar habilidades que no infligen daño, inflige daño de área a los alrededores.<br>Ataque: DÑO Rompeilusiones +10 %.</style></i><br>Dentro de la profunda ilusión conocida como [Ilusión], una bruma neblinosa tejida con finos cristales impregna el aire. Los artesanos creen que es un rastro del desajuste entre la realidad y la ilusión. Tal vez siempre haya existido en cada ilusión, pero es simplemente demasiado sutil para haber sido notado hasta ahora.<br><br>Para descubrir por completo el origen de la ilusión, los artesanos construyeron un área de prueba de ilusión más densa, el [Bosque Velo Ilusorio], y desarrollaron dispositivos para resistir su corrupción, guiando a los aventureros a sus profundidades para descubrir la verdad detrás de la [Plaga Ilusoria].",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766599610",
+      "confidence": "verified"
+    }
+  }
+]

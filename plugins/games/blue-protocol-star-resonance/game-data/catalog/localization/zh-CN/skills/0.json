@@ -1,0 +1,1766 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1005240.name",
+    "text": "绝技！追猎猛斩",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642256583",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1005802.name",
+    "text": "旋风斩",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642262987",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1010610.name",
+    "text": "灼烧弹",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643267076",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1011003.name",
+    "text": "大小环",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643296449",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1011102.description",
+    "text": "螺旋气流斩",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26191103",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1011103.name",
+    "text": "二连斩",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643297538",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1011112.name",
+    "text": "剑刃风暴",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643297570",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1011913.description",
+    "text": "强化强化！",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26199849",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.10290120.name",
+    "text": "毁灭之岩",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1950053850",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1090703.name",
+    "text": "螺旋击刺",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-652755503",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1201.description",
+    "text": "<style=\"accent-gn\">寒冰能量</style><br>施放<style=\"accent-gn\">特殊攻击</style>和一些<style=\"accent-gn\">专精技能</style>时的必备资源，初始上限<style=\"accent-gn\">50</style>点，每<style=\"accent-gn\">1</style>秒自然回复<style=\"accent-gn\">2</style>点。<br><br><style=\"accent-gn\">普通攻击·雨打潮生</style><br>进行至多四段的水形态攻击，每段造成<style=\"magic\">魔法伤害</style>。<br><br><size=22><style=\"tipsYellow\">攻略：当寒冰能量不足时，可灵活造成伤害。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505338893",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1411.description",
+    "text": "对敌方目标造成<style=\"accent-gn\">100%</style>攻击力<style=\"physical\">物理伤害</style>，跟随<style=\"accent-gn\">普通攻击</style>技能升级/进阶进行成长。<br>施放后立即回复<style=\"accent-gn\">10</style>点<style=\"accent-gn\">勇气</style>。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341104",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.141102.name",
+    "text": "红蜂自爆",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1911420116",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1501.name",
+    "text": "掌控藤蔓",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947666",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1518.name",
+    "text": "狂野绽放",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947706",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1524.name",
+    "text": "加速生长",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947735",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1531.description",
+    "text": "立即为自己和周围至多<style=\"accent-gn\">10</style>名友方目标（优先队友）施加<style=\"accent-gn\">自然护盾</style>。<br><br><size=22><style=\"tipsYellow\">攻略：在生存压力大的时候，瞬发的群体护盾能为团队带来及时的保护，搭配惩击流天赋可以治疗队友。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342259",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1564.description",
+    "text": "狂想盛放注能",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342361",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1607.name",
+    "text": "炽焰突袭",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948761",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1696.name",
+    "text": "普通攻击·炽热挥击",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949057",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1699.name",
+    "text": "炎焰涤净",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949060",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.170103.description",
+    "text": "追击",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-789962293",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.170103.name",
+    "text": "追击",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914941943",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1719.name",
+    "text": "镰车",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949885",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1720.description",
+    "text": "施展防御架势，期间免疫所有伤害。若受到伤害则会快速斩击前方并向后跳跃。再次施放技能会向前方闪身挥砍，造成<style=\"physical\">物理伤害</style>。若攻击到目标，则获得<style=\"accent-gn\">雷之印</style>至上限。<br><br><size=22><style=\"tipsYellow\">攻略：在高压环境下，或者自己比较熟悉的战斗中使用技能，可获得更高的雷之印获取效率。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344403",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1741.description",
+    "text": "快速横劈一柄雷霆凝聚的镰刀，对敌人造成<style=\"accent-gn\">400%</style>攻击力<style=\"physical\">物理伤害</style>，跟随<style=\"accent-gn\">霹雳连斩</style>技能升级/进阶进行成长。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344470",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1741.name",
+    "text": "雷霆之镰",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949976",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1801.description",
+    "text": "<style=\"accent-gn\">普通攻击·雷鸣电闪</style><br>进行至多三段的雷形态攻击，造成<style=\"electro\">雷元素伤害</style><br><style=\"accent-gn\">下落攻击·雷落九天</style><br>在空中给手炮凝聚雷元素能量，从空中下落冲击地面，在落地时造成<style=\"electro\">雷元素伤害</style><br><style=\"accent-gn\">重击·雷暴狂潮</style><br>积蓄力量，以施展强力的炮击。蓄力期间可消耗热力槽持续获得能提升「雷暴狂潮」伤害和范围的「雷鸣」效果，松开技能或蓄力结束后对前方大范围扇形造成<style=\"electro\">雷元素范围伤害</style><br><style=\"accent-gn\">雷鸣</style><br>提升下次「雷暴狂潮」的伤害和范围，至多叠加3层。<br><br><size=22><style=\"tipsYellow\">大神攻略：当怪物近身时长按普攻可更高效的击退怪物。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505345427",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1850.name",
+    "text": "溟灭弹",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817951097",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.1934.name",
+    "text": "格挡冲击",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952124",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.199902.description",
+    "text": "怒爆石头",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-792666279",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2001509.name",
+    "text": "重劈",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933583948",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2002840.name",
+    "text": "奥义！迅捷涡流",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933623275",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2237.description",
+    "text": "发出呼唤，召唤一只强有力宠物上场作战。<br><br><style=\"accent-gn\">召唤野狼</style>：召唤的野狼朝当前目标发动飞扑，对目标及其周围造成<style=\"physical\">物理伤害</style>，随后加入战斗，<style=\"accent-gn\">20</style>秒后消失。<br><br><style=\"accent-gn\">召唤猎鹰</style>：召唤的猎鹰朝前方直线范围发动俯冲攻击，对碰到的目标造成<style=\"physical\">物理伤害</style>，随后消失。<br><br><size=22><style=\"tipsYellow\">攻略：能在短时间内使得场上的宠物增加，建议在增益技能都准备好的时候施放该技能。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374935",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2240.description",
+    "text": "向目标射出一支巨大的箭矢，造成<style=\"accent-gn\">1000%</style>攻击力<style=\"physical\">物理伤害</style>。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374961",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2240.name",
+    "text": "天翔贯星击",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980467",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2316.description",
+    "text": "在接下来一段时间内提升自身<style=\"accent-gn\">魔法攻击力</style>，同时强化你接下来施放的一个技能。<br><br><style=\"accent-gn\">特殊攻击</style>：接下来<style=\"accent-gn\">2</style>次特殊攻击不消耗<style=\"accent-gn\">演奏热情</style>。<br><linktext=1607><style=\"ItemQuality_5\">激涌五重奏</style></linktext>：治疗次数翻倍。<br><linktext=1614><style=\"ItemQuality_5\">鸣奏·英勇乐章</style></linktext>：触发<linktext=1615><style=\"ItemQuality_5\">猛烈挥击</style></linktext>的时间减半。<br><linktext=1605><style=\"ItemQuality_5\">聚合乐章</style></linktext>：造成的伤害翻倍。<br><linktext=1608><style=\"ItemQuality_5\">热情挥洒</style></linktext>：无需吟唱，直接以最高形态施放。<br><br><size=22><style=\"tipsYellow\">攻略：需要对战斗环境以及自身流派进行合理的判断，在合适的时机施放合适的增强技能。</size></style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505375957",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2367.name",
+    "text": "爆炎冲击",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981629",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2398.name",
+    "text": "音响大招攻击",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981729",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2412.description",
+    "text": "消耗<style=\"accent-gn\">2</style>枚<style=\"accent-gn\">圣令</style>，挥舞剑刃对自身周围的敌人造成<style=\"physical\">物理伤害</style>。<br><br><size=22><style=\"tipsYellow\">攻略：足够强大的伤害技能，在生存得到保证的时候进行施放。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377042",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2900442.name",
+    "text": "雷域",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138281936",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.2900840.name",
+    "text": "奥义！神灵凭依",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138286290",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.300065.name",
+    "text": "虚蚀转换",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984910393",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.300490.description",
+    "text": "跳舞",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-859935193",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.300490.name",
+    "text": "跳舞",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914843",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.300496.name",
+    "text": "推",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914849",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3406.description",
+    "text": "对附近的<style=\"accent-gn\">敌人</style>释放强力的能量，使其虚弱。持续时间内，<style=\"accent-gn\">移动速度</style>降低，如果是普通怪物，当生命值低于<style=\"accent-gn\">15%</style>时会直接<style=\"accent-gn\">消散</style>。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505412950",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3703.description",
+    "text": "向前方投掷数把匕首，对命中的<style=\"accent-gn\">敌人</style>造成伤害，并直接施加<linktext=1023><style=\"ItemQuality_5\">易伤</style></linktext>。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505416214",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3704.description",
+    "text": "释放<i><style=\"accent-gn\">刻印：爆燃冲击</style></i>，对周围造成一次少量伤害，并在周围生成爆燃陷阱，爆燃陷阱与<style=\"accent-gn\">敌人</style>接触或或一段时间后会爆炸，对其周围的<style=\"accent-gn\">敌人</style>造成伤害。<br><linktext=1061><style=\"ItemQuality_5\">刻印</style></linktext>：最少召唤<style=\"accent-gn\">2</style>个爆燃陷阱，有几率召唤最多<style=\"accent-gn\">5</style>个。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505416215",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3908.description",
+    "text": "<style=\"accent-gn\">召唤</style>首领·姆克王，指示其释放森之能量，为至多<style=\"accent-gn\">10</style>名友方目标（优先队友）持续造成<style=\"accent-gn\">治疗</style>，并驱散所受<linktext=3021><style=\"ItemQuality_5\">负面效果</style></linktext>。<br>技能释放后，一段时间内你的<style=\"accent-gn\">受治疗强度</style>获得提升。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418397",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3930.description",
+    "text": "<style=\"accent-gn\">变身为</style>精英·山贼护卫队长，释放后获得大地之盾，受到攻击后回复自身已损失生命值的一定比例，至多生效<style=\"accent-gn\">9</style>次，期间你的<style=\"accent-gn\">耐力</style>获得提升。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418488",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3936.description",
+    "text": "<style=\"accent-gn\">召唤</style>精英·蜥蜴人法师，在目标脚下召唤静默之水，造成<style=\"magic\">魔法伤害</style>，并使目标<linktext=3011><style=\"ItemQuality_5\">减速</style></linktext>。<br>技能释放后，一段时间内你的<style=\"accent-gn\">冰元素加成</style>获得提升。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418494",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3963.description",
+    "text": "<style=\"accent-gn\">召唤</style>精英·黑焰地狐，扑向目标撕咬后甩尾，造成<style=\"physical\">物理伤害</style>。<br>技能释放后，一段时间内你的<style=\"accent-gn\">精通</style>获得提升。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418590",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3971.name",
+    "text": "奥义！超导波动",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024127",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3974.description",
+    "text": "<style=\"accent-gn\">召唤</style>首领·空洞监察者，造成<style=\"magic\">魔法伤害</style>，一段时间内占据一个区域。<br>处于区域内的自身和队友获得<style=\"accent-gn\">攻击力</style>，<style=\"accent-gn\">攻击速度</style>，<style=\"accent-gn\">施法速度</style>提升，且对自身生效<style=\"accent-gn\">2.5</style>倍。<br><style=\"accent-gn\">【不可叠加，同效果仅生效一个】</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418624",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3977.name",
+    "text": "绝技！隐匿藏击",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024133",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3978.name",
+    "text": "绝技！绝对零度",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024134",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.3985.description",
+    "text": "点击后退出当前变身",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418658",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4001009.name",
+    "text": "法守结阵",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-221547145",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4008.name",
+    "text": "显影术",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050039",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4020.description",
+    "text": "集结",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505444591",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4031.description",
+    "text": "放置芒辉之种",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505444625",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4040005.name",
+    "text": "英勇投掷",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-226254888",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4040010.name",
+    "text": "灵魂收割",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-226254916",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4040016.name",
+    "text": "撼山裂地斩！",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-226254922",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4040021.description",
+    "text": "自己可见虚线圈",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1756632164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.420121.name",
+    "text": "崩解陨星",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2026418581",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.420122.name",
+    "text": "崩解陨星",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2026418582",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.420123.name",
+    "text": "黑暗偷袭者",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2026418583",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4502.description",
+    "text": "持续奔跑时，可以突破速度上限，获得速度加成",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505449972",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4512.description",
+    "text": "释放后提升移动速度，在移动状态下会使该技能冷却时间加快",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450005",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4526.name",
+    "text": "锦绣光华",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055548",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4541.description",
+    "text": "力量与美结合的一跃，留下美丽的弧线！",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450103",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4545.name",
+    "text": "彩虹之跃",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055613",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4571.name",
+    "text": "立体“鱼雷”",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055708",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4599.name",
+    "text": "追踪导航",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055782",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4642.description",
+    "text": "从四张游戏卡牌中召唤其一，它会为你带来怎样的惊喜呢？<br><br><style=\"tipsYellow\">幸运·红心：</style>为移形把戏恢复<style=\"accent-gn\">1</style>层充能。<br><style=\"tipsYellow\">幸运·黑桃：</style>你的下一次移形把戏将移动更远。<br><style=\"tipsYellow\">幸运·方块：</style>一段时间内移形把戏技能冷却速度提升。<br><style=\"tipsYellow\">幸运·梅花：</style>一段时间内获得移动速度提升。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451193",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4702.description",
+    "text": "云从龙，变无穷；释放后可幻形为不同的部位",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452150",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4708.name",
+    "text": "群狮贺瑞",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057662",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.4714.description",
+    "text": "引爆音波！释放后立即重置音轨滑行的冷却时间，并且在一定时间内，在合适的时机连续释放音轨滑行将不会进入冷却状态",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452185",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.5521.description",
+    "text": "在周围召唤落雷，麻痹被击中的玩家",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505485974",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.5525.description",
+    "text": "使用后回满体力值",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505485978",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.5544.name",
+    "text": "召唤游泳池",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091549",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.5557.name",
+    "text": "召唤天火炮台",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091585",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.5558.name",
+    "text": "召唤减速装置",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091586",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.5559.name",
+    "text": "召唤引力装置",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091587",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.6002.description",
+    "text": "放置火种",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505516401",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.6005.description",
+    "text": "炸弹",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505516404",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.6503.name",
+    "text": "取消变身",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127353",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.6504.name",
+    "text": "定向变幻",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127354",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.6508.description",
+    "text": "使用超电磁炮轰击前方造成<style=\"physical\">中额伤害</style>。<br>每<style=\"physical\">10秒</style>充能1次，最多充能<style=\"physical\">3次</style>。<br><i><style=\"text_third_gray\">「你指尖跃动的电光，是我此生不变的信仰！」</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521852",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.6515.name",
+    "text": "瞬步",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127388",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.6516.name",
+    "text": "园艺师",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127389",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.6522.description",
+    "text": "<style=\"physical\">下一次受到攻击时</style>对攻击者造成<style=\"physical\">100点</style>伤害。<br>反射盾特效只对自己可见。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521912",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.6552.description",
+    "text": "跳舞，然后回复全部生命值。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505522011",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.6702.name",
+    "text": "哀悼者之刃",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818129530",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.8110061.description",
+    "text": "木头人移动绳",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-515630858",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "skill.8110902.name",
+    "text": "幻梦震荡",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1132746896",
+      "confidence": "verified"
+    }
+  }
+]

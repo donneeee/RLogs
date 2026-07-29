@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "class.3.description",
+    "text": "Sobresale en el combate a <color=#fcbe03>corta distancia</color>, usando <color=#fcbe03>hachas dobles</color> como arma. Sus movimientos son tan rápidos y feroces como el fuego, con excelentes capacidades de <color=#fcbe03>ataque en áreas pequeñas</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367319",
+      "confidence": "verified"
+    }
+  }
+]

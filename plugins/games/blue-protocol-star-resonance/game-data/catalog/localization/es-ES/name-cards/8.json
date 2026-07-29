@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "name_card.9030002.name",
+    "text": "Fondo 2 (temporal)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-989769509",
+      "confidence": "verified"
+    }
+  }
+]

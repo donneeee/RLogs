@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "specialization.108.name",
+    "text": "空戰流",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989341",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "specialization.114.name",
+    "text": "格擋流",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989370",
+      "confidence": "verified"
+    }
+  }
+]

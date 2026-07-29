@@ -1,0 +1,1820 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1004807.description",
+    "text": "Martillazo giratorio triple: Mazmorra heroica de T2.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-25120621",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1004809.name",
+    "text": "Sacudetierra",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642227057",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1005701.name",
+    "text": "Invocación de acompañante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642261897",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1005707.name",
+    "text": "Rugido Desmoralizador: Resonancia",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642261903",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1005801.description",
+    "text": "Gran azote descendente",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-25156552",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1008040.name",
+    "text": "¡Proeza! Bola de Trueno",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642362216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1010440.name",
+    "text": "¡Proeza! Supresión de Trueno",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643264997",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1010597.name",
+    "text": "Historia de Ee-chan: Pez del cielo",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643266258",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1011111.name",
+    "text": "Corte Aéreo en Espiral.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643297569",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.102640.description",
+    "text": "Resuena con el poder del tirano feralí élite. Mantiene un estado continuo de carga de colmillo durante <style=\"accent-gn\">3 s</style>. Inflige <style=\"physical\">DÑO de ataque</style> y repele a los enemigos durante la carga con control direccional gradual en todo momento. Los colmillos de feralí desgarran la carne, infligen un <style=\"accent-gn\">100 %</style> de <linktext=3004><style=\"ItemQuality_5\">herida</style></linktext> a los enemigos golpeados durante <style=\"accent-gn\">10 s</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-781738294",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.10330003.description",
+    "text": "Para teletransporte.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-944913075",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1090801.name",
+    "text": "Vuelo del Águila",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-652756590",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1091099.description",
+    "text": "Hoja Sagrada de Juicio Ardiente",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35677686",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1100504.name",
+    "text": "¡Proeza! Aliento de Escarcha",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-681215430",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1101213.name",
+    "text": "Hechizo de Engaño",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-681248132",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1104.name",
+    "text": "Marcador 4",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943313",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.115301.description",
+    "text": "Carga de Canto",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-783028628",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1239.description",
+    "text": "Consume <style=\"accent-gn\">5</style> de <style=\"accent-gn\">energía gélida</style> para invocar al instante 3 <style=\"accent-gn\">Tormentas Meteóricas</style> sobre el objetivo e infligir <style=\"magic\">daño mágico</style> al objetivo y a los enemigos circundantes. <br>Esta habilidad tiene <style=\"accent-gn\">2</style> cargas. <br><br><size=22><style=\"tipsYellow\">Consejo: Esta habilidad de DÑO y uso instantáneo funcionan mejor con un estilo de combate muy móvil. Se maximiza el DÑO infligido mediante el uso repetido.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505339000",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.140450.name",
+    "text": "Tornado Rápido",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1911387609",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1425.name",
+    "text": "Impulso de Halcón",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946647",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1426.description",
+    "text": "Se lanza hacia las líneas enemigas, inflige <style=\"physical\">DÑO de ataque</style> a los enemigos al alcance y los lanza <style=\"accent-gn\">por el aire</style>. Restaura <style=\"accent-gn\">100</style> de <style=\"accent-gn\">coraje</style>.<br><i><style=\"text_third_gray\">\"¡Tormenta infinita, libera tu gran poder según la voluntad de mi caballero! ¡Viento, revela tu gloria con ímpetu arrollador!\".</style></i><br><br><size=22><style=\"tipsYellow\">Consejo: Lánzala cuando tengas poco coraje.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341142",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1518.description",
+    "text": "Consume <style=\"accent-gn\">20</style> de <style=\"accent-gn\">energía</style> para invocar una liana gigante que golpea un área objetivo, inflige <style=\"magic\">daño mágico</style> y <style=\"accent-gn\">cura</style> al lanzador y al aliado cercano con menos PS (se prioriza a miembros del grupo). La curación aumenta con el ATQ‑M.<br><br><size=22><style=\"tipsYellow\">Consejo: Úsala a discreción en emergencias. Para obtener mejores resultados, combínala con habilidades ofensivas para activar marcas simbióticas y aumentar la efectividad.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342200",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1541.name",
+    "text": "Brote Salvaje",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947798",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1557.description",
+    "text": "Planta",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342331",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1558.description",
+    "text": "Planta",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342332",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1612.name",
+    "text": "Viento de Hacha",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948789",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1616.name",
+    "text": "Corte de Esplendor Fluido",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948793",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.170207.description",
+    "text": "Corrupción del vacío: ¡Fractura!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-789963386",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.170209.name",
+    "text": "Residuo del vacío",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914943038",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1728.description",
+    "text": "<style=\"accent-gn\">Combo del Olvido</style><br>Una técnica de espada suprema tan afilada que puede cortar el propio aire. Desata una ráfaga de cortes frontales que infligen <style=\"physical\">DÑO de ataque</style> a todos los enemigos a su alcance. Otorga el máximo de <style=\"accent-gn\">Sellos del Trueno</style> y restaura por completo la <style=\"accent-gn\">Voluntad del Filo</style> al final del ataque.<br><i><style=\"text_third_gray\">«El arma del cielo opaca hasta las estrellas más brillantes».</style></i><br><br><size=22><style=\"tipsYellow\">Consejo: Lánzala cuando el Sello del Trueno esté vacío para cargarlo rápido. También es eficaz contra múltiples objetivos para infligir un enorme daño de área.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344411",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1740.description",
+    "text": "Corta rápido en horizontal con una guadaña condensada de relámpago e inflige <style=\"physical\">DÑO de ataque</style> igual al <style=\"accent-gn\">400 %</style> del ATQ al enemigo (aumenta con el nivel/grado de <style=\"accent-gn\">Corte Relámpago</style>).",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344469",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1806.description",
+    "text": "<style=\"accent-gn\">Zona Atronadora</style><br>Se lanza al aire y dispara un proyectil de tormenta al objetivo. Al impactar, inflige <style=\"electro\">DÑO atronador</style> y crea una Zona Tormentosa que dura 7 s.<br><style=\"accent-gn\">Zona Tormentosa</style><br><style=\"electro\">inflige DÑO atronador de AdE</style> cada segundo a todos los enemigos en el área y les aplica una desventaja de <linktext=3011><style=\"ItemQuality_5\">ralentización</style></linktext>. <br><br><size=22><style=\"tipsYellow\">Consejo avanzado: Esta habilidad puede lanzarse mientras se está en el aire para obtener movilidad mejorada durante la ejecución.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505345432",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1923.description",
+    "text": "Erige un muro de roca inamovible, adopta una postura defensiva, <linktext=1092><style=\"ItemQuality_5\">provoca</style></linktext> a los monstruos cercanos y se vuelve invencible. Bloquear una <style=\"physical\">habilidad letal</style> hace que el muro se rompa, se contraataque al objetivo y se inflige <style=\"physical\">DÑO de ataque</style> a todos los enemigos al frente.<br><br><size=22><style=\"tipsYellow\">Consejo: Como habilidad definitiva de tanque, es perfecta para absorber DÑO extremo.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346584",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.1934.description",
+    "text": "Consume <style=\"accent-gn\">40</style> puntos de <style=\"accent-gn\">furia</style>, golpea fuerte el arma contra el suelo, inflige <style=\"physical\">DÑO de ataque</style> a los enemigos circundantes y entra en el estado <style=\"accent-gn\">Contrachoque</style>. En este periodo, la probabilidad de bloqueo aumenta en un <style=\"accent-gn\">100 %</style>, y el <style=\"physical\">DÑO de ataque</style> recibido de bloqueos se reducen en un <style=\"accent-gn\">30 %</style>. <br><br><size=22><style=\"tipsYellow\">Consejo: Es muy efectiva en entornos con más DÑO de ataque. Tras lanzarse, aumenta la probabilidad de bloqueo, lo que reduce de modo fiable el DÑO de ataque recibido.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346618",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.2001727.name",
+    "text": "Corrupción del vacío: Persecución Sombría",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933586190",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.2002441.description",
+    "text": "Resuena con el poder del jefe ogro tempestivo. Canaliza el poder del trueno e invoca un vórtice de trueno que atrae continuamente a los enemigos cercanos. Al terminar su duración, inflige <style=\"magic\">DÑO mágico</style> de área.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316512486",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.2317.description",
+    "text": "Balancea la guitarra con fuerza e inflige <style=\"magic\">DÑO mágico</style> igual al <style=\"accent-gn\">300 %</style> del ATQ a los enemigos cercanos. <linktext=1605><style=\"ItemQuality_5\">Himno Armonioso</style></linktext> gana 1 carga al instante. Aumenta con el nivel/grado del <style=\"accent-gn\">ataque básico</style>. <br><br><size=22><style=\"tipsYellow\">Consejo: Lanza esta habilidad cuando Himno Armonioso esté en TdR.</size></style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505375958",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.2401.description",
+    "text": "<style=\"accent-gn\">Sello sagrado</style><br>Recurso requerido para lanzar <style=\"accent-gn\">ataques especiales</style> y algunos de pericia</style>. Hay <style=\"accent-gn\">5</style> sellos sagrados iniciales. Cada sello sagrado entra en un TdR de <style=\"accent-gn\">10 s</style> tras su consumo y genera <style=\"accent-gn\">10<style=\"accent-gn\"></style> de energía fotónica. <br><br><style=\"accent-gn\">Energía fotónica</style><br>Recurso requerido para lanzar algunas habilidades de <style=\"accent-gn\">pericia</style>. Tiene un valor inicial máximo de <style=\"accent-gn\">100</style>. <br><br><style=\"accent-gn\">Ataque básico: Hoja Justiciera</style><br>Lanza un combo de espada de 3 golpes seguido de un balanceo, y cada golpe inflige <style=\"physical\">DÑO de ataque</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377008",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.2409.description",
+    "text": "Crea una zona sagrada bajo los pies, cura al aventurero <style=\"accent-gn\">cada</style> segundo, cura un poco a los aliados en el área e inflige <style=\"physical\">DÑO de ataque</style> a los enemigos.<br><br><size=22><style=\"tipsYellow\">Consejo: Es excelente para infligir DÑO sostenido y curar. Intenta cubrir la mayor área posible.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377016",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.2416.name",
+    "text": "Condena",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982552",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.2417.name",
+    "text": "Condena mejorada",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982553",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.2453.description",
+    "text": "Consume <style=\"accent-gn\">3</style> <style=\"accent-gn\">sellos sagrados</style> e invoca una espada debajo de los pies del objetivo para infligirle <style=\"physical\">DÑO de ataque</style> mientras gana <style=\"accent-gn\">5</style> acumulaciones de <style=\"accent-gn\">Barrera Lumiforjada</style>.<br><br><style=\"accent-gn\">Barrera Lumiforjada</style>: Cada acumulación aumenta los PS máx. finales en un <style=\"accent-gn\">2 %</style>. Se pueden tener hasta <style=\"accent-gn\">10</style> acumulaciones de Barrera Lumiforjada, y cualquier DÑO recibido consume <style=\"accent-gn\">1</style> acumulación. Dura <style=\"accent-gn\">25 s</style> o hasta que se consuman todas las acumulaciones. La duración se restablece cada vez que se gana una acumulación.<br><br><size=22><style=\"tipsYellow\">Consejo: Aunque tiene una capacidad de DÑO considerable, puede reponer eficientemente la Barrera Lumiforjada.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377175",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.2454.description",
+    "text": "Persecución de Rapsodia.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377176",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.300494.description",
+    "text": "Danza",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-859935197",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3023.name",
+    "text": "Bendición de pulso",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818014163",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3340130.name",
+    "text": "Escondite",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1199677929",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3350066.name",
+    "text": "Ensamble",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200862866",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3350068.name",
+    "text": "Ensamble",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200862868",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3350125.name",
+    "text": "Sueño Errante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200863822",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3520306.name",
+    "text": "",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1275578958",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3611.description",
+    "text": "Libera una onda de energía que <linktext=3000><style=\"ItemQuality_5\">interrumpe</style></linktext> a todos los objetivos en un radio de <style=\"accent-gn\">5 m</style>.<br><br><style=\"accent-gn\">Esta habilidad no se ve afectada por los efectos de TdR</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505415156",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3908.name",
+    "text": "¡Arcano! Bendición de Pulso",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023903",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3920.description",
+    "text": "<style=\"accent-gn\">Invoca</style> a Airona. Tras un breve lanzamiento, revive a hasta <style=\"accent-gn\">4</style> compañeros de equipo cercanos. <style=\"accent-gn\">Debilidad: No la afecta el mismo tipo de efecto durante 60 s (los efectos de debilidad se mejoran en mazmorras grupales del modo pesadilla).</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418455",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3922.description",
+    "text": "<style=\"accent-gn\">Invoca</style> a Olvera para desplazarse de un lado a otro avanzando, atraer a los enemigos encontrados en el camino, infligir <style=\"physical\">DÑO de ataque</style> e <linktext=3000><style=\"ItemQuality_5\">interrumpirles</style></linktext> las acciones. Al infligir DÑO, hay probabilidad de aplicar semillas de relámpago a los objetivos durante <style=\"accent-gn\">10 s</style>. Infligir DÑO a objetivos con semillas de relámpago causa una explosión (TdR: <style=\"accent-gn\">2 s</style>) que inflige <style=\"magic\">DÑO mágico</style>. Cualquier objetivo con semillas de relámpago derrotado reduce el TdR en <style=\"accent-gn\">20 s</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418457",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3933.description",
+    "text": "[Invocación de élite] Muku hachero. Inflige <style=\"physical\">DÑO de ataque</style> y reduce el ATQ del objetivo durante <style=\"accent-gn\">10 s</style>.<br><style=\"accent-gn\">[No es acumulable. Solo puede estar activo un efecto del mismo tipo].</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418491",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3937.description",
+    "text": "<style=\"accent-gn\">Invocación de élite</style>: El reptiliano cazador canta brevemente e inflige <style=\"magic\">DÑO mágico</style>. <br>Al lanzar la habilidad, la <style=\"accent-gn\">suerte</style> y la <style=\"accent-gn\">probabilidad de golpe de suerte</style> aumentan durante un tiempo.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418495",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3940.name",
+    "text": "¡Proeza! Golpe Torbellino",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024027",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3967.name",
+    "text": "Salir de la Forma de Dorothy",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024100",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3972.name",
+    "text": "¡Arcano! Colmillo de Traslado",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024128",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3973.description",
+    "text": "<style=\"accent-gn\">Invoca</style> al jefe rey rebelde para infligir <style=\"physical\">DÑO de ataque</style>.<br>Tras su uso, otorga de forma temporal el máximo de acumulaciones pasivas, y el efecto se multiplica por <style=\"accent-gn\">2</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418623",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3982.description",
+    "text": "<style=\"accent-gn\">Te transformas en </style>Lucy Maga de Espíritus Celestiales, reemplazas tu conjunto de habilidades y obtienes <linktext=1219><style=\"ItemQuality_5\">Conversión de Capacidad</style></linktext>.<br>Pasiva: Al infligir daño, convierte el <style=\"accent-gn\">50 %</style> del daño infligido en curación para hasta <style=\"physical\">10</style> aliados cercanos (dando prioridad a los compañeros de equipo).<br>1. <style=\"accent-gn\">Río de Estrellas</style>: Manifiesta Río de Estrellas y lo blande continuamente, lo que inflige <style=\"magic\">DÑO mágico</style> de luz a los objetivos.<br>2. <style=\"accent-gn\">Guardián Celestial</style>: Aprovecha el poder de los espíritus celestiales para otorgar un escudo de <style=\"accent-gn\">20 s</style> a un máximo de <style=\"accent-gn\">10</style> aliados en el área (dando prioridad a los compañeros de equipo). Al mismo tiempo, inflige desventajas a un máximo de <style=\"accent-gn\">5</style> enemigos en el área. Esto reduce su ATQ, les aplica vulnerabilidad y reduce su resistencia a elementos durante <style=\"accent-gn\">10 s</style>.<br>3. <style=\"accent-gn\">Aqua Metria</style>: Recurre al poder de Acuario para desatar olas hacia adelante, lo que inflige <style=\"magic\">DÑO mágico</style> de agua a los objetivos en su camino y convierte un <style=\"accent-gn\">50 %</style> adicional del daño infligido en curación.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418655",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3983.name",
+    "text": "¡Arcano! Dragon Slayer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024162",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.3987.name",
+    "text": "¡Arcano! Dragon Slayer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024166",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4001008.name",
+    "text": "Carga de guardia escudado",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-221547144",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4017.name",
+    "text": "Liberación de energía de semilla de imagine",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050071",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4020.name",
+    "text": "Agrupar",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050097",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4039900.description",
+    "text": "Flecha dividida",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1755779410",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4040015.description",
+    "text": "Canalización de poder ancestral",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1756632135",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4102.name",
+    "text": "Lanzallamas",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818051122",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4104.description",
+    "text": "Provisiones.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505445618",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4104.name",
+    "text": "Provisiones",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818051124",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.420120.name",
+    "text": "Marca del Anillo Oscuro",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2026418580",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.420125.name",
+    "text": "Sello de Oscuridad",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2026418585",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4508.name",
+    "text": "Salto exprés",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055484",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4511.name",
+    "text": "Salto de Caza",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055510",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4514.name",
+    "text": "Golpe sombrío",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055513",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4522.description",
+    "text": "Tras la activación, entra en el modo magnético. Al estar cerca de otro ojo flotante en el modo magnético, ¡puedes adherirte al instante a él y moverte en sincronía con el objetivo!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450038",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4541.name",
+    "text": "Salto Celestial",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055609",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4544.name",
+    "text": "Superimpulso",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055612",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4554.name",
+    "text": "Golpe colosal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055645",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4555.description",
+    "text": "Tras la activación, entra en el modo magnético. Al estar cerca de otro ojo flotante en el modo magnético, ¡puedes adherirte al instante a él y moverte en sincronía con el objetivo!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450140",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4572.description",
+    "text": "¡Un coletazo lanza una columna de agua hacia el cielo! El koi la surca y salta hacia lo más alto.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450203",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4601.name",
+    "text": "Embestida Ardiente",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056566",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4655.description",
+    "text": "¡Enloquece! ¡Mi inspiración chispea! Pinta monedas de grafiti adelante. Recogerlas otorga efectos especiales. <br><br><style=\"tipsYellow\">Moneda de grafiti: </style>Reduce el TdR de Aceleración de Nitro <style=\"accent-gn\"> un 30 % </style> y aumenta brevemente la VEL de MOV.<br><style=\"tipsYellow\">",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451229",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4672.name",
+    "text": "Senda del Errante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056798",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4691.description",
+    "text": "Se abalanza hacia delante una cierta distancia y obtiene mayor VEL de MOV.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451357",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4704.name",
+    "text": "Metamorfosis de león: Cola",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057658",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4705.name",
+    "text": "Metamorfosis de león: Cabeza",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057659",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.4723.description",
+    "text": "Se transforma en una sombra de la noche y avanza. Acumula hasta 3 cargas.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452217",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.5000.description",
+    "text": "Toca para salir del juguete",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505480462",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.5114.name",
+    "text": "Carta de mano sombría",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818087094",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.5526.name",
+    "text": "Habilidad difuminadora",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091485",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.5601.name",
+    "text": "Explosión Cronometrada",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818092503",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.6003.name",
+    "text": "Refugio del bosque",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818121908",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.6015.description",
+    "text": "Coloca una bomba de tiempo.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505516437",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.6500.description",
+    "text": "<style=\"physical\">Transforma en un objeto aleatorio.</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521844",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.6508.name",
+    "text": "Supercañón electromagnético",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127358",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.6513.description",
+    "text": "Vuelve gigantesco al usuario durante <style=\"physical\">15 s</style>.<br>El movimiento genera ondas de choque, lo que inflige <style=\"physical\">gran daño</style> a los acechadores cercanos.<br>Mientras el tamaño es gigantesco, la VEL de MOV se reduce y no se pueden usar habilidades.<br><i><style=\"text_third_gray\">\"¡Aniquílalos! ¡A todos y cada uno de ellos!\"</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521880",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.6527.description",
+    "text": "<style=\"physical\">Proyecta</style> una copia de un objeto similar y <style=\"physical\">restaura 40 PS</style>.</style><br>Proyectar una nueva copia elimina el objeto anterior.<br><i><style=\"text_third_gray\">\"¡Proyección, inicio!\"</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521917",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.6700.name",
+    "text": "Base Sólida",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818129528",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "skill.920013.name",
+    "text": "Colocar nodo.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-74610778",
+      "confidence": "verified"
+    }
+  }
+]

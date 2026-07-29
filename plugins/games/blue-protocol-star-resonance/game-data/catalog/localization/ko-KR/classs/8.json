@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.11.name",
+    "text": "디바인 아처",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192187",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.5.description",
+    "text": "<color=#fcbe03>원거리 치료</color>에 능하며, <color=#fcbe03>마법 고리</color>를 무기로 사용합니다. 숲의 생명의 힘으로 뛰어난 <color=#fcbe03>치료</color> 및 <color=#fcbe03>지원</color> 능력을 가지고 있습니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367321",
+      "confidence": "verified"
+    }
+  }
+]

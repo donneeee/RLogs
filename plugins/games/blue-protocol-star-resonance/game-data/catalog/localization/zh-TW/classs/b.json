@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "class.14.description",
+    "text": "擅長<color=#fcbe03>遠距離</color>作戰，擁有出色的攻擊能力。<br>可以在遠處以高頻攻擊打擊大範圍的敵人。追求<color=#fcbe03>刻印機率加成</color>提高觸發頻率。<br>也可以在近處<color=#fcbe03>蓄力</color>，打出極高的爆發傷害。追求<color=#fcbe03>暴擊機率</color>帶來的強大收益。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154217",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "class.4.name",
+    "text": "青嵐騎士",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964621",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "class.9.name",
+    "text": "巨刃守護者",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964626",
+      "confidence": "verified"
+    }
+  }
+]

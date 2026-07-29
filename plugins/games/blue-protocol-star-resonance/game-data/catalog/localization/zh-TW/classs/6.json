@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "class.3.description",
+    "text": "擅長<color=#fcbe03>近距離</color>作戰，以<color=#fcbe03>雙斧</color>為武器。招式如火般迅疾熱烈，擁有出色的<color=#fcbe03>小範圍攻擊</color>能力。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367319",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.13.description",
+    "text": "Ahli dalam pertarungan <color=#fcbe03>jarak jauh dan dekat</color> yang bersenjatakan <color=#fcbe03>Guitar</color>. Serangannya dapat memberi efek<color=#fcbe03> Healing</color>. Mahir memberi <color=#fcbe03>buff</color> pada rekan dan memiliki kemampuan <color=#fcbe03>Support</color> yang luar biasa.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.15.name",
+    "text": "Natsu",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192191",
+      "confidence": "verified"
+    }
+  }
+]

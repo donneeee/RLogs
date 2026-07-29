@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "specialization.128.name",
+    "text": "Especialização: Informe",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989407",
+      "confidence": "verified"
+    }
+  }
+]

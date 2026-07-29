@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "name_card.9030003.acquisition",
+    "text": "메인 스토리 클리어 시 획득3",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-965230669",
+      "confidence": "verified"
+    }
+  }
+]

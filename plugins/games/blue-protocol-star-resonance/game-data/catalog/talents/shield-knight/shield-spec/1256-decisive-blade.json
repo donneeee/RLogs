@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 1256,
+  "stable_key": "talent.1256",
+  "localization_key": "talent.1256.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "shield-knight",
+    "spec_key": "shield-spec",
+    "classification_state": "current_build_talent_tree_branch_relation",
+    "row_key": 1256,
+    "design_name": "决断之刃",
+    "name_id": 325850602,
+    "description_id": 0,
+    "profession_id": 12,
+    "icon_address": "ui/atlas/talent_passive_12/jiandun1256",
+    "talent_type": 4,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        3,
+        2206570,
+        1
+      ]
+    ],
+    "buff_parameters": [
+      [
+        0
+      ]
+    ],
+    "unlock_costs": [
+      [
+        1020056,
+        2
+      ]
+    ],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.1256.name",
+    "tree_nodes": [
+      {
+        "node_id": 1256001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1251001
+        ]
+      }
+    ],
+    "class_id": 12,
+    "specialization_id": 123
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

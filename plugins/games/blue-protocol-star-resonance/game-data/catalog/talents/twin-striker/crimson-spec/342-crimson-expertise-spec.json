@@ -1,0 +1,70 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 342,
+  "stable_key": "talent.342",
+  "localization_key": "talent.342.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "twin-striker",
+    "spec_key": "crimson-spec",
+    "classification_state": "current_build_talent_tree_branch_relation",
+    "row_key": 342,
+    "design_name": "赤红专精流",
+    "name_id": 1051080693,
+    "description_id": 620993552,
+    "profession_id": 3,
+    "icon_address": "ui/atlas/talent_passive_3/shuangfu342",
+    "talent_type": 5,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        6,
+        1605,
+        1606
+      ],
+      [
+        3,
+        2208430,
+        1
+      ]
+    ],
+    "buff_parameters": [
+      [
+        0
+      ]
+    ],
+    "unlock_costs": [
+      [
+        1020054,
+        2
+      ]
+    ],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.342.name",
+    "description_localization_key": "talent.342.description",
+    "tree_nodes": [
+      {
+        "node_id": 342005,
+        "branch": 1,
+        "prerequisite_node_ids": []
+      }
+    ],
+    "class_id": 3,
+    "specialization_id": 129
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

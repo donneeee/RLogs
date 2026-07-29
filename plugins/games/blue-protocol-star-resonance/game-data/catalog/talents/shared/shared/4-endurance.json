@@ -1,0 +1,2449 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 4,
+  "stable_key": "talent.4",
+  "localization_key": "talent.4.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "shared",
+    "spec_key": "shared",
+    "classification_state": "current_build_multi_class_talent_tree_relation",
+    "row_key": 4,
+    "design_name": "耐力+30",
+    "name_id": 1576575312,
+    "description_id": 0,
+    "profession_id": 0,
+    "icon_address": "ui/atlas/weaponhero/new/common_icon08",
+    "talent_type": 1,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        1,
+        11042,
+        30
+      ]
+    ],
+    "buff_parameters": [],
+    "unlock_costs": [],
+    "talent_points_cost": 1,
+    "fight_value": 3,
+    "name_localization_key": "talent.4.name",
+    "tree_nodes": [
+      {
+        "node_id": 262001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          35084
+        ]
+      },
+      {
+        "node_id": 6698,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          21231
+        ]
+      },
+      {
+        "node_id": 6691,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          37080
+        ]
+      },
+      {
+        "node_id": 252001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5588
+        ]
+      },
+      {
+        "node_id": 243001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          33039
+        ]
+      },
+      {
+        "node_id": 138003,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          21228
+        ]
+      },
+      {
+        "node_id": 137005,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          10366
+        ]
+      },
+      {
+        "node_id": 6047,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          249001
+        ]
+      },
+      {
+        "node_id": 6046,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          261001
+        ]
+      },
+      {
+        "node_id": 6045,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5575,
+          2255
+        ]
+      },
+      {
+        "node_id": 6741,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1357001
+        ]
+      },
+      {
+        "node_id": 39041,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          227027,
+          246002
+        ]
+      },
+      {
+        "node_id": 38070,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          223027,
+          240001
+        ]
+      },
+      {
+        "node_id": 6725,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          971001
+        ]
+      },
+      {
+        "node_id": 6724,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          42032
+        ]
+      },
+      {
+        "node_id": 6723,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          37117
+        ]
+      },
+      {
+        "node_id": 6722,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          965001
+        ]
+      },
+      {
+        "node_id": 6740,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1363001
+        ]
+      },
+      {
+        "node_id": 6719,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          9038
+        ]
+      },
+      {
+        "node_id": 6718,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          9039
+        ]
+      },
+      {
+        "node_id": 955001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8583
+        ]
+      },
+      {
+        "node_id": 953001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          9040
+        ]
+      },
+      {
+        "node_id": 949001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6721
+        ]
+      },
+      {
+        "node_id": 947001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6720
+        ]
+      },
+      {
+        "node_id": 6734,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1227013
+        ]
+      },
+      {
+        "node_id": 6733,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1265001,
+          6463
+        ]
+      },
+      {
+        "node_id": 6732,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1262001,
+          8688
+        ]
+      },
+      {
+        "node_id": 6731,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1230013
+        ]
+      },
+      {
+        "node_id": 7239,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          216011
+        ]
+      },
+      {
+        "node_id": 5206,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          220011
+        ]
+      },
+      {
+        "node_id": 6706,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          38069
+        ]
+      },
+      {
+        "node_id": 6705,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6707
+        ]
+      },
+      {
+        "node_id": 6700,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          34106
+        ]
+      },
+      {
+        "node_id": 1148001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1137001
+        ]
+      },
+      {
+        "node_id": 5203,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5558
+        ]
+      },
+      {
+        "node_id": 5202,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1122003,
+          1118004
+        ]
+      },
+      {
+        "node_id": 33038,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5201
+        ]
+      },
+      {
+        "node_id": 5563,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5557,
+          5554
+        ]
+      },
+      {
+        "node_id": 1264001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6617
+        ]
+      },
+      {
+        "node_id": 5564,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5556,
+          5554
+        ]
+      },
+      {
+        "node_id": 3069,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1129002
+        ]
+      },
+      {
+        "node_id": 5556,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1119004
+        ]
+      },
+      {
+        "node_id": 5554,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          3068
+        ]
+      },
+      {
+        "node_id": 5557,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1120003
+        ]
+      },
+      {
+        "node_id": 7237,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          233002
+        ]
+      },
+      {
+        "node_id": 5205,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          233002
+        ]
+      },
+      {
+        "node_id": 5586,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5204,
+          7236
+        ]
+      },
+      {
+        "node_id": 6923,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          342005
+        ]
+      },
+      {
+        "node_id": 6922,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          354005
+        ]
+      },
+      {
+        "node_id": 6920,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          343005
+        ]
+      },
+      {
+        "node_id": 6921,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          349005
+        ]
+      },
+      {
+        "node_id": 27146,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          314005
+        ]
+      },
+      {
+        "node_id": 6919,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          316005,
+          330005
+        ]
+      },
+      {
+        "node_id": 6918,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          304005
+        ]
+      },
+      {
+        "node_id": 6917,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          323005
+        ]
+      },
+      {
+        "node_id": 6915,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          315005
+        ]
+      },
+      {
+        "node_id": 6916,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          333005
+        ]
+      },
+      {
+        "node_id": 6898,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          335005
+        ]
+      },
+      {
+        "node_id": 6897,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          321005
+        ]
+      },
+      {
+        "node_id": 6896,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          312005
+        ]
+      },
+      {
+        "node_id": 6914,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          351005,
+          366005
+        ]
+      },
+      {
+        "node_id": 6913,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          358005
+        ]
+      },
+      {
+        "node_id": 6912,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          345005
+        ]
+      },
+      {
+        "node_id": 6911,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          347006
+        ]
+      },
+      {
+        "node_id": 6909,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          3182,
+          27140
+        ]
+      },
+      {
+        "node_id": 6910,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          27142
+        ]
+      },
+      {
+        "node_id": 34107,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6298
+        ]
+      },
+      {
+        "node_id": 6297,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5562
+        ]
+      },
+      {
+        "node_id": 5585,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6692,
+          252001
+        ]
+      },
+      {
+        "node_id": 6300,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1115003,
+          1118004
+        ]
+      },
+      {
+        "node_id": 5552,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5546,
+          5545
+        ]
+      },
+      {
+        "node_id": 5553,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5543,
+          5545
+        ]
+      },
+      {
+        "node_id": 6908,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          354005,
+          361005
+        ]
+      },
+      {
+        "node_id": 6907,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          342005
+        ]
+      },
+      {
+        "node_id": 6905,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          342005
+        ]
+      },
+      {
+        "node_id": 5587,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6694,
+          252001
+        ]
+      },
+      {
+        "node_id": 2257,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          2256
+        ]
+      },
+      {
+        "node_id": 938001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1490
+        ]
+      },
+      {
+        "node_id": 936001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6058
+        ]
+      },
+      {
+        "node_id": 6080,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8582
+        ]
+      },
+      {
+        "node_id": 8580,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6055,
+          1492
+        ]
+      },
+      {
+        "node_id": 6078,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          923013,
+          962001
+        ]
+      },
+      {
+        "node_id": 6079,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          906012,
+          959001
+        ]
+      },
+      {
+        "node_id": 8581,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6060
+        ]
+      },
+      {
+        "node_id": 7297,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6061
+        ]
+      },
+      {
+        "node_id": 6075,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          8577
+        ]
+      },
+      {
+        "node_id": 7296,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6062
+        ]
+      },
+      {
+        "node_id": 41039,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6071,
+          1488
+        ]
+      },
+      {
+        "node_id": 41040,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6068,
+          1488
+        ]
+      },
+      {
+        "node_id": 6074,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          9041
+        ]
+      },
+      {
+        "node_id": 1355001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1352001
+        ]
+      },
+      {
+        "node_id": 1261001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6618
+        ]
+      },
+      {
+        "node_id": 2255,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5581
+        ]
+      },
+      {
+        "node_id": 5574,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6302,
+          8463
+        ]
+      },
+      {
+        "node_id": 6906,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          344005
+        ]
+      },
+      {
+        "node_id": 6680,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6305
+        ]
+      },
+      {
+        "node_id": 6677,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          7240
+        ]
+      },
+      {
+        "node_id": 170001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          159001
+        ]
+      },
+      {
+        "node_id": 164001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          168001
+        ]
+      },
+      {
+        "node_id": 158001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          159001
+        ]
+      },
+      {
+        "node_id": 156001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5603
+        ]
+      },
+      {
+        "node_id": 155001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          168001
+        ]
+      },
+      {
+        "node_id": 9103,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          150003
+        ]
+      },
+      {
+        "node_id": 9102,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5212
+        ]
+      },
+      {
+        "node_id": 1354001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1318006
+        ]
+      },
+      {
+        "node_id": 9101,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8470
+        ]
+      },
+      {
+        "node_id": 9100,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5594
+        ]
+      },
+      {
+        "node_id": 153002,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          150003
+        ]
+      },
+      {
+        "node_id": 151002,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          140002
+        ]
+      },
+      {
+        "node_id": 6739,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1328012
+        ]
+      },
+      {
+        "node_id": 142002,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          140002
+        ]
+      },
+      {
+        "node_id": 5611,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          136009
+        ]
+      },
+      {
+        "node_id": 37081,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          114011,
+          6677
+        ]
+      },
+      {
+        "node_id": 34109,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          122013,
+          6680
+        ]
+      },
+      {
+        "node_id": 7241,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          131002
+        ]
+      },
+      {
+        "node_id": 6306,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          131002
+        ]
+      },
+      {
+        "node_id": 5609,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          114011
+        ]
+      },
+      {
+        "node_id": 5605,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          122013
+        ]
+      },
+      {
+        "node_id": 5603,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5606
+        ]
+      },
+      {
+        "node_id": 6730,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1227012
+        ]
+      },
+      {
+        "node_id": 6729,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6611
+        ]
+      },
+      {
+        "node_id": 6728,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1230012
+        ]
+      },
+      {
+        "node_id": 1235001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6612
+        ]
+      },
+      {
+        "node_id": 6726,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          10527
+        ]
+      },
+      {
+        "node_id": 6620,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          40078,
+          1259001
+        ]
+      },
+      {
+        "node_id": 6619,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          34160,
+          1259001
+        ]
+      },
+      {
+        "node_id": 6617,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1227013,
+          1253001
+        ]
+      },
+      {
+        "node_id": 6618,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1230013,
+          1257001
+        ]
+      },
+      {
+        "node_id": 6616,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1606
+        ]
+      },
+      {
+        "node_id": 6615,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1605
+        ]
+      },
+      {
+        "node_id": 8686,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          8687
+        ]
+      },
+      {
+        "node_id": 6462,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6461
+        ]
+      },
+      {
+        "node_id": 8685,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1218011
+        ]
+      },
+      {
+        "node_id": 6460,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1218011
+        ]
+      },
+      {
+        "node_id": 6069,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          921007,
+          946001
+        ]
+      },
+      {
+        "node_id": 6070,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          922007,
+          943001
+        ]
+      },
+      {
+        "node_id": 6737,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1316006
+        ]
+      },
+      {
+        "node_id": 6736,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1330011
+        ]
+      },
+      {
+        "node_id": 1344001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6558
+        ]
+      },
+      {
+        "node_id": 1337001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6557
+        ]
+      },
+      {
+        "node_id": 6735,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1331001
+        ]
+      },
+      {
+        "node_id": 6576,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1323006
+        ]
+      },
+      {
+        "node_id": 2409,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6568
+        ]
+      },
+      {
+        "node_id": 2407,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1330012,
+          1328011
+        ]
+      },
+      {
+        "node_id": 6573,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1321006
+        ]
+      },
+      {
+        "node_id": 6572,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1328011
+        ]
+      },
+      {
+        "node_id": 40069,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          2406
+        ]
+      },
+      {
+        "node_id": 6574,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1361001
+        ]
+      },
+      {
+        "node_id": 129006,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          23247,
+          104018
+        ]
+      },
+      {
+        "node_id": 6570,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          40069
+        ]
+      },
+      {
+        "node_id": 6569,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1325006
+        ]
+      },
+      {
+        "node_id": 7355,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6568
+        ]
+      },
+      {
+        "node_id": 5410,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6567
+        ]
+      },
+      {
+        "node_id": 5573,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          266001,
+          2255
+        ]
+      },
+      {
+        "node_id": 21230,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          227026,
+          256001
+        ]
+      },
+      {
+        "node_id": 2405,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          2401
+        ]
+      },
+      {
+        "node_id": 3065,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1126010
+        ]
+      },
+      {
+        "node_id": 5543,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1130002
+        ]
+      },
+      {
+        "node_id": 6895,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          335005,
+          3174
+        ]
+      },
+      {
+        "node_id": 6904,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          320005
+        ]
+      },
+      {
+        "node_id": 6903,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6897,
+          6894
+        ]
+      },
+      {
+        "node_id": 6900,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          313005
+        ]
+      },
+      {
+        "node_id": 6901,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          312005
+        ]
+      },
+      {
+        "node_id": 6894,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          326006
+        ]
+      },
+      {
+        "node_id": 6899,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          27135
+        ]
+      },
+      {
+        "node_id": 6893,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          3177
+        ]
+      },
+      {
+        "node_id": 6892,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          27144,
+          300005
+        ]
+      },
+      {
+        "node_id": 6891,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          302005
+        ]
+      },
+      {
+        "node_id": 6888,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6889
+        ]
+      },
+      {
+        "node_id": 6889,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          27137
+        ]
+      },
+      {
+        "node_id": 6890,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          3173
+        ]
+      },
+      {
+        "node_id": 6714,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          519003
+        ]
+      },
+      {
+        "node_id": 6713,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          8453
+        ]
+      },
+      {
+        "node_id": 571001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          524013,
+          518003
+        ]
+      },
+      {
+        "node_id": 565001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6714,
+          6715,
+          5521
+        ]
+      },
+      {
+        "node_id": 6711,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          37079,
+          526016
+        ]
+      },
+      {
+        "node_id": 6710,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          523015
+        ]
+      },
+      {
+        "node_id": 6709,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          525013,
+          524014
+        ]
+      },
+      {
+        "node_id": 5545,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          3066
+        ]
+      },
+      {
+        "node_id": 5546,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1106010
+        ]
+      },
+      {
+        "node_id": 43033,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8458
+        ]
+      },
+      {
+        "node_id": 34105,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6296
+        ]
+      },
+      {
+        "node_id": 8460,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1111010,
+          1109010
+        ]
+      },
+      {
+        "node_id": 8459,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5548
+        ]
+      },
+      {
+        "node_id": 6293,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5549
+        ]
+      },
+      {
+        "node_id": 6295,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1108010,
+          1109010
+        ]
+      },
+      {
+        "node_id": 5541,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          3063
+        ]
+      },
+      {
+        "node_id": 5538,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5542
+        ]
+      },
+      {
+        "node_id": 5539,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          3062
+        ]
+      },
+      {
+        "node_id": 3061,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          25096
+        ]
+      },
+      {
+        "node_id": 1103009,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          25095
+        ]
+      },
+      {
+        "node_id": 25094,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          10363
+        ]
+      },
+      {
+        "node_id": 10362,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          25096
+        ]
+      },
+      {
+        "node_id": 10364,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          10365
+        ]
+      },
+      {
+        "node_id": 1603,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1234001
+        ]
+      },
+      {
+        "node_id": 6610,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          40076,
+          1248001
+        ]
+      },
+      {
+        "node_id": 6609,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          34158,
+          1248001
+        ]
+      },
+      {
+        "node_id": 6612,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1227012,
+          1237001
+        ]
+      },
+      {
+        "node_id": 6611,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1230012,
+          1244001
+        ]
+      },
+      {
+        "node_id": 6608,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1601
+        ]
+      },
+      {
+        "node_id": 6607,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1598
+        ]
+      },
+      {
+        "node_id": 8683,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8682
+        ]
+      },
+      {
+        "node_id": 6458,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6457
+        ]
+      },
+      {
+        "node_id": 8681,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1208009
+        ]
+      },
+      {
+        "node_id": 6456,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1208009
+        ]
+      },
+      {
+        "node_id": 6604,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1600
+        ]
+      },
+      {
+        "node_id": 1596,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1599
+        ]
+      },
+      {
+        "node_id": 6602,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6603
+        ]
+      },
+      {
+        "node_id": 10528,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1200008
+        ]
+      },
+      {
+        "node_id": 10526,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          25139
+        ]
+      },
+      {
+        "node_id": 10525,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          25141
+        ]
+      },
+      {
+        "node_id": 35085,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          223026,
+          263001
+        ]
+      },
+      {
+        "node_id": 2253,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          2252
+        ]
+      },
+      {
+        "node_id": 8464,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          231003
+        ]
+      },
+      {
+        "node_id": 6303,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          211017
+        ]
+      },
+      {
+        "node_id": 8462,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          212017
+        ]
+      },
+      {
+        "node_id": 6301,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          212017
+        ]
+      },
+      {
+        "node_id": 21229,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          2261
+        ]
+      },
+      {
+        "node_id": 21227,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          203016
+        ]
+      },
+      {
+        "node_id": 10369,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          2250
+        ]
+      },
+      {
+        "node_id": 10368,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          10366
+        ]
+      },
+      {
+        "node_id": 5565,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          2251
+        ]
+      },
+      {
+        "node_id": 10367,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          21228
+        ]
+      },
+      {
+        "node_id": 5601,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          112018
+        ]
+      },
+      {
+        "node_id": 5600,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          105017
+        ]
+      },
+      {
+        "node_id": 50101,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          112018,
+          9101
+        ]
+      },
+      {
+        "node_id": 33040,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          105017,
+          9102
+        ]
+      },
+      {
+        "node_id": 10373,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          23248
+        ]
+      },
+      {
+        "node_id": 5598,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          101036
+        ]
+      },
+      {
+        "node_id": 10371,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          23248
+        ]
+      },
+      {
+        "node_id": 5594,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5597
+        ]
+      },
+      {
+        "node_id": 5595,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          136009
+        ]
+      },
+      {
+        "node_id": 10372,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          23249
+        ]
+      },
+      {
+        "node_id": 5209,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          130003
+        ]
+      },
+      {
+        "node_id": 8466,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          130003
+        ]
+      },
+      {
+        "node_id": 10370,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          3164
+        ]
+      },
+      {
+        "node_id": 9037,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6065
+        ]
+      },
+      {
+        "node_id": 8579,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6065
+        ]
+      },
+      {
+        "node_id": 7295,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1492,
+          932007
+        ]
+      },
+      {
+        "node_id": 6063,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          7298
+        ]
+      },
+      {
+        "node_id": 8578,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6062
+        ]
+      },
+      {
+        "node_id": 904011,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6054
+        ]
+      },
+      {
+        "node_id": 6059,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1491
+        ]
+      },
+      {
+        "node_id": 10440,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          912027,
+          927012
+        ]
+      },
+      {
+        "node_id": 10439,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          22086
+        ]
+      },
+      {
+        "node_id": 1485,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          10441
+        ]
+      },
+      {
+        "node_id": 6054,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          22087
+        ]
+      },
+      {
+        "node_id": 547001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8456
+        ]
+      },
+      {
+        "node_id": 6708,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          529008
+        ]
+      },
+      {
+        "node_id": 6108,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          514003
+        ]
+      },
+      {
+        "node_id": 5535,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          505013
+        ]
+      },
+      {
+        "node_id": 8457,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8456,
+          5537,
+          542001
+        ]
+      },
+      {
+        "node_id": 5534,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6712,
+          6710,
+          6711
+        ]
+      },
+      {
+        "node_id": 7235,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          512014
+        ]
+      },
+      {
+        "node_id": 2246,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5514
+        ]
+      },
+      {
+        "node_id": 6291,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          2245,
+          521003
+        ]
+      },
+      {
+        "node_id": 6290,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          521003
+        ]
+      },
+      {
+        "node_id": 6292,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          531002
+        ]
+      },
+      {
+        "node_id": 5530,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          8452,
+          2243
+        ]
+      },
+      {
+        "node_id": 5529,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          515003
+        ]
+      },
+      {
+        "node_id": 8452,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          8453,
+          40024,
+          5528
+        ]
+      },
+      {
+        "node_id": 5524,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          515003,
+          533002
+        ]
+      },
+      {
+        "node_id": 5522,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          514003,
+          520003
+        ]
+      },
+      {
+        "node_id": 5521,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          35082,
+          526015
+        ]
+      },
+      {
+        "node_id": 7234,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          510012
+        ]
+      },
+      {
+        "node_id": 5518,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8457,
+          2249
+        ]
+      },
+      {
+        "node_id": 5517,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          511013
+        ]
+      },
+      {
+        "node_id": 5516,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          511013,
+          533001
+        ]
+      },
+      {
+        "node_id": 7233,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          2248,
+          512014
+        ]
+      },
+      {
+        "node_id": 2240,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          504011,
+          5532
+        ]
+      },
+      {
+        "node_id": 24070,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          2241
+        ]
+      },
+      {
+        "node_id": 5515,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          505013,
+          532003
+        ]
+      },
+      {
+        "node_id": 5513,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          10361
+        ]
+      },
+      {
+        "node_id": 10360,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          2240
+        ]
+      },
+      {
+        "node_id": 5511,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          10359
+        ]
+      },
+      {
+        "node_id": 10358,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          24069
+        ]
+      },
+      {
+        "node_id": 2403,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1300006,
+          1331001
+        ]
+      },
+      {
+        "node_id": 70021,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1300006
+        ]
+      },
+      {
+        "node_id": 6564,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1326012,
+          1328012
+        ]
+      },
+      {
+        "node_id": 6563,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6558
+        ]
+      },
+      {
+        "node_id": 6562,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1313006
+        ]
+      },
+      {
+        "node_id": 38098,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1346001
+        ]
+      },
+      {
+        "node_id": 6561,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1339001
+        ]
+      },
+      {
+        "node_id": 6560,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1309006
+        ]
+      },
+      {
+        "node_id": 5406,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          2405
+        ]
+      },
+      {
+        "node_id": 5405,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1350001
+        ]
+      },
+      {
+        "node_id": 2399,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1303006
+        ]
+      },
+      {
+        "node_id": 6554,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          70024
+        ]
+      },
+      {
+        "node_id": 10518,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          70024
+        ]
+      },
+      {
+        "node_id": 6553,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          10519
+        ]
+      },
+      {
+        "node_id": 10517,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1334001
+        ]
+      },
+      {
+        "node_id": 10443,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          69127
+        ]
+      },
+      {
+        "node_id": 10442,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          69126
+        ]
+      },
+      {
+        "node_id": 6081,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          401015
+        ]
+      },
+      {
+        "node_id": 10444,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6083
+        ]
+      },
+      {
+        "node_id": 1497,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          69127
+        ]
+      },
+      {
+        "node_id": 1495,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          69127
+        ]
+      },
+      {
+        "node_id": 1498,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          69128
+        ]
+      },
+      {
+        "node_id": 1499,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          433007
+        ]
+      },
+      {
+        "node_id": 6086,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6385,
+          1499
+        ]
+      },
+      {
+        "node_id": 6095,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8584,
+          1499
+        ]
+      },
+      {
+        "node_id": 6088,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          407014
+        ]
+      },
+      {
+        "node_id": 6093,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          447001
+        ]
+      },
+      {
+        "node_id": 6092,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          453001
+        ]
+      },
+      {
+        "node_id": 6094,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          443002
+        ]
+      },
+      {
+        "node_id": 1501,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          432008
+        ]
+      },
+      {
+        "node_id": 5247,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6098,
+          460001
+        ]
+      },
+      {
+        "node_id": 7300,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6097,
+          456001
+        ]
+      },
+      {
+        "node_id": 6097,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          7299,
+          1501
+        ]
+      },
+      {
+        "node_id": 6098,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5246,
+          1501
+        ]
+      },
+      {
+        "node_id": 7301,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6099
+        ]
+      },
+      {
+        "node_id": 6105,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          463001
+        ]
+      },
+      {
+        "node_id": 5248,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6103
+        ]
+      },
+      {
+        "node_id": 6106,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          466001
+        ]
+      },
+      {
+        "node_id": 6107,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          459001
+        ]
+      },
+      {
+        "node_id": 33058,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6107
+        ]
+      },
+      {
+        "node_id": 37120,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6107
+        ]
+      },
+      {
+        "node_id": 6386,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6086,
+          442001
+        ]
+      },
+      {
+        "node_id": 6388,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6087
+        ]
+      },
+      {
+        "node_id": 35106,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6094
+        ]
+      },
+      {
+        "node_id": 8585,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6095,
+          452001
+        ]
+      },
+      {
+        "node_id": 8586,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6089
+        ]
+      },
+      {
+        "node_id": 43049,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6094
+        ]
+      },
+      {
+        "node_id": 437001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6084
+        ]
+      },
+      {
+        "node_id": 6682,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          413014
+        ]
+      },
+      {
+        "node_id": 6688,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          421010
+        ]
+      },
+      {
+        "node_id": 6689,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          422010
+        ]
+      }
+    ],
+    "class_ids": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      9,
+      11,
+      12,
+      13
+    ],
+    "specialization_ids": [
+      101,
+      102,
+      104,
+      105,
+      107,
+      108,
+      110,
+      111,
+      113,
+      114,
+      116,
+      117,
+      119,
+      120,
+      122,
+      123,
+      128,
+      129
+    ]
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

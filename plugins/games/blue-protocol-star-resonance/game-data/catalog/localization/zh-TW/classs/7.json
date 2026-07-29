@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "class.11.description",
+    "text": "擅長<color=#fcbe03>遠距離</color>作戰，以<color=#fcbe03>弓箭</color>為武器。與動物夥伴搭檔出擊，擁有出色的<color=#fcbe03>大範圍攻擊</color>能力。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154214",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "class.5.name",
+    "text": "森語者",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964622",
+      "confidence": "verified"
+    }
+  }
+]

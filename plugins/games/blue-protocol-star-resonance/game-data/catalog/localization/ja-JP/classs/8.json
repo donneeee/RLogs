@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.11.name",
+    "text": "ディバインアーチャー",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192187",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.5.description",
+    "text": "<color=#fcbe03>仙輪</color>を武器とした<color=#fcbe03>遠距離回復</color>を得意とする。森の生命力による<color=#fcbe03>回復</color>と<color=#fcbe03>支援</color>の能力に優れている。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367321",
+      "confidence": "verified"
+    }
+  }
+]

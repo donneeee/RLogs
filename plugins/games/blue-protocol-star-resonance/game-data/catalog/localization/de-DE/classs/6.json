@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.3.description",
+    "text": "Zeichnet sich im <color=#fcbe03>Nahkampf</color> aus und verwendet <color=#fcbe03>Doppeläxte</color> als Waffe. Die Bewegungen sind so schnell und heftig wie Feuer, mit hervorragenden Fähigkeiten für <color=#fcbe03>Angriffe auf kleinem Raum</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367319",
+      "confidence": "verified"
+    }
+  }
+]

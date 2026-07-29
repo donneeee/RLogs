@@ -1,0 +1,1676 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1002202.name",
+    "text": "Smash Down",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642148642",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1005302.name",
+    "text": "Shadow Instakill",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642257542",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1005704.name",
+    "text": "Slash",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642261900",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1005806.name",
+    "text": "Flurry",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642262991",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1011101.description",
+    "text": "Sword Storm",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26191102",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1011102.name",
+    "text": "Spiral Air Slash",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643297537",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1011806.name",
+    "text": "Arcane! Cabbage Hammer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643305164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1011904.description",
+    "text": "Enhance, Enhance!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26199817",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1011910.name",
+    "text": "Hellfire",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643306280",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.102651.name",
+    "text": "Wildhog Knight",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1906717978",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.10290121.name",
+    "text": "Flying Rock Impact",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1950053851",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1090502.description",
+    "text": "Enhanced <linktext=1501><style=\"ItemQuality_5\">Flash</style></linktext>, menggunakan semua <style=\"accent-gn\">Thunder Seal</style> yang dimiliki, melancarkan serangan destruktif yang mengakibatkan <style=\"physical\">PDMG</style> sebesar <style=\"accent-gn\">510%</style> ATK. Skala serangan meningkat seiring level/upgrade <linktext=1501><style=\"ItemQuality_5\">Flash</style></linktext>, dan setiap <style=\"accent-gn\">1</style> <style=\"accent-gn\">Thunder Seal</style> yang dikonsumsi DMG bertambah <style=\"accent-gn\">25%</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35646890",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1090902.description",
+    "text": "Mengonsumsi <style=\"accent-gn\">3</style> <style=\"accent-gn\">Sand Crystal</style> untuk mengakibatkan <style=\"physical\">PDMG</style> kepada target, sekaligus mengurangi DMG yang diterima sebesar <style=\"accent-gn\">10%</style> selama <style=\"accent-gn\">10</style> detik berikutnya. Efek ini tidak dapat ditumpuk.<br><br><size=22><style=\"tipsYellow\"> Strategi: Saat memiliki cukup banyak Sand Crystal, gunakan Rock Fury Strike untuk menghasilkan DMG tinggi sekaligus menjaga stabilitas pertahanan.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35651246",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1101.name",
+    "text": "Tanda Lokasi 01",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943310",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1103.name",
+    "text": "Tanda Lokasi 03",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943312",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1106.name",
+    "text": "Tanda Lokasi 06",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943315",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.111102.name",
+    "text": "Broken Body - Repair",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1907862353",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.115350.description",
+    "text": "Imprison Bloom",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-783028792",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1223.name",
+    "text": "Phantom Assault",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944467",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1245.name",
+    "text": "Ice Shelter",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944535",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1409.name",
+    "text": "Wind God - Break Gale",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946585",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1419.name",
+    "text": "Soaring Return",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946618",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1499.name",
+    "text": "Fearless - Wind Guard",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946882",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1505.description",
+    "text": "Melompat ringan dan menumbuhkan sulur di bawah kaki, lalu menari bersama, mengakibatkan <style=\"dendro\">Forest DMG</style><br><style=\"accent-gn\">Bloom Fury</style><br>Saat meluncur, dapat langsung melanjutkan dengan skill Bloom Fury untuk menembakkan 3 [Dodder Seed] secara instan. <style=\"dendro\">Dance</style> ini dapat digunakan hingga 2 kali berturut-turut.<br><br><size=22><style=\"tipsYellow\">Strategi Ahli: Karena ini skill bertipe Charge, perhatikan batas maksimum Charge agar tidak terbuang. Setelah skill digunakan, dalam waktu singkat lancarkan Normal Attack untuk memicu [Bloom Fury] yang memberikan tambahan serangan dan 3 [Dodder Seed] tambahan.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1514.description",
+    "text": "Memanggil rusa roh dengan kekuatan hutan untuk berlari ke depan, mengakibatkan <style=\"dendro\">Forest DMG</style> besar kepada musuh di jalurnya. Saat menghilang, rusa roh meninggalkan [Fertile Domain] yang terus-menerus memulihkan HP rekan di dalam area.<br><i><style=\"text_third_gray\">[Kekuatan bumi, jiwa hutan, dan sumber kehidupan — takkan pernah kering!]</style></i><br><br><size=22><style=\"tipsYellow\"> Strategi Ahli: Ultimate ini akan membentuk area persegi panjang yang mengakibatkan DMG dan efek pemulihan HP. Harap perhatikan posisi musuh saat melancarkannya. Selama durasinya, tiap skill yang mengenai musuh memicu 1 [Dodder Seed] tambahan. Simpanlah beberapa skill agar efeknya maksimal.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342196",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1556.description",
+    "text": "Bloom Seeds",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342330",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1561.description",
+    "text": "Gelas Susu (Mengakibatkan DMG dan Pemulihan Bolak-balik)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342358",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1606.name",
+    "text": "Frenzy Slash",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948760",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1621.name",
+    "text": "Flame Demon Heavenfall",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948821",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1698.name",
+    "text": "Normal Attack - Scorching Swing",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949059",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1700393.name",
+    "text": "Spidercrab Binding Web",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-916025906",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.170106.name",
+    "text": "Big Leap",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914941946",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1713.description",
+    "text": "Teknik pedang tertinggi yang bahkan mampu membelah udara, menebas terus-menerus ke area depan dan mengakibatkan <style=\"physical\">PDMG</style> kepada musuh di dalam area. Setelah serangan berakhir, mendapat <style=\"accent-gn\">Thunder Seal</style> hingga batas maksimum dan memulihkan <style=\"accent-gn\">Bladewill</style> hingga penuh.<br><i><style=\"text_third_gray\">[Prajurit langit, meredupkan seluruh bintang di langit.]</style></i><br><br><size=22><style=\"tipsYellow\">Strategi: Gunakan saat Thunder Seal kosong untuk segera mengisinya dan masuk ke mode Burst atau gunakan saat banyak musuh untuk mengakibatkan Area DMG besar.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344373",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1724.description",
+    "text": "Menarik pedang dengan cepat untuk melakukan dua tebasan beruntun, mengakibatkan <style=\"physical\">PDMG</style> kepada musuh. Setiap tebasan mengonsumsi <style=\"accent-gn\">50</style> <style=\"accent-gn\">Bladewill</style>. Saat Attack Speed mencapai <style=\"accent-gn\">25%</style>|<style=\"accent-gn\">50%</style>|<style=\"accent-gn\">80%</style>, setiap tebasan akan mengakibatkan tambahan <style=\"accent-gn\">1</style>|<style=\"accent-gn\">2</style>|<style=\"accent-gn\">3</style> kali DMG. Saat tebasan berakhir, jika masih memiliki sisa <style=\"accent-gn\">Bladewill</style>, skill dapat dilancarkan kembali.<br><br><size=22><style=\"tipsYellow\"> Strategi: Skill inti aliran Moonblade Summon, merupakan cara utama untuk mengonsumsi Bladewill dan mengakibatkan DMG. Gunakan secara beruntun saat Bladewill mencapai batas maksimum.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344407",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1737.description",
+    "text": "Menebaskan sabit dengan kekuatan penghancur ke arah depan, mengakibatkan <style=\"physical\">PDMG</style> sebesar <style=\"accent-gn\">1500%</style> ATK kepada musuh. Akan meningkat seiring peningkatan level/tier skill <style=\"accent-gn\">Normal Attack</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344443",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1743.name",
+    "text": "Infinite Thunder Surge",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949978",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1744.name",
+    "text": "Heart Sight",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949979",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1899.name",
+    "text": "Purge Light",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817951238",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1922.description",
+    "text": "Mengonsumsi <style=\"accent-gn\">40</style> poin <style=\"accent-gn\">Fury</style> untuk menghantam musuh di sekitar, mengakibatkan <style=\"physical\">PDMG</style>. Saat memiliki cukup <style=\"accent-gn\">Sand Crystal</style>, dapat mengonsumsi <style=\"accent-gn\">Sand Crystal</style> untuk mendapat <linktext=1035><style=\"ItemQuality_5\">Shield</style></linktext> yang menyerap semua DMG selama <style=\"accent-gn\">12</style> detik. Setiap tambahan <style=\"accent-gn\">1</style> <style=\"accent-gn\">Sand Crystal</style> yang dikonsumsi akan meningkatkan kekuatan Shield, maks. <style=\"accent-gn\">2</style> <style=\"accent-gn\">Sand Crystal</style> dapat dikonsumsi setiap kali. (shield dapat ditumpuk, maks. <style=\"accent-gn\">150%</style> Max HP).<br><br><size=22><style=\"tipsYellow\">Gunakan saat tidak memiliki Shield untuk menjaga agar Shield tetap aktif secara terus-menerus.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346583",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1930.description",
+    "text": "Mengonsumsi <style=\"accent-gn\">40</style> poin <style=\"accent-gn\">Fury</style> untuk menghantamkan senjata dengan keras, mengakibatkan <style=\"physical\">PDMG</style> kepada musuh di sekitar, sekaligus memasuki kondisi <style=\"accent-gn\">Block Impact</style>. Selama durasi berlangsung, peluang Block +<style=\"accent-gn\">100%</style>, dan <style=\"physical\">PDMG</style> yang diterima saat Block berkurang <style=\"accent-gn\">30%</style>.<br><br><size=22><style=\"tipsYellow\"> Strategi: Sangat efektif saat menghadapi musuh dengan banyak ATK DMG. Setelah digunakan, peluang Block meningkat dan mengurangi PDMG yang diterima dengan stabil.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346614",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1940.description",
+    "text": "Mengonsumsi <style=\"accent-gn\">50</style> poin <style=\"accent-gn\">Fury</style> dan <style=\"accent-gn\">5</style> <style=\"accent-gn\">Sand Crystal</style> untuk mengeluarkan raungan, mengakibatkan <style=\"physical\">PDMG</style> kepada musuh di sekitar dan mendapat <linktext=1035><style=\"ItemQuality_5\">Shield</style></linktext> yang menyerap semua DMG (shield dapat ditumpuk, maks. <style=\"accent-gn\">50%</style> Max HP). Selain itu, mengurangi <style=\"accent-gn\">10%</style> <style=\"physical\">PDMG</style> yang diterima pengguna selama <style=\"accent-gn\">12</style> detik.<br><br><size=22><style=\"tipsYellow\">Strategi: Saat situasi kritis, skill ini dapat memberikan tambahan DMG, dan DMG Reduction dari musuh saat menghadapi musuh dengan PDMG yang besar.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346647",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.1999.name",
+    "text": "Rock Power",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952327",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2001631.description",
+    "text": "Split Arrow",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316478694",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2001637.name",
+    "text": "Rapid Split Arrow",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933585134",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2001740.description",
+    "text": "Beresonansi dengan kekuatan Elite - Bandit Scout. Teleport ke sebelah target, menambahkan <linktext=3005><style=\"ItemQuality_5\">Stun</style></linktext> dan mengakibatkan <style=\"physical\">PDMG</style> sekaligus mengurangi DEF target selama <style=\"accent-gn\">10</style> detik.<br><style=\"accent-gn\"> [Tidak dapat ditumpuk, hanya 1 efek dengan jenis sama yang bisa aktif]</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316479815",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2209.name",
+    "text": "Sharp Eye - Light Arrow",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980344",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2235.description",
+    "text": "Melompat cepat ke atas lalu menembakkan anak panah ke arah musuh, mengakibatkan <style=\"physical\">PDMG</style>. Memberikan efek kebal terhadap semua <style=\"physical\">PDMG</style> kepada diri sendiri hingga <style=\"accent-gn\">10</style> rekan di sekitar selama <style=\"accent-gn\">5</style> detik.<br>Skill ini dapat di Charge hingga <style=\"accent-gn\">2</style> tumpuk.<br><br><size=22><style=\"tipsYellow\"> Strategi: Gunakan skill ini di situasi genting untuk meningkatkan kemampuan bertahan hidup.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374933",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2238.description",
+    "text": "Menembakkan 1 <style=\"accent-gn\">Explosive Arrow</style> yang meledak saat mengenai target.<style=\"accent-gn\"> Explosive Arrow</style> akan mengakibatkan <style=\"physical\">PDMG</style> kepada musuh di sekitarnya.<br><style=\"accent-gn\"> Saat Class Skill</style> mengakibatkan Crit DMG, <style=\"accent-gn\">Explosive Arrow</style> akan mendapat <style=\"accent-gn\">1</style> tumpuk Charge. Setelah mencapai <style=\"accent-gn\">5</style> tumpuk atau setelah <style=\"accent-gn\">6</style> detik, <style=\"accent-gn\">Explosive Arrow</style> akan meledak. Setiap <style=\"accent-gn\">1</style> tumpuk Charge, +<style=\"accent-gn\">100%</style> DMG <style=\"accent-gn\">Explosive Arrow</style>.<br><br><size=22><style=\"tipsYellow\"> Strategi: Kombinasikan dengan Falconer. Usahakan lebih banyak Crit DMG saat menambahkan Explosive Shot untuk meningkatkan kekuatan skill.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374936",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2314.description",
+    "text": "Sebagai seorang pecinta musik sejati, permainanmu yang penuh semangat langsung mendapat <style=\"accent-gn\">5</style> <style=\"accent-gn\">Performance Passion</style>, sekaligus menulari rekan di sisimu. Memberikan Healing Effect serta <style=\"accent-gn\">Shield</style> yang akan bertahan selama <style=\"accent-gn\">10</style> detik, dan mengakibatkan <style=\"magic\">Magic Damage</style> kepada musuh di sekitar.<br><style=\"accent-gn\">Performance Passion</style>: Syarat yang diperlukan untuk memainkan melodi, memulihkan <style=\"accent-gn\">1</style> poin setiap <style=\"accent-gn\">5</style> detik.<br><br><size=22><style=\"tipsYellow\">Strategi: Shield yang kuat dapat mengurangi tekanan survival tim dalam situasi darurat. Gunakan pada waktu yang tepat.</size></style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505375955",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2314.name",
+    "text": "Boost - Full Impact",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981461",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2316.name",
+    "text": "Crowd Focus",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981463",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2414.name",
+    "text": "Holy Barrier",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982550",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2415.name",
+    "text": "Holylight Guard",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982551",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.2900640.name",
+    "text": "Arcane! Flame Heart",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138284112",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.300491.description",
+    "text": "Dance",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-859935194",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.300498.name",
+    "text": "Halt Nappo",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914851",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.300499.name",
+    "text": "Revealing Potion",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914852",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3022.name",
+    "text": "Glaze Fire Roar",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818014162",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3040120.description",
+    "text": "Smoke Bomb Clone",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-465165283",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3350065.name",
+    "text": "Crystal Deployment",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200862865",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3350113.name",
+    "text": "Nightmare Entanglement",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200863787",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3520305.description",
+    "text": "Animation Island - Rotating Laser Final Windmill",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-658472523",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3603.description",
+    "text": "Fokuskan energi diri dan memasuki status Charge. Selama durasi berlangsung, <style=\"accent-gn\">serangan beruntun</style> dan <style=\"accent-gn\">mengalahkan</style> musuh dapat mengumpulkan <style=\"accent-gn\">maks. 5</style> Energy Orb. Saat durasi berakhir atau skill dilancarkan kembali, akan mengakibatkan DMG berdasarkan jumlah Energy Orb yang telah dikumpulkan.<br>Setiap <style=\"accent-gn\">8</style> kali mengakibatkan DMG, akan mendapat 1 Energy Orb.<br>Setiap <style=\"accent-gn\">1</style> kali mengalahkan musuh, akan mendapat 1 Energy Orb.<br><i><style=\"ItemQuality_0\"> 1 serangan yang mengenai beberapa target sekaligus dihitung sebagai 1 kali DMG.</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505415125",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3932.name",
+    "text": "Ultimate! Firewheel Dance",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023996",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3934.name",
+    "text": "Ultimate! Blink Strike",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023998",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3941.name",
+    "text": "Ultimate! Transform menjadi lebah",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024028",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3972.description",
+    "text": "<style=\"accent-gn\">Memanggil</style> Boss - Predator Spider, lalu mengakibatkan <style=\"physical\">PDMG</style>.<br>Setelah melancarkan skill, <style=\"accent-gn\">ATK</style> Boost dari efek pasif milikmu akan mendapat peningkatan dalam beberapa saat sesuai <style=\"accent-gn\">persentase Mastery</style> yang kamu miliki. Setiap <style=\"accent-gn\">5%</style> Mastery akan membuat setiap tumpuk efek pasif memberi ATK tambahan (dengan batasan).",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418622",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.3983.description",
+    "text": "<style=\"accent-gn\">Transform menjadi</style> Fire Dragon Slayer Mage - Natsu, mengganti module Skill yang baru, sekaligus mendapat <linktext=1219><style=\"ItemQuality_5\">konversi Ability</style></linktext>.<br>Pasif: Ketika melancarkan skill selain Ultimate, akan mendapat <style=\"accent-gn\">Dragon Flame</style> dengan jumlah tumpukan sesuai jenis skill yang dilancarkan. Setiap 10 tumpuk <style=\"accent-gn\">Dragon Flame</style> akan dikonversi menjadi 1 tumpuk <style=\"accent-gn\">Dragon Power</style> secara otomatis. <style=\"accent-gn\">Dragon Power</style> dapat ditambahkan hingga 5 tumpuk. Setiap tumpuk <style=\"accent-gn\">Dragon Power</style> akan membuatmu mendapat Fire Boost.<br>①<style=\"accent-gn\">Fire Dragon's Iron Fist</style>: Melakukan charge untuk sesaat, lalu melancarkan tinju membara ke arah depan untuk mengakibatkan Fire <style=\"physical\">Physical Damage</style> dan mengumpulkan 5 tumpuk <style=\"accent-gn\">Dragon Flame</style>.<br>②<style=\"accent-gn\">Fire Dragon's Wing Attack</style>: Melompat dan menerjang ke arah depan untuk mengakibatkan Fire <style=\"physical\">Physical Damage</style> dan mengumpulkan 5 tumpuk <style=\"accent-gn\">Dragon Flame</style>.<br>③<style=\"accent-gn\">Fire Dragon's Roar</style>: Mengumpulkan kekuatan api untuk menyemburkan kobaran api besar ke arah depan dan mengakibatkan Fire <style=\"physical\">Physical Damage</style>. Jika pada saat ini <style=\"accent-gn\">Dragon Power</style> sudah ditumpuk hingga penuh, akan menggunakan semua tumpukan <style=\"accent-gn\">Dragon Power</style> untuk mendapat Skill CDR dan Fire Boost untuk Natsu. Efek ini tidak akan hilang selama transform kali ini dan dapat ditambahkan hingga <style=\"accent-gn\">3</style> kali.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418656",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4009.name",
+    "text": "Teleport to Checkpoint",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050040",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4040020.description",
+    "text": "Hellfire",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1756632163",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4101.name",
+    "text": "Shard Thunder",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818051121",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4501.description",
+    "text": "Setelah dipakai, dapat Sprint ke depan. Majulah tanpa ragu!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505449971",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4509.name",
+    "text": "Flying Rabbit",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055485",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4533.description",
+    "text": "Tail Whip Drift! Saat dalam status Dash, Waktu CD dipercepat 100%",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450072",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4544.description",
+    "text": "Maju selangkah dan berpaculah di atas angin! Dalam mode Dash, waktu charge dipercepat 100%, maks. charge 3 tumpuk.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450106",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4547.name",
+    "text": "Leap of Daybreak",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055615",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4602.description",
+    "text": "Aksi keren dimulai! Saat ditekan, Hyper Impulse mengaktifkan gerakan tingkat tinggi. Lepaskan tombol skill pada waktu yang tepat untuk memelesat ke depan dengan cepat, serta mengurangi waktu CD skill Gale Rush secara signifikan.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451061",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4704.description",
+    "text": "Singa datang membawa keberuntungan dan sejuta berkah. Lancarkan untuk melakukan transmog dan menjadi bagian yang berbeda.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452152",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4706.name",
+    "text": "Moonpiercing Leap",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057660",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4707.description",
+    "text": "Buka untuk beresonansi dengan pemain di sekitar yang mengendarai Roam Dragon. Kamu akan menempel dan bergerak mengikuti target.<br><style=\"accent-gn\">Jumlah pemain yang menempel maks. 10 orang.</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452155",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4712.name",
+    "text": "Sonic Blast Ascension",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057689",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4731.description",
+    "text": "Irama berbunyi, maju! Setelah melancarkan Skill, mendapat Efek Speed Up selama beberapa saat.<br><style=&#34;tipsYellow&#34;>Skill ini tidak dapat dilancarkan saat dalam Postur Baris-berbaris.<br><style=&#34;tipsYellow&#34;>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452248",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.4731.name",
+    "text": "Laju Overture",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057754",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.5000.name",
+    "text": "Keluar Mainan",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818085968",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.5543.name",
+    "text": "Low Gravity Potion",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091548",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.5556.name",
+    "text": "Summon Barrage Turret",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091584",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.5622.name",
+    "text": "Super Firecracker Attack",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818092570",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.6515.description",
+    "text": "Bergerak secara instan ke depan <style=\"physical\">10 meter</style>.<br>Tidak dapat menembus dinding.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521882",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.6519.name",
+    "text": "Dinding Es",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127392",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.6600.description",
+    "text": "<style=\"physical\">Gunakan 10 poin</style> HP, pakai tongkat kayu untuk menyerang.<br>Jika serangan <style=\"physical\">kena Hit pada Penyelinap</style>, maka diri sendiri <style=\"physical\">Pulih 50 poin</style> HP.<br>Saat membunuh Penyelinap, pulihkan semua HP.<br><style=\"physical\">Ketika HP kurang</style>, tidak dapat menggunakan skill ini.<br>DMG yang sebenarnya dihitung berdasarkan <style=\"physical\">nilai pertahanan objek Transformasi Penyelinap</style>.</style><br><i><style=\"text_third_gray\">「Ahli sejati tak pernah peduli pada kekuatan senjata.」</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505522933",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.6600.name",
+    "text": "fondasi utama",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818128439",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.6700.description",
+    "text": "<style=\"physical\">Gunakan 10 poin</style> HP, pakai tongkat kayu untuk menyerang.<br>Jika serangan <style=\"physical\">kena Hit pada Penyelinap</style>, maka diri sendiri <style=\"physical\">Pulih 50 poin</style> HP.<br>Saat membunuh Penyelinap, pulihkan semua HP.<br><style=\"physical\">Ketika HP kurang</style>, tidak dapat menggunakan skill ini.<br>DMG yang sebenarnya dihitung berdasarkan <style=\"physical\">nilai pertahanan objek Transformasi Penyelinap</style>.</style><br><i><style=\"text_third_gray\">「Ahli sejati tak pernah peduli pada kekuatan senjata.」</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505524022",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "skill.8110905.name",
+    "text": "Continuous Normal Fist",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1132746899",
+      "confidence": "verified"
+    }
+  }
+]

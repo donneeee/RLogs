@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "class.11.name",
+    "text": "Tirador",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192187",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "class.5.description",
+    "text": "Empuña un <color=#fcbe03>anillo natural</color> y sobresale en la <color=#fcbe03>curación a larga distancia</color>. Canaliza la esencia frondosa del bosque para ofrecer <color=#fcbe03>curación</color> y <color=#fcbe03>ventajas</color> excepcionales.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367321",
+      "confidence": "verified"
+    }
+  }
+]

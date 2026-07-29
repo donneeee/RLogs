@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "class.15.description",
+    "text": "Sobresale en el <color=#fcbe03>combate a larga distancia</color><br>y puede golpear áreas amplias con ataques rápidos. Aumentar la <color=#fcbe03>probabilidad de sello</color> también aumenta mucho la frecuencia de activación.<br>Puede <color=#fcbe03>embestir</color> a corta distancia para infligir DÑO masivo. Aumenta la <color=#fcbe03>tasa de críticos</color> para infligir DÑO masivo.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154218",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "class.4.description",
+    "text": "Sobresale en el combate a <color=#fcbe03>corta distancia</color> y usa una <color=#fcbe03>lanza</color> como arma. Además de agilidad y rapidez, tiene excelente capacidad de <color=#fcbe03>ataque en áreas pequeñas</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367320",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "class.9.description",
+    "text": "Empuña una <color=#fcbe03>hoja guardiana</color> y sobresale en el <color=#fcbe03>combate a corta distancia</color>. Canaliza el poder de la roca para formar una coraza protectora y ofrecer <color=#fcbe03>defensa</color> y <color=#fcbe03>control</color> excepcionales.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367325",
+      "confidence": "verified"
+    }
+  }
+]

@@ -256,6 +256,7 @@ impl SubmissionSession {
             });
         }
         for (field, value) in [
+            ("game_plugin_id", self.metadata.game_plugin_id.as_str()),
             ("local_log_id", self.metadata.local_log_id.as_str()),
             (
                 "capture_session_id",
@@ -478,6 +479,7 @@ mod tests {
 
     fn metadata() -> SubmissionMetadata {
         SubmissionMetadata::new(
+            "app.rlogs.game.example",
             "local-log-1",
             1,
             "capture-session-1",

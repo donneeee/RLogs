@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "signatures": [
+    {
+      "key": "package",
+      "count": 333,
+      "bytes": 38593329719
+    },
+    {
+      "key": "iso_base_media",
+      "count": 139,
+      "bytes": 2360372032
+    },
+    {
+      "key": "pe",
+      "count": 60,
+      "bytes": 703975167
+    },
+    {
+      "key": "unity_resource_stream",
+      "count": 3,
+      "bytes": 67752672
+    },
+    {
+      "key": "binary_or_text",
+      "count": 160,
+      "bytes": 51190502
+    },
+    {
+      "key": "unity_serialized",
+      "count": 3,
+      "bytes": 9339688
+    },
+    {
+      "key": "usd_ascii",
+      "count": 21,
+      "bytes": 683933
+    },
+    {
+      "key": "wwise_bank",
+      "count": 2,
+      "bytes": 118103
+    },
+    {
+      "key": "json",
+      "count": 19,
+      "bytes": 65432
+    },
+    {
+      "key": "empty",
+      "count": 1,
+      "bytes": 0
+    }
+  ]
+}

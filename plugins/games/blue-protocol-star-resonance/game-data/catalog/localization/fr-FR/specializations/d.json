@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "specialization.105.name",
+    "text": "Spécialisation Rayon de givre",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989338",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,1676 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1002202.name",
+    "text": "スマッシュダウン",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642148642",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1005302.name",
+    "text": "瞬影殺",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642257542",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1005704.name",
+    "text": "スラッシュ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642261900",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1005806.name",
+    "text": "乱舞",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642262991",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1011101.description",
+    "text": "剣刃の嵐",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26191102",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1011102.name",
+    "text": "螺旋気流斬",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643297537",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1011806.name",
+    "text": "奥義！甘藍ヘビーハンマー",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643305164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1011904.description",
+    "text": "強化強化！",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26199817",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1011910.name",
+    "text": "インフェルノ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643306280",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.102651.name",
+    "text": "ボアナイト",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1906717978",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.10290121.name",
+    "text": "飛石の衝撃",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1950053851",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1090502.description",
+    "text": "強化された<linktext=1501><style=\"ItemQuality_5\">一閃</style></linktext>が、保有<style=\"accent-gn\">雷印</style>を全て消費して壊滅的な斬撃を繰り出し、エネミーに攻撃力の<style=\"accent-gn\">510%</style>の<style=\"physical\">物理ダメージ</style>を与える（威力は<linktext=1501><style=\"ItemQuality_5\">一閃</style></linktext>のレベルアップ/ランクアップに応じてアップ）。<style=\"accent-gn\">雷印</style>を<style=\"accent-gn\">1</style>つ消費するたびダメージ+<style=\"accent-gn\">25%</style>。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35646890",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1090902.description",
+    "text": "<style=\"accent-gn\">砂晶石</style>を<style=\"accent-gn\">3</style>個消費して対象に<style=\"physical\">物理ダメージ</style>を与え、以後<style=\"accent-gn\">10</style>秒間、自身が被ダメージ-<style=\"accent-gn\">10%</style>。この効果はスタック不可。<br><br><size=22><style=\"tipsYellow\">戦略：砂晶石が十分ある場合は速やかに岩塊撃を発動すれば、大ダメージを与え、安定した生存環境が得られる。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35651246",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1101.name",
+    "text": "フィールドマーク01",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943310",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1103.name",
+    "text": "フィールドマーク03",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943312",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1106.name",
+    "text": "フィールドマーク06",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943315",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.111102.name",
+    "text": "残骸-修復",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1907862353",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.115350.description",
+    "text": "束縛の花",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-783028792",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1223.name",
+    "text": "ファントムダッシュ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944467",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1245.name",
+    "text": "アイスガード",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944535",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1409.name",
+    "text": "風陣・豪嵐破",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946585",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1419.name",
+    "text": "飛燕乱",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946618",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1499.name",
+    "text": "フィアレス・風の守り",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946882",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1505.description",
+    "text": "軽くジャンプした後、足元にツルを発生させて共に舞いながら移動し、<style=\"dendro\">森属性ダメージ</style>を与える<br><style=\"accent-gn\">フルブルーム</style><br>ダンス移動の最中はフルブルームを連続発動して「ネナシカズラのタネ」を3個発射できる。<style=\"dendro\">ダンス</style>は2回まで連続発動可能<br><br><size=22><style=\"tipsYellow\">戦略：チャージ系スキルはチャージ上限に注意し、無駄遣いを避けよう。スキル発動後の短時間内は通常攻撃で「フルブルーム」を発動し、攻撃段数と「ネナシカズラのタネ」をさらに3個追加できる。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1514.description",
+    "text": "森の力を使って召喚した精霊鹿を前方に突進させ、そのルート上の敵に大量の<style=\"dendro\">森属性ダメージ</style>を与える。精霊鹿が消える時は通ったルート上に「豊饒のフィールド」を生成し、フィールド内の味方のHPを持続回復する<br><i><style=\"text_third_gray\">「大地の力よ、森の心よ、命の源を永遠に枯らしたもうな！」</style></i><br><br><size=22><style=\"tipsYellow\">神戦略：究極スキルは長方形範囲内にダメージと回復効果を与える。発動時は敵の位置に注意すること。また、究極スキル持続中はどの攻撃スキルが敵に命中しても追加で「ネナシカズラのタネ」を放つため、なるべく多くのスキルを温存しておこう</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342196",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1556.description",
+    "text": "フラワーシード",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342330",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1561.description",
+    "text": "回復リング（ダメージと回復を繰り返し与える）",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342358",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1606.name",
+    "text": "ブレイズアクス",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948760",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1621.name",
+    "text": "クリムゾンインパクト",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948821",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1698.name",
+    "text": "通常攻撃・ブレイズスイング",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949059",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1700393.name",
+    "text": "カニクモ束縛のクモ糸",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-916025906",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.170106.name",
+    "text": "大ジャンプ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914941946",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1713.description",
+    "text": "究極の刀法は空気をも断ち切る。前方エリアを斬撃し続けてエリア内のエネミーに<style=\"physical\">物理ダメージ</style>を与え、スキル終了後に<style=\"accent-gn\">雷印</style>を上限まで獲得し、<style=\"accent-gn\">刀意</style>を最大まで回復する。<br><i><style=\"text_third_gray\">「蒼天の兵よ、天上界の星を全て曇らせよ」</style></i><br><br><size=22><style=\"tipsYellow\">戦略：なるべく雷印がない時に発動し、雷印を素早く獲得してバーストモードに入ろう。あるいは対象が多い時に使用し、大量の範囲ダメージを与えよう</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344373",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1724.description",
+    "text": "素早い抜刀で二連斬撃を繰り出し、敵に<style=\"physical\">物理ダメージ</style>を与える。斬撃は<style=\"accent-gn\">刀意</style>を<style=\"accent-gn\">50</style>消費する。攻撃速度が<style=\"accent-gn\">25%</style>|<style=\"accent-gn\">50%</style>|<style=\"accent-gn\">80%</style>に達するたびに、斬撃ごとに追加で<style=\"accent-gn\">1</style>|<style=\"accent-gn\">2</style>|<style=\"accent-gn\">3</style>回のダメージを与える。斬撃終了時、<style=\"accent-gn\">刀意</style>が残っていれば引き続き発動できる。<br><br><size=22><style=\"tipsYellow\">戦略：月影型と組み合わせ、主に刀意を消費してダメージを与える方法で、できるだけ刀意が上限に達したときに連続発動しよう。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344407",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1737.description",
+    "text": "壊滅の力をまとった鎌を前方上方から思い切り振り下ろし、エネミーに攻撃力の<style=\"accent-gn\">1500%</style>の<style=\"physical\">物理ダメージ</style>を与える（威力は<style=\"accent-gn\">通常攻撃</style>スキルのレベル/ランクに応じて上昇）。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344443",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1743.name",
+    "text": "無窮雷陣",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949978",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1744.name",
+    "text": "心眼",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949979",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1899.name",
+    "text": "クレンズライト",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817951238",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1922.description",
+    "text": "<style=\"accent-gn\">怒り</style>を<style=\"accent-gn\">40</style>pt消費して周囲のエネミーを猛撃し、<style=\"physical\">物理ダメージ</style>を与える。<style=\"accent-gn\">晶義</style>が十分ある場合、これを消費してあらゆるダメージを吸収できる<linktext=1035><style=\"ItemQuality_5\">バリア</style></linktext>を獲得する。持続<style=\"accent-gn\">12</style>秒。<style=\"accent-gn\">晶義</style>を<style=\"accent-gn\">1</style>個消費するたびバリア値が追加付与されるが、毎回<style=\"accent-gn\">晶義</style>を最大<style=\"accent-gn\">2</style>個消費する（バリアはスタック可能だが、最大HPの<style=\"accent-gn\">150%</style>は超えない）。<br><br><size=22><style=\"tipsYellow\">戦略：バリアがない場合に発動し、常にバリアを維持しておこう。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346583",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1930.description",
+    "text": "<style=\"accent-gn\">怒り</style>を<style=\"accent-gn\">40</style>pt消費して武器を猛烈に叩きつけ、自身の周囲のエネミーに<style=\"physical\">物理ダメージ</style>を与え、<style=\"accent-gn\">護刃の衝撃</style>状態になる。状態の持続時間中はレジスト確率+<style=\"accent-gn\">100%</style>、レジストで受ける<style=\"physical\">物理ダメージ</style>-<style=\"accent-gn\">30%</style>。<br><br><size=22><style=\"tipsYellow\">戦略：物理ダメージが多い状況に直面した場合に有効。スキル発動後にレジスト確率がアップし、受ける物理ダメージを安定してダウンさせる。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346614",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1940.description",
+    "text": "<style=\"accent-gn\">怒り</style><style=\"accent-gn\">50</style>ptと<style=\"accent-gn\">晶義</style><style=\"accent-gn\">5</style>個を消費して雄たけびを上げ、周囲のエネミーに<style=\"physical\">物理ダメージ</style>を与え、あらゆるダメージを吸収できる<linktext=1035><style=\"ItemQuality_5\">シールド</style></linktext>を獲得する（シールドはスタック可能だが、最大HPの<style=\"accent-gn\">50%</style>は超えない）。かつ自身がその対象から受ける<style=\"physical\">物理ダメージ</style>-<style=\"accent-gn\">10%</style>。持続<style=\"accent-gn\">12</style>秒。<br><br><size=22><style=\"tipsYellow\">戦略：生存プレッシャーが低い場合は攻撃能力を与え、エネミーからの物理ダメージが多い場合は物理ダメージ軽減をもたらす。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346647",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.1999.name",
+    "text": "岩の力",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952327",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2001631.description",
+    "text": "スプリットアロー",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316478694",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2001637.name",
+    "text": "スプリットアロー連射",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933585134",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2001740.description",
+    "text": "精鋭・山賊の斥候の力と共鳴して対象のそばへ瞬間移動し、<linktext=3005><style=\"ItemQuality_5\">スタン</style></linktext>させる。また、<style=\"physical\">物理ダメージ</style>を与えて対象の防御力をダウンさせる。持続<style=\"accent-gn\">10</style>秒。<br><style=\"accent-gn\">【スタック不可、同じ効果は1つのみ有効】</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316479815",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2209.name",
+    "text": "鋭眼・ディバインボルト",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980344",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2235.description",
+    "text": "ジャンプ射撃でエネミーに<style=\"physical\">物理ダメージ</style>を与え、自身と周囲のパーティメンバー最大<style=\"accent-gn\">10</style>名が受ける<style=\"physical\">物理ダメージ</style>を全て無効化する。持続<style=\"accent-gn\">5</style>秒。<br>スキルは<style=\"accent-gn\">2</style>回まで充填可能。<br><br><size=22><style=\"tipsYellow\">戦略：プレッシャーの大きい状況で使用すれば生存能力がアップ。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374933",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2238.description",
+    "text": "対象に<style=\"accent-gn\">爆裂矢</style>を放つ。<style=\"accent-gn\">爆裂矢</style>は爆発すると周囲の対象に<style=\"physical\">物理ダメージ</style>を与える。<br><style=\"accent-gn\">クラススキル</style>が会心ダメージを与えると、<style=\"accent-gn\">爆裂矢</style>が<style=\"accent-gn\">1</style>スタックチャージされ、<style=\"accent-gn\">5</style>スタックに到達または<style=\"accent-gn\">6</style>秒後に<style=\"accent-gn\">爆裂矢</style>が爆発し、チャージ<style=\"accent-gn\">1</style>スタックにつき<style=\"accent-gn\">爆裂矢</style>のダメージ+<style=\"accent-gn\">100%</style>。<br><br><size=22><style=\"tipsYellow\">戦略：鷹弓型とセットで使えば、ブラストショットの追加時により多くの会心ダメージを叩き出し、このスキルダメージが強化される。</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374936",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2314.description",
+    "text": "熱狂的な音楽愛好者として、情熱的な演奏により即座に<style=\"accent-gn\">5</style>個の<style=\"accent-gn\">熱響</style>を獲得する。同時に周囲の味方を鼓舞し、回復効果を与え、<style=\"accent-gn\">10</style>秒持続する<style=\"accent-gn\">バリア</style>を付与する。さらに周囲のエネミーに<style=\"magic\">魔法ダメージ</style>を与える。<br><style=\"accent-gn\">熱響</style>：曲を演奏するために必要なリソース。<style=\"accent-gn\">5</style>秒ごとに<style=\"accent-gn\">1</style>個回復する。<br><br><size=22><style=\"tipsYellow\">戦略：緊急時には強力なバリアがチームの生存を支えてくれる。発動のタイミングを見極めよう。</size></style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505375955",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2314.name",
+    "text": "響演・バッドネスステージ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981461",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2316.name",
+    "text": "スポットライト",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981463",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2414.name",
+    "text": "聖壁",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982550",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2415.name",
+    "text": "ホーリーガード",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982551",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.2900640.name",
+    "text": "奥義！フレイムハート",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138284112",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.300491.description",
+    "text": "踊る",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-859935194",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.300498.name",
+    "text": "ナッポ足止め",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914851",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.300499.name",
+    "text": "姿見のポーション",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914852",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3022.name",
+    "text": "炎の咆哮",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818014162",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3040120.description",
+    "text": "発煙弾ダミー",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-465165283",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3350065.name",
+    "text": "水晶設置",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200862865",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3350113.name",
+    "text": "纏わりつく悪夢",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200863787",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3520305.description",
+    "text": "スターリー島-回転レーザー最終大車輪",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-658472523",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3603.description",
+    "text": "自身にエネルギーを集め、チャージ状態に入る。持続時間中は、<style=\"accent-gn\">連続攻撃</style>と<style=\"accent-gn\">撃破</style>によって<style=\"accent-gn\">最大5</style>個のエネルギーボールを凝結させる。持続時間が終了するか再発動すると、凝結させたエネルギーボールの個数に応じてダメージを与える。<br>ダメージを<style=\"accent-gn\">8</style>回与えると、エネルギーボール+1。<br>撃破<style=\"accent-gn\">1</style>回でエネルギーボール+1。<br><i><style=\"ItemQuality_0\">1回のダメージが複数の対象に命中するとダメージを1回与えたと見なされる。</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505415125",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3932.name",
+    "text": "絶技！ファイアロンド",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023996",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3934.name",
+    "text": "絶技！フラッシュレイド",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023998",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3941.name",
+    "text": "絶技！ミーンに変身",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024028",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3972.description",
+    "text": "ボス・プレデターを<style=\"accent-gn\">召喚</style>して<style=\"physical\">物理ダメージ</style>を与える。<br>スキル発動後の一定時間、自身のパッシブ効果の<style=\"accent-gn\">攻撃力</style>ボーナスが、自身の<style=\"accent-gn\">器用さパーセンテージ</style>に応じて強化される。さらに器用さ<style=\"accent-gn\">5%</style>につき、パッシブの各スタックに攻撃力が追加される（上限あり）。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418622",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.3983.description",
+    "text": "火の滅竜魔導士・ナツに<style=\"accent-gn\">変身</style>し、新しいスキルと<linktext=1219><style=\"ItemQuality_5\">能力変換</style></linktext>を獲得する。<br>パッシブ：スキル使用時（究極スキル除く）、スキルの種類に応じて<style=\"accent-gn\">竜焔</style>を獲得する。<style=\"accent-gn\">竜焔</style>は10スタック獲得するたび、<style=\"accent-gn\">竜の力</style>に変換される（最大5スタック）。<style=\"accent-gn\">竜の力</style>1スタックごとに火属性ボーナスを獲得する。<br>①<style=\"accent-gn\">火竜の鉄拳</style>：前方へ拳を繰り出し、火属性<style=\"physical\">物理ダメージ</style>を与え、<style=\"accent-gn\">竜焔</style>を5スタック獲得する。<br>②<style=\"accent-gn\">火竜の翼撃</style>：前方へと突進し、火属性<style=\"physical\">物理ダメージ</style>を与え、<style=\"accent-gn\">竜焔</style>を5スタック獲得する。<br>③<style=\"accent-gn\">火竜の咆哮</style>：火の力を蓄え、前方へ焔を噴き出し、火属性<style=\"physical\">物理ダメージ</style>を与える。<style=\"accent-gn\">竜の力</style>を上限まで所持していた場合、スタック数を全て消費してナツのスキルのリキャスト短縮と火属性ボーナスを獲得する。この効果は変身中に解除されず、<style=\"accent-gn\">3</style>回までスタック可能。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418656",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4009.name",
+    "text": "転送でチェックポイントに戻る",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050040",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4040020.description",
+    "text": "インフェルノ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1756632163",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4101.name",
+    "text": "砕晶雷",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818051121",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4501.description",
+    "text": "使用すると全力で前方にダッシュする。果敢に突き進もう！",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505449971",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4509.name",
+    "text": "ラビット発射",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055485",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4533.description",
+    "text": "ドリフトする。ダッシュ状態時はリキャスト-100%",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450072",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4544.description",
+    "text": "移動速度がアップ。疾走時のチャージ効率+100%。3スタックまでチャージ可",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450106",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4547.name",
+    "text": "暁の跳躍",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055615",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4602.description",
+    "text": "ボードバイク、出力最大。タイミングを見計らってスキルボタンを放すと素早く飛び出し、「ストリーク」のリキャストを大幅に短縮する。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451061",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4704.description",
+    "text": "瑞兆は獅子と共に、千の祥をもたらす。発動すると異なる部位に幻形する。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452152",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4706.name",
+    "text": "貫月跳翔",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057660",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4707.description",
+    "text": "発動すると、周囲で遊龍戯月を操るプレイヤーと共鳴し、互いに引き寄せ合って連結し、対象の移動に同期して追従する。<br><style=\"accent-gn\">最大連結人数は10人まで</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452155",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4712.name",
+    "text": "ソニックリフト",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057689",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4731.description",
+    "text": "軽快なリズムで前進！スキル発動後、一定時間の加速効果を獲得する。<br><style=\"tipsYellow\">隊列行進状態では、このスキルを発動できない。<br><style=\"tipsYellow\">",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452248",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.4731.name",
+    "text": "疾走の序曲",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057754",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.5000.name",
+    "text": "玩具終了",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818085968",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.5543.name",
+    "text": "低重力薬",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091548",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.5556.name",
+    "text": "弾幕砲台召喚",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091584",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.5622.name",
+    "text": "スーパー爆竹攻撃",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818092570",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.6515.description",
+    "text": "前方<style=\"physical\">10メートル</style>の場所へ瞬間移動する。<br>壁を通り抜けることはできない。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521882",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.6519.name",
+    "text": "氷の壁",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127392",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.6600.description",
+    "text": "HPを<style=\"physical\">10消費</style>し、棍棒を使って攻撃する。<br>攻撃が<style=\"physical\">ステルサーに命中した</style>場合、自身のHPを<style=\"physical\">50回復</style>する。<br>ステルサーを撃破すると、HPを全回復する。<br><style=\"physical\">HPが不足している</style>場合、このスキルは使用できない。<br>実際に与えるダメージは、<style=\"physical\">ステルサーが変身しているオブジェクトの防御力</style>に基づいて計算される。</style><br><i><style=\"text_third_gray\">「真の達人は武器の強弱など気にしない」</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505522933",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.6600.name",
+    "text": "基礎の極意",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818128439",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.6700.description",
+    "text": "HPを<style=\"physical\">10消費</style>し、棍棒を使って攻撃する。<br>攻撃が<style=\"physical\">ステルサーに命中した</style>場合、自身のHPを<style=\"physical\">50回復</style>する。<br>ステルサーを撃破すると、HPを全回復する。<br><style=\"physical\">HPが不足している</style>場合、このスキルは使用できない。<br>実際に与えるダメージは、<style=\"physical\">ステルサーが変身しているオブジェクトの防御力</style>に基づいて計算される。</style><br><i><style=\"text_third_gray\">「真の達人は武器の強弱など気にしない」</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505524022",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "skill.8110905.name",
+    "text": "連続通常フィスト",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1132746899",
+      "confidence": "verified"
+    }
+  }
+]

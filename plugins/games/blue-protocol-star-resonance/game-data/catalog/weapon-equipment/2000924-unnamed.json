@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "kind": "weapon_equipment",
+  "id": 2000924,
+  "stable_key": "weapon_equipment.2000924",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "equipment_weapon_id": 2000924,
+    "design_name": ""
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.EquipWeaponTable",
+    "reference": "client-build:global/steam/24252055@sha256:59169cfde4f1876b8814261d16f90c7bd37ff83bc396a641973c5eddb68987bc",
+    "confidence": "corroborated"
+  }
+}

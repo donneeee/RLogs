@@ -1,0 +1,62 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 400,
+  "stable_key": "talent.400",
+  "localization_key": "talent.400.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "wind-knight",
+    "spec_key": "vanguard-spec",
+    "classification_state": "current_build_talent_tree_branch_relation",
+    "row_key": 400,
+    "design_name": "疾风流影",
+    "name_id": 1051081648,
+    "description_id": 0,
+    "profession_id": 4,
+    "icon_address": "ui/atlas/talent_passive_4/talent_passive_icon_general_sup_aggregation",
+    "talent_type": 4,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        3,
+        2205010,
+        1
+      ]
+    ],
+    "buff_parameters": [
+      [
+        5000,
+        1000
+      ]
+    ],
+    "unlock_costs": [],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.400.name",
+    "tree_nodes": [
+      {
+        "node_id": 401015,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1497
+        ]
+      }
+    ],
+    "class_id": 4,
+    "specialization_id": 107
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

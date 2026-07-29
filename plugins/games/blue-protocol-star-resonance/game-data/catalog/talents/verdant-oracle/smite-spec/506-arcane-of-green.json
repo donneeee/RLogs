@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 506,
+  "stable_key": "talent.506",
+  "localization_key": "talent.506.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "verdant-oracle",
+    "spec_key": "smite-spec",
+    "classification_state": "current_build_talent_tree_branch_relation",
+    "row_key": 506,
+    "design_name": "绿意之爆发",
+    "name_id": 1051082743,
+    "description_id": 0,
+    "profession_id": 5,
+    "icon_address": "ui/atlas/talent_passive_5/talent_passive_icon_general_sup_grassdammastery",
+    "talent_type": 4,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        3,
+        2202080,
+        1
+      ]
+    ],
+    "buff_parameters": [
+      [
+        0
+      ]
+    ],
+    "unlock_costs": [
+      [
+        1020055,
+        2
+      ]
+    ],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.506.name",
+    "tree_nodes": [
+      {
+        "node_id": 546001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          37078
+        ]
+      }
+    ],
+    "class_id": 5,
+    "specialization_id": 110
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

@@ -1,0 +1,1568 @@
+[
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/cef_100_percent.pak",
+    "bytes": 742152,
+    "modified_utc": "2026-05-30T03:46:54.410Z",
+    "stable_during_scan": true,
+    "extension": ".pak",
+    "signature": "binary_or_text",
+    "sha256": "sha256:dae17c53566d83e24b8dbeb4329ff9a11999b05d30c2fc1d8d6a585535f6d3f8"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/cef_200_percent.pak",
+    "bytes": 872802,
+    "modified_utc": "2026-05-30T03:46:54.410Z",
+    "stable_during_scan": true,
+    "extension": ".pak",
+    "signature": "binary_or_text",
+    "sha256": "sha256:faded3d34e58c4dd61557f1f4c14c2dc83685a2259fdfa641f5d09eef5bbfbd5"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/cef_extensions.pak",
+    "bytes": 1833343,
+    "modified_utc": "2026-05-30T03:46:54.410Z",
+    "stable_during_scan": true,
+    "extension": ".pak",
+    "signature": "binary_or_text",
+    "sha256": "sha256:eb3bfc21fa8561afbb5ce1298797b6b832b02d2b09dff878725a035e19b31da3"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/cef.pak",
+    "bytes": 3676692,
+    "modified_utc": "2026-05-30T03:46:54.410Z",
+    "stable_during_scan": true,
+    "extension": ".pak",
+    "signature": "binary_or_text",
+    "sha256": "sha256:72f2c0832de62085ce4c98c11d0101b4547b7ff1c4564435ca4517dc23e8c6f0"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/chrome_elf.dll",
+    "bytes": 814592,
+    "modified_utc": "2026-05-30T03:46:54.411Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:7741330ffa9f17009a5489bf3e44a1de0f28da3835562f62fe6e1a9f3b6ec8a0"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/d3dcompiler_47.dll",
+    "bytes": 4346120,
+    "modified_utc": "2026-05-30T03:46:54.411Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:4432bbd1a390874f3f0a503d45cc48d346abc3a8c0213c289f4b615bf0ee84f3"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/devtools_resources.pak",
+    "bytes": 6014631,
+    "modified_utc": "2026-05-30T03:46:54.411Z",
+    "stable_during_scan": true,
+    "extension": ".pak",
+    "signature": "binary_or_text",
+    "sha256": "sha256:7e9091666d5253441fe0639d01867450623a4add8fa375a31d09e9d1b0f67026"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/icudtl.dat",
+    "bytes": 10326064,
+    "modified_utc": "2026-05-30T03:46:54.412Z",
+    "stable_during_scan": true,
+    "extension": ".dat",
+    "signature": "binary_or_text",
+    "sha256": "sha256:66f13a0329f46e2d26fb483cb497dbdf7bb6b84d85c2e7c5bc8ea096a8bb8b1a"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/libEGL.dll",
+    "bytes": 131072,
+    "modified_utc": "2026-05-30T03:46:56.444Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:d07da0c80ca2c9a96288c94c1fe0dcbdf2ea5d735d75721eee8da53b1a7dc8a2"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/libGLESv2.dll",
+    "bytes": 5516288,
+    "modified_utc": "2026-05-30T03:46:54.412Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:37a8366e9a1524c5db89e6611f919d70473c5f4d1fbb8b54ed615f13ab0aa41f"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/natives_blob.bin",
+    "bytes": 83217,
+    "modified_utc": "2026-05-30T03:46:56.140Z",
+    "stable_during_scan": true,
+    "extension": ".bin",
+    "signature": "binary_or_text",
+    "sha256": "sha256:66a747124929695fdf5b74812e15518ee7ed4e1406e53febe064c39931948449"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/plugInfo.json",
+    "bytes": 37,
+    "modified_utc": "2026-05-30T03:46:56.337Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:09c37f869eb7a66ee2c4bd1eaf101fa2d931513e1ee0ba6209b190f605c78938"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/snapshot_blob.bin",
+    "bytes": 292784,
+    "modified_utc": "2026-05-30T03:46:54.420Z",
+    "stable_during_scan": true,
+    "extension": ".bin",
+    "signature": "binary_or_text",
+    "sha256": "sha256:e3e58c856b785a3a1c15207f45a90cf2f275d8c8ad6f5ccf8d015cdeb55e62eb"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/Steamworks.NET.txt",
+    "bytes": 241,
+    "modified_utc": "2026-05-30T03:46:56.448Z",
+    "stable_during_scan": true,
+    "extension": ".txt",
+    "signature": "binary_or_text",
+    "sha256": "sha256:960f6ebb74707251447b2a15399f3ea971483651545bd904effa09e8f435ecab"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/ThirdPartyNotices.txt",
+    "bytes": 886860,
+    "modified_utc": "2026-05-30T03:46:54.420Z",
+    "stable_during_scan": true,
+    "extension": ".txt",
+    "signature": "binary_or_text",
+    "sha256": "sha256:d87ce605f7b5fcae6b3376d771b2ea2daecb1c025569a25aa10384b08258f7e8"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/ar.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.241Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:a9ddbc95308b5d73c61bb3f62c0e99d980523fe46ace9fc7908f4f238b18f172"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/ar/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.240Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:48fc73a3a8a80b9544ce6f423ef0535de8c5a93fa49b88b41a8c6902837499d5"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/ar/resources/plugInfo.json",
+    "bytes": 386,
+    "modified_utc": "2026-05-30T03:46:56.339Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:cd5b78623ed41e1b7251800e1cd46e0b086f51b5fc4fee899a4c43798cec49f7"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/ar/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.337Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:b6183e65ed90633a2b2827efcc43a47e4242980aeab0d51fef8d8561fa7f90e0"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/ndr.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.364Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:b185276a0b722d4cf8d40bf47b407a6259025bf306152af35ee1d38c9d665621"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/ndr/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.140Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:e5b654cc12b43c8a7fc2daae6c58f00fac831cfc49a7738de016b4b7be7eae77"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/ndr/resources/plugInfo.json",
+    "bytes": 595,
+    "modified_utc": "2026-05-30T03:46:56.533Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:dd9e5b16e24fa44d6f37082486709553702a93b6d49a2875d67d2ec8d44df64a"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/ndr/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.446Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:549f6f303e7f562ca52209d12137ff4270fa71919ab4527f65861f01e55bf1b1"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/plugInfo.json",
+    "bytes": 56,
+    "modified_utc": "2026-05-30T03:46:56.239Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:c285a05d159154e3ae201fa383c61766bc57c58aae6d5a70b7463b49e2dcbb2d"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.360Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:edd1214ce852c5149595a1b014cc798187eecf5a022f85274dfc199ee4c0ad68"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/sdf.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.246Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:90d757687712f1075406474236da94aafcb9ab865bbae6a30181d15fb22c93ab"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/sdf/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.338Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:1780fdca3a948a6819c270959986542bc8765fd22b4c8a4d184ca08a0db7dbed"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/sdf/resources/plugInfo.json",
+    "bytes": 1132,
+    "modified_utc": "2026-05-30T03:46:56.334Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:89f7eb505110ff18044e5cf004d6c3df5a1039b428c9ff3cdb13f5458470a821"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/sdf/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.241Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:18af2f81690083ffa5d74ad6da1c3f376b4d59a58468f32433b3c51a236cc4f0"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usd.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.342Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:77473578194d330ab00044afaefcfc08c6ec1067f0e75efd2b764b31971c3e56"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usd/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.336Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:d7b28fc7b399b63792f0d3f9b5413f9b61e7fcfeeb2f319fccf6fbcdcc00350b"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usd/resources/generatedSchema.usda",
+    "bytes": 14725,
+    "modified_utc": "2026-05-30T03:46:56.336Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:1b79c79ecd4e470abc0696439aaa68f03f146b0da65bc0dc39537209e4630089"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usd/resources/generatedSchema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.450Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:0c55e546d24118b15d1bc437f14223d44d925447b28a02b6eefe5dd01f4772e6"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usd/resources/plugInfo.json",
+    "bytes": 4998,
+    "modified_utc": "2026-05-30T03:46:56.677Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:e17bfa4e6f5d74b9fe5b9e47397d4a396aab825d0905447c3249363506daea95"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usd/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.448Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:a30065be89b1af676dbe5307e70465c8b0217ca48b8f2cd03cce4e88d2e7e9a6"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usd/resources/usd.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.364Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:3e87311469c427fb7bf3d9cc6df7e7afd2557b7dab0c2eec274f0bb98aabad07"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usd/resources/usd/schema.usda",
+    "bytes": 17605,
+    "modified_utc": "2026-05-30T03:46:56.455Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:125245dd2eb33a9674c94c60c953754e6137022afc2b812eb5e5ceefcd5a2c85"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usd/resources/usd/schema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.446Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:1169c1906cbe201d517673a673c26dec357f5ba98b7406547bc9661d5bd6e680"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdGeom.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.339Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:6e5e3f62798857dd0f7a29ca44d0b67694a783aaf40a131c094b69ac6d29707a"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdGeom/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.342Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:aee318c46a9137e4a2904ab196a70c2c8612c32f8d83bd2656c59b3ebffb1a4c"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdGeom/resources/generatedSchema.usda",
+    "bytes": 203941,
+    "modified_utc": "2026-05-30T03:46:56.337Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:cb5ed3dfd99ca8eb7695c2c9dd41235c4a5228a9ca722ea7b232cfc1f69d0881"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdGeom/resources/generatedSchema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.532Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:07bce698fb7fde02a068fbe22a5b0315ed5cbc148216ddb058bf78df759bdea3"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdGeom/resources/plugInfo.json",
+    "bytes": 11978,
+    "modified_utc": "2026-05-30T03:46:56.241Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:6c4ec46c0641b3fa71703388752e96dfc532aeaddb383ee664bfcd02684c967d"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdGeom/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.447Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:686d280595983943e89b7b5e76d00b3e306ff976c9e93d8e1fb7da5bcc9abc23"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdGeom/resources/usdGeom.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.459Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:28ec56c27e03348e55dd0f18607ee2b0c0d90cc2cb304bea6c0656e1c4c9d6d2"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdGeom/resources/usdGeom/schema.usda",
+    "bytes": 109032,
+    "modified_utc": "2026-05-30T03:46:56.336Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:cfceaedf9d1b8045192c768f3fd1c45a27dd0fd7ba0eeb5e13f288aeb5138a90"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdGeom/resources/usdGeom/schema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.339Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:7d13c7974b96d8742c436a8f8a0bf2e3d1cc4ff8cf76e5d34d6ccf508bf54ae3"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdHydra.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.544Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:c7505e04b5d25a8f659285ca7993f0462667069fe301271073744ca0f312b2da"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdHydra/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.532Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:eaf601f50542dd132fedde18b0d9a4fe2862ad0eb03d556fd51585c272119332"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdHydra/resources/plugInfo.json",
+    "bytes": 691,
+    "modified_utc": "2026-05-30T03:46:56.241Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:e4be9c2df006e60847180245ba32448535ebd36507c7e6f8499c0c74350fac06"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdHydra/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.247Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:f13b6f81dc54e1c92498c8f73d9c6b9ee4ce5955b6f7eddae9d33fbfc51f32ff"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdHydra/resources/shaders.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.532Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:5202a3e5f8a64cc8e39027b58d2cb1c4c267496970f0d9feccba8edd3b72a816"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdHydra/resources/shaders/empty.glslfx",
+    "bytes": 1258,
+    "modified_utc": "2026-05-30T03:46:56.140Z",
+    "stable_during_scan": true,
+    "extension": ".glslfx",
+    "signature": "binary_or_text",
+    "sha256": "sha256:ba4f5532dee066e6bb9a33fae311589551159f0086b7cb99ef54dc702cf156aa"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdHydra/resources/shaders/empty.glslfx.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.544Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:d5b634030c7797fa47e902a537b3b12a4d02a7db374219a45edff99ff91602d6"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdHydra/resources/shaders/shaderDefs.usda",
+    "bytes": 6147,
+    "modified_utc": "2026-05-30T03:46:56.150Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:29704691e10cdb018717e30e1fbe81db88c7f0c98c8c2724e621cc5383579831"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdHydra/resources/shaders/shaderDefs.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.432Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:d0a453f372f1f91024de83f0aaeebf3322121490222830517f0d6a9682616fcd"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdLux.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.344Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:f035200b3833ae0369a3d7fa732db83fa14045f44cadd98f79d18a1ab84b0927"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdLux/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.532Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:83ba95671bbe637df7f280bec48fb60c1654aa787deb8b06aa3573661b81d6ea"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdLux/resources/generatedSchema.usda",
+    "bytes": 60850,
+    "modified_utc": "2026-05-30T03:46:56.239Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:ff1eb53a6cf06104ce8596e715710d19772bdef60ddedee566e4b59bd14261c1"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdLux/resources/generatedSchema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.544Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:164892f5bebba2b7d68893f722491e73fa0bd0c30b9c08c32560a84cea8d5ed6"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdLux/resources/plugInfo.json",
+    "bytes": 4886,
+    "modified_utc": "2026-05-30T03:46:56.556Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:2df09955b5ad1972a7e72214b334752becbb5d75ea226bcaf1311674cc785b6f"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdLux/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.241Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:a236a0563f406c2cb29fe6632266eb186060961232f51c23a3b4f8748cfb5022"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdLux/resources/usdLux.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.432Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:59f586e9a91cd771e4878d81f4b0df3529e50c70c3729284434e9706e63bf799"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdLux/resources/usdLux/schema.usda",
+    "bytes": 20945,
+    "modified_utc": "2026-05-30T03:46:56.241Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:bdd8161cef20bc168de4d691de990f958799f69ec551c340c74b8d609eefa61b"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdLux/resources/usdLux/schema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.455Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:9e18792dc3747cca0a205fa74c7f56eb846ca06b39f64ceb0f16ed0150c4a0e6"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdMedia.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.244Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:066d377b496f90bd990fdf57353b17797f528a5cf27a2de461d38c3a09a673bd"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdMedia/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.460Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:d2ef75b76a936e84586a0107d7513f8bb4e8ac62ee3cdab9994436ca31d43edd"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdMedia/resources/generatedSchema.usda",
+    "bytes": 10807,
+    "modified_utc": "2026-05-30T03:46:56.448Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:b517cda2401b2ebbc4f6a7f5af5af177abd8182e699e39089f06bc4ead6ab8f8"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdMedia/resources/generatedSchema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.545Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:916824d18ec0e2be3d915521ea1477d443e1c8b7058bb43bb547c59c53c80b17"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdMedia/resources/plugInfo.json",
+    "bytes": 826,
+    "modified_utc": "2026-05-30T03:46:56.251Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:7bf14f69b80f3eb648cc90eb8a5e310e50b016931cd7881223291fd9540bff6c"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdMedia/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.874Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:086f406471d3bb9e58fc241b8b27113dafaefd42583a8f6cac9ac9c7b07173ae"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdMedia/resources/usdMedia.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.339Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:1294f00e7a082dcf48a5eeb07faea0217531b987330e04fb47da46e923814602"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdMedia/resources/usdMedia/schema.usda",
+    "bytes": 8559,
+    "modified_utc": "2026-05-30T03:46:56.444Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:eae3d8d9aea73765583a676283fc447cea65c53a0692bd5dd09c124f067db052"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdMedia/resources/usdMedia/schema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.241Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:09a8850ed3203e72e2bb962c5bd93a9f126caf5785efe86c11aad1573972ce22"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRender.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.444Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:2331d7fc9226b0a13942224b83241360a9f7c41b32227995dceea48d27926de0"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRender/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.245Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:9c0e3e1ba332bb0419901b289b80b926161d5987d5996bf85860622fb8f8c3c8"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRender/resources/generatedSchema.usda",
+    "bytes": 16633,
+    "modified_utc": "2026-05-30T03:46:56.544Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:659659a6dd4c3c0363d96840eea4bd1a1f6ac62dcbeb7c006145a5c7781598f8"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRender/resources/generatedSchema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.444Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:e5e3b3397506604f48d17d0c24786d57e71a94f583b7268cd29276ab3f46eef9"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRender/resources/plugInfo.json",
+    "bytes": 2377,
+    "modified_utc": "2026-05-30T03:46:56.243Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:b5664c51bf1f0b45c316d20abe5cd502e8c24ad4cd7806faea02b13b9128706e"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRender/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.579Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:4da40ea91d9badbce4a6d29e614ab8045917320b41c5ff47dae9b7b019da3a76"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRender/resources/usdRender.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.342Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:48edbf57b5cd22b0795231887a3f4846f9a43911cc1ddb5aaf2240580a653354"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRender/resources/usdRender/schema.usda",
+    "bytes": 10372,
+    "modified_utc": "2026-05-30T03:46:56.360Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:8d29bd0c2b3610e2105159554b4606238a75e4b1fa70b7499f917b8cf8a6c7df"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRender/resources/usdRender/schema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.446Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:990247f4ec894ea512631993f114bdf6ca977ca6ad5c3d357078a213f05b97bc"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRi.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.242Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:d466b0f89271b4a2e9d513830363eed2002915e2573dba7e7a1f5afe6feeeb50"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRi/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.345Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:61c6aa38925f768e4033d939d34b4beb5d0c8c2a5080875edc8ff98c15c488a9"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRi/resources/generatedSchema.usda",
+    "bytes": 62262,
+    "modified_utc": "2026-05-30T03:46:56.341Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:528e3f10dc01ba32827a21633b2438bbde86d411a66a77addd084d0d18cb93da"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRi/resources/generatedSchema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.446Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:14dc6f20e131dfef0e21b8cf6ccb97c57fcab9b719a2326cbc60293660e2ba4e"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRi/resources/plugInfo.json",
+    "bytes": 7593,
+    "modified_utc": "2026-05-30T03:46:56.241Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:f0f416414d6ee332a401c2942f75086edd53e8f1608b5955ec3f641c77e479cc"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRi/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.444Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:146ef8d12ccf21155b35c3eeaab63d6be0d6fa07150e7c9e2ed12710d7edd475"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRi/resources/usdRi.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.344Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:b41890cab99254e7c2671a2f9ce27878fb792205bfd0d3ed5862d3bfc17c6570"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRi/resources/usdRi/schema.usda",
+    "bytes": 35488,
+    "modified_utc": "2026-05-30T03:46:56.241Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:5b1ac0a1cbb0938f8ab5a94d8772ba816f213ef7d73c7390be60329075508be6"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdRi/resources/usdRi/schema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.336Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:6a7dd6ee5dbb108cf804e8a14dcca662d1dbafaf2aaa2d6a19bb89900b5c3239"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdShade.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.450Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:ddc9126a926f6d4ac16ae4bd213ee1dd1ae87d2489c835cc562d004517608dd0"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdShade/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.241Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:44bf4249dae58b77b0473030b4e9d9ffde79406403c2717817ff956a20286343"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdShade/resources/generatedSchema.usda",
+    "bytes": 14744,
+    "modified_utc": "2026-05-30T03:46:56.364Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:4aa729f407cbb9986fd7dcd9e56d799020b721a7e309dcfe0d3a2b4ba1767f96"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdShade/resources/generatedSchema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.450Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:2e006b786f82f750f2f1a9f9fe7cd846efdd89e0b833b970bfaf4c41a1fe8c92"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdShade/resources/plugInfo.json",
+    "bytes": 5044,
+    "modified_utc": "2026-05-30T03:46:56.345Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:8ad1748ab9d63de4ef93f238da99c8bfc200743f7ff302d705a1be9acf0b1b5b"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdShade/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.336Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:01a6a381acdd17a7aaa7f99d4727e3d8e34dacb904b29aee4d75cf0b5d2fdceb"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdShade/resources/usdShade.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.444Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:bac98f5c6580c05df87d7e13e8695040d15cce585a7a9e6d94f4c0b2e200f543"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdShade/resources/usdShade/schema.usda",
+    "bytes": 25196,
+    "modified_utc": "2026-05-30T03:46:56.582Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:cb0d15c384b96b2ff0288e188257c630a9b601e46b0b3c0e8be2e13899c13779"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdShade/resources/usdShade/schema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.579Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:53213aaa321e351c8b2b6540e78b443c5aeffac2643052739c2ad651bb639b65"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdSkel.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.335Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:fb59f64e9fc8b16649767fc3a03ca86644a25f3ada29af7fe0756c19698e6a4e"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdSkel/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.362Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:c730fad95e22907db7c9f5067311cd81836790f83feffca751e7afffb31a3e23"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdSkel/resources/generatedSchema.usda",
+    "bytes": 16777,
+    "modified_utc": "2026-05-30T03:46:56.580Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:f86ef4bc69c5d42215b9243bc7598f18bfd207087e78e55b1bc02d634e6bd868"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdSkel/resources/generatedSchema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.336Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:efd3a6618bbdfa44470ec0cac2bfe17d677539096c8393ab006a843d57a833f2"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdSkel/resources/plugInfo.json",
+    "bytes": 3162,
+    "modified_utc": "2026-05-30T03:46:56.334Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:e315c0c5d7bed3df10959b331393ea37aecd5696399cab647835cb7b3f3fe33e"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdSkel/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.582Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:e5331724f18f611589ffe242450b90521909265239fc53b5c1883a3bc2ea3860"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdSkel/resources/usdSkel.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.457Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:9df00293fcbe05e0c54e2c7c0e1875ef58817a66494a525dedd241c0aecc2082"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdSkel/resources/usdSkel/schema.usda",
+    "bytes": 10551,
+    "modified_utc": "2026-05-30T03:46:56.677Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:783b55f076f417377eaa4386b73a43cb7094fc9824db850d6e00611e1365df9e"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdSkel/resources/usdSkel/schema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.446Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:2f5853b799e70ad0698bc67259b30b557da5cf2c16980bde039d0b54063cd1c4"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdUI.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.361Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:b66e3d8102b9a72e948c0ebbb9617b527a8394ed830edeae61c85766eac240c5"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdUI/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.446Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:f0e4b60cffc3df09f02094097e674e251053a328cd83a08dd0bd967d02c772b0"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdUI/resources/generatedSchema.usda",
+    "bytes": 4771,
+    "modified_utc": "2026-05-30T03:46:56.444Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:579b302b4b4becc9afb504ef604be624c93147a1384b3d45a5d0bbd20b532cc6"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdUI/resources/generatedSchema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.679Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:823a7ec168ffbcac81a6dc5e0ed32e5c97105fa7594202aea242d1e4509e3008"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdUI/resources/plugInfo.json",
+    "bytes": 1532,
+    "modified_utc": "2026-05-30T03:46:56.459Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:5d3ff2c31c3e77d1d5ddf92e46e68b9a03b5ab37134cd8657e0e2a1e48ab6f57"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdUI/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.677Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:43c194e43111de160a8349c6066f82d2180c51785ce72bea0d01ddcbfee7eefb"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdUI/resources/usdUI.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.432Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:9b65ce7f05564c9d5686acf7e2ae391b9d2c53e026db11750ec688505af41920"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdUI/resources/usdUI/schema.usda",
+    "bytes": 5657,
+    "modified_utc": "2026-05-30T03:46:56.360Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:0aed677c61874f15bc766815cd4d89fcd66cd0ebb6954434c76bf96ef296f112"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdUI/resources/usdUI/schema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.677Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:32be147ad2f6a47ff8753a469fdabe8930852650cc918c30b05a74ee2a1d7361"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdVol.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.447Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:576ef996eef163a1130a2d00fec04956e4111e7f4172287e5d3598f420eaa543"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdVol/resources.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.339Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:bbdf08c818077d36a2515ac1723cd0c96da9a5c4b76f7d9e541310e4f05706eb"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdVol/resources/generatedSchema.usda",
+    "bytes": 24739,
+    "modified_utc": "2026-05-30T03:46:56.337Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:a3c91cfd6b5aca33e045f334480a7e0d709abd3007e116c2203a14b30f3c4f7b"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdVol/resources/generatedSchema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.342Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:467c3813d51abecf6a76661afde870752971fb36eaf4621e7f49570997b01626"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdVol/resources/plugInfo.json",
+    "bytes": 1972,
+    "modified_utc": "2026-05-30T03:46:56.448Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:d045cad09096593fa65dc884818d17628425453c3ee4d35f30b0b848e906a910"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdVol/resources/plugInfo.json.meta",
+    "bytes": 165,
+    "modified_utc": "2026-05-30T03:46:56.450Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:963524981c6a9b92d9b89420290019bbf8f86dc3827b826df3daab1f481b90be"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdVol/resources/usdVol.meta",
+    "bytes": 180,
+    "modified_utc": "2026-05-30T03:46:56.444Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:c059a038098c794f2f34b35cb2ce3023185c996dd0f85155e7d51fa0eb82b4a6"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdVol/resources/usdVol/schema.usda",
+    "bytes": 4132,
+    "modified_utc": "2026-05-30T03:46:56.335Z",
+    "stable_during_scan": true,
+    "extension": ".usda",
+    "signature": "usd_ascii",
+    "sha256": "sha256:7b87fdc2e70e51a22a03a3b9a7e1449d4ceb46971e0a7e9c985a48ddf4b0f679"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/usd/usdVol/resources/usdVol/schema.usda.meta",
+    "bytes": 162,
+    "modified_utc": "2026-05-30T03:46:56.444Z",
+    "stable_during_scan": true,
+    "extension": ".meta",
+    "signature": "binary_or_text",
+    "sha256": "sha256:ad9aa71ff665c9533a9653f96d9a90adbe37e696ab800ef9b872291d9e21f5ee"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/v8_context_snapshot.bin",
+    "bytes": 703424,
+    "modified_utc": "2026-05-30T03:46:54.433Z",
+    "stable_during_scan": true,
+    "extension": ".bin",
+    "signature": "binary_or_text",
+    "sha256": "sha256:53f1c56093fe4d9e25a17b873d88f6542af94af2f49c10f7262fc20eda96d87f"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/abci.dll",
+    "bytes": 1593344,
+    "modified_utc": "2026-05-30T03:46:54.433Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:32b68f9efa95db916081db0293c64d4c62aa08e4ff52cb3a8f2d1a8b2f0368dc"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/AkSoundEngine.dll",
+    "bytes": 2935808,
+    "modified_utc": "2026-05-30T03:46:54.433Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:e993d83c498072118c372e656a31a1a4471b5b024b3ebbbb55577fb0d5522753"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/api-ms-win-crt-heap-l1-1-0.dll",
+    "bytes": 12600,
+    "modified_utc": "2026-05-30T03:46:56.677Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:80139e4caa379d87b1d1dafc23ace71d2b330368115f6314140d4ae59c2a78e8"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/api-ms-win-crt-math-l1-1-0.dll",
+    "bytes": 21008,
+    "modified_utc": "2026-05-30T03:46:56.544Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:8a7bff1c918539a75c25568db25933d653c003e016fd7791a37186b42bbb7c20"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/api-ms-win-crt-runtime-l1-1-0.dll",
+    "bytes": 16400,
+    "modified_utc": "2026-05-30T03:46:56.446Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:07382c0d91dad2bb6ba8bd06ea02f12c57abf7c4e5a70672e9f2954d09a4ffd4"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/api-ms-win-crt-stdio-l1-1-0.dll",
+    "bytes": 17960,
+    "modified_utc": "2026-05-30T03:46:56.444Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:2a466648affd3d51b944f563bb65046a3da91006a0d90fb2c0b123487a1fc1b3"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/api-ms-win-crt-string-l1-1-0.dll",
+    "bytes": 18472,
+    "modified_utc": "2026-05-30T03:46:56.457Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:bf4ea10be1b64c442ac0ccf4bdf69f6703467176a27e9e14a488d26448a6e179"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/Audio360.dll",
+    "bytes": 2735616,
+    "modified_utc": "2026-05-30T03:46:54.434Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:d650fac4673d8aac3bd7199eba1b171ff76aa59294bbb8d62c0452d672f3a354"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/AVProVideo.dll",
+    "bytes": 953344,
+    "modified_utc": "2026-05-30T03:46:54.434Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:d864888ec017ce11f05b23ce65cf1e306dbb096fb49bb9a30b5df2dfdee0fe0f"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/AVProVideoWinRT.dll",
+    "bytes": 464896,
+    "modified_utc": "2026-05-30T03:46:54.434Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:933a4ec1a64220e4eaa1865a38142e75002273b60dd7b8bb59c863b140a843d6"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/config.json",
+    "bytes": 542,
+    "modified_utc": "2026-05-30T03:46:56.545Z",
+    "stable_during_scan": true,
+    "extension": ".json",
+    "signature": "json",
+    "sha256": "sha256:1a77061727bdd151f4e858c20fd42bcc01e60773bd03fbd92770a6a70201ec2d"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/decoder_v4_small.nn",
+    "bytes": 2472220,
+    "modified_utc": "2026-05-30T03:46:54.435Z",
+    "stable_during_scan": true,
+    "extension": ".nn",
+    "signature": "binary_or_text",
+    "sha256": "sha256:889ed88bbd19b8b922072bd66754cde7a4d0050239ac58b27e0215e496664613"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/discord_partner_sdk.dll",
+    "bytes": 8409016,
+    "modified_utc": "2026-05-30T03:46:54.435Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:eb539187f97ab1fe5c9e1e2111b43491140cb5ad5baf2e38e4371da7036cc024"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/encoder_v4_small.nn",
+    "bytes": 2592572,
+    "modified_utc": "2026-05-30T03:46:54.435Z",
+    "stable_during_scan": true,
+    "extension": ".nn",
+    "signature": "binary_or_text",
+    "sha256": "sha256:837a603d8a6232dbbf0e3b58b844a3359960ee22288920342451e6690a0357bb"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/GCloud.dll",
+    "bytes": 14640640,
+    "modified_utc": "2026-05-30T03:46:54.436Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:911cae8b42f7c905a3c0108b5a7c624a2f1271066ce5f9763b60e2534c0dc721"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/GCloudCore.dll",
+    "bytes": 3409920,
+    "modified_utc": "2026-05-30T03:46:54.436Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:9fabc6f7f2f3a45957836e0f5cd82e07ec2c9f41fbe4a1e9c69de1ee4274c841"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/GCloudVoice.dll",
+    "bytes": 9564720,
+    "modified_utc": "2026-05-30T03:46:54.436Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:1e388c1216395a1d25fa459c664342c51462a4045db63b4d841e1f18827bcd30"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/gmp.dll",
+    "bytes": 425984,
+    "modified_utc": "2026-05-30T03:46:54.436Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:c6b8adfb1c0e32dc2c09dcbbe6785b5b2cc39ec5af74f61a5c420cf29d534051"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/gvraudio.dll",
+    "bytes": 992256,
+    "modified_utc": "2026-05-30T03:46:54.437Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:96689f1e56f92584dd88f026d5dfd6fc6ce2d41b64f2bb31220d36912513cc9a"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/lib_burst_generated.dll",
+    "bytes": 7423488,
+    "modified_utc": "2026-07-17T10:03:41.677Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:c171547033fbab509aae3b64f02c759ae36c76920f4e344ce071a55cac991c00"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/libcrosCurl.dll",
+    "bytes": 685568,
+    "modified_utc": "2026-05-30T03:46:54.437Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:10e97fcc12cde058cfa115b6861064400bba80c4ddc2dc13ca69c8e37d150179"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/libcrypto-1_1-x64.dll",
+    "bytes": 2860544,
+    "modified_utc": "2026-05-30T03:46:54.437Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:31bdfb27c66f426aab1bff32cf8ccb0f9114f437e249aab7b92076a12ce1b3da"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/libgvoicensmodel.bin",
+    "bytes": 2312680,
+    "modified_utc": "2026-05-30T03:46:54.437Z",
+    "stable_during_scan": true,
+    "extension": ".bin",
+    "signature": "binary_or_text",
+    "sha256": "sha256:aa5093357096a09f5fc73d24ed0b74ac3b246512dc6d737e3536230a298e9a7a"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/libssl-1_1-x64.dll",
+    "bytes": 686080,
+    "modified_utc": "2026-05-30T03:46:54.438Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:57d819cabd40d943a4066bc016d009349748475d9d16280265edb552c2380286"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/libxess.dll",
+    "bytes": 67095056,
+    "modified_utc": "2026-05-30T03:46:54.438Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:703ab8debc05ae209f6e4622cc06edf9f95a241f7ce68ee75c8955564d36ad70"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/msvcp140.dll",
+    "bytes": 557728,
+    "modified_utc": "2026-05-30T03:46:54.439Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/panda.dll",
+    "bytes": 57856,
+    "modified_utc": "2026-05-30T03:46:56.787Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:690ca8233065967f6604c34cb41c9fb3ca65e6c7b6c070ad381a78e55e42b91d"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/PluginCrosCurl.dll",
+    "bytes": 18432,
+    "modified_utc": "2026-05-30T03:46:56.679Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:9826bda088dc5422320fd172b0539fa33c5a3e367296a430b2b891719a7e9af9"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/resonanceaudio.dll",
+    "bytes": 864768,
+    "modified_utc": "2026-05-30T03:46:54.439Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:43bcc6c4f570be466f21571c26224198459326d228076515cea7fe9b1f5834e2"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/Rewired_DirectInput.dll",
+    "bytes": 12800,
+    "modified_utc": "2026-05-30T03:46:57.268Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:9989b282d43621259160954f3c2191afc3e3a13adb0091c3f60be228831858ad"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/Rewired_WindowsGamingInput.dll",
+    "bytes": 153088,
+    "modified_utc": "2026-05-30T03:46:56.775Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:946478c5e8f61cbe75c6d70e3aabe2766126605cba45ddb579a5ef38fb198e98"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/steam_api64.dll",
+    "bytes": 300392,
+    "modified_utc": "2026-05-30T03:46:54.440Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:1add7f151fa644870a735ae86e68d1f019f296130d8e7c0a7ed3ecc7482dccbc"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/TDataMaster.dll",
+    "bytes": 856576,
+    "modified_utc": "2026-05-30T03:46:54.440Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:4c645bd505214d702d0855e2b3e8f8012ad9b64773acb3dc7faf95c871b8a4d8"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/tolua.dll",
+    "bytes": 1533801,
+    "modified_utc": "2026-05-30T03:46:54.440Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:151503efd490e81ad4f13ac036fe8c0d9ee15d8ba1e7d5e1fd67481de5186001"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/vcruntime140_1.dll",
+    "bytes": 49792,
+    "modified_utc": "2026-05-30T03:46:57.070Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/vcruntime140.dll",
+    "bytes": 124544,
+    "modified_utc": "2026-05-30T03:46:56.971Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/win_alloc.dll",
+    "bytes": 110080,
+    "modified_utc": "2026-05-30T03:46:56.874Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:b527f3f03c557b045301b27518692c78e3253e3421b543283849e6a7b079602d"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/XeSSUnityPlugin.dll",
+    "bytes": 47616,
+    "modified_utc": "2026-05-30T03:46:57.267Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:094e260a991edb46f9c693c0e225304ee72f17f24bff3c49a6de2fe2a5b0b6e0"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/zaudio.dll",
+    "bytes": 45568,
+    "modified_utc": "2026-05-30T03:46:57.364Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:80c09570c13c139ad81a6e7ca7971b12be4c9903a9fd873a3e2b972915d70c2b"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/znet_native.dll",
+    "bytes": 282624,
+    "modified_utc": "2026-05-30T03:46:54.440Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:2a58519d3fcec8fd45f89f88f0bf57d5133d4ae368c3a36722bcf979daa79c4d"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/zphysx-native.dll",
+    "bytes": 3585024,
+    "modified_utc": "2026-05-30T03:46:54.441Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:e84aaec8c47fbeb7a9c83bf43fd7fd34ad5f697131610d5bbfca2d6a363b3042"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/x86_64/zstd.dll",
+    "bytes": 636928,
+    "modified_utc": "2026-05-30T03:46:54.441Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:e16b2f40c0b42fdc2f7bc844f4610aa4b342d0dcd0752e625c84b733ab35b00b"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/zf_cef.dll",
+    "bytes": 110340608,
+    "modified_utc": "2026-05-30T03:46:54.442Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:1a41359801a10913fde588f01318205ab9469283db21f700d0be3de24b2aea68"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/ZFGameBrowser.exe",
+    "bytes": 1061376,
+    "modified_utc": "2026-05-30T03:46:54.441Z",
+    "stable_during_scan": true,
+    "extension": ".exe",
+    "signature": "pe",
+    "sha256": "sha256:b8756fa3ec2195108df17ef8074c2deceb06e114ad1b0580445e98f74ba26ee8"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM_Data/Plugins/ZFProxyWeb.dll",
+    "bytes": 562688,
+    "modified_utc": "2026-05-30T03:46:54.441Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:2c45764d445bbeacda091f214eaaf4faf6a43febf352d9657f7032e80aed01cf"
+  }
+]

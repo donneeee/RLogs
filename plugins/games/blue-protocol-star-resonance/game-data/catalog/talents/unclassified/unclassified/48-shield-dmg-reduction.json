@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 48,
+  "stable_key": "talent.48",
+  "localization_key": "talent.48.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "unclassified",
+    "spec_key": "unclassified",
+    "classification_state": "pending_current_build_talent_tree_relation",
+    "row_key": 48,
+    "design_name": "护盾减伤+4%",
+    "name_id": 487377800,
+    "description_id": 0,
+    "profession_id": 0,
+    "icon_address": "ui/atlas/weaponhero/new/common_icon04",
+    "talent_type": 1,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        1,
+        12662,
+        400
+      ]
+    ],
+    "buff_parameters": [],
+    "unlock_costs": [],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.48.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

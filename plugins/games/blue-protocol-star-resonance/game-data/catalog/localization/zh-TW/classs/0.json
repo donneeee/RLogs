@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "class.13.description",
+    "text": "擅長<color=#fcbe03>近遠距離</color>作戰，以<color=#fcbe03>吉他</color>為武器。攻擊可以施加<color=#fcbe03>治療</color>效果，擅長為隊友施加<color=#fcbe03>增益</color>，擁有出色的<color=#fcbe03>輔助</color>能力。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "zh-TW",
+    "key": "class.15.name",
+    "text": "納茲",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192191",
+      "confidence": "verified"
+    }
+  }
+]

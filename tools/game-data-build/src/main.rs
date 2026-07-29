@@ -4,11 +4,16 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use rlogs_game_data::{
-    AssetRecord, CompiledGameDataArtifact, GameDataManifest, GameDataRecord, LocalizationEntry,
-    SymbolKind,
+    AssetRecord, CachePolicy, CompiledShardDescriptor, DEFAULT_SHARD_BITS, GameDataManifest,
+    GameDataRecord, GameDataStore, LocalizationEntry, RecordKey, ShardKind, SymbolKind,
+    build_bundle_manifest, encode_json_shard, localization_bucket, numeric_id_bucket,
+    stable_key_bucket, validate_source_data,
 };
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
+
+const MAXIMUM_UNCOMPRESSED_SHARD_BYTES: u64 = 8 * 1024 * 1024;
 
 fn main() {
     if let Err(error) = run() {
@@ -18,46 +23,63 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
+    const USAGE: &str = "usage: rlogs-game-data-build [--asset-root <folder>] <source-catalog-folder> <compiled-folder>";
     let mut arguments = std::env::args_os().skip(1);
-    let source = arguments
-        .next()
-        .map(PathBuf::from)
-        .ok_or("usage: rlogs-game-data-build <source-build-folder> <compiled.json>")?;
-    let output = arguments
-        .next()
-        .map(PathBuf::from)
-        .ok_or("usage: rlogs-game-data-build <source-build-folder> <compiled.json>")?;
-    if arguments.next().is_some() {
-        return Err("usage: rlogs-game-data-build <source-build-folder> <compiled.json>".into());
+    let mut asset_root = None;
+    let mut positional = Vec::new();
+    while let Some(argument) = arguments.next() {
+        if argument == "--asset-root" {
+            if asset_root.is_some() {
+                return Err(format!("--asset-root may only be supplied once\n{USAGE}").into());
+            }
+            asset_root = Some(
+                arguments
+                    .next()
+                    .map(PathBuf::from)
+                    .ok_or_else(|| format!("--asset-root requires a folder\n{USAGE}"))?,
+            );
+        } else {
+            positional.push(PathBuf::from(argument));
+        }
     }
+    if positional.len() != 2 {
+        return Err(USAGE.into());
+    }
+    let source = positional.remove(0);
+    let output = positional.remove(0);
+    let asset_root = asset_root.unwrap_or_else(|| source.clone());
 
-    let artifact = compile_source(&source)?;
-    let encoded = serde_json::to_vec_pretty(&artifact)?;
-    if let Some(parent) = output.parent()
-        && !parent.as_os_str().is_empty()
-    {
-        fs::create_dir_all(parent)?;
-    }
-    let temporary = output.with_extension("tmp");
-    fs::write(&temporary, encoded)?;
-    fs::rename(&temporary, &output)?;
+    let source_data = compile_source(&source, &asset_root)?;
+    let manifest = write_bundle(&source_data, &output, DEFAULT_SHARD_BITS)?;
     println!(
-        "compiled {} records, {} localization entries, and {} assets to {} ({})",
-        artifact.payload.records.len(),
-        artifact.payload.localization.len(),
-        artifact.payload.assets.len(),
+        "compiled {} records, {} localization entries, and {} assets into {} shards at {} ({})",
+        source_data.records.len(),
+        source_data.localization.len(),
+        source_data.assets.len(),
+        manifest.shards.len(),
         output.display(),
-        artifact.content_digest
+        manifest.content_digest
     );
     Ok(())
 }
 
-fn compile_source(root: &Path) -> Result<CompiledGameDataArtifact, Box<dyn std::error::Error>> {
+#[derive(Debug)]
+struct SourceData {
+    manifest: GameDataManifest,
+    records: Vec<GameDataRecord>,
+    localization: Vec<LocalizationEntry>,
+    assets: Vec<AssetRecord>,
+}
+
+fn compile_source(
+    root: &Path,
+    asset_root: &Path,
+) -> Result<SourceData, Box<dyn std::error::Error>> {
     let manifest_path = root.join("manifest.json");
     let manifest: GameDataManifest = serde_json::from_slice(&fs::read(&manifest_path)?)?;
     let mut records = Vec::new();
     let mut localization = Vec::new();
-    let mut icon_files = BTreeSet::new();
+    let icon_files = collect_icon_files(asset_root)?;
 
     for entry in WalkDir::new(root).follow_links(false) {
         let entry = entry?;
@@ -73,6 +95,7 @@ fn compile_source(root: &Path) -> Result<CompiledGameDataArtifact, Box<dyn std::
         if relative == Path::new("manifest.json")
             || relative == Path::new("README.md")
             || relative == Path::new("extraction-requirements.json")
+            || relative == Path::new("promotion-summary.json")
         {
             continue;
         }
@@ -84,7 +107,6 @@ fn compile_source(root: &Path) -> Result<CompiledGameDataArtifact, Box<dyn std::
                 )
                 .into());
             }
-            icon_files.insert(normalized_path(relative));
             continue;
         }
         if top == "localization" {
@@ -94,17 +116,19 @@ fn compile_source(root: &Path) -> Result<CompiledGameDataArtifact, Box<dyn std::
                 .and_then(component_text)
                 .ok_or_else(|| format!("missing locale folder in {}", relative.display()))?;
             require_json(relative)?;
-            let item: LocalizationEntry = serde_json::from_slice(&fs::read(entry.path())?)?;
-            if item.locale != locale {
-                return Err(format!(
-                    "locale {} does not match folder {} in {}",
-                    item.locale,
-                    locale,
-                    relative.display()
-                )
-                .into());
+            let mut items = parse_localization_file(entry.path())?;
+            for item in &items {
+                if item.locale != locale {
+                    return Err(format!(
+                        "locale {} does not match folder {} in {}",
+                        item.locale,
+                        locale,
+                        relative.display()
+                    )
+                    .into());
+                }
             }
-            localization.push(item);
+            localization.append(&mut items);
             continue;
         }
 
@@ -127,14 +151,274 @@ fn compile_source(root: &Path) -> Result<CompiledGameDataArtifact, Box<dyn std::
         records.push(record);
     }
 
-    validate_icons(&records, &icon_files, root)?;
-    let assets = build_assets(&records, root)?;
-    Ok(CompiledGameDataArtifact::build(
+    validate_icons(&records, &icon_files, asset_root)?;
+    let assets = build_assets(&records, asset_root)?;
+    validate_source_data(&manifest, &records, &localization, &assets)?;
+    Ok(SourceData {
         manifest,
         records,
         localization,
         assets,
-    )?)
+    })
+}
+
+fn collect_icon_files(asset_root: &Path) -> Result<BTreeSet<String>, Box<dyn std::error::Error>> {
+    let icons_root = asset_root.join("icons");
+    let mut icon_files = BTreeSet::new();
+    for entry in WalkDir::new(&icons_root).follow_links(false) {
+        let entry = entry?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let relative = entry.path().strip_prefix(asset_root)?;
+        validate_relative_path(relative)?;
+        if entry.path().extension() == Some(OsStr::new("json")) {
+            return Err(format!(
+                "icon metadata belongs in domain records, not {}",
+                relative.display()
+            )
+            .into());
+        }
+        icon_files.insert(normalized_path(relative));
+    }
+    Ok(icon_files)
+}
+
+fn write_bundle(
+    source: &SourceData,
+    output: &Path,
+    shard_bits: u8,
+) -> Result<rlogs_game_data::CompiledBundleManifest, Box<dyn std::error::Error>> {
+    if output.exists() {
+        return Err(format!(
+            "compiled output already exists; choose a new build folder: {}",
+            output.display()
+        )
+        .into());
+    }
+    let temporary = output.with_extension(format!("tmp-{}", std::process::id()));
+    if temporary.exists() {
+        return Err(format!("temporary output already exists: {}", temporary.display()).into());
+    }
+    fs::create_dir_all(&temporary)?;
+
+    let result = (|| {
+        let mut descriptors = Vec::new();
+
+        let mut records = BTreeMap::<(SymbolKind, u16), Vec<GameDataRecord>>::new();
+        let mut record_keys = BTreeMap::<u16, Vec<RecordKey>>::new();
+        for record in &source.records {
+            records
+                .entry((record.kind, numeric_id_bucket(record.id, shard_bits)))
+                .or_default()
+                .push(record.clone());
+            record_keys
+                .entry(stable_key_bucket(&record.stable_key, shard_bits))
+                .or_default()
+                .push(RecordKey {
+                    stable_key: record.stable_key.clone(),
+                    kind: record.kind,
+                    id: record.id,
+                });
+        }
+        for ((kind, bucket), mut entries) in records {
+            entries.sort_by_key(|record| record.id);
+            let relative = format!("records/{}/{bucket:02x}.json.zst", kind.folder());
+            descriptors.push(write_shard(
+                &temporary,
+                &relative,
+                ShardKind::Records,
+                Some(kind),
+                None,
+                bucket,
+                &entries,
+            )?);
+        }
+        for (bucket, mut entries) in record_keys {
+            entries.sort_by(|left, right| left.stable_key.cmp(&right.stable_key));
+            let relative = format!("record-keys/{bucket:02x}.json.zst");
+            descriptors.push(write_shard(
+                &temporary,
+                &relative,
+                ShardKind::RecordKeys,
+                None,
+                None,
+                bucket,
+                &entries,
+            )?);
+        }
+
+        let mut localization = BTreeMap::<(String, u16), Vec<LocalizationEntry>>::new();
+        for entry in &source.localization {
+            localization
+                .entry((
+                    entry.locale.clone(),
+                    localization_bucket(&entry.key, shard_bits),
+                ))
+                .or_default()
+                .push(entry.clone());
+        }
+        for ((locale, bucket), mut entries) in localization {
+            entries.sort_by(|left, right| left.key.cmp(&right.key));
+            let relative = format!("localization/{locale}/{bucket:02x}.json.zst");
+            descriptors.push(write_shard(
+                &temporary,
+                &relative,
+                ShardKind::Localization,
+                None,
+                Some(locale),
+                bucket,
+                &entries,
+            )?);
+        }
+
+        let mut assets = BTreeMap::<u16, Vec<AssetRecord>>::new();
+        for asset in &source.assets {
+            assets
+                .entry(stable_key_bucket(&asset.key, shard_bits))
+                .or_default()
+                .push(asset.clone());
+        }
+        for (bucket, mut entries) in assets {
+            entries.sort_by(|left, right| left.key.cmp(&right.key));
+            let relative = format!("assets/{bucket:02x}.json.zst");
+            descriptors.push(write_shard(
+                &temporary,
+                &relative,
+                ShardKind::Assets,
+                None,
+                None,
+                bucket,
+                &entries,
+            )?);
+        }
+
+        let manifest = build_bundle_manifest(source.manifest.clone(), shard_bits, descriptors)?;
+        fs::write(
+            temporary.join("manifest.json"),
+            serde_json::to_vec(&manifest)?,
+        )?;
+        verify_bundle(source, &temporary)?;
+        Ok::<_, Box<dyn std::error::Error>>(manifest)
+    })();
+
+    match result {
+        Ok(manifest) => {
+            if let Some(parent) = output.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                fs::create_dir_all(parent)?;
+            }
+            fs::rename(&temporary, output)?;
+            Ok(manifest)
+        }
+        Err(error) => {
+            let _ = fs::remove_dir_all(&temporary);
+            Err(error)
+        }
+    }
+}
+
+fn verify_bundle(source: &SourceData, root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let store = GameDataStore::open(root, CachePolicy::default())?;
+    for expected in &source.records {
+        let actual = store
+            .record(expected.kind, expected.id)?
+            .ok_or_else(|| format!("compiled bundle is missing {}", expected.stable_key))?;
+        if actual.as_ref() != expected {
+            return Err(format!(
+                "compiled record differs for {}: expected={}, actual={}",
+                expected.stable_key,
+                serde_json::to_string(expected)?,
+                serde_json::to_string(actual.as_ref())?
+            )
+            .into());
+        }
+        let by_key = store
+            .record_by_key(&expected.stable_key)?
+            .ok_or_else(|| format!("compiled key is missing {}", expected.stable_key))?;
+        if by_key.kind != expected.kind || by_key.id != expected.id {
+            return Err(
+                format!("compiled key points elsewhere for {}", expected.stable_key).into(),
+            );
+        }
+    }
+    for expected in &source.localization {
+        let actual = store
+            .localization_entry(&expected.locale, &expected.key)?
+            .ok_or_else(|| {
+                format!(
+                    "compiled localization is missing {}/{}",
+                    expected.locale, expected.key
+                )
+            })?;
+        if actual.as_ref() != expected {
+            return Err(format!(
+                "compiled localization differs for {}/{}: expected={}, actual={}",
+                expected.locale,
+                expected.key,
+                serde_json::to_string(expected)?,
+                serde_json::to_string(actual.as_ref())?
+            )
+            .into());
+        }
+    }
+    for expected in &source.assets {
+        let actual = store
+            .asset(&expected.key)?
+            .ok_or_else(|| format!("compiled asset is missing {}", expected.key))?;
+        if actual.as_ref() != expected {
+            return Err(format!("compiled asset differs for {}", expected.key).into());
+        }
+    }
+    Ok(())
+}
+
+fn write_shard<T: Serialize>(
+    root: &Path,
+    relative: &str,
+    kind: ShardKind,
+    symbol_kind: Option<SymbolKind>,
+    locale: Option<String>,
+    bucket: u16,
+    entries: &[T],
+) -> Result<CompiledShardDescriptor, Box<dyn std::error::Error>> {
+    let (compressed, uncompressed_bytes, content_sha256) = encode_json_shard(entries)?;
+    if uncompressed_bytes > MAXIMUM_UNCOMPRESSED_SHARD_BYTES {
+        return Err(format!(
+            "{relative} is {uncompressed_bytes} bytes uncompressed; increase shard_bits or split the source domain"
+        )
+        .into());
+    }
+    let compressed_sha256 = format!("sha256:{:x}", Sha256::digest(&compressed));
+    let output = root.join(relative);
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&output, &compressed)?;
+    Ok(CompiledShardDescriptor {
+        kind,
+        symbol_kind,
+        locale,
+        bucket,
+        relative_path: relative.to_owned(),
+        entries: entries.len().try_into()?,
+        compressed_bytes: compressed.len().try_into()?,
+        uncompressed_bytes,
+        compressed_sha256,
+        content_sha256,
+    })
+}
+
+fn parse_localization_file(
+    path: &Path,
+) -> Result<Vec<LocalizationEntry>, Box<dyn std::error::Error>> {
+    let value: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
+    if value.is_array() {
+        Ok(serde_json::from_value(value)?)
+    } else {
+        Ok(vec![serde_json::from_value(value)?])
+    }
 }
 
 fn validate_relative_path(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -146,7 +430,9 @@ fn validate_relative_path(path: &Path) -> Result<(), Box<dyn std::error::Error>>
                     return Err(format!("invalid source path {}", path.display()).into());
                 }
             }
-            _ => return Err(format!("invalid source path {}", path.display()).into()),
+            _ => {
+                return Err(format!("invalid source path {}", path.display()).into());
+            }
         }
     }
     Ok(())
@@ -256,31 +542,9 @@ fn build_assets(
 }
 
 fn domain_kind(folder: &str) -> Option<SymbolKind> {
-    match folder {
-        "classes" => Some(SymbolKind::Class),
-        "specializations" => Some(SymbolKind::Specialization),
-        "skills" => Some(SymbolKind::Skill),
-        "status-effects" => Some(SymbolKind::StatusEffect),
-        "monsters" => Some(SymbolKind::Monster),
-        "npcs" => Some(SymbolKind::Npc),
-        "summons" => Some(SymbolKind::Summon),
-        "projectiles" => Some(SymbolKind::Projectile),
-        "traps" => Some(SymbolKind::Trap),
-        "mechanics" => Some(SymbolKind::Mechanic),
-        "entity-types" => Some(SymbolKind::EntityType),
-        "scenes" => Some(SymbolKind::Scene),
-        "maps" => Some(SymbolKind::Map),
-        "dungeons" => Some(SymbolKind::Dungeon),
-        "dungeon-objectives" => Some(SymbolKind::DungeonObjective),
-        "items" => Some(SymbolKind::Item),
-        "equipment" => Some(SymbolKind::Equipment),
-        "equipment-sets" => Some(SymbolKind::EquipmentSet),
-        "imagines" => Some(SymbolKind::Imagine),
-        "cosmetics" => Some(SymbolKind::Cosmetic),
-        "professions" => Some(SymbolKind::Profession),
-        "talents" => Some(SymbolKind::Talent),
-        _ => None,
-    }
+    SymbolKind::ALL
+        .into_iter()
+        .find(|kind| kind.folder() == folder)
 }
 
 fn media_type(path: &str) -> Result<&'static str, Box<dyn std::error::Error>> {
@@ -320,10 +584,20 @@ fn normalized_path(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rlogs_game_data::{CachePolicy, GameDataBuild, GameDataStore};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn fixture_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../tests/fixtures/game-data/reference-build")
+    }
+
+    fn temporary_output() -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("rlogs-game-data-{}-{suffix}", std::process::id()))
     }
 
     #[test]
@@ -336,23 +610,105 @@ mod tests {
     }
 
     #[test]
-    fn icon_media_types_are_explicit() {
-        assert_eq!(media_type("icons/skill.webp").unwrap(), "image/webp");
-        assert_eq!(media_type("icons/skill.png").unwrap(), "image/png");
-        assert!(media_type("icons/skill.exe").is_err());
+    fn localization_files_may_be_one_entry_or_a_reviewed_array() {
+        let path = fixture_root()
+            .join("localization/en-US/skills/stormblade/iaido/1714-example-skill.json");
+        assert_eq!(parse_localization_file(&path).unwrap().len(), 1);
     }
 
     #[test]
-    fn human_readable_fixture_compiles_to_a_valid_runtime_artifact() {
-        let artifact = compile_source(&fixture_root()).unwrap();
+    fn fixture_compiles_and_loads_through_bounded_shards() {
+        let source = compile_source(&fixture_root(), &fixture_root()).unwrap();
+        let output = temporary_output();
+        let manifest = write_bundle(&source, &output, DEFAULT_SHARD_BITS).unwrap();
+        assert!(!manifest.shards.is_empty());
 
-        assert_eq!(artifact.payload.records.len(), 1);
-        assert_eq!(artifact.payload.localization.len(), 1);
-        assert_eq!(artifact.payload.assets.len(), 1);
+        let store = GameDataStore::open(&output, CachePolicy::default()).unwrap();
         assert_eq!(
-            artifact.payload.records[0].stable_key,
+            store
+                .record(SymbolKind::Skill, 1714)
+                .unwrap()
+                .unwrap()
+                .stable_key,
             "skill.stormblade.iaido.1714"
         );
-        artifact.validate().unwrap();
+        assert_eq!(
+            store
+                .record_by_key("skill.stormblade.iaido.1714")
+                .unwrap()
+                .unwrap()
+                .id,
+            1714
+        );
+        assert_eq!(
+            store
+                .localized("en-US", "game.skill.1714")
+                .unwrap()
+                .as_deref(),
+            Some("Example Skill")
+        );
+        let supported_build = GameDataBuild {
+            deployment_id: "global".into(),
+            channel: "steam".into(),
+            client_build: "fixture-not-for-live-use".into(),
+        };
+        assert!(
+            store
+                .record_for_build(SymbolKind::Skill, 1714, &supported_build)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            store
+                .localized_for_build("en-US", "game.skill.1714", &supported_build)
+                .unwrap()
+                .as_deref(),
+            Some("Example Skill")
+        );
+        let unsupported_build = GameDataBuild {
+            client_build: "different-build".into(),
+            ..supported_build
+        };
+        assert!(
+            store
+                .record_for_build(SymbolKind::Skill, 1714, &unsupported_build)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            store
+                .asset("skill.stormblade.iaido.1714")
+                .unwrap()
+                .unwrap()
+                .media_type,
+            "image/svg+xml"
+        );
+        let stats = store.cache_stats().unwrap();
+        assert!(stats.resident_shards <= 4);
+        assert!(stats.resident_bytes <= CachePolicy::default().maximum_resident_bytes);
+        fs::remove_dir_all(output).unwrap();
+    }
+
+    #[test]
+    fn tampered_shard_is_rejected_before_json_is_used() {
+        let source = compile_source(&fixture_root(), &fixture_root()).unwrap();
+        let output = temporary_output();
+        let manifest = write_bundle(&source, &output, DEFAULT_SHARD_BITS).unwrap();
+        let descriptor = manifest
+            .shards
+            .iter()
+            .find(|shard| {
+                shard.kind == ShardKind::Records && shard.symbol_kind == Some(SymbolKind::Skill)
+            })
+            .unwrap();
+        let path = output.join(&descriptor.relative_path);
+        let mut bytes = fs::read(&path).unwrap();
+        let last = bytes.last_mut().unwrap();
+        *last ^= 0xff;
+        fs::write(&path, bytes).unwrap();
+
+        let store = GameDataStore::open(&output, CachePolicy::default()).unwrap();
+        assert!(store.record(SymbolKind::Skill, 1714).is_err());
+        fs::remove_dir_all(output).unwrap();
     }
 }

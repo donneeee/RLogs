@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "order": [
+    {
+      "priority": 1,
+      "domain": "table_schema_and_recount",
+      "reason": "Turn stable named table identities into typed UID-first source and recount tables.",
+      "evidence": {
+        "named_tables": 565,
+        "unresolved_tables": 3674,
+        "row_ids": 153905
+      }
+    },
+    {
+      "priority": 2,
+      "domain": "character_profile",
+      "reason": "Correlate character-facing table fields with already observed world-load routes, excluding all account/login identity.",
+      "candidate_tables": 113
+    },
+    {
+      "priority": 3,
+      "domain": "world_and_encounters",
+      "reason": "Map scenes, dungeons, objectives, monsters, phases, and region/build identity needed for complete timelines."
+    },
+    {
+      "priority": 4,
+      "domain": "combat_and_support",
+      "reason": "Map skills, hits, buffs, mitigation, ownership, and stat effects for DPS, deaths, and rDPS attribution."
+    },
+    {
+      "priority": 5,
+      "domain": "icons_and_localization",
+      "reason": "Promote only referenced icon and selected-locale shards so UI enrichment never inflates parser memory."
+    },
+    {
+      "priority": 6,
+      "domain": "unknown_table_triage",
+      "reason": "Rank unresolved hashes by row count, string/localization edges, runtime observation, and cross-build change."
+    }
+  ]
+}

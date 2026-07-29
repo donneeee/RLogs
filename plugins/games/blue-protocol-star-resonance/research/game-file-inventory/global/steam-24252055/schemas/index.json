@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "generated_from": "scan-003",
+  "table_count": 565,
+  "evidence_policy": {
+    "current_build_semantic_seed": "A field meaning is supported by current-build structure, reviewed current-build static content, or a public reference whose invariant still matches. Each field records its exact evidence class.",
+    "exact_reference": "A row value resolves exactly to a valid record boundary in the table's own pool.",
+    "membership_candidate": "A value exists in a localization or CTB row-ID recount; this is candidate evidence until semantics corroborate it.",
+    "primitive_candidate": "Byte statistics are compatible with a primitive type but do not establish a field boundary or meaning.",
+    "packed_rows": "Every byte offset is evaluated. Four-byte alignment is retained as evidence only and is never required."
+  },
+  "privacy": {
+    "raw_rows_retained": false,
+    "raw_pool_text_retained": false,
+    "absolute_install_path_retained": false,
+    "credentials_or_login_data_read": false,
+    "packet_capture_used": false
+  },
+  "layout": {
+    "domains": "domains/<human-readable-domain>.json",
+    "review_worklist": "review-worklist.json"
+  },
+  "pool_models": [
+    {
+      "pool_type": 1,
+      "element_width": 4,
+      "interpretation": "length_prefixed_i32_array",
+      "state": "current_build_structural"
+    },
+    {
+      "pool_type": 2,
+      "element_width": 8,
+      "interpretation": "length_prefixed_i64_array",
+      "state": "current_build_structural"
+    },
+    {
+      "pool_type": 3,
+      "element_width": 4,
+      "interpretation": "length_prefixed_f32_array",
+      "state": "current_build_structural"
+    },
+    {
+      "pool_type": 4,
+      "element_width": 8,
+      "interpretation": "length_prefixed_opaque_8_byte_array",
+      "state": "width_confirmed_meaning_unresolved"
+    },
+    {
+      "pool_type": 6,
+      "element_width": 1,
+      "interpretation": "length_prefixed_utf8_bytes",
+      "state": "current_build_structural"
+    },
+    {
+      "pool_type": 7,
+      "element_width": 8,
+      "interpretation": "length_prefixed_vec2_f32_array",
+      "state": "current_build_structural"
+    },
+    {
+      "pool_type": 8,
+      "element_width": 12,
+      "interpretation": "length_prefixed_vec3_f32_array",
+      "state": "current_build_structural"
+    }
+  ],
+  "shards": [
+    {
+      "domain": "character-profile",
+      "file": "domains/character-profile.json",
+      "tables": 31,
+      "semantic_fields": 45,
+      "strong_candidate_fields": 84
+    },
+    {
+      "domain": "combat",
+      "file": "domains/combat.json",
+      "tables": 76,
+      "semantic_fields": 253,
+      "strong_candidate_fields": 259
+    },
+    {
+      "domain": "entities",
+      "file": "domains/entities.json",
+      "tables": 37,
+      "semantic_fields": 69,
+      "strong_candidate_fields": 66
+    },
+    {
+      "domain": "housing",
+      "file": "domains/housing.json",
+      "tables": 19,
+      "semantic_fields": 19,
+      "strong_candidate_fields": 34
+    },
+    {
+      "domain": "items-and-equipment",
+      "file": "domains/items-and-equipment.json",
+      "tables": 60,
+      "semantic_fields": 77,
+      "strong_candidate_fields": 166
+    },
+    {
+      "domain": "localization",
+      "file": "domains/localization.json",
+      "tables": 5,
+      "semantic_fields": 5,
+      "strong_candidate_fields": 7
+    },
+    {
+      "domain": "presentation",
+      "file": "domains/presentation.json",
+      "tables": 22,
+      "semantic_fields": 20,
+      "strong_candidate_fields": 41
+    },
+    {
+      "domain": "professions",
+      "file": "domains/professions.json",
+      "tables": 21,
+      "semantic_fields": 29,
+      "strong_candidate_fields": 109
+    },
+    {
+      "domain": "quests-and-rewards",
+      "file": "domains/quests-and-rewards.json",
+      "tables": 26,
+      "semantic_fields": 26,
+      "strong_candidate_fields": 49
+    },
+    {
+      "domain": "social",
+      "file": "domains/social.json",
+      "tables": 25,
+      "semantic_fields": 26,
+      "strong_candidate_fields": 35
+    },
+    {
+      "domain": "system-and-other",
+      "file": "domains/system-and-other.json",
+      "tables": 194,
+      "semantic_fields": 190,
+      "strong_candidate_fields": 492
+    },
+    {
+      "domain": "world-and-instances",
+      "file": "domains/world-and-instances.json",
+      "tables": 49,
+      "semantic_fields": 105,
+      "strong_candidate_fields": 106
+    }
+  ]
+}

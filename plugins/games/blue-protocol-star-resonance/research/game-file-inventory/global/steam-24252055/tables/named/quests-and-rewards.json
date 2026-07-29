@@ -1,0 +1,1926 @@
+[
+  {
+    "table_key": 3107949667,
+    "table_key_hex": "0xb93f8c63",
+    "stable_key": "ctb.AwardTable",
+    "names": [
+      "AwardTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 933705640,
+      "bytes": 1226386,
+      "sha256": "sha256:5694ee504d6637d11ffa1c00dfefeac7074a2519ba036eabcaed0e10e17fd4a9"
+    },
+    "shape": {
+      "rows": 11809,
+      "row_size": 60,
+      "row_data_bytes": 708540,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 423274
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 2,
+      "maximum": 71000040,
+      "unique": 11809,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 31,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 174000495,
+    "table_key_hex": "0x0a5f096f",
+    "stable_key": "ctb.AwardPackageTable",
+    "names": [
+      "AwardPackageTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 357859347,
+      "bytes": 978404,
+      "sha256": "sha256:a13e8dff2e9737da8618862b5c126dc3f20cbaa7c26e219eee9e3aeccca53b80"
+    },
+    "shape": {
+      "rows": 11767,
+      "row_size": 52,
+      "row_data_bytes": 611884,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 272284
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 2,
+      "maximum": 71000040,
+      "unique": 11767,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 29,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1500244386,
+    "table_key_hex": "0x596be9a2",
+    "stable_key": "ctb.QuestStepTable",
+    "names": [
+      "QuestStepTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 326457573,
+      "bytes": 1078929,
+      "sha256": "sha256:27b9ac4080065cf6286a29bda2573510b656821e67747a7c18359741e55a0961"
+    },
+    "shape": {
+      "rows": 7988,
+      "row_size": 73,
+      "row_data_bytes": 583124,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 285320
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 146481
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 3001,
+      "maximum": 1851205007,
+      "unique": 7988,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 46,
+    "exact_string_references": 385
+  },
+  {
+    "table_key": 1482182726,
+    "table_key_hex": "0x58585046",
+    "stable_key": "ctb.QuestTable",
+    "names": [
+      "QuestTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 316816824,
+      "bytes": 219777,
+      "sha256": "sha256:d4057d29855c39eb37efc8bd1fef4e05c264a096703543851649e73b7768e4af"
+    },
+    "shape": {
+      "rows": 1172,
+      "row_size": 77,
+      "row_data_bytes": 90244,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 53604
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 66453
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 24,
+      "maximum": 1851205,
+      "unique": 1172,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 43,
+    "exact_string_references": 485
+  },
+  {
+    "table_key": 3709281567,
+    "table_key_hex": "0xdd17251f",
+    "stable_key": "ctb.WeeklyTreasureAwardTable",
+    "names": [
+      "WeeklyTreasureAwardTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1043588277,
+      "bytes": 15355,
+      "sha256": "sha256:5761a7bf91e7c1f207982f83fa2e03ed176203e053f0e2564649135e756426ff"
+    },
+    "shape": {
+      "rows": 311,
+      "row_size": 24,
+      "row_data_bytes": 7464,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 170
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 5133
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 101,
+      "maximum": 33200,
+      "unique": 311,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 11,
+    "exact_string_references": 182
+  },
+  {
+    "table_key": 433595938,
+    "table_key_hex": "0x19d82622",
+    "stable_key": "ctb.SeasonBPTaskTable",
+    "names": [
+      "SeasonBPTaskTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1138910995,
+      "bytes": 18671,
+      "sha256": "sha256:c40363eb8fac4de4563af60c496ac62bfa623b1be2f44984661ee3ecc0d0e8fc"
+    },
+    "shape": {
+      "rows": 222,
+      "row_size": 52,
+      "row_data_bytes": 11544,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 258
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 4993
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 222,
+      "unique": 222,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 21,
+    "exact_string_references": 111
+  },
+  {
+    "table_key": 1026194633,
+    "table_key_hex": "0x3d2a7cc9",
+    "stable_key": "ctb.SeasonBPTaskTargetTable",
+    "names": [
+      "SeasonBPTaskTargetTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 10598065,
+      "bytes": 4992,
+      "sha256": "sha256:ab4bd6c3c262ac13bc1b42b8272f6f7cce66383abed4ff3225934f86cca5195b"
+    },
+    "shape": {
+      "rows": 117,
+      "row_size": 24,
+      "row_data_bytes": 2808,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 1148
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 117,
+      "unique": 117,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 9,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 396135509,
+    "table_key_hex": "0x179c8c55",
+    "stable_key": "ctb.GuideTaskTable",
+    "names": [
+      "GuideTaskTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1091993048,
+      "bytes": 17694,
+      "sha256": "sha256:7eb01e562a6c964e386554964ead1201cfc6b69c80a73d96a66d8c56fef33900"
+    },
+    "shape": {
+      "rows": 112,
+      "row_size": 76,
+      "row_data_bytes": 8512,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 1182
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 7004
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 101,
+      "maximum": 414,
+      "unique": 112,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 39,
+    "exact_string_references": 157
+  },
+  {
+    "table_key": 1146080400,
+    "table_key_hex": "0x444fcc90",
+    "stable_key": "ctb.SeasonTaskTable",
+    "names": [
+      "SeasonTaskTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 30131324,
+      "bytes": 15319,
+      "sha256": "sha256:10317c2b3622ca3275e28383c6b9d40bd480f07f095b0072e80512af760699a2"
+    },
+    "shape": {
+      "rows": 109,
+      "row_size": 68,
+      "row_data_bytes": 7412,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 314
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 6621
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1001,
+      "maximum": 7016,
+      "unique": 109,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 30,
+    "exact_string_references": 167
+  },
+  {
+    "table_key": 2077015479,
+    "table_key_hex": "0x7bccbdb7",
+    "stable_key": "ctb.SeasonTaskTargetTable",
+    "names": [
+      "SeasonTaskTargetTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 629740334,
+      "bytes": 5130,
+      "sha256": "sha256:c8e4e860ebc9f47f25b01b2004449432449abc1e3f56c80de4bd7daca0317cc9"
+    },
+    "shape": {
+      "rows": 109,
+      "row_size": 24,
+      "row_data_bytes": 2616,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 1542
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1001,
+      "maximum": 7016,
+      "unique": 109,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 8,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1725975777,
+    "table_key_hex": "0x66e04ce1",
+    "stable_key": "ctb.ActivitySignin",
+    "names": [
+      "ActivitySignin.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 352071483,
+      "bytes": 7097,
+      "sha256": "sha256:d6c4ffc975995aedb80e04b0bca46af5f78c792eccfd7bece199e308b3a4fffd"
+    },
+    "shape": {
+      "rows": 105,
+      "row_size": 44,
+      "row_data_bytes": 4620,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 128
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 1409
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 105,
+      "unique": 105,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 15,
+    "exact_string_references": 28
+  },
+  {
+    "table_key": 3994154246,
+    "table_key_hex": "0xee11f506",
+    "stable_key": "ctb.AwardContainerTable",
+    "names": [
+      "AwardContainerTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1092822777,
+      "bytes": 3592,
+      "sha256": "sha256:d114c7249d8d3b87fc1225610b64710e47089c72bd256ffe140153da902f68e8"
+    },
+    "shape": {
+      "rows": 46,
+      "row_size": 40,
+      "row_data_bytes": 1840,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 1284
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 3009,
+      "unique": 46,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 13,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2605940338,
+    "table_key_hex": "0x9b537e72",
+    "stable_key": "ctb.QuestInfoTable",
+    "names": [
+      "QuestInfoTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 814388126,
+      "bytes": 3462,
+      "sha256": "sha256:866deb265fd825929b327a3c5c223840b329abdf04b2aaa3310f154a6f75e420"
+    },
+    "shape": {
+      "rows": 41,
+      "row_size": 32,
+      "row_data_bytes": 1312,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 1722
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 10101,
+      "maximum": 10902,
+      "unique": 41,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 9,
+    "exact_string_references": 40
+  },
+  {
+    "table_key": 2373447036,
+    "table_key_hex": "0x8d77ed7c",
+    "stable_key": "ctb.MentorTaskTable",
+    "names": [
+      "MentorTaskTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 775387744,
+      "bytes": 1514,
+      "sha256": "sha256:a9e5c896225e2c681ea9573d9b3d48dfd28deb997af02e4e7a5f46261a0374fd"
+    },
+    "shape": {
+      "rows": 17,
+      "row_size": 60,
+      "row_data_bytes": 1020,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 212
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 46
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 3001,
+      "maximum": 6003,
+      "unique": 17,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 20,
+    "exact_string_references": 1
+  },
+  {
+    "table_key": 3414222291,
+    "table_key_hex": "0xcb80e5d3",
+    "stable_key": "ctb.GuideElectiveCourseAwardTable",
+    "names": [
+      "GuideElectiveCourseAwardTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 993608123,
+      "bytes": 1715,
+      "sha256": "sha256:156674474dc489249e46a8cde39b1963bfb9e1cb33e6a110849cc79883e2a634"
+    },
+    "shape": {
+      "rows": 14,
+      "row_size": 40,
+      "row_data_bytes": 560,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 754
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 189
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1001,
+      "maximum": 2007,
+      "unique": 14,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 17,
+    "exact_string_references": 2
+  },
+  {
+    "table_key": 29739093,
+    "table_key_hex": "0x01c5c855",
+    "stable_key": "ctb.QuestTypeGroupTable",
+    "names": [
+      "QuestTypeGroupTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 918715751,
+      "bytes": 339,
+      "sha256": "sha256:555d28670348bdac5b52ee291924e5952b670061c7f8be2e7806452603e1166f"
+    },
+    "shape": {
+      "rows": 6,
+      "row_size": 20,
+      "row_data_bytes": 120,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 71
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 6,
+      "unique": 6,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 6,
+    "exact_string_references": 11
+  },
+  {
+    "table_key": 1682796550,
+    "table_key_hex": "0x644d7006",
+    "stable_key": "ctb.IchibanKujiLuckEventTable",
+    "names": [
+      "IchibanKujiLuckEventTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 340379433,
+      "bytes": 200,
+      "sha256": "sha256:29133d4957be0a7b9a2be875a4e4cfec98e001aad15b8a198e1fb7c8a5e7bb41"
+    },
+    "shape": {
+      "rows": 5,
+      "row_size": 12,
+      "row_data_bytes": 60,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 999,
+      "unique": 5,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 3,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 3766241397,
+    "table_key_hex": "0xe07c4875",
+    "stable_key": "ctb.ActivationAwardTable",
+    "names": [
+      "ActivationAwardTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1063334789,
+      "bytes": 320,
+      "sha256": "sha256:51beb57168bdef44a1f4ad5a2ad2d43b5c7f8945a8761cf2479fc0cdff2874f3"
+    },
+    "shape": {
+      "rows": 4,
+      "row_size": 20,
+      "row_data_bytes": 80,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 108
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 4,
+      "unique": 4,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 6,
+    "exact_string_references": 2
+  },
+  {
+    "table_key": 1122970939,
+    "table_key_hex": "0x42ef2d3b",
+    "stable_key": "ctb.ChapterTable",
+    "names": [
+      "ChapterTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 29736034,
+      "bytes": 188,
+      "sha256": "sha256:6eff3c1900d1b8b53f00d7cb389708efeca4c53369ce76c37b877c608292e456"
+    },
+    "shape": {
+      "rows": 2,
+      "row_size": 16,
+      "row_data_bytes": 32,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 40
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 2,
+      "unique": 2,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 3,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1882462171,
+    "table_key_hex": "0x703417db",
+    "stable_key": "ctb.HideActivityTable",
+    "names": [
+      "HideActivityTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 439191163,
+      "bytes": 188,
+      "sha256": "sha256:44a2a181ad7538388fa23eef78786e2652079a1ca39cb9cc09e5ec9adcc3681f"
+    },
+    "shape": {
+      "rows": 2,
+      "row_size": 24,
+      "row_data_bytes": 48,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 24
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 2,
+      "unique": 2,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 5,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2921478260,
+    "table_key_hex": "0xae223874",
+    "stable_key": "ctb.QuestInfoTitleTable",
+    "names": [
+      "QuestInfoTitleTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 879782349,
+      "bytes": 432,
+      "sha256": "sha256:40fc6d358dd0622d6c724269730759c13cb13cce07871f8c55bb9d7d9aaf6a4a"
+    },
+    "shape": {
+      "rows": 2,
+      "row_size": 28,
+      "row_data_bytes": 56,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 168
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 92
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 101,
+      "maximum": 102,
+      "unique": 2,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 7,
+    "exact_string_references": 1
+  },
+  {
+    "table_key": 30761467,
+    "table_key_hex": "0x01d561fb",
+    "stable_key": "ctb.QuestionnaireTable",
+    "names": [
+      "QuestionnaireTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 933374428,
+      "bytes": 306,
+      "sha256": "sha256:ee6f3315c7018db82e971fbdb7ada93be9b0fc7079238b4f95fb7c2d861e4a7a"
+    },
+    "shape": {
+      "rows": 2,
+      "row_size": 28,
+      "row_data_bytes": 56,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 16
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 118
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 2,
+      "unique": 2,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 7,
+    "exact_string_references": 1
+  },
+  {
+    "table_key": 3027113587,
+    "table_key_hex": "0xb46e1673",
+    "stable_key": "ctb.ActivityPerformanceTable",
+    "names": [
+      "ActivityPerformanceTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 932735623,
+      "bytes": 673,
+      "sha256": "sha256:9508b373c1a5c7d18f326f24b3215fe1243e5b7c6783ccfd752fd4e26d0c7c7c"
+    },
+    "shape": {
+      "rows": 1,
+      "row_size": 64,
+      "row_data_bytes": 64,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 22
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 479
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 3026,
+      "maximum": 3026,
+      "unique": 1,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 23,
+    "exact_string_references": 8
+  },
+  {
+    "table_key": 2834814228,
+    "table_key_hex": "0xa8f7d514",
+    "stable_key": "ctb.DanceActivity",
+    "names": [
+      "DanceActivity.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 863259140,
+      "bytes": 345,
+      "sha256": "sha256:03eec0297c6d8a9a5be8d6f0b33f1006b57642e9b4ea6a6b1c4f6c4a675a5fd7"
+    },
+    "shape": {
+      "rows": 1,
+      "row_size": 96,
+      "row_data_bytes": 96,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 122
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 19
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 2,
+      "maximum": 2,
+      "unique": 1,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 33,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 3281434581,
+    "table_key_hex": "0xc396b7d5",
+    "stable_key": "ctb.PivotAwardTable",
+    "names": [
+      "PivotAwardTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 990935773,
+      "bytes": 138,
+      "sha256": "sha256:47080f011c2e5be7eb9550c3592d90dbadd4378be144f0134833e6a12d1b99bf"
+    },
+    "shape": {
+      "rows": 1,
+      "row_size": 8,
+      "row_data_bytes": 8,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 22
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 7,
+      "maximum": 7,
+      "unique": 1,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 1,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2447118695,
+    "table_key_hex": "0x91dc1167",
+    "stable_key": "ctb.SystemAwardGainTable",
+    "names": [
+      "SystemAwardGainTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "quests-and-rewards",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 783576267,
+      "bytes": 140,
+      "sha256": "sha256:c3daabe673cebbe2367eed88bfa6c7fce29b93fb1e3fbb92a6ac72fd430ef280"
+    },
+    "shape": {
+      "rows": 1,
+      "row_size": 12,
+      "row_data_bytes": 12,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 20
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 1,
+      "unique": 1,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 2,
+    "exact_string_references": 0
+  }
+]

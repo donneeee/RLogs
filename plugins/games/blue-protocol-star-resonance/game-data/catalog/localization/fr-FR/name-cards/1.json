@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "name_card.9030001.acquisition",
+    "text": "Acquisition par défaut",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-965230667",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "name_card.9030001.name",
+    "text": "Arrière-plan 1 (Temporaire)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-989769508",
+      "confidence": "verified"
+    }
+  }
+]

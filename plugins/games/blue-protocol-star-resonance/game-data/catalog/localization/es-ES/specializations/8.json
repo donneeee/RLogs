@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "specialization.108.name",
+    "text": "Especialización de Lanza Aérea",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989341",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "specialization.114.name",
+    "text": "Especialización de Bloqueo",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989370",
+      "confidence": "verified"
+    }
+  }
+]

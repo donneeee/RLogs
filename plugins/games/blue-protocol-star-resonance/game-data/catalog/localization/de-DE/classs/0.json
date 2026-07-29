@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.13.description",
+    "text": "Zeichnet sich im <color=#fcbe03>Fernkampf</color> aus und verwendet eine <color=#fcbe03>Gitarre</color> als Waffe. <color=#fcbe03>Heilt</color> beim Angreifen, zeichnet sich durch die Vergabe von <color=#fcbe03>Buffs</color> an Verbündete aus und besitzt ausgezeichnete <color=#fcbe03>Unterstützungsfähigkeiten</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.15.name",
+    "text": "Natsu",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192191",
+      "confidence": "verified"
+    }
+  }
+]

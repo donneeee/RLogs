@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.13.description",
+    "text": "楽器<color=#fcbe03>ギター・ソノリス</color>を武器とした<color=#fcbe03>近・遠距離戦闘</color>を得意とする。攻撃によって味方に<color=#fcbe03>治療効果</color>と<color=#fcbe03>能力の向上</color>を付与する優れた<color=#fcbe03>サポート</color>能力を有する。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.15.name",
+    "text": "ナツ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192191",
+      "confidence": "verified"
+    }
+  }
+]

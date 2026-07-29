@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.2.description",
+    "text": "Führt einen <color=#fcbe03>Froststab</color>, der sich hervorragend für den <color=#fcbe03>Fernkampf</color> eignet. Befehligt die Macht des Eises und bietet <color=#fcbe03>großflächigen SCH</color> und beeindruckende <color=#fcbe03>Kontrolle</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367318",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.8.description",
+    "text": "Zeichnet sich im <color=#fcbe03>Fernkampf</color> aus,<br>kann mit Schnellfeuer große Flächen angreifen. Eine Verbesserung der <color=#fcbe03>Siegel-Chance</color> erhöht die Auslösefrequenz erheblich.<br>Kann im Nahkampf <color=#fcbe03>angreifen</color>, um gewaltigen SCH zu verursachen. Verbessert die <color=#fcbe03>Krit-Rate</color>, um gewaltigen SCH zu verursachen.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367324",
+      "confidence": "verified"
+    }
+  }
+]

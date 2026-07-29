@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.3.description",
+    "text": "Ahli dalam pertarungan <color=#fcbe03>jarak dekat</color> yang bersenjatakan <color=#fcbe03>Twinaxe</color>. Jurusnya tampak membara seperti api. Class ini memiliki kemampuan <color=#fcbe03>serangan jarak dekat</color> yang luar biasa.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367319",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.11.description",
+    "text": "Wields a <color=#fcbe03>bow</color>, excelling in <color=#fcbe03>long-range</color> combat. Partners with animal companions to unleash <color=#fcbe03>wide-area attacks</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154214",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.5.name",
+    "text": "Verdant Oracle",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964622",
+      "confidence": "verified"
+    }
+  }
+]

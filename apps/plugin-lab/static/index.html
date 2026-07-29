@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>rLogs Plugin Lab</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="rLogs Plugin Lab">
+        <span class="brand-mark">rL</span>
+        <span><strong>rLogs</strong><small>Plugin Lab</small></span>
+      </a>
+      <nav aria-label="Plugin Lab">
+        <a class="nav-link active" href="#overview"><span>01</span>Overview</a>
+        <a class="nav-link" href="#plugins"><span>02</span>Plug-ins</a>
+        <a class="nav-link" href="#resources"><span>03</span>Resources</a>
+        <a class="nav-link" href="#pipeline"><span>04</span>Pipeline</a>
+        <a class="nav-link" href="#issues"><span>05</span>Diagnostics</a>
+      </nav>
+      <div class="sidebar-note">
+        <span class="status-dot"></span>
+        <div><strong>Read-only lab</strong><small>No plug-in code is executed.</small></div>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Extension workbench</p>
+          <h1>Build features without tangling the core.</h1>
+        </div>
+        <button id="refresh" type="button"><span>↻</span> Rescan</button>
+      </header>
+
+      <div id="loading" class="notice">Scanning the rLogs install layout…</div>
+      <div id="error" class="notice error" hidden></div>
+
+      <div id="content" hidden>
+        <section id="overview" class="section">
+          <div class="section-heading">
+            <div><p class="eyebrow">System snapshot</p><h2>Overview</h2></div>
+            <span id="last-scan" class="muted"></span>
+          </div>
+          <div id="metrics" class="metrics"></div>
+          <div class="overview-grid">
+            <article class="panel core-panel">
+              <div class="panel-heading"><h3>Compatibility contract</h3><span class="pill good">active</span></div>
+              <div id="core-contract" class="contract"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-heading"><h3>Install layout</h3><button class="text-button" id="toggle-paths">Show paths</button></div>
+              <div id="locations" class="location-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="plugins" class="section">
+          <div class="section-heading">
+            <div><p class="eyebrow">Independent modules</p><h2>Plug-ins</h2></div>
+            <label class="search"><span>⌕</span><input id="plugin-search" type="search" placeholder="Search name, ID, capability…"></label>
+          </div>
+          <div id="filters" class="filters" aria-label="Plugin source filters"></div>
+          <div id="plugin-grid" class="plugin-grid"></div>
+          <div id="plugin-empty" class="empty" hidden>No plug-ins match this view.</div>
+        </section>
+
+        <section id="resources" class="section">
+          <div class="section-heading">
+            <div><p class="eyebrow">One canonical copy</p><h2>Shared resources</h2></div>
+            <span class="muted">Exports are read-only to consumers</span>
+          </div>
+          <div class="panel table-wrap">
+            <table>
+              <thead><tr><th>Resource</th><th>Provider</th><th>Storage</th><th>Schema</th><th>State</th></tr></thead>
+              <tbody id="resource-rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="pipeline" class="section">
+          <div class="section-heading">
+            <div><p class="eyebrow">Deterministic operations</p><h2>Hook pipeline</h2></div>
+            <span class="muted">before core → rLogs core → after core</span>
+          </div>
+          <div id="pipeline-list" class="pipeline-list"></div>
+          <article class="panel load-order-panel">
+            <div class="panel-heading"><h3>Plug-in dependency order</h3></div>
+            <div id="load-order" class="load-order"></div>
+          </article>
+        </section>
+
+        <section id="issues" class="section">
+          <div class="section-heading">
+            <div><p class="eyebrow">Safe failure</p><h2>Diagnostics</h2></div>
+            <span id="issue-badge" class="pill"></span>
+          </div>
+          <div id="issue-list" class="issue-list"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

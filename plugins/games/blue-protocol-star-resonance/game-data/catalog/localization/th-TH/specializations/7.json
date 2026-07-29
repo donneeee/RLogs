@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "specialization.102.name",
+    "text": "สายอัญเชิญ Moon Blade",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989335",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "specialization.113.name",
+    "text": "Earthfort Spec",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989369",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.15.description",
+    "text": "Zeichnet sich im <color=#fcbe03>Fernkampf</color> aus,<br>kann mit Schnellfeuer große Flächen angreifen. Eine Verbesserung der <color=#fcbe03>Siegel-Chance</color> erhöht die Auslösefrequenz erheblich.<br>Kann im Nahkampf <color=#fcbe03>angreifen</color>, um gewaltigen SCH zu verursachen. Verbessert die <color=#fcbe03>Krit-Rate</color>, um gewaltigen SCH zu verursachen.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154218",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.4.description",
+    "text": "Zeichnet sich im <color=#fcbe03>Nahkampf</color> aus und verwendet eine <color=#fcbe03>Lanze</color> als Waffe. Wendig und schnell, besitzt ausgezeichnete Fähigkeiten für einen <color=#fcbe03>kleinen Flächenangriff</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367320",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.9.description",
+    "text": "Führt eine <color=#fcbe03>Wacheklinge</color>, die sich hervorragend für den <color=#fcbe03>Nahkampf</color> eignet. Kanalisiert die Kraft des Steins, um eine schützende Hülle zu bilden. Bietet außergewöhnliche <color=#fcbe03>Verteidigung</color> und <color=#fcbe03>Kontrolle</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367325",
+      "confidence": "verified"
+    }
+  }
+]

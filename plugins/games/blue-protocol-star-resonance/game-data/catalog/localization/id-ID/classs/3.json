@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.10.name",
+    "text": "Darkspirit Prayer - Ritual Blade/Ritual Staff",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192186",
+      "confidence": "verified"
+    }
+  }
+]

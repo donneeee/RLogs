@@ -1,0 +1,107 @@
+{
+  "schema_version": 2,
+  "kind": "monster",
+  "id": 3000,
+  "stable_key": "monster.3000",
+  "localization_key": "monster.3000.name",
+  "icon": null,
+  "attributes": {
+    "monster_id": 3000,
+    "name_id": 1195801111,
+    "model_id": 50000,
+    "monster_type": 2,
+    "monster_size_type": 0,
+    "health_bar_count": 1,
+    "skill_ids": [
+      300000,
+      300001,
+      300002,
+      300005,
+      300006,
+      300007,
+      300008,
+      300009,
+      300010,
+      300011,
+      300012,
+      300013,
+      300014,
+      300020,
+      300021,
+      300022,
+      300023,
+      300024,
+      300025,
+      300026,
+      300028,
+      300029,
+      300031,
+      300032,
+      300050,
+      300051,
+      300052,
+      300053,
+      300060,
+      300070,
+      300071,
+      300072,
+      300073,
+      300061,
+      300062,
+      300063,
+      300064,
+      300054
+    ],
+    "hatred_build_types": [
+      0,
+      1
+    ],
+    "is_flying": false,
+    "sight_config": [
+      64,
+      382
+    ],
+    "uses_accurate_sight": false,
+    "shows_alert_offscreen": false,
+    "hatred_away_thresholds": [
+      2,
+      1
+    ],
+    "score": 0,
+    "hatred_away_types": [
+      0,
+      70,
+      0
+    ],
+    "attribute_id": 3000,
+    "walk_speed": 1.5,
+    "run_speed": 3,
+    "fast_run_speed": 3,
+    "alert_speed": 1.5,
+    "minimum_alert_distance": 5,
+    "maximum_alert_distance": 50,
+    "body_duration": 4.203895392974451e-42,
+    "exports_voxel": false,
+    "default_camp_id": 1,
+    "hud_show_parameters": [
+      0
+    ],
+    "entity_turn_velocity": [
+      60,
+      360
+    ],
+    "name_localization_key": "monster.3000.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.MonsterTable",
+    "reference": "client-build:global/steam/24252055@sha256:42a3d585f929111a0ae7e69742077b9fcaa4dc729a72dcc1fb4904e69cd3232a",
+    "confidence": "corroborated"
+  }
+}

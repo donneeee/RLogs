@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "class.1.description",
+    "text": "Empuña una <color=#fcbe03>guadaña segadora</color> y sobresale en el <color=#fcbe03>combate a corta distancia</color>. Alterna sin problemas las formas de guadaña y espada larga, y ejecuta <color=#fcbe03>golpes de área precisos</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367317",
+      "confidence": "verified"
+    }
+  }
+]

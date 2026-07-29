@@ -1,0 +1,334 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "scan_completed_utc": "2026-07-29T02:42:34.423Z",
+  "scan_duration_millis": 176421,
+  "physical": {
+    "files": 741,
+    "bytes": 41786827248,
+    "stable_during_scan": 741,
+    "complete_sha256_coverage": true,
+    "signatures": [
+      {
+        "key": "package",
+        "count": 333
+      },
+      {
+        "key": "binary_or_text",
+        "count": 160
+      },
+      {
+        "key": "iso_base_media",
+        "count": 139
+      },
+      {
+        "key": "pe",
+        "count": 60
+      },
+      {
+        "key": "usd_ascii",
+        "count": 21
+      },
+      {
+        "key": "json",
+        "count": 19
+      },
+      {
+        "key": "unity_resource_stream",
+        "count": 3
+      },
+      {
+        "key": "unity_serialized",
+        "count": 3
+      },
+      {
+        "key": "wwise_bank",
+        "count": 2
+      },
+      {
+        "key": "empty",
+        "count": 1
+      }
+    ],
+    "families": [
+      {
+        "key": "container_package",
+        "count": 332
+      },
+      {
+        "key": "native_plugin",
+        "count": 174
+      },
+      {
+        "key": "media_stream",
+        "count": 137
+      },
+      {
+        "key": "embedded_browser_locale",
+        "count": 53
+      },
+      {
+        "key": "client_support",
+        "count": 15
+      },
+      {
+        "key": "unity_player_data",
+        "count": 8
+      },
+      {
+        "key": "anti_cheat",
+        "count": 7
+      },
+      {
+        "key": "native_executable",
+        "count": 7
+      },
+      {
+        "key": "audio",
+        "count": 2
+      },
+      {
+        "key": "container_auxiliary",
+        "count": 1
+      },
+      {
+        "key": "container_index",
+        "count": 1
+      },
+      {
+        "key": "il2cpp_metadata",
+        "count": 1
+      },
+      {
+        "key": "il2cpp_native_code",
+        "count": 1
+      },
+      {
+        "key": "protected_client_base",
+        "count": 1
+      },
+      {
+        "key": "volatile_private_log",
+        "count": 1
+      }
+    ]
+  },
+  "container": {
+    "entries": 205400,
+    "bytes": 37407815288,
+    "bundle_entries": 186273,
+    "data_entries": 19127,
+    "hashed_entries": 205400
+  },
+  "asset_catalog": {
+    "addresses": 215756,
+    "sprites": 9019,
+    "distinct_addressed_bundle_hashes": 154625,
+    "bundle_entries_without_catalog_address": 31649,
+    "catalog_bundle_hashes_without_meta_bundle_entry": 1,
+    "unaddressed_bundle_key_examples": [
+      0,
+      69922,
+      154206,
+      227981,
+      348269,
+      405871,
+      413809,
+      539016,
+      635105,
+      767520,
+      807457,
+      939311,
+      1097691,
+      1353104,
+      1453295,
+      1591792,
+      1675619,
+      1773619,
+      1848092,
+      2241584,
+      2247943,
+      2283612,
+      2335990,
+      2401847,
+      2590767,
+      2596296,
+      2797670,
+      2978803,
+      2988607,
+      3034013,
+      3244905,
+      3606497
+    ],
+    "missing_bundle_key_examples": [
+      269862
+    ]
+  },
+  "tables": {
+    "structural_candidates": 4240,
+    "confirmed_ctb_shapes": 4239,
+    "quarantined_candidates": 1,
+    "known_human_names": 565,
+    "generic_hash_labels_only": 15,
+    "unresolved_human_names": 3674,
+    "confirmed_rows": 329764,
+    "row_occurrence_records": 329729,
+    "row_occurrence_sum": 329764,
+    "row_coverage_complete": true,
+    "distinct_row_ids": 153905
+  },
+  "unity": {
+    "candidate_files": 6,
+    "loaded_files": 6,
+    "objects": 18766,
+    "object_types": 47,
+    "text_asset_payloads_exported": false,
+    "bundles": {
+      "attempted": 186273,
+      "loaded": 186273,
+      "failed": 0,
+      "objects": 10206944,
+      "object_types": 66,
+      "complete": true
+    },
+    "named_objects": {
+      "candidate_bundles": 58727,
+      "failed_bundles": 0,
+      "objects": [
+        {
+          "type": "MonoScript",
+          "objects": 659,
+          "named": 659
+        },
+        {
+          "type": "Sprite",
+          "objects": 9130,
+          "named": 9130
+        },
+        {
+          "type": "SpriteAtlas",
+          "objects": 211,
+          "named": 211
+        },
+        {
+          "type": "TextAsset",
+          "objects": 85982,
+          "named": 85982
+        },
+        {
+          "type": "Texture2D",
+          "objects": 34718,
+          "named": 34718
+        }
+      ],
+      "redacted_names": 0
+    }
+  },
+  "localization": {
+    "configured_locales": 11,
+    "present_locales": 11,
+    "union_ids": 171474,
+    "index_entries": 1883778,
+    "populated_strings": 1196836,
+    "locales": [
+      {
+        "locale": "en",
+        "index_entries": 171253,
+        "strings": 106829,
+        "source_jsonl_gzip_bytes": 3604188
+      },
+      {
+        "locale": "zh-CN",
+        "index_entries": 171248,
+        "strings": 111666,
+        "source_jsonl_gzip_bytes": 3741227
+      },
+      {
+        "locale": "zh-TW",
+        "index_entries": 171253,
+        "strings": 111597,
+        "source_jsonl_gzip_bytes": 3748639
+      },
+      {
+        "locale": "ja",
+        "index_entries": 171253,
+        "strings": 110872,
+        "source_jsonl_gzip_bytes": 4053244
+      },
+      {
+        "locale": "ko-KR",
+        "index_entries": 171253,
+        "strings": 109683,
+        "source_jsonl_gzip_bytes": 3915154
+      },
+      {
+        "locale": "fr",
+        "index_entries": 171253,
+        "strings": 106755,
+        "source_jsonl_gzip_bytes": 3964571
+      },
+      {
+        "locale": "de",
+        "index_entries": 171253,
+        "strings": 105881,
+        "source_jsonl_gzip_bytes": 4023828
+      },
+      {
+        "locale": "es",
+        "index_entries": 171253,
+        "strings": 106219,
+        "source_jsonl_gzip_bytes": 3821196
+      },
+      {
+        "locale": "pt-BR",
+        "index_entries": 171253,
+        "strings": 107273,
+        "source_jsonl_gzip_bytes": 3796692
+      },
+      {
+        "locale": "th",
+        "index_entries": 171253,
+        "strings": 109562,
+        "source_jsonl_gzip_bytes": 4552049
+      },
+      {
+        "locale": "id",
+        "index_entries": 171253,
+        "strings": 110499,
+        "source_jsonl_gzip_bytes": 3627320
+      }
+    ]
+  },
+  "exact_edge_count": 12961290,
+  "exact_edges": {
+    "physical_file_to_digest": 741,
+    "meta_entry_to_package_extent": 205400,
+    "address_to_bundle_hash": 215756,
+    "sprite_to_atlas_address": 9019,
+    "confirmed_table_to_row_occurrence": 329764,
+    "localization_index_to_locale_entry": 1883778,
+    "validated_string_pool_offset_to_text": 91122,
+    "top_level_unity_file_to_object": 18766,
+    "unityfs_bundle_to_object": 10206944
+  },
+  "not_claimed_as_decoded": [
+    "Unity object payload values and field semantics",
+    "unknown CTB field semantics",
+    "protected IL2CPP type and method registration",
+    "network opcodes or protobuf message meanings",
+    "credentials, account-login payloads, private chat, or anti-cheat payloads"
+  ],
+  "privacy": {
+    "raw_game_bytes_retained": false,
+    "arbitrary_executable_strings_extracted": false,
+    "credentials_or_tokens_extracted": false,
+    "account_or_login_payloads_extracted": false,
+    "anti_cheat_payloads_decoded": false,
+    "absolute_install_path_present": false
+  }
+}

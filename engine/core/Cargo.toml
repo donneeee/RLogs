@@ -1,0 +1,16 @@
+[package]
+name = "rlogs-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rlogs-capture = { path = "../capture" }
+rlogs-network = { path = "../network" }
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+bytes.workspace = true
+etherparse.workspace = true

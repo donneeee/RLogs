@@ -1,0 +1,30 @@
+{
+  "schema_version": 2,
+  "kind": "name_card",
+  "id": 9030002,
+  "stable_key": "name_card.9030002",
+  "localization_key": "name_card.9030002.name",
+  "icon": null,
+  "attributes": {
+    "name_card_id": 9030002,
+    "name_id": 989769509,
+    "acquisition_description_id": 965230668,
+    "info_background_path": "ui/textures/personalzone_bg/personalzone_bg_info_2",
+    "background_path": "ui/textures/personalzone_bg/personalzone_bg_2",
+    "player_background_path": "ui/textures/personalzone_bg/personalzone_player_bg_2",
+    "name_localization_key": "name_card.9030002.name",
+    "acquisition_localization_key": "name_card.9030002.acquisition"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.NameCardTable",
+    "reference": "client-build:global/steam/24252055@sha256:ccabb5a2fc5a02bf36c84b49bf79ccdc7fcd1963115bae603b8cd4d6f1d86ebf",
+    "confidence": "corroborated"
+  }
+}

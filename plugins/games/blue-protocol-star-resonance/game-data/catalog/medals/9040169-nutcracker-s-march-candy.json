@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "kind": "medal",
+  "id": 9040169,
+  "stable_key": "medal.9040169",
+  "localization_key": "medal.9040169.name",
+  "icon": null,
+  "attributes": {
+    "medal_id": 9040169,
+    "name_id": 1378105852,
+    "acquisition_description_id": 516773923,
+    "icon_name": "personalzone_medal_icon_107",
+    "name_localization_key": "medal.9040169.name",
+    "acquisition_localization_key": "medal.9040169.acquisition"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.MedalTable",
+    "reference": "client-build:global/steam/24252055@sha256:460dce56c6644c03315c4b0fdba5eb332a68f2a8b32fc83d5e0410e6da60ff07",
+    "confidence": "corroborated"
+  }
+}

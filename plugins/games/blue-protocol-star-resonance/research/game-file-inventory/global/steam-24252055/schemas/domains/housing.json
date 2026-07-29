@@ -1,0 +1,3957 @@
+[
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 105460590,
+    "table_key_hex": "0x0649336e",
+    "stable_key": "ctb.HomeAdsorbConfigTable",
+    "table_name": "HomeAdsorbConfigTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:91f8ae5d22adc46eb50b2423a6fcc60187c88d74f4ca63c19d370e786c59568f",
+    "row_count": 40,
+    "row_size": 36,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 242
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 4,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 39,
+            "nonzero_ratio": 1,
+            "distinct_values": 1,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 39,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 39
+                }
+              ],
+              "direct_elements": {
+                "elements": 39,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 8,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 40,
+            "nonzero_ratio": 1,
+            "distinct_values": 2,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 40,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 40
+                }
+              ],
+              "direct_elements": {
+                "elements": 40,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 12,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 40,
+            "nonzero_ratio": 1,
+            "distinct_values": 3,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 40,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 40
+                }
+              ],
+              "direct_elements": {
+                "elements": 40,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 1,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 321674,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.002128,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 2715124,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.002128,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 5372838,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.002128,
+                    "stable_key": "ctb.FootstepFXTable",
+                    "table_name": "FootstepFXTable.ctb"
+                  },
+                  {
+                    "table_key": 11957008,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.002128,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 17491388,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.002128,
+                    "stable_key": "ctb.EquipRecastTypeTable",
+                    "table_name": "EquipRecastTypeTable.ctb"
+                  },
+                  {
+                    "table_key": 29739093,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.002128,
+                    "stable_key": "ctb.QuestTypeGroupTable",
+                    "table_name": "QuestTypeGroupTable.ctb"
+                  },
+                  {
+                    "table_key": 33237851,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.002128,
+                    "stable_key": "ctb.PrivilegeTable",
+                    "table_name": "PrivilegeTable.ctb"
+                  },
+                  {
+                    "table_key": 38709576,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.002128,
+                    "stable_key": "ctb.IchibanKujiPrizeQualityTable",
+                    "table_name": "IchibanKujiPrizeQualityTable.ctb"
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 16,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 40,
+            "nonzero_ratio": 1,
+            "distinct_values": 2,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 40,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 40
+                }
+              ],
+              "direct_elements": {
+                "elements": 40,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 20,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 40,
+            "nonzero_ratio": 1,
+            "distinct_values": 2,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 40,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 40
+                }
+              ],
+              "direct_elements": {
+                "elements": 40,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 24,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 39,
+            "nonzero_ratio": 1,
+            "distinct_values": 1,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 39,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 39
+                }
+              ],
+              "direct_elements": {
+                "elements": 39,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 28,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 38,
+            "nonzero_ratio": 0.95,
+            "distinct_values": 6,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 38,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 24
+                },
+                {
+                  "length": 2,
+                  "references": 13
+                },
+                {
+                  "length": 4,
+                  "references": 1
+                }
+              ],
+              "direct_elements": {
+                "elements": 54,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 26,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 2715124,
+                    "references": 26,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.053856,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 5372838,
+                    "references": 26,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.053856,
+                    "stable_key": "ctb.FootstepFXTable",
+                    "table_name": "FootstepFXTable.ctb"
+                  },
+                  {
+                    "table_key": 11957008,
+                    "references": 26,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.053856,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 17491388,
+                    "references": 26,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.053856,
+                    "stable_key": "ctb.EquipRecastTypeTable",
+                    "table_name": "EquipRecastTypeTable.ctb"
+                  },
+                  {
+                    "table_key": 29739093,
+                    "references": 26,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.053856,
+                    "stable_key": "ctb.QuestTypeGroupTable",
+                    "table_name": "QuestTypeGroupTable.ctb"
+                  },
+                  {
+                    "table_key": 33237851,
+                    "references": 26,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.053856,
+                    "stable_key": "ctb.PrivilegeTable",
+                    "table_name": "PrivilegeTable.ctb"
+                  },
+                  {
+                    "table_key": 38709576,
+                    "references": 26,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.053856,
+                    "stable_key": "ctb.IchibanKujiPrizeQualityTable",
+                    "table_name": "IchibanKujiPrizeQualityTable.ctb"
+                  },
+                  {
+                    "table_key": 44454117,
+                    "references": 26,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.053856,
+                    "stable_key": "ctb.SettingsTable",
+                    "table_name": "SettingsTable.ctb"
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 32,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 40,
+            "nonzero_ratio": 1,
+            "distinct_values": 6,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 40,
+              "length_histogram": [
+                {
+                  "length": 6,
+                  "references": 40
+                }
+              ],
+              "direct_elements": {
+                "elements": 240,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 618449258,
+    "table_key_hex": "0x24dcc96a",
+    "stable_key": "ctb.HomeEnvironmentLightTable",
+    "table_name": "HomeEnvironmentLightTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:b7cdfb2f10ed16710d7c7376a9352e672b2dc4460185cc58e53083de50dfed3a",
+    "row_count": 7,
+    "row_size": 24,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 92
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 28
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 148
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 12,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "string_pool_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 2,
+            "nonzero_ratio": 1,
+            "distinct_values": 2,
+            "path_like_references": 0,
+            "candidate_target_tables": []
+          }
+        ]
+      },
+      {
+        "offset": 20,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "f32_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 6,
+            "nonzero_ratio": 1,
+            "distinct_values": 1,
+            "pool_type": 3,
+            "element_width": 4,
+            "scalar_model": "ieee754_binary32",
+            "length_histogram": [
+              {
+                "length": 3,
+                "references": 6
+              }
+            ],
+            "candidate_target_tables": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 639443801,
+    "table_key_hex": "0x261d2359",
+    "stable_key": "ctb.ResidentialDistricts",
+    "table_name": "ResidentialDistricts.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:09b6aee97283aa381a6d1e2e2b530c990cb48b3254defb9dcb83cec5db39fb6e",
+    "row_count": 9,
+    "row_size": 48,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 304
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 40,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 9,
+            "nonzero_ratio": 1,
+            "distinct_values": 1,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 9,
+              "length_histogram": [
+                {
+                  "length": 71,
+                  "references": 9
+                }
+              ],
+              "direct_elements": {
+                "elements": 639,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 639,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 106122017,
+                    "references": 639,
+                    "distinct_values": 71,
+                    "ambiguity_weighted_score": 5.728173,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 155301122,
+                    "references": 639,
+                    "distinct_values": 71,
+                    "ambiguity_weighted_score": 5.728173,
+                    "stable_key": "ctb.AffixTable",
+                    "table_name": "AffixTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 639,
+                    "distinct_values": 71,
+                    "ambiguity_weighted_score": 5.728173,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 189604923,
+                    "references": 639,
+                    "distinct_values": 71,
+                    "ambiguity_weighted_score": 5.728173,
+                    "stable_key": "ctb.SkillUpgradeTable",
+                    "table_name": "SkillUpgradeTable.ctb"
+                  },
+                  {
+                    "table_key": 433595938,
+                    "references": 639,
+                    "distinct_values": 71,
+                    "ambiguity_weighted_score": 5.728173,
+                    "stable_key": "ctb.SeasonBPTaskTable",
+                    "table_name": "SeasonBPTaskTable.ctb"
+                  },
+                  {
+                    "table_key": 547513556,
+                    "references": 630,
+                    "distinct_values": 70,
+                    "ambiguity_weighted_score": 5.688173,
+                    "stable_key": "ctb.RecountTable",
+                    "table_name": "RecountTable.ctb"
+                  },
+                  {
+                    "table_key": 752870958,
+                    "references": 621,
+                    "distinct_values": 69,
+                    "ambiguity_weighted_score": 5.639525,
+                    "stable_key": "ctb.MapStickerTargetTable",
+                    "table_name": "MapStickerTargetTable.ctb"
+                  },
+                  {
+                    "table_key": 755039901,
+                    "references": 603,
+                    "distinct_values": 67,
+                    "ambiguity_weighted_score": 5.533584,
+                    "stable_key": "ctb.UnionResolveTable",
+                    "table_name": "UnionResolveTable.ctb"
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 879285062,
+    "table_key_hex": "0x3468d346",
+    "stable_key": "ctb.HomeManageTable",
+    "table_name": "HomeManageTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:1c833c4cb87b5b38ee7914b298075f09e7663b0372165fc2c574ce6fc253abef",
+    "row_count": 5,
+    "row_size": 12,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 0
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 370
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 8,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "vec3_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 4,
+            "nonzero_ratio": 1,
+            "distinct_values": 4,
+            "pool_type": 8,
+            "element_width": 12,
+            "scalar_model": "three_ieee754_binary32_components",
+            "length_histogram": [
+              {
+                "length": 6,
+                "references": 4
+              }
+            ],
+            "candidate_target_tables": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 1131770388,
+    "table_key_hex": "0x43757214",
+    "stable_key": "ctb.HomePlantRuleTable",
+    "table_name": "HomePlantRuleTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:46367d79bdf861297c5e6c32f3400103b557140542c5089149c29905e235a4f6",
+    "row_count": 3,
+    "row_size": 60,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 262
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 24,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 3,
+            "nonzero_ratio": 1,
+            "distinct_values": 3,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 3,
+              "length_histogram": [
+                {
+                  "length": 2,
+                  "references": 3
+                }
+              ],
+              "direct_elements": {
+                "elements": 6,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 5,
+                "records": 5,
+                "elements": 10,
+                "localization_membership_hits": 3,
+                "row_id_membership_hits": 6,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 701077442,
+                    "references": 5,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 2.5,
+                    "stable_key": "ctb.ObtainWayTable",
+                    "table_name": "ObtainWayTable.ctb"
+                  },
+                  {
+                    "table_key": 3425461443,
+                    "references": 5,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 2.5,
+                    "stable_key": "ctb.ItemTable",
+                    "table_name": "ItemTable.ctb"
+                  },
+                  {
+                    "table_key": 609661436,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 1,
+                    "stable_key": "ctb.MonsterTable",
+                    "table_name": "MonsterTable.ctb"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 36,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 3,
+            "nonzero_ratio": 1,
+            "distinct_values": 3,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 3,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 1
+                },
+                {
+                  "length": 2,
+                  "references": 1
+                },
+                {
+                  "length": 3,
+                  "references": 1
+                }
+              ],
+              "direct_elements": {
+                "elements": 6,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 6,
+                "records": 6,
+                "elements": 30,
+                "localization_membership_hits": 3,
+                "row_id_membership_hits": 12,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 3386989700,
+                    "references": 2,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 2,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 861603903,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 1,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 174000495,
+                    "references": 3,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.502128,
+                    "stable_key": "ctb.AwardPackageTable",
+                    "table_name": "AwardPackageTable.ctb"
+                  },
+                  {
+                    "table_key": 1656491330,
+                    "references": 2,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.5,
+                    "stable_key": "ctb.SceneTable",
+                    "table_name": "SceneTable.ctb"
+                  },
+                  {
+                    "table_key": 3107949667,
+                    "references": 2,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.5,
+                    "stable_key": "ctb.AwardTable",
+                    "table_name": "AwardTable.ctb"
+                  },
+                  {
+                    "table_key": 3997506903,
+                    "references": 2,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.5,
+                    "stable_key": "ctb.DungeonsTable",
+                    "table_name": "DungeonsTable.ctb"
+                  },
+                  {
+                    "table_key": 511235909,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.2,
+                    "stable_key": "ctb.SkillAoyiTable",
+                    "table_name": "SkillAoyiTable.ctb"
+                  },
+                  {
+                    "table_key": 1456951466,
+                    "references": 1,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.2,
+                    "stable_key": "ctb.EquipAttrLibTable",
+                    "table_name": "EquipAttrLibTable.ctb"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 48,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 3,
+            "nonzero_ratio": 1,
+            "distinct_values": 1,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 3,
+              "length_histogram": [
+                {
+                  "length": 2,
+                  "references": 3
+                }
+              ],
+              "direct_elements": {
+                "elements": 6,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 6,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 2715124,
+                    "references": 6,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.012612,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 5372838,
+                    "references": 6,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.012612,
+                    "stable_key": "ctb.FootstepFXTable",
+                    "table_name": "FootstepFXTable.ctb"
+                  },
+                  {
+                    "table_key": 11957008,
+                    "references": 6,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.012612,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 17491388,
+                    "references": 6,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.012612,
+                    "stable_key": "ctb.EquipRecastTypeTable",
+                    "table_name": "EquipRecastTypeTable.ctb"
+                  },
+                  {
+                    "table_key": 29739093,
+                    "references": 6,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.012612,
+                    "stable_key": "ctb.QuestTypeGroupTable",
+                    "table_name": "QuestTypeGroupTable.ctb"
+                  },
+                  {
+                    "table_key": 33237851,
+                    "references": 6,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.012612,
+                    "stable_key": "ctb.PrivilegeTable",
+                    "table_name": "PrivilegeTable.ctb"
+                  },
+                  {
+                    "table_key": 38709576,
+                    "references": 6,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.012612,
+                    "stable_key": "ctb.IchibanKujiPrizeQualityTable",
+                    "table_name": "IchibanKujiPrizeQualityTable.ctb"
+                  },
+                  {
+                    "table_key": 44454117,
+                    "references": 6,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.012612,
+                    "stable_key": "ctb.SettingsTable",
+                    "table_name": "SettingsTable.ctb"
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 1203915387,
+    "table_key_hex": "0x47c24a7b",
+    "stable_key": "ctb.HomePlantColorTable",
+    "table_name": "HomePlantColorTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:43125c437d1f4a52620603358f5bdb8c33bd7b497b20a1b4d9d1c7ef0f39c492",
+    "row_count": 16,
+    "row_size": 20,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 448
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 32
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 4,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 15,
+            "nonzero_ratio": 1,
+            "distinct_values": 15,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 15,
+              "length_histogram": [
+                {
+                  "length": 3,
+                  "references": 15
+                }
+              ],
+              "direct_elements": {
+                "elements": 45,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 41,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 17491388,
+                    "references": 41,
+                    "distinct_values": 14,
+                    "ambiguity_weighted_score": 0.140592,
+                    "stable_key": "ctb.EquipRecastTypeTable",
+                    "table_name": "EquipRecastTypeTable.ctb"
+                  },
+                  {
+                    "table_key": 106122017,
+                    "references": 41,
+                    "distinct_values": 14,
+                    "ambiguity_weighted_score": 0.140592,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 155301122,
+                    "references": 41,
+                    "distinct_values": 14,
+                    "ambiguity_weighted_score": 0.140592,
+                    "stable_key": "ctb.AffixTable",
+                    "table_name": "AffixTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 41,
+                    "distinct_values": 14,
+                    "ambiguity_weighted_score": 0.140592,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 186892115,
+                    "references": 39,
+                    "distinct_values": 13,
+                    "ambiguity_weighted_score": 0.137286,
+                    "stable_key": "ctb.CutsceneTextTable",
+                    "table_name": "CutsceneTextTable.ctb"
+                  },
+                  {
+                    "table_key": 189604923,
+                    "references": 37,
+                    "distinct_values": 12,
+                    "ambiguity_weighted_score": 0.133031,
+                    "stable_key": "ctb.SkillUpgradeTable",
+                    "table_name": "SkillUpgradeTable.ctb"
+                  },
+                  {
+                    "table_key": 11957008,
+                    "references": 38,
+                    "distinct_values": 13,
+                    "ambiguity_weighted_score": 0.128964,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 44454117,
+                    "references": 38,
+                    "distinct_values": 13,
+                    "ambiguity_weighted_score": 0.127376,
+                    "stable_key": "ctb.SettingsTable",
+                    "table_name": "SettingsTable.ctb"
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 3,
+                "records": 3,
+                "elements": 9,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 9,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 106122017,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.082808,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.082808,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 189604923,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.082808,
+                    "stable_key": "ctb.SkillUpgradeTable",
+                    "table_name": "SkillUpgradeTable.ctb"
+                  },
+                  {
+                    "table_key": 433595938,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.082808,
+                    "stable_key": "ctb.SeasonBPTaskTable",
+                    "table_name": "SeasonBPTaskTable.ctb"
+                  },
+                  {
+                    "table_key": 547513556,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.082808,
+                    "stable_key": "ctb.RecountTable",
+                    "table_name": "RecountTable.ctb"
+                  },
+                  {
+                    "table_key": 666593347,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.082808,
+                    "stable_key": "ctb.BotAITable",
+                    "table_name": "BotAITable.ctb"
+                  },
+                  {
+                    "table_key": 755039901,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.082808,
+                    "stable_key": "ctb.UnionResolveTable",
+                    "table_name": "UnionResolveTable.ctb"
+                  },
+                  {
+                    "table_key": 284639524,
+                    "references": 6,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.064951,
+                    "stable_key": null,
+                    "table_name": null
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 16,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 16,
+            "nonzero_ratio": 1,
+            "distinct_values": 16,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 16,
+              "length_histogram": [
+                {
+                  "length": 3,
+                  "references": 16
+                }
+              ],
+              "direct_elements": {
+                "elements": 48,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 45,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 106122017,
+                    "references": 45,
+                    "distinct_values": 35,
+                    "ambiguity_weighted_score": 0.544789,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 45,
+                    "distinct_values": 35,
+                    "ambiguity_weighted_score": 0.544789,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 189604923,
+                    "references": 45,
+                    "distinct_values": 35,
+                    "ambiguity_weighted_score": 0.544789,
+                    "stable_key": "ctb.SkillUpgradeTable",
+                    "table_name": "SkillUpgradeTable.ctb"
+                  },
+                  {
+                    "table_key": 547513556,
+                    "references": 45,
+                    "distinct_values": 35,
+                    "ambiguity_weighted_score": 0.544789,
+                    "stable_key": "ctb.RecountTable",
+                    "table_name": "RecountTable.ctb"
+                  },
+                  {
+                    "table_key": 755039901,
+                    "references": 45,
+                    "distinct_values": 35,
+                    "ambiguity_weighted_score": 0.544789,
+                    "stable_key": "ctb.UnionResolveTable",
+                    "table_name": "UnionResolveTable.ctb"
+                  },
+                  {
+                    "table_key": 284639524,
+                    "references": 42,
+                    "distinct_values": 32,
+                    "ambiguity_weighted_score": 0.513696,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 1120066233,
+                    "references": 35,
+                    "distinct_values": 26,
+                    "ambiguity_weighted_score": 0.476912,
+                    "stable_key": "ctb.WeaponAttrTable",
+                    "table_name": "WeaponAttrTable.ctb"
+                  },
+                  {
+                    "table_key": 770288905,
+                    "references": 32,
+                    "distinct_values": 23,
+                    "ambiguity_weighted_score": 0.411568,
+                    "stable_key": null,
+                    "table_name": null
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 3,
+                "records": 3,
+                "elements": 9,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 9,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 106122017,
+                    "references": 9,
+                    "distinct_values": 8,
+                    "ambiguity_weighted_score": 0.064449,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 9,
+                    "distinct_values": 8,
+                    "ambiguity_weighted_score": 0.064449,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 189604923,
+                    "references": 8,
+                    "distinct_values": 7,
+                    "ambiguity_weighted_score": 0.062797,
+                    "stable_key": "ctb.SkillUpgradeTable",
+                    "table_name": "SkillUpgradeTable.ctb"
+                  },
+                  {
+                    "table_key": 547513556,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.048193,
+                    "stable_key": "ctb.RecountTable",
+                    "table_name": "RecountTable.ctb"
+                  },
+                  {
+                    "table_key": 755039901,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.048193,
+                    "stable_key": "ctb.UnionResolveTable",
+                    "table_name": "UnionResolveTable.ctb"
+                  },
+                  {
+                    "table_key": 770288905,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.048193,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 1120066233,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.048193,
+                    "stable_key": "ctb.WeaponAttrTable",
+                    "table_name": "WeaponAttrTable.ctb"
+                  },
+                  {
+                    "table_key": 1456951466,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.048193,
+                    "stable_key": "ctb.EquipAttrLibTable",
+                    "table_name": "EquipAttrLibTable.ctb"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 1585587568,
+    "table_key_hex": "0x5e822570",
+    "stable_key": "ctb.HomeTaskTable",
+    "table_name": "HomeTaskTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:8f3ac6620282914fd5d37715a2da271b6b1200dc64e954d0b248a3af064b0d8f",
+    "row_count": 447,
+    "row_size": 20,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 7152
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 7295
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 4,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "string_pool_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 446,
+            "nonzero_ratio": 1,
+            "distinct_values": 446,
+            "path_like_references": 0,
+            "candidate_target_tables": []
+          }
+        ]
+      },
+      {
+        "offset": 7,
+        "aligned_u32": false,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 447,
+            "nonzero_ratio": 1,
+            "distinct_values": 3,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 447,
+              "length_histogram": [
+                {
+                  "length": 2,
+                  "references": 447
+                }
+              ],
+              "direct_elements": {
+                "elements": 894,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 745,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 701077442,
+                    "references": 447,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 136.583333,
+                    "stable_key": "ctb.ObtainWayTable",
+                    "table_name": "ObtainWayTable.ctb"
+                  },
+                  {
+                    "table_key": 3425461443,
+                    "references": 447,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 136.583333,
+                    "stable_key": "ctb.ItemTable",
+                    "table_name": "ItemTable.ctb"
+                  },
+                  {
+                    "table_key": 4278757516,
+                    "references": 447,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 136.583333,
+                    "stable_key": "ctb.ConsumableItemTable",
+                    "table_name": "ConsumableItemTable.ctb"
+                  },
+                  {
+                    "table_key": 3086789947,
+                    "references": 149,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 37.25,
+                    "stable_key": "ctb.ChemistryMaterialTable",
+                    "table_name": "ChemistryMaterialTable.ctb"
+                  },
+                  {
+                    "table_key": 106122017,
+                    "references": 298,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 1.569842,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 155301122,
+                    "references": 298,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 1.569842,
+                    "stable_key": "ctb.AffixTable",
+                    "table_name": "AffixTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 298,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 1.569842,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 179130529,
+                    "references": 298,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 1.569842,
+                    "stable_key": null,
+                    "table_name": null
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 149,
+                "records": 149,
+                "elements": 149,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 12,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 447,
+            "nonzero_ratio": 1,
+            "distinct_values": 447,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 447,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 447
+                }
+              ],
+              "direct_elements": {
+                "elements": 447,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 446,
+                "records": 446,
+                "elements": 892,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 867,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 701077442,
+                    "references": 446,
+                    "distinct_values": 149,
+                    "ambiguity_weighted_score": 132.066667,
+                    "stable_key": "ctb.ObtainWayTable",
+                    "table_name": "ObtainWayTable.ctb"
+                  },
+                  {
+                    "table_key": 3425461443,
+                    "references": 446,
+                    "distinct_values": 149,
+                    "ambiguity_weighted_score": 132.066667,
+                    "stable_key": "ctb.ItemTable",
+                    "table_name": "ItemTable.ctb"
+                  },
+                  {
+                    "table_key": 4278757516,
+                    "references": 428,
+                    "distinct_values": 143,
+                    "ambiguity_weighted_score": 123.566667,
+                    "stable_key": "ctb.ConsumableItemTable",
+                    "table_name": "ConsumableItemTable.ctb"
+                  },
+                  {
+                    "table_key": 3086789947,
+                    "references": 159,
+                    "distinct_values": 53,
+                    "ambiguity_weighted_score": 37.9,
+                    "stable_key": "ctb.ChemistryMaterialTable",
+                    "table_name": "ChemistryMaterialTable.ctb"
+                  },
+                  {
+                    "table_key": 1453975663,
+                    "references": 81,
+                    "distinct_values": 27,
+                    "ambiguity_weighted_score": 17.4,
+                    "stable_key": "ctb.CookMaterialTable",
+                    "table_name": "CookMaterialTable.ctb"
+                  },
+                  {
+                    "table_key": 106122017,
+                    "references": 421,
+                    "distinct_values": 34,
+                    "ambiguity_weighted_score": 1.942916,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 421,
+                    "distinct_values": 34,
+                    "ambiguity_weighted_score": 1.942916,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 155301122,
+                    "references": 413,
+                    "distinct_values": 33,
+                    "ambiguity_weighted_score": 1.83902,
+                    "stable_key": "ctb.AffixTable",
+                    "table_name": "AffixTable.ctb"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 1804906494,
+    "table_key_hex": "0x6b94affe",
+    "stable_key": "ctb.HomeSeedTable",
+    "table_name": "HomeSeedTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:1afc3cf50d57d799ab9edbefd04e73b1493ac96b025e025f8ab8eead0f52fc9a",
+    "row_count": 6,
+    "row_size": 12,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 0
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 48
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 4,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "string_pool_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 4,
+            "nonzero_ratio": 1,
+            "distinct_values": 2,
+            "path_like_references": 0,
+            "candidate_target_tables": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 2089213846,
+    "table_key_hex": "0x7c86df96",
+    "stable_key": "ctb.HomeAuthorityOperateTable",
+    "table_name": "HomeAuthorityOperateTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:801ceaa5d037d9c2461c2f1d892700ad1530a26da6f94da8ad94efacc506b71a",
+    "row_count": 9,
+    "row_size": 12,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 0
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": []
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 2181583206,
+    "table_key_hex": "0x82085166",
+    "stable_key": "ctb.HomeAuthorityTable",
+    "table_name": "HomeAuthorityTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:a0532b5a4bcd541946e414f5b7c523a0b148d8442f3b2bcd51503703afe42890",
+    "row_count": 15,
+    "row_size": 32,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 46
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 16,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 12,
+            "nonzero_ratio": 1,
+            "distinct_values": 6,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 12,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 11
+                },
+                {
+                  "length": 3,
+                  "references": 1
+                }
+              ],
+              "direct_elements": {
+                "elements": 14,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 7,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 5372838,
+                    "references": 7,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.019718,
+                    "stable_key": "ctb.FootstepFXTable",
+                    "table_name": "FootstepFXTable.ctb"
+                  },
+                  {
+                    "table_key": 17491388,
+                    "references": 7,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.019718,
+                    "stable_key": "ctb.EquipRecastTypeTable",
+                    "table_name": "EquipRecastTypeTable.ctb"
+                  },
+                  {
+                    "table_key": 44454117,
+                    "references": 7,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.019718,
+                    "stable_key": "ctb.SettingsTable",
+                    "table_name": "SettingsTable.ctb"
+                  },
+                  {
+                    "table_key": 71561570,
+                    "references": 7,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.019718,
+                    "stable_key": "ctb.FashionCollectTable",
+                    "table_name": "FashionCollectTable.ctb"
+                  },
+                  {
+                    "table_key": 106122017,
+                    "references": 7,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.019718,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 155301122,
+                    "references": 7,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.019718,
+                    "stable_key": "ctb.AffixTable",
+                    "table_name": "AffixTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 7,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.019718,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 169207924,
+                    "references": 7,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.019718,
+                    "stable_key": "ctb.PersonalTagTable",
+                    "table_name": "PersonalTagTable.ctb"
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 6,
+                "records": 6,
+                "elements": 12,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 9,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 5372838,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.02297,
+                    "stable_key": "ctb.FootstepFXTable",
+                    "table_name": "FootstepFXTable.ctb"
+                  },
+                  {
+                    "table_key": 17491388,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.02297,
+                    "stable_key": "ctb.EquipRecastTypeTable",
+                    "table_name": "EquipRecastTypeTable.ctb"
+                  },
+                  {
+                    "table_key": 44454117,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.02297,
+                    "stable_key": "ctb.SettingsTable",
+                    "table_name": "SettingsTable.ctb"
+                  },
+                  {
+                    "table_key": 71561570,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.02297,
+                    "stable_key": "ctb.FashionCollectTable",
+                    "table_name": "FashionCollectTable.ctb"
+                  },
+                  {
+                    "table_key": 106122017,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.02297,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 152502330,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.02297,
+                    "stable_key": "ctb.MallTable",
+                    "table_name": "MallTable.ctb"
+                  },
+                  {
+                    "table_key": 155301122,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.02297,
+                    "stable_key": "ctb.AffixTable",
+                    "table_name": "AffixTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 9,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.02297,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 2268141474,
+    "table_key_hex": "0x873117a2",
+    "stable_key": "ctb.ResidentialType",
+    "table_name": "ResidentialType.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:e8de3a0477f61d8515814b6b88faad57985854b6539ce53e790d82cf32aaea77",
+    "row_count": 2,
+    "row_size": 12,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 36
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": []
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 2712451349,
+    "table_key_hex": "0xa1acb915",
+    "stable_key": "ctb.HomeLevelTable",
+    "table_name": "HomeLevelTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:e77559200f7b20f3f6afe77d2cc85e8edd9179552948bbe88bb3a63917fc41fe",
+    "row_count": 8,
+    "row_size": 60,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 184
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 24,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 8,
+            "nonzero_ratio": 1,
+            "distinct_values": 4,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 8,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 8
+                }
+              ],
+              "direct_elements": {
+                "elements": 8,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 8,
+                "records": 8,
+                "elements": 16,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 16,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 106122017,
+                    "references": 16,
+                    "distinct_values": 5,
+                    "ambiguity_weighted_score": 0.146586,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 284639524,
+                    "references": 14,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.139985,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 105460590,
+                    "references": 8,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.114286,
+                    "stable_key": "ctb.HomeAdsorbConfigTable",
+                    "table_name": "HomeAdsorbConfigTable.ctb"
+                  },
+                  {
+                    "table_key": 122638685,
+                    "references": 8,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.114286,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 265074509,
+                    "references": 8,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.114286,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 358300551,
+                    "references": 8,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.114286,
+                    "stable_key": "ctb.DialogueCameraTable",
+                    "table_name": "DialogueCameraTable.ctb"
+                  },
+                  {
+                    "table_key": 396135509,
+                    "references": 8,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.114286,
+                    "stable_key": "ctb.GuideTaskTable",
+                    "table_name": "GuideTaskTable.ctb"
+                  },
+                  {
+                    "table_key": 670449211,
+                    "references": 8,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.114286,
+                    "stable_key": null,
+                    "table_name": null
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 28,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 8,
+            "nonzero_ratio": 1,
+            "distinct_values": 3,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 8,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 1
+                },
+                {
+                  "length": 2,
+                  "references": 2
+                },
+                {
+                  "length": 3,
+                  "references": 5
+                }
+              ],
+              "direct_elements": {
+                "elements": 20,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 5,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 321674,
+                    "references": 5,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.010638,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 2715124,
+                    "references": 5,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.010638,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 5372838,
+                    "references": 5,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.010638,
+                    "stable_key": "ctb.FootstepFXTable",
+                    "table_name": "FootstepFXTable.ctb"
+                  },
+                  {
+                    "table_key": 11957008,
+                    "references": 5,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.010638,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 17491388,
+                    "references": 5,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.010638,
+                    "stable_key": "ctb.EquipRecastTypeTable",
+                    "table_name": "EquipRecastTypeTable.ctb"
+                  },
+                  {
+                    "table_key": 29739093,
+                    "references": 5,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.010638,
+                    "stable_key": "ctb.QuestTypeGroupTable",
+                    "table_name": "QuestTypeGroupTable.ctb"
+                  },
+                  {
+                    "table_key": 33237851,
+                    "references": 5,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.010638,
+                    "stable_key": "ctb.PrivilegeTable",
+                    "table_name": "PrivilegeTable.ctb"
+                  },
+                  {
+                    "table_key": 38709576,
+                    "references": 5,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.010638,
+                    "stable_key": "ctb.IchibanKujiPrizeQualityTable",
+                    "table_name": "IchibanKujiPrizeQualityTable.ctb"
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 7,
+                "records": 7,
+                "elements": 14,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 14,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 106122017,
+                    "references": 14,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.126515,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 284639524,
+                    "references": 14,
+                    "distinct_values": 2,
+                    "ambiguity_weighted_score": 0.126515,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 105460590,
+                    "references": 7,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.1,
+                    "stable_key": "ctb.HomeAdsorbConfigTable",
+                    "table_name": "HomeAdsorbConfigTable.ctb"
+                  },
+                  {
+                    "table_key": 122638685,
+                    "references": 7,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.1,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 265074509,
+                    "references": 7,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.1,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 358300551,
+                    "references": 7,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.1,
+                    "stable_key": "ctb.DialogueCameraTable",
+                    "table_name": "DialogueCameraTable.ctb"
+                  },
+                  {
+                    "table_key": 396135509,
+                    "references": 7,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.1,
+                    "stable_key": "ctb.GuideTaskTable",
+                    "table_name": "GuideTaskTable.ctb"
+                  },
+                  {
+                    "table_key": 670449211,
+                    "references": 7,
+                    "distinct_values": 1,
+                    "ambiguity_weighted_score": 0.1,
+                    "stable_key": null,
+                    "table_name": null
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 40,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 8,
+            "nonzero_ratio": 1,
+            "distinct_values": 8,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 8,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 2
+                },
+                {
+                  "length": 2,
+                  "references": 3
+                },
+                {
+                  "length": 3,
+                  "references": 2
+                },
+                {
+                  "length": 4,
+                  "references": 1
+                }
+              ],
+              "direct_elements": {
+                "elements": 18,
+                "localization_membership_hits": 18,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 2929111852,
+    "table_key_hex": "0xae96b32c",
+    "stable_key": "ctb.HomeLandSellTable",
+    "table_name": "HomeLandSellTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:807a79fda8abc4b6e57c32cf8eff961032ff9d2831da622e07cf43507816e5e3",
+    "row_count": 192,
+    "row_size": 24,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 0
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": []
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 3151655819,
+    "table_key_hex": "0xbbda738b",
+    "stable_key": "ctb.HousingType",
+    "table_name": "HousingType.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:8763c91f5ae3dfa7d08e4c28e9639db0d4a0972ca1abfd255cf1525b3a1d9638",
+    "row_count": 3,
+    "row_size": 44,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 0
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 140
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 40,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "string_pool_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 3,
+            "nonzero_ratio": 1,
+            "distinct_values": 3,
+            "path_like_references": 0,
+            "candidate_target_tables": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 3424451790,
+    "table_key_hex": "0xcc1cfcce",
+    "stable_key": "ctb.HomeTextureTable",
+    "table_name": "HomeTextureTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:54204ce7a1a32abf9359af4a9560908326129656959799c48c1a3fcecd84f964",
+    "row_count": 45,
+    "row_size": 16,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 0
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 2028
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 4,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "string_pool_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 44,
+            "nonzero_ratio": 1,
+            "distinct_values": 43,
+            "path_like_references": 0,
+            "candidate_target_tables": []
+          }
+        ]
+      },
+      {
+        "offset": 12,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "string_pool_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 45,
+            "nonzero_ratio": 1,
+            "distinct_values": 35,
+            "path_like_references": 0,
+            "candidate_target_tables": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 3538938710,
+    "table_key_hex": "0xd2efeb56",
+    "stable_key": "ctb.HomeSundrieslTable",
+    "table_name": "HomeSundrieslTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:092bc95ff5c4139013637dae0fc99b142e30db5b2a983d8064bc8a12f7baada9",
+    "row_count": 4,
+    "row_size": 20,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 0
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": []
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 4045333287,
+    "table_key_hex": "0xf11ee327",
+    "stable_key": "ctb.HomePollenTable",
+    "table_name": "HomePollenTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:6846ca9c5254f0f184e642f8e61f17b52b31934d0ec8876cb2ca8919abef95e2",
+    "row_count": 3,
+    "row_size": 12,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 0
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 48
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 4,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "string_pool_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 2,
+            "nonzero_ratio": 1,
+            "distinct_values": 2,
+            "path_like_references": 0,
+            "candidate_target_tables": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 4149235948,
+    "table_key_hex": "0xf75050ec",
+    "stable_key": "ctb.HomeFlowerTable",
+    "table_name": "HomeFlowerTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:9ce6ab72d9d423b71cc0b7c60c087c3241747ba7be6ce883c793bb2a73c9f731",
+    "row_count": 192,
+    "row_size": 48,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 254
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 7936
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 4,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "string_pool_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 191,
+            "nonzero_ratio": 1,
+            "distinct_values": 191,
+            "path_like_references": 0,
+            "candidate_target_tables": []
+          }
+        ]
+      },
+      {
+        "offset": 24,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "string_pool_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 192,
+            "nonzero_ratio": 1,
+            "distinct_values": 64,
+            "path_like_references": 0,
+            "candidate_target_tables": []
+          }
+        ]
+      },
+      {
+        "offset": 28,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 180,
+            "nonzero_ratio": 1,
+            "distinct_values": 15,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 180,
+              "length_histogram": [
+                {
+                  "length": 3,
+                  "references": 180
+                }
+              ],
+              "direct_elements": {
+                "elements": 540,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 504,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 106122017,
+                    "references": 504,
+                    "distinct_values": 32,
+                    "ambiguity_weighted_score": 6.311612,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 504,
+                    "distinct_values": 32,
+                    "ambiguity_weighted_score": 6.311612,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 189604923,
+                    "references": 504,
+                    "distinct_values": 32,
+                    "ambiguity_weighted_score": 6.311612,
+                    "stable_key": "ctb.SkillUpgradeTable",
+                    "table_name": "SkillUpgradeTable.ctb"
+                  },
+                  {
+                    "table_key": 547513556,
+                    "references": 504,
+                    "distinct_values": 32,
+                    "ambiguity_weighted_score": 6.311612,
+                    "stable_key": "ctb.RecountTable",
+                    "table_name": "RecountTable.ctb"
+                  },
+                  {
+                    "table_key": 755039901,
+                    "references": 504,
+                    "distinct_values": 32,
+                    "ambiguity_weighted_score": 6.311612,
+                    "stable_key": "ctb.UnionResolveTable",
+                    "table_name": "UnionResolveTable.ctb"
+                  },
+                  {
+                    "table_key": 284639524,
+                    "references": 492,
+                    "distinct_values": 31,
+                    "ambiguity_weighted_score": 6.111612,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 1120066233,
+                    "references": 420,
+                    "distinct_values": 26,
+                    "ambiguity_weighted_score": 5.746333,
+                    "stable_key": "ctb.WeaponAttrTable",
+                    "table_name": "WeaponAttrTable.ctb"
+                  },
+                  {
+                    "table_key": 770288905,
+                    "references": 384,
+                    "distinct_values": 23,
+                    "ambiguity_weighted_score": 4.959566,
+                    "stable_key": null,
+                    "table_name": null
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 36,
+                "records": 36,
+                "elements": 108,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 108,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 106122017,
+                    "references": 108,
+                    "distinct_values": 8,
+                    "ambiguity_weighted_score": 1.340561,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 108,
+                    "distinct_values": 8,
+                    "ambiguity_weighted_score": 1.340561,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 189604923,
+                    "references": 108,
+                    "distinct_values": 8,
+                    "ambiguity_weighted_score": 1.340561,
+                    "stable_key": "ctb.SkillUpgradeTable",
+                    "table_name": "SkillUpgradeTable.ctb"
+                  },
+                  {
+                    "table_key": 284639524,
+                    "references": 108,
+                    "distinct_values": 8,
+                    "ambiguity_weighted_score": 1.340561,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 547513556,
+                    "references": 108,
+                    "distinct_values": 8,
+                    "ambiguity_weighted_score": 1.340561,
+                    "stable_key": "ctb.RecountTable",
+                    "table_name": "RecountTable.ctb"
+                  },
+                  {
+                    "table_key": 755039901,
+                    "references": 108,
+                    "distinct_values": 8,
+                    "ambiguity_weighted_score": 1.340561,
+                    "stable_key": "ctb.UnionResolveTable",
+                    "table_name": "UnionResolveTable.ctb"
+                  },
+                  {
+                    "table_key": 1120066233,
+                    "references": 84,
+                    "distinct_values": 6,
+                    "ambiguity_weighted_score": 1.177924,
+                    "stable_key": "ctb.WeaponAttrTable",
+                    "table_name": "WeaponAttrTable.ctb"
+                  },
+                  {
+                    "table_key": 770288905,
+                    "references": 84,
+                    "distinct_values": 6,
+                    "ambiguity_weighted_score": 1.075742,
+                    "stable_key": null,
+                    "table_name": null
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "offset": 32,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 192,
+            "nonzero_ratio": 1,
+            "distinct_values": 3,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 192,
+              "length_histogram": [
+                {
+                  "length": 2,
+                  "references": 192
+                }
+              ],
+              "direct_elements": {
+                "elements": 384,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 320,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 5372838,
+                    "references": 320,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.851275,
+                    "stable_key": "ctb.FootstepFXTable",
+                    "table_name": "FootstepFXTable.ctb"
+                  },
+                  {
+                    "table_key": 11957008,
+                    "references": 320,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.851275,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 17491388,
+                    "references": 320,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.851275,
+                    "stable_key": "ctb.EquipRecastTypeTable",
+                    "table_name": "EquipRecastTypeTable.ctb"
+                  },
+                  {
+                    "table_key": 38709576,
+                    "references": 320,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.851275,
+                    "stable_key": "ctb.IchibanKujiPrizeQualityTable",
+                    "table_name": "IchibanKujiPrizeQualityTable.ctb"
+                  },
+                  {
+                    "table_key": 44454117,
+                    "references": 320,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.851275,
+                    "stable_key": "ctb.SettingsTable",
+                    "table_name": "SettingsTable.ctb"
+                  },
+                  {
+                    "table_key": 71561570,
+                    "references": 320,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.851275,
+                    "stable_key": "ctb.FashionCollectTable",
+                    "table_name": "FashionCollectTable.ctb"
+                  },
+                  {
+                    "table_key": 106122017,
+                    "references": 320,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.851275,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 136321303,
+                    "references": 320,
+                    "distinct_values": 4,
+                    "ambiguity_weighted_score": 0.851275,
+                    "stable_key": "ctb.SeasonActTypeTable",
+                    "table_name": "SeasonActTypeTable.ctb"
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 0,
+                "records": 0,
+                "elements": 0,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 0,
+                "candidate_target_tables": []
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "schema_version": 1,
+    "build": {
+      "deployment_id": "global",
+      "channel": "steam",
+      "distribution_app_id": "3681810",
+      "build_id": "24252055"
+    },
+    "table_key": 4198421636,
+    "table_key_hex": "0xfa3ed484",
+    "stable_key": "ctb.HomeAuthorityActionTable",
+    "table_name": "HomeAuthorityActionTable.ctb",
+    "name_confidence": "corroborated_hash_match",
+    "source_sha256": "sha256:1a9c2ce982fa0c4af3dbe92275f900c7ef4f511e54b91ad864651c148ffcdd40",
+    "row_count": 14,
+    "row_size": 8,
+    "pools": [
+      {
+        "type": 1,
+        "bytes": 88
+      },
+      {
+        "type": 2,
+        "bytes": 0
+      },
+      {
+        "type": 3,
+        "bytes": 0
+      },
+      {
+        "type": 4,
+        "bytes": 0
+      },
+      {
+        "type": 5,
+        "bytes": 0
+      },
+      {
+        "type": 6,
+        "bytes": 0
+      },
+      {
+        "type": 7,
+        "bytes": 0
+      },
+      {
+        "type": 8,
+        "bytes": 0
+      },
+      {
+        "type": 9,
+        "bytes": 0
+      },
+      {
+        "type": 10,
+        "bytes": 0
+      }
+    ],
+    "review_state": "partially_seeded",
+    "semantic_fields": [
+      {
+        "offset": 0,
+        "name": "row_key",
+        "type": "u32",
+        "semantic": "row_id",
+        "confidence": "current_build_structural",
+        "evidence": [
+          "current_build_unique_primary_row_key"
+        ],
+        "state": "current_build_validated"
+      }
+    ],
+    "strong_candidates": [
+      {
+        "offset": 4,
+        "aligned_u32": true,
+        "candidates": [
+          {
+            "family": "relationship",
+            "type": "int_pool_array_offset",
+            "evidence": "exact_reference",
+            "strength": "strong",
+            "references": 13,
+            "nonzero_ratio": 1,
+            "distinct_values": 13,
+            "candidate_target_tables": [],
+            "array_shape": {
+              "arrays": 13,
+              "length_histogram": [
+                {
+                  "length": 1,
+                  "references": 12
+                },
+                {
+                  "length": 2,
+                  "references": 1
+                }
+              ],
+              "direct_elements": {
+                "elements": 14,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 12,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 17491388,
+                    "references": 12,
+                    "distinct_values": 12,
+                    "ambiguity_weighted_score": 0.039739,
+                    "stable_key": "ctb.EquipRecastTypeTable",
+                    "table_name": "EquipRecastTypeTable.ctb"
+                  },
+                  {
+                    "table_key": 44454117,
+                    "references": 12,
+                    "distinct_values": 12,
+                    "ambiguity_weighted_score": 0.039739,
+                    "stable_key": "ctb.SettingsTable",
+                    "table_name": "SettingsTable.ctb"
+                  },
+                  {
+                    "table_key": 106122017,
+                    "references": 12,
+                    "distinct_values": 12,
+                    "ambiguity_weighted_score": 0.039739,
+                    "stable_key": "ctb.BattlePassCardTable",
+                    "table_name": "BattlePassCardTable.ctb"
+                  },
+                  {
+                    "table_key": 155301122,
+                    "references": 12,
+                    "distinct_values": 12,
+                    "ambiguity_weighted_score": 0.039739,
+                    "stable_key": "ctb.AffixTable",
+                    "table_name": "AffixTable.ctb"
+                  },
+                  {
+                    "table_key": 162258686,
+                    "references": 12,
+                    "distinct_values": 12,
+                    "ambiguity_weighted_score": 0.039739,
+                    "stable_key": "ctb.EquipBreakThroughTable",
+                    "table_name": "EquipBreakThroughTable.ctb"
+                  },
+                  {
+                    "table_key": 186892115,
+                    "references": 11,
+                    "distinct_values": 11,
+                    "ambiguity_weighted_score": 0.038086,
+                    "stable_key": "ctb.CutsceneTextTable",
+                    "table_name": "CutsceneTextTable.ctb"
+                  },
+                  {
+                    "table_key": 189604923,
+                    "references": 10,
+                    "distinct_values": 10,
+                    "ambiguity_weighted_score": 0.035958,
+                    "stable_key": "ctb.SkillUpgradeTable",
+                    "table_name": "SkillUpgradeTable.ctb"
+                  },
+                  {
+                    "table_key": 11957008,
+                    "references": 11,
+                    "distinct_values": 11,
+                    "ambiguity_weighted_score": 0.035863,
+                    "stable_key": null,
+                    "table_name": null
+                  }
+                ]
+              },
+              "nested_arrays": {
+                "references": 2,
+                "records": 2,
+                "elements": 3,
+                "localization_membership_hits": 0,
+                "row_id_membership_hits": 3,
+                "candidate_target_tables": [
+                  {
+                    "table_key": 2715124,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.006332,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 5372838,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.006332,
+                    "stable_key": "ctb.FootstepFXTable",
+                    "table_name": "FootstepFXTable.ctb"
+                  },
+                  {
+                    "table_key": 11957008,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.006332,
+                    "stable_key": null,
+                    "table_name": null
+                  },
+                  {
+                    "table_key": 17491388,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.006332,
+                    "stable_key": "ctb.EquipRecastTypeTable",
+                    "table_name": "EquipRecastTypeTable.ctb"
+                  },
+                  {
+                    "table_key": 29739093,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.006332,
+                    "stable_key": "ctb.QuestTypeGroupTable",
+                    "table_name": "QuestTypeGroupTable.ctb"
+                  },
+                  {
+                    "table_key": 33237851,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.006332,
+                    "stable_key": "ctb.PrivilegeTable",
+                    "table_name": "PrivilegeTable.ctb"
+                  },
+                  {
+                    "table_key": 38709576,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.006332,
+                    "stable_key": "ctb.IchibanKujiPrizeQualityTable",
+                    "table_name": "IchibanKujiPrizeQualityTable.ctb"
+                  },
+                  {
+                    "table_key": 44454117,
+                    "references": 3,
+                    "distinct_values": 3,
+                    "ambiguity_weighted_score": 0.006332,
+                    "stable_key": "ctb.SettingsTable",
+                    "table_name": "SettingsTable.ctb"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

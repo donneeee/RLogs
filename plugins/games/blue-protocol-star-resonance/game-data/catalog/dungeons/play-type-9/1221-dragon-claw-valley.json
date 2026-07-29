@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "kind": "dungeon",
+  "id": 1221,
+  "stable_key": "dungeon.1221",
+  "localization_key": "dungeon.1221.name",
+  "icon": null,
+  "attributes": {
+    "dungeon_id": 1221,
+    "name_id": 1074507189,
+    "content_description_id": 766312175,
+    "dungeon_type_name_id": 1944159143,
+    "function_id": 300208,
+    "play_type": 9,
+    "scene_id": 1221,
+    "entry_conditions": [
+      2576,
+      2586
+    ],
+    "entry_limits": [
+      3,
+      5
+    ],
+    "team_type": 0,
+    "solo_ai_mode": 1,
+    "solo_mode_dungeon_id": 1221,
+    "solo_award_counter_id": 0,
+    "ignore_dungeon_check": false,
+    "kick_time_seconds": 0,
+    "end_time_seconds": 2606,
+    "monster_combat_power": 40,
+    "loads_rank": true,
+    "result_hud_type": 1133903872,
+    "name_localization_key": "dungeon.1221.name",
+    "description_localization_key": "dungeon.1221.description",
+    "type_name_localization_key": "dungeon.1221.type_name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.DungeonsTable",
+    "reference": "client-build:global/steam/24252055@sha256:f1e86db717895d8dbb6be8cc115c964b63903056eb4cddda0885eceb5ebc0033",
+    "confidence": "corroborated"
+  }
+}

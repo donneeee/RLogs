@@ -10,8 +10,10 @@ Thumbs.db
 *.pcapng
 *.jsonl
 *.rlog
+*.connections.json
+*.connections.partial.json
 captures/
+private-research/
 secrets/
 .env
 .env.*
-

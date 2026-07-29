@@ -3,7 +3,8 @@
 ## Foundation
 
 - define capture-source and canonical-event contracts;
-- define plugin manifests, capabilities, and compatibility rules;
+- wire the implemented folder-package loader into desktop startup and settings;
+- expose installed plug-in diagnostics, enable/disable state, and permissions;
 - preserve unknown packet evidence without classifying it as safe;
 - record region, build, and protocol-pack evidence;
 - establish sanitized replay fixtures.

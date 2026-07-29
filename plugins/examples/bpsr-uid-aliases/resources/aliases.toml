@@ -1,0 +1,14 @@
+schema_version = 1
+game_plugin_id = "app.rlogs.game.blue-protocol-star-resonance"
+
+[[aliases]]
+locale = "en-US"
+namespace = "skill"
+uid = "1714"
+alias = "Example custom skill name"
+
+[[aliases]]
+locale = "en-US"
+namespace = "monster"
+uid = "100001"
+alias = "Example custom monster name"

@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "kind": "npc",
+  "id": 40502005,
+  "stable_key": "npc.40502005",
+  "localization_key": "npc.40502005.name",
+  "icon": null,
+  "attributes": {
+    "npc_id": 40502005,
+    "name_id": 1840538845,
+    "model_design_name": "",
+    "map_icon_path": "",
+    "role_name_id": 1673289950,
+    "name_localization_key": "npc.40502005.name",
+    "role_localization_key": "npc.40502005.role"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.NpcTable",
+    "reference": "client-build:global/steam/24252055@sha256:d09302387edbe36da1804ff7b901adccfc775abebce10046383f529502de7eb9",
+    "confidence": "corroborated"
+  }
+}

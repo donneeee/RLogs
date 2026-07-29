@@ -1,0 +1,95 @@
+{
+  "schema_version": 2,
+  "kind": "monster",
+  "id": 30813,
+  "stable_key": "monster.30813",
+  "localization_key": "monster.30813.name",
+  "icon": null,
+  "attributes": {
+    "monster_id": 30813,
+    "name_id": 806739795,
+    "model_id": 50070,
+    "monster_type": 1,
+    "monster_size_type": 0,
+    "health_bar_count": 1,
+    "skill_ids": [
+      1601,
+      1602,
+      1603,
+      1604,
+      1605,
+      1606,
+      1607,
+      1608,
+      1609,
+      1610,
+      1611,
+      1612,
+      1613,
+      1614,
+      1615,
+      1616,
+      1617,
+      1618,
+      1619,
+      1620,
+      1621,
+      1622,
+      1623,
+      1624,
+      2002,
+      1699
+    ],
+    "hatred_build_types": [
+      1,
+      0
+    ],
+    "is_flying": false,
+    "sight_config": [
+      64,
+      382
+    ],
+    "uses_accurate_sight": false,
+    "shows_alert_offscreen": false,
+    "hatred_away_thresholds": [
+      1,
+      1
+    ],
+    "score": 0,
+    "hatred_away_types": [
+      0,
+      70,
+      0
+    ],
+    "attribute_id": 30813,
+    "walk_speed": 1.5,
+    "run_speed": 3,
+    "fast_run_speed": 3,
+    "alert_speed": 1.5,
+    "minimum_alert_distance": 5,
+    "maximum_alert_distance": 50,
+    "body_duration": 4.203895392974451e-42,
+    "exports_voxel": false,
+    "default_camp_id": 1,
+    "hud_show_parameters": [
+      1
+    ],
+    "entity_turn_velocity": [
+      60,
+      360
+    ],
+    "name_localization_key": "monster.30813.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.MonsterTable",
+    "reference": "client-build:global/steam/24252055@sha256:42a3d585f929111a0ae7e69742077b9fcaa4dc729a72dcc1fb4904e69cd3232a",
+    "confidence": "corroborated"
+  }
+}

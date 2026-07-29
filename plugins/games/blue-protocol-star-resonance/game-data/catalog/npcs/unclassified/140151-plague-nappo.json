@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "kind": "npc",
+  "id": 140151,
+  "stable_key": "npc.140151",
+  "localization_key": "npc.140151.name",
+  "icon": null,
+  "attributes": {
+    "npc_id": 140151,
+    "name_id": 383815513,
+    "model_design_name": "dng_1421_nabo02_base",
+    "map_icon_path": "",
+    "role_name_id": 0,
+    "name_localization_key": "npc.140151.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.NpcTable",
+    "reference": "client-build:global/steam/24252055@sha256:d09302387edbe36da1804ff7b901adccfc775abebce10046383f529502de7eb9",
+    "confidence": "corroborated"
+  }
+}

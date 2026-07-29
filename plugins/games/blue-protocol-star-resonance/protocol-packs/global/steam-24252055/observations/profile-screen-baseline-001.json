@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "observation_id": "profile-screen-baseline-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "scenario": {
+    "started_after_authentication": true,
+    "included_login_flow": false,
+    "actions": [
+      "stand_idle",
+      "open_character_profile_screen",
+      "close_character_profile_screen",
+      "stand_idle"
+    ],
+    "duration_micros": 89930105
+  },
+  "capture_quality": {
+    "captured_frames": 4182,
+    "interface_drops": 0,
+    "truncated_frames": 0,
+    "backward_timestamps": 0,
+    "journal_records": 3590,
+    "packet_records": 3573,
+    "journal_gap_records_before_boundary_normalization": {
+      "tcp_gap": {
+        "total": 8,
+        "zero_byte_idle_expiration": 6,
+        "buffered_at_capture_end": 2
+      },
+      "malformed_frame": {
+        "total": 9,
+        "zero_byte_idle_expiration": 8,
+        "one_byte_resynchronization": 1
+      }
+    },
+    "capture_boundary_partial_tcp_streams": {
+      "count": 2,
+      "buffered_bytes": 440
+    },
+    "meaningful_gap_records_after_boundary_normalization": {
+      "tcp_gap": 0,
+      "malformed_frame": 1
+    }
+  },
+  "observed_routes": [
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 164931432,
+      "service_name": "ChitChatNtf",
+      "method_id": 1,
+      "packet_count": 5
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 504281929,
+      "service_name": "UnionNtf",
+      "method_id": 10,
+      "packet_count": 1
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 504281929,
+      "service_name": "UnionNtf",
+      "method_id": 15,
+      "packet_count": 1
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "service_name": "WorldNtf",
+      "method_id": 6,
+      "packet_count": 2
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "service_name": "WorldNtf",
+      "method_id": 22,
+      "packet_count": 1
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "service_name": "WorldNtf",
+      "method_id": 43,
+      "packet_count": 18
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "service_name": "WorldNtf",
+      "method_id": 45,
+      "packet_count": 1123
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "service_name": "WorldNtf",
+      "method_id": 73,
+      "packet_count": 1
+    }
+  ],
+  "profile_screen_result": {
+    "full_snapshot_route_observed": false,
+    "dirty_update_route": {
+      "service_id": 1664308034,
+      "method_id": 22,
+      "method_name": "SyncContainerDirtyData",
+      "application_bytes": 70,
+      "dirty_blob_bytes": 64,
+      "dirty_root_fields": [
+        {
+          "field_id": 2,
+          "candidate_name": "char_base"
+        },
+        {
+          "field_id": 104,
+          "candidate_name": "unknown_current_build"
+        }
+      ],
+      "privacy_disposition": "opaque",
+      "privacy_reason": "The dirty char_base container may co-locate allowed character fields with prohibited account identifiers. No values were retained in this observation."
+    }
+  },
+  "retained_data": {
+    "packet_payloads": false,
+    "network_endpoints": false,
+    "character_names": false,
+    "character_ids": false,
+    "account_identifiers": false,
+    "credentials_or_tokens": false
+  }
+}

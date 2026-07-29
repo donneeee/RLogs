@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.2.name",
+    "text": "Mage de givre",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964619",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.8.name",
+    "text": "Éclair tonitruant - Canon à main",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964625",
+      "confidence": "verified"
+    }
+  }
+]

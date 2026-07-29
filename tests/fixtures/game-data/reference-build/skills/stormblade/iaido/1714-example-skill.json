@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "kind": "skill",
   "id": 1714,
   "stable_key": "skill.stormblade.iaido.1714",
@@ -9,6 +9,13 @@
     "class_key": "stormblade",
     "spec_key": "iaido"
   },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "fixture-not-for-live-use"
+    }
+  ],
   "provenance": {
     "source": "reviewed-game-data",
     "reference": "skills/stormblade/iaido/1714-example-skill.json",

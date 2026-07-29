@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.12.name",
+    "text": "シールドファイター",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192188",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.3.name",
+    "text": "ツインストライカー",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964620",
+      "confidence": "verified"
+    }
+  }
+]

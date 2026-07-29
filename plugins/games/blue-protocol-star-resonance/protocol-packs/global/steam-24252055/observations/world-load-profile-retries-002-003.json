@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "observation_id": "world-load-profile-retries-002-003",
+  "target_pack_id": "global-steam-24252055-research",
+  "scenario": {
+    "started_after_authentication": true,
+    "included_initial_login_flow": false,
+    "actions": [
+      "begin_at_server_or_character_selection",
+      "enter_world_as_selected_character",
+      "stand_idle"
+    ]
+  },
+  "attempts": [
+    {
+      "capture_id": "world-load-profile-002",
+      "duration_micros": 128500000,
+      "capture_quality": {
+        "captured_frames": 50,
+        "captured_bytes": 14457,
+        "interface_drops": 0,
+        "truncated_frames": 0,
+        "journal_records": 29,
+        "packet_records": 28,
+        "meaningful_gap_records": 1
+      },
+      "observed_route_count": 0,
+      "scope_result": {
+        "captured_only_pre_world_endpoint": true,
+        "new_process_owned_endpoints_after_world_entry": 2,
+        "new_endpoints_inside_seeded_filter": 0
+      }
+    },
+    {
+      "capture_id": "world-load-profile-003",
+      "duration_micros": 177460000,
+      "capture_quality": {
+        "captured_frames": 2350,
+        "captured_bytes": 231767,
+        "interface_drops": 0,
+        "truncated_frames": 0,
+        "journal_records": 1938,
+        "packet_records": 1932,
+        "meaningful_gap_records": 6
+      },
+      "observed_routes": [
+        {
+          "direction": "server_to_client",
+          "fragment": "notify",
+          "service_id": 1664308034,
+          "service_name": "WorldNtf",
+          "method_id": 6,
+          "packet_count": 1,
+          "first_observed_seconds": 5.596
+        },
+        {
+          "direction": "server_to_client",
+          "fragment": "notify",
+          "service_id": 1664308034,
+          "service_name": "WorldNtf",
+          "method_id": 22,
+          "packet_count": 1,
+          "first_observed_seconds": 10.923
+        },
+        {
+          "direction": "server_to_client",
+          "fragment": "notify",
+          "service_id": 1664308034,
+          "service_name": "WorldNtf",
+          "method_id": 43,
+          "packet_count": 10,
+          "first_observed_seconds": 2.523,
+          "last_observed_seconds": 47.507
+        },
+        {
+          "direction": "server_to_client",
+          "fragment": "notify",
+          "service_id": 1664308034,
+          "service_name": "WorldNtf",
+          "method_id": 45,
+          "packet_count": 598,
+          "first_observed_seconds": 0.0,
+          "last_observed_seconds": 48.825
+        },
+        {
+          "direction": "client_to_server",
+          "fragment": "notify",
+          "service_id": 1232729813,
+          "service_name": "GrpcCharactor",
+          "method_id": 6,
+          "candidate_method_name": "ExitGame",
+          "packet_count": 1,
+          "first_observed_seconds": 48.81
+        },
+        {
+          "direction": "server_to_client",
+          "fragment": "notify",
+          "service_id": 78136601,
+          "service_name": "WorldLoginNtf",
+          "method_id": 2,
+          "candidate_method_name": "unknown",
+          "packet_count": 1,
+          "first_observed_seconds": 48.818
+        },
+        {
+          "direction": "server_to_client",
+          "fragment": "notify",
+          "service_id": 1664308034,
+          "service_name": "WorldNtf",
+          "method_id": 49,
+          "candidate_method_name": "NotifyClientKickOff",
+          "packet_count": 1,
+          "first_observed_seconds": 48.836
+        }
+      ],
+      "scope_result": {
+        "old_world_stream_ended_seconds": 48.836,
+        "new_process_owned_endpoints_after_reentry": 2,
+        "new_endpoints_inside_seeded_filter": 0
+      }
+    }
+  ],
+  "profile_snapshot_result": {
+    "sync_container_data_observed": false,
+    "sync_container_dirty_data_observed_before_exit": true,
+    "complete_profile_snapshot_observed": false,
+    "conclusion": "The endpoint-scoped captures lost visibility when world endpoints rotated. These attempts cannot prove that the current build omitted the complete profile snapshot."
+  },
+  "capture_design_result": {
+    "exact_endpoint_following_is_sufficient_for_local_port_turnover": true,
+    "exact_endpoint_following_is_sufficient_for_world_server_rotation": false,
+    "required_next_backend": "process_owned_socket_tracking_before_persistence"
+  },
+  "privacy_decisions": [
+    {
+      "service_id": 1232729813,
+      "method_id": 6,
+      "service_name": "GrpcCharactor",
+      "disposition": "prohibited_private_account_data",
+      "reason": "The request is on a character-session lifecycle service and may contain account or session identifiers. RLogs will not inspect or normalize its payload."
+    },
+    {
+      "service_id": 78136601,
+      "method_id": 2,
+      "service_name": "WorldLoginNtf",
+      "disposition": "prohibited_private_account_data",
+      "reason": "The method meaning is unknown and occurs on a login-named service. RLogs will not inspect or normalize its payload."
+    }
+  ],
+  "retained_data": {
+    "packet_payloads": false,
+    "network_endpoints": false,
+    "character_names": false,
+    "character_ids": false,
+    "account_identifiers": false,
+    "credentials_or_tokens": false
+  }
+}

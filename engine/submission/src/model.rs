@@ -3,7 +3,7 @@ use std::fmt;
 use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
-pub const CURRENT_SUBMISSION_SCHEMA: u16 = 1;
+pub const CURRENT_SUBMISSION_SCHEMA: u16 = 2;
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
@@ -83,6 +83,7 @@ pub enum VerificationTier {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SubmissionMetadata {
     pub schema_version: u16,
+    pub game_plugin_id: String,
     pub local_log_id: String,
     pub log_format_version: u16,
     pub capture_session_id: String,
@@ -96,6 +97,7 @@ pub struct SubmissionMetadata {
 impl SubmissionMetadata {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        game_plugin_id: impl Into<String>,
         local_log_id: impl Into<String>,
         log_format_version: u16,
         capture_session_id: impl Into<String>,
@@ -107,6 +109,7 @@ impl SubmissionMetadata {
     ) -> Self {
         Self {
             schema_version: CURRENT_SUBMISSION_SCHEMA,
+            game_plugin_id: game_plugin_id.into(),
             local_log_id: local_log_id.into(),
             log_format_version,
             capture_session_id: capture_session_id.into(),

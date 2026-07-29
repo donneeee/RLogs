@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "sources": [
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/meta.pkg",
+      "role": "container_index",
+      "leads_to": [
+        "package number",
+        "entry offset",
+        "entry length",
+        "bundle or data classification"
+      ]
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "role": "catalog_and_payload_container",
+      "leads_to": [
+        "asset address hash to bundle hash",
+        "sprite address to atlas address",
+        "CTB tables and localization payloads"
+      ]
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m*.pkg",
+      "role": "container_payloads",
+      "leads_to": [
+        "UnityFS bundles",
+        "CTB tables",
+        "localized strings",
+        "other hash-identified binary data"
+      ]
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/globalgamemanagers.assets",
+      "role": "unity_script_identity",
+      "leads_to": [
+        "MonoScript class names",
+        "table-name hash matches",
+        "Unity object type inventory"
+      ]
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/resources.assets",
+      "role": "top_level_unity_resources",
+      "leads_to": [
+        "object identities and types",
+        "sprites, textures, TextAsset identities, and UI resources"
+      ],
+      "content_policy": "identity_and_type_only_no_textasset_payload_export"
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/sharedassets0.assets",
+      "role": "top_level_shared_unity_resources",
+      "leads_to": [
+        "object identities, sprites, textures, and external references"
+      ]
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "role": "il2cpp_metadata",
+      "observed_state": "empty_in_this_build"
+    },
+    {
+      "relative_path": "bpsr/GameAssembly.dll",
+      "role": "protected_il2cpp_native_code",
+      "content_policy": "digest_and_binary_inventory_only_no_auth_or_account_string_extraction"
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAMBase.dll",
+      "role": "protected_client_base",
+      "content_policy": "digest_and_binary_inventory_only_no_auth_or_account_string_extraction"
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/info/*",
+      "role": "media_streams",
+      "observed_state": "137 extensionless ISO base media files"
+    }
+  ]
+}

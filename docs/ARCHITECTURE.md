@@ -14,10 +14,12 @@ link / IP / TCP decode
 TCP stream reconstruction
     |
     v
-lossless wire-fragment journal
+trusted game plug-in
     |
-    v
-region/build protocol pack
+    +--> message framing and bounded decompression
+    +--> region/build protocol pack
+    +--> privacy-reviewed selective decoder
+    +--> game-owned profile and website projection
     |
     v
 versioned canonical events
@@ -33,19 +35,40 @@ versioned canonical events
 There is no legacy parser running beside it. Offline replay passes through the
 same reconstruction, decode, event, and reducer interfaces as live capture.
 
-## Trusted core
+## Game-neutral Core
 
 Only responsibilities that must be consistent and security-sensitive belong
-in the trusted core:
+in the reusable Core:
 
 - cross-platform capture-source interfaces;
-- allocation-conscious network decoding, bounded stream reconstruction,
-  framing, and bounded decompression;
-- protocol-pack selection and decoding;
-- region and client-build evidence;
+- allocation-conscious network decoding and bounded TCP reconstruction;
+- the versioned trusted-game-plug-in manifest and stream handoff;
 - canonical event ordering and provenance;
 - plugin isolation, permissions, lifecycle, and resource limits;
-- local log integrity and submission allowlisting.
+- folder-package discovery, shared read-only resources, dependency resolution,
+  and deterministic operation hooks;
+- local log integrity;
+- game-neutral website envelopes, relative-route validation, credential-field
+  rejection, and authenticated transport.
+
+Core contains no game names, executable names, framing rules, opcodes, route
+catalogs, region endpoints, profile fields, or game-data IDs.
+
+## Trusted game plug-ins
+
+Each game integration is a privileged native plug-in because packet decoders
+must receive reconstructed game streams. It owns:
+
+- executable/process selectors;
+- framing, decompression, protocol packs, route and opcode knowledge;
+- region/build resolution and selective decoders;
+- game-data catalogs and sanitized mapping inventories;
+- typed character profiles;
+- projection into Core's privacy-reviewed website request.
+
+The BPSR implementation is
+`plugins/games/blue-protocol-star-resonance/`. A future game adds another
+sibling folder without modifying the game-neutral Core contracts.
 
 User-facing analysis belongs in plugins whenever practical.
 
@@ -59,9 +82,25 @@ runtime targets are:
 - external-process plugins using authenticated local IPC;
 - explicitly enabled native developer plugins, marked unsafe.
 
-Normal plugins receive canonical events, never credentials, login payloads, or
-unreviewed raw packets. Protocol research is a separate developer capability
-and cannot publish raw evidence.
+Normal plugins receive canonical events, never credentials, login payloads,
+or unreviewed raw packets. They are not trusted game plug-ins. Protocol
+research remains local to a game integration and cannot publish raw evidence.
+
+Community packages are installed as directories under `plugins/installed/`.
+`plugin.toml` is only the declaration layer; the same directory owns its
+entrypoint and small resources. Large private resources can use the
+host-derived `assets/<plugin-folder>/` namespace. Provider-owned resources
+intended for reuse use `assets/shared/<provider-plugin-folder>/`. Published
+resources retain a single owner and other plug-ins import them by owner ID,
+resource name, schema ID, and minimum schema version. The host provides
+read-only access rather than copying the data or letting manifests choose
+another provider's filesystem namespace.
+
+Hooks target a named operation stage and run either before or after Core.
+Dependencies, explicit `before`/`after` edges, and numeric priority produce one
+deterministic topological order. Ordering cycles are rejected. Presentation
+features such as UID-based locale aliases use an `after_core`
+`localization_lookup` hook and cannot mutate canonical IDs or log evidence.
 
 Chat events are local-sensitive canonical events. A plugin must receive a
 separate chat-read grant, and submission builders reject them. Direct/private
@@ -83,8 +122,10 @@ boundary allows:
 - overlays;
 - log uploader.
 
-Capture, decoding, privacy enforcement, and plugin permissions remain core
-services rather than plugins.
+Capture, TCP reconstruction, website transport, and ordinary add-on
+permissions remain Core services. Game decoding and game-owned privacy
+allowlists live in the selected trusted game plug-in; Core still applies
+cross-game credential/account-field rejection at the website boundary.
 
 ## Cross-platform implementation
 

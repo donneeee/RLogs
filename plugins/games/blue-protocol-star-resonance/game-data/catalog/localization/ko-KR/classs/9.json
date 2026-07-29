@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.1.description",
+    "text": "<color=#fcbe03>근거리</color> 전투에 능하며, <color=#fcbe03>대낫</color>을 무기로 사용합니다. 낫 또는 장도 형태로 자유롭게 전환할 수 있으며, 뛰어난 <color=#fcbe03>소규모 범위 공격</color> 능력을 가지고 있습니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367317",
+      "confidence": "verified"
+    }
+  }
+]

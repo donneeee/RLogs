@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "kind": "status_effect",
+  "id": 997025,
+  "stable_key": "status_effect.997025",
+  "localization_key": "status_effect.997025.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "unclassified",
+    "spec_key": "unclassified",
+    "classification_state": "pending_current_build_relation",
+    "buff_id": 997025,
+    "level": 25,
+    "design_name": "幸运提高300",
+    "name_id": 1151491951,
+    "description_id": 26512301,
+    "buff_type": 1,
+    "priority": 2,
+    "tips_description_id": 0,
+    "visibility_mode": 1,
+    "repeat_add_rule": [
+      3,
+      20
+    ],
+    "delete_on_death": false,
+    "delete_offline": true,
+    "delete_on_scene_change": true,
+    "delete_on_visual_layer_change": false,
+    "delete_on_weapon_change": false,
+    "delete_on_source_death": false,
+    "ability_type": 0,
+    "ability_subtype": 0,
+    "is_client_buff": false,
+    "hud_switch": 0,
+    "time_refresh_type": 0,
+    "play_type": 0,
+    "skill_id": 0,
+    "name_localization_key": "status_effect.997025.name",
+    "description_localization_key": "status_effect.997025.description"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.BuffTable",
+    "reference": "client-build:global/steam/24252055@sha256:56425196ed9c635ef4a23afad38d3dbb4a76ecccaa6192d4a3f6879725e61550",
+    "confidence": "corroborated"
+  }
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.11.description",
+    "text": "<color=#fcbe03>弓</color>を武器とした<color=#fcbe03>遠距離戦闘</color>を得意とする。臣獣を使役し共に戦うことで優れた<color=#fcbe03>広範囲攻撃</color>能力を持っている。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154214",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.5.name",
+    "text": "ヴァーダントオラクル",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964622",
+      "confidence": "verified"
+    }
+  }
+]

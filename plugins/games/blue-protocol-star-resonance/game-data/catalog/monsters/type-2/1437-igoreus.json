@@ -1,0 +1,119 @@
+{
+  "schema_version": 2,
+  "kind": "monster",
+  "id": 1437,
+  "stable_key": "monster.1437",
+  "localization_key": "monster.1437.name",
+  "icon": null,
+  "attributes": {
+    "monster_id": 1437,
+    "name_id": 1195733699,
+    "model_id": 1401,
+    "monster_type": 2,
+    "monster_size_type": 0,
+    "health_bar_count": 1,
+    "skill_ids": [
+      140101,
+      140102,
+      140103,
+      140104,
+      140105,
+      140106,
+      140107,
+      140108,
+      140109,
+      140110,
+      140111,
+      140112,
+      140113,
+      140114,
+      140115,
+      140116,
+      140117,
+      140118,
+      140119,
+      140120,
+      140121,
+      140122,
+      140123,
+      140124,
+      140125,
+      140126,
+      101318,
+      101319,
+      101320,
+      101321,
+      101337,
+      101341,
+      140127,
+      140128,
+      140129,
+      140130,
+      140131,
+      140132,
+      140133,
+      140134,
+      140135,
+      140136,
+      140137,
+      140138,
+      140139,
+      140140,
+      140141,
+      140142,
+      140143,
+      140144
+    ],
+    "hatred_build_types": [
+      0,
+      1
+    ],
+    "is_flying": false,
+    "sight_config": [
+      64,
+      382
+    ],
+    "uses_accurate_sight": false,
+    "shows_alert_offscreen": false,
+    "hatred_away_thresholds": [
+      2,
+      1
+    ],
+    "score": 0,
+    "hatred_away_types": [
+      0,
+      0,
+      0
+    ],
+    "attribute_id": 1437,
+    "walk_speed": 7,
+    "run_speed": 8,
+    "fast_run_speed": 8,
+    "alert_speed": 7,
+    "minimum_alert_distance": 5,
+    "maximum_alert_distance": 50,
+    "body_duration": 4.203895392974451e-42,
+    "exports_voxel": false,
+    "default_camp_id": 1,
+    "hud_show_parameters": [
+      0
+    ],
+    "entity_turn_velocity": [
+      60,
+      360
+    ],
+    "name_localization_key": "monster.1437.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.MonsterTable",
+    "reference": "client-build:global/steam/24252055@sha256:42a3d585f929111a0ae7e69742077b9fcaa4dc729a72dcc1fb4904e69cd3232a",
+    "confidence": "corroborated"
+  }
+}

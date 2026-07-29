@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.12.name",
+    "text": "Chevalier au bouclier",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192188",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.3.name",
+    "text": "Frappe jumelle",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964620",
+      "confidence": "verified"
+    }
+  }
+]

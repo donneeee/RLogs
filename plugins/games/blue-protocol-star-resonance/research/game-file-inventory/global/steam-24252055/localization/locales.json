@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "configured_locales": 11,
+  "present_locales": 11,
+  "union_ids": 171474,
+  "locales": [
+    {
+      "language": "english",
+      "locale": "en",
+      "source_relative_location": "container entry 3281192900",
+      "bytes": 9626304,
+      "index_entries": 171253,
+      "populated_strings": 106829,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 3604188
+    },
+    {
+      "language": "chinese",
+      "locale": "zh-CN",
+      "source_relative_location": "container entry 1494144761",
+      "bytes": 9173673,
+      "index_entries": 171248,
+      "populated_strings": 111666,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 3741227
+    },
+    {
+      "language": "traditionalchinese",
+      "locale": "zh-TW",
+      "source_relative_location": "container entry 2616552724",
+      "bytes": 9178453,
+      "index_entries": 171253,
+      "populated_strings": 111597,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 3748639
+    },
+    {
+      "language": "japanese",
+      "locale": "ja",
+      "source_relative_location": "container entry 1057523265",
+      "bytes": 12024287,
+      "index_entries": 171253,
+      "populated_strings": 110872,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 4053244
+    },
+    {
+      "language": "korean",
+      "locale": "ko-KR",
+      "source_relative_location": "container entry 1850826906",
+      "bytes": 11380802,
+      "index_entries": 171253,
+      "populated_strings": 109683,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 3915154
+    },
+    {
+      "language": "french",
+      "locale": "fr",
+      "source_relative_location": "container entry 4163077392",
+      "bytes": 11305108,
+      "index_entries": 171253,
+      "populated_strings": 106755,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 3964571
+    },
+    {
+      "language": "german",
+      "locale": "de",
+      "source_relative_location": "container entry 415784596",
+      "bytes": 11079867,
+      "index_entries": 171253,
+      "populated_strings": 105881,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 4023828
+    },
+    {
+      "language": "spanish",
+      "locale": "es",
+      "source_relative_location": "container entry 1687497296",
+      "bytes": 10598562,
+      "index_entries": 171253,
+      "populated_strings": 106219,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 3821196
+    },
+    {
+      "language": "portuguese",
+      "locale": "pt-BR",
+      "source_relative_location": "container entry 49135757",
+      "bytes": 10658237,
+      "index_entries": 171253,
+      "populated_strings": 107273,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 3796692
+    },
+    {
+      "language": "thai",
+      "locale": "th",
+      "source_relative_location": "container entry 3877184032",
+      "bytes": 19628641,
+      "index_entries": 171253,
+      "populated_strings": 109562,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 4552049
+    },
+    {
+      "language": "indonesian",
+      "locale": "id",
+      "source_relative_location": "container entry 3229272034",
+      "bytes": 10644698,
+      "index_entries": 171253,
+      "populated_strings": 110499,
+      "missing_text_references": 0,
+      "private_compressed_source_bytes": 3627320
+    }
+  ],
+  "runtime_policy": "Compile each locale independently into deterministic ID buckets and load only the selected locale shards."
+}

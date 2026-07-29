@@ -1,0 +1,65 @@
+[
+  {
+    "relative_path": "bpsr/AntiCheatExpert/ACE-Base.dat",
+    "bytes": 65876,
+    "modified_utc": "2026-07-17T10:03:42.221Z",
+    "stable_during_scan": true,
+    "extension": ".dat",
+    "signature": "binary_or_text",
+    "sha256": "sha256:add089b7a65c6fcf69e75ae5905327758a67e7d9b060ccc24d9c26ea9bd08018"
+  },
+  {
+    "relative_path": "bpsr/AntiCheatExpert/ACE-BASE.sys",
+    "bytes": 4283040,
+    "modified_utc": "2026-05-30T03:46:54.404Z",
+    "stable_during_scan": true,
+    "extension": ".sys",
+    "signature": "pe",
+    "sha256": "sha256:6cb3e6eab1fe739769a969ede236dff740b8247e65f4d304b0ec96dd581e7ffd"
+  },
+  {
+    "relative_path": "bpsr/AntiCheatExpert/ACE-Base64.dll",
+    "bytes": 52605232,
+    "modified_utc": "2026-07-17T10:03:41.675Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:1b4005bd9c9f17a1fcc8775dea0859dc9344fd0d69a197bac0f4ef463ba723be"
+  },
+  {
+    "relative_path": "bpsr/AntiCheatExpert/ACE-CORE.sys",
+    "bytes": 2841776,
+    "modified_utc": "2026-07-17T10:03:41.675Z",
+    "stable_during_scan": true,
+    "extension": ".sys",
+    "signature": "pe",
+    "sha256": "sha256:00ca660121546fc36e9190f7c6fd5d76a65b9c49046096712cabafe30200f054"
+  },
+  {
+    "relative_path": "bpsr/AntiCheatExpert/ACE-CORE.sys2",
+    "bytes": 2498720,
+    "modified_utc": "2026-07-17T10:03:41.675Z",
+    "stable_during_scan": true,
+    "extension": ".sys2",
+    "signature": "pe",
+    "sha256": "sha256:c9fbbd6c69e027d6538b15aab342ef4a40273bcbfbc1870c7dc327c2fe86ce45"
+  },
+  {
+    "relative_path": "bpsr/AntiCheatExpert/ACE-Service64.exe",
+    "bytes": 3261264,
+    "modified_utc": "2026-05-30T03:46:54.406Z",
+    "stable_during_scan": true,
+    "extension": ".exe",
+    "signature": "pe",
+    "sha256": "sha256:bd44a95be873a37c5e230245abc10b422df932beacdcded27ed2b155af833717"
+  },
+  {
+    "relative_path": "bpsr/AntiCheatExpert/ACE-Setup64.exe",
+    "bytes": 898896,
+    "modified_utc": "2026-05-30T03:46:54.406Z",
+    "stable_during_scan": true,
+    "extension": ".exe",
+    "signature": "pe",
+    "sha256": "sha256:bfe897239408fd90c36bcf1a1f6e7037b8e3867fd90fa629323ed3985be92ea4"
+  }
+]

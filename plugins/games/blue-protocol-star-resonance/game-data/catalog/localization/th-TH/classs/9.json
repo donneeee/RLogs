@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.1.description",
+    "text": "เชี่ยวชาญการต่อสู้<color=#fcbe03>ระยะใกล้</color> โดยใช้<color=#fcbe03>ดาบ<br>ยาวรูปเคียว</color>เป็นอาวุธ สามารถสลับ<br>ระหว่างเคียวกับดาบยาวได้อย่างอิสระ มีความสามารถในการ<color=#fcbe03>โจมตีพื้นที่เล็ก</color>ที่<br>ยอดเยี่ยม",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367317",
+      "confidence": "verified"
+    }
+  }
+]

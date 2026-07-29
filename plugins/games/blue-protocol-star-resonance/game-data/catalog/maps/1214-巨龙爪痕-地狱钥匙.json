@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "kind": "map",
+  "id": 1214,
+  "stable_key": "map.1214",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "map_info_id": 1214,
+    "design_name": "巨龙爪痕·地狱钥匙",
+    "map_background_path": "ui/textures/map/dungeon_map_bg"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.MapInfoTable",
+    "reference": "client-build:global/steam/24252055@sha256:560c46d985f79f5e1ebbb5a8a3cd894650dd4c3fe6ce892bbe7c4ad189c38ecc",
+    "confidence": "corroborated"
+  }
+}

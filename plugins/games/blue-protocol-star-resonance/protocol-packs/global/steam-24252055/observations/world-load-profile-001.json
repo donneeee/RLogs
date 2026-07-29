@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "observation_id": "world-load-profile-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "scenario": {
+    "started_after_authentication": true,
+    "included_initial_login_flow": false,
+    "actions": [
+      "begin_at_character_selection",
+      "enter_world",
+      "stand_idle"
+    ],
+    "duration_micros": 119119348
+  },
+  "capture_quality": {
+    "captured_frames": 1354,
+    "captured_bytes": 181406,
+    "interface_drops": 0,
+    "truncated_frames": 0,
+    "backward_timestamps": 0,
+    "journal_records": 1079,
+    "packet_records": 1078,
+    "meaningful_gap_records": {
+      "malformed_frame": 1
+    }
+  },
+  "observed_routes": [
+    {
+      "direction": "client_to_server",
+      "fragment": "call",
+      "service_id": 1232729813,
+      "service_name": "GrpcCharactor",
+      "method_id": 30,
+      "candidate_method_name": "GetFacePushList",
+      "packet_count": 1,
+      "first_observed_seconds": 35.237
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 78136601,
+      "service_name": "WorldLoginNtf",
+      "method_id": 3,
+      "candidate_method_name": "unknown",
+      "packet_count": 1,
+      "first_observed_seconds": 24.74
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 164931432,
+      "service_name": "ChitChatNtf",
+      "method_id": 1,
+      "packet_count": 25,
+      "first_observed_seconds": 0.0,
+      "last_observed_seconds": 113.286
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 625772963,
+      "service_name": "SocialNtf",
+      "method_id": 1,
+      "packet_count": 5,
+      "first_observed_seconds": 24.726,
+      "last_observed_seconds": 34.994
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1453563045,
+      "service_name": "GrpcCommunityNtf",
+      "method_id": 17,
+      "candidate_method_name": "unknown",
+      "packet_count": 3,
+      "first_observed_seconds": 35.406,
+      "last_observed_seconds": 35.502
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "service_name": "WorldNtf",
+      "method_id": 6,
+      "packet_count": 2,
+      "first_observed_seconds": 8.414,
+      "last_observed_seconds": 19.691
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "service_name": "WorldNtf",
+      "method_id": 43,
+      "packet_count": 5,
+      "first_observed_seconds": 2.64,
+      "last_observed_seconds": 22.726
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "service_name": "WorldNtf",
+      "method_id": 45,
+      "packet_count": 307,
+      "first_observed_seconds": 0.077,
+      "last_observed_seconds": 24.576
+    }
+  ],
+  "profile_snapshot_result": {
+    "sync_container_data_observed": false,
+    "sync_container_dirty_data_observed": false,
+    "complete_profile_snapshot_observed": false
+  },
+  "capture_scope_result": {
+    "initial_exact_process_connections": 3,
+    "connection_turnover_observed": true,
+    "replacement_connection_was_outside_initial_exact_flow_filter": true,
+    "conclusion": "The exact four-tuple filter lost visibility at the world transition. This observation cannot prove that the current build omitted the complete profile snapshot.",
+    "required_retry_mode": "follow_process_connections"
+  },
+  "privacy_decisions": [
+    {
+      "service_id": 78136601,
+      "method_id": 3,
+      "service_name": "WorldLoginNtf",
+      "disposition": "prohibited_private_account_data",
+      "reason": "The current method meaning is unknown and occurs on a login-named service. RLogs will not inspect or normalize its payload."
+    }
+  ],
+  "retained_data": {
+    "packet_payloads": false,
+    "network_endpoints": false,
+    "character_names": false,
+    "character_ids": false,
+    "account_identifiers": false,
+    "credentials_or_tokens": false
+  }
+}

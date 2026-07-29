@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.15.description",
+    "text": "เชี่ยวชาญการต่อสู้<color=#fcbe03>ระยะไกล</color> มีความสามารถในการโจมตีที่ยอดเยี่ยม<br>สามารถโจมตีศัตรูในพื้นที่กว้างจากระยะไกลด้วยการโจมตีความถี่สูง การเพิ่ม<color=#fcbe03>โบนัสโอกาสเครื่องหมาย</color>จะช่วยเพิ่มความถี่ในการทำงาน<br>ยังสามารถ<color=#fcbe03>ชาร์จพลัง</color>ในระยะใกล้ เพื่อสร้าง DMG ระเบิดที่สูงมาก การเพิ่ม<color=#fcbe03>โอกาส CRIT</color>จะนำมาซึ่งผลตอบแทนที่มหาศาล",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154218",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.4.description",
+    "text": "เชี่ยวชาญการต่อสู้<color=#fcbe03>ระยะประชิด</color> โดย<br>ใช้<color=#fcbe03>หอกยาว</color>เป็นอาวุธ แปลงร่างเสมือน<br>สายลม มีความสามารถในการ<color=#fcbe03>โจมตีพื้น<br>ที่เล็ก</color>ที่ยอดเยี่ยม",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367320",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.9.description",
+    "text": "เชี่ยวชาญ<color=#fcbe03>การต่อสู้ระยะประชิด</color> โดยใช้ <color=#fcbe03>Guard Blade</color>เป็นอาวุธ รวบรวมหิน<br>เพื่อป้องกันตัว มีความสามารถ<color=#fcbe03>ในการ<br>ป้องกัน</color>และ<color=#fcbe03>ควบคุมสนาม</color>ที่ยอดเยี่ยม",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367325",
+      "confidence": "verified"
+    }
+  }
+]

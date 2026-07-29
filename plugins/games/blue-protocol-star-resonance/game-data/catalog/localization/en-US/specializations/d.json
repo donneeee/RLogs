@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "specialization.105.name",
+    "text": "Frostbeam Spec",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989338",
+      "confidence": "verified"
+    }
+  }
+]

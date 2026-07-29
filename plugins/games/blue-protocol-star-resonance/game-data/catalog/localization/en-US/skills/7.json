@@ -1,0 +1,1784 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1002202.description",
+    "text": "Slam Down",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-25042208",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1002810.name",
+    "text": "Ice of Thorns",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642155207",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1010540.name",
+    "text": "Stunt! Water of Silence",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643266086",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1011101.name",
+    "text": "Blade Storm",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643297536",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.101410.name",
+    "text": "Zero-degree Snowfield",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1906679730",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.101418.name",
+    "text": "Heart-piercing Lance",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1906679738",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1090702.name",
+    "text": "Swift Blade",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-652755502",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1101302.name",
+    "text": "Healing Bomb",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-681249187",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.111087.description",
+    "text": "Dimensional Oblivion!!!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-782881883",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1222.name",
+    "text": "Phantom Dash",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944466",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1241.name",
+    "text": "Frostbeam",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944531",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1242.description",
+    "text": "Chants for <style=\"accent-gn\">1.4s</style>, then consumes <style=\"accent-gn\">10</style> <style=\"accent-gn\">Ice Energy</style> to fire a sharp Frost Lance at the target, dealing <style=\"magic\">Magic Damage</style> on impact. <br>Consuming <style=\"accent-gn\">1</style> <linktext=1161><style=\"ItemQuality_5\">Frost Crystal</style></linktext> can skip chanting and increase DMG by <style=\"accent-gn\">20%</style>. <br><br><size=22><style=\"tipsYellow\">Tips: Cast Frost Lance regularly to avoid wasting excess Energy.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505339026",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1243.description",
+    "text": "Summons the power of frost, gaining Super Armor for the duration while accumulating <style=\"accent-gn\">6</style> <style=\"accent-gn\">Ice Energy</style> per second and increasing <style=\"accent-gn\">Haste</style>. <br><br><size=22><style=\"tipsYellow\">Tips: Increases Attack SPD and Casting SPD. Since this skill generates Ice Energy, don't use it when Ice Energy is about to cap. If you do, burn the Ice Energy quickly afterward.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505339027",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1423.description",
+    "text": "Condenses wind pressure in front of the caster, rendering the caster immune to all DMG. Counterattack DMG is incrementally amplified with each incoming attack, dealing <style=\"\"physical\"\">Attack DMG</style> in retaliation. <br><br><size=22><style=\"\"tipsYellow\"\">Tips: This skill is intended to be used in high-pressure situations to increase chances of survival. The more frequent enemy attack, the more this skill brings you.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341139",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1426.name",
+    "text": "Typhoon Cleave",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946648",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1434.description",
+    "text": "Empowered <linktext=1523><style=\"ItemQuality_5\">Spiral Thrust</style></linktext> unleashes a final strike, dealing <style=\"physical\">Attack DMG</style> equal to <style=\"accent-gn\">1265%</style> ATK (which scales with the Level/Tier of <linktext=1523><style=\"ItemQuality_5\">Spiral Thrust</style></linktext>).",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341173",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1509.name",
+    "text": "Divine Circle Bloom",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947674",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1522.name",
+    "text": "Nourish",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947733",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1526.description",
+    "text": "<style=\"accent-gn\">Healing</style><br>Heals the caster for a small amount of HP.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342231",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1553.description",
+    "text": "Healing Pulse",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342327",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1601.description",
+    "text": "<style=\"accent-gn\">Basic Attack: Scorching Swing</style><br>Executes a sequence of up to four attacks, dealing <style=\"physical\">Attack DMG</style> and recovering <style=\"accent-gn\">3</style> <style=\"accent-gn\">Flame Soul</style>.<br><br><size=22><style=\"tipsYellow\">Tips: Fill the gaps with Basic Attacks when Flame Soul is too low for other offensive skills.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505343249",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1615.name",
+    "text": "Wasteland's End",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948792",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1618.description",
+    "text": "Gains the <style=\"accent-gn\">Surge</style> effect and immediately restores all Flame Soul. During this effect, <style=\"accent-gn\">Expertise Skill CD Boost</style> is increased by <style=\"accent-gn\">10%</style>. Uses Dual Axes to launch enemies into the air, then performs a lethal spiraling aerial attack that rends through them, dealing <style=\"physical\">Attack DMG</style> to all enemies below.<br><br><size=22><style=\"tipsYellow\">Tips: Maintain a faster skill rotation.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505343289",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1621.description",
+    "text": "Enhanced <style=\"ItemQuality_5\">Unbound Meteor</style> executes a charged leaping slash, dealing <style=\"physical\">Attack DMG</style> equal to <style=\"accent-gn\">1,200%</style> ATK to enemies within 4 meters of the landing point. Damage scales with the <style=\"ItemQuality_5\">Unbound Meteor</style> skill's levels/tiers. Recovers <style=\"accent-gn\">15</style> <style=\"accent-gn\">Flame Soul</style>. Upon landing, generates Crimson Earth, which deals additional <style=\"physical\">Attack DMG</style> to all enemies within 4 meters for 5s.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505343315",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1700718.description",
+    "text": "Crimson Foxen - AoE Dark Tail Sweep - Wilds",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-298923569",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.170107.description",
+    "text": "Void Corruption: Roar!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-789962297",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.170110.name",
+    "text": "SLASH!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914941973",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.170130.description",
+    "text": "Hold up everything!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-789962389",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.170210.description",
+    "text": "Void Corruption: Decimation!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-789963412",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.170601.description",
+    "text": "Chase... CHASE!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-789967736",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1715.name",
+    "text": "Moonstrike",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949881",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1717.description",
+    "text": "Consumes all <style=\"accent-gn\">Thunder Sigils</style> to power up and dash forward, slashing all enemies along the path to deal <style=\"physical\">Attack DMG</style>. <style=\"accent-gn\">Each</style> <style=\"accent-gn\">Thunder Sigil</style> increases DMG by <style=\"accent-gn\">25%</style>. <br><br><i><style=\"text_third_gray\">\"In a blink of lightning, the blade is already unsheathed.\"</style></i><br><br><size=22><style=\"tipsYellow\">Tips: A core skill of Iaido Slash Spec. Prioritize using it before Iaido Slash. Use when your Thunder Sigils are at their maximum to maximize damage.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344377",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1735.description",
+    "text": "Enhanced <linktext=1501><style=\"ItemQuality_5\">Flash Strike</style></linktext>, Consume all <style=\"accent-gn\">Thunder Sigil</style>s, then charges forward after powering up to slash all enemies in path, dealing <style=\"accent-gn\">510%</style> ATK as <style=\"physical\">Attack DMG</style> (which scales with the Level/Tier of <linktext=1501><style=\"ItemQuality_5\">Flash Strike</style></linktext>). <style=\"accent-gn\">Each</style> <style=\"accent-gn\">Thunder Sigil</style> consumed increases DMG by <style=\"accent-gn\">25%</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344441",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1735.name",
+    "text": "Dragonhammer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949947",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1745.name",
+    "text": "Thunder Iaido Slash",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949980",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1906.name",
+    "text": "Backstep Sweep",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952027",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.1935.description",
+    "text": "Consumes <style=\"accent-gn\">40</style> points of <style=\"accent-gn\">Rage</style>, violently slams down the weapon, dealing <style=\"physical\">Attack DMG</style> to surrounding enemies, and enters the <style=\"accent-gn\">Countercrush</style> state. During this time, Block Chance +<style=\"accent-gn\">100%</style>, <style=\"physical\">Attack DMG</style> taken from blocks -<style=\"accent-gn\">30%</style>. <br><br><size=22><style=\"tipsYellow\">Tips: Very effective in environments with mostly Attack DMG. After casting, the block chance increases, reliably reducing Attack DMG taken.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346619",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2001727.description",
+    "text": "Void Corruption: Shadow Pursuit",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316479756",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2105.name",
+    "text": "Spirit Break",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817979251",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2231.name",
+    "text": "Focus",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980435",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2234.name",
+    "text": "Radiance Barrage",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980438",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2320.name",
+    "text": "Flame Blast",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981490",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2321.description",
+    "text": "<style=\"accent-gn\">Peaceful Tune</style><br>A magical melody that, whenever DMG is dealt, restores HP equal to <style=\"accent-gn\">20%</style> of the DMG dealt, distributed evenly among up to <style=\"accent-gn\">5</style> allies (Party Members Prioritized). <br>Allies at full HP will not be included in the healing targets. If all Allies are at full HP, the healing will be considered as excess healing. <br><br><style=\"accent-gn\">Performance Energy</style>: Energy required to play Melody skills (<style=\"accent-gn\">Heroic Melody</style> and <style=\"accent-gn\">Healing Melody</style>). <style=\"accent-gn\">1</style> point is regenerated <style=\"accent-gn\">per</style> second. <br><br><style=\"accent-gn\">Performance Passion</style>: Required to perform music. <style=\"accent-gn\">1</style> point is regenerated every <style=\"accent-gn\">5s</style>. <br><br><style=\"accent-gn\">Basic Attack: String Strike</style><br>Strikes the guitar's sideboard to produce a frenzied wave, dealing <style=\"magic\">Magic DMG</style> to nearby enemies. <br><br><size=22><style=\"tipsYellow\">Tips: Using Basic Attacks when Performance Passion and Performance Energy are not maxed out provides consistent healing. Pair with talents to store this healing for emergency use.</size></style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505375985",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2336.name",
+    "text": "Concert Circuit",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981529",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2363.name",
+    "text": "Healing Beat copy",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981625",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2406.description",
+    "text": "Consumes <style=\"accent-gn\">1</style> <style=\"accent-gn\">Holy Sigil</style>. After a brief charge, performs a fierce sweep forward, dealing <style=\"physical\">Attack DMG</style> and gaining <style=\"accent-gn\">2</style> stacks of <style=\"accent-gn\">Lightforged Barrier</style>.<br><br><style=\"accent-gn\">Lightforged Barrier</style>: Each stack increases max HP by <style=\"accent-gn\">2%</style>, up to <style=\"accent-gn\">10</style> stacks. Taking any DMG consumes <style=\"accent-gn\">1</style> stack. The Barrier lasts <style=\"accent-gn\">25s</style> or until all stacks are consumed. Gaining a new stack refreshes the duration.<br><br><size=22><style=\"tipsYellow\">Tips: Maintain high stacks of Lightforged Barrier while weaving in attacks. Pay attention to the use of Vanguard Hunt to trigger bonus effects.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377013",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2406.name",
+    "text": "Vanguard Strike",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982519",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2410.description",
+    "text": "Consumes <style=\"accent-gn\">45</style> <style=\"accent-gn\">Photon Energy</style> to call down a blast of holy light on the target area, dealing <style=\"physical\">Attack DMG</style> and healing yourself based on HP lost (minimum heal: <style=\"accent-gn\">5%</style> of Max HP).<br><br><size=22><style=\"tipsYellow\">Tips: Cast when your HP is low—but not critically low—to maximize healing while staying safe.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377040",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2413.description",
+    "text": "Empowered <linktext=1563><style=\"ItemQuality_5\">Reckoning</style></linktext> deals <style=\"accent-gn\">2</style> times the normal DMG of <linktext=1563><style=\"ItemQuality_5\">Reckoning</style></linktext>, starts at <style=\"accent-gn\">250%</style> Crit DMG, and does not consume <style=\"accent-gn\">Holy Sigils</style>, but still generates Holy <style=\"accent-gn\">Energy</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377043",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2425.description",
+    "text": "<style=\"accent-gn\">Shield Toss</style><br> consumes <style=\"accent-gn\">Photon Energy</style> to hurl a spinning shield, dealing <style=\"physical\">Attack DMG</style> to enemies it hits, <linktext=3000><style=\"ItemQuality_5\">interrupting</style></linktext> them and reducing all damage they deal to the caster for a duration.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377078",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2900103.name",
+    "text": "Jerrad Rock's Fury",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138278538",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2900442.description",
+    "text": "<style=\"accent-gn\">Thunder Zone</style><br>Launches into the air and fires a Thunderstorm Bolt at the target. On hit, it deals <style=\"electro\">Thunder DMG</style> and creates a Thunderstorm Zone lasting 7s.<br><style=\"accent-gn\">Thunderstorm Zone</style><br><style=\"electro\">deals AoE Thunder DMG</style> every second to all enemies within the range, with a <linktext=3011><style=\"ItemQuality_5\">Slow</style></linktext> debuff. <br><br><size=22><style=\"tipsYellow\">Pro Tips: This skill can be cast while airborne, granting enhanced mobility during execution.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668659150",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.2900712.name",
+    "text": "Water Orb Burst",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138285104",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.300438.description",
+    "text": "Weak Waltz Slash",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-859935003",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.300438.name",
+    "text": "Weak Waltz Slash",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914653",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3027.name",
+    "text": "Blessing of Life",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818014167",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3040304.description",
+    "text": "Dark Mist Legion Shield Bash Slow",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-465167399",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3103.description",
+    "text": "Summon a decoy that <linktext=1092><style=\"ItemQuality_5\">taunts</style></linktext> all <style=\"accent-gn\">enemies</style> within <style=\"accent-gn\">5</style> meters.<br>The decoy disappears after taking a certain amount of DMG.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505409680",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3311.name",
+    "text": "Overclock Shock",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818017395",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3340224.name",
+    "text": "Brilliant Performance",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1199678989",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3350002.name",
+    "text": "Scorching Slash",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200862664",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3350008.name",
+    "text": "Destruction Ray",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200862670",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3350111.name",
+    "text": "Spreading Calamity",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200863785",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3405.description",
+    "text": "Raises a <i><style=\"accent-gn\">Block Shield</style></i> for <style=\"accent-gn\">2s</style>. The <i><style=\"accent-gn\">Block Shield</style></i> will block the next incoming hit. Successful Block reduces the <style=\"accent-gn\">CD</style> of all your Weapon skills.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505412949",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3520305.name",
+    "text": "",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1275578957",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3923.description",
+    "text": "<style=\"accent-gn\">Summons Boss</style>: Muku Chief to slam the ground around, dealing AoE <style=\"physical\">Attack DMG</style>. Holds <style=\"accent-gn\">2</style> charges. <br>Upon the skill cast, your <style=\"accent-gn\">Crit</style> and <style=\"accent-gn\">Crit DMG</style> are increased for a period.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418458",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3940.description",
+    "text": "<style=\"accent-gn\">Summons Elite</style>: Storm Goblin Warrior to continuously release Whirlwind Slash, dealing <style=\"physical\">Attack DMG</style> and <style=\"accent-gn\">pulling in</style> all surrounding units. <br>Upon the skill cast, your <style=\"accent-gn\">Wind Bonus</style> is increased for a period.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418521",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3942.name",
+    "text": "Arcane! Poison Explosion",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024029",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3943.description",
+    "text": "<style=\"accent-gn\">Summons Boss</style>: Iron Fang to deliver AoE <style=\"physical\">Attack DMG</style> to nearby enemies, inflicting a <style=\"accent-gn\">100%</style> <linktext=3004><style=\"ItemQuality_5\">Wound</style></linktext> on all affected targets for <style=\"accent-gn\">15s</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418524",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3968.description",
+    "text": "<style=\"accent-gn\">Summons</style> Denvel to attract nearby monsters and deal <style=\"physical\">Attack DMG</style>.<br>After casting, grants a temporary enhancement: the user takes damage equal to <style=\"accent-gn\">0.1%</style> of Max HP every 0.2s and gains a <style=\"accent-gn\">DMG</style> boost, with an additional boost for every <style=\"accent-gn\">100,000</style> Max HP (Total base and extra DMG boost is capped, and the Max HP requirement is adjusted each season).<br>This skill holds <style=\"accent-gn\">2</style> charges.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418595",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3969.description",
+    "text": "<style=\"accent-gn\">Summons</style> Igoreus to deal <style=\"physical\">Attack DMG</style>. Holds <style=\"accent-gn\">2</style> charges.<br>After casting, your <style=\"accent-gn\">Crit</style> is temporarily increased. Any base Crit Rate exceeding <style=\"accent-gn\">60%</style> is converted into a <style=\"accent-gn\">Crit DMG</style> boost at a set ratio.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418596",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3970.name",
+    "text": "Arcane! Command Quadrant",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024126",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.3985.name",
+    "text": "Exit Natsu Transformation",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4010.name",
+    "text": "Pass on",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050064",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4012.description",
+    "text": "Resonant lightning core",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505444560",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4040016.description",
+    "text": "Mountain Shattering!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1756632136",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.420139.name",
+    "text": "Dark Command",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2026418622",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4526.description",
+    "text": "Like flowing light, the lantern burns eternal. When active, the hydrangea lantern becomes lighter, blooming with a gorgeous display of light and shadow every time it lands. Use the skill again to deactivate it.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450042",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4529.description",
+    "text": "Float through the air with a trail of dreamy bubbles! Charging speed +200% while in mid-air.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450045",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4531.description",
+    "text": "Tail Drift! CD rate +100% while sprinting.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450070",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4533.name",
+    "text": "Hyper Drift",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055578",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4603.name",
+    "text": "Engine Flare",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056568",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4632.name",
+    "text": "Magic Float",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056666",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4641.description",
+    "text": "Dashes forward in a flash, as if by magic. Can store up to 2 charges.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451192",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4662.description",
+    "text": "Ride on the blessing of snowflakes! After casting, Winter Leap instantly resets its cooldown. For a short duration, you can continue using Winter Leap at the right moment without triggering any cooldown.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451259",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4673.name",
+    "text": "Icefeather Flight",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056799",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4682.description",
+    "text": "Scattering petals and sparkles, the Nappo offers a springtime tribute. Upon casting, enhances the next use of Swaying Blossoms.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451325",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4691.name",
+    "text": "Catapult Acceleration",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056863",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4709.name",
+    "text": "Leap of Blessing",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057663",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.4722.description",
+    "text": "Condenses blood clusters that swirl around the body, as if conducting a sinister waltz. For a short duration after casting, the CD Speed of the Melt Into the Night skill is increased.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.5542.name",
+    "text": "Summon Extra Cloud",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091547",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.5804502.name",
+    "text": "Nappo Pounce",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1826211507",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.6011.name",
+    "text": "Detonate",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818121939",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.6501.description",
+    "text": "<style=\"physical\">Locks current position.</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521845",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.6526.name",
+    "text": "Flash Step",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127422",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.6604.description",
+    "text": "<style=\"physical\">Consumes 10</style> HP to attack with a Light Stick.<br>If the attack <style=\"physical\">hits a Stalker</style>, <style=\"physical\">restores 50</style> HP.<br>Killing a Stalker fully restores HP.<br><style=\"physical\">Cannot be used when HP is insufficient.</style><br>The actual damage is calculated based on the <style=\"physical\">Armor of the object the Stalker has transformed into</style>.<br><style=\"physical\">Weapon Special Effect: Using skills accumulates Dance Power. At 50 Dance Power, grants the Dance Off skill:<br>Upon use, fully restores HP and makes a random nearby Stalker the Spotlight.</style><br><i><style=\"text_third_gray\">\"Please, stop fighting...\"</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505522937",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.6920003.name",
+    "text": "Malice Spreading",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1011553871",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.7997.description",
+    "text": "Phantom Arrow",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505562441",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "skill.920002.name",
+    "text": "Thunder Sphere Tethering",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-74610744",
+      "confidence": "verified"
+    }
+  }
+]

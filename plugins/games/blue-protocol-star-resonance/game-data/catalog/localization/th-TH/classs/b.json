@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.14.description",
+    "text": "เชี่ยวชาญการต่อสู้<color=#fcbe03>ระยะไกล</color> มีความสามารถในการโจมตีที่ยอดเยี่ยม<br>สามารถโจมตีศัตรูในพื้นที่กว้างจากระยะไกลด้วยการโจมตีความถี่สูง การเพิ่ม<color=#fcbe03>โบนัสโอกาสเครื่องหมาย</color>จะช่วยเพิ่มความถี่ในการทำงาน<br>ยังสามารถ<color=#fcbe03>ชาร์จพลัง</color>ในระยะใกล้ เพื่อสร้าง DMG ระเบิดที่สูงมาก การเพิ่ม<color=#fcbe03>โอกาส CRIT</color>จะนำมาซึ่งผลตอบแทนที่มหาศาล",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154217",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.4.name",
+    "text": "Wind Knight",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964621",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.9.name",
+    "text": "Heavy Guardian",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964626",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,10 @@
+[package]
+name = "rlogs-plugin-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rlogs-plugin-api = { path = "../plugin-api" }
+thiserror.workspace = true

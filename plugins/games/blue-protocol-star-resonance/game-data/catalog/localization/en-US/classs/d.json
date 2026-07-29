@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.10.description",
+    "text": "A mid-to-close-range weapon enabling Coordinated Attacks.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154213",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.13.name",
+    "text": "Beat Performer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192189",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.14.description",
+    "text": "Zeichnet sich im <color=#fcbe03>Fernkampf</color> aus,<br>kann mit Schnellfeuer große Flächen angreifen. Eine Verbesserung der <color=#fcbe03>Siegel-Chance</color> erhöht die Auslösefrequenz erheblich.<br>Kann im Nahkampf <color=#fcbe03>angreifen</color>, um gewaltigen SCH zu verursachen. Verbessert die <color=#fcbe03>Krit-Rate</color>, um gewaltigen SCH zu verursachen.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154217",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.4.name",
+    "text": "Windritter",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964621",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.9.name",
+    "text": "Schwerer Wächter",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964626",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 924,
+  "stable_key": "talent.924",
+  "localization_key": "talent.924.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "heavy-guardian",
+    "spec_key": "shared",
+    "classification_state": "current_build_multi_branch_talent_relation",
+    "row_key": 924,
+    "design_name": "首领之牙",
+    "name_id": 1051087163,
+    "description_id": 621000022,
+    "profession_id": 9,
+    "icon_address": "ui/atlas/talent_passive_9/talent_passive_icon_tank_ridiculeconversion",
+    "talent_type": 4,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        1,
+        12642,
+        800
+      ]
+    ],
+    "buff_parameters": [
+      [
+        0
+      ]
+    ],
+    "unlock_costs": [
+      [
+        1020056,
+        1
+      ]
+    ],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.924.name",
+    "description_localization_key": "talent.924.description",
+    "tree_nodes": [
+      {
+        "node_id": 42031,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6079
+        ]
+      },
+      {
+        "node_id": 41037,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6070
+        ]
+      }
+    ],
+    "class_id": 9
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

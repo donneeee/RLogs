@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.11.description",
+    "text": "Maneja um <color=#fcbe03>arco</color> e é eficaz em <color=#fcbe03>combate à longa distância</color>. Age em conjunto com companheiros animais para desferir <color=#fcbe03>ataques de área ampla</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154214",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.5.name",
+    "text": "Oráculo Verdejante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964622",
+      "confidence": "verified"
+    }
+  }
+]

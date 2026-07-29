@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.15.description",
+    "text": "Eficaz em <color=#fcbe03>combate à distância</color>,<br>capaz de atingir áreas amplas com tiros rápidos. Aumentar a <color=#fcbe03>chance de Símbolo</color> aumenta muito a frequência de ativação.<br>Pode <color=#fcbe03>investir</color> em curta distância para causar dano massivo. Aumenta <color=#fcbe03>Taxa de Crítico</color> para causar dano massivo.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154218",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.4.description",
+    "text": "Mostra perícia em <color=#fcbe03>combate próximo</color>, usando uma <color=#fcbe03>Lança</color> como arma. Ágil e rápido, possui excelentes capacidades de <color=#fcbe03>ataque em áreas pequenas</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367320",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.9.description",
+    "text": "Maneja uma <color=#fcbe03>Lâmina Guardiã</color> e é eficaz em <color=#fcbe03>combate próximo</color>. Canaliza o poder da Rocha para formar uma casca protetora, oferecendo <color=#fcbe03>defesa</color> e <color=#fcbe03>controle</color> excepcionais.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367325",
+      "confidence": "verified"
+    }
+  }
+]

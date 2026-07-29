@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.11.description",
+    "text": "Manie un <color=#fcbe03>arc</color>, excellant dans le <color=#fcbe03>combat à longue portée</color>. Combat avec des compagnons animaux pour déclencher des <color=#fcbe03>attaques de grande zone</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154214",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.5.name",
+    "text": "Oracle verdoyant",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964622",
+      "confidence": "verified"
+    }
+  }
+]

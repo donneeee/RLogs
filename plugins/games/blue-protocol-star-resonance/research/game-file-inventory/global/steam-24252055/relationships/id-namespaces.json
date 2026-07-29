@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "rule": "Numeric equality never joins different namespaces. A relation requires a typed, build-scoped edge.",
+  "namespaces": [
+    {
+      "name": "ctb_table_key",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "table_key"
+      ],
+      "build_scoped": true,
+      "rule": "Static table identity; stable only inside a deployment/build inventory."
+    },
+    {
+      "name": "ctb_row_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "table_key",
+        "row_id"
+      ],
+      "build_scoped": true,
+      "rule": "A row ID is not globally unique and must retain its table key."
+    },
+    {
+      "name": "localization_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "localization_id"
+      ],
+      "build_scoped": true,
+      "rule": "Localized text key; locale is selected separately at lookup time."
+    },
+    {
+      "name": "skill_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "skill_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static skill definition identity."
+    },
+    {
+      "name": "skill_effect_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "skill_effect_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static level/effect definition identity; not interchangeable with skill ID."
+    },
+    {
+      "name": "buff_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "buff_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static buff/debuff definition identity."
+    },
+    {
+      "name": "temporary_attribute_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "temporary_attribute_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static temporary combat attribute identity."
+    },
+    {
+      "name": "fight_attribute_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "fight_attribute_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static character/combat attribute identity."
+    },
+    {
+      "name": "damage_id",
+      "storage": "i64",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "damage_id"
+      ],
+      "build_scoped": true,
+      "rule": "Damage/heal event definition identity; RecountTable stores arrays as signed 64-bit integers."
+    },
+    {
+      "name": "recount_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "recount_id"
+      ],
+      "build_scoped": true,
+      "rule": "Display grouping for one or more damage IDs."
+    },
+    {
+      "name": "scene_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "scene_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static scene definition identity."
+    },
+    {
+      "name": "map_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "map_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static map definition identity."
+    },
+    {
+      "name": "dungeon_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "dungeon_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static dungeon definition identity."
+    },
+    {
+      "name": "monster_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "monster_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static monster template identity."
+    },
+    {
+      "name": "npc_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "npc_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static NPC template identity."
+    },
+    {
+      "name": "entity_definition_id",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "entity_definition_id"
+      ],
+      "build_scoped": true,
+      "rule": "Static placement/configuration identity; never a runtime entity UUID."
+    },
+    {
+      "name": "runtime_entity_uuid",
+      "storage": "i64",
+      "identity_key": [
+        "deployment_id",
+        "protocol_revision",
+        "capture_session_id",
+        "entity_uuid"
+      ],
+      "build_scoped": false,
+      "rule": "Dynamic packet identity scoped to runtime evidence and capture session."
+    },
+    {
+      "name": "character_uid",
+      "storage": "u64_decimal_string",
+      "identity_key": [
+        "deployment_id",
+        "region_id",
+        "character_uid"
+      ],
+      "build_scoped": false,
+      "rule": "Public game character identity; distinct from prohibited account/open/login identifiers."
+    },
+    {
+      "name": "asset_address_hash",
+      "storage": "u32",
+      "identity_key": [
+        "deployment_id",
+        "build_id",
+        "asset_address_hash"
+      ],
+      "build_scoped": true,
+      "rule": "Static asset catalog address hash."
+    },
+    {
+      "name": "network_route",
+      "storage": "tuple",
+      "identity_key": [
+        "deployment_id",
+        "protocol_revision",
+        "direction",
+        "service_id",
+        "method_id",
+        "fragment"
+      ],
+      "build_scoped": false,
+      "rule": "Protocol route identity; never represented by a bare opcode alone."
+    }
+  ],
+  "prohibited_namespaces": [
+    "password",
+    "credential",
+    "access_token",
+    "refresh_token",
+    "session_token",
+    "account_id",
+    "open_id",
+    "login_identifier"
+  ]
+}

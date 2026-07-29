@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "kind": "scene",
+  "id": 24504,
+  "stable_key": "scene.24504",
+  "localization_key": "scene.24504.name",
+  "icon": null,
+  "attributes": {
+    "scene_id": 24504,
+    "name_id": 729226233,
+    "scene_type": 2,
+    "scene_subtype": 5,
+    "parent_scene_id": 0,
+    "shares_parent_scene_data": false,
+    "scene_resource_id": 20,
+    "scene_ui_refs": [
+      39
+    ],
+    "map_size": [
+      128,
+      128
+    ],
+    "map_offset": [
+      0,
+      0
+    ],
+    "audio_bank_refs": [
+      47
+    ],
+    "born_point_id": 1,
+    "revive_table_ids": [],
+    "background_music_refs": [
+      62,
+      1446,
+      1461
+    ],
+    "fall_distance": 1,
+    "weather_id": -1,
+    "day_night_id": 0,
+    "cutscene_id": 0,
+    "main_ui_id": 2,
+    "can_change_layer": false,
+    "flow_id": 0,
+    "show_minimap_mode": 0,
+    "minimap_ratio": 0,
+    "ambient_audio_event": "Amb_2D_Common_WindSoft_Loop",
+    "reverb_audio_event": "Reverb_Normal",
+    "default_scene_area_id": 0,
+    "movement_sync_config_id": 0,
+    "has_water": true,
+    "name_localization_key": "scene.24504.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SceneTable",
+    "reference": "client-build:global/steam/24252055@sha256:c1d4723bb5dd9db0691fe85f688aaee9929a5652e649ce8ad803263f9f8cc30f",
+    "confidence": "corroborated"
+  }
+}

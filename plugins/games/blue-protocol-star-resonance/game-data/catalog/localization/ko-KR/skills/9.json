@@ -1,0 +1,1676 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1002202.name",
+    "text": "내려찍기",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642148642",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1005302.name",
+    "text": "그림자 일섬",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642257542",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1005704.name",
+    "text": "베기",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642261900",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1005806.name",
+    "text": "난무",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642262991",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1011101.description",
+    "text": "검날 폭풍",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26191102",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1011102.name",
+    "text": "나선 기류 베기",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643297537",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1011806.name",
+    "text": "오의! 양배추 무거운 망치",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643305164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1011904.description",
+    "text": "강화 강화!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26199817",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1011910.name",
+    "text": "지옥불",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643306280",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.102651.name",
+    "text": "멧돼지 기사",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1906717978",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.10290121.name",
+    "text": "돌맹이 임팩트",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1950053851",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1090502.description",
+    "text": "강화된 <linktext=1501><style=\"ItemQuality_5\">일섬</style></linktext>. 현재 보유한 모든 <style=\"accent-gn\">번개의 인장</style>을 소모하여 파괴적인 기세로 참격을 가합니다. 적에게 공격력 <style=\"accent-gn\">510%</style>만큼의 <style=\"physical\">물리 대미지</style>를 입힙니다. <linktext=1501><style=\"ItemQuality_5\">일섬</style></linktext> 스킬의 업그레이드/승급에 따라 성장합니다. 소모한 <style=\"accent-gn\">번개의 인장</style> <style=\"accent-gn\">1</style>개당 대미지가 <style=\"accent-gn\">25%</style> 증가합니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35646890",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1090902.description",
+    "text": "<style=\"accent-gn\">모래 결정</style>을 <style=\"accent-gn\">3</style>개 소모해 목표에게 <style=\"physical\">물리 대미지</style>를 입히고, 이후 <style=\"accent-gn\">10</style>초 동안 받는 대미지를 <style=\"accent-gn\">10%</style> 감소시킵니다. 이 효과는 중첩되지 않습니다.<br><br><size=22><style=\"tipsYellow\">팁: 충분한 모래 결정 보유 시 분노의 바위를 적절히 시전하면 큰 대미지를 주면서 안정적으로 생존할 수 있습니다.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35651246",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1101.name",
+    "text": "필드 표시01",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943310",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1103.name",
+    "text": "필드 표시03",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943312",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1106.name",
+    "text": "필드 표시06",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943315",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.111102.name",
+    "text": "잔체 - 수리",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1907862353",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.115350.description",
+    "text": "구속의 꽃",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-783028792",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1223.name",
+    "text": "환영 돌진",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944467",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1245.name",
+    "text": "아이스 가드",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944535",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1409.name",
+    "text": "풍신・파괴의 바람",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946585",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1419.name",
+    "text": "공중 반격",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946618",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1499.name",
+    "text": "무외・기도하는 바람의 수호",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946882",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1505.description",
+    "text": "가볍게 점프한 뒤, 발밑에 덩굴을 만들어 덩굴과 함께 춤을 추면서 이동해, <style=\"dendro\">나무 원소 대미지</style>를 입힙니다.<br><style=\"accent-gn\">만발</style><br>춤추며 이동할 때 만발을 연계해서 시전할 수 있으며 「투쓰 씨앗」을 3개 즉시 시전해 발사할 수 있습니다. <style=\"dendro\">댄스</style>는 최대 2회 연속 시전할 수 있습니다.<br><br><size=22><style=\"tipsYellow\">팁: 에너지 충전 스킬이므로, 시전 시 에너지가 낭비되지 않도록 주의하세요. 스킬 시전 후 짧은 시간 동안 일반 공격을 시전해 「만발」을 발동하면, 추가 공격과 「투쓰 씨앗」을 3개 발사할 수 있습니다.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1514.description",
+    "text": "숲의 힘으로 영령 사슴을 소환해 전방으로 돌진시켜, 돌진 경로에 있는 적에게 높은 <style=\"dendro\">나무 원소 대미지</style>를 입힙니다. 사슴이 사라질 때 지나간 경로에 「풍요 영역」을 생성해, 영역 내 아군의 체력을 지속적으로 회복합니다.<br><i><style=\"text_third_gray\">「대지의 힘, 숲의 심장, 생명의 원천은 결코 고갈되지 않으리니!」 </style></i><br><br><size=22><style=\"tipsYellow\">팁: 직사각형 범위에 대미지를 입히며 같은 범위 내 아군의 체력을 회복시키는 궁극 스킬입니다. 시전 시 적의 위치에 주의하세요. 또한, 궁극 스킬 지속 기간 동안, 모든 공격 스킬이 적중할 때마다 추가로 「투쓰 씨앗」을 1개 발동합니다. 최대한 스킬을 모아두었다가 해당 효과를 발동하세요.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342196",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1556.description",
+    "text": "흩날리는 씨앗",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342330",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1561.description",
+    "text": "치유의 오라(반복 대미지 및 치료)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342358",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1606.name",
+    "text": "광열의 참격",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948760",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1621.name",
+    "text": "염마천락살",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948821",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1698.name",
+    "text": "일반 공격・불꽃 휘두르기",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949059",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1700393.name",
+    "text": "거미게 속박 거미줄",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-916025906",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.170106.name",
+    "text": "큰 점프",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914941946",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1713.description",
+    "text": "극의에 도달한 도법은 공기조차 벨 수 있습니다. 전방을 수 차례 베어서 범위 내 적에게 <style=\"physical\">물리 대미지</style>를 주고, 공격이 끝나면 <style=\"accent-gn\">번개의 인장</style>을 최대치까지 획득하고 <style=\"accent-gn\">도의</style>가 전부 회복됩니다.<br><i><style=\"text_third_gray\">「창천의 무기 앞에선 모든 별들이 빛을 잃으리라.」</style></i><br><br><size=22><style=\"tipsYellow\">팁: 번개의 인장이 부족할 때 사용하면 번개의 인장을 빠르게 회복할 수 있으며, 다수의 적에게 높은 범위 대미지를 가할 수 있습니다.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344373",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1724.description",
+    "text": "빠르게 발도 후 두 차례 참격을 가해 적에게 <style=\"physical\">물리 대미지</style>를 입힙니다. 시전 시 <style=\"accent-gn\">도의</style>를 <style=\"accent-gn\">50pt</style> 소모합니다. 공격 속도가 <style=\"accent-gn\">25%</style>|<style=\"accent-gn\">50%</style>|<style=\"accent-gn\">80%</style>에 도달하면, 각 참격마다 추가로 <style=\"accent-gn\">1</style>|<style=\"accent-gn\">2</style>|<style=\"accent-gn\">3</style>회의 피해가 발생합니다. 참격이 종료된 뒤 <style=\"accent-gn\">도의</style>가 남아 있다면 연속해서 시전할 수 있습니다.<br><br><size=22><style=\"tipsYellow\">팁: 월광의 낫 계열의 핵심 스킬과 조합해 사용하세요. 도의를 소모해 피해를 누적하는 주력 수단이므로, 도의를 최대치까지 모은 뒤 연속해서 시전하면 효율을 극대화할 수 있습니다.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344407",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1737.description",
+    "text": "파멸의 힘을 두른 낫을 전방을 향해 수직으로 강하게 내려찍어, 적에게 공격력 <style=\"accent-gn\">1,500%</style>만큼의 <style=\"physical\">물리 대미지</style>를 입힙니다. <style=\"accent-gn\">일반 공격</style> 스킬의 업그레이드/승급에 따라 성장합니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344443",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1743.name",
+    "text": "무궁뇌정의 힘",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949978",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1744.name",
+    "text": "심안",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949979",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1899.name",
+    "text": "정화의 빛",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817951238",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1922.description",
+    "text": "<style=\"accent-gn\">분노</style>를 <style=\"accent-gn\">40pt</style> 소모해서 주위 적을 강타해 <style=\"physical\">물리 대미지</style>를 입힙니다. <style=\"accent-gn\">모래 결정</style>을 보유하고 있을 시, <style=\"accent-gn\">모래 결정</style>을 소모해 <style=\"accent-gn\">12</style></linktext>초 동안 모든 대미지를 흡수할 수 있는 <linktext=1035><style=\"ItemQuality_5\">실드</style>를 획득합니다. 소모한 <style=\"accent-gn\">모래 결정</style> <style=\"accent-gn\">1</style>개마다 획득 가능한 실드량이 증가합니다. 한 번에 최대 <style=\"accent-gn\">2</style>개의 <style=\"accent-gn\">모래 결정</style>을 소모할 수 있습니다(실드는 최대 체력의 <style=\"accent-gn\">150%</style>를 초과할 수 없습니다).<br><br><size=22><style=\"tipsYellow\">팁: 실드가 없을 시에 사용해서 실드 상태를 계속 유지하세요.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346583",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1930.description",
+    "text": "<style=\"accent-gn\">분노</style>를 <style=\"accent-gn\">40pt</style> 소모해 무기를 강하게 내려찍어, 주위의 적에게 <style=\"physical\">물리 대미지</style>를 입히고, 동시에 <style=\"accent-gn\">블로킹 스트라이크</style> 상태에 진입합니다. 지속 시간 동안 막기 확률이 <style=\"accent-gn\">100%</style> 증가하고, 받는 <style=\"physical\">물리 대미지</style>가 <style=\"accent-gn\">30%</style> 감소합니다.<br><br><size=22><style=\"tipsYellow\">팁: 물리 대미지로 인한 피해가 높은 상황에서 효과적입니다. 스킬 시전 후 막기 확률이 증가해 받는 물리 대미지를 안정적으로 감소시킬 수 있습니다.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346614",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1940.description",
+    "text": "<style=\"accent-gn\">분노</style> <style=\"accent-gn\">50pt</style>와 <style=\"accent-gn\">모래 결정</style> <style=\"accent-gn\">5</style>개를 소모해 포효합니다. 주위 적에게 <style=\"physical\">물리 대미지</style>를 입히며, 모든 대미지를 흡수할 수 있는 <linktext=1035><style=\"ItemQuality_5\">실드</style></linktext>를 획득합니다(실드는 중첩 가능하지만 최대 체력의 <style=\"accent-gn\">50%</style>를 초과할 수 없음). 또한 자신이 받는 <style=\"physical\">물리 대미지</style>가 <style=\"accent-gn\">12초</style> 동안 <style=\"accent-gn\">10%</style> 감소합니다.<br><br><size=22><style=\"tipsYellow\">팁: 생존에 대한 압박이 적을 때 일정량의 딜링 능력을 확보할 수 있습니다. 적의 물리 대미지 비중이 높을 때 물리 대미지 감면 효율을 극대화할 수 있습니다.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346647",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.1999.name",
+    "text": "바위의 힘",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952327",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2001631.description",
+    "text": "분열 화살",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316478694",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2001637.name",
+    "text": "분열 화살 연사",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933585134",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2001740.description",
+    "text": "엘리트・산적 정찰꾼의 힘에 공명한다. 목표 곁으로 순간이동하여 <linktext=3005><style=\"ItemQuality_5\">스턴</style></linktext> 효과를 부여하고, <style=\"physical\">물리 대미지</style> 부여 및 목표 방어력을 감소시킨다. <style=\"accent-gn\">10초</style> 동안 지속된다.<br><style=\"accent-gn\">[중첩 불가, 동일 효과는 하나만 적용]</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316479815",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2209.name",
+    "text": "꿰뚫는 눈・샤이닝 애로우",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980344",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2235.description",
+    "text": "빠르게 위로 도약한 뒤 적을 향해 사격해 <style=\"physical\">물리 대미지</style>를 입히고, 자신 및 주위 최대 <style=\"accent-gn\">10</style>명의 아군이 받는 모든 <style=\"physical\">물리 대미지</style>에 면역됩니다. 지속 시간 <style=\"accent-gn\">5</style>초.<br>이 스킬은 <style=\"accent-gn\">2</style>스택까지 충전할 수 있습니다.<br><br><size=22><style=\"tipsYellow\">팁: 위험한 환경에 사용해 생존 능력을 향상시키세요.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374933",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2238.description",
+    "text": "목표를 향해 <style=\"accent-gn\">폭발 화살</style>을 1발 발사합니다. <style=\"accent-gn\">폭발 화살</style>은 폭발할 때 주위 목표에게 <style=\"physical\">물리 대미지</style>를 입힙니다.<br><style=\"accent-gn\">클래스 스킬</style>이 치명타로 적중할 때마다 <style=\"accent-gn\">폭발 화살</style>이 <style=\"accent-gn\">1</style>스택씩 충전되며, <style=\"accent-gn\">5</style>스택 도달 또는 <style=\"accent-gn\">6</style>초 뒤 <style=\"accent-gn\">폭발 화살</style>이 폭발합니다. <style=\"accent-gn\">1</style>스택당 <style=\"accent-gn\">폭발 화살</style>의 대미지가 <style=\"accent-gn\">100%</style> 증가합니다.<br><br><size=22><style=\"tipsYellow\">팁: 맹금 조련사 계열에 장착해 사용하세요. 폭발 화살 상태가 지속되는 동안 최대한 많은 치명타를 적중시키면 이 스킬의 대미지를 강화할 수 있습니다.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374936",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2314.description",
+    "text": "음악광인 당신이 폭발적인 연주를 시작합니다. 즉시 <style=\"accent-gn\">연주 열정</style>을 <style=\"accent-gn\">5</style>개 획득하고 주변 아군에게 열정을 전염시켜 치료 효과를 주는 동시에 <style=\"accent-gn\">10</style>초 동안 지속되는 <style=\"accent-gn\">실드</style>를 부여하며 주변 적에게 <style=\"magic\">마법 대미지</style>를 입힙니다.<br><style=\"accent-gn\">연주 열정</style>: 곡을 연주하기 위한 필수 조건으로 <style=\"accent-gn\">5</style>초마다 <style=\"accent-gn\">1</style>개 회복됩니다.<br><br><size=22><style=\"tipsYellow\">팁: 강력한 실드는 위험한 상황에서 파티원의 생존력을 높일 수 있습니다. 실드가 감소되기 전에 적절하게 활용하세요.</size></style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505375955",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2314.name",
+    "text": "승격・열광의 스테이지",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981461",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2316.name",
+    "text": "어텐션",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981463",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2414.name",
+    "text": "신성 방벽",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982550",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2415.name",
+    "text": "라이트 프로텍션",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982551",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.2900640.name",
+    "text": "오의! 화염의 코어",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138284112",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.300491.description",
+    "text": "춤 추기",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-859935194",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.300498.name",
+    "text": "나뽀 저지하기",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914851",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.300499.name",
+    "text": "현영 포션",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914852",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3022.name",
+    "text": "화염의 포효",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818014162",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3040120.description",
+    "text": "연막탄 가상체",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-465165283",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3350065.name",
+    "text": "수정 배치",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200862865",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3350113.name",
+    "text": "옭매는 악몽",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200863787",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3520305.description",
+    "text": "애니메이션 섬 - 회전 레이저 최종 큰 풍차",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-658472523",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3603.description",
+    "text": "자신의 에너지에 집중해 축력 상태에 진입합니다. 지속 시간 동안 <style=\"accent-gn\">연속 공격</style>과 <style=\"accent-gn\">처치</style>를 통해 <style=\"accent-gn\">최대 5</style>개의 에너지볼을 모을 수 있습니다. 지속 시간이 끝나거나 다시 시전하면 현재까지 모은 에너지볼의 수량에 따라 대미지를 입힙니다.<br>대미지를 <style=\"accent-gn\">8</style>회 입힐 때마다 에너지볼을 1개 획득합니다.<br>적을 <style=\"accent-gn\">1</style>회 처치할 때마다 에너지볼을 1개 획득합니다.<br><i><style=\"ItemQuality_0\">한 번의 공격으로 여러 대상에게 대미지를 입혀도 대미지 1회로 간주합니다.</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505415125",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3932.name",
+    "text": "비기! 불꽃의 회전춤",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023996",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3934.name",
+    "text": "비기! 재빠른 기습",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023998",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3941.name",
+    "text": "비기! 민 변신",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024028",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3972.description",
+    "text": "보스・포식 거미를 <style=\"accent-gn\">소환</style>하고 <style=\"physical\">물리 대미지</style>를 줍니다.<br>스킬 사용 후 일정 시간 동안 자신의 패시브 효과의 <style=\"accent-gn\">공격력</style> 보너스가 보유한 <style=\"accent-gn\">숙련도 비율</style>에 따라 강화됩니다. 숙련도 <style=\"accent-gn\">5%</style>마다 패시브 각 스택이 추가 공격력을 제공합니다(최대치 있음).",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418622",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.3983.description",
+    "text": "불의 멸룡 마도사・나츠로 <style=\"accent-gn\">변신해</style> 전용 스킬셋으로 교체되며, <linktext=1219><style=\"ItemQuality_5\">능력치 전환</style></linktext> 효과를 획득합니다.<br>패시브: 궁극 스킬 이외의 스킬 사용 시, 스킬 유형에 따라 <style=\"accent-gn\">용의 불꽃</style> 스택을 획득합니다. <style=\"accent-gn\">용의 불꽃</style>을 10스택 획득할 때마다 <style=\"accent-gn\">용의 힘</style> 1스택으로 변환됩니다. <style=\"accent-gn\">용의 힘</style>은 최대 5스택까지 중첩되며, <style=\"accent-gn\">용의 힘</style> 스택당 불 원소 보너스가 증가합니다.<br>①<style=\"accent-gn\">화룡의 철권</style>: 짧게 힘을 모은 뒤 전방으로 타오르는 주먹을 내질러 불 원소 <style=\"physical\">물리 대미지</style>를 주고, <style=\"accent-gn\">용의 불꽃</style>을 5스택 획득합니다.<br>②<style=\"accent-gn\">화룡의 익격</style>: 힘차게 뛰어올라 전방으로 돌진하며 불 원소 <style=\"physical\">물리 대미지</style>를 주고, <style=\"accent-gn\">용의 불꽃</style>을 5스택 획득합니다.<br>③<style=\"accent-gn\">화룡의 포효</style>: 화염의 힘을 모아 정면으로 거대한 불꽃을 내뿜어 불 원소 <style=\"physical\">물리 대미지</style>를 줍니다. 만약 <style=\"accent-gn\">용의 힘</style>이 최대 스택일 경우 모든 <style=\"accent-gn\">용의 힘</style> 스택을 소모하여 나츠 스킬 쿨타임 감소 및 불 원소 보너스를 획득합니다. 이 효과는 이번 변신 동안 해제되지 않으며 최대 <style=\"accent-gn\">3</style>회까지 중첩됩니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418656",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4009.name",
+    "text": "체크포인트로 순간 이동",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050040",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4040020.description",
+    "text": "지옥불",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1756632163",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4101.name",
+    "text": "결정 파쇄뢰",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818051121",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4501.description",
+    "text": "사용 후 앞으로 대시할 수 있습니다. 용감하게 나아가세요!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505449971",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4509.name",
+    "text": "날쌘 토끼 발사",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055485",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4533.description",
+    "text": "드리프트합니다! 질주 상태일 때 쿨타임 회복 속도가 100% 빨라집니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450072",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4544.description",
+    "text": "발걸음을 내딛고, 바람을 가르며 대쉬하세요! 질주 시 에너지 충전 속도가 100% 증가하며, 최대 3스택까지 충전할 수 있습니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450106",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4547.name",
+    "text": "여명의 도약",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055615",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4602.description",
+    "text": "멋진 특수 스킬! 누르면 하이퍼 임펄스가 고난이도 동작을 발동한다. 적절한 타이밍에 스킬 버튼을 놓으면 빠르게 돌진하며, 번개 질주 스킬의 쿨타임을 크게 단축할 수 있다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451061",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4704.description",
+    "text": "춤추는 사자는 한 해의 행운을 가져다 줍니다. 시전 후 다양한 신체 부위로 변신할 수 있습니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452152",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4706.name",
+    "text": "달을 넘는 도약",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057660",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4707.description",
+    "text": "활성화 시 주변의 달을 헤엄치는 용을 타고 있는 플레이어와 공명하여 서로 연결되며, 연결된 대상의 이동을 동기화합니다.<br><style=\"accent-gn\">최대 10명까지 연결 가능합니다.</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452155",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4712.name",
+    "text": "소닉 블라스트",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057689",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4731.description",
+    "text": "박자에 맞춰 전진! 스킬 시전 후 일정 시간 동안 가속 효과를 획득합니다.<br><style=\"tipsYellow\">행진 대열 상태일 때는 이 스킬을 시전할 수 없습니다.<br><style=\"tipsYellow\">",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452248",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.4731.name",
+    "text": "질주의 서곡",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057754",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.5000.name",
+    "text": "장난감 종료",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818085968",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.5543.name",
+    "text": "저중력 포션",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091548",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.5556.name",
+    "text": "탄막 포탑 소환",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091584",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.5622.name",
+    "text": "슈퍼 폭죽 공격",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818092570",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.6515.description",
+    "text": "전방 <style=\"physical\">10미터</style> 위치로 순간 이동합니다.<br>벽을 통과할 수 없습니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521882",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.6519.name",
+    "text": "얼음벽",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127392",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.6600.description",
+    "text": "체력 <style=\"physical\">10pt를 소모</style>하여 나무막대로 공격합니다.<br>공격이 <style=\"physical\">잠행자에게 명중</style>하면 자신의 체력 <style=\"physical\">50pt를 회복</style>합니다.<br>잠행자를 처치하면 모든 체력을 회복합니다.<br><style=\"physical\">체력이 부족</style>하면 해당 스킬을 사용할 수 없습니다.<br>실제 대미지는 <style=\"physical\">잠행자가 변신한 물체의 방어력</style>을 기준으로 계산됩니다.</style><br><i><style=\"text_third_gray\">[진정한 고수는 장비를 탓하지 않는다.]</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505522933",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.6600.name",
+    "text": "기본기",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818128439",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.6700.description",
+    "text": "체력 <style=\"physical\">10pt를 소모</style>하여 나무막대로 공격합니다.<br>공격이 <style=\"physical\">잠행자에게 명중</style>하면 자신의 체력 <style=\"physical\">50pt를 회복</style>합니다.<br>잠행자를 처치하면 모든 체력을 회복합니다.<br><style=\"physical\">체력이 부족</style>하면 해당 스킬을 사용할 수 없습니다.<br>실제 대미지는 <style=\"physical\">잠행자가 변신한 물체의 방어력</style>을 기준으로 계산됩니다.</style><br><i><style=\"text_third_gray\">[진정한 고수는 장비를 탓하지 않는다.]</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505524022",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "skill.8110905.name",
+    "text": "연속 일반 펀치",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1132746899",
+      "confidence": "verified"
+    }
+  }
+]

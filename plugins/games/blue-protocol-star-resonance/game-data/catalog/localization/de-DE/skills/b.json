@@ -1,0 +1,1676 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1002440.name",
+    "text": "Stunt! Superkritisch",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642150950",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1002851.description",
+    "text": "Frostdornen",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-25048906",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1005202.name",
+    "text": "Todeskampf",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642256453",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1005705.description",
+    "text": "Dreifach-Schmetterer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-25155467",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1005801.name",
+    "text": "Super-Herabschmettern",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642262986",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1009704.name",
+    "text": "Zufallsausweichrennen",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642405648",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1010540.description",
+    "text": "Resoniert mit der Kraft von Elite: Echsenmensch-Magier, verwandelt sich selbst in einen, beschwört dann Wasser der Stille unter den Füßen des Ziels, verursacht <style=\"physical\">Angriff-SCH</style> und <linktext=3011><style=\"ItemQuality_5\">verlangsamt</style></linktext> es gleichzeitig. Nach dem Wirken wird der <style=\"accent-gn\">Eis-SCH</style> für eine gewisse Zeit erhöht.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26159652",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1011104.description",
+    "text": "Klingensturm",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26191105",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1011110.description",
+    "text": "Doppelhieb",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26191134",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1011902.description",
+    "text": "Wütendes Feuer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26199815",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1011903.description",
+    "text": "Rotes Licht, verbrenne!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26199816",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.102659.name",
+    "text": "Schweine-Angriff",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1906717986",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.10330050.name",
+    "text": "Testattrappe für Entitätssichtbarkeit.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1982072727",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1090603.name",
+    "text": "Wasserkugel-Explosion",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-652754414",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1091099.name",
+    "text": "Sengendes Urteil – Heilige Klinge",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-652784120",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1101303.name",
+    "text": "Heilungssturm",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-681249188",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.110411.name",
+    "text": "Ultimative Explosion!!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1907829715",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1246.name",
+    "text": "Gezeitenbecken",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944536",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1401.description",
+    "text": "<style=\"accent-gn\">Mut</style><br>Eine wichtige Ressource, um <style=\"accent-gn\">Spezialangriffe</style> und ausgewählte <style=\"accent-gn\">Expertisefähigkeiten</style> zu entfesseln. Regeneriert <style=\"accent-gn\">3</style> Punkte pro Sekunde, mit einem anfänglichen Maximum von <style=\"accent-gn\">100</style>. <br><br><style=\"accent-gn\">Standardangriff: Windgetragene Anmut</style><br>Führt eine Sequenz von bis zu vier Angriffen aus, die <style=\"physical\">Angriff-SCH</style><br><br><size=22><style=\"tipsYellow\"> verursachen.Tipps: Fülle die Lücken mit Standardangriffen, wenn der Mut für andere Angriffsfähigkeiten nicht ausreicht.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341071",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.140123.name",
+    "text": "Ladungsanziehung",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1911384246",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.140137.name",
+    "text": "Blitzsturm",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1911384283",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1410.description",
+    "text": "Erhebt den Fahnenspeer und gewährt Verbündeten <style=\"accent-gn\">Inspirieren</style>. Danach kann ein Nachfolgesprung ausgeführt werden, der Gegnern in Reichweite <style=\"physical\">Angriff-SCH</style> zufügt, sie <style=\"accent-gn\">in die Luft schleudert</style> und <style=\"accent-gn\">100</style> <style=\"accent-gn\">Mut</style> wiederherstellt. <br><style=\"accent-gn\">Inspirieren</style>: Hält <style=\"accent-gn\">10 Sek.</style> an. Während dieser Zeit ist das Tempo aller Verbündeten um +<style=\"accent-gn\">10 %</style> erhöht. Stellt <style=\"accent-gn\">10</style> <style=\"accent-gn\">Mut</style> <style=\"accent-gn\">pro</style> Sekunde und alle <style=\"accent-gn\">2 Sek.</style> <style=\"accent-gn\">1</style> Stapel <style=\"accent-gn\">Scharf</style> wieder her. <br><i><style=\"text_third_gray\">\"Endloser Sturm, entfessle deine mächtige Kraft auf Befehl meines Ritters! Wind, offenbare deine Herrlichkeit mit einem tosenden Rausch! Manifestiere dich im Wind!\" </style></i><br><br><size=22><style=\"tipsYellow\">Tipps: Bei geringem Mut wirken.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341103",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1430.description",
+    "text": "Wandelt <style=\"accent-gn\">Mut</style> in ein anhaltendes Windfeld um, das <style=\"physical\">Angriff-SCH</style> bei Gegnern in der Nähe verursacht, bis der <style=\"accent-gn\">Mut</style> zur Neige geht, wobei <style=\"accent-gn\">16</style> <style=\"accent-gn\">Mut</style> <style=\"accent-gn\">pro</style> Sekunde verbraucht wird. Die Fähigkeit kann durch erneutes Klicken deaktiviert werden. <br><br><size=22><style=\"tipsYellow\">Tipps: Bei vollem Mut wirken. Du erhältst Mut während Heldenmut-Zyklon zurück, um die Dauer zu verlängern.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341169",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1431.name",
+    "text": "Schriller Aufprall",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946676",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1437.name",
+    "text": "Ägis-Sturmwind",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946682",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1506.description",
+    "text": "Wirft Teufelszwirn-Saat auf das Ziel, die <style=\"dendro\">Wald-SCH</style> verursacht. In jeder Runde werden 3 Samen verschossen, insgesamt 5 Runden lang.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342165",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1527.description",
+    "text": "Kanalisiert <style=\"accent-gn\">6 Sek.</style> lang und beschwört alle 0,5 Sek. fallende Saat, die <style=\"magic\">Magie-SCH</style> bei Gegnern in der Nähe verursacht. Heilt gleichzeitig bis zu <style=\"accent-gn\">10</style> Verbündete in der Nähe (Teammitglieder werden bevorzugt) und gewährt ihnen <style=\"accent-gn\">25 %</style> SCH-Reduktion.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342232",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1550.name",
+    "text": "Saat-Meteor",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947830",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1558.name",
+    "text": "Pflanze",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947838",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1564.name",
+    "text": "Blütenansturm der Rhapsodie",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947867",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1599.name",
+    "text": "Kriechender Wahn",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947971",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1603.name",
+    "text": "Lodernder Schwung",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948757",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1615.description",
+    "text": "Verleiht die Kraft des Feuers, was während der Aktivität einen <style=\"accent-gn\">Klassenfähigkeiten-AZ-Schub</style> und erhöhtes <style=\"accent-gn\">Tempo</style> gewährt.<br><br><size=22><style=\"tipsYellow\">Strategie: Verwenden, wenn Formlos A oder S erreicht, um die Vorteile während des Burst-Fensters zu maximieren.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505343286",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1622.name",
+    "text": "Wildfeuertanz – Finale Form",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948822",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1697.name",
+    "text": "Standardangriff: Sengender Schwung",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949058",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1701006.description",
+    "text": "Dogor-Atem",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-298951848",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.170208.name",
+    "text": "Ende der Leerenverderbnis",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914943037",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1711.name",
+    "text": "Klingentechnik",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949877",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1738.name",
+    "text": "Chaosbrecher",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949950",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1927.name",
+    "text": "Sandschleier",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952094",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1935.name",
+    "text": "Konterzermalmer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952125",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1941.name",
+    "text": "Sternfall",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952154",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.1943.name",
+    "text": "Steinfaust",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952156",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.2002441.name",
+    "text": "Arkana! Donnerfallgriff",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933618920",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.2220.name",
+    "text": "Sturmpfeil",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980401",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.2293.name",
+    "text": "Talent: Photonenriss",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980635",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.2307.name",
+    "text": "Heilender Takt",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981431",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.2312.description",
+    "text": "Möge die Leidenschaft wieder fließen! Verbraucht <style=\"accent-gn\">3</style> <style=\"accent-gn\">Auftrittspassion</style> und entfacht den Geist der Erschöpften neu. Spielt eine Notenfolge, die bei <style=\"accent-gn\">10</style> Verbündeten in Reichweite (Teammitglieder haben Priorität) LP wiederherstellt und Zähigkeitsakkord gewährt. Jeder Stapel von Zähigkeitsakkord erhöht zusätzlich die Max. LP für <style=\"accent-gn\">5</style> Sek. um <style=\"accent-gn\">0,5 %</style> (bis zu <style=\"accent-gn\">2,5 %</style> Max. LP). Die Dauer kann nicht erneuert werden, sobald 5 Stapel erreicht sind.<br><br><style=\"accent-gn\">Auftrittspassion</style>: Erforderlich, um Musik darzubieten. Regeneriert alle <style=\"accent-gn\">5 Sek.</style> <style=\"accent-gn\">1</style> Stapel.<br><br><size=22><style=\"tipsYellow\">Tipps: Höchstes Heilungspotenzial. Die Gesundheit des Teams sollte überwacht werden, um die Effizienz zu maximieren und eine Überheilung zu verhindern.</size></style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505375953",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.2420.name",
+    "text": "Strahlen",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982579",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.2900240.description",
+    "text": "Resoniert mit Aironas Seelenkraft. Belebt Verbündete innerhalb von 20 Metern nach einem kurzen Gesang wieder.<br><style=\"accent-gn\">[Kann 100 Sek. lang nicht von einem Effekt desselben Typs betroffen werden.]</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668656970",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.2900902.name",
+    "text": "Fafalas Abrechnung",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138287249",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3000.description",
+    "text": "Springt vorwärts und schmettert auf den Boden, was SCH basierend auf den Max. LP bei allen <style=\"accent-gn\">Gegnern</style> in einem Bereich verursacht.<br>Gewährt anschließend <linktext=1090><style=\"ItemQuality_5\">Hochgefühl</style></linktext>, was dem Wirker und <style=\"accent-gn\">Verbündeten</style> <linktext=1091><style=\"ItemQuality_5\">Super-Rüstung</style></linktext> und <style=\"accent-gn\">SCH-Reduktion</style> gewährt.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505408588",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.300060.name",
+    "text": "Leerenverderbnis-Umwandlung",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984910388",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3014.description",
+    "text": "Verbirgt die Präsenz des Zauberwirkers für <style=\"accent-gn\">10 Sek.</style>, verhindert die Generierung von Aggro und entfernt alle <linktext=3020><style=\"ItemQuality_5\">Debuffs</style></linktext> vom Zauberwirker.<br><br><style=\"accent-gn\">Diese Fähigkeit wird nicht von AZ-Effekten beeinflusst</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505408625",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3314.description",
+    "text": "Entfernt <linktext=3021><style=\"ItemQuality_5\">Debuffs</style></linktext> von bis zu <style=\"accent-gn\">10</style> Verbündeten innerhalb von <style=\"accent-gn\">25 m</style> (Gruppenmitglieder priorisiert).<br><br><style=\"accent-gn\">Diese Fähigkeit wird nicht von AZ-Effekten beeinflusst</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505411892",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3390115.name",
+    "text": "Leerenverderbnis-Stampfer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1205607473",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3612.name",
+    "text": "Unnachgiebiger Geist",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818020663",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3613.description",
+    "text": "Verbirgt die Präsenz des Zauberwirkers für <style=\"accent-gn\">10 Sek.</style>, verhindert die Generierung von Aggro und entfernt alle <linktext=3020><style=\"ItemQuality_5\">Debuffs</style></linktext> vom Zauberwirker.<br><br><style=\"accent-gn\">Diese Fähigkeit wird nicht von AZ-Effekten beeinflusst</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505415158",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3905.description",
+    "text": "<style=\"accent-gn\">Beschwört Elite</style>: Keiler-Tyrann, der <style=\"accent-gn\">3 Sek.</style> lang mit seinen Stoßzähnen nach vorn stürmt. Verursacht <style=\"physical\">Angriffsschaden</style> und stößt Gegner während seines Angriffs in die Luft. Die Keiler-Hauer reißen durch Fleisch und verursachen <style=\"accent-gn\">15 Sek.</style> lang <linktext=3004><style=\"ItemQuality_5\">Wunden</style></linktext> in Höhe von <style=\"accent-gn\">100 %</style> bei getroffenen Gegnern. <br>Nach dem Wirken der Fähigkeit werden der verursachte SCH und die Heilung des <style=\"accent-gn\">Spezialangriffs</style> für gewisse Zeit verstärkt.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418394",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3907.name",
+    "text": "Stunt! Sternschnuppe",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023902",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3909.name",
+    "text": "Stunt! Fuchs-Angriff",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023904",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3937.name",
+    "text": "Stunt! Donnerunterdrückung",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024001",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3941.description",
+    "text": "<style=\"accent-gn\">Verwandelt sich für eine gewisse Zeit in Elite</style>: Leeren-Bssar, während der Stacheln und Projektile abgefeuert werden können.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418522",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3947.name",
+    "text": "Stunt! Spiraltrennung",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024034",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3960.description",
+    "text": "<style=\"accent-gn\">Verwandelt den Anwender in</style> Elite: Schwarzstein-Vorhut, um einen Wirbelangriff auszuführen, der Feuer-<style=\"physical\">Angriff-SCH</style> verursacht. Jeder Stapel Klingenwille ermöglicht eine zusätzliche Drehung (bis zu <style=\"accent-gn\">15</style> Stapel). Dieser Schaden profitiert von allen Arten von Elementbonus und wird nicht von passiven Effekten beeinflusst.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418587",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3964.name",
+    "text": "Stunt! Kohlbumerang",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024097",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3965.name",
+    "text": "Stunt! Kohlblitz",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024098",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3975.description",
+    "text": "<style=\"accent-gn\">Beschwört</style> Boss: Kammzahn, um <style=\"physical\">Angriff-SCH</style> zu verursachen.<br>Nach dem Wirken wird die AZ von Überlebensinstinkt sofort zurückgesetzt. Der Wirker bleibt vorübergehend belebt und <style=\"accent-gn\">Rüstung sowie Max. LP</style> werden erhöht.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418625",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3976.name",
+    "text": "Arkana! Schnelles Verschlingen",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024132",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3979.name",
+    "text": "Stunt! Abgrundatem",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024135",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3981.description",
+    "text": "<style=\"accent-gn\">Beschwört</style> Elite: Zufluchtsauge, um <style=\"physical\">Angriff-SCH</style> zu verursachen.<br>Nach dem Wirken wird dem Wirker und bis zu <style=\"accent-gn\">10</style> Verbündeten in der Nähe für eine gewisse Zeit ein <style=\"accent-gn\">Schild</style> gewährt (Teammitglieder werden bevorzugt).",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418654",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3981.name",
+    "text": "Stunt! Zielerfassungsschuss",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024160",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.3984.description",
+    "text": "Die Verwandlung verlassen",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418657",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4015.name",
+    "text": "Feuerwerk zünden",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050069",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4039900.name",
+    "text": "Spaltpfeil",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-225402196",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4040010.description",
+    "text": "Seelenernte",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1756632130",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4502.name",
+    "text": "Wildschweinlauf",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055478",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4521.description",
+    "text": "Tritt nach dem Einsatz in den Antigravitation-Zustand ein und springe frei herum!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450037",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4553.name",
+    "text": "Golem-Schläge",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055644",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4612.description",
+    "text": "Zeigt eine perfekte Pose im Scheinwerferlicht. Nach der Anwendung wird die nächste Fähigkeit \"Rhythmischer Takt\" verbessert.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451094",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4613.description",
+    "text": "Folge dem Rhythmus und stürme mit Stil! Drücke während der Bewegung erneut, um die Fähigkeit abzubrechen.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451095",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4632.description",
+    "text": "Gönne dir eine Pause und genieße die Aussicht.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451160",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4641.name",
+    "text": "Teleporttrick",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056698",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.4683.description",
+    "text": "Das Nappo streut Blütenblätter und Funken und bietet einen frühlingshaften Tribut. Beim Wirken wird der nächste Einsatz von Schwankende Blüten verbessert.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451326",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.5251.name",
+    "text": "Schlag",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818088312",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.5522.description",
+    "text": "Beschwöre eine Rauchbombe unter dir.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505485975",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.5523.name",
+    "text": "Sprungfederbeschwörung",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091482",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.6005.name",
+    "text": "Bombe",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818121910",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.6500.name",
+    "text": "Zufällige Verwandlung",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127350",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.6523.description",
+    "text": "<style=\"physical\">Gewährt Immunität gegen den nächsten erlittenen Schaden</style>.<br>Der Effekt von \"Kein Limit\" ist nur für den Anwender sichtbar.<br><i><style=\"text_third_gray\">\"Der Sieg ist sicher!\"</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521913",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.6524.description",
+    "text": "Wirft eine Münze. <style=\"physical\">50 %</style> Chance, <style=\"physical\">10 LP wiederherzustellen</style>; <style=\"physical\">40 %</style> Chance, Blitze anzuziehen und <style=\"physical\">10 LP zu verlieren</style>; <style=\"physical\">10 %</style> Chance, <style=\"physical\">LP vollständig wiederherzustellen</style>.<br><i><style=\"text_third_gray\">\"Ein mysteriöser Gegenstand von einem bestimmten Kontinent!\"</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521914",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.6603.description",
+    "text": "<style=\"physical\">Verbraucht 10</style> LP, um mit einer Spitzhacke anzugreifen.<br>Wenn der Angriff <style=\"physical\">einen Pirscher trifft</style>, werden <style=\"physical\">50 LP wiederhergestellt</style>.<br>Das Töten eines Pirschers stellt die LP vollständig wieder her.<br><style=\"physical\">Kann bei unzureichenden LP nicht verwendet werden.</style><br>Der tatsächliche Schaden wird basierend auf der <style=\"physical\">Rüstung des Objekts berechnet, in das sich der Pirscher verwandelt hat</style>.<br><style=\"physical\">Spezieller Waffeneffekt: Gewährt beim Angriff ein zufälliges Erz:<br>Chance von 33 %, Bernstein zu erhalten: Verringert alle Fähigkeiten-AZ um 0,5 Sek.;<br>Chance von 33 %, Benitoit zu erhalten: Stellt 50 LP wieder her;<br>Chance von 33 %, Drachenkristall zu erhalten: Feuert 5 Energieklingen in alle Richtungen ab;<br>Chance von 1 %, Fulgurit zu erhalten: Blitze treffen alle Pirscher im Umkreis von 30 m.</style><br><i><style=\"text_third_gray\">\"Muss ich auch graben?\"</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505522936",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "skill.920010.name",
+    "text": "Trichrom-Heiligenschein",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-74610775",
+      "confidence": "verified"
+    }
+  }
+]

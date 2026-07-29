@@ -7,6 +7,14 @@ rust-version.workspace = true
 
 [dependencies]
 bytes.workspace = true
+etherparse.workspace = true
 pcap-parser.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_Networking_WinSock",
+] }

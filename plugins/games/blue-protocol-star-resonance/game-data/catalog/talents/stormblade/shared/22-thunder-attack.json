@@ -1,0 +1,170 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 22,
+  "stable_key": "talent.22",
+  "localization_key": "talent.22.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "stormblade",
+    "spec_key": "shared",
+    "classification_state": "current_build_multi_branch_talent_relation",
+    "row_key": 22,
+    "design_name": "雷元素攻击+5",
+    "name_id": 487377728,
+    "description_id": 0,
+    "profession_id": 0,
+    "icon_address": "ui/atlas/weaponhero/new/common_icon03",
+    "talent_type": 1,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        1,
+        11542,
+        5
+      ]
+    ],
+    "buff_parameters": [],
+    "unlock_costs": [],
+    "talent_points_cost": 1,
+    "fight_value": 3,
+    "name_localization_key": "talent.22.name",
+    "tree_nodes": [
+      {
+        "node_id": 6679,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6677
+        ]
+      },
+      {
+        "node_id": 6678,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6680
+        ]
+      },
+      {
+        "node_id": 144003,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          9101
+        ]
+      },
+      {
+        "node_id": 143004,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          9102
+        ]
+      },
+      {
+        "node_id": 5612,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5208,
+          1318
+        ]
+      },
+      {
+        "node_id": 1322,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1323
+        ]
+      },
+      {
+        "node_id": 37082,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          7242
+        ]
+      },
+      {
+        "node_id": 34110,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6307
+        ]
+      },
+      {
+        "node_id": 5610,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1319,
+          7244
+        ]
+      },
+      {
+        "node_id": 5607,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1319,
+          6309
+        ]
+      },
+      {
+        "node_id": 5602,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8468,
+          1318
+        ]
+      },
+      {
+        "node_id": 50100,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          8467
+        ]
+      },
+      {
+        "node_id": 33041,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5210
+        ]
+      },
+      {
+        "node_id": 23250,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5611
+        ]
+      },
+      {
+        "node_id": 1314,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5598
+        ]
+      },
+      {
+        "node_id": 23248,
+        "branch": 0,
+        "prerequisite_node_ids": []
+      },
+      {
+        "node_id": 5592,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5599
+        ]
+      }
+    ],
+    "class_id": 1
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

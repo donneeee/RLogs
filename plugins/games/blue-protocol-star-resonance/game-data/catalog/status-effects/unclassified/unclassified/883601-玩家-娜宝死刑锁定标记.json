@@ -1,0 +1,51 @@
+{
+  "schema_version": 2,
+  "kind": "status_effect",
+  "id": 883601,
+  "stable_key": "status_effect.883601",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "class_key": "unclassified",
+    "spec_key": "unclassified",
+    "classification_state": "pending_current_build_relation",
+    "buff_id": 883601,
+    "level": 1,
+    "design_name": "玩家-娜宝死刑锁定标记",
+    "name_id": 0,
+    "description_id": 0,
+    "buff_type": 0,
+    "priority": 0,
+    "tips_description_id": 0,
+    "visibility_mode": 2,
+    "repeat_add_rule": [
+      0,
+      1
+    ],
+    "delete_on_death": true,
+    "delete_offline": true,
+    "delete_on_scene_change": true,
+    "delete_on_visual_layer_change": false,
+    "delete_on_weapon_change": false,
+    "delete_on_source_death": false,
+    "ability_type": 0,
+    "ability_subtype": 0,
+    "is_client_buff": false,
+    "hud_switch": 0,
+    "time_refresh_type": 0,
+    "play_type": 0,
+    "skill_id": 0
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.BuffTable",
+    "reference": "client-build:global/steam/24252055@sha256:56425196ed9c635ef4a23afad38d3dbb4a76ecccaa6192d4a3f6879725e61550",
+    "confidence": "corroborated"
+  }
+}

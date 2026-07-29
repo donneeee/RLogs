@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "specialization.126.name",
+    "text": "Canhão de Mão",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989405",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.2.description",
+    "text": "Wields a <color=#fcbe03>Frost Staff</color>, excelling in <color=#fcbe03>long-range combat</color>. Commands the power of ice to deliver <color=#fcbe03>wide-area DMG</color> and formidable <color=#fcbe03>control</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367318",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.8.description",
+    "text": "Excels in <color=#fcbe03>long-range combat</color>,<br>capable of striking wide areas with rapid fire. Boosting <color=#fcbe03>Sigil chance</color> greatly increases trigger frequency.<br>Can <color=#fcbe03>charge</color> at close range to deal massive DMG. Boosts <color=#fcbe03>critical rate</color> for dealing massive DMG.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367324",
+      "confidence": "verified"
+    }
+  }
+]

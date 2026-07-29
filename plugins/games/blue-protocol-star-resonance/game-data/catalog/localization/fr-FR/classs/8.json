@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.11.name",
+    "text": "Tireur d'élite",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192187",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.5.description",
+    "text": "Manie un <color=#fcbe03>Anneau de nature</color>, excellant dans le <color=#fcbe03>soin à longue portée</color>. Canalise l'essence verdoyante de la forêt pour prodiguer des <color=#fcbe03>soins</color> exceptionnels et des <color=#fcbe03>buffs</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367321",
+      "confidence": "verified"
+    }
+  }
+]

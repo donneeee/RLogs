@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.13.description",
+    "text": "<color=#fcbe03>근거리와 원거리</color> 전투에 능하며, <color=#fcbe03>기타</color>를 무기로 사용합니다. 공격을 통해 <color=#fcbe03>치료</color> 효과를 부여할 수 있으며, 파티원에게 <color=#fcbe03>버프</color>를 부여하는 데 능합니다. 뛰어난 <color=#fcbe03>지원</color> 능력을 가지고 있습니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.15.name",
+    "text": "나츠",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192191",
+      "confidence": "verified"
+    }
+  }
+]

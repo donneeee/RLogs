@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.12.description",
+    "text": "Maneja <color=#fcbe03>Espada e Escudo</color> e é eficaz em <color=#fcbe03>combate próximo</color>. Veste armadura forjada em luz radiante, ostentando <color=#fcbe03>defesa</color> e <color=#fcbe03>autocura</color> excepcionais.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154215",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.3.description",
+    "text": "Destaca-se em combate de <color=#fcbe03>curto alcance</color>, usando <color=#fcbe03>Machados Duplos</color> como arma. Os movimentos são tão rápidos e ferozes quanto o fogo, com excelentes capacidades de <color=#fcbe03>ataque em pequena área</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367319",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "class.2.description",
+    "text": "Empuña un <color=#fcbe03>báculo gélido</color> y sobresale en el <color=#fcbe03>combate a larga distancia</color>. Controla el poder del hielo para infligir <color=#fcbe03>DÑO de área amplia</color> y ejercer un <color=#fcbe03>control</color> formidable.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367318",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "class.8.description",
+    "text": "Sobresale en el <color=#fcbe03>combate a larga distancia</color><br>y puede golpear áreas amplias con ataques rápidos. Aumentar la <color=#fcbe03>probabilidad de sello</color> también aumenta mucho la frecuencia de activación.<br>Puede <color=#fcbe03>embestir</color> a corta distancia para infligir DÑO masivo. Aumenta la <color=#fcbe03>tasa de críticos</color> para infligir DÑO masivo.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367324",
+      "confidence": "verified"
+    }
+  }
+]

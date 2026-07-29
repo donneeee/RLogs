@@ -1,7 +1,12 @@
 {
-  "schema_version": 1,
-  "deployment_id": "global",
-  "region_id": "reference",
-  "client_build": "fixture-not-for-live-use",
-  "source_revision": "review-fixture-1"
+  "schema_version": 2,
+  "catalog_id": "rlogs-reference",
+  "catalog_revision": "review-fixture-2",
+  "supported_builds": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "fixture-not-for-live-use"
+    }
+  ]
 }

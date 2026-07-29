@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.11.description",
+    "text": "Ahli dalam pertarungan <color=#fcbe03>jarak jauh</color> yang bersenjatakan <color=#fcbe03>Bow</color>. Menyerang dengan rekan binatangnya dan memiliki kemampuan <color=#fcbe03>serangan jarak jauh</color> yang luar biasa.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154214",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.5.name",
+    "text": "Verdant Oracle",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964622",
+      "confidence": "verified"
+    }
+  }
+]

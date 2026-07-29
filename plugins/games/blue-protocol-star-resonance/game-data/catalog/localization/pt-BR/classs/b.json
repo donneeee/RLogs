@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.14.description",
+    "text": "Eficaz em <color=#fcbe03>combate à distância</color>,<br>capaz de atingir áreas amplas com tiros rápidos. Aumentar a <color=#fcbe03>chance de Símbolo</color> aumenta muito a frequência de ativação.<br>Pode <color=#fcbe03>investir</color> em curta distância para causar dano massivo. Aumenta <color=#fcbe03>Taxa de Crítico</color> para causar dano massivo.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154217",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.4.name",
+    "text": "Cavaleiro do Vento",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964621",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.9.name",
+    "text": "Guardião Pesado",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964626",
+      "confidence": "verified"
+    }
+  }
+]

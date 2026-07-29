@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.14.description",
+    "text": "<color=#fcbe03>遠距離</color>戦闘を得意とし、優れた攻撃能力を有する。<br>遠方からの高頻度攻撃で広範囲のエネミーにダメージを与える。<color=#fcbe03>刻印確率ボーナス</color>を追求すると発動頻度が上がる。<br>近場で<color=#fcbe03>チャージ</color>して大量の爆発ダメージを叩き出すことも可能。<color=#fcbe03>会心確率</color>を追求すれば多大な収益をもたらす。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154217",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.4.name",
+    "text": "ゲイルランサー",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964621",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.9.name",
+    "text": "ヘヴィガーディアン",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964626",
+      "confidence": "verified"
+    }
+  }
+]

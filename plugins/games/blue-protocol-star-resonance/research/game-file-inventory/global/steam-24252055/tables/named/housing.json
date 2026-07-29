@@ -1,0 +1,1408 @@
+[
+  {
+    "table_key": 1585587568,
+    "table_key_hex": "0x5e822570",
+    "stable_key": "ctb.HomeTaskTable",
+    "names": [
+      "HomeTaskTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 336049200,
+      "bytes": 27063,
+      "sha256": "sha256:8f3ac6620282914fd5d37715a2da271b6b1200dc64e954d0b248a3af064b0d8f"
+    },
+    "shape": {
+      "rows": 447,
+      "row_size": 20,
+      "row_data_bytes": 8940,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 7152
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 7295
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 2149,
+      "unique": 447,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 7,
+    "exact_string_references": 476
+  },
+  {
+    "table_key": 4149235948,
+    "table_key_hex": "0xf75050ec",
+    "stable_key": "ctb.HomeFlowerTable",
+    "names": [
+      "HomeFlowerTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1108979261,
+      "bytes": 19042,
+      "sha256": "sha256:9ce6ab72d9d423b71cc0b7c60c087c3241747ba7be6ce883c793bb2a73c9f731"
+    },
+    "shape": {
+      "rows": 192,
+      "row_size": 48,
+      "row_data_bytes": 9216,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 254
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 7936
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 11110001,
+      "maximum": 11110192,
+      "unique": 192,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 22,
+    "exact_string_references": 258
+  },
+  {
+    "table_key": 2929111852,
+    "table_key_hex": "0xae96b32c",
+    "stable_key": "ctb.HomeLandSellTable",
+    "names": [
+      "HomeLandSellTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 879912192,
+      "bytes": 6244,
+      "sha256": "sha256:807a79fda8abc4b6e57c32cf8eff961032ff9d2831da622e07cf43507816e5e3"
+    },
+    "shape": {
+      "rows": 192,
+      "row_size": 24,
+      "row_data_bytes": 4608,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 11110001,
+      "maximum": 11110192,
+      "unique": 192,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 5,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 3424451790,
+    "table_key_hex": "0xcc1cfcce",
+    "stable_key": "ctb.HomeTextureTable",
+    "names": [
+      "HomeTextureTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 994023442,
+      "bytes": 3208,
+      "sha256": "sha256:54204ce7a1a32abf9359af4a9560908326129656959799c48c1a3fcecd84f964"
+    },
+    "shape": {
+      "rows": 45,
+      "row_size": 16,
+      "row_data_bytes": 720,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 2028
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 410,
+      "unique": 45,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 5,
+    "exact_string_references": 78
+  },
+  {
+    "table_key": 105460590,
+    "table_key_hex": "0x0649336e",
+    "stable_key": "ctb.HomeAdsorbConfigTable",
+    "names": [
+      "HomeAdsorbConfigTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 11167336,
+      "bytes": 2102,
+      "sha256": "sha256:91f8ae5d22adc46eb50b2423a6fcc60187c88d74f4ca63c19d370e786c59568f"
+    },
+    "shape": {
+      "rows": 40,
+      "row_size": 36,
+      "row_data_bytes": 1440,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 242
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 201,
+      "maximum": 1601,
+      "unique": 40,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 16,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1203915387,
+    "table_key_hex": "0x47c24a7b",
+    "stable_key": "ctb.HomePlantColorTable",
+    "names": [
+      "HomePlantColorTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 97975463,
+      "bytes": 1028,
+      "sha256": "sha256:43125c437d1f4a52620603358f5bdb8c33bd7b497b20a1b4d9d1c7ef0f39c492"
+    },
+    "shape": {
+      "rows": 16,
+      "row_size": 20,
+      "row_data_bytes": 320,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 448
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 32
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 16,
+      "unique": 16,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 5,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2181583206,
+    "table_key_hex": "0x82085166",
+    "stable_key": "ctb.HomeAuthorityTable",
+    "names": [
+      "HomeAuthorityTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 721298744,
+      "bytes": 746,
+      "sha256": "sha256:a0532b5a4bcd541946e414f5b7c523a0b148d8442f3b2bcd51503703afe42890"
+    },
+    "shape": {
+      "rows": 15,
+      "row_size": 32,
+      "row_data_bytes": 480,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 46
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 15,
+      "unique": 15,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 10,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 4198421636,
+    "table_key_hex": "0xfa3ed484",
+    "stable_key": "ctb.HomeAuthorityActionTable",
+    "names": [
+      "HomeAuthorityActionTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1134821527,
+      "bytes": 412,
+      "sha256": "sha256:1a9c2ce982fa0c4af3dbe92275f900c7ef4f511e54b91ad864651c148ffcdd40"
+    },
+    "shape": {
+      "rows": 14,
+      "row_size": 8,
+      "row_data_bytes": 112,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 88
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 101,
+      "maximum": 114,
+      "unique": 14,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 2,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2089213846,
+    "table_key_hex": "0x7c86df96",
+    "stable_key": "ctb.HomeAuthorityOperateTable",
+    "names": [
+      "HomeAuthorityOperateTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 634841050,
+      "bytes": 280,
+      "sha256": "sha256:801ceaa5d037d9c2461c2f1d892700ad1530a26da6f94da8ad94efacc506b71a"
+    },
+    "shape": {
+      "rows": 9,
+      "row_size": 12,
+      "row_data_bytes": 108,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 9,
+      "unique": 9,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 2,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 639443801,
+    "table_key_hex": "0x261d2359",
+    "stable_key": "ctb.ResidentialDistricts",
+    "names": [
+      "ResidentialDistricts.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1190910622,
+      "bytes": 908,
+      "sha256": "sha256:09b6aee97283aa381a6d1e2e2b530c990cb48b3254defb9dcb83cec5db39fb6e"
+    },
+    "shape": {
+      "rows": 9,
+      "row_size": 48,
+      "row_data_bytes": 432,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 304
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 9,
+      "unique": 9,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 5,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2712451349,
+    "table_key_hex": "0xa1acb915",
+    "stable_key": "ctb.HomeLevelTable",
+    "names": [
+      "HomeLevelTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 831555440,
+      "bytes": 828,
+      "sha256": "sha256:e77559200f7b20f3f6afe77d2cc85e8edd9179552948bbe88bb3a63917fc41fe"
+    },
+    "shape": {
+      "rows": 8,
+      "row_size": 60,
+      "row_data_bytes": 480,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 184
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 8,
+      "unique": 8,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 20,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 618449258,
+    "table_key_hex": "0x24dcc96a",
+    "stable_key": "ctb.HomeEnvironmentLightTable",
+    "names": [
+      "HomeEnvironmentLightTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1184202155,
+      "bytes": 592,
+      "sha256": "sha256:b7cdfb2f10ed16710d7c7376a9352e672b2dc4460185cc58e53083de50dfed3a"
+    },
+    "shape": {
+      "rows": 7,
+      "row_size": 24,
+      "row_data_bytes": 168,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 92
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 28
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 148
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 8,
+      "unique": 7,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 8,
+    "exact_string_references": 3
+  },
+  {
+    "table_key": 1804906494,
+    "table_key_hex": "0x6b94affe",
+    "stable_key": "ctb.HomeSeedTable",
+    "names": [
+      "HomeSeedTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 368496218,
+      "bytes": 268,
+      "sha256": "sha256:1afc3cf50d57d799ab9edbefd04e73b1493ac96b025e025f8ab8eead0f52fc9a"
+    },
+    "shape": {
+      "rows": 6,
+      "row_size": 12,
+      "row_data_bytes": 72,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 48
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 11120001,
+      "maximum": 11120202,
+      "unique": 6,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 3,
+    "exact_string_references": 2
+  },
+  {
+    "table_key": 879285062,
+    "table_key_hex": "0x3468d346",
+    "stable_key": "ctb.HomeManageTable",
+    "names": [
+      "HomeManageTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1256552762,
+      "bytes": 570,
+      "sha256": "sha256:1c833c4cb87b5b38ee7914b298075f09e7663b0372165fc2c574ce6fc253abef"
+    },
+    "shape": {
+      "rows": 5,
+      "row_size": 12,
+      "row_data_bytes": 60,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 370
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 5,
+      "unique": 5,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 2,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 3538938710,
+    "table_key_hex": "0xd2efeb56",
+    "stable_key": "ctb.HomeSundrieslTable",
+    "names": [
+      "HomeSundrieslTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1016805424,
+      "bytes": 212,
+      "sha256": "sha256:092bc95ff5c4139013637dae0fc99b142e30db5b2a983d8064bc8a12f7baada9"
+    },
+    "shape": {
+      "rows": 4,
+      "row_size": 20,
+      "row_data_bytes": 80,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 4,
+      "unique": 4,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 5,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1131770388,
+    "table_key_hex": "0x43757214",
+    "stable_key": "ctb.HomePlantRuleTable",
+    "names": [
+      "HomePlantRuleTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 29904418,
+      "bytes": 566,
+      "sha256": "sha256:46367d79bdf861297c5e6c32f3400103b557140542c5089149c29905e235a4f6"
+    },
+    "shape": {
+      "rows": 3,
+      "row_size": 60,
+      "row_data_bytes": 180,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 262
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 3,
+      "unique": 3,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 17,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 4045333287,
+    "table_key_hex": "0xf11ee327",
+    "stable_key": "ctb.HomePollenTable",
+    "names": [
+      "HomePollenTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1093795135,
+      "bytes": 208,
+      "sha256": "sha256:6846ca9c5254f0f184e642f8e61f17b52b31934d0ec8876cb2ca8919abef95e2"
+    },
+    "shape": {
+      "rows": 3,
+      "row_size": 12,
+      "row_data_bytes": 36,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 48
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 11130001,
+      "maximum": 11130003,
+      "unique": 3,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 3,
+    "exact_string_references": 2
+  },
+  {
+    "table_key": 3151655819,
+    "table_key_hex": "0xbbda738b",
+    "stable_key": "ctb.HousingType",
+    "names": [
+      "HousingType.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 941441576,
+      "bytes": 396,
+      "sha256": "sha256:8763c91f5ae3dfa7d08e4c28e9639db0d4a0972ca1abfd255cf1525b3a1d9638"
+    },
+    "shape": {
+      "rows": 3,
+      "row_size": 44,
+      "row_data_bytes": 132,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 140
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 3,
+      "unique": 3,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 9,
+    "exact_string_references": 4
+  },
+  {
+    "table_key": 2268141474,
+    "table_key_hex": "0x873117a2",
+    "stable_key": "ctb.ResidentialType",
+    "names": [
+      "ResidentialType.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "housing",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 756923808,
+      "bytes": 176,
+      "sha256": "sha256:e8de3a0477f61d8515814b6b88faad57985854b6539ce53e790d82cf32aaea77"
+    },
+    "shape": {
+      "rows": 2,
+      "row_size": 12,
+      "row_data_bytes": 24,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 36
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 2,
+      "unique": 2,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 3,
+    "exact_string_references": 0
+  }
+]

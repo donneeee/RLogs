@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "specialization.122.name",
+    "text": "신성한 방패 계열",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989401",
+      "confidence": "verified"
+    }
+  }
+]

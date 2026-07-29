@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 147,
+  "stable_key": "talent.147",
+  "localization_key": "talent.147.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "stormblade",
+    "spec_key": "iaido-slash-spec",
+    "classification_state": "current_build_talent_tree_branch_relation",
+    "row_key": 147,
+    "design_name": "雷霆之压",
+    "name_id": 1051078520,
+    "description_id": 0,
+    "profession_id": 1,
+    "icon_address": "ui/atlas/talent_passive_1/taidao147",
+    "talent_type": 4,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        3,
+        2200490,
+        1
+      ]
+    ],
+    "buff_parameters": [
+      [
+        0
+      ]
+    ],
+    "unlock_costs": [
+      [
+        1020054,
+        2
+      ]
+    ],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.147.name",
+    "tree_nodes": [
+      {
+        "node_id": 110019,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          9100
+        ]
+      }
+    ],
+    "class_id": 1,
+    "specialization_id": 101
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

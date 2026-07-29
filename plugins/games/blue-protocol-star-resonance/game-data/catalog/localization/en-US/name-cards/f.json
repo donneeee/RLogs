@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "name_card.9030003.acquisition",
+    "text": "Main Story 3",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-965230669",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "class.1.description",
+    "text": "擅长<color=#fcbe03>近距离</color>作战，以<color=#fcbe03>镰形长刀</color>为武器。可在镰刀与长刀之间随意切换，拥有出色的<color=#fcbe03>小范围攻击</color>能力。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367317",
+      "confidence": "verified"
+    }
+  }
+]

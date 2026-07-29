@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.15.description",
+    "text": "Excels in <color=#fcbe03>long-range combat</color>,<br>capable of striking wide areas with rapid fire. Boosting <color=#fcbe03>Sigil chance</color> greatly increases trigger frequency.<br>Can <color=#fcbe03>charge</color> at close range to deal massive DMG. Boosts <color=#fcbe03>critical rate</color> for dealing massive DMG.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154218",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.4.description",
+    "text": "Excels in <color=#fcbe03>close-range</color> combat, using a <color=#fcbe03>Lance</color> as a weapon. Agile and fast, possessing excellent <color=#fcbe03>small area attack</color> capabilities.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367320",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.9.description",
+    "text": "Wields a <color=#fcbe03>Guardblade</color>, excelling in <color=#fcbe03>close-range combat</color>. Channels the power of Rock to form a protective shell, offering exceptional <color=#fcbe03>defense</color> and <color=#fcbe03>control</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367325",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,167 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 20,
+  "stable_key": "talent.20",
+  "localization_key": "talent.20.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "frost-mage",
+    "spec_key": "shared",
+    "classification_state": "current_build_multi_branch_talent_relation",
+    "row_key": 20,
+    "design_name": "冰元素攻击+5",
+    "name_id": 487377726,
+    "description_id": 0,
+    "profession_id": 0,
+    "icon_address": "ui/atlas/weaponhero/new/common_icon03",
+    "talent_type": 1,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        1,
+        11522,
+        5
+      ]
+    ],
+    "buff_parameters": [],
+    "unlock_costs": [],
+    "talent_points_cost": 1,
+    "fight_value": 3,
+    "name_localization_key": "talent.20.name",
+    "tree_nodes": [
+      {
+        "node_id": 266001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          21230
+        ]
+      },
+      {
+        "node_id": 6695,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          235001
+        ]
+      },
+      {
+        "node_id": 6694,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          38070
+        ]
+      },
+      {
+        "node_id": 6693,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          215011
+        ]
+      },
+      {
+        "node_id": 6692,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          39041
+        ]
+      },
+      {
+        "node_id": 6690,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          201034
+        ]
+      },
+      {
+        "node_id": 5876,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          221011
+        ]
+      },
+      {
+        "node_id": 2260,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5566,
+          137005
+        ]
+      },
+      {
+        "node_id": 37080,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          214011
+        ]
+      },
+      {
+        "node_id": 33039,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          222011
+        ]
+      },
+      {
+        "node_id": 5575,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          35085
+        ]
+      },
+      {
+        "node_id": 21231,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          206017
+        ]
+      },
+      {
+        "node_id": 35084,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          225026
+        ]
+      },
+      {
+        "node_id": 5571,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          209017
+        ]
+      },
+      {
+        "node_id": 21228,
+        "branch": 0,
+        "prerequisite_node_ids": []
+      },
+      {
+        "node_id": 2250,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5567
+        ]
+      },
+      {
+        "node_id": 10366,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          200019
+        ]
+      }
+    ],
+    "class_id": 2
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

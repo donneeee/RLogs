@@ -1,24 +1,10 @@
-# Locales
+# Locale package migration marker
 
-This folder will contain first-party interface locale packs organized by BCP
-47 language tag:
-
-```text
-locales/
-  en-US/
-  zh-CN/
-  ja-JP/
-  ko-KR/
-  de-DE/
-  fr-FR/
-  es-ES/
-  pt-BR/
-```
-
-Only translated presentation strings belong here. Game-data names that vary
-by region or client build belong with their versioned game-data/protocol pack.
-Canonical events and log files contain stable IDs, never localized labels.
+Standalone interface locale folders are no longer the target architecture.
+Official game text and RLogs UI text will live together, in separate
+namespaces, inside data-only add-ons under
+[`plugins/builtin/localization/`](../plugins/builtin/localization/).
 
 See [`docs/LOCALIZATION.md`](../docs/LOCALIZATION.md) for fallback and key
-rules. Locale files will be added with the first user-facing RLogs application
-so every key can be validated against a real consumer.
+rules. This redirect remains until the locale add-on loader and package
+validator land, so new strings are not accidentally added to the old layout.

@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.1.description",
+    "text": "Maneja uma <color=#fcbe03>Foice Ceifadora</color> e é eficaz em <color=#fcbe03>combate próximo</color>. Alterna perfeitamente entre formas de foice e espada longa, desferindo <color=#fcbe03>ataques de área precisos</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367317",
+      "confidence": "verified"
+    }
+  }
+]

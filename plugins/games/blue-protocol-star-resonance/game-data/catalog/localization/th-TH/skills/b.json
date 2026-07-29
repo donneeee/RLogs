@@ -1,0 +1,1676 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1002440.name",
+    "text": "Stunt! Super Critical",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642150950",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1002851.description",
+    "text": "หนามน้ำแข็ง",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-25048906",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1005202.name",
+    "text": "สู้ตาย",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642256453",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1005705.description",
+    "text": "ทุบ 3 ครั้ง",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-25155467",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1005801.name",
+    "text": "ทุบลงสุดยอด",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642262986",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1009704.name",
+    "text": "การแข่งขันหลบหลีกไร้รูปแบบ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642405648",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1010540.description",
+    "text": "พลังของ Resonance Elite-Lizardman Mage แปลงร่างเป็น Elite-Lizardman Mage อัญเชิญ Water of Silence ใต้ขาของเป้าหมาย สร้าง<style=\"physical\">P.DMG</style> และทำให้เป้าหมาย<linktext=3011><style=\"ItemQuality_5\">ลดความเร็ว</style></linktext> ปล่อยสกิลแล้ว ในระยะเวลาหนึ่ง<style=\"accent-gn\">DMG ธาตุน้ำแข็ง</style>ของคุณเพิ่มขึ้น",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26159652",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1011104.description",
+    "text": "Blade Storm",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26191105",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1011110.description",
+    "text": "ฟัน 2 ครั้ง",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26191134",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1011902.description",
+    "text": "ไฟลุกโชติช่วง",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26199815",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1011903.description",
+    "text": "แสงสีแดง ระเบิดแรง!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26199816",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.102659.name",
+    "text": "โจมตีหมู!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1906717986",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.10330050.name",
+    "text": "การทดสอบการมองเห็นของวัตถุเสมือน",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1982072727",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1090603.name",
+    "text": "Water balloon burst",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-652754414",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1091099.name",
+    "text": "Scorching Judgment Holy Sword",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-652784120",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1101303.name",
+    "text": "พายุแห่งการรักษาอย่างมีประสิทธิภาพ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-681249188",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.110411.name",
+    "text": "Ultimate Explosion!!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1907829715",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1246.name",
+    "text": "Tidepool",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944536",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1401.description",
+    "text": "<style=\"accent-gn\">Courage</style><br>ทรัพยากรที่ต้องเตรียมเมื่อปล่อย<style=\"accent-gn\">การโจมตีพิเศษ</style>และ<style=\"accent-gn\">สกิลเชี่ยวชาญ</style>บางส่วน ทุกวินาทีจะฟื้นฟูอัตโนมัติ <style=\"accent-gn\">3</style> แต้ม ลิมิตเริ่มต้น <style=\"accent-gn\">100</style> แต้ม<br><br><style=\"accent-gn\">โจมตีทั่วไป - Wind Dance</style><br> ทำการโจมตีมากสุด 4 ขั้น เพื่อสร้าง <style=\"physical\">P.DMG</style><br><br><size=22><style=\"tipsYellow\">กลยุทธ์: เมื่อ Courage ไม่พอต่อการปล่อยขั้นตอนโจมตี อื่นจะใช้โจมตีทั่วไปแทนการโจมตี</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341071",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.140123.name",
+    "text": "Charge Attraction",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1911384246",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.140137.name",
+    "text": "Lightning Storm",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1911384283",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1410.description",
+    "text": "ยกธงหอกขึ้น มอบ <style=\"accent-gn\">Inspire</style> ให้แก่พันธมิตร จากนั้นสามารถใช้การโจมตีต่อเนื่องด้วยการกระโดดพุ่งเข้าใส่ศัตรู สร้าง <style=\"physical\">Attack DMG</style> แก่ศัตรูภายในระยะ และ<style=\"accent-gn\">ทำให้ลอยขึ้น</style> พร้อมฟื้นฟู <style=\"accent-gn\">100</style> แต้ม <style=\"accent-gn\">Courage</style><br><style=\"accent-gn\">Inspire</style>: คงอยู่เป็นเวลา <style=\"accent-gn\">10</style> วินาที ระหว่างนี้ Haste ของพันธมิตรทั้งหมด +<style=\"accent-gn\">10%</style> ผู้ใช้จะฟื้นฟู <style=\"accent-gn\">10</style> แต้ม <style=\"accent-gn\">Courage</style> ทุกวินาที และได้รับ <style=\"accent-gn\">1</style> Stack ของ <style=\"accent-gn\">Sharp</style> ทุก <style=\"accent-gn\">2</style> วินาที<br><i><style=\"text_third_gray\">\"พายุอันไร้จุดสิ้นสุดเอ๋ย จงปลดปล่อยพลังอันยิ่งใหญ่ตามคำบัญชาของอัศวินผู้นี้! สายลมเอ๋ย จงเผยความรุ่งโรจน์ของเจ้าและพุ่งทะยานออกมา! จงปรากฏกายในสายลม!\"</style></i><br><br><size=22><style=\"tipsYellow\">Tips: ควรใช้เมื่อ Courage เหลือน้อย</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341103",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1430.description",
+    "text": "นำ <style=\"accent-gn\">Courage</style> ของตัวเองแปลงเป็น Wind Field อย่างต่อเนื่อง สร้าง <style=\"physical\">P.DMG</style> แก่เป้าหมายโดยรอบ ในช่วงทำ DMG จะได้รับผลสเตตัสความเร็วโจมตี จนกระทั่ง <style=\"accent-gn\">Courage</style> หายไป ทุก <style=\"accent-gn\">1</style>s ใช้ <style=\"accent-gn\">16</style> แต้มที่เป็น <style=\"accent-gn\">Courage</style> กดอีกครั้งจะปิดสกิล<br><br><size=22><style=\"tipsYellow\">กลยุทธ์: พยายามทำให้เวลาต่อเนื่องของ Courage Wind Ring นานที่สุด เมื่อ Courage เต็มแล้วปล่อยนอกจากนี้ในกระบวนการปล่อยก็ต้องฟื้นฟู Courage ตามกระบวนการที่กำหนดด้วย</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505341169",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1431.name",
+    "text": "Sharp Impact",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946676",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1437.name",
+    "text": "Aegis Gale",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946682",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1506.description",
+    "text": "โยนเมล็ดผักบุ้งใส่เป้าหมายอย่างต่อเนื่อง สร้าง <style=\"dendro\">DMG ธาตุไม้</style> โยน 3 เมล็ดต่อรอบ ทั้งหมด 5 รอบ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342165",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1527.description",
+    "text": "ระหว่าง <style=\"accent-gn\">6</style> วินาที สกิลจะส่งสัญญาณ เมล็ดพันธุ์จะตกลงมาจากท้องฟ้าทุกๆ 0.5 วินาที สร้าง MDMG ใส่ศัตรูรอบๆ ฟื้นฟูเป้าหมายฝ่ายเดียวกันใกล้เคียงสูงสุด <style=\"accent-gn\">10</style> เป้าหมาย (ให้ความสำคัญกับเพื่อนร่วมทีม) และลด DMG ที่ได้รับ <style=\"accent-gn\">25%</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342232",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1550.name",
+    "text": "อุกกาบาตเมล็ดพันธุ์",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947830",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1558.name",
+    "text": "Plant",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947838",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1564.name",
+    "text": "Blossom Charge Rapsody",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947867",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1599.name",
+    "text": "กระแสคลั่งของเถาวัลย์เลื้อย",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817947971",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1603.name",
+    "text": "การฟาดฟันร้อนแรง",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948757",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1615.description",
+    "text": "เติมพลังของไฟ มอบ <style=\"accent-gn\">Class Skills CD Boost</style> และเพิ่ม <style=\"accent-gn\">Haste</style> ขณะทำงานอยู่<br><br><size=22><style=\"tipsYellow\">Strategy: ใช้เมื่อ Formless ถึง A หรือ S เพื่อให้ได้ประโยชน์สูงสุดในช่วง burst window</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505343286",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1622.name",
+    "text": "Wildfire Dance - Final Form",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948822",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1697.name",
+    "text": "การโจมตีปกติ - เหวี่ยงเพลิงร้อน",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949058",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1701006.description",
+    "text": "Dogorman พ่นลมหายใจ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-298951848",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.170208.name",
+    "text": "Void Corruption's End",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914943037",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1711.name",
+    "text": "วิชาดาบลับของฉัน",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949877",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1738.name",
+    "text": "Chaos Breaker",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949950",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1927.name",
+    "text": "Sandshroud",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952094",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1935.name",
+    "text": "Countercrush",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952125",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1941.name",
+    "text": "Starfall",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952154",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.1943.name",
+    "text": "Stone Fist",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952156",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.2002441.name",
+    "text": "Arcane! Thunderfall Grasp",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933618920",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.2220.name",
+    "text": "Storm Arrow",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980401",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.2293.name",
+    "text": "Talent-รอยแยกพลังงานแสง",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980635",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.2307.name",
+    "text": "Healing Beat",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981431",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.2312.description",
+    "text": "ปลุกความหลงใหลให้ลุกโชนขึ้นอีกครั้ง! ใช้ <style=\"accent-gn\">3</style> Stacks ของ <style=\"accent-gn\">Performance Passion</style> เพื่อปลุกขวัญกำลังใจของผู้เหนื่อยล้า บรรเลงโน้ตต่อเนื่องเพื่อฟื้นฟู HP ให้แก่พันธมิตรภายในระยะสูงสุด <style=\"accent-gn\">10</style> คน (ให้ความสำคัญกับสมาชิกทีมก่อน) และมอบ Tenacity Chord ให้แก่พวกเขา โดยแต่ละ Stack ของ Tenacity Chord จะเพิ่ม Max HP อีก <style=\"accent-gn\">0.5%</style> (สูงสุด <style=\"accent-gn\">2.5%</style> ของ Max HP) เป็นเวลา <style=\"accent-gn\">5</style> วินาที (เมื่อสะสมครบ 5 Stacks แล้ว ระยะเวลาจะไม่สามารถรีเฟรชได้)<br><br><style=\"accent-gn\">Performance Passion</style>: ใช้สำหรับการบรรเลงเพลง ฟื้นฟู <style=\"accent-gn\">1</style> Stack ทุก <style=\"accent-gn\">5</style> วินาที<br><br><size=22><style=\"tipsYellow\">Tips: เป็นสกิลที่มีศักยภาพในการฟื้นฟูสูงที่สุด คอยสังเกต HP ของทีมเพื่อใช้งานให้มีประสิทธิภาพสูงสุดและหลีกเลี่ยงการฟื้นฟูเกินความจำเป็น</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505375953",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.2420.name",
+    "text": "Radiance",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982579",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.2900240.description",
+    "text": "Resonance Airona's soul power หลังจากบทสวด คืนชีพเพื่อนร่วมทีมทั้งหมดภายใน 20 เมตรโดยรอบ<br><style=\"accent-gn\">[ภายใน 100 วินาทีไม่สามารถได้รับผลเอฟเฟกต์ประเภทเดียวกันได้]</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668656970",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.2900902.name",
+    "text": "Fafala Reckoning",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138287249",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3000.description",
+    "text": "กระโดดไปข้างหน้าแล้วทุบลงพื้น สร้าง DMG แก่ <style=\"accent-gn\">ศัตรู</style>ในระยะตาม HP สูงสุดของตัวเอง<br>จากนั้นได้รับ<linktext=1090><style=\"ItemQuality_5\">ฮึกเหิม</style></linktext> และมอบ<linktext=1091><style=\"ItemQuality_5\">Tyrant Body</style></linktext>และ <style=\"accent-gn\">การลด DMG </style>ให้ตัวเองและ <style=\"accent-gn\">เพื่อนร่วมทีม</style>ทุกคน",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505408588",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.300060.name",
+    "text": "เปลี่ยน Void Corruption",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984910388",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3014.description",
+    "text": "ซ่อนกลิ่นอายของตัวเอง ไม่สร้างค่าเกลียดชังอีกต่อไป และลบล้าง<linktext=3020><style=\"ItemQuality_5\">สถานะผิดปกติ</style></linktext>ทั้งหมดของตัวเอง เป็นเวลา <style=\"accent-gn\">10</style> วินาที<br><br><style=\"accent-gn\">Skills ไม่ได้รับผลจากเอฟเฟกต์คูลดาวน์</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505408625",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3314.description",
+    "text": "ลบล้าง<linktext=3021><style=\"ItemQuality_5\">เอฟเฟกต์ด้านลบ</style></linktext> ของฝ่ายเดียวกันสูงสุด <style=\"accent-gn\">10</style> คน (ให้เพื่อนร่วมทีมก่อน) ในระยะ <style=\"accent-gn\">25</style> เมตร<br><br><style=\"accent-gn\">Skills ไม่ได้รับผลจากเอฟเฟกต์คูลดาวน์</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505411892",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3390115.name",
+    "text": "Void Corruption Stomp",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1205607473",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3612.name",
+    "text": "Unyielding Spirit",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818020663",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3613.description",
+    "text": "ซ่อนกลิ่นอายของตัวเอง ไม่สร้างค่าเกลียดชังอีกต่อไป และลบล้าง<linktext=3020><style=\"ItemQuality_5\">สถานะผิดปกติ</style></linktext>ทั้งหมดของตัวเอง เป็นเวลา <style=\"accent-gn\">10</style> วินาที<br><br><style=\"accent-gn\">Skills ไม่ได้รับผลจากเอฟเฟกต์คูลดาวน์</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505415158",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3905.description",
+    "text": "<style=\"accent-gn\">อัญเชิญ</style> Elite - Mighty Boar รักษาสถานะพุ่งชนด้วยเขี้ยวไปด้านหน้า <style=\"accent-gn\">3</style>s ในระหว่างกระบวนการศัตรูที่ถูกพุ่งชนจะถูกสร้าง <style=\"physical\">P.DMG</style> และ Knock up เขี้ยวหมูสามารถฉีกขาดบาดแผลได้ เป้าหมายศัตรูที่ได้รับ DMG จะถูกร่าย <style=\"accent-gn\">100%</style> ที่เป็น<linktext=3004><style=\"ItemQuality_5\">เจ็บหนัก</style></linktext> ต่อเนื่อง <style=\"accent-gn\">15</style>s<br>หลังจากปล่อยสกิล ภายในช่วงเวลาหนึ่ง DMG และ Heal จาก<style=\"accent-gn\">การโจมตีพิเศษ</style>ของคุณได้รับเพิ่มขึ้น",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418394",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3907.name",
+    "text": "Stunt! Falling Star",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023902",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3909.name",
+    "text": "Supreme! จิ้งจอกวิญญาณจู่โจม",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023904",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3937.name",
+    "text": "Stunt! Thunder Suppress",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024001",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3941.description",
+    "text": "<style=\"accent-gn\">แปลงร่างเป็น</style> Elite - Mutant Bee ในช่วงเวลาหนึ่ง ภายในเวลาต่อเนื่องสามารถปล่อยการแทงและการขว้างได้",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418522",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3947.name",
+    "text": "Stunt! Spiral Severance",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024034",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3960.description",
+    "text": "<style=\"accent-gn\">แปลงร่างเป็น</style> Elite - Blackstone Legion Vanguard ทำการโจมตีหมุนตัว สร้าง <style=\"physical\">P.DMG</style> ธาตุไฟ ทุกครั้งที่มี Will แห่งดาบ 1 Stack จะโจมตีหมุนตัวเพิ่มได้อีก 1 ครั้ง (สูงสุด <style=\"accent-gn\">15 Stack</style>) DMG นี้ได้รับโบนัสธาตุทุกประเภท และไม่ได้รับผลจากเอฟเฟกต์ Passive",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418587",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3964.name",
+    "text": "Ultimate! กงจักรสังหารกะหล่ำปลี",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024097",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3965.name",
+    "text": "Ultimate! สายฟ้าฟาดกะหล่ำปลี",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024098",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3975.description",
+    "text": "<style=\"accent-gn\">อัญเชิญ</style> Boss: Ridge Fang เพื่อสร้าง <style=\"physical\">Attack DMG</style><br>หลังใช้งาน จะรีเซ็ต CD ของ Survival Instinct ทันที คุณจะอยู่ในสถานะ Invigorated ชั่วคราว และ <style=\"accent-gn\">Armor และ Max HP</style> จะเพิ่มขึ้น",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418625",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3976.name",
+    "text": "Arcane! Swift Devour",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024132",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3979.name",
+    "text": "Stunt! Abyssal Breath",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024135",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3981.description",
+    "text": "<style=\"accent-gn\">อัญเชิญ</style> Elite: Sanctuary Eye เพื่อสร้าง <style=\"physical\">Attack DMG</style><br>หลังใช้งาน จะมอบ <style=\"accent-gn\">Shield</style> ให้แก่ตัวเองและพันธมิตรใกล้เคียงสูงสุด <style=\"accent-gn\">10</style> คนเป็นระยะเวลาหนึ่ง (ให้ความสำคัญกับสมาชิกทีมก่อน)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418654",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3981.name",
+    "text": "Stunt! Lock-On Shot",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024160",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.3984.description",
+    "text": "คลิกเพื่อหลุดออกจากการแปลงร่างในปัจจุบัน",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418657",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4015.name",
+    "text": "วางดอกไม้ไฟ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050069",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4039900.name",
+    "text": "ลูกศรแยก",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-225402196",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4040010.description",
+    "text": "เก็บเกี่ยววิญญาณ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1756632130",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4502.name",
+    "text": "Boarlet วิ่งแข่ง",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055478",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4521.description",
+    "text": "ใช้แล้วเข้าสู่สภาวะไร้แรงโน้มถ่วง กระโดดได้ตามใจ!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450037",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4553.name",
+    "text": "Golem Strikes",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055644",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4612.description",
+    "text": "โชว์สุดเพอร์เฟ็กต์ภายใต้แสงไฟ ปล่อยพลังสำหรับสกิลจังหวะการเต้น",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451094",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4613.description",
+    "text": "เคลื่อนที่ตามจังหวะ ส่ายแล้วพุ่งชน! ช่วงสกิลเคลื่อนที่ กดอีกครั้งจะเป็นการยกเลิกสกิล",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451095",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4632.description",
+    "text": "พักสักแปป ชมทิวทัศน์",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451160",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4641.name",
+    "text": "กลย้ายร่าง",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056698",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.4683.description",
+    "text": "โปรยกลีบดอกไม้และแสงประกาย Nappo มอบสรรเสริญแห่งฤดูใบไม้ผลิ หลังจากปลดปล่อยจะทำให้การใช้สกิล Swaying Blossoms ครั้งถัดไปอัปเกรด",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451326",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.5251.name",
+    "text": "ชก",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818088312",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.5522.description",
+    "text": "อัญเชิญระเบิดควัน 1 อันใต้ขา",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505485975",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.5523.name",
+    "text": "อัญเชิญSpring",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091482",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.6005.name",
+    "text": "ระเบิด",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818121910",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.6500.name",
+    "text": "สุ่มแปลงร่าง",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127350",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.6523.description",
+    "text": "<style=\"physical\">ต้านทาน DMG ที่จะได้รับในครั้งถัดไป</style><br>เอฟเฟกต์ที่ไม่มีขีดจำกัดจะปรากฏให้เห็นเฉพาะตัวเองเท่านั้น<br><i><style=\"text_third_gray\">[ชนะได้แน่นอน!]</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521913",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.6524.description",
+    "text": "โยนเหรียญ 1 ครั้ง มีโอกาส <style=\"physical\">50%</style> จะ<style=\"physical\">ฟื้นฟู HP 10 แต้ม</style>;มีโอกาส <style=\"physical\">40%</style> ดึงดูดสายฟ้า <style=\"physical\">เสีย HP 10 แต้มส</style>; มีโอกาส <style=\"physical\">10%</style> จะ<style=\"physical\">ฟื้นฟู HP ทั้งหมด</style> <br><i><style=\"text_third_gray\">[มาจากไอเทมลับของดินแดน!]</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521914",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.6603.description",
+    "text": "<style=\"physical\">ใช้ HP 10 แต้ม</style> เพื่อโจมตีด้วย Pickaxe<br>ถ้าโจมตี <style=\"physical\">โดน Stalker</style> จะ<style=\"physical\">ฟื้นฟู HP 50 แต้ม</style><br>เมื่อกำจัด Stalker ได้ จะฟื้นฟู HP เต็มทันที<br><style=\"physical\">ไม่สามารถใช้ได้หาก HP ไม่พอ</style><br>DMG จริงจะคำนวณตาม<style=\"physical\">ค่า Armor ของวัตถุที่ Stalker แปลงร่างเป็น</style><br><style=\"physical\">เอฟเฟกต์พิเศษของอาวุธ: เมื่อโจมตีจะได้รับแร่แบบสุ่ม 1 ชนิด:<br>โอกาส 33% ได้รับ Amber: ลดคูลดาวน์ของสกิลทั้งหมด 0.5 วินาที;<br>โอกาส 33% ได้รับ Benitoite: ฟื้นฟู HP 50 แต้ม;<br>โอกาส 33% ได้รับ Dragon Crystal: ยิงคลื่นดาบพลังงาน 5 ทิศทางรอบตัว;<br>โอกาส 1% ได้รับ Fulgurite: เรียกสายฟ้าฟาด Stalker ทุกตัวภายในระยะ 30 เมตร</style><br><i><style=\"text_third_gray\">\"ข้าต้องขุดด้วยงั้นหรอ?\"</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505522936",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "skill.920010.name",
+    "text": "ล้อแสงสามส่วน",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-74610775",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.15.description",
+    "text": "Excelle dans le <color=#fcbe03>combat à longue portée</color>,<br>capable de frapper de larges zones par tirs rapides. Augmenter la <color=#fcbe03>chance de Sceau</color> augmente aussi considérablement la fréquence de déclenchement.<br>Peut <color=#fcbe03>se charger</color> à courte portée pour infliger d'énormes dégâts. Augmente le <color=#fcbe03>taux de critique</color> pour infliger des dégâts massifs.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154218",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.4.description",
+    "text": "Excelle dans le <color=#fcbe03>combat rapproché</color>, manie une <color=#fcbe03>Lance</color> comme arme. Agile et rapide, il possède d'excellentes capacités d'<color=#fcbe03>attaque sur petite zone</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367320",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.9.description",
+    "text": "Manie une <color=#fcbe03>Lame de garde</color>, excellant dans le <color=#fcbe03>combat rapproché</color>. Canalise la puissance de la roche pour former une carapace protectrice, offrant une <color=#fcbe03>défense</color> et un <color=#fcbe03>contrôle</color> exceptionnels.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367325",
+      "confidence": "verified"
+    }
+  }
+]

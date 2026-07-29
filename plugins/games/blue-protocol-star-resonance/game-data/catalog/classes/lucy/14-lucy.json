@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "kind": "class",
+  "id": 14,
+  "stable_key": "class.14",
+  "localization_key": "class.14.name",
+  "icon": "icons/classes/lucy/horizontal.png",
+  "attributes": {
+    "profession_id": 14,
+    "profession_name_id": 1825192190,
+    "horizontal_icon_path": "ui/atlas/profession/profession_horizontal_01",
+    "profession_description_id": 1657154217,
+    "theme_color_hex": "#db8787",
+    "item_tab_icon_path": "ui/atlas/item/c_tab_icon/com_icon_tab_79",
+    "talent_tag_icon_path": "ui/atlas/talent/talent_tag_small_icon_2",
+    "weapon_icon_path": "ui/textures/talent_new/talent_icon",
+    "selected_weapon_icon_path": "ui/textures/talent_new/talent_icon",
+    "name_localization_key": "class.14.name",
+    "description_localization_key": "class.14.description",
+    "folder_key": "lucy",
+    "classification_state": "current_build_profession_definition"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ProfessionSystemTable",
+    "reference": "client-build:global/steam/24252055@sha256:2b906629a8cf7211fc84e5a3357d169b661c2cbba210cd9893ebee7053cd1b5e",
+    "confidence": "corroborated"
+  }
+}

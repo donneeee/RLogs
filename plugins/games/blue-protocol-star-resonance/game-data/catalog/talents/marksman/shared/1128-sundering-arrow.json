@@ -1,0 +1,72 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 1128,
+  "stable_key": "talent.1128",
+  "localization_key": "talent.1128.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "marksman",
+    "spec_key": "shared",
+    "classification_state": "current_build_multi_branch_talent_relation",
+    "row_key": 1128,
+    "design_name": "裂空之矢",
+    "name_id": 325849416,
+    "description_id": 0,
+    "profession_id": 11,
+    "icon_address": "ui/atlas/talent_passive_11/talent_passive_icon_general_dps_splitarrow",
+    "talent_type": 4,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        3,
+        2203280,
+        1
+      ]
+    ],
+    "buff_parameters": [
+      [
+        0
+      ]
+    ],
+    "unlock_costs": [
+      [
+        1020054,
+        1
+      ]
+    ],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.1128.name",
+    "tree_nodes": [
+      {
+        "node_id": 1127012,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          5203
+        ]
+      },
+      {
+        "node_id": 1128011,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          5548
+        ]
+      }
+    ],
+    "class_id": 11
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

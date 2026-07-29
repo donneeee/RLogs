@@ -1,22 +1,43 @@
-//! Validated runtime indexes for reviewed game-data end products.
+//! Validated, shared game-data end products.
 //!
-//! Acquisition and extraction are intentionally outside this crate.
+//! Acquisition and extraction are intentionally outside this crate. Runtime
+//! consumers open a sharded bundle and load only the ID/locale buckets they
+//! actually touch. Client-build availability is metadata on canonical records;
+//! it is not represented by separate regional source trees.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+mod sharded;
+
+use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-pub const GAME_DATA_SCHEMA_VERSION: u16 = 1;
+pub use sharded::{
+    CachePolicy, CacheStats, CompiledBundleManifest, CompiledShardDescriptor, GameDataStore,
+    RecordKey, ShardKind, build_bundle_manifest, encode_json_shard, localization_bucket,
+    numeric_id_bucket, stable_key_bucket,
+};
+
+pub const GAME_DATA_SCHEMA_VERSION: u16 = 2;
+pub const COMPILED_BUNDLE_SCHEMA_VERSION: u16 = 2;
+pub const DEFAULT_SHARD_BITS: u8 = 6;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct GameDataBuild {
+    /// Game deployment, such as `global` or `cn`; this is not a player region.
+    pub deployment_id: String,
+    /// Distribution channel, such as `steam` or an official standalone launcher.
+    pub channel: String,
+    /// Exact client data build observed while reviewing this definition.
+    pub client_build: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameDataManifest {
     pub schema_version: u16,
-    pub deployment_id: String,
-    pub region_id: Option<String>,
-    pub client_build: String,
-    pub source_revision: String,
+    pub catalog_id: String,
+    pub catalog_revision: String,
+    pub supported_builds: Vec<GameDataBuild>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -25,6 +46,8 @@ pub enum SymbolKind {
     Class,
     Specialization,
     Skill,
+    SkillEffect,
+    RecountGroup,
     StatusEffect,
     Monster,
     Npc,
@@ -39,11 +62,84 @@ pub enum SymbolKind {
     DungeonObjective,
     Item,
     Equipment,
+    WeaponEquipment,
     EquipmentSet,
     Imagine,
     Cosmetic,
+    ProfileImage,
+    NameCard,
+    Medal,
+    GuildIcon,
     Profession,
     Talent,
+}
+
+impl SymbolKind {
+    pub const ALL: [Self; 29] = [
+        Self::Class,
+        Self::Specialization,
+        Self::Skill,
+        Self::SkillEffect,
+        Self::RecountGroup,
+        Self::StatusEffect,
+        Self::Monster,
+        Self::Npc,
+        Self::Summon,
+        Self::Projectile,
+        Self::Trap,
+        Self::Mechanic,
+        Self::EntityType,
+        Self::Scene,
+        Self::Map,
+        Self::Dungeon,
+        Self::DungeonObjective,
+        Self::Item,
+        Self::Equipment,
+        Self::WeaponEquipment,
+        Self::EquipmentSet,
+        Self::Imagine,
+        Self::Cosmetic,
+        Self::ProfileImage,
+        Self::NameCard,
+        Self::Medal,
+        Self::GuildIcon,
+        Self::Profession,
+        Self::Talent,
+    ];
+
+    pub const fn folder(self) -> &'static str {
+        match self {
+            Self::Class => "classes",
+            Self::Specialization => "specializations",
+            Self::Skill => "skills",
+            Self::SkillEffect => "skill-effects",
+            Self::RecountGroup => "recount-groups",
+            Self::StatusEffect => "status-effects",
+            Self::Monster => "monsters",
+            Self::Npc => "npcs",
+            Self::Summon => "summons",
+            Self::Projectile => "projectiles",
+            Self::Trap => "traps",
+            Self::Mechanic => "mechanics",
+            Self::EntityType => "entity-types",
+            Self::Scene => "scenes",
+            Self::Map => "maps",
+            Self::Dungeon => "dungeons",
+            Self::DungeonObjective => "dungeon-objectives",
+            Self::Item => "items",
+            Self::Equipment => "equipment",
+            Self::WeaponEquipment => "weapon-equipment",
+            Self::EquipmentSet => "equipment-sets",
+            Self::Imagine => "imagines",
+            Self::Cosmetic => "cosmetics",
+            Self::ProfileImage => "profile-images",
+            Self::NameCard => "name-cards",
+            Self::Medal => "medals",
+            Self::GuildIcon => "guild-icons",
+            Self::Profession => "professions",
+            Self::Talent => "talents",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,6 +168,8 @@ pub struct GameDataRecord {
     pub icon: Option<String>,
     #[serde(default)]
     pub attributes: BTreeMap<String, serde_json::Value>,
+    /// Builds where this exact canonical definition has been reviewed.
+    pub availability: Vec<GameDataBuild>,
     pub provenance: SymbolProvenance,
 }
 
@@ -81,7 +179,21 @@ pub struct LocalizationEntry {
     pub locale: String,
     pub key: String,
     pub text: String,
+    /// Builds where this official localized value has been reviewed.
+    pub availability: Vec<GameDataBuild>,
     pub provenance: SymbolProvenance,
+}
+
+impl GameDataRecord {
+    pub fn is_available_in(&self, build: &GameDataBuild) -> bool {
+        self.availability.iter().any(|available| available == build)
+    }
+}
+
+impl LocalizationEntry {
+    pub fn is_available_in(&self, build: &GameDataBuild) -> bool {
+        self.availability.iter().any(|available| available == build)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,162 +204,19 @@ pub struct AssetRecord {
     pub sha256: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CompiledGameDataPayload {
-    pub manifest: GameDataManifest,
-    pub records: Vec<GameDataRecord>,
-    pub localization: Vec<LocalizationEntry>,
-    pub assets: Vec<AssetRecord>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CompiledGameDataArtifact {
-    pub schema_version: u16,
-    pub content_digest: String,
-    pub payload: CompiledGameDataPayload,
-}
-
-impl CompiledGameDataArtifact {
-    pub fn build(
-        manifest: GameDataManifest,
-        mut records: Vec<GameDataRecord>,
-        mut localization: Vec<LocalizationEntry>,
-        mut assets: Vec<AssetRecord>,
-    ) -> Result<Self, GameDataError> {
-        validate_manifest(&manifest)?;
-        validate_records(&records)?;
-        validate_localization(&localization)?;
-        validate_assets(&assets)?;
-
-        records.sort_by(|left, right| {
-            (left.kind, left.id, &left.stable_key).cmp(&(right.kind, right.id, &right.stable_key))
-        });
-        localization
-            .sort_by(|left, right| (&left.locale, &left.key).cmp(&(&right.locale, &right.key)));
-        assets.sort_by(|left, right| left.key.cmp(&right.key));
-
-        let payload = CompiledGameDataPayload {
-            manifest,
-            records,
-            localization,
-            assets,
-        };
-        let content_digest = digest_payload(&payload)?;
-        Ok(Self {
-            schema_version: GAME_DATA_SCHEMA_VERSION,
-            content_digest,
-            payload,
-        })
-    }
-
-    pub fn validate(&self) -> Result<(), GameDataError> {
-        if self.schema_version != GAME_DATA_SCHEMA_VERSION {
-            return Err(GameDataError::UnsupportedSchemaVersion {
-                actual: self.schema_version,
-            });
-        }
-        validate_manifest(&self.payload.manifest)?;
-        validate_records(&self.payload.records)?;
-        validate_localization(&self.payload.localization)?;
-        validate_assets(&self.payload.assets)?;
-        let actual = digest_payload(&self.payload)?;
-        if actual != self.content_digest {
-            return Err(GameDataError::DigestMismatch {
-                expected: self.content_digest.clone(),
-                actual,
-            });
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub struct GameDataIndex {
-    artifact: CompiledGameDataArtifact,
-    by_id: HashMap<(SymbolKind, i64), usize>,
-    by_key: HashMap<String, usize>,
-    localized: HashMap<String, HashMap<String, usize>>,
-    assets: HashMap<String, usize>,
-}
-
-impl GameDataIndex {
-    pub fn from_json(json: &[u8]) -> Result<Self, GameDataError> {
-        let artifact: CompiledGameDataArtifact = serde_json::from_slice(json)
-            .map_err(|error| GameDataError::Serialization(error.to_string()))?;
-        Self::build_index(artifact)
-    }
-
-    pub fn build_index(artifact: CompiledGameDataArtifact) -> Result<Self, GameDataError> {
-        artifact.validate()?;
-        let by_id = artifact
-            .payload
-            .records
-            .iter()
-            .enumerate()
-            .map(|(index, record)| ((record.kind, record.id), index))
-            .collect();
-        let by_key = artifact
-            .payload
-            .records
-            .iter()
-            .enumerate()
-            .map(|(index, record)| (record.stable_key.clone(), index))
-            .collect();
-        let mut localized = HashMap::<String, HashMap<String, usize>>::new();
-        for (index, entry) in artifact.payload.localization.iter().enumerate() {
-            localized
-                .entry(entry.locale.clone())
-                .or_default()
-                .insert(entry.key.clone(), index);
-        }
-        let assets = artifact
-            .payload
-            .assets
-            .iter()
-            .enumerate()
-            .map(|(index, asset)| (asset.key.clone(), index))
-            .collect();
-        Ok(Self {
-            artifact,
-            by_id,
-            by_key,
-            localized,
-            assets,
-        })
-    }
-
-    pub fn record(&self, kind: SymbolKind, id: i64) -> Option<&GameDataRecord> {
-        self.by_id
-            .get(&(kind, id))
-            .map(|index| &self.artifact.payload.records[*index])
-    }
-
-    pub fn record_by_key(&self, key: &str) -> Option<&GameDataRecord> {
-        self.by_key
-            .get(key)
-            .map(|index| &self.artifact.payload.records[*index])
-    }
-
-    pub fn localized(&self, locale: &str, key: &str) -> Option<&str> {
-        self.localized
-            .get(locale)?
-            .get(key)
-            .map(|index| self.artifact.payload.localization[*index].text.as_str())
-    }
-
-    pub fn asset(&self, key: &str) -> Option<&AssetRecord> {
-        self.assets
-            .get(key)
-            .map(|index| &self.artifact.payload.assets[*index])
-    }
-
-    pub fn manifest(&self) -> &GameDataManifest {
-        &self.artifact.payload.manifest
-    }
-
-    pub fn digest(&self) -> &str {
-        &self.artifact.content_digest
-    }
+pub fn validate_source_data(
+    manifest: &GameDataManifest,
+    records: &[GameDataRecord],
+    localization: &[LocalizationEntry],
+    assets: &[AssetRecord],
+) -> Result<(), GameDataError> {
+    validate_manifest(manifest)?;
+    validate_records(manifest, records)?;
+    validate_localization(manifest, localization)?;
+    validate_localization_references(records, localization)?;
+    validate_public_boundaries(records, localization)?;
+    validate_assets(assets)?;
+    Ok(())
 }
 
 fn validate_manifest(manifest: &GameDataManifest) -> Result<(), GameDataError> {
@@ -257,18 +226,36 @@ fn validate_manifest(manifest: &GameDataManifest) -> Result<(), GameDataError> {
         });
     }
     for (field, value) in [
-        ("deployment_id", manifest.deployment_id.as_str()),
-        ("client_build", manifest.client_build.as_str()),
-        ("source_revision", manifest.source_revision.as_str()),
+        ("catalog_id", manifest.catalog_id.as_str()),
+        ("catalog_revision", manifest.catalog_revision.as_str()),
     ] {
         if value.trim().is_empty() {
             return Err(GameDataError::EmptyField(field));
         }
     }
+    if manifest.supported_builds.is_empty() {
+        return Err(GameDataError::EmptyAvailability(
+            "manifest.supported_builds",
+        ));
+    }
+    let mut builds = HashSet::with_capacity(manifest.supported_builds.len());
+    for build in &manifest.supported_builds {
+        validate_build(build)?;
+        if !builds.insert(build) {
+            return Err(GameDataError::DuplicateBuild {
+                deployment_id: build.deployment_id.clone(),
+                channel: build.channel.clone(),
+                client_build: build.client_build.clone(),
+            });
+        }
+    }
     Ok(())
 }
 
-fn validate_records(records: &[GameDataRecord]) -> Result<(), GameDataError> {
+fn validate_records(
+    manifest: &GameDataManifest,
+    records: &[GameDataRecord],
+) -> Result<(), GameDataError> {
     let mut ids = HashSet::with_capacity(records.len());
     let mut keys = HashSet::with_capacity(records.len());
     for record in records {
@@ -280,6 +267,12 @@ fn validate_records(records: &[GameDataRecord]) -> Result<(), GameDataError> {
         if record.stable_key.trim().is_empty() {
             return Err(GameDataError::EmptyField("record.stable_key"));
         }
+        validate_availability(
+            manifest,
+            &record.availability,
+            "record.availability",
+            &record.stable_key,
+        )?;
         if !ids.insert((record.kind, record.id)) {
             return Err(GameDataError::DuplicateSymbolId {
                 kind: record.kind,
@@ -293,7 +286,10 @@ fn validate_records(records: &[GameDataRecord]) -> Result<(), GameDataError> {
     Ok(())
 }
 
-fn validate_localization(entries: &[LocalizationEntry]) -> Result<(), GameDataError> {
+fn validate_localization(
+    manifest: &GameDataManifest,
+    entries: &[LocalizationEntry],
+) -> Result<(), GameDataError> {
     let mut keys = HashSet::with_capacity(entries.len());
     for entry in entries {
         if entry.schema_version != GAME_DATA_SCHEMA_VERSION {
@@ -304,11 +300,189 @@ fn validate_localization(entries: &[LocalizationEntry]) -> Result<(), GameDataEr
         if entry.locale.trim().is_empty() || entry.key.trim().is_empty() {
             return Err(GameDataError::EmptyField("localization.locale_or_key"));
         }
+        validate_availability(
+            manifest,
+            &entry.availability,
+            "localization.availability",
+            &entry.key,
+        )?;
         if !keys.insert((entry.locale.clone(), entry.key.clone())) {
             return Err(GameDataError::DuplicateLocalization {
                 locale: entry.locale.clone(),
                 key: entry.key.clone(),
             });
+        }
+    }
+    Ok(())
+}
+
+fn validate_localization_references(
+    records: &[GameDataRecord],
+    entries: &[LocalizationEntry],
+) -> Result<(), GameDataError> {
+    let mut availability_by_key = BTreeMap::<&str, HashSet<&GameDataBuild>>::new();
+    for entry in entries {
+        availability_by_key
+            .entry(&entry.key)
+            .or_default()
+            .extend(&entry.availability);
+    }
+    for record in records {
+        let references = record.localization_key.iter().map(String::as_str).chain(
+            record
+                .attributes
+                .iter()
+                .filter(|(name, _)| name.ends_with("_localization_key"))
+                .filter_map(|(_, value)| value.as_str()),
+        );
+        for key in references {
+            let available = availability_by_key.get(key).ok_or_else(|| {
+                GameDataError::MissingLocalizationReference {
+                    stable_key: record.stable_key.clone(),
+                    localization_key: key.to_owned(),
+                }
+            })?;
+            if let Some(build) = record
+                .availability
+                .iter()
+                .find(|build| !available.contains(build))
+            {
+                return Err(GameDataError::UnavailableLocalizationReference {
+                    stable_key: record.stable_key.clone(),
+                    localization_key: key.to_owned(),
+                    deployment_id: build.deployment_id.clone(),
+                    channel: build.channel.clone(),
+                    client_build: build.client_build.clone(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_public_boundaries(
+    records: &[GameDataRecord],
+    localization: &[LocalizationEntry],
+) -> Result<(), GameDataError> {
+    for record in records {
+        validate_provenance(&record.provenance, &record.stable_key)?;
+        validate_attribute_keys(&record.attributes, &record.stable_key)?;
+    }
+    for entry in localization {
+        validate_provenance(&entry.provenance, &entry.key)?;
+    }
+    Ok(())
+}
+
+fn validate_provenance(provenance: &SymbolProvenance, key: &str) -> Result<(), GameDataError> {
+    for value in [&provenance.source, &provenance.reference] {
+        let normalized = value.replace('\\', "/").to_ascii_lowercase();
+        let bytes = normalized.as_bytes();
+        let has_drive_path = bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && bytes[2] == b'/';
+        if has_drive_path
+            || normalized.starts_with('/')
+            || normalized.contains("/.codex_tmp/")
+            || normalized.contains("private-game-research")
+        {
+            return Err(GameDataError::PrivateProvenance(key.to_owned()));
+        }
+    }
+    Ok(())
+}
+
+fn validate_attribute_keys(
+    attributes: &BTreeMap<String, serde_json::Value>,
+    stable_key: &str,
+) -> Result<(), GameDataError> {
+    fn visit(name: &str, value: &serde_json::Value, stable_key: &str) -> Result<(), GameDataError> {
+        let normalized = name.to_ascii_lowercase().replace(['-', '.', ' '], "_");
+        const PROHIBITED: [&str; 11] = [
+            "password",
+            "account",
+            "credential",
+            "login",
+            "openid",
+            "open_id",
+            "auth_token",
+            "access_token",
+            "refresh_token",
+            "session_token",
+            "region_id",
+        ];
+        if PROHIBITED
+            .iter()
+            .any(|prohibited| normalized.contains(prohibited))
+        {
+            return Err(GameDataError::ProhibitedAttribute {
+                stable_key: stable_key.to_owned(),
+                attribute: name.to_owned(),
+            });
+        }
+        match value {
+            serde_json::Value::Object(values) => {
+                for (nested_name, nested_value) in values {
+                    visit(nested_name, nested_value, stable_key)?;
+                }
+            }
+            serde_json::Value::Array(values) => {
+                for nested_value in values {
+                    if let serde_json::Value::Object(object) = nested_value {
+                        for (nested_name, nested_value) in object {
+                            visit(nested_name, nested_value, stable_key)?;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    for (name, value) in attributes {
+        visit(name, value, stable_key)?;
+    }
+    Ok(())
+}
+
+fn validate_build(build: &GameDataBuild) -> Result<(), GameDataError> {
+    for (field, value) in [
+        ("build.deployment_id", build.deployment_id.as_str()),
+        ("build.channel", build.channel.as_str()),
+        ("build.client_build", build.client_build.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return Err(GameDataError::EmptyField(field));
+        }
+    }
+    Ok(())
+}
+
+fn validate_availability(
+    manifest: &GameDataManifest,
+    availability: &[GameDataBuild],
+    field: &'static str,
+    key: &str,
+) -> Result<(), GameDataError> {
+    if availability.is_empty() {
+        return Err(GameDataError::EmptyAvailability(field));
+    }
+    let supported = manifest.supported_builds.iter().collect::<HashSet<_>>();
+    let mut seen = HashSet::with_capacity(availability.len());
+    for build in availability {
+        validate_build(build)?;
+        if !supported.contains(build) {
+            return Err(GameDataError::UnsupportedBuildAvailability {
+                key: key.to_owned(),
+                deployment_id: build.deployment_id.clone(),
+                channel: build.channel.clone(),
+                client_build: build.client_build.clone(),
+            });
+        }
+        if !seen.insert(build) {
+            return Err(GameDataError::DuplicateBuildAvailability(key.to_owned()));
         }
     }
     Ok(())
@@ -333,19 +507,60 @@ fn validate_assets(assets: &[AssetRecord]) -> Result<(), GameDataError> {
     Ok(())
 }
 
-fn digest_payload(payload: &CompiledGameDataPayload) -> Result<String, GameDataError> {
-    let bytes = serde_json::to_vec(payload)
-        .map_err(|error| GameDataError::Serialization(error.to_string()))?;
-    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
-}
-
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error)]
 pub enum GameDataError {
     #[error("unsupported game-data schema version {actual}")]
     UnsupportedSchemaVersion { actual: u16 },
 
     #[error("game-data field {0} must not be empty")]
     EmptyField(&'static str),
+
+    #[error("game-data availability field {0} must not be empty")]
+    EmptyAvailability(&'static str),
+
+    #[error("duplicate supported build {deployment_id}/{channel}/{client_build}")]
+    DuplicateBuild {
+        deployment_id: String,
+        channel: String,
+        client_build: String,
+    },
+
+    #[error("{key} references unsupported build {deployment_id}/{channel}/{client_build}")]
+    UnsupportedBuildAvailability {
+        key: String,
+        deployment_id: String,
+        channel: String,
+        client_build: String,
+    },
+
+    #[error("{0} repeats a build in its availability metadata")]
+    DuplicateBuildAvailability(String),
+
+    #[error("{stable_key} references missing localization key {localization_key}")]
+    MissingLocalizationReference {
+        stable_key: String,
+        localization_key: String,
+    },
+
+    #[error(
+        "{stable_key} localization {localization_key} is unavailable for {deployment_id}/{channel}/{client_build}"
+    )]
+    UnavailableLocalizationReference {
+        stable_key: String,
+        localization_key: String,
+        deployment_id: String,
+        channel: String,
+        client_build: String,
+    },
+
+    #[error("{0} contains a private acquisition path in public provenance")]
+    PrivateProvenance(String),
+
+    #[error("{stable_key} contains prohibited public attribute {attribute}")]
+    ProhibitedAttribute {
+        stable_key: String,
+        attribute: String,
+    },
 
     #[error("duplicate {kind:?} id {id}")]
     DuplicateSymbolId { kind: SymbolKind, id: i64 },
@@ -365,11 +580,23 @@ pub enum GameDataError {
     #[error("asset {0} does not have a sha256 digest")]
     InvalidAssetDigest(String),
 
-    #[error("compiled game-data digest mismatch: expected {expected}, actual {actual}")]
-    DigestMismatch { expected: String, actual: String },
+    #[error("compiled game-data manifest is invalid: {0}")]
+    InvalidCompiledManifest(String),
+
+    #[error("compiled game-data shard is invalid: {0}")]
+    InvalidShard(String),
+
+    #[error("game-data path is unsafe: {0}")]
+    UnsafePath(String),
+
+    #[error("game-data I/O failed: {0}")]
+    Io(#[from] std::io::Error),
 
     #[error("game-data serialization failed: {0}")]
-    Serialization(String),
+    Serialization(#[from] serde_json::Error),
+
+    #[error("game-data cache lock was poisoned")]
+    CachePoisoned,
 }
 
 #[cfg(test)]
@@ -387,10 +614,17 @@ mod tests {
     fn manifest() -> GameDataManifest {
         GameDataManifest {
             schema_version: GAME_DATA_SCHEMA_VERSION,
+            catalog_id: "rlogs-official".into(),
+            catalog_revision: "review-1".into(),
+            supported_builds: vec![build()],
+        }
+    }
+
+    fn build() -> GameDataBuild {
+        GameDataBuild {
             deployment_id: "global".into(),
-            region_id: None,
+            channel: "steam".into(),
             client_build: "example-build".into(),
-            source_revision: "review-1".into(),
         }
     }
 
@@ -401,56 +635,21 @@ mod tests {
             id,
             stable_key: key.into(),
             localization_key: Some(format!("game.skill.{id}")),
-            icon: Some(format!("icons/skills/stormblade/iaido/{id}.webp")),
+            icon: None,
             attributes: BTreeMap::new(),
+            availability: vec![build()],
             provenance: provenance(),
         }
     }
 
     #[test]
-    fn compiled_artifact_builds_constant_time_indexes() {
-        let artifact = CompiledGameDataArtifact::build(
-            manifest(),
-            vec![skill(1714, "skill.stormblade.iaido.1714")],
-            vec![LocalizationEntry {
-                schema_version: GAME_DATA_SCHEMA_VERSION,
-                locale: "en-US".into(),
-                key: "game.skill.1714".into(),
-                text: "Example Skill".into(),
-                provenance: provenance(),
-            }],
-            vec![AssetRecord {
-                key: "skill.stormblade.iaido.1714".into(),
-                relative_path: "icons/skills/stormblade/iaido/1714.webp".into(),
-                media_type: "image/webp".into(),
-                sha256: format!("sha256:{:064x}", 1),
-            }],
-        )
-        .unwrap();
-        let index = GameDataIndex::build_index(artifact).unwrap();
-
-        assert_eq!(
-            index
-                .record(SymbolKind::Skill, 1714)
-                .map(|record| record.stable_key.as_str()),
-            Some("skill.stormblade.iaido.1714")
+    fn source_validation_rejects_duplicate_ids() {
+        let result = validate_source_data(
+            &manifest(),
+            &[skill(1714, "skill.one"), skill(1714, "skill.duplicate")],
+            &[],
+            &[],
         );
-        assert_eq!(
-            index.localized("en-US", "game.skill.1714"),
-            Some("Example Skill")
-        );
-        assert!(index.asset("skill.stormblade.iaido.1714").is_some());
-    }
-
-    #[test]
-    fn duplicate_ids_fail_instead_of_overwriting() {
-        let result = CompiledGameDataArtifact::build(
-            manifest(),
-            vec![skill(1714, "skill.one"), skill(1714, "skill.duplicate")],
-            Vec::new(),
-            Vec::new(),
-        );
-
         assert!(matches!(
             result,
             Err(GameDataError::DuplicateSymbolId {
@@ -461,19 +660,48 @@ mod tests {
     }
 
     #[test]
-    fn tampered_compiled_payload_is_rejected() {
-        let mut artifact = CompiledGameDataArtifact::build(
-            manifest(),
-            vec![skill(1714, "skill.one")],
-            Vec::new(),
-            Vec::new(),
-        )
-        .unwrap();
-        artifact.payload.records[0].id = 9999;
+    fn symbol_folders_are_stable_and_human_readable() {
+        assert_eq!(SymbolKind::Skill.folder(), "skills");
+        assert_eq!(SymbolKind::RecountGroup.folder(), "recount-groups");
+        assert_eq!(SymbolKind::StatusEffect.folder(), "status-effects");
+        assert_eq!(SymbolKind::DungeonObjective.folder(), "dungeon-objectives");
+        assert_eq!(SymbolKind::WeaponEquipment.folder(), "weapon-equipment");
+        assert_eq!(SymbolKind::ProfileImage.folder(), "profile-images");
+        assert_eq!(SymbolKind::NameCard.folder(), "name-cards");
+        assert_eq!(SymbolKind::Medal.folder(), "medals");
+        assert_eq!(SymbolKind::GuildIcon.folder(), "guild-icons");
+    }
 
+    #[test]
+    fn source_validation_rejects_unlisted_build_availability() {
+        let mut record = skill(1714, "skill.one");
+        record.availability[0].client_build = "different-build".into();
+        let result = validate_source_data(&manifest(), &[record], &[], &[]);
         assert!(matches!(
-            artifact.validate(),
-            Err(GameDataError::DigestMismatch { .. })
+            result,
+            Err(GameDataError::UnsupportedBuildAvailability { .. })
+        ));
+    }
+
+    #[test]
+    fn reviewed_f32_values_survive_json_round_trips_exactly() {
+        let value = serde_json::json!(f32::from_bits(0x1450_a985));
+        let encoded = serde_json::to_vec(&value).unwrap();
+        let decoded: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(decoded, value);
+    }
+
+    #[test]
+    fn source_validation_rejects_account_fields() {
+        let mut record = skill(1714, "skill.one");
+        record.localization_key = None;
+        record
+            .attributes
+            .insert("account_id".into(), serde_json::json!("not-public"));
+        let result = validate_source_data(&manifest(), &[record], &[], &[]);
+        assert!(matches!(
+            result,
+            Err(GameDataError::ProhibitedAttribute { .. })
         ));
     }
 }

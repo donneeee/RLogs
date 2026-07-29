@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.11.description",
+    "text": "เชี่ยวชาญการต่อสู้<color=#fcbe03>ระยะไกล</color> โดยใช้<color=#fcbe03>ธนู</color><br>เป็นอาวุธ ออกรบร่วมกับสัตว์คู่หู มี<br>ความสามารถในการ<color=#fcbe03>โจมตีพื้นที่กว้าง</color><br>ที่ยอดเยี่ยม",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154214",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.5.name",
+    "text": "Verdant Oracle",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964622",
+      "confidence": "verified"
+    }
+  }
+]

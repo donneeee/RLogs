@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "name_card.9030003.acquisition",
+    "text": "Recompensa por completar la historia principal 3",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-965230669",
+      "confidence": "verified"
+    }
+  }
+]

@@ -25,9 +25,6 @@ pub use identity::{
 pub use ids::{
     AbilityId, ActorId, DungeonId, EntityRef, EntityUuid, MapId, MonsterId, SceneId, StatusEffectId,
 };
-pub use profile::{
-    CharacterProfilePatch, CosmeticOwnership, EquipmentItem, ImagineOwnership, SeasonProfile,
-    SkillLevel, TalentLevel, WorldContext,
-};
+pub use profile::{GameProfileEvent, WorldContext};
 pub use timeline::{RunTimeline, TimelineError};
 pub use world::{ChatChannel, ChatEvent, DungeonEvent, DungeonEventKind, MapEvent, MapEventKind};

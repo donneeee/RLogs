@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.13.description",
+    "text": "Excels in <color=#fcbe03>long-range</color> combat, using a <color=#fcbe03>Guitar</color> as a weapon. <color=#fcbe03>Heals</color> while attacking, excels in granting Allies <color=#fcbe03>buffs</color>, and possesses excellent <color=#fcbe03>support</color> capabilities.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.15.name",
+    "text": "Natsu",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192191",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.1.name",
+    "text": "Sturmklinge",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964618",
+      "confidence": "verified"
+    }
+  }
+]

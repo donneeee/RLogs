@@ -1,0 +1,1946 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "address_count": 215756,
+  "unique_bundle_hashes": 154625,
+  "sprite_count": 9019,
+  "domains": [
+    {
+      "domain": "character-models",
+      "count": 36297,
+      "file": "addresses/by-domain/character-models.jsonl"
+    },
+    {
+      "domain": "bin-ecs",
+      "count": 29125,
+      "file": "addresses/by-domain/bin-ecs.jsonl"
+    },
+    {
+      "domain": "animations",
+      "count": 18811,
+      "file": "addresses/by-domain/animations.jsonl"
+    },
+    {
+      "domain": "meshes",
+      "count": 17344,
+      "file": "addresses/by-domain/meshes.jsonl"
+    },
+    {
+      "domain": "bin-areamap",
+      "count": 14671,
+      "file": "addresses/by-domain/bin-areamap.jsonl"
+    },
+    {
+      "domain": "rdmesh",
+      "count": 14616,
+      "file": "addresses/by-domain/rdmesh.jsonl"
+    },
+    {
+      "domain": "bin-collidermesh",
+      "count": 14095,
+      "file": "addresses/by-domain/bin-collidermesh.jsonl"
+    },
+    {
+      "domain": "ui",
+      "count": 12621,
+      "file": "addresses/by-domain/ui.jsonl"
+    },
+    {
+      "domain": "effect",
+      "count": 7270,
+      "file": "addresses/by-domain/effect.jsonl"
+    },
+    {
+      "domain": "bin-lipsync",
+      "count": 7083,
+      "file": "addresses/by-domain/bin-lipsync.jsonl"
+    },
+    {
+      "domain": "icons-unscoped",
+      "count": 6882,
+      "file": "addresses/by-domain/icons-unscoped.jsonl"
+    },
+    {
+      "domain": "bin-bkrepflow",
+      "count": 4248,
+      "file": "addresses/by-domain/bin-bkrepflow.jsonl"
+    },
+    {
+      "domain": "transcollect",
+      "count": 3804,
+      "file": "addresses/by-domain/transcollect.jsonl"
+    },
+    {
+      "domain": "npc-models",
+      "count": 3536,
+      "file": "addresses/by-domain/npc-models.jsonl"
+    },
+    {
+      "domain": "materials",
+      "count": 3162,
+      "file": "addresses/by-domain/materials.jsonl"
+    },
+    {
+      "domain": "monster-models",
+      "count": 2408,
+      "file": "addresses/by-domain/monster-models.jsonl"
+    },
+    {
+      "domain": "weapon-models",
+      "count": 2107,
+      "file": "addresses/by-domain/weapon-models.jsonl"
+    },
+    {
+      "domain": "vegetation",
+      "count": 1980,
+      "file": "addresses/by-domain/vegetation.jsonl"
+    },
+    {
+      "domain": "cutscene",
+      "count": 1632,
+      "file": "addresses/by-domain/cutscene.jsonl"
+    },
+    {
+      "domain": "scenes",
+      "count": 1586,
+      "file": "addresses/by-domain/scenes.jsonl"
+    },
+    {
+      "domain": "animtpl",
+      "count": 1513,
+      "file": "addresses/by-domain/animtpl.jsonl"
+    },
+    {
+      "domain": "unscoped-other",
+      "count": 1492,
+      "file": "addresses/by-domain/unscoped-other.jsonl"
+    },
+    {
+      "domain": "bin-task",
+      "count": 1181,
+      "file": "addresses/by-domain/bin-task.jsonl"
+    },
+    {
+      "domain": "housing",
+      "count": 1055,
+      "file": "addresses/by-domain/housing.jsonl"
+    },
+    {
+      "domain": "bin-scenes",
+      "count": 939,
+      "file": "addresses/by-domain/bin-scenes.jsonl"
+    },
+    {
+      "domain": "levelprefabs",
+      "count": 883,
+      "file": "addresses/by-domain/levelprefabs.jsonl"
+    },
+    {
+      "domain": "vehicle-models",
+      "count": 809,
+      "file": "addresses/by-domain/vehicle-models.jsonl"
+    },
+    {
+      "domain": "dynamic_bone",
+      "count": 741,
+      "file": "addresses/by-domain/dynamic_bone.jsonl"
+    },
+    {
+      "domain": "shortname",
+      "count": 664,
+      "file": "addresses/by-domain/shortname.jsonl"
+    },
+    {
+      "domain": "old_env",
+      "count": 592,
+      "file": "addresses/by-domain/old_env.jsonl"
+    },
+    {
+      "domain": "datas",
+      "count": 571,
+      "file": "addresses/by-domain/datas.jsonl"
+    },
+    {
+      "domain": "bin-ai",
+      "count": 540,
+      "file": "addresses/by-domain/bin-ai.jsonl"
+    },
+    {
+      "domain": "anim",
+      "count": 479,
+      "file": "addresses/by-domain/anim.jsonl"
+    },
+    {
+      "domain": "streaming",
+      "count": 309,
+      "file": "addresses/by-domain/streaming.jsonl"
+    },
+    {
+      "domain": "phantom-factors",
+      "count": 260,
+      "file": "addresses/by-domain/phantom-factors.jsonl"
+    },
+    {
+      "domain": "eff",
+      "count": 97,
+      "file": "addresses/by-domain/eff.jsonl"
+    },
+    {
+      "domain": "badge",
+      "count": 53,
+      "file": "addresses/by-domain/badge.jsonl"
+    },
+    {
+      "domain": "unrealscene",
+      "count": 48,
+      "file": "addresses/by-domain/unrealscene.jsonl"
+    },
+    {
+      "domain": "bin-animconfig",
+      "count": 44,
+      "file": "addresses/by-domain/bin-animconfig.jsonl"
+    },
+    {
+      "domain": "home",
+      "count": 43,
+      "file": "addresses/by-domain/home.jsonl"
+    },
+    {
+      "domain": "pinch",
+      "count": 42,
+      "file": "addresses/by-domain/pinch.jsonl"
+    },
+    {
+      "domain": "matcap",
+      "count": 20,
+      "file": "addresses/by-domain/matcap.jsonl"
+    },
+    {
+      "domain": "pet-models",
+      "count": 20,
+      "file": "addresses/by-domain/pet-models.jsonl"
+    },
+    {
+      "domain": "bin-bubbleepflow",
+      "count": 15,
+      "file": "addresses/by-domain/bin-bubbleepflow.jsonl"
+    },
+    {
+      "domain": "prefabs",
+      "count": 14,
+      "file": "addresses/by-domain/prefabs.jsonl"
+    },
+    {
+      "domain": "mahjong",
+      "count": 8,
+      "file": "addresses/by-domain/mahjong.jsonl"
+    },
+    {
+      "domain": "epflow",
+      "count": 6,
+      "file": "addresses/by-domain/epflow.jsonl"
+    },
+    {
+      "domain": "lut",
+      "count": 6,
+      "file": "addresses/by-domain/lut.jsonl"
+    },
+    {
+      "domain": "bin-datas",
+      "count": 4,
+      "file": "addresses/by-domain/bin-datas.jsonl"
+    },
+    {
+      "domain": "bin-model",
+      "count": 4,
+      "file": "addresses/by-domain/bin-model.jsonl"
+    },
+    {
+      "domain": "svcwarmup",
+      "count": 4,
+      "file": "addresses/by-domain/svcwarmup.jsonl"
+    },
+    {
+      "domain": "bin-simple_timeline",
+      "count": 3,
+      "file": "addresses/by-domain/bin-simple_timeline.jsonl"
+    },
+    {
+      "domain": "effects-unscoped",
+      "count": 3,
+      "file": "addresses/by-domain/effects-unscoped.jsonl"
+    },
+    {
+      "domain": "face",
+      "count": 3,
+      "file": "addresses/by-domain/face.jsonl"
+    },
+    {
+      "domain": "heightmap",
+      "count": 2,
+      "file": "addresses/by-domain/heightmap.jsonl"
+    },
+    {
+      "domain": "weather_data",
+      "count": 2,
+      "file": "addresses/by-domain/weather_data.jsonl"
+    },
+    {
+      "domain": "armband_res",
+      "count": 1,
+      "file": "addresses/by-domain/armband_res.jsonl"
+    },
+    {
+      "domain": "bin-animinfo",
+      "count": 1,
+      "file": "addresses/by-domain/bin-animinfo.jsonl"
+    },
+    {
+      "domain": "bin-camera",
+      "count": 1,
+      "file": "addresses/by-domain/bin-camera.jsonl"
+    },
+    {
+      "domain": "bin-effect",
+      "count": 1,
+      "file": "addresses/by-domain/bin-effect.jsonl"
+    },
+    {
+      "domain": "bin-input",
+      "count": 1,
+      "file": "addresses/by-domain/bin-input.jsonl"
+    },
+    {
+      "domain": "camera",
+      "count": 1,
+      "file": "addresses/by-domain/camera.jsonl"
+    },
+    {
+      "domain": "lipsync",
+      "count": 1,
+      "file": "addresses/by-domain/lipsync.jsonl"
+    },
+    {
+      "domain": "talk",
+      "count": 1,
+      "file": "addresses/by-domain/talk.jsonl"
+    },
+    {
+      "domain": "waypointcontents",
+      "count": 1,
+      "file": "addresses/by-domain/waypointcontents.jsonl"
+    }
+  ],
+  "extensions": [
+    {
+      "extension": "<none>",
+      "count": 185104
+    },
+    {
+      "extension": ".mesh",
+      "count": 14623
+    },
+    {
+      "extension": ".pmesh",
+      "count": 13461
+    },
+    {
+      "extension": ".pconv",
+      "count": 1452
+    },
+    {
+      "extension": ".prefab",
+      "count": 302
+    },
+    {
+      "extension": ".pscene",
+      "count": 119
+    },
+    {
+      "extension": ".00)_mesh_lod0",
+      "count": 55
+    },
+    {
+      "extension": ".00)_mesh_lod1",
+      "count": 55
+    },
+    {
+      "extension": ".00)_mesh_lod2",
+      "count": 55
+    },
+    {
+      "extension": ".00)_ztd",
+      "count": 55
+    },
+    {
+      "extension": ".fbx",
+      "count": 7
+    },
+    {
+      "extension": ".1_01",
+      "count": 6
+    },
+    {
+      "extension": ".2_01",
+      "count": 6
+    },
+    {
+      "extension": ".4_01",
+      "count": 6
+    },
+    {
+      "extension": ".4_02",
+      "count": 6
+    },
+    {
+      "extension": ".1_02",
+      "count": 5
+    },
+    {
+      "extension": ".4_03",
+      "count": 5
+    },
+    {
+      "extension": ".4_04",
+      "count": 4
+    },
+    {
+      "extension": ".0",
+      "count": 3
+    },
+    {
+      "extension": ".2_02",
+      "count": 3
+    },
+    {
+      "extension": ".2_03",
+      "count": 3
+    },
+    {
+      "extension": ".2_04",
+      "count": 3
+    },
+    {
+      "extension": ".2_05",
+      "count": 3
+    },
+    {
+      "extension": ".2_06",
+      "count": 3
+    },
+    {
+      "extension": ".3_01",
+      "count": 3
+    },
+    {
+      "extension": ".3_02",
+      "count": 3
+    },
+    {
+      "extension": ".3_03",
+      "count": 3
+    },
+    {
+      "extension": ".4_05",
+      "count": 3
+    },
+    {
+      "extension": ".",
+      "count": 2
+    },
+    {
+      "extension": ".1_caveencounter_breath",
+      "count": 2
+    },
+    {
+      "extension": ".1_ecs_shiwei_breath",
+      "count": 2
+    },
+    {
+      "extension": ".1_windstorm",
+      "count": 2
+    },
+    {
+      "extension": ".2_01_breath",
+      "count": 2
+    },
+    {
+      "extension": ".2_02_breath",
+      "count": 2
+    },
+    {
+      "extension": ".2_07",
+      "count": 2
+    },
+    {
+      "extension": ".2_wangling",
+      "count": 2
+    },
+    {
+      "extension": ".28)_mesh_lod0",
+      "count": 2
+    },
+    {
+      "extension": ".28)_mesh_lod1",
+      "count": 2
+    },
+    {
+      "extension": ".28)_mesh_lod2",
+      "count": 2
+    },
+    {
+      "extension": ".28)_ztd",
+      "count": 2
+    },
+    {
+      "extension": ".3_04",
+      "count": 2
+    },
+    {
+      "extension": ".3_05",
+      "count": 2
+    },
+    {
+      "extension": ".3_ecs_danfochuxian_breath",
+      "count": 2
+    },
+    {
+      "extension": ".3_ecs_danfochuxian_fx",
+      "count": 2
+    },
+    {
+      "extension": ".3_paopao_fx",
+      "count": 2
+    },
+    {
+      "extension": ".4_06",
+      "count": 2
+    },
+    {
+      "extension": ".4_07",
+      "count": 2
+    },
+    {
+      "extension": ".4_08",
+      "count": 2
+    },
+    {
+      "extension": ".4_08_fx",
+      "count": 2
+    },
+    {
+      "extension": ".4_09",
+      "count": 2
+    },
+    {
+      "extension": ".4_10",
+      "count": 2
+    },
+    {
+      "extension": ".4_11",
+      "count": 2
+    },
+    {
+      "extension": ".4_12",
+      "count": 2
+    },
+    {
+      "extension": ".4_13",
+      "count": 2
+    },
+    {
+      "extension": ".pstrm",
+      "count": 2
+    },
+    {
+      "extension": ".0_chuanpiao",
+      "count": 1
+    },
+    {
+      "extension": ".0_goodbyenalulu",
+      "count": 1
+    },
+    {
+      "extension": ".0_hit",
+      "count": 1
+    },
+    {
+      "extension": ".0_irunamsg",
+      "count": 1
+    },
+    {
+      "extension": ".0_naluluhide",
+      "count": 1
+    },
+    {
+      "extension": ".0_zhituan",
+      "count": 1
+    },
+    {
+      "extension": ".1",
+      "count": 1
+    },
+    {
+      "extension": ".1_01_zhendong",
+      "count": 1
+    },
+    {
+      "extension": ".1_02_lineconnect",
+      "count": 1
+    },
+    {
+      "extension": ".1_03",
+      "count": 1
+    },
+    {
+      "extension": ".1_04",
+      "count": 1
+    },
+    {
+      "extension": ".1_05",
+      "count": 1
+    },
+    {
+      "extension": ".1_06",
+      "count": 1
+    },
+    {
+      "extension": ".1_07",
+      "count": 1
+    },
+    {
+      "extension": ".1_08",
+      "count": 1
+    },
+    {
+      "extension": ".1_09",
+      "count": 1
+    },
+    {
+      "extension": ".1_10",
+      "count": 1
+    },
+    {
+      "extension": ".1_11",
+      "count": 1
+    },
+    {
+      "extension": ".1_12",
+      "count": 1
+    },
+    {
+      "extension": ".1_afterfalldown",
+      "count": 1
+    },
+    {
+      "extension": ".1_beattata",
+      "count": 1
+    },
+    {
+      "extension": ".1_beforename",
+      "count": 1
+    },
+    {
+      "extension": ".1_blackmandead",
+      "count": 1
+    },
+    {
+      "extension": ".1_boss01",
+      "count": 1
+    },
+    {
+      "extension": ".1_catmeowingame",
+      "count": 1
+    },
+    {
+      "extension": ".1_caveencounter",
+      "count": 1
+    },
+    {
+      "extension": ".1_caveencounter_fx",
+      "count": 1
+    },
+    {
+      "extension": ".1_caveencounternew",
+      "count": 1
+    },
+    {
+      "extension": ".1_chelunzhanprefab",
+      "count": 1
+    },
+    {
+      "extension": ".1_comicstrip",
+      "count": 1
+    },
+    {
+      "extension": ".1_dressup",
+      "count": 1
+    },
+    {
+      "extension": ".1_dressuphead",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_contemplation",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_contemplation_breath",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_escorttostage",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_gotooffice",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_huochang",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_jibaitatahou",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_jibaitatahou02",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_jiejinyishi",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_jielade001",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_jindifengmao",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_jiuren1",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_pingmuxushi",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_qifuyishi",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_shiwei",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_shiwei_fx",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_stanleyshout",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_taoluosi2",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_taoluosi2_fx",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_tauntolvera",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_useartifact",
+      "count": 1
+    },
+    {
+      "extension": ".1_ecs_yuese",
+      "count": 1
+    },
+    {
+      "extension": ".1_falldown",
+      "count": 1
+    },
+    {
+      "extension": ".1_falldown_fx",
+      "count": 1
+    },
+    {
+      "extension": ".1_focusdoor",
+      "count": 1
+    },
+    {
+      "extension": ".1_focusstron",
+      "count": 1
+    },
+    {
+      "extension": ".1_focustoutou",
+      "count": 1
+    },
+    {
+      "extension": ".1_give",
+      "count": 1
+    },
+    {
+      "extension": ".1_gongmingzhandou",
+      "count": 1
+    },
+    {
+      "extension": ".1_huiyi1",
+      "count": 1
+    },
+    {
+      "extension": ".1_huiyi2",
+      "count": 1
+    },
+    {
+      "extension": ".1_huiyi3",
+      "count": 1
+    },
+    {
+      "extension": ".1_irunahelpme",
+      "count": 1
+    },
+    {
+      "extension": ".1_irunahelpme_fx",
+      "count": 1
+    },
+    {
+      "extension": ".1_irunapose01",
+      "count": 1
+    },
+    {
+      "extension": ".1_irunapose02",
+      "count": 1
+    },
+    {
+      "extension": ".1_irunapose03",
+      "count": 1
+    },
+    {
+      "extension": ".1_irunatalkwithcat",
+      "count": 1
+    },
+    {
+      "extension": ".1_islandlook",
+      "count": 1
+    },
+    {
+      "extension": ".1_jaredpanic",
+      "count": 1
+    },
+    {
+      "extension": ".1_jiefang1",
+      "count": 1
+    },
+    {
+      "extension": ".1_jindifengmao",
+      "count": 1
+    },
+    {
+      "extension": ".1_jituirorola",
+      "count": 1
+    },
+    {
+      "extension": ".1_jiuren",
+      "count": 1
+    },
+    {
+      "extension": ".1_jobend",
+      "count": 1
+    },
+    {
+      "extension": ".1_kanimanfengmao",
+      "count": 1
+    },
+    {
+      "extension": ".1_lavanofficenew",
+      "count": 1
+    },
+    {
+      "extension": ".1_luoluola",
+      "count": 1
+    },
+    {
+      "extension": ".1_meet",
+      "count": 1
+    },
+    {
+      "extension": ".1_meetlotaer",
+      "count": 1
+    },
+    {
+      "extension": ".1_nalulucome",
+      "count": 1
+    },
+    {
+      "extension": ".1_newletter",
+      "count": 1
+    },
+    {
+      "extension": ".1_notice",
+      "count": 1
+    },
+    {
+      "extension": ".1_olveramessage",
+      "count": 1
+    },
+    {
+      "extension": ".1_openbox1",
+      "count": 1
+    },
+    {
+      "extension": ".1_openbox2",
+      "count": 1
+    },
+    {
+      "extension": ".1_outbedroom",
+      "count": 1
+    },
+    {
+      "extension": ".1_prey",
+      "count": 1
+    },
+    {
+      "extension": ".1_protect",
+      "count": 1
+    },
+    {
+      "extension": ".1_receivetickets",
+      "count": 1
+    },
+    {
+      "extension": ".1_rorolafabiao",
+      "count": 1
+    },
+    {
+      "extension": ".1_rushoverreset",
+      "count": 1
+    },
+    {
+      "extension": ".1_save",
+      "count": 1
+    },
+    {
+      "extension": ".1_securelolore",
+      "count": 1
+    },
+    {
+      "extension": ".1_securelolore2",
+      "count": 1
+    },
+    {
+      "extension": ".1_seebissinessman",
+      "count": 1
+    },
+    {
+      "extension": ".1_seetina",
+      "count": 1
+    },
+    {
+      "extension": ".1_separate",
+      "count": 1
+    },
+    {
+      "extension": ".1_shaoniankemo",
+      "count": 1
+    },
+    {
+      "extension": ".1_shipexplode",
+      "count": 1
+    },
+    {
+      "extension": ".1_shop01sea",
+      "count": 1
+    },
+    {
+      "extension": ".1_shop02sea",
+      "count": 1
+    },
+    {
+      "extension": ".1_soldierdown",
+      "count": 1
+    },
+    {
+      "extension": ".1_soldiersuicide",
+      "count": 1
+    },
+    {
+      "extension": ".1_soushentata",
+      "count": 1
+    },
+    {
+      "extension": ".1_squareblackman",
+      "count": 1
+    },
+    {
+      "extension": ".1_starcollecter",
+      "count": 1
+    },
+    {
+      "extension": ".1_stormcommin",
+      "count": 1
+    },
+    {
+      "extension": ".1_tandobattle",
+      "count": 1
+    },
+    {
+      "extension": ".1_teachbook",
+      "count": 1
+    },
+    {
+      "extension": ".1_threeintomist",
+      "count": 1
+    },
+    {
+      "extension": ".1_tinaheaddress",
+      "count": 1
+    },
+    {
+      "extension": ".1_tongxun",
+      "count": 1
+    },
+    {
+      "extension": ".1_tonysea",
+      "count": 1
+    },
+    {
+      "extension": ".1_touting1",
+      "count": 1
+    },
+    {
+      "extension": ".1_touting2",
+      "count": 1
+    },
+    {
+      "extension": ".1_touting3",
+      "count": 1
+    },
+    {
+      "extension": ".1_touting4",
+      "count": 1
+    },
+    {
+      "extension": ".1_turnbacktoplayer",
+      "count": 1
+    },
+    {
+      "extension": ".1_turntoiruna",
+      "count": 1
+    },
+    {
+      "extension": ".1_wakeupinbedroom",
+      "count": 1
+    },
+    {
+      "extension": ".1_walktogatesuqare",
+      "count": 1
+    },
+    {
+      "extension": ".1_xunzhang",
+      "count": 1
+    },
+    {
+      "extension": ".1_xushizhe",
+      "count": 1
+    },
+    {
+      "extension": ".1kanimanshilian",
+      "count": 1
+    },
+    {
+      "extension": ".1liftup",
+      "count": 1
+    },
+    {
+      "extension": ".1ranshaoyingdi",
+      "count": 1
+    },
+    {
+      "extension": ".2_01_fx",
+      "count": 1
+    },
+    {
+      "extension": ".2_01_iruna",
+      "count": 1
+    },
+    {
+      "extension": ".2_02_player",
+      "count": 1
+    },
+    {
+      "extension": ".2_03_tata",
+      "count": 1
+    },
+    {
+      "extension": ".2_04_tata",
+      "count": 1
+    },
+    {
+      "extension": ".2_08",
+      "count": 1
+    },
+    {
+      "extension": ".2_09",
+      "count": 1
+    },
+    {
+      "extension": ".2_10",
+      "count": 1
+    },
+    {
+      "extension": ".2_11",
+      "count": 1
+    },
+    {
+      "extension": ".2_2ddenvermemory",
+      "count": 1
+    },
+    {
+      "extension": ".2_2dramsythunder",
+      "count": 1
+    },
+    {
+      "extension": ".2_2dramsytruth",
+      "count": 1
+    },
+    {
+      "extension": ".2_anshouyin",
+      "count": 1
+    },
+    {
+      "extension": ".2_asitelisidamen",
+      "count": 1
+    },
+    {
+      "extension": ".2_backtoirunaandtina",
+      "count": 1
+    },
+    {
+      "extension": ".2_baertan",
+      "count": 1
+    },
+    {
+      "extension": ".2_banshiyuan",
+      "count": 1
+    },
+    {
+      "extension": ".2_black",
+      "count": 1
+    },
+    {
+      "extension": ".2_blacktransport",
+      "count": 1
+    },
+    {
+      "extension": ".2_camera_labuguangchang",
+      "count": 1
+    },
+    {
+      "extension": ".2_camera_xunzhaotuanzhang",
+      "count": 1
+    },
+    {
+      "extension": ".2_catout",
+      "count": 1
+    },
+    {
+      "extension": ".2_comebackhome",
+      "count": 1
+    },
+    {
+      "extension": ".2_daddytips",
+      "count": 1
+    },
+    {
+      "extension": ".2_dayaboyisi",
+      "count": 1
+    },
+    {
+      "extension": ".2_dayaletter",
+      "count": 1
+    },
+    {
+      "extension": ".2_defeathuiya",
+      "count": 1
+    },
+    {
+      "extension": ".2_defeathuiya2",
+      "count": 1
+    },
+    {
+      "extension": ".2_dongxi",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_catchbaratan",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_catchbaratan_fx",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_cleararea",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_dance",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_dinaafterbar",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_dinaafterbar2",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_dinacatch",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_dinacome",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_dinadengchang",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_exposebaratan",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_getletter",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_kaituoju",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_kemobianmao",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_monstercreate",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_olveracome",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_ramsey",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_ramseyxushi",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_shenxuntata",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_shenxuntata_fx",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_talktolabu",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_wendingsenyuansu",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_wendingsenyuansu_fx",
+      "count": 1
+    },
+    {
+      "extension": ".2_ecs_xunzhaotuanzhang",
+      "count": 1
+    },
+    {
+      "extension": ".2_enterkaituoju",
+      "count": 1
+    },
+    {
+      "extension": ".2_everyoneleave",
+      "count": 1
+    },
+    {
+      "extension": ".2_facethestorm",
+      "count": 1
+    },
+    {
+      "extension": ".2_fightheishi",
+      "count": 1
+    },
+    {
+      "extension": ".2_findtattaandlemenggelasi",
+      "count": 1
+    },
+    {
+      "extension": ".2_following",
+      "count": 1
+    },
+    {
+      "extension": ".2_forestchaos",
+      "count": 1
+    },
+    {
+      "extension": ".2_forestpeace",
+      "count": 1
+    },
+    {
+      "extension": ".2_forestpeace_breath",
+      "count": 1
+    },
+    {
+      "extension": ".2_haojiao",
+      "count": 1
+    },
+    {
+      "extension": ".2_harmony",
+      "count": 1
+    },
+    {
+      "extension": ".2_ilonamessage1",
+      "count": 1
+    },
+    {
+      "extension": ".2_jindi",
+      "count": 1
+    },
+    {
+      "extension": ".2_jituiwangling",
+      "count": 1
+    },
+    {
+      "extension": ".2_jiuguan",
+      "count": 1
+    },
+    {
+      "extension": ".2_jiuyuan",
+      "count": 1
+    },
+    {
+      "extension": ".2_kaituoju",
+      "count": 1
+    },
+    {
+      "extension": ".2_kanimansenlin",
+      "count": 1
+    },
+    {
+      "extension": ".2_leaveseasiderestaurant",
+      "count": 1
+    },
+    {
+      "extension": ".2_luanliu",
+      "count": 1
+    },
+    {
+      "extension": ".2_miaoshu1",
+      "count": 1
+    },
+    {
+      "extension": ".2_miaoshu2",
+      "count": 1
+    },
+    {
+      "extension": ".2_miaoshu3",
+      "count": 1
+    },
+    {
+      "extension": ".2_mixautocomplete",
+      "count": 1
+    },
+    {
+      "extension": ".2_olverapart",
+      "count": 1
+    },
+    {
+      "extension": ".2_pubautosuccess",
+      "count": 1
+    },
+    {
+      "extension": ".2_ramsydie",
+      "count": 1
+    },
+    {
+      "extension": ".2_ramsygrassout",
+      "count": 1
+    },
+    {
+      "extension": ".2_ramsylosecontrol",
+      "count": 1
+    },
+    {
+      "extension": ".2_ramsynohealth",
+      "count": 1
+    },
+    {
+      "extension": ".2_ramsynote",
+      "count": 1
+    },
+    {
+      "extension": ".2_ramsythunder",
+      "count": 1
+    },
+    {
+      "extension": ".2_ramsyvillager",
+      "count": 1
+    },
+    {
+      "extension": ".2_rectification",
+      "count": 1
+    },
+    {
+      "extension": ".2_sadend",
+      "count": 1
+    },
+    {
+      "extension": ".2_sadend_fx",
+      "count": 1
+    },
+    {
+      "extension": ".2_stormcore",
+      "count": 1
+    },
+    {
+      "extension": ".2_stormjump",
+      "count": 1
+    },
+    {
+      "extension": ".2_stormjump_fx",
+      "count": 1
+    },
+    {
+      "extension": ".2_stormstop",
+      "count": 1
+    },
+    {
+      "extension": ".2_stormstop_fx",
+      "count": 1
+    },
+    {
+      "extension": ".2_supergrass",
+      "count": 1
+    },
+    {
+      "extension": ".2_tatarunaway",
+      "count": 1
+    },
+    {
+      "extension": ".2_telllavaneverythingabouttatta",
+      "count": 1
+    },
+    {
+      "extension": ".2_tinacomeout",
+      "count": 1
+    },
+    {
+      "extension": ".2_tinamessage",
+      "count": 1
+    },
+    {
+      "extension": ".2_tinapart",
+      "count": 1
+    },
+    {
+      "extension": ".2_trader",
+      "count": 1
+    },
+    {
+      "extension": ".2_wares",
+      "count": 1
+    },
+    {
+      "extension": ".2_wenshu",
+      "count": 1
+    },
+    {
+      "extension": ".2_wetherdarker",
+      "count": 1
+    },
+    {
+      "extension": ".3_06",
+      "count": 1
+    },
+    {
+      "extension": ".3_07",
+      "count": 1
+    },
+    {
+      "extension": ".3_08",
+      "count": 1
+    },
+    {
+      "extension": ".3_09",
+      "count": 1
+    },
+    {
+      "extension": ".3_10",
+      "count": 1
+    },
+    {
+      "extension": ".3_10_fx",
+      "count": 1
+    },
+    {
+      "extension": ".3_11",
+      "count": 1
+    },
+    {
+      "extension": ".3_aoerweila",
+      "count": 1
+    },
+    {
+      "extension": ".3_aozhantaide",
+      "count": 1
+    },
+    {
+      "extension": ".3_cleardungeon",
+      "count": 1
+    },
+    {
+      "extension": ".3_danfo2dmemory",
+      "count": 1
+    },
+    {
+      "extension": ".3_danfodengchang",
+      "count": 1
+    },
+    {
+      "extension": ".3_eavesdrop",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_abeikucome",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_abeikuolvera",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_danfo",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_danfochuxian",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_danfomemory1",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_danfomemory2",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_danfomemory3",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_danfomemory4",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_diaochaxuwuheiyiren",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_dinahunru",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_exitxwkj",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_irunakomoplayer",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_laozhe",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_niuyang1",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_olverachuxian",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_olveratina",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_shouxun",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_stopceremony",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_tatazhangwang",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_tinaolvera",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_xunengbaofa",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_xwkjcamera",
+      "count": 1
+    },
+    {
+      "extension": ".3_ecs_zaoyutuxi",
+      "count": 1
+    },
+    {
+      "extension": ".3_erupt",
+      "count": 1
+    },
+    {
+      "extension": ".3_escortend",
+      "count": 1
+    },
+    {
+      "extension": ".3_escortstart",
+      "count": 1
+    },
+    {
+      "extension": ".3_faxiantaide",
+      "count": 1
+    },
+    {
+      "extension": ".3_frontceremony",
+      "count": 1
+    },
+    {
+      "extension": ".3_gaosuqiuzhang",
+      "count": 1
+    },
+    {
+      "extension": ".3_geligestarstone",
+      "count": 1
+    },
+    {
+      "extension": ".3_heiyiren",
+      "count": 1
+    },
+    {
+      "extension": ".3_heiyirenluguo",
+      "count": 1
+    },
+    {
+      "extension": ".3_helujia",
+      "count": 1
+    },
+    {
+      "extension": ".3_ingetletter",
+      "count": 1
+    },
+    {
+      "extension": ".3_iruna",
+      "count": 1
+    },
+    {
+      "extension": ".3_irunamessage",
+      "count": 1
+    },
+    {
+      "extension": ".3_jitui",
+      "count": 1
+    },
+    {
+      "extension": ".3_liunianqian",
+      "count": 1
+    },
+    {
+      "extension": ".3_lonelyshibing",
+      "count": 1
+    },
+    {
+      "extension": ".3_madisiplaycard",
+      "count": 1
+    },
+    {
+      "extension": ".3_mysteriousman",
+      "count": 1
+    },
+    {
+      "extension": ".3_oldman",
+      "count": 1
+    },
+    {
+      "extension": ".3_paopao",
+      "count": 1
+    },
+    {
+      "extension": ".3_savekuanggong",
+      "count": 1
+    },
+    {
+      "extension": ".3_shenxunjieshu",
+      "count": 1
+    },
+    {
+      "extension": ".3_shouxun",
+      "count": 1
+    },
+    {
+      "extension": ".3_stopceremony",
+      "count": 1
+    },
+    {
+      "extension": ".3_tataxuanyun",
+      "count": 1
+    },
+    {
+      "extension": ".3_tataxuanyun_breath",
+      "count": 1
+    },
+    {
+      "extension": ".3_tataxuanyun_fx",
+      "count": 1
+    },
+    {
+      "extension": ".3_tinacomeout",
+      "count": 1
+    },
+    {
+      "extension": ".3_tinasinner",
+      "count": 1
+    },
+    {
+      "extension": ".3_ui",
+      "count": 1
+    },
+    {
+      "extension": ".3_wangling2",
+      "count": 1
+    },
+    {
+      "extension": ".3_yiduanshijian",
+      "count": 1
+    },
+    {
+      "extension": ".4",
+      "count": 1
+    },
+    {
+      "extension": ".4_01_tina",
+      "count": 1
+    },
+    {
+      "extension": ".4_02_citizen",
+      "count": 1
+    },
+    {
+      "extension": ".4_03_springcore",
+      "count": 1
+    },
+    {
+      "extension": ".4_04_citizen",
+      "count": 1
+    },
+    {
+      "extension": ".4_08_breath",
+      "count": 1
+    },
+    {
+      "extension": ".4_14",
+      "count": 1
+    },
+    {
+      "extension": ".4_15",
+      "count": 1
+    },
+    {
+      "extension": ".4_16",
+      "count": 1
+    },
+    {
+      "extension": ".4_17",
+      "count": 1
+    },
+    {
+      "extension": ".4_18",
+      "count": 1
+    },
+    {
+      "extension": ".4_19",
+      "count": 1
+    },
+    {
+      "extension": ".4_chaos",
+      "count": 1
+    },
+    {
+      "extension": ".4_comeorun",
+      "count": 1
+    },
+    {
+      "extension": ".4_disheng",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_beifaxian",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_danfodungeon",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_danfodungeon_fx",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_dinashenmiren",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_dinatorture",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_jibaishenmiren",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_jinrupingyuan",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_jiuchutata",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_resonancewithdina",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_shenmirenescape",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_startresonance",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_tatadungeon",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_tunnel",
+      "count": 1
+    },
+    {
+      "extension": ".4_ecs_xunzhaorukou",
+      "count": 1
+    },
+    {
+      "extension": ".4_escape",
+      "count": 1
+    },
+    {
+      "extension": ".4_escwithtina",
+      "count": 1
+    },
+    {
+      "extension": ".4_feihongshuijingroom",
+      "count": 1
+    },
+    {
+      "extension": ".4_guilai",
+      "count": 1
+    },
+    {
+      "extension": ".4_hide",
+      "count": 1
+    },
+    {
+      "extension": ".4_kuanghonghelp",
+      "count": 1
+    },
+    {
+      "extension": ".4_throwartifact",
+      "count": 1
+    },
+    {
+      "extension": ".4_wangling3",
+      "count": 1
+    },
+    {
+      "extension": ".4_yishiting",
+      "count": 1
+    },
+    {
+      "extension": ".5_dikangzhe",
+      "count": 1
+    },
+    {
+      "extension": ".5_jitui",
+      "count": 1
+    },
+    {
+      "extension": ".5_mianju",
+      "count": 1
+    },
+    {
+      "extension": ".6_jitui",
+      "count": 1
+    },
+    {
+      "extension": ".6_neikali",
+      "count": 1
+    },
+    {
+      "extension": ".7_cisha",
+      "count": 1
+    },
+    {
+      "extension": ".7_jiaodai",
+      "count": 1
+    },
+    {
+      "extension": ".8_jieshu1",
+      "count": 1
+    },
+    {
+      "extension": ".8_jieshu2",
+      "count": 1
+    }
+  ],
+  "note": "Complete address records stay in the private research inventory; runtime assets are promoted only after review."
+}

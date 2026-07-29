@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    CharacterIdentity, CharacterProfilePatch, ChatEvent, DungeonEvent, EventProvenance, EventTime,
+    CharacterIdentity, ChatEvent, DungeonEvent, EventProvenance, EventTime, GameProfileEvent,
     MapEvent, RegionContext, TimelineEvent, TimelineEventDraft, TimelineEventKind, WorldContext,
 };
 
@@ -36,7 +36,7 @@ pub enum EventSensitivity {
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum CanonicalEvent {
     Timeline(TimelineEvent),
-    CharacterProfileObserved { profile: Box<CharacterProfilePatch> },
+    CharacterProfileObserved { profile: Box<GameProfileEvent> },
     PartyChanged { members: Vec<CharacterIdentity> },
     WorldChanged(WorldContext),
     Map(MapEvent),
@@ -70,7 +70,7 @@ pub struct CanonicalEventDraft {
 #[serde(tag = "event", content = "data", rename_all = "snake_case")]
 pub enum CanonicalEventDraftKind {
     Timeline(TimelineEventKind),
-    CharacterProfileObserved { profile: Box<CharacterProfilePatch> },
+    CharacterProfileObserved { profile: Box<GameProfileEvent> },
     PartyChanged { members: Vec<CharacterIdentity> },
     WorldChanged(WorldContext),
     Map(MapEvent),

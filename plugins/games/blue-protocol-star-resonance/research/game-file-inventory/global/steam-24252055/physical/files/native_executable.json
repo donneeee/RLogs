@@ -1,0 +1,65 @@
+[
+  {
+    "relative_path": "bpsr/baselib.dll",
+    "bytes": 254000,
+    "modified_utc": "2026-07-17T10:03:42.022Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:b7f87c9068b0007dffacf313531869fb48850c211b8417b78ef2ad394e380e9f"
+  },
+  {
+    "relative_path": "bpsr/BPSR_STEAM.exe",
+    "bytes": 808496,
+    "modified_utc": "2026-07-17T10:03:41.675Z",
+    "stable_during_scan": true,
+    "extension": ".exe",
+    "signature": "pe",
+    "sha256": "sha256:12ac742494196b4d5983742ebee100b3dc962e78bb7f55a3d46b28969aef41be"
+  },
+  {
+    "relative_path": "bpsr/nvngx_dlss.dll",
+    "bytes": 35385384,
+    "modified_utc": "2026-05-30T03:46:54.577Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:6a12400beedef26ad8a3baca8dde2c6a5859942ce9ae14f78a07f7a87f883321"
+  },
+  {
+    "relative_path": "bpsr/NVUnityPlugin.dll",
+    "bytes": 1456128,
+    "modified_utc": "2026-05-30T03:46:54.577Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:3b7e9765351ba3b38ce76b431edf7e5ca3bb07facc6f193203de877a0eca6e6c"
+  },
+  {
+    "relative_path": "bpsr/UnityCrashHandler64.exe",
+    "bytes": 1001472,
+    "modified_utc": "2026-05-30T03:46:54.578Z",
+    "stable_during_scan": true,
+    "extension": ".exe",
+    "signature": "pe",
+    "sha256": "sha256:31dc8626e24613dd061684e0d5bc2acca2d62090f7e105a04c7e4c560ab23262"
+  },
+  {
+    "relative_path": "bpsr/UnityPlayer.dll",
+    "bytes": 30903856,
+    "modified_utc": "2026-07-17T10:03:41.803Z",
+    "stable_during_scan": true,
+    "extension": ".dll",
+    "signature": "pe",
+    "sha256": "sha256:a81fcdfffd5a6284b5466b1a0f25b1e9bc8febd479dc090d9607292041f22ea4"
+  },
+  {
+    "relative_path": "bpsr/VerifyTool.exe",
+    "bytes": 58932206,
+    "modified_utc": "2026-05-30T03:46:54.578Z",
+    "stable_during_scan": true,
+    "extension": ".exe",
+    "signature": "pe",
+    "sha256": "sha256:a5ed69779740c11155053849373fcfd99a86f4101856bfdee79364a22fb6c5a8"
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.12.description",
+    "text": "Ahli dalam pertarungan <color=#fcbe03>jarak dekat</color> yang bersenjatakan <color=#fcbe03>Bladeshield</color>. Menggunakan armor Lightforged serta memiliki kemampuan <color=#fcbe03>defense</color> dan <color=#fcbe03>self-heal</color> yang luar biasa.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154215",
+      "confidence": "verified"
+    }
+  }
+]

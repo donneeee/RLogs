@@ -1,0 +1,34 @@
+schema_version = 1
+id = "dev.rlogs.example.bpsr-uid-aliases"
+name = "BPSR UID alias example"
+version = "0.1.0"
+api_version = 1
+runtime = "data_only"
+capabilities = ["shared_resources_read", "localization_transform"]
+subscriptions = []
+allowed_network_domains = []
+
+[[resource_imports]]
+owner_plugin_id = "app.rlogs.game.blue-protocol-star-resonance"
+name = "catalog"
+schema_id = "app.rlogs.bpsr.game-data"
+minimum_schema_version = 2
+required = true
+
+[[resource_exports]]
+name = "aliases"
+kind = "localization-aliases"
+path = "resources/aliases.toml"
+schema_id = "dev.rlogs.example.bpsr-uid-aliases.locale-aliases"
+schema_version = 1
+
+[[hooks]]
+stage = "localization_lookup"
+phase = "after_core"
+priority = 100
+before = []
+after = []
+
+[hooks.handler]
+kind = "data_resource"
+resource = "aliases"

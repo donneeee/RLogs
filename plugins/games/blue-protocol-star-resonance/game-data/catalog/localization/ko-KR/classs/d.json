@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.10.description",
+    "text": "중/근접 무기. 협동 공격 능력 보유.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154213",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.13.name",
+    "text": "비트 퍼포머",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192189",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,958 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "policy": {
+    "object_payloads_exported": false,
+    "text_asset_contents_exported": false,
+    "credentials_or_tokens_extracted": false,
+    "names_redacted_when_sensitive": true
+  },
+  "candidate_files": 6,
+  "loaded_files": 6,
+  "object_count": 18766,
+  "types": [
+    {
+      "type": "MonoScript",
+      "count": 11158
+    },
+    {
+      "type": "MonoBehaviour",
+      "count": 2251
+    },
+    {
+      "type": "GameObject",
+      "count": 1557
+    },
+    {
+      "type": "RectTransform",
+      "count": 1552
+    },
+    {
+      "type": "CanvasRenderer",
+      "count": 1213
+    },
+    {
+      "type": "Sprite",
+      "count": 427
+    },
+    {
+      "type": "Texture2D",
+      "count": 223
+    },
+    {
+      "type": "Shader",
+      "count": 114
+    },
+    {
+      "type": "Material",
+      "count": 84
+    },
+    {
+      "type": "TextAsset",
+      "count": 47
+    },
+    {
+      "type": "CanvasGroup",
+      "count": 38
+    },
+    {
+      "type": "ComputeShader",
+      "count": 29
+    },
+    {
+      "type": "Canvas",
+      "count": 17
+    },
+    {
+      "type": "Mesh",
+      "count": 15
+    },
+    {
+      "type": "Transform",
+      "count": 5
+    },
+    {
+      "type": "Font",
+      "count": 2
+    },
+    {
+      "type": "PreloadData",
+      "count": 2
+    },
+    {
+      "type": "ShaderVariantCollection",
+      "count": 2
+    },
+    {
+      "type": "SpriteAtlas",
+      "count": 2
+    },
+    {
+      "type": "PlayerSettings",
+      "count": 1
+    },
+    {
+      "type": "InputManager",
+      "count": 1
+    },
+    {
+      "type": "TagManager",
+      "count": 1
+    },
+    {
+      "type": "AudioManager",
+      "count": 1
+    },
+    {
+      "type": "ScriptMapper",
+      "count": 1
+    },
+    {
+      "type": "MonoManager",
+      "count": 1
+    },
+    {
+      "type": "GraphicsSettings",
+      "count": 1
+    },
+    {
+      "type": "TimeManager",
+      "count": 1
+    },
+    {
+      "type": "DelayedCallManager",
+      "count": 1
+    },
+    {
+      "type": "PhysicsManager",
+      "count": 1
+    },
+    {
+      "type": "BuildSettings",
+      "count": 1
+    },
+    {
+      "type": "QualitySettings",
+      "count": 1
+    },
+    {
+      "type": "ResourceManager",
+      "count": 1
+    },
+    {
+      "type": "NavMeshProjectSettings",
+      "count": 1
+    },
+    {
+      "type": "Physics2DSettings",
+      "count": 1
+    },
+    {
+      "type": "RuntimeInitializeOnLoadManager",
+      "count": 1
+    },
+    {
+      "type": "StreamingManager",
+      "count": 1
+    },
+    {
+      "type": "VFXManager",
+      "count": 1
+    },
+    {
+      "type": "MeshRenderer",
+      "count": 1
+    },
+    {
+      "type": "OcclusionCullingSettings",
+      "count": 1
+    },
+    {
+      "type": "MeshFilter",
+      "count": 1
+    },
+    {
+      "type": "BoxCollider",
+      "count": 1
+    },
+    {
+      "type": "RenderSettings",
+      "count": 1
+    },
+    {
+      "type": "LightmapSettings",
+      "count": 1
+    },
+    {
+      "type": "NavMeshSettings",
+      "count": 1
+    },
+    {
+      "type": "VideoPlayer",
+      "count": 1
+    },
+    {
+      "type": "Cubemap",
+      "count": 1
+    },
+    {
+      "type": "OcclusionCullingData",
+      "count": 1
+    }
+  ],
+  "files": [
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/Resources/unity default resources",
+      "bytes": 1564240,
+      "sha256": "sha256:a11e3e24520676183b3750564b4d9f5a90e8f41fd3523cbfb0c49f3989453da2",
+      "object_count": 85,
+      "types": [
+        {
+          "type": "Texture2D",
+          "count": 40
+        },
+        {
+          "type": "MonoScript",
+          "count": 16
+        },
+        {
+          "type": "Mesh",
+          "count": 13
+        },
+        {
+          "type": "Shader",
+          "count": 6
+        },
+        {
+          "type": "ComputeShader",
+          "count": 6
+        },
+        {
+          "type": "Material",
+          "count": 2
+        },
+        {
+          "type": "Font",
+          "count": 1
+        },
+        {
+          "type": "MonoBehaviour",
+          "count": 1
+        }
+      ],
+      "external_references": [],
+      "error_count": 0
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/globalgamemanagers",
+      "bytes": 911844,
+      "sha256": "sha256:1ea2df9e1a4708e33acb6b40fb559131409d98e506ad94cc4f19a236b7ad9e3b",
+      "object_count": 18,
+      "types": [
+        {
+          "type": "PlayerSettings",
+          "count": 1
+        },
+        {
+          "type": "InputManager",
+          "count": 1
+        },
+        {
+          "type": "TagManager",
+          "count": 1
+        },
+        {
+          "type": "AudioManager",
+          "count": 1
+        },
+        {
+          "type": "ScriptMapper",
+          "count": 1
+        },
+        {
+          "type": "MonoManager",
+          "count": 1
+        },
+        {
+          "type": "GraphicsSettings",
+          "count": 1
+        },
+        {
+          "type": "TimeManager",
+          "count": 1
+        },
+        {
+          "type": "DelayedCallManager",
+          "count": 1
+        },
+        {
+          "type": "PhysicsManager",
+          "count": 1
+        },
+        {
+          "type": "BuildSettings",
+          "count": 1
+        },
+        {
+          "type": "QualitySettings",
+          "count": 1
+        },
+        {
+          "type": "ResourceManager",
+          "count": 1
+        },
+        {
+          "type": "NavMeshProjectSettings",
+          "count": 1
+        },
+        {
+          "type": "Physics2DSettings",
+          "count": 1
+        },
+        {
+          "type": "RuntimeInitializeOnLoadManager",
+          "count": 1
+        },
+        {
+          "type": "StreamingManager",
+          "count": 1
+        },
+        {
+          "type": "VFXManager",
+          "count": 1
+        }
+      ],
+      "external_references": [
+        {
+          "source_serialized_file": "globalgamemanagers",
+          "path": "globalgamemanagers.assets",
+          "guid": "00000000000000000000000000000000",
+          "type": "0"
+        },
+        {
+          "source_serialized_file": "globalgamemanagers",
+          "path": "Library/unity default resources",
+          "guid": "00000000000000000e00000000000000",
+          "type": "0"
+        },
+        {
+          "source_serialized_file": "globalgamemanagers",
+          "path": "resources.assets",
+          "guid": "00000000000000000000000000000000",
+          "type": "0"
+        },
+        {
+          "source_serialized_file": "globalgamemanagers",
+          "path": "Resources/unity_builtin_extra",
+          "guid": "00000000000000000f00000000000000",
+          "type": "0"
+        },
+        {
+          "source_serialized_file": "globalgamemanagers",
+          "path": "sharedassets0.assets",
+          "guid": "00000000000000000000000000000000",
+          "type": "0"
+        }
+      ],
+      "error_count": 0
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/globalgamemanagers.assets",
+      "bytes": 3224568,
+      "sha256": "sha256:7f128e18374eb62ee68887dd3e807dfb67d8ad93cb206772f0e2094085720b13",
+      "object_count": 11422,
+      "types": [
+        {
+          "type": "MonoScript",
+          "count": 11130
+        },
+        {
+          "type": "MonoBehaviour",
+          "count": 100
+        },
+        {
+          "type": "Shader",
+          "count": 68
+        },
+        {
+          "type": "Texture2D",
+          "count": 63
+        },
+        {
+          "type": "Material",
+          "count": 48
+        },
+        {
+          "type": "ComputeShader",
+          "count": 10
+        },
+        {
+          "type": "ShaderVariantCollection",
+          "count": 2
+        },
+        {
+          "type": "PreloadData",
+          "count": 1
+        }
+      ],
+      "external_references": [
+        {
+          "source_serialized_file": "globalgamemanagers.assets",
+          "path": "Library/unity default resources",
+          "guid": "00000000000000000e00000000000000",
+          "type": "0"
+        },
+        {
+          "source_serialized_file": "globalgamemanagers.assets",
+          "path": "Resources/unity_builtin_extra",
+          "guid": "00000000000000000f00000000000000",
+          "type": "0"
+        }
+      ],
+      "error_count": 0
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/level0",
+      "bytes": 29048,
+      "sha256": "sha256:282961061b861a4d287e2036ece4d60e82734c7a95a1ed29cb49183ba2043129",
+      "object_count": 222,
+      "types": [
+        {
+          "type": "GameObject",
+          "count": 54
+        },
+        {
+          "type": "RectTransform",
+          "count": 52
+        },
+        {
+          "type": "MonoBehaviour",
+          "count": 50
+        },
+        {
+          "type": "CanvasRenderer",
+          "count": 27
+        },
+        {
+          "type": "CanvasGroup",
+          "count": 26
+        },
+        {
+          "type": "Canvas",
+          "count": 3
+        },
+        {
+          "type": "Transform",
+          "count": 2
+        },
+        {
+          "type": "MeshRenderer",
+          "count": 1
+        },
+        {
+          "type": "OcclusionCullingSettings",
+          "count": 1
+        },
+        {
+          "type": "MeshFilter",
+          "count": 1
+        },
+        {
+          "type": "BoxCollider",
+          "count": 1
+        },
+        {
+          "type": "RenderSettings",
+          "count": 1
+        },
+        {
+          "type": "LightmapSettings",
+          "count": 1
+        },
+        {
+          "type": "NavMeshSettings",
+          "count": 1
+        },
+        {
+          "type": "VideoPlayer",
+          "count": 1
+        }
+      ],
+      "external_references": [
+        {
+          "source_serialized_file": "level0",
+          "path": "globalgamemanagers.assets",
+          "guid": "00000000000000000000000000000000",
+          "type": "0"
+        },
+        {
+          "source_serialized_file": "level0",
+          "path": "sharedassets0.assets",
+          "guid": "00000000000000000000000000000000",
+          "type": "0"
+        },
+        {
+          "source_serialized_file": "level0",
+          "path": "Library/unity default resources",
+          "guid": "00000000000000000e00000000000000",
+          "type": "0"
+        }
+      ],
+      "error_count": 0
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/resources.assets",
+      "bytes": 5973132,
+      "sha256": "sha256:d7653dfc6c8b196fcc802c2efa240b9628560791d020d524c946fcc3a5bcda4f",
+      "object_count": 6959,
+      "types": [
+        {
+          "type": "MonoBehaviour",
+          "count": 2092
+        },
+        {
+          "type": "GameObject",
+          "count": 1494
+        },
+        {
+          "type": "RectTransform",
+          "count": 1491
+        },
+        {
+          "type": "CanvasRenderer",
+          "count": 1180
+        },
+        {
+          "type": "Sprite",
+          "count": 413
+        },
+        {
+          "type": "Texture2D",
+          "count": 114
+        },
+        {
+          "type": "TextAsset",
+          "count": 47
+        },
+        {
+          "type": "Shader",
+          "count": 37
+        },
+        {
+          "type": "Material",
+          "count": 32
+        },
+        {
+          "type": "Canvas",
+          "count": 14
+        },
+        {
+          "type": "ComputeShader",
+          "count": 13
+        },
+        {
+          "type": "MonoScript",
+          "count": 12
+        },
+        {
+          "type": "CanvasGroup",
+          "count": 12
+        },
+        {
+          "type": "Transform",
+          "count": 3
+        },
+        {
+          "type": "Mesh",
+          "count": 2
+        },
+        {
+          "type": "Cubemap",
+          "count": 1
+        },
+        {
+          "type": "Font",
+          "count": 1
+        },
+        {
+          "type": "SpriteAtlas",
+          "count": 1
+        }
+      ],
+      "external_references": [
+        {
+          "source_serialized_file": "resources.assets",
+          "path": "globalgamemanagers.assets",
+          "guid": "00000000000000000000000000000000",
+          "type": "0"
+        },
+        {
+          "source_serialized_file": "resources.assets",
+          "path": "sharedassets0.assets",
+          "guid": "00000000000000000000000000000000",
+          "type": "0"
+        },
+        {
+          "source_serialized_file": "resources.assets",
+          "path": "Library/unity default resources",
+          "guid": "00000000000000000e00000000000000",
+          "type": "0"
+        }
+      ],
+      "error_count": 0
+    },
+    {
+      "relative_path": "bpsr/BPSR_STEAM_Data/sharedassets0.assets",
+      "bytes": 141988,
+      "sha256": "sha256:cf581a81d88ac890a8e38054385e3438ffef4fc8fdc7849ff705f077fa51851f",
+      "object_count": 60,
+      "types": [
+        {
+          "type": "Sprite",
+          "count": 14
+        },
+        {
+          "type": "GameObject",
+          "count": 9
+        },
+        {
+          "type": "RectTransform",
+          "count": 9
+        },
+        {
+          "type": "MonoBehaviour",
+          "count": 8
+        },
+        {
+          "type": "Texture2D",
+          "count": 6
+        },
+        {
+          "type": "CanvasRenderer",
+          "count": 6
+        },
+        {
+          "type": "Shader",
+          "count": 3
+        },
+        {
+          "type": "Material",
+          "count": 2
+        },
+        {
+          "type": "PreloadData",
+          "count": 1
+        },
+        {
+          "type": "OcclusionCullingData",
+          "count": 1
+        },
+        {
+          "type": "SpriteAtlas",
+          "count": 1
+        }
+      ],
+      "external_references": [
+        {
+          "source_serialized_file": "sharedassets0.assets",
+          "path": "globalgamemanagers.assets",
+          "guid": "00000000000000000000000000000000",
+          "type": "0"
+        },
+        {
+          "source_serialized_file": "sharedassets0.assets",
+          "path": "Library/unity default resources",
+          "guid": "00000000000000000e00000000000000",
+          "type": "0"
+        }
+      ],
+      "error_count": 0
+    }
+  ],
+  "internal_unityfs_bundles": {
+    "complete": true,
+    "attempted": 186273,
+    "loaded": 186273,
+    "failed": 0,
+    "object_count": 10206944,
+    "duration_seconds": 273.344,
+    "types": [
+      {
+        "type": "GameObject",
+        "count": 3063251
+      },
+      {
+        "type": "Transform",
+        "count": 2880059
+      },
+      {
+        "type": "MeshFilter",
+        "count": 1142399
+      },
+      {
+        "type": "MeshRenderer",
+        "count": 1142385
+      },
+      {
+        "type": "MonoBehaviour",
+        "count": 570499
+      },
+      {
+        "type": "LODGroup",
+        "count": 316313
+      },
+      {
+        "type": "AssetBundle",
+        "count": 186273
+      },
+      {
+        "type": "RectTransform",
+        "count": 183192
+      },
+      {
+        "type": "CanvasRenderer",
+        "count": 123724
+      },
+      {
+        "type": "CanvasGroup",
+        "count": 116365
+      },
+      {
+        "type": "TextAsset",
+        "count": 85982
+      },
+      {
+        "type": "ParticleSystemRenderer",
+        "count": 66695
+      },
+      {
+        "type": "ParticleSystem",
+        "count": 66692
+      },
+      {
+        "type": "Material",
+        "count": 59717
+      },
+      {
+        "type": "Mesh",
+        "count": 54601
+      },
+      {
+        "type": "Texture2D",
+        "count": 34718
+      },
+      {
+        "type": "AnimationClip",
+        "count": 27666
+      },
+      {
+        "type": "Light",
+        "count": 19940
+      },
+      {
+        "type": "SortingGroup",
+        "count": 16761
+      },
+      {
+        "type": "Animator",
+        "count": 14126
+      },
+      {
+        "type": "Sprite",
+        "count": 9130
+      },
+      {
+        "type": "PlayableDirector",
+        "count": 4568
+      },
+      {
+        "type": "VFXRenderer",
+        "count": 4398
+      },
+      {
+        "type": "VisualEffect",
+        "count": 4398
+      },
+      {
+        "type": "SkinnedMeshRenderer",
+        "count": 3562
+      },
+      {
+        "type": "Avatar",
+        "count": 3115
+      },
+      {
+        "type": "Canvas",
+        "count": 1217
+      },
+      {
+        "type": "MonoScript",
+        "count": 659
+      },
+      {
+        "type": "ComputeShader",
+        "count": 409
+      },
+      {
+        "type": "Cubemap",
+        "count": 398
+      },
+      {
+        "type": "TrailRenderer",
+        "count": 336
+      },
+      {
+        "type": "Shader",
+        "count": 332
+      },
+      {
+        "type": "BoxCollider",
+        "count": 314
+      },
+      {
+        "type": "ScaleConstraint",
+        "count": 259
+      },
+      {
+        "type": "AnimatorController",
+        "count": 237
+      },
+      {
+        "type": "SpriteAtlas",
+        "count": 211
+      },
+      {
+        "type": "PreloadData",
+        "count": 187
+      },
+      {
+        "type": "RenderSettings",
+        "count": 187
+      },
+      {
+        "type": "LightmapSettings",
+        "count": 187
+      },
+      {
+        "type": "NavMeshSettings",
+        "count": 187
+      },
+      {
+        "type": "ShaderVariantCollection",
+        "count": 121
+      },
+      {
+        "type": "SpriteRenderer",
+        "count": 119
+      },
+      {
+        "type": "LightingSettings",
+        "count": 118
+      },
+      {
+        "type": "LineRenderer",
+        "count": 113
+      },
+      {
+        "type": "Rigidbody",
+        "count": 79
+      },
+      {
+        "type": "TerrainLayer",
+        "count": 73
+      },
+      {
+        "type": "OcclusionCullingData",
+        "count": 68
+      },
+      {
+        "type": "OcclusionCullingSettings",
+        "count": 68
+      },
+      {
+        "type": "VisualEffectAsset",
+        "count": 66
+      },
+      {
+        "type": "OcclusionArea",
+        "count": 66
+      },
+      {
+        "type": "Texture3D",
+        "count": 61
+      },
+      {
+        "type": "Texture2DArray",
+        "count": 60
+      },
+      {
+        "type": "ReflectionProbe",
+        "count": 50
+      },
+      {
+        "type": "AvatarMask",
+        "count": 43
+      },
+      {
+        "type": "WindZone",
+        "count": 42
+      },
+      {
+        "type": "SphereCollider",
+        "count": 39
+      },
+      {
+        "type": "OcclusionPortal",
+        "count": 35
+      },
+      {
+        "type": "Camera",
+        "count": 24
+      },
+      {
+        "type": "MeshCollider",
+        "count": 23
+      },
+      {
+        "type": "AudioListener",
+        "count": 12
+      },
+      {
+        "type": "Animation",
+        "count": 4
+      },
+      {
+        "type": "AudioSource",
+        "count": 4
+      },
+      {
+        "type": "Font",
+        "count": 4
+      },
+      {
+        "type": "PhysicMaterial",
+        "count": 1
+      },
+      {
+        "type": "SpriteMask",
+        "count": 1
+      },
+      {
+        "type": "StreamingController",
+        "count": 1
+      }
+    ],
+    "private_summary_shards": 16,
+    "policy": {
+      "raw_bundle_bytes_retained": false,
+      "object_payloads_exported": false,
+      "text_asset_contents_exported": false,
+      "credentials_or_tokens_extracted": false
+    }
+  }
+}

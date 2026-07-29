@@ -1,0 +1,351 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "policy": {
+    "object_payloads_exported": false,
+    "text_asset_contents_exported": false,
+    "names_redacted_when_sensitive": true,
+    "credentials_or_tokens_extracted": false
+  },
+  "target_types": [
+    "MonoScript",
+    "Sprite",
+    "SpriteAtlas",
+    "TextAsset",
+    "Texture2D"
+  ],
+  "candidate_bundles": 58727,
+  "failed_bundles": 0,
+  "objects": [
+    {
+      "type": "MonoScript",
+      "objects": 659,
+      "named": 659
+    },
+    {
+      "type": "Sprite",
+      "objects": 9130,
+      "named": 9130
+    },
+    {
+      "type": "SpriteAtlas",
+      "objects": 211,
+      "named": 211
+    },
+    {
+      "type": "TextAsset",
+      "objects": 85982,
+      "named": 85982
+    },
+    {
+      "type": "Texture2D",
+      "objects": 34718,
+      "named": 34718
+    }
+  ],
+  "redacted_names": 0,
+  "duration_seconds": 176.734,
+  "shards": [
+    {
+      "file": "0.jsonl.gz",
+      "bytes": 778584
+    },
+    {
+      "file": "1.jsonl.gz",
+      "bytes": 465798
+    },
+    {
+      "file": "2.jsonl.gz",
+      "bytes": 482727
+    },
+    {
+      "file": "3.jsonl.gz",
+      "bytes": 341364
+    },
+    {
+      "file": "4.jsonl.gz",
+      "bytes": 402896
+    },
+    {
+      "file": "5.jsonl.gz",
+      "bytes": 467510
+    },
+    {
+      "file": "6.jsonl.gz",
+      "bytes": 370550
+    },
+    {
+      "file": "7.jsonl.gz",
+      "bytes": 358372
+    },
+    {
+      "file": "8.jsonl.gz",
+      "bytes": 469311
+    },
+    {
+      "file": "9.jsonl.gz",
+      "bytes": 499494
+    },
+    {
+      "file": "a.jsonl.gz",
+      "bytes": 375124
+    },
+    {
+      "file": "b.jsonl.gz",
+      "bytes": 353909
+    },
+    {
+      "file": "c.jsonl.gz",
+      "bytes": 339015
+    },
+    {
+      "file": "d.jsonl.gz",
+      "bytes": 352447
+    },
+    {
+      "file": "e.jsonl.gz",
+      "bytes": 353465
+    },
+    {
+      "file": "f.jsonl.gz",
+      "bytes": 358098
+    }
+  ],
+  "name_analysis": {
+    "schema_version": 1,
+    "records": 130700,
+    "types": [
+      {
+        "type": "TextAsset",
+        "objects": 85982,
+        "unique_names": 61495,
+        "duplicate_name_instances": 24487,
+        "top_address_domains": [
+          {
+            "domain": "bin-ecs",
+            "count": 29125
+          },
+          {
+            "domain": "bin-collidermesh",
+            "count": 15425
+          },
+          {
+            "domain": "bin-areamap",
+            "count": 14671
+          },
+          {
+            "domain": "character-models",
+            "count": 12086
+          },
+          {
+            "domain": "bin-scenes",
+            "count": 7378
+          },
+          {
+            "domain": "bin-lipsync",
+            "count": 7083
+          },
+          {
+            "domain": "vegetation",
+            "count": 6302
+          },
+          {
+            "domain": "bin-bkrepflow",
+            "count": 4248
+          },
+          {
+            "domain": "bin-task",
+            "count": 1181
+          },
+          {
+            "domain": "bin-ai",
+            "count": 540
+          },
+          {
+            "domain": "bin-animconfig",
+            "count": 44
+          },
+          {
+            "domain": "unscoped-other",
+            "count": 22
+          },
+          {
+            "domain": "icons-unscoped",
+            "count": 18
+          },
+          {
+            "domain": "bin-bubbleepflow",
+            "count": 15
+          },
+          {
+            "domain": "epflow",
+            "count": 6
+          },
+          {
+            "domain": "bin-datas",
+            "count": 4
+          },
+          {
+            "domain": "bin-model",
+            "count": 4
+          },
+          {
+            "domain": "bin-simple_timeline",
+            "count": 3
+          },
+          {
+            "domain": "bin-animinfo",
+            "count": 1
+          },
+          {
+            "domain": "bin-camera",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "type": "Texture2D",
+        "objects": 34718,
+        "unique_names": 31483,
+        "duplicate_name_instances": 3235,
+        "top_address_domains": [
+          {
+            "domain": "<unaddressed>",
+            "count": 13445
+          },
+          {
+            "domain": "ui",
+            "count": 7773
+          },
+          {
+            "domain": "icons-unscoped",
+            "count": 6887
+          },
+          {
+            "domain": "materials",
+            "count": 2662
+          },
+          {
+            "domain": "housing",
+            "count": 1055
+          },
+          {
+            "domain": "scenes",
+            "count": 514
+          },
+          {
+            "domain": "unscoped-other",
+            "count": 498
+          },
+          {
+            "domain": "effect",
+            "count": 465
+          },
+          {
+            "domain": "character-models",
+            "count": 402
+          },
+          {
+            "domain": "weapon-models",
+            "count": 329
+          },
+          {
+            "domain": "phantom-factors",
+            "count": 260
+          },
+          {
+            "domain": "cutscene",
+            "count": 174
+          },
+          {
+            "domain": "meshes",
+            "count": 149
+          },
+          {
+            "domain": "old_env",
+            "count": 69
+          },
+          {
+            "domain": "badge",
+            "count": 48
+          },
+          {
+            "domain": "matcap",
+            "count": 29
+          },
+          {
+            "domain": "animations",
+            "count": 25
+          },
+          {
+            "domain": "eff",
+            "count": 19
+          },
+          {
+            "domain": "svcwarmup",
+            "count": 19
+          },
+          {
+            "domain": "vegetation",
+            "count": 19
+          }
+        ]
+      },
+      {
+        "type": "Sprite",
+        "objects": 9130,
+        "unique_names": 8590,
+        "duplicate_name_instances": 540,
+        "top_address_domains": [
+          {
+            "domain": "ui",
+            "count": 9053
+          },
+          {
+            "domain": "<unaddressed>",
+            "count": 66
+          },
+          {
+            "domain": "cutscene",
+            "count": 8
+          },
+          {
+            "domain": "face",
+            "count": 3
+          }
+        ]
+      },
+      {
+        "type": "MonoScript",
+        "objects": 659,
+        "unique_names": 659,
+        "duplicate_name_instances": 0,
+        "top_address_domains": [
+          {
+            "domain": "<unaddressed>",
+            "count": 659
+          }
+        ]
+      },
+      {
+        "type": "SpriteAtlas",
+        "objects": 211,
+        "unique_names": 211,
+        "duplicate_name_instances": 0,
+        "top_address_domains": [
+          {
+            "domain": "ui",
+            "count": 211
+          }
+        ]
+      }
+    ],
+    "additional_table_name_matches": [],
+    "note": "Object names are identities only. TextAsset contents were never read or retained."
+  }
+}

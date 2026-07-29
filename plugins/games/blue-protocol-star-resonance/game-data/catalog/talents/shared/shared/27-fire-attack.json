@@ -1,0 +1,300 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 27,
+  "stable_key": "talent.27",
+  "localization_key": "talent.27.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "shared",
+    "spec_key": "shared",
+    "classification_state": "current_build_multi_class_talent_tree_relation",
+    "row_key": 27,
+    "design_name": "火元素攻击+5",
+    "name_id": 487377733,
+    "description_id": 0,
+    "profession_id": 0,
+    "icon_address": "ui/atlas/weaponhero/new/common_icon03",
+    "talent_type": 1,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        1,
+        11512,
+        5
+      ]
+    ],
+    "buff_parameters": [],
+    "unlock_costs": [],
+    "talent_points_cost": 1,
+    "fight_value": 3,
+    "name_localization_key": "talent.27.name",
+    "tree_nodes": [
+      {
+        "node_id": 6743,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1360001
+        ]
+      },
+      {
+        "node_id": 27150,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          360005,
+          363005
+        ]
+      },
+      {
+        "node_id": 27149,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          353005
+        ]
+      },
+      {
+        "node_id": 27148,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          330005
+        ]
+      },
+      {
+        "node_id": 27147,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6904
+        ]
+      },
+      {
+        "node_id": 27145,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          333005
+        ]
+      },
+      {
+        "node_id": 27144,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6918
+        ]
+      },
+      {
+        "node_id": 27143,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          3180,
+          365005
+        ]
+      },
+      {
+        "node_id": 27142,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          359005
+        ]
+      },
+      {
+        "node_id": 27141,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          6914
+        ]
+      },
+      {
+        "node_id": 27140,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          348005
+        ]
+      },
+      {
+        "node_id": 1336001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1315006
+        ]
+      },
+      {
+        "node_id": 6575,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1324006
+        ]
+      },
+      {
+        "node_id": 40070,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1325006,
+          6570
+        ]
+      },
+      {
+        "node_id": 5411,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1320006
+        ]
+      },
+      {
+        "node_id": 33081,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          1353001
+        ]
+      },
+      {
+        "node_id": 1322006,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          7356
+        ]
+      },
+      {
+        "node_id": 6566,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1341001
+        ]
+      },
+      {
+        "node_id": 6565,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1314006
+        ]
+      },
+      {
+        "node_id": 70024,
+        "branch": 0,
+        "prerequisite_node_ids": []
+      },
+      {
+        "node_id": 27138,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          331005
+        ]
+      },
+      {
+        "node_id": 27139,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          319005,
+          3175
+        ]
+      },
+      {
+        "node_id": 6902,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          328005
+        ]
+      },
+      {
+        "node_id": 27137,
+        "branch": 0,
+        "prerequisite_node_ids": []
+      },
+      {
+        "node_id": 27136,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          303005
+        ]
+      },
+      {
+        "node_id": 27135,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          302005,
+          6893
+        ]
+      },
+      {
+        "node_id": 27134,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6890
+        ]
+      },
+      {
+        "node_id": 6559,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1309006,
+          5406
+        ]
+      },
+      {
+        "node_id": 33080,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1335001
+        ]
+      },
+      {
+        "node_id": 33079,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1329011
+        ]
+      },
+      {
+        "node_id": 6556,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1303006
+        ]
+      },
+      {
+        "node_id": 2400,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          2399,
+          6552
+        ]
+      },
+      {
+        "node_id": 10519,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          1307006
+        ]
+      },
+      {
+        "node_id": 2398,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          10517,
+          70022
+        ]
+      }
+    ],
+    "class_ids": [
+      3,
+      13
+    ],
+    "specialization_ids": [
+      119,
+      120,
+      128,
+      129
+    ]
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

@@ -1,8 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "locale": "en-US",
   "key": "game.skill.1714",
   "text": "Example Skill",
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "fixture-not-for-live-use"
+    }
+  ],
   "provenance": {
     "source": "reviewed-game-localization",
     "reference": "localization/en-US/skills/stormblade/iaido/1714-example-skill.json",

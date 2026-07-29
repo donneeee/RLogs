@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "file_count": 741,
+  "bytes": 41786827248,
+  "families": [
+    {
+      "key": "container_package",
+      "count": 332,
+      "bytes": 38589950707
+    },
+    {
+      "key": "media_stream",
+      "count": 137,
+      "bytes": 2360163137
+    },
+    {
+      "key": "native_plugin",
+      "count": 174,
+      "bytes": 290528820
+    },
+    {
+      "key": "il2cpp_native_code",
+      "count": 1,
+      "bytes": 217510448
+    },
+    {
+      "key": "native_executable",
+      "count": 7,
+      "bytes": 128741542
+    },
+    {
+      "key": "unity_player_data",
+      "count": 8,
+      "bytes": 78033252
+    },
+    {
+      "key": "anti_cheat",
+      "count": 7,
+      "bytes": 66454804
+    },
+    {
+      "key": "protected_client_base",
+      "count": 1,
+      "bytes": 34361168
+    },
+    {
+      "key": "embedded_browser_locale",
+      "count": 53,
+      "bytes": 14958427
+    },
+    {
+      "key": "container_index",
+      "count": 1,
+      "bytes": 3379012
+    },
+    {
+      "key": "client_support",
+      "count": 15,
+      "bytes": 2583126
+    },
+    {
+      "key": "audio",
+      "count": 2,
+      "bytes": 118103
+    },
+    {
+      "key": "container_auxiliary",
+      "count": 1,
+      "bytes": 44206
+    },
+    {
+      "key": "volatile_private_log",
+      "count": 1,
+      "bytes": 496
+    },
+    {
+      "key": "il2cpp_metadata",
+      "count": 1,
+      "bytes": 0
+    }
+  ]
+}

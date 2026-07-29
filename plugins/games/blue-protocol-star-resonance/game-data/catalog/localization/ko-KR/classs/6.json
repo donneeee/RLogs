@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.3.description",
+    "text": "<color=#fcbe03>근거리</color> 전투에 능하며, <color=#fcbe03>쌍도끼</color>를 무기로 사용합니다. 스킬은 불꽃처럼 빠르고 격렬하며, 뛰어난 <color=#fcbe03>작은 범위 공격</color> 능력을 가지고 있습니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367319",
+      "confidence": "verified"
+    }
+  }
+]

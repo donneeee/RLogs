@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.2.description",
+    "text": "Maneja um <color=#fcbe03>Cajado Gélido</color> e é eficaz em <color=#fcbe03>combate à distância</color>. Comanda o poder do gelo para causar <color=#fcbe03>dano em área ampla</color> e <color=#fcbe03>controle</color> formidável.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367318",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.8.description",
+    "text": "Eficaz em <color=#fcbe03>combate à distância</color>,<br>capaz de atingir áreas amplas com tiros rápidos. Aumentar a <color=#fcbe03>chance de Símbolo</color> aumenta muito a frequência de ativação.<br>Pode <color=#fcbe03>investir</color> em curta distância para causar dano massivo. Aumenta <color=#fcbe03>Taxa de Crítico</color> para causar dano massivo.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367324",
+      "confidence": "verified"
+    }
+  }
+]

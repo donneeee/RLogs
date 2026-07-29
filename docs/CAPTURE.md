@@ -24,11 +24,12 @@ legacy pcap and pcapng, supports pcapng sections and multiple interfaces,
 preserves capture truncation and original timestamps, and produces
 deterministic monotonic replay time.
 
-`tools/capture-inspect` provides a payload-free validation summary. Live Npcap
-and libpcap adapters and BPSR frame decoding are later slices. The downstream
-`engine/network` crate now handles allocation-conscious link/IP/TCP decoding
-and bounded deterministic TCP reconstruction for both replay and future live
-sources.
+`tools/capture-inspect` provides a payload-free validation summary. The shared
+`engine/core` pipeline now carries exact-allowlisted offline frames through
+link/IP/TCP decoding and bounded reconstruction. The selected trusted game
+plug-in receives only the resulting directional streams; the bundled BPSR
+plug-in performs BPSR framing and private JSONL journaling. A native live
+Npcap/libpcap adapter remains a later slice.
 
 ## Stored formats
 
@@ -42,9 +43,25 @@ and are never leaderboard uploads.
 
 ## Filtering and privacy
 
-Live capture applies the narrowest reliable BPF filter after the game
-connection is identified. Capture statistics and detected drops are recorded.
-RLogs must not silently switch to broad whole-machine capture.
+Live capture applies the narrowest reliable filter after the game process is
+identified. Capture statistics and detected drops are recorded. RLogs must not
+silently switch to broad whole-machine persistence.
+
+The initial Windows research helper snapshots exact established endpoint pairs
+owned by a process selected by the trusted game plug-in and gives only those
+pairs to `dumpcap`. The bundled BPSR manifest selects `BPSR_STEAM.exe`. This
+snapshot mode is safe for stable connections but cannot follow a world
+transition that rotates the remote server. See
+[Controlled Global capture](CONTROLLED_CAPTURE.md).
+
+The Windows live adapter tracks the process-owned socket table while capturing.
+Dumpcap sends broad TCP frames only through a child-process pipe; it receives no
+filesystem output path. RLogs holds unattributed frames in bounded memory long
+enough to confirm ownership, then discards unrelated traffic before TCP
+reconstruction, protocol decoding, or persistence. A newly observed flow can
+be retained only after its exact tuple is attributed to the selected game
+process; unknown flows expire from the bounded pending buffer. This same
+ownership-filter contract will sit above the Linux socket-owner implementation.
 
 Even filtered packet data is treated as private. Raw capture access requires
 developer mode and is not available to ordinary plugins.

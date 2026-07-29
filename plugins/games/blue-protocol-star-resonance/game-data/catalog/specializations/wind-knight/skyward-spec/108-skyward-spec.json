@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "kind": "specialization",
+  "id": 108,
+  "stable_key": "specialization.108",
+  "localization_key": "specialization.108.name",
+  "icon": null,
+  "attributes": {
+    "row_key": 108,
+    "specialization_name_id": 1208989341,
+    "talent_group_ids": [
+      108
+    ],
+    "name_localization_key": "specialization.108.name",
+    "class_id": 4,
+    "class_key": "wind-knight",
+    "folder_key": "skyward-spec",
+    "classification_state": "current_build_profession_talent_group_relation"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentSchoolTable",
+    "reference": "client-build:global/steam/24252055@sha256:087255cf24eeb1fcea3308decffa3df55f97dc55c5f9cf481af69ab07053b953",
+    "confidence": "corroborated"
+  }
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "zh-CN",
+    "key": "name_card.9030002.acquisition",
+    "text": "通关主线获取2",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-965230668",
+      "confidence": "verified"
+    }
+  }
+]

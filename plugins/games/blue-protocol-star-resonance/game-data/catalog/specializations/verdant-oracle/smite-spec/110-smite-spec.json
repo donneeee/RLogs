@@ -1,0 +1,33 @@
+{
+  "schema_version": 2,
+  "kind": "specialization",
+  "id": 110,
+  "stable_key": "specialization.110",
+  "localization_key": "specialization.110.name",
+  "icon": null,
+  "attributes": {
+    "row_key": 110,
+    "specialization_name_id": 1208989366,
+    "talent_group_ids": [
+      109,
+      110
+    ],
+    "name_localization_key": "specialization.110.name",
+    "class_id": 5,
+    "class_key": "verdant-oracle",
+    "folder_key": "smite-spec",
+    "classification_state": "current_build_profession_talent_group_relation"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentSchoolTable",
+    "reference": "client-build:global/steam/24252055@sha256:087255cf24eeb1fcea3308decffa3df55f97dc55c5f9cf481af69ab07053b953",
+    "confidence": "corroborated"
+  }
+}

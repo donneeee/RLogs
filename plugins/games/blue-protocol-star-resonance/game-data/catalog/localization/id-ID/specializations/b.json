@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "specialization.107.name",
+    "text": "Heavy Armor",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989340",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "specialization.117.name",
+    "text": "Falconer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989373",
+      "confidence": "verified"
+    }
+  }
+]

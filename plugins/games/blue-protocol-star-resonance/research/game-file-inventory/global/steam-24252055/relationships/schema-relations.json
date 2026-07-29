@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "source": {
+    "schema_index": "research/game-file-inventory/global/steam-24252055/schemas/index.json",
+    "duplication_policy": "This file summarizes typed fields and points to schema shards; it does not duplicate source rows or field records."
+  },
+  "totals": {
+    "tables": 565,
+    "semantic_fields": 864,
+    "strong_candidate_fields": 1448
+  },
+  "semantic_kinds": [
+    {
+      "semantic": "ctb_row_id",
+      "fields": 9,
+      "tables": 8,
+      "domains": [
+        "combat",
+        "entities",
+        "items-and-equipment"
+      ]
+    },
+    {
+      "semantic": "direct_vec2",
+      "fields": 2,
+      "tables": 1,
+      "domains": [
+        "world-and-instances"
+      ]
+    },
+    {
+      "semantic": "f32_pool_array_offset",
+      "fields": 9,
+      "tables": 6,
+      "domains": [
+        "combat",
+        "entities"
+      ]
+    },
+    {
+      "semantic": "i64_pool_array_offset",
+      "fields": 1,
+      "tables": 1,
+      "domains": [
+        "system-and-other"
+      ]
+    },
+    {
+      "semantic": "int_pool_array_offset",
+      "fields": 35,
+      "tables": 11,
+      "domains": [
+        "combat",
+        "entities",
+        "world-and-instances"
+      ]
+    },
+    {
+      "semantic": "localization_id",
+      "fields": 42,
+      "tables": 26,
+      "domains": [
+        "character-profile",
+        "combat",
+        "entities",
+        "items-and-equipment",
+        "professions",
+        "system-and-other",
+        "world-and-instances"
+      ]
+    },
+    {
+      "semantic": "row_id",
+      "fields": 548,
+      "tables": 548,
+      "domains": [
+        "character-profile",
+        "combat",
+        "entities",
+        "housing",
+        "items-and-equipment",
+        "localization",
+        "presentation",
+        "professions",
+        "quests-and-rewards",
+        "social",
+        "system-and-other",
+        "world-and-instances"
+      ]
+    },
+    {
+      "semantic": "scalar",
+      "fields": 174,
+      "tables": 13,
+      "domains": [
+        "character-profile",
+        "combat",
+        "entities",
+        "items-and-equipment",
+        "world-and-instances"
+      ]
+    },
+    {
+      "semantic": "string_pool_offset",
+      "fields": 44,
+      "tables": 24,
+      "domains": [
+        "character-profile",
+        "combat",
+        "entities",
+        "items-and-equipment",
+        "professions",
+        "social",
+        "world-and-instances"
+      ]
+    }
+  ],
+  "exact_candidate_kinds": [
+    {
+      "candidate_type": "f32_pool_array_offset",
+      "interpretations": 120,
+      "references": 81140,
+      "tables": 41,
+      "domains": [
+        "character-profile",
+        "combat",
+        "entities",
+        "housing",
+        "items-and-equipment",
+        "professions",
+        "system-and-other",
+        "world-and-instances"
+      ]
+    },
+    {
+      "candidate_type": "i64_pool_array_offset",
+      "interpretations": 3,
+      "references": 438,
+      "tables": 3,
+      "domains": [
+        "combat",
+        "system-and-other"
+      ]
+    },
+    {
+      "candidate_type": "int_pool_array_offset",
+      "interpretations": 836,
+      "references": 422356,
+      "tables": 300,
+      "domains": [
+        "character-profile",
+        "combat",
+        "entities",
+        "housing",
+        "items-and-equipment",
+        "localization",
+        "presentation",
+        "professions",
+        "quests-and-rewards",
+        "social",
+        "system-and-other",
+        "world-and-instances"
+      ]
+    },
+    {
+      "candidate_type": "opaque_8_byte_pool_array_offset",
+      "interpretations": 2,
+      "references": 3515,
+      "tables": 1,
+      "domains": [
+        "items-and-equipment"
+      ]
+    },
+    {
+      "candidate_type": "string_pool_offset",
+      "interpretations": 500,
+      "references": 173474,
+      "tables": 273,
+      "domains": [
+        "character-profile",
+        "combat",
+        "entities",
+        "housing",
+        "items-and-equipment",
+        "localization",
+        "presentation",
+        "professions",
+        "quests-and-rewards",
+        "social",
+        "system-and-other",
+        "world-and-instances"
+      ]
+    },
+    {
+      "candidate_type": "vec2_pool_array_offset",
+      "interpretations": 5,
+      "references": 134,
+      "tables": 3,
+      "domains": [
+        "entities",
+        "items-and-equipment",
+        "system-and-other"
+      ]
+    },
+    {
+      "candidate_type": "vec3_pool_array_offset",
+      "interpretations": 9,
+      "references": 502,
+      "tables": 4,
+      "domains": [
+        "combat",
+        "housing",
+        "professions",
+        "system-and-other"
+      ]
+    }
+  ],
+  "domains": [
+    {
+      "domain": "character-profile",
+      "tables": 31,
+      "semantic_fields": 45,
+      "strong_candidate_fields": 84
+    },
+    {
+      "domain": "combat",
+      "tables": 76,
+      "semantic_fields": 253,
+      "strong_candidate_fields": 259
+    },
+    {
+      "domain": "entities",
+      "tables": 37,
+      "semantic_fields": 69,
+      "strong_candidate_fields": 66
+    },
+    {
+      "domain": "housing",
+      "tables": 19,
+      "semantic_fields": 19,
+      "strong_candidate_fields": 34
+    },
+    {
+      "domain": "items-and-equipment",
+      "tables": 60,
+      "semantic_fields": 77,
+      "strong_candidate_fields": 166
+    },
+    {
+      "domain": "localization",
+      "tables": 5,
+      "semantic_fields": 5,
+      "strong_candidate_fields": 7
+    },
+    {
+      "domain": "presentation",
+      "tables": 22,
+      "semantic_fields": 20,
+      "strong_candidate_fields": 41
+    },
+    {
+      "domain": "professions",
+      "tables": 21,
+      "semantic_fields": 29,
+      "strong_candidate_fields": 109
+    },
+    {
+      "domain": "quests-and-rewards",
+      "tables": 26,
+      "semantic_fields": 26,
+      "strong_candidate_fields": 49
+    },
+    {
+      "domain": "social",
+      "tables": 25,
+      "semantic_fields": 26,
+      "strong_candidate_fields": 35
+    },
+    {
+      "domain": "system-and-other",
+      "tables": 194,
+      "semantic_fields": 190,
+      "strong_candidate_fields": 492
+    },
+    {
+      "domain": "world-and-instances",
+      "tables": 49,
+      "semantic_fields": 105,
+      "strong_candidate_fields": 106
+    }
+  ],
+  "pool_models": [
+    {
+      "pool_type": 1,
+      "element_width": 4,
+      "interpretation": "length_prefixed_i32_array",
+      "state": "current_build_structural"
+    },
+    {
+      "pool_type": 2,
+      "element_width": 8,
+      "interpretation": "length_prefixed_i64_array",
+      "state": "current_build_structural"
+    },
+    {
+      "pool_type": 3,
+      "element_width": 4,
+      "interpretation": "length_prefixed_f32_array",
+      "state": "current_build_structural"
+    },
+    {
+      "pool_type": 4,
+      "element_width": 8,
+      "interpretation": "length_prefixed_opaque_8_byte_array",
+      "state": "width_confirmed_meaning_unresolved"
+    },
+    {
+      "pool_type": 6,
+      "element_width": 1,
+      "interpretation": "length_prefixed_utf8_bytes",
+      "state": "current_build_structural"
+    },
+    {
+      "pool_type": 7,
+      "element_width": 8,
+      "interpretation": "length_prefixed_vec2_f32_array",
+      "state": "current_build_structural"
+    },
+    {
+      "pool_type": 8,
+      "element_width": 12,
+      "interpretation": "length_prefixed_vec3_f32_array",
+      "state": "current_build_structural"
+    }
+  ],
+  "evidence_rules": [
+    "A validated semantic field may be used by a reviewed data builder for this exact deployment and build.",
+    "An exact local-pool candidate proves a record boundary, not a final field name.",
+    "Localization and CTB row-ID membership are candidates until the field meaning is independently corroborated.",
+    "Static entity-definition IDs are never runtime entity UUIDs.",
+    "Recount damage arrays preserve signed 64-bit values and must not be narrowed to 32 bits."
+  ],
+  "privacy": {
+    "raw_rows_retained": false,
+    "raw_pool_text_retained": false,
+    "absolute_install_path_retained": false,
+    "credentials_or_login_data_read": false,
+    "packet_capture_used": false
+  }
+}

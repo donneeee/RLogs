@@ -1,0 +1,74 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 932,
+  "stable_key": "talent.932",
+  "localization_key": "talent.932.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "heavy-guardian",
+    "spec_key": "shared",
+    "classification_state": "current_build_multi_branch_talent_relation",
+    "row_key": 932,
+    "design_name": "同调领域",
+    "name_id": 1051087194,
+    "description_id": 0,
+    "profession_id": 9,
+    "icon_address": "ui/atlas/talent_passive_9/talent_passive_icon_general_tank_stonearea",
+    "talent_type": 4,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        3,
+        2201340,
+        1
+      ]
+    ],
+    "buff_parameters": [
+      [
+        0
+      ]
+    ],
+    "unlock_costs": [
+      [
+        1020056,
+        1
+      ]
+    ],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.932.name",
+    "tree_nodes": [
+      {
+        "node_id": 1492,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          935004,
+          8581,
+          7297
+        ]
+      },
+      {
+        "node_id": 932008,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          6076
+        ]
+      }
+    ],
+    "class_id": 9
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

@@ -1,0 +1,13 @@
+[package]
+name = "rlogs-plugin-lab"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rlogs-game-plugin-api = { path = "../../engine/game-plugin-api" }
+rlogs-plugin-api = { path = "../../engine/plugin-api" }
+rlogs-plugin-host = { path = "../../engine/plugin-host" }
+serde.workspace = true
+serde_json.workspace = true

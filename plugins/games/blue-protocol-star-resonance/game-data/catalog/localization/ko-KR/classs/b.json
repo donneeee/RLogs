@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.14.description",
+    "text": "<color=#fcbe03>원거리</color> 전투에 능하며, 뛰어난 공격력을 지니고 있습니다.<br>멀리서 고빈도 공격으로 광범위의 적에게 타격을 줄 수 있습니다. <color=#fcbe03>각인 확률 보너스</color>를 높이면 발동 빈도가 증가합니다.<br>근거리에서 <color=#fcbe03>차징</color>해 강력한 폭발 대미지를 줄 수 있습니다. <color=#fcbe03>치명타 확률</color>을 높여 큰 수익을 얻을 수 있습니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154217",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.4.name",
+    "text": "윈드 나이트",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964621",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.9.name",
+    "text": "헤비 가디언",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964626",
+      "confidence": "verified"
+    }
+  }
+]

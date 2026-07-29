@@ -11,6 +11,8 @@ Each folder owns one boundary:
 - `events`: region-aware canonical events and ordered run timelines;
 - `game-data`: validated, indexed runtime end products for IDs, localization, and assets;
 - `plugin-api`: public manifests, permissions, and subscriptions;
+- `plugin-host`: folder discovery, shared resources, dependencies, and ordered
+  before/after operation plans;
 - `core`: future orchestration and isolated plugin hosting;
 - `combat`: future deterministic encounter reducers;
 - `profiles`: future privacy-reviewed character projections;

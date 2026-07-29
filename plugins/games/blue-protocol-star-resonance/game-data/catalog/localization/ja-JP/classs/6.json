@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "class.3.description",
+    "text": "<color=#fcbe03>双斧</color>を武器とした<color=#fcbe03>近接戦闘</color>を得意とする。火の猛攻により攻撃を加速させることができ、<color=#fcbe03>小範囲攻撃</color>能力に優れている。",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367319",
+      "confidence": "verified"
+    }
+  }
+]

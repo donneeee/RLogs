@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.11.description",
+    "text": "Trägt einen <color=#fcbe03>Bogen</color>, der sich hervorragend für den <color=#fcbe03>Fernkampf</color> eignet. Schließt sich mit tierischen Begleitern zusammen, um <color=#fcbe03>großflächige Angriffe</color> zu entfesseln.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154214",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.5.name",
+    "text": "Grünes Orakel",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964622",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,1658 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1002851.name",
+    "text": "Épines de givre",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642155340",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1005201.name",
+    "text": "Spirale de contre-attaque",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642256452",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1005702.description",
+    "text": "Taillade tourbillonnante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-25155464",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1008030.name",
+    "text": "Bourbier enflammé",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642362183",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1008440.name",
+    "text": "Arcane ! Rafale d'azur",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642366572",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1011002.name",
+    "text": "Châtiment divin",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643296448",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1011111.description",
+    "text": "Taillade aérienne en spirale",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26191135",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.102615.name",
+    "text": "Faire le mort",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1906717850",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.102651.description",
+    "text": "Se transforme en un terrible Chevalier sangléroce",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-781738328",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.102658.description",
+    "text": "Invoque un élite : Sangléroce tyran pour une charge de <style=\"accent-gn\">3 s</style> avec ses défenses étendues. Inflige des <style=\"physical\">dégâts d'attaque</style> et projette les ennemis dans les airs pendant la charge. Les Défenses de Sangléroce déchirent la chair, infligeant <style=\"accent-gn\">100 %</style> de <linktext=3004><style=\"ItemQuality_5\">Plaie</style></linktext> aux ennemis touchés pendant <style=\"accent-gn\">15 s</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-781738335",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.102659.description",
+    "text": "Se transforme en Chevalier porc",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-781738336",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.10320016.name",
+    "text": "Canon à rayons",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1980886680",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1090902.name",
+    "text": "Furie de granit",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-652757680",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1091001.description",
+    "text": "Consomme <style=\"accent-gn\">45</style> points <style=\"accent-gn\">d'Énergie photonique</style> pour faire s'abattre un rayon de lumière sacrée sur la zone ciblée, infligeant des <style=\"physical\">dégâts d'attaque</style> et vous soignant en fonction des PV perdus (soin minimum : <style=\"accent-gn\">5 %</style> des PV max).<br><br><size=22><style=\"tipsYellow\">Astuce : à lancer quand vos PV sont bas, mais pas critiques, pour maximiser le soin tout en restant en sécurité.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35677381",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1100704.name",
+    "text": "Charge pétrifiante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-681217608",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1100740.name",
+    "text": "Arcane ! Spirale fatale",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-681217736",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1401.name",
+    "text": "Grâce divine du vent",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946577",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1421.name",
+    "text": "Percée en spirale",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946643",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1435.name",
+    "text": "Canon draconique",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946680",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1436.name",
+    "text": "Final ! Cyclone de vaillance",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946681",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1603.description",
+    "text": "<style=\"accent-gn\">Attaque de base : Balayage brûlant</style><br>Enchaîne jusqu'à quatre attaques, infligeant des <style=\"physical\">dégâts d'attaque</style> et récupérant <style=\"accent-gn\">3</style> <style=\"accent-gn\">Âmes de flamme</style>.<br><br><size=22><style=\"tipsYellow\">Astuce : comblez les temps morts avec des attaques de base lorsque l'Âme de flamme est trop basse pour d'autres compétences offensives.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505343251",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1612.description",
+    "text": "Manie l'arme comme un tourbillon, infligeant des <style=\"physical\">dégâts d'attaque</style> aux cibles dans un rayon de 3 mètres. Chaque rotation consomme <style=\"accent-gn\">260</style> points d'<style=\"accent-gn\">endurance</style>. Appuyez à nouveau pendant que la compétence est active pour y mettre fin.<br><br><size=22><style=\"tipsYellow\">Stratégie : L'endurance doit être judicieusement allouée entre l'application de dégâts et la survivabilité. En sécurité, elle peut être davantage utilisée pour infliger des dégâts et augmenter le niveau d'informe.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505343283",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.170108.name",
+    "text": "Marque de Corruption du Néant",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914941948",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.170211.description",
+    "text": "Corruption du Néant : Valse !",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-789963413",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.170211.name",
+    "text": "Corruption du Néant : Valse !",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914943063",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.170601.name",
+    "text": "Poursuite... POURSUITE !",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914947386",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1724.name",
+    "text": "Coup de tonnerre",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949913",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1726.description",
+    "text": "Double taillade iai ultra-rapide. Inflige des <style=\"physical\">dégâts d'attaque</style> aux ennemis au prix de <style=\"accent-gn\">50</style> points d'<style=\"accent-gn\">Intention de la lame</style>. Quand la vitesse d'attaque atteint <style=\"accent-gn\">25 %</style>|<style=\"accent-gn\">50 %</style>|<style=\"accent-gn\">90 %</style>, inflige <style=\"accent-gn\">1</style>|<style=\"accent-gn\">2</style>|<style=\"accent-gn\">3</style> attaque(s) supplémentaire(s). S'il reste des points d'<style=\"accent-gn\">Intention de la lame</style> après la frappe, la compétence peut être relancée. <br><br><size=22><style=\"tipsYellow\">Astuce : compétence principale de la spécialisation. Consomme des points d'Intention de la lame pour infliger des dégâts. Libérez quand l'Intention de la lame est à son maximum.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344409",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1917.description",
+    "text": "Consomme <style=\"accent-gn\">40</style> points de <style=\"accent-gn\">Rage</style> pour rassembler vos forces et foncer vers l'avant, repoussant tous les ennemis sur la trajectoire et infligeant des <style=\"physical\">dégâts d'attaque</style> continus. À la fin de la ruée, déclenche un écrasement dévastateur qui inflige d'énormes <style=\"physical\">dégâts d'attaque</style>. La ruée peut être réorientée. Les cibles avec Résilience ne sont pas repoussées mais voient cette dernière réduite.<br><br><size=22><style=\"tipsYellow\">Astuce : à lancer contre des ennemis sans Super armure ou pour entamer la résistance de cibles coriaces.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346555",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1933.description",
+    "text": "<style=\"accent-gn\">Attaque de base : Tranchant de hallebarde</style><br>Un combo puissant de quatre frappes avec une arme à large lame, chaque frappe infligeant des <style=\"physical\">dégâts d'attaque</style> et générant de la <style=\"accent-gn\">Rage</style><br><style=\"accent-gn\">Attaque plongeante : Assaut</style><br>Levez votre lame bien haut et plongez depuis les airs, taillant les ennemis sur votre descente. À l'impact au sol, inflige des <style=\"physical\">dégâts d'attaque</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346617",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.1938.name",
+    "text": "Bastion du courage",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952128",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.199903.description",
+    "text": "Poing de pierre",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-792666280",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.2001631.name",
+    "text": "Flèche scindée",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933585128",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.2002440.name",
+    "text": "Arcane ! Étreinte foudroyante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933618919",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.2230.description",
+    "text": "Bande l'arc en continu pour tirer un barrage de flèches sur les ennemis, infligeant des <style=\"physical\">dégâts d'attaque</style>. Relancez pour l'interrompre plus tôt.<br><style=\"accent-gn\">Dans l'état de Refonte photonique</style>, la consommation d'énergie photonique s'arrête jusqu'au prochain lancement d'attaque spéciale et toucher les ennemis rend jusqu'à <style=\"accent-gn\">42</style> d'<style=\"accent-gn\">énergie photonique</style>.<br><br><size=22><style=\"tipsYellow\">Astuce : incantez-la pendant l'état de Refonte photonique pour interrompre la consommation d'énergie photonique et régénérer de l'énergie photonique.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374928",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.2231.description",
+    "text": "Entre en état de Concentration, augmentant fortement la célérité et réduisant le temps de rechargement des attaques spéciales de <style=\"accent-gn\">50 %</style>.<br><br><size=22><style=\"tipsYellow\">Astuce : à associer de préférence à la spécialisation Fauconnerie. À utiliser juste avant d'activer la Refonte photonique pour un temps d'activité maximal.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374929",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.2336.description",
+    "text": "Une mélodie de performance mobile. Pendant la performance, soigne continuellement les alliés. Inflige des <style=\"magic\">dégâts magiques</style> aux ennemis proches. <style=\"accent-gn\">Chaque</style> allié soigné augmente les soins de <style=\"accent-gn\">6 %</style>, jusqu'à <style=\"accent-gn\">30 %</style>. <style=\"accent-gn\">Chaque</style> ennemi touché augmente les dégâts de <style=\"accent-gn\">6 %</style>, jusqu'à <style=\"accent-gn\">30 %</style>. <br><br><size=22><style=\"tipsYellow\">Astuce : soins et dégâts continus. Adaptez votre position selon le nombre et l'emplacement des cibles pour une efficacité maximale.</size></style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505376023",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.2420.description",
+    "text": "Gagne une détermination sans faille et lance <style=\"accent-gn\">5</style> boucliers sur les ennemis dans un rayon de <style=\"accent-gn\">10 m</style> (le plus proche en premier), infligeant des <style=\"physical\">dégâts d'attaque</style> et les <linktext=3000><style=\"ItemQuality_5\">interrompant</style></linktext>. Ensuite, lance <style=\"accent-gn\">1</style> bouclier toutes les <style=\"accent-gn\">2 s</style> et gagne <style=\"accent-gn\">10</style> points <style=\"accent-gn\">d'Énergie photonique</style> à chaque fois. Pendant les <style=\"accent-gn\">10 s</style> suivantes, chaque instance de dégâts subis est réduite d'un pourcentage des PV max du conjurateur, et ce dernier contre-attaque automatiquement la <style=\"accent-gn\">compétence létale</style>. <br><br><size=22><style=\"tipsYellow\">Astuce : cette compétence ne nécessite ni Énergie photonique ni Sceau sacré pour être lancée et offre une bonne survivabilité, ce qui la rend idéale pour engager le combat.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505377073",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.2900540.description",
+    "text": "Entre en résonance avec la puissance de l'âme d'Olvera, se précipite d'avant en arrière en rassemblant les ennemis sur le trajet et inflige des <style=\"physical\">dégâts d'attaque</style>. A une chance d'appliquer Graine de foudre aux cibles lors des dégâts, durant <style=\"accent-gn\">10 s</style>. Infliger des dégâts à une cible marquée par Graine de foudre la fait exploser (TdR <style=\"accent-gn\">2 s</style>), infligeant des <style=\"magic\">dégâts magiques</style> partagés entre les ennemis proches. Toute cible vaincue avec Graine de foudre réduit le temps de rechargement de <style=\"accent-gn\">15 s</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668660237",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.2900640.description",
+    "text": "La puissance d'âme de la Tour de résonance empêche l'équipe d'être vaincue pendant un certain temps, et les PV ne peuvent pas descendre en dessous d'un certain pourcentage.<br><style=\"accent-gn\">[Ne peut pas être affecté par le même effet pendant 100 s.]</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668661326",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.2900901.name",
+    "text": "Attaque de base de Fafala",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138287248",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.2900905.name",
+    "text": "Cercle divin de Fafala",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138287252",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.300488.description",
+    "text": "Super potion de révélation",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-859935168",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.300496.description",
+    "text": "Pousser",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-859935199",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.300499.description",
+    "text": "Potion de révélation",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-859935202",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3012.description",
+    "text": "Libère une vague d'énergie qui <linktext=3000><style=\"ItemQuality_5\">interrompt</style></linktext> toutes les cibles dans un rayon de <style=\"accent-gn\">10 m</style> et les <linktext=1092><style=\"ItemQuality_5\">provoque</style></linktext>. Augmente considérablement l'hostilité envers les cibles affectées pendant <style=\"accent-gn\">10</style> s.<br><br><style=\"accent-gn\">Cette compétence n'est pas affectée par les effets de TdR</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505408623",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3026.name",
+    "text": "Marée silencieuse",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818014166",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3105.description",
+    "text": "Frappe le sol <style=\"accent-gn\">5</style> m devant vous, créant une violente onde de choc qui <linktext=3005><style=\"ItemQuality_5\">étourdit</style></linktext> tous les <style=\"accent-gn\">ennemis</style> à portée. Si un ennemi possède une <linktext=1091><style=\"ItemQuality_5\">super armure</style></linktext>, l'attaque inflige à la place d'importants dégâts à celle-ci. <br>Si vous esquivez avec succès une <style=\"accent-gn\">compétence létale</style>, le <style=\"accent-gn\">temps de recharge</style> est immédiatement réinitialisé.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505409682",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3302.description",
+    "text": "Invoque une singularité gravitationnelle qui attire continuellement les <style=\"accent-gn\">ennemis</style> proches. Les unités affectées par la singularité subissent des dégâts périodiques et sont <linktext=3005><style=\"ItemQuality_5\">étourdies</style></linktext>. <br>Si l'ennemi possède la <linktext=1091><style=\"ItemQuality_5\">Super armure</style></linktext>, cela inflige à la place de lourds dégâts de Super armure.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505411857",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3314.name",
+    "text": "Ordre silencieux",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818017398",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3350104.name",
+    "text": "Chute onirique",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200863755",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3360110.name",
+    "text": "Calamité Illusoire Émergente",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1202049705",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3705.description",
+    "text": "Érige un <i><style=\"accent-gn\">Bouclier de blocage</style></i> pendant <style=\"accent-gn\">2 s</style>. Le <i><style=\"accent-gn\">Bouclier de blocage</style></i> bloque le prochain coup reçu. Un blocage réussi réduit le <style=\"accent-gn\">TdR</style> de toutes vos compétences d'arme.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505416216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3901.description",
+    "text": "<style=\"accent-gn\">Se transforme en boss</style> Ogre infernal qui libère un souffle de feu vers l'avant, infligeant des <style=\"physical\">dégâts d'attaque</style> et <linktext=3000><style=\"ItemQuality_5\">interrompant</style></linktext> les cibles touchées. Simultanément, applique un <style=\"accent-gn\">soin</style> sur vous, et <style=\"accent-gn\">100 %</style> des soins excédentaires sont convertis en <style=\"accent-gn\">Bouclier</style> d'une durée de <style=\"accent-gn\">20 s</style>. La forme transformée réduit les dégâts subis de <style=\"accent-gn\">50 %</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418390",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3905.name",
+    "text": "Acrobatie ! Ruée du sangléroce",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023900",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3909.description",
+    "text": "[Invocation élite] - Renard du Néant. Bondit en avant à une vitesse aveuglante, infligeant des <style=\"physical\">dégâts d'attaque</style> d'effet de zone et augmentant la <style=\"accent-gn\">célérité</style> pendant <style=\"accent-gn\">20 s</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418398",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3911.description",
+    "text": "<style=\"accent-gn\">Invoque</style> Tatta pour accorder la Volonté guerrière à toute l'équipe, empêchant tous les alliés d'être vaincus et maintenant leurs PV au-dessus d'un certain seuil pendant un certain temps. <br><style=\"accent-gn\">Épuisé : Ne peut pas être affecté par le même effet pendant 60 s (les effets d'épuisement sont renforcés dans les donjons de groupe du mode Cauchemar).</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418423",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3915.name",
+    "text": "Acrobatie ! Tir frénétique",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023933",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3921.name",
+    "text": "Arcane ! Décret temporel",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023962",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3932.description",
+    "text": "Résonne avec la puissance de l'Élite : Cracheur cramoisi se transforme en sa forme. Inflige des <style=\"physical\">dégâts d'attaque</style> aux ennemis proches et applique <style=\"accent-gn\">100 %</style> de <linktext=3004><style=\"ItemQuality_5\">Blessure</style></linktext> pendant <style=\"accent-gn\">15 s</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418490",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3938.name",
+    "text": "Arcane ! Tech de cocon",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024002",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3939.description",
+    "text": "<style=\"accent-gn\">Invoque l'élite</style> Grand sanglier de guerre qui lance un Orbe de foudre vers l'avant, infligeant des <style=\"physical\">dégâts d'attaque</style>. <br>Lors du lancement de la compétence, votre <style=\"accent-gn\">bonus de lumière</style> augmente pendant un certain temps.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418497",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3943.name",
+    "text": "Arcane ! Poussée infernale",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024030",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3955.description",
+    "text": "<style=\"accent-gn\">Invoque</style> le boss Caïd Chou, qui charge brièvement avant de frapper le sol avec un marteau, infligeant des <style=\"physical\">dégâts d'attaque</style>. <br>Après l'incantation, votre effet passif est verrouillé sur le sceau affiché pendant <style=\"accent-gn\">20 s</style>, et son effet est augmenté de <style=\"accent-gn\">100 % à 150 %</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418559",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3964.description",
+    "text": "<style=\"accent-gn\">Invoque</style> l'élite Chou lugubre qui charge brièvement son attaque avant de frapper avec un espadon, infligeant des <style=\"physical\">dégâts d'attaque</style> aux cibles dans la zone. <br>Après l'incantation, les <style=\"accent-gn\">CRIT</style> et les <style=\"accent-gn\">dégâts critiques</style> sont augmentés pendant un certain temps (les valeurs fluctuent en fonction du sceau du Chou).",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418591",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3968.name",
+    "text": "Arcane ! Lame de corruption du néant",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024101",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3982.name",
+    "text": "Arcane ! Mage céleste",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024161",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.3984.name",
+    "text": "Quitter la transformation en Lucy",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024163",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.420134.name",
+    "text": "Placer Graine de feu",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-2026418617",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.4308.name",
+    "text": "Tirer des bulles",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818053306",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.4528.description",
+    "text": "Propulsez-vous dans les airs et envolez-vous vers l'avant.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450044",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.4531.name",
+    "text": "Dérapage turbo",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055576",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.4571.description",
+    "text": "Fonce à travers les vagues ! Projette des éclaboussures et file à grande vitesse, laissant une éblouissante \"traînée de nage\" !",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450202",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.4622.name",
+    "text": "Au-delà des étoiles",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056633",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.4631.name",
+    "text": "Parade des citrouilles",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056665",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.4652.name",
+    "text": "Accélération foudroyante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818056732",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.4671.description",
+    "text": "Un oiseau prend son envol, porteur d'une lettre des terres enneigées ! Lancez ce sort pour voler vers l'avant à grande vitesse.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451291",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.4694.description",
+    "text": "S'élance vers l'avant sur une certaine distance et augmente la vitesse de déplacement.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451360",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.4713.description",
+    "text": "Un rythme envoûtant à suivre ! Après l'incantation, permet de flotter et glisser rapidement vers l'avant.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452184",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.5250.description",
+    "text": "Coup de pied",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505482805",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.5520.description",
+    "text": "Explose après un court décompte, gelant les joueurs à proximité.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505485973",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.5620.name",
+    "text": "Invocation de lanterne festive",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818092568",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.6004.name",
+    "text": "Explosion de la bourrasque",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818121909",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.6006.name",
+    "text": "Place une charge explosive.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818121911",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.6008.name",
+    "text": "Lancer de baril explosif",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818121913",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.6010.name",
+    "text": "Bombe détonante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818121938",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.6011.description",
+    "text": "Détonation",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505516433",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.6507.description",
+    "text": "Améliore les armes pendant <style=\"physical\">15 s</style> après utilisation. Les attaques à l'arme <style=\"physical\">déclenchent une tornade</style> avec un <style=\"physical\">bonus de portée de 100 % et un bonus de distance de 50 %</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521851",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.6514.name",
+    "text": "Marée envahissante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127387",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.6516.description",
+    "text": "<style=\"physical\">Des vignes poussent et des fleurs éclosent sous tous les </style>pisteurs sur la carte.<br>Les plantes enchevêtrent les pisteurs pendant <style=\"physical\">3 s</style>.<br><i><style=\"text_third_gray\">\"... Et voilà !\"</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521883",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.800110.description",
+    "text": "Don de vie",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1055608627",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "skill.8110062.description",
+    "text": "Bulle avant",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-515630859",
+      "confidence": "verified"
+    }
+  }
+]

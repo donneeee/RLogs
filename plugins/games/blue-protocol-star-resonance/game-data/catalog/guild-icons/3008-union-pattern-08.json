@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "kind": "guild_icon",
+  "id": 3008,
+  "stable_key": "guild_icon.3008",
+  "localization_key": null,
+  "icon": "icons/guilds/badges/3008-union_pattern_08.png",
+  "attributes": {
+    "union_icon_id": 3008,
+    "icon_path": "ui/atlas/union/union_pattern_08"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.UnionIconTable",
+    "reference": "client-build:global/steam/24252055@sha256:2d5fce33d55e6bf14fa436e09037aca02cb5dba3021caec6da64f5bb22a3dad1",
+    "confidence": "corroborated"
+  }
+}

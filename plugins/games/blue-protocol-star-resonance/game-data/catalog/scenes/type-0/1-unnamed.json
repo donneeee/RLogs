@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "kind": "scene",
+  "id": 1,
+  "stable_key": "scene.1",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "scene_id": 1,
+    "name_id": 0,
+    "scene_type": 0,
+    "scene_subtype": 1,
+    "parent_scene_id": 0,
+    "shares_parent_scene_data": false,
+    "scene_resource_id": 1,
+    "scene_ui_refs": [
+      0
+    ],
+    "map_size": [
+      0,
+      0
+    ],
+    "map_offset": [
+      0,
+      0
+    ],
+    "audio_bank_refs": [],
+    "born_point_id": 1,
+    "revive_table_ids": [
+      3
+    ],
+    "background_music_refs": [
+      7,
+      25
+    ],
+    "fall_distance": 1,
+    "weather_id": -1,
+    "day_night_id": 0,
+    "cutscene_id": 0,
+    "main_ui_id": 0,
+    "can_change_layer": false,
+    "flow_id": 0,
+    "show_minimap_mode": 0,
+    "minimap_ratio": 0,
+    "ambient_audio_event": "",
+    "reverb_audio_event": "",
+    "default_scene_area_id": 0,
+    "movement_sync_config_id": 0,
+    "has_water": false
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SceneTable",
+    "reference": "client-build:global/steam/24252055@sha256:c1d4723bb5dd9db0691fe85f688aaee9929a5652e649ce8ad803263f9f8cc30f",
+    "confidence": "corroborated"
+  }
+}

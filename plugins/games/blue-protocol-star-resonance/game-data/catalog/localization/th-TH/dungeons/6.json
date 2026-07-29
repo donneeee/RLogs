@@ -1,0 +1,1100 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.10005.name",
+    "text": "ดันเจี้ยนสำหรับทดสอบโลจิกเท่านั้น",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1098924837",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.1011.description",
+    "text": "เข้าสู่โลกTina's Mindrealm ปลุกจิตสำนึก<br>ของTina ช่วยเธอให้พ้นจาก Void Mist",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766309964",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.1033.description",
+    "text": "เข้าสู่โลกTina's Mindrealm ปลุกจิตสำนึกของ Tina ช่วยเธอให้พ้นจาก Void Mist<br><size=22><style=\"tipsYellow\">เคล็ดลับ: คุณสามารถใช้อาหารและยาเพื่อเพิ่มความสามารถในการต่อสู้ชั่วคราว เพื่อให้เข้าร่วมการท้าทายได้ดีขึ้น</style></size><br><size=22><style=\"tipsYellow\">ผ่านด่านแต่ละครั้งหากไม่ดรอปชุดทอง โอกาสครั้งถัดไปจะเพิ่มขึ้น ภายใน 5 ครั้งจะต้องดรอปชุดทอง 1 ชิ้น</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766310032",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.1101.description",
+    "text": "ซากโบราณลึกลับของ Bapharian Divine ไม่มีใครรู้ว่ามันมีอยู่เพื่ออะไร...เพราะทุกคนที่เข้าไปไม่เคยกลับออกมา",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766311020",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.1102.name",
+    "text": "Towering Ruin",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074506035",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.1122.name",
+    "text": "Towering Ruin",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074506101",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.12000.name",
+    "text": "ห้องโถงกิลด์",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1098996706",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.12015.description",
+    "text": "ตั้งทีมกับเพื่อนในกิลด์ไปที่พื้นที่ล่า ทำเป้าหมายร่วมกันสำเร็จ และรับรางวัลท้าทาย!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1665979522",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.12018.name",
+    "text": "นักล่ากิลด์ - Normal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1098996747",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.12022.name",
+    "text": "นักล่ากิลด์ - Normal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1098996774",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.1221.type_name",
+    "text": "ระดับ Normal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1944159143",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.1222.name",
+    "text": "Dragon Claw Valley",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074507190",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.13013.name",
+    "text": "ศึกตัดสิน! ดินแดนแห่งบุปผามายา",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1099032679",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.1321.description",
+    "text": "ออกสำรวจค่ายเงามืดที่ซ่อนอยู่ใต้ดิน เดินทางฝ่า Infection เพื่อตามหาและเอาชนะ Denvel",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766313264",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.1333.description",
+    "text": "สำรวจค่ายที่ซ่อนอยู่ใต้ดินในที่มืดมิด เดินทางใน Void Corruption เพื่อค้นหาและท้าทาย Denvel<br><style=\"tipsYellow\">Tips: คุณสามารถใช้ทำอาหารและยาเพื่อเพิ่มพลังการต่อสู้ในระยะสั้น เพื่อร่วมท้าทายได้อย่างมีประสิทธิภาพ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766313299",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.15010.name",
+    "text": "ความทรงจำ 48: Normal - กำจัดมอนสเตอร์",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1099104550",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.1632.type_name",
+    "text": "Hard",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1944163533",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.17505.name",
+    "text": "ความทรงจำ 19: Normal - ยึดครองดินแดน",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1099181841",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.20501.name",
+    "text": "เส้นทาง Protector 7: ทีม Protector",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100116199",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.20702.name",
+    "text": "เส้นทาง Protector 20: ทีม Protector",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100118378",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.20802.description",
+    "text": "หน้าที่ที่แนะนำ: <style=\"cryo\">Protector</style><br>Protector ทีมให้กำจัดศัตรู และลด DMG ที่ทีมได้รับ<br><br><size=22><style=\"tipsYellow\">เทคนิค:นำศัตรูไปปล่อยสกิลDMG ต่อเนื่องให้ห่างจากเพื่อน และหนีออกจากโซนอันตราย</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667102245",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.20802.name",
+    "text": "เส้นทาง Protector 17: ทีม Protector",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100119467",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.22402.description",
+    "text": "หน้าที่ที่แนะนำ: <style=\"pyro\">Attack</style><br>กำจัดเสาไม้ให้มากที่สุด<br><br><size=22><style=\"tipsYellow\">เทคนิค: พกสกิลระยะไกลหรือโจมตีวงกว้างเพื่อจัดการเสาไม้ที่กระจาย</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667169763",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.22402.name",
+    "text": "เส้นทาง Power 19: การฝึกเสาไม้",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100186985",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.22602.name",
+    "text": "เส้นทาง Power 14: ล่ามอนสเตอร์",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100189163",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.23101.description",
+    "text": "หน้าที่ที่แนะนำ: <style=\"pyro\">Attack</style><br>พยายามทำลายเสาไม้<br><br><size=22><style=\"tipsYellow\">เทคนิค: พกสกิลโจมตีแรงๆ มาด้วย</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667202432",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.23302.description",
+    "text": "หน้าที่ที่แนะนำ: <style=\"pyro\">Attack</style><br>ตามครูฝึกไปชนะศัตรูที่แข็งแกร่ง พยายามไม่ให้ตัวเองบาดเจ็บ<br><br><size=22><style=\"tipsYellow\">เทคนิค: บริเวณด้านหน้าศัตรูอันตรายมาก พยายามอยู่ด้านหลังศัตรูเวลาต่อสู้</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667204611",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.23602.name",
+    "text": "เส้นทาง Power 28: ล่ามอนสเตอร์",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1100225100",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.24105.description",
+    "text": "ตำแหน่งแนะนำ: <style=\"pyro\">สนับสนุน</style><br>ช่วยเหลือเพื่อนร่วมทีมในการชนะศัตรูที่แข็งแกร่ง<br><br><size=22><style=\"tipsYellow\">กลยุทธ์สกิล: ให้ความสนใจกับการรักษา HP ของเพื่อนร่วมทีม</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667238373",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.24107.description",
+    "text": "ตำแหน่งแนะนำ: <style=\"pyro\">สนับสนุน</style><br>ช่วยเหลือเพื่อนร่วมทีมในการชนะศัตรูที่แข็งแกร่ง<br><br><size=22><style=\"tipsYellow\">กลยุทธ์สกิล: ให้ความสนใจกับการรักษา HP ของเพื่อนร่วมทีม</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667238375",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.24110.description",
+    "text": "ตำแหน่งแนะนำ: <style=\"pyro\">สนับสนุน</style><br>ช่วยเหลือเพื่อนร่วมทีมในการชนะศัตรูที่แข็งแกร่ง<br><br><size=22><style=\"tipsYellow\">กลยุทธ์สกิล: ให้ความสนใจกับการรักษา HP ของเพื่อนร่วมทีม</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667238401",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.24403.description",
+    "text": "ตำแหน่งแนะนำ: <style=\"pyro\">สนับสนุน</style><br>ช่วยเหลือเพื่อนร่วมทีมในการชนะศัตรูที่แข็งแกร่ง<br><br><size=22><style=\"tipsYellow\">กลยุทธ์สกิล: ให้ความสนใจกับการรักษา HP ของเพื่อนร่วมทีม</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1667241638",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.30118.name",
+    "text": "Stimen Vaults Floor 18",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297804",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.30154.name",
+    "text": "Stimen Vaults Floor 54",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297932",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.30167.name",
+    "text": "ชั้นที่ 67",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297968",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.30168.name",
+    "text": "ชั้นที่ 68",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101297969",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.31102.name",
+    "text": "Stimen Vaults Floor 2",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333702",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.31108.description",
+    "text": "<style=\"tipsYellow\">แนะนำ<b>\"Phantom Intensity\" ถึง 680</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668316486",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.31124.description",
+    "text": "<style=\"tipsYellow\">แนะนำ<b>\"Phantom Intensity\" ถึง 1200</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668316548",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.31139.description",
+    "text": "<style=\"tipsYellow\">แนะนำ<b>\"Phantom Intensity\" ถึง 1500</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668316586",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.31152.description",
+    "text": "<style=\"tipsYellow\">แนะนำ<b>\"Phantom Intensity\" ถึง 2050</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668316645",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.31153.name",
+    "text": "Stimen Vaults Floor 53",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101333868",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.32106.name",
+    "text": "Stimen Vaults Floor 6",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369643",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.32111.description",
+    "text": "<style=\"tipsYellow\">แนะนำ<b>[Dispel Force] ถึง 1610</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668352449",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.32137.name",
+    "text": "Stimen Floor 37",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369743",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.32138.description",
+    "text": "<style=\"tipsYellow\">แนะนำ<b>[Dispel Force] ถึง 2890</b></style><br>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1668352522",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.32139.name",
+    "text": "Stimen Floor 39",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369745",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.32141.name",
+    "text": "Stimen Floor 41",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1101369770",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.5200.description",
+    "text": "Lamond's Office",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766455856",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.5211.description",
+    "text": "Lamond's Office",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766455890",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.5501.name",
+    "text": "Dragon Claw Valley",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074654138",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.5813.description",
+    "text": "สำรวจซากปรักหักพังลึกลับ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766462426",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.5901.name",
+    "text": "The Silent Hunt",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074658494",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.6031.description",
+    "text": "การฝึกประจำปีของ Kanamia มีเพียงนักรบที่หายากที่สุดเท่านั้นที่จะได้รับการยอมรับ",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766489715",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.6221.name",
+    "text": "Depths of Decay",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074686874",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.7002.name",
+    "text": "Parkour หลายคน",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074720568",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.7150.name",
+    "text": "เจ้าแห่งโลก",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074721820",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.8002.name",
+    "text": "Golem Arena",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1074756505",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.8021.description",
+    "text": "Demi-Human Duel",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766561556",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.9001.description",
+    "text": "กิจกรรมพักผ่อน",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766597427",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "dungeon.9206.description",
+    "text": "<color=#f04f84>แนะนำให้มีค่า [Disillusion Strength] ถึง 2650</color><br><i><style=\"text_third_gray\">พลังลึกลับแห่งผืนป่ามอบความสามารถพิเศษให้กับหน้าที่ (Role) ที่แตกต่างกัน:<br>สายแทงค์: เมื่อสกิลอาชีพสร้างความเสียหาย จะสร้างความเสียหายคงที่เพิ่มเติมตาม Def + HP <re>สายซัพพอร์ต: เมื่อใช้สกิลที่ไม่ใช่การโจมตี จะสร้างความเสียหายวงกว้างรอบตัว 1 ครั้งสายโจมตี: พลังโจมตี Disillusion +10%</style></i><br>ในโลกแฟนตาซี Stackลึกที่ถูกเรียกว่า [ภาพลวงตา] นั้น ปกคลุมไปด้วยม่านหมอกสลัวที่ถักทอขึ้นจากผลึกขนาดเล็ก เหล่าช่างฝีมือเชื่อว่าสิ่งนี้คือร่องรอยของความบิดเบี้ยวระหว่างโลกแห่งความจริงและโลกแฟนตาซี <br><br>บางทีมันอาจจะดำรงอยู่ทุกหนแห่งในโลกแฟนตาซี เพียงแต่มันเล็กละเอียดเกินไปจนไม่มีใครสังเกตเห็นมาเป็นเวลานาน เพื่อให้เข้าใจถึงสาเหตุของการเกิดโลกแฟนตาซีอย่างถ่องแท้ เหล่าช่างฝีมือจึงสร้างสนามทดสอบ [Illusion-Shroud Woods] ที่มีความเข้มข้นของมวลสารหนาแน่นขึ้น พร้อมทั้งประดิษฐ์อุปกรณ์ต้านทานการกัดเซาะ เพื่อชี้นำเหล่านักผจญภัยให้ดำรงดิ่งลงไปค้นหาความจริงของ [มหันตภัยมายา]",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-766599610",
+      "confidence": "verified"
+    }
+  }
+]

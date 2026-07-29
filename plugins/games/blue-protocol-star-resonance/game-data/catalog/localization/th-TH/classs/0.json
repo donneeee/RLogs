@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.13.description",
+    "text": "เชี่ยวชาญการต่อสู้<color=#fcbe03>ระยะไกล</color> โดยใช้ <color=#fcbe03>Guitar</color> เป็นอาวุธ โจมตีสามารถร่าย<br>เอฟเฟกต์ <color=#fcbe03>Heal</color> เชี่ยวชาญในการร่าย<br><color=#fcbe03>บัฟ</color>แก่เพื่อร่วมทีม มีความสามารถ <color=#fcbe03>Support</color>ที่ยอดเยี่ยม",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154216",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "class.15.name",
+    "text": "Natsu",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192191",
+      "confidence": "verified"
+    }
+  }
+]

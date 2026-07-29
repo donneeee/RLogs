@@ -1,0 +1,385 @@
+{
+  "schema_version": 1,
+  "catalog_schema_version": 2,
+  "source_scan": "scan-003",
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "client_build": "24252055"
+  },
+  "tables": [
+    {
+      "table": "ProfessionSystemTable.ctb",
+      "records": 13,
+      "source_sha256": "sha256:2b906629a8cf7211fc84e5a3357d169b661c2cbba210cd9893ebee7053cd1b5e"
+    },
+    {
+      "table": "TalentSchoolTable.ctb",
+      "records": 20,
+      "source_sha256": "sha256:087255cf24eeb1fcea3308decffa3df55f97dc55c5f9cf481af69ab07053b953"
+    },
+    {
+      "table": "TalentTable.ctb",
+      "records": 648,
+      "source_sha256": "sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7"
+    },
+    {
+      "table": "SkillTable.ctb",
+      "records": 4796,
+      "source_sha256": "sha256:d90d05d9851a4cc1fa788200702f3c202d1406ca00be64095dce8c1abe277c35"
+    },
+    {
+      "table": "SkillEffectTable.ctb",
+      "records": 4813,
+      "source_sha256": "sha256:b91e9b17400c0a9e5c7c43de68a69b8f93db97a1426cfe3f4869046f0aee3f8d"
+    },
+    {
+      "table": "BuffTable.ctb",
+      "records": 10008,
+      "source_sha256": "sha256:56425196ed9c635ef4a23afad38d3dbb4a76ecccaa6192d4a3f6879725e61550"
+    },
+    {
+      "table": "RecountTable.ctb",
+      "records": 349,
+      "source_sha256": "sha256:c866b295a318dfd5f4d1c6fc45af5a41260161bbcae7f7ce56422ce5b4819370"
+    },
+    {
+      "table": "ProfileImageTable.ctb",
+      "records": 809,
+      "source_sha256": "sha256:851ca4beabe31e112468ac4fee592d677c533013cd20d777d9f046645004da49"
+    },
+    {
+      "table": "NameCardTable.ctb",
+      "records": 3,
+      "source_sha256": "sha256:ccabb5a2fc5a02bf36c84b49bf79ccdc7fcd1963115bae603b8cd4d6f1d86ebf"
+    },
+    {
+      "table": "MedalTable.ctb",
+      "records": 183,
+      "source_sha256": "sha256:460dce56c6644c03315c4b0fdba5eb332a68f2a8b32fc83d5e0410e6da60ff07"
+    },
+    {
+      "table": "UnionIconTable.ctb",
+      "records": 41,
+      "source_sha256": "sha256:2d5fce33d55e6bf14fa436e09037aca02cb5dba3021caec6da64f5bb22a3dad1"
+    },
+    {
+      "table": "EquipTable.ctb",
+      "records": 4862,
+      "source_sha256": "sha256:26398bacecd7a4cf4be5e518ec35e00adac03fcaa925f94e614d1efc5bce69f8"
+    },
+    {
+      "table": "EquipWeaponTable.ctb",
+      "records": 722,
+      "source_sha256": "sha256:59169cfde4f1876b8814261d16f90c7bd37ff83bc396a641973c5eddb68987bc"
+    },
+    {
+      "table": "MonsterTable.ctb",
+      "records": 3128,
+      "source_sha256": "sha256:42a3d585f929111a0ae7e69742077b9fcaa4dc729a72dcc1fb4904e69cd3232a"
+    },
+    {
+      "table": "NpcTable.ctb",
+      "records": 4339,
+      "source_sha256": "sha256:d09302387edbe36da1804ff7b901adccfc775abebce10046383f529502de7eb9"
+    },
+    {
+      "table": "SceneTable.ctb",
+      "records": 610,
+      "source_sha256": "sha256:c1d4723bb5dd9db0691fe85f688aaee9929a5652e649ce8ad803263f9f8cc30f"
+    },
+    {
+      "table": "DungeonsTable.ctb",
+      "records": 589,
+      "source_sha256": "sha256:f1e86db717895d8dbb6be8cc115c964b63903056eb4cddda0885eceb5ebc0033"
+    },
+    {
+      "table": "MapInfoTable.ctb",
+      "records": 203,
+      "source_sha256": "sha256:560c46d985f79f5e1ebbb5a8a3cd894650dd4c3fe6ce892bbe7c4ad189c38ecc"
+    }
+  ],
+  "records": 36136,
+  "referenced_localization_ids": 15723,
+  "missing_english_display_names": 29,
+  "missing_all_locale_display_names": 29,
+  "unresolved_official_localization_references_omitted": 41,
+  "special_value_encodings": {
+    "f32_bits": 21
+  },
+  "locales": [
+    "de-DE",
+    "en-US",
+    "es-ES",
+    "fr-FR",
+    "id-ID",
+    "ja-JP",
+    "ko-KR",
+    "pt-BR",
+    "th-TH",
+    "zh-CN",
+    "zh-TW"
+  ],
+  "ownership": {
+    "classes": 13,
+    "specializations": 20,
+    "talents": 648,
+    "talents_classified_by_spec": 578,
+    "talents_shared_by_class": 40,
+    "talents_shared_across_classes": 6,
+    "talents_unclassified": 24,
+    "class_skill_seeds": 168,
+    "classified_skills_direct": 168,
+    "classified_skills_by_skill_graph": 123,
+    "ambiguous_skill_graph_records_preserved": 1,
+    "classified_skills_by_direct_spec_relation": 30,
+    "classified_skills_by_spec_skill_graph": 20,
+    "unique_direct_spec_skill_candidates": 30,
+    "direct_spec_skill_relations": [
+      {
+        "skill_id": 1241,
+        "specialization_ids": [
+          105
+        ]
+      },
+      {
+        "skill_id": 1242,
+        "specialization_ids": [
+          105
+        ]
+      },
+      {
+        "skill_id": 1250,
+        "specialization_ids": [
+          101,
+          107,
+          128
+        ]
+      },
+      {
+        "skill_id": 1410,
+        "specialization_ids": [
+          107,
+          108
+        ]
+      },
+      {
+        "skill_id": 1418,
+        "specialization_ids": [
+          108
+        ]
+      },
+      {
+        "skill_id": 1419,
+        "specialization_ids": [
+          108
+        ]
+      },
+      {
+        "skill_id": 1424,
+        "specialization_ids": [
+          108
+        ]
+      },
+      {
+        "skill_id": 1426,
+        "specialization_ids": [
+          107,
+          108
+        ]
+      },
+      {
+        "skill_id": 1507,
+        "specialization_ids": [
+          111
+        ]
+      },
+      {
+        "skill_id": 1509,
+        "specialization_ids": [
+          110,
+          111
+        ]
+      },
+      {
+        "skill_id": 1518,
+        "specialization_ids": [
+          111
+        ]
+      },
+      {
+        "skill_id": 1527,
+        "specialization_ids": [
+          110
+        ]
+      },
+      {
+        "skill_id": 1528,
+        "specialization_ids": [
+          111
+        ]
+      },
+      {
+        "skill_id": 1605,
+        "specialization_ids": [
+          129
+        ]
+      },
+      {
+        "skill_id": 1606,
+        "specialization_ids": [
+          129
+        ]
+      },
+      {
+        "skill_id": 1714,
+        "specialization_ids": [
+          102
+        ]
+      },
+      {
+        "skill_id": 1715,
+        "specialization_ids": [
+          102
+        ]
+      },
+      {
+        "skill_id": 1719,
+        "specialization_ids": [
+          102
+        ]
+      },
+      {
+        "skill_id": 1922,
+        "specialization_ids": [
+          114
+        ]
+      },
+      {
+        "skill_id": 1924,
+        "specialization_ids": [
+          113
+        ]
+      },
+      {
+        "skill_id": 1927,
+        "specialization_ids": [
+          113
+        ]
+      },
+      {
+        "skill_id": 1930,
+        "specialization_ids": [
+          114
+        ]
+      },
+      {
+        "skill_id": 1937,
+        "specialization_ids": [
+          114
+        ]
+      },
+      {
+        "skill_id": 2220,
+        "specialization_ids": [
+          117
+        ]
+      },
+      {
+        "skill_id": 2222,
+        "specialization_ids": [
+          117
+        ]
+      },
+      {
+        "skill_id": 2301,
+        "specialization_ids": [
+          120
+        ]
+      },
+      {
+        "skill_id": 2306,
+        "specialization_ids": [
+          120
+        ]
+      },
+      {
+        "skill_id": 2307,
+        "specialization_ids": [
+          120
+        ]
+      },
+      {
+        "skill_id": 2314,
+        "specialization_ids": [
+          119,
+          120
+        ]
+      },
+      {
+        "skill_id": 2321,
+        "specialization_ids": [
+          120
+        ]
+      },
+      {
+        "skill_id": 2335,
+        "specialization_ids": [
+          119
+        ]
+      },
+      {
+        "skill_id": 2336,
+        "specialization_ids": [
+          120
+        ]
+      },
+      {
+        "skill_id": 2405,
+        "specialization_ids": [
+          123
+        ]
+      },
+      {
+        "skill_id": 2406,
+        "specialization_ids": [
+          123
+        ]
+      },
+      {
+        "skill_id": 2408,
+        "specialization_ids": [
+          122
+        ]
+      },
+      {
+        "skill_id": 7000,
+        "specialization_ids": [
+          113,
+          116,
+          122
+        ]
+      }
+    ],
+    "direct_spec_skill_class_conflicts_preserved": [],
+    "ambiguous_direct_spec_skill_relations_preserved": 6,
+    "ambiguous_spec_skill_graph_records_preserved": 0,
+    "classified_skill_effects": 300,
+    "classified_status_effects": 581,
+    "classified_status_effects_by_spec": 564,
+    "ambiguous_status_effects_preserved": 0,
+    "ambiguous_spec_status_relations_preserved": 0,
+    "skill_spec_state": "specialized_only_by_current_build_talent_or_skill_graph_relation"
+  },
+  "policy": {
+    "canonical_catalog_is_not_region_partitioned": true,
+    "build_identity_is_availability_metadata": true,
+    "unresolved_class_and_spec_assignments_are_explicit": true,
+    "class_ownership_requires_a_current_build_static_relation": true,
+    "specialization_ownership_uses_profession_talent_group_relations": true,
+    "talent_branches_are_validated_by_current_build_marker_records": true,
+    "spec_specific_skill_ownership_requires_a_unique_current_build_relation": true,
+    "ambiguous_spec_relations_remain_shared": true,
+    "private_acquisition_details_promoted": false
+  }
+}

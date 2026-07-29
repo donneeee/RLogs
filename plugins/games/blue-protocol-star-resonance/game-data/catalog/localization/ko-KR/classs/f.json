@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.2.description",
+    "text": "<color=#fcbe03>원거리</color> 전투에 능하며, <color=#fcbe03>얼음 지팡이</color>를 무기로 사용합니다. 얼음의 힘을 다루며, 뛰어난 <color=#fcbe03>광범위 공격</color>과 <color=#fcbe03>제어</color> 능력을 가지고 있습니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367318",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "class.8.description",
+    "text": "<color=#fcbe03>원거리</color> 전투에 능하며, 뛰어난 공격력을 지니고 있습니다.<br>멀리서 고빈도 공격으로 광범위의 적에게 타격을 줄 수 있습니다. <color=#fcbe03>각인 확률 보너스</color>를 높이면 발동 빈도가 증가합니다.<br>근거리에서 <color=#fcbe03>차징</color>해 강력한 폭발 대미지를 줄 수 있습니다. <color=#fcbe03>치명타 확률</color>을 높여 큰 수익을 얻을 수 있습니다.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367324",
+      "confidence": "verified"
+    }
+  }
+]

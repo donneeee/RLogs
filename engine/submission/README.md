@@ -1,8 +1,14 @@
 # RLogs submission
 
-This crate defines the client-side contract for RLogs' built-in uploader.
-Transport, authentication, UI, and the leaderboard service are deliberately
-outside it.
+This crate defines game-neutral client-side contracts for log uploads and
+privacy-reviewed website payloads. Authentication, UI, concrete HTTP clients,
+and the leaderboard service remain outside it.
+
+Game plug-ins may construct a `WebsitePayloadRequest` using a safe relative
+endpoint. Core validates its game/schema identity, routing fields, size, JSON
+shape, and prohibited credential/account field names. Only the host combines
+that request with a user-configured website base URL and authentication, so a
+game plug-in cannot redirect credentials to another host.
 
 The state machine enforces these invariants:
 

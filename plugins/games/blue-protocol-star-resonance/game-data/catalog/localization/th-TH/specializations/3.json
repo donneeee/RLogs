@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "specialization.104.name",
+    "text": "Icicle Spec",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989337",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "th-TH",
+    "key": "specialization.111.name",
+    "text": "สายฟื้นฟู",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989367",
+      "confidence": "verified"
+    }
+  }
+]

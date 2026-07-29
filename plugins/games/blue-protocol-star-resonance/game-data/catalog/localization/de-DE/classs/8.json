@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.11.name",
+    "text": "Scharf­schütze",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192187",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "de-DE",
+    "key": "class.5.description",
+    "text": "Trägt einen <color=#fcbe03>Naturring</color>, der sich hervorragend für die <color=#fcbe03>Fernheilung</color> eignet. Kanalisiert die grüne Essenz des Waldes, um außergewöhnliche <color=#fcbe03>Heilung</color> und <color=#fcbe03>Buffs</color> zu wirken.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367321",
+      "confidence": "verified"
+    }
+  }
+]

@@ -1,0 +1,48 @@
+{
+  "schema_version": 2,
+  "kind": "skill_effect",
+  "id": 335008101,
+  "stable_key": "skill_effect.335008101",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "skill_effect_id": 335008101,
+    "level": 1,
+    "design_name": "",
+    "skill_id": 3350081,
+    "damage_distance": 0,
+    "effect_range": [],
+    "ai_release_range": [
+      0,
+      1,
+      2,
+      0
+    ],
+    "tags": [],
+    "buff_tags": [],
+    "hit_tags": [],
+    "entity_tags": [],
+    "attribute_descriptions": [],
+    "maximum_horizontal_motion_distance": 0,
+    "single_target_range": [
+      0
+    ],
+    "enters_battle_state": true,
+    "takes_weapon_during_skill": true,
+    "needs_camera_scale": false,
+    "skill_learn_buff_ids": [],
+    "installed_skill_buff_ids": []
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SkillEffectTable",
+    "reference": "client-build:global/steam/24252055@sha256:b91e9b17400c0a9e5c7c43de68a69b8f93db97a1426cfe3f4869046f0aee3f8d",
+    "confidence": "corroborated"
+  }
+}

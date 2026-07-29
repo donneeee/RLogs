@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "es-ES",
+    "key": "class.12.description",
+    "text": "Empuña una <color=#fcbe03>espada y escudo</color>, y sobresale en el <color=#fcbe03>combate a corta distancia</color>. Usa una armadura forjada con luz radiante y posee una <color=#fcbe03>defensa</color> y una <color=#fcbe03>autocuración</color> excepcionales.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154215",
+      "confidence": "verified"
+    }
+  }
+]

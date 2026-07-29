@@ -1,0 +1,50 @@
+[
+  {
+    "table_key": 639435656,
+    "table_key_hex": "0x261d0388",
+    "stable_key": "ctb.unknown-261d0388",
+    "names": [],
+    "state": "quarantined",
+    "name_confidence": "unknown",
+    "domain": "unknown",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1190910380,
+      "bytes": 242,
+      "sha256": "sha256:5da9205a7b5cffdb727c124030d30d97c2a89f7bb7f117063fcb68982947ddf9"
+    },
+    "shape": {
+      "rows": 10,
+      "row_size": 10,
+      "row_data_bytes": 100,
+      "pool_lengths": [
+        {
+          "type": 393216,
+          "bytes": 0
+        },
+        {
+          "type": 458752,
+          "bytes": 0
+        },
+        {
+          "type": 524288,
+          "bytes": 0
+        },
+        {
+          "type": 589824,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 10
+    },
+    "row_ids": {
+      "minimum": 0,
+      "maximum": 5242880,
+      "unique": 8,
+      "duplicate_rows": 2,
+      "zero_rows": 3
+    },
+    "candidate_field_relations": 1,
+    "exact_string_references": 0
+  }
+]

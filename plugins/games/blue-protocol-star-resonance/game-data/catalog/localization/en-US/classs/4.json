@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "en-US",
+    "key": "class.12.description",
+    "text": "Wields a <color=#fcbe03>Sword and Shield</color>, excelling in <color=#fcbe03>close-range combat</color>. Wears radiant lightforged armor, boasting exceptional <color=#fcbe03>defense</color> and <color=#fcbe03>self-healing</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154215",
+      "confidence": "verified"
+    }
+  }
+]

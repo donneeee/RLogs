@@ -1,0 +1,272 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "purpose": "Join privacy-reviewed character runtime evidence to exact-build static definitions without treating catalog membership as character ownership.",
+  "rules": [
+    "Only current-build runtime evidence can establish ownership, equipped state, level, or progression for a character.",
+    "Static CTB records can name and describe an ID after that ID is observed on an allowed character-facing route.",
+    "Static definitions can never establish character ownership or equipped state.",
+    "Historical schemas remain hypotheses until the current route, field shape, update semantics, and privacy policy are verified.",
+    "Account, open, platform, login, credential, token, private-chat, mail, payment, and anti-cheat fields are never profile sources.",
+    "An unmapped field remains absent from CharacterProfilePatch; it is never filled from a nearby integer or a static-table coincidence."
+  ],
+  "surfaces": [
+    {
+      "surface": "identity",
+      "canonical_fields": [
+        "character.character_id",
+        "display_id",
+        "display_name",
+        "server_id"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "partially_verified",
+        "verified_fields": [
+          "character.character_id",
+          "display_id",
+          "display_name"
+        ],
+        "implemented_but_not_present_in_verified_snapshot": [
+          "server_id"
+        ]
+      },
+      "static_definitions": [],
+      "website_policy": "character key required; display fields opt-in"
+    },
+    {
+      "surface": "class_and_specialization",
+      "canonical_fields": [
+        "class_id",
+        "specialization_id",
+        "combat_professions"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "partially_verified",
+        "verified_fields": [
+          "class_id"
+        ],
+        "unmapped_fields": [
+          "specialization_id",
+          "combat_professions"
+        ]
+      },
+      "static_definitions": [
+        "ctb.ProfessionSystemTable",
+        "ctb.ProfessionTable"
+      ],
+      "website_policy": "public after runtime correlation"
+    },
+    {
+      "surface": "level_and_progression",
+      "canonical_fields": [
+        "level",
+        "progression",
+        "season",
+        "season_strength"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "partially_verified",
+        "verified_fields": [
+          "level"
+        ],
+        "unmapped_fields": [
+          "progression",
+          "season",
+          "season_strength"
+        ]
+      },
+      "static_definitions": [
+        "ctb.PlayerLevelTable",
+        "ctb.SeasonLevelTable",
+        "ctb.SeasonGlobalTable"
+      ],
+      "website_policy": "public after runtime correlation"
+    },
+    {
+      "surface": "combat_power_and_panel_attributes",
+      "canonical_fields": [
+        "combat_power",
+        "season_strength"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "partially_verified",
+        "verified_fields": [
+          "combat_power"
+        ],
+        "unmapped_fields": [
+          "season_strength",
+          "typed panel attribute snapshot"
+        ]
+      },
+      "static_definitions": [
+        "ctb.ProfileAttrTable"
+      ],
+      "website_policy": "public per exact game build"
+    },
+    {
+      "surface": "appearance_and_profile_images",
+      "canonical_fields": [
+        "appearance.avatar_id",
+        "appearance.business_card_style_id",
+        "appearance.avatar_frame_id"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "structural_only",
+        "verified_shape": "CharacterBase tag 25 has the five-part AvatarInfo outer structure",
+        "unmapped_fields": [
+          "avatar_id",
+          "profile picture reference",
+          "half-body picture reference",
+          "business_card_style_id",
+          "avatar_frame_id"
+        ]
+      },
+      "static_definitions": [
+        "ctb.ProfileImageTable",
+        "ctb.ProfileImageTargetTable",
+        "ctb.NameCardTable"
+      ],
+      "website_policy": "IDs opt-in; image publication requires the reviewed game-CDN proxy"
+    },
+    {
+      "surface": "equipment",
+      "canonical_fields": [
+        "equipment"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "unmapped_current_build",
+        "historical_hypotheses": [
+          "equipment slot",
+          "item instance UUID",
+          "refinement",
+          "recast attributes",
+          "enchantments",
+          "set bonuses"
+        ]
+      },
+      "static_definitions": [
+        "ctb.ItemTable",
+        "ctb.ItemTypeTable",
+        "ctb.EquipTable",
+        "ctb.EquipPartTable",
+        "ctb.EquipWeaponTable",
+        "ctb.EquipAttrLibTable",
+        "ctb.EquipAttrSchoolLibTable",
+        "ctb.EquipEnchantTable",
+        "ctb.EquipEnchantItemTable",
+        "ctb.EquipRefineTable",
+        "ctb.EquipSuitTable"
+      ],
+      "website_policy": "public only after owner-character runtime correlation"
+    },
+    {
+      "surface": "imagines",
+      "canonical_fields": [
+        "owned_imagines"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "unmapped_current_build"
+      },
+      "static_definitions": [
+        "ctb.FantasyTable",
+        "ctb.FantasyTypeTable",
+        "ctb.FantasyHoleTable",
+        "ctb.FantasySolutionTable"
+      ],
+      "website_policy": "owned list opt-in; equipped list public after correlation"
+    },
+    {
+      "surface": "skills_and_talents",
+      "canonical_fields": [
+        "active_skills",
+        "talents"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData and reviewed combat routes",
+        "state": "runtime_evidence_not_profile_mapped"
+      },
+      "static_definitions": [
+        "ctb.SkillTable",
+        "ctb.SkillFightLevelTable",
+        "ctb.SkillEffectTable",
+        "ctb.TalentTable",
+        "ctb.TalentTreeTable",
+        "ctb.TalentPoolTable"
+      ],
+      "website_policy": "public after stable loadout projection"
+    },
+    {
+      "surface": "life_professions",
+      "canonical_fields": [
+        "life_professions"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "unmapped_current_build"
+      },
+      "static_definitions": [
+        "ctb.LifeProfessionTable"
+      ],
+      "website_policy": "opt-in"
+    },
+    {
+      "surface": "cosmetics_and_collections",
+      "canonical_fields": [
+        "cosmetics",
+        "collection_summary"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "unmapped_current_build"
+      },
+      "static_definitions": [
+        "ctb.FashionTable",
+        "ctb.FashionCollectTable",
+        "ctb.WeaponSkinTable",
+        "ctb.VehicleBaseTable"
+      ],
+      "website_policy": "opt-in"
+    },
+    {
+      "surface": "social_display",
+      "canonical_fields": [
+        "social_display.guild_id",
+        "social_display.title_ids",
+        "social_display.medal_ids"
+      ],
+      "runtime": {
+        "route": "reviewed SocialNtf and UnionNtf methods",
+        "state": "unmapped_current_build"
+      },
+      "static_definitions": [
+        "ctb.UnionIconTable",
+        "ctb.MedalTable",
+        "ctb.TitleLevelTable"
+      ],
+      "website_policy": "opt-in"
+    }
+  ],
+  "prohibited_runtime_sources": [
+    "WorldLoginNtf",
+    "account identifiers",
+    "open identifiers",
+    "platform or publisher identifiers",
+    "passwords and credentials",
+    "session or access tokens",
+    "private chat and mail",
+    "payment and moderation data",
+    "anti-cheat login data"
+  ]
+}

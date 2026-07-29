@@ -1,0 +1,68 @@
+{
+  "schema_version": 2,
+  "kind": "skill_effect",
+  "id": 398201,
+  "stable_key": "skill_effect.398201",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "skill_effect_id": 398201,
+    "level": 1,
+    "design_name": "奥义！星灵魔导士",
+    "skill_id": 3982,
+    "damage_distance": 0,
+    "effect_range": [],
+    "ai_release_range": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "tags": [
+      8,
+      67,
+      75,
+      26,
+      76
+    ],
+    "buff_tags": [],
+    "hit_tags": [],
+    "entity_tags": [],
+    "attribute_descriptions": [
+      18078,
+      18088,
+      18098,
+      18108,
+      18118,
+      18128,
+      18138,
+      18148,
+      18158,
+      18168,
+      18178,
+      18188,
+      18198
+    ],
+    "maximum_horizontal_motion_distance": 0,
+    "single_target_range": [
+      0
+    ],
+    "enters_battle_state": false,
+    "takes_weapon_during_skill": false,
+    "needs_camera_scale": false,
+    "skill_learn_buff_ids": [],
+    "installed_skill_buff_ids": []
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SkillEffectTable",
+    "reference": "client-build:global/steam/24252055@sha256:b91e9b17400c0a9e5c7c43de68a69b8f93db97a1426cfe3f4869046f0aee3f8d",
+    "confidence": "corroborated"
+  }
+}

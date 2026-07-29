@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.2.description",
+    "text": "Ahli dalam pertarungan <color=#fcbe03>jarak jauh</color> yang bersenjatakan <color=#fcbe03>Ice Staff</color>. Mengendalikan kekuatan es dan memiliki kemampuan <color=#fcbe03>serangan jarak jauh</color> dan <color=#fcbe03>control</color> yang luar biasa.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367318",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.8.description",
+    "text": "Ahli dalam pertarungan <color=#fcbe03>jarak jauh</color> yang memiliki kemampuan serangan yang luar biasa.<br>Dapat melancarkan serangan bertubi-tubi dari jarak jauh untuk menyerang musuh dalam area yang luas. Tingkatkan <color=#fcbe03>Imprint Chance Boost</color> untuk meningkatkan intensitas memicunya.<br>Juga dapat melakukan <color=#fcbe03>Charge</color> di jarak dekat untuk mengakibatkan Burst DMG dalam jumlah yang sangat besar. Tingkatkan <color=#fcbe03>Critical Chance</color> untuk mendapatkan hasil yang lebih besar.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367324",
+      "confidence": "verified"
+    }
+  }
+]

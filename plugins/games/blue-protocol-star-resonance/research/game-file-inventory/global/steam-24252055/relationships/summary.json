@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "evidence_policy": {
+    "deterministic": [
+      "physical_file_to_digest",
+      "meta_entry_to_package_extent",
+      "address_to_bundle_hash",
+      "sprite_to_atlas_address",
+      "table_to_row_occurrence",
+      "localization_index_to_locale_entry",
+      "validated_string_pool_offset_to_text",
+      "validated_pool_element_width_and_record_boundary",
+      "top_level_unity_file_to_object",
+      "unityfs_bundle_to_object"
+    ],
+    "corroborated_only_after_schema_or_runtime_confirmation": [
+      "localization_id_membership",
+      "asset_address_hash_membership",
+      "asset_bundle_hash_membership"
+    ],
+    "weak_candidate_only": [
+      "ctb_row_id_membership",
+      "pool_1_offset_candidate",
+      "pool_2_offset_candidate"
+    ],
+    "rule": "A matching 32-bit value is never promoted to a foreign key by itself."
+  },
+  "exact_edges": {
+    "physical_file_to_digest": 741,
+    "meta_entry_to_package_extent": 205400,
+    "address_to_bundle_hash": 215756,
+    "sprite_to_atlas_address": 9019,
+    "confirmed_table_to_row_occurrence": 329764,
+    "localization_index_to_locale_entry": 1883778,
+    "validated_string_pool_offset_to_text": 91122,
+    "top_level_unity_file_to_object": 18766,
+    "unityfs_bundle_to_object": 10206944
+  },
+  "field_candidates": [
+    {
+      "relationship": "ctb_row_id",
+      "field_records": 104385,
+      "references": 5426679,
+      "source_tables": 4220,
+      "maximum_candidate_target_tables": 32,
+      "confidence": "weak_candidate_only"
+    },
+    {
+      "relationship": "pool_1_offset_candidate",
+      "field_records": 2411,
+      "references": 577732,
+      "source_tables": 796,
+      "maximum_candidate_target_tables": 0,
+      "confidence": "weak_candidate_only"
+    },
+    {
+      "relationship": "localization_id",
+      "field_records": 2561,
+      "references": 245311,
+      "source_tables": 1414,
+      "maximum_candidate_target_tables": 0,
+      "confidence": "corroborated_only_after_schema_or_runtime_confirmation"
+    },
+    {
+      "relationship": "string_pool_offset",
+      "field_records": 1067,
+      "references": 185507,
+      "source_tables": 355,
+      "maximum_candidate_target_tables": 0,
+      "confidence": "deterministic"
+    },
+    {
+      "relationship": "pool_2_offset_candidate",
+      "field_records": 9,
+      "references": 389,
+      "source_tables": 3,
+      "maximum_candidate_target_tables": 0,
+      "confidence": "weak_candidate_only"
+    },
+    {
+      "relationship": "asset_address_hash",
+      "field_records": 19,
+      "references": 23,
+      "source_tables": 16,
+      "maximum_candidate_target_tables": 0,
+      "confidence": "corroborated_only_after_schema_or_runtime_confirmation"
+    },
+    {
+      "relationship": "asset_bundle_hash",
+      "field_records": 12,
+      "references": 12,
+      "source_tables": 12,
+      "maximum_candidate_target_tables": 0,
+      "confidence": "corroborated_only_after_schema_or_runtime_confirmation"
+    }
+  ],
+  "string_pool_references": {
+    "records": 91122,
+    "references": 185507,
+    "source_tables": 355,
+    "redacted_sensitive_records": 1
+  },
+  "schema_inference": {
+    "schema_index": "research/game-file-inventory/global/steam-24252055/schemas/index.json",
+    "relation_index": "research/game-file-inventory/global/steam-24252055/relationships/schema-relations.json",
+    "id_namespaces": "research/game-file-inventory/global/steam-24252055/relationships/id-namespaces.json",
+    "named_tables": 565,
+    "validated_semantic_fields": 864,
+    "exact_local_pool_candidate_fields": 1448,
+    "unaligned_exact_candidate_fields": 293,
+    "rule": "Exact pool boundaries establish representation. They do not assign a field meaning without corroboration."
+  }
+}

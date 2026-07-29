@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "specialization.102.name",
+    "text": "월광의 낫 계열",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989335",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "specialization.113.name",
+    "text": "암석 방패 계열",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1208989369",
+      "confidence": "verified"
+    }
+  }
+]

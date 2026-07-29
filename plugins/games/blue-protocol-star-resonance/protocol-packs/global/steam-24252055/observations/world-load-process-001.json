@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "observation_id": "world-load-process-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "scenario": {
+    "started_after_authentication": true,
+    "included_initial_login_flow": false,
+    "actions": [
+      "begin_at_server_or_character_selection",
+      "enter_world_as_selected_character",
+      "stand_idle"
+    ],
+    "duration_micros": 178541678
+  },
+  "capture_scope": {
+    "backend": "windows_process_owned_socket_tracking",
+    "process_name": "BPSR_STEAM",
+    "ownership_key": "exact_bidirectional_tcp_four_tuple",
+    "process_owned_connections": 3,
+    "process_owned_frames_retained": 7619,
+    "process_owned_bytes_retained": 1097022,
+    "unattributed_interface_frames_discarded_before_persistence": 47934,
+    "non_tcp_or_unparsed_frames_discarded_before_persistence": 238
+  },
+  "capture_quality": {
+    "interface_frames_seen": 55791,
+    "interface_drops": 0,
+    "truncated_frames": 0,
+    "backward_timestamps": 0,
+    "journal_records": 6463,
+    "packet_records": 6462,
+    "meaningful_gap_records": {
+      "malformed_frame_one_byte_resynchronization": 1
+    }
+  },
+  "coverage": {
+    "observed_routes": 38,
+    "pack_known_routes_observed": 15,
+    "pack_unknown_routes_observed": 23,
+    "pack_known_packets": 1916,
+    "pack_unknown_packets": 28,
+    "unrouted_packets": 4518,
+    "pack_digest_at_capture_analysis": "sha256:3019b989f225a13ea347b3445c90bbcc9a0193941dfa1eb96775843ea765453c",
+    "pack_digest_after_profile_decoder_promotion": "sha256:2f32d471dd4bb425389f3c9db389daae75176aec6499dc5bf60e6870c96cdbef",
+    "pack_digest_after_route_reconciliation": "sha256:ef832801dd0696efffcef597304cd7c4713b57b5869c890ea345ee036eb29499",
+    "replayed_with_reconciled_pack": {
+      "pack_known_routes_observed": 38,
+      "pack_unknown_routes_observed": 0,
+      "pack_known_packets": 1944,
+      "pack_unknown_packets": 0,
+      "allowed_decoder_packets": 1,
+      "opaque_research_packets": 1925,
+      "prohibited_packets": 18,
+      "unrouted_packets": 4518
+    }
+  },
+  "observed_routed_packets": [
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1128535, "method_id": 2, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 103198054, "method_id": 4098, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 103198054, "method_id": 24579, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1232729813, "method_id": 1, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1232729813, "method_id": 3, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1232729813, "method_id": 21, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1232729813, "method_id": 30, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1321197368, "method_id": 2, "packet_count": 5 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1321197368, "method_id": 3, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1321197368, "method_id": 9, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1321197368, "method_id": 11, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1321197368, "method_id": 12, "packet_count": 1 },
+    { "direction": "client_to_server", "fragment": "call", "service_id": 1321197368, "method_id": 19, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 78136601, "method_id": 3, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 164931432, "method_id": 1, "packet_count": 24 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 504281929, "method_id": 6, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 504281929, "method_id": 15, "packet_count": 3 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 548813240, "method_id": 450561, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 625772963, "method_id": 1, "packet_count": 7 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1453563045, "method_id": 17, "packet_count": 3 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 3, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 4, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 6, "packet_count": 5 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 20, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 21, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 22, "packet_count": 5 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 23, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 27, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 43, "packet_count": 31 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 45, "packet_count": 1826 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 46, "packet_count": 6 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 62, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 63, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 72, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 74, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 79, "packet_count": 1 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 385025, "packet_count": 2 },
+    { "direction": "server_to_client", "fragment": "notify", "service_id": 1753654261, "method_id": 2, "packet_count": 1 }
+  ],
+  "world_load_timing_seconds": [
+    { "service_id": 1664308034, "method_id": 3, "packet_count": 1, "first": 22.102, "last": 22.102 },
+    { "service_id": 1664308034, "method_id": 20, "packet_count": 1, "first": 22.102, "last": 22.102 },
+    { "service_id": 1664308034, "method_id": 21, "packet_count": 1, "first": 22.102, "last": 22.102 },
+    { "service_id": 1664308034, "method_id": 23, "packet_count": 1, "first": 22.102, "last": 22.102 },
+    { "service_id": 1664308034, "method_id": 43, "packet_count": 31, "first": 22.102, "last": 177.385 },
+    { "service_id": 1664308034, "method_id": 79, "packet_count": 1, "first": 22.102, "last": 22.102 },
+    { "service_id": 1664308034, "method_id": 6, "packet_count": 5, "first": 32.255, "last": 126.067 },
+    { "service_id": 1664308034, "method_id": 22, "packet_count": 5, "first": 32.255, "last": 142.066 },
+    { "service_id": 1664308034, "method_id": 46, "packet_count": 6, "first": 32.255, "last": 37.457 },
+    { "service_id": 1664308034, "method_id": 45, "packet_count": 1826, "first": 32.334, "last": 178.512 }
+  ],
+  "profile_snapshot_result": {
+    "route": {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "service_name": "WorldNtf",
+      "method_id": 21,
+      "method_name": "SyncContainerData"
+    },
+    "packet_count": 1,
+    "wire_bytes": 350962,
+    "application_bytes": 350940,
+    "selective_decode_succeeded": true,
+    "canonical_profile_events": 1,
+    "canonical_world_events": 0,
+    "decoded_field_presence": {
+      "character_uid": true,
+      "display_name": true,
+      "display_uid": true,
+      "server_id": false,
+      "class_id": true,
+      "level": true,
+      "combat_power": true
+    },
+    "structural_tags_only": {
+      "envelope": [1],
+      "character": [1, 2, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 42, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 70, 72, 73, 77, 78, 79, 80, 81, 82, 83, 84, 85, 87, 88, 89, 90, 92, 93, 95, 96, 97, 99, 100, 101, 102, 103, 104, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121],
+      "character_base": [1, 2, 3, 5, 6, 14, 16, 17, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32, 34, 35, 36, 37, 38, 42],
+      "unmapped_character_tags_above_historical_reference_ceiling": [102, 103, 104, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121]
+    },
+    "avatar_structural_presence": {
+      "raw_values_rendered": false,
+      "avatar_info_tags": [1, 2, 3, 4, 5],
+      "avatar_id_tag_present": true,
+      "profile_picture_url_tag_present": true,
+      "half_body_picture_url_tag_present": true,
+      "business_card_style_id_tag_present": true,
+      "avatar_frame_id_tag_present": true,
+      "profile_picture_verification_tags": [3, 4],
+      "half_body_picture_verification_tags": [3, 4],
+      "historical_picture_verification_tags": [1, 2, 3],
+      "decision": "verify_outer_avatar_shape_but_do_not_apply_historical_inner_verification_tags"
+    }
+  },
+  "privacy_decisions": [
+    {
+      "scope": "SyncContainerData.CharacterBase",
+      "prohibited_account_id_tag_present": true,
+      "prohibited_open_id_tag_present": true,
+      "selective_decoder_declares_account_id": false,
+      "selective_decoder_declares_open_id": false,
+      "raw_values_rendered_by_audit": false,
+      "decision": "allow_character_profile_decoder_with_prohibited_fields_undeclared"
+    },
+    {
+      "service_id": 78136601,
+      "method_id": 3,
+      "service_name": "WorldLoginNtf",
+      "disposition": "prohibited_private_account_data",
+      "payload_inspected": false
+    }
+  ],
+  "mapping_conflicts": [
+    {
+      "service_id": 1664308034,
+      "method_id": 79,
+      "current_pack_candidate": "NotifySceneLineInfo",
+      "zdps_0_1_7_2_candidate": "NotifyUserAllValidBattlePassData",
+      "decision": "keep_opaque_and_do_not_promote_until_exact_build_payload_shape_is_verified"
+    }
+  ],
+  "retained_data": {
+    "packet_payloads": false,
+    "network_endpoints": false,
+    "character_names": false,
+    "character_ids": false,
+    "account_identifiers": false,
+    "credentials_or_tokens": false
+  }
+}

@@ -1,0 +1,1556 @@
+[
+  {
+    "table_key": 2115052343,
+    "table_key_hex": "0x7e112337",
+    "stable_key": "ctb.LifeProductionListTable",
+    "names": [
+      "LifeProductionListTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 635180338,
+      "bytes": 287058,
+      "sha256": "sha256:d6ae90b42c895460f7c6874f0aa35c03e542ac332838c0104e260e112e164173"
+    },
+    "shape": {
+      "rows": 1688,
+      "row_size": 123,
+      "row_data_bytes": 207624,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 54282
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 11548
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 2010001,
+      "maximum": 2061231,
+      "unique": 1688,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 62,
+    "exact_string_references": 31
+  },
+  {
+    "table_key": 4099855425,
+    "table_key_hex": "0xf45ed441",
+    "stable_key": "ctb.LifeExpTable",
+    "names": [
+      "LifeExpTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1099820152,
+      "bytes": 18064,
+      "sha256": "sha256:54c447013efa7d79cfeba2e64b52f691cfb7a43f660fd8d66ac5fb2c7af6df6d"
+    },
+    "shape": {
+      "rows": 489,
+      "row_size": 20,
+      "row_data_bytes": 9780,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 4272
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 1379,
+      "unique": 489,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 7,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1265727690,
+    "table_key_hex": "0x4b7178ca",
+    "stable_key": "ctb.LifeFormulaTable",
+    "names": [
+      "LifeFormulaTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 104522621,
+      "bytes": 23097,
+      "sha256": "sha256:64503ecbc5e4c6696ae7ebe96234c045e26e633435dfaeb3ecd59a113cb8093d"
+    },
+    "shape": {
+      "rows": 222,
+      "row_size": 48,
+      "row_data_bytes": 10656,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 3772
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 6793
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 101001,
+      "maximum": 206005,
+      "unique": 222,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 22,
+    "exact_string_references": 127
+  },
+  {
+    "table_key": 3150765560,
+    "table_key_hex": "0xbbccddf8",
+    "stable_key": "ctb.FishingTemplateTable",
+    "names": [
+      "FishingTemplateTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 941409081,
+      "bytes": 7160,
+      "sha256": "sha256:a13d115fcab84b9833df26bccc51457d98ee183bb9bf561cbc9ddc4385da057a"
+    },
+    "shape": {
+      "rows": 94,
+      "row_size": 64,
+      "row_data_bytes": 6016,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 182
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 110
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 40001,
+      "maximum": 70002,
+      "unique": 94,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 27,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2088136630,
+    "table_key_hex": "0x7c766fb6",
+    "stable_key": "ctb.LifeCollectListTable",
+    "names": [
+      "LifeCollectListTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 634776425,
+      "bytes": 16277,
+      "sha256": "sha256:5210fc882eb978321649a43b93679ba8f5474bbe0be5c5e8ecac8d95dd8c19fd"
+    },
+    "shape": {
+      "rows": 81,
+      "row_size": 97,
+      "row_data_bytes": 7857,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 5228
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 2444
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 20000002,
+      "maximum": 20000248,
+      "unique": 81,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 40,
+    "exact_string_references": 83
+  },
+  {
+    "table_key": 599453084,
+    "table_key_hex": "0x23baed9c",
+    "stable_key": "ctb.FishingTable",
+    "names": [
+      "FishingTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1177416714,
+      "bytes": 12982,
+      "sha256": "sha256:853a3a03900db0f12d500861616c4cd84b404b83e268843bf2392476e5e0f83d"
+    },
+    "shape": {
+      "rows": 62,
+      "row_size": 101,
+      "row_data_bytes": 6262,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 1140
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 4984
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1094001,
+      "maximum": 1096033,
+      "unique": 62,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 35,
+    "exact_string_references": 119
+  },
+  {
+    "table_key": 3105686346,
+    "table_key_hex": "0xb91d034a",
+    "stable_key": "ctb.LifeAwardTargetTable",
+    "names": [
+      "LifeAwardTargetTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 933685169,
+      "bytes": 3128,
+      "sha256": "sha256:53da70cd5ef1c0a98e0b4fcf1620c4795d7ae8d8cd4407407e778d8a7404fa17"
+    },
+    "shape": {
+      "rows": 45,
+      "row_size": 58,
+      "row_data_bytes": 2610,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 56
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 2
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 2000101,
+      "maximum": 2000905,
+      "unique": 45,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 10,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2661907636,
+    "table_key_hex": "0x9ea97cb4",
+    "stable_key": "ctb.FishingLevelTable",
+    "names": [
+      "FishingLevelTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 824782784,
+      "bytes": 908,
+      "sha256": "sha256:18e1f4f98b02825aa2fd314d0ed71e9b5339259adcdb7df46c9f873082b648d3"
+    },
+    "shape": {
+      "rows": 25,
+      "row_size": 24,
+      "row_data_bytes": 600,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 8
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 25,
+      "unique": 25,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 7,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1757304823,
+    "table_key_hex": "0x68be57f7",
+    "stable_key": "ctb.FishingAttrTable",
+    "names": [
+      "FishingAttrTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 359224887,
+      "bytes": 2864,
+      "sha256": "sha256:4ce5636eef7b4107537c1b418ec4cdd7d4b827a622eb5c854829695958f90e24"
+    },
+    "shape": {
+      "rows": 14,
+      "row_size": 64,
+      "row_data_bytes": 896,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 1210
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 546
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 10000,
+      "maximum": 90005,
+      "unique": 14,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 28,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 3369366224,
+    "table_key_hex": "0xc8d472d0",
+    "stable_key": "ctb.FishingAreaSizeTable",
+    "names": [
+      "FishingAreaSizeTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 992772406,
+      "bytes": 544,
+      "sha256": "sha256:f8b2f3763842606ea530931e29c7f37e9e4813d84da6af9c35a93035a4301268"
+    },
+    "shape": {
+      "rows": 13,
+      "row_size": 20,
+      "row_data_bytes": 260,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 80
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 2200,
+      "maximum": 2212,
+      "unique": 13,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 3,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 978974401,
+    "table_key_hex": "0x3a59f6c1",
+    "stable_key": "ctb.ProfessionSystemTable",
+    "names": [
+      "ProfessionSystemTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1268678419,
+      "bytes": 5110,
+      "sha256": "sha256:2b906629a8cf7211fc84e5a3357d169b661c2cbba210cd9893ebee7053cd1b5e"
+    },
+    "shape": {
+      "rows": 13,
+      "row_size": 117,
+      "row_data_bytes": 1521,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 1984
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 1401
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 15,
+      "unique": 13,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 43,
+    "exact_string_references": 12
+  },
+  {
+    "table_key": 2488830908,
+    "table_key_hex": "0x94588bbc",
+    "stable_key": "ctb.ProfessionTable",
+    "names": [
+      "ProfessionTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 784273418,
+      "bytes": 8252,
+      "sha256": "sha256:0e880049ec761b167f3d349e5b713bd1c6fb6447754d342c2ba305eeab18c7d5"
+    },
+    "shape": {
+      "rows": 13,
+      "row_size": 224,
+      "row_data_bytes": 2912,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 1446
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 532
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 2242
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 916
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 15,
+      "unique": 13,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 30,
+    "exact_string_references": 9
+  },
+  {
+    "table_key": 1746167287,
+    "table_key_hex": "0x681465f7",
+    "stable_key": "ctb.FishingRankAwardTable",
+    "names": [
+      "FishingRankAwardTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 358971767,
+      "bytes": 436,
+      "sha256": "sha256:acf4723c9f207970b419ac6d2cb15842cec9839872384e41f895a49810e6af27"
+    },
+    "shape": {
+      "rows": 11,
+      "row_size": 20,
+      "row_data_bytes": 220,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 28
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1094001,
+      "maximum": 1094011,
+      "unique": 11,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 4,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 3779940156,
+    "table_key_hex": "0xe14d4f3c",
+    "stable_key": "ctb.LifeProfessionTable",
+    "names": [
+      "LifeProfessionTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1063504911,
+      "bytes": 2736,
+      "sha256": "sha256:8fcbeef4e00255285da09571d0b12a05534bf0697b266d27caec11fb7820d40d"
+    },
+    "shape": {
+      "rows": 9,
+      "row_size": 56,
+      "row_data_bytes": 504,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 208
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 1852
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 101,
+      "maximum": 206,
+      "unique": 9,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 19,
+    "exact_string_references": 35
+  },
+  {
+    "table_key": 1406602262,
+    "table_key_hex": "0x53d70c16",
+    "stable_key": "ctb.CocktailRecipeTable",
+    "names": [
+      "CocktailRecipeTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 292087776,
+      "bytes": 824,
+      "sha256": "sha256:c4b3c3c12306fe246f97e41116668de5153cbe75ddde154b7869fe83058c0c23"
+    },
+    "shape": {
+      "rows": 8,
+      "row_size": 41,
+      "row_data_bytes": 328,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 174
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 158
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1001,
+      "maximum": 5001,
+      "unique": 8,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 12,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 4291185783,
+    "table_key_hex": "0xffc64c77",
+    "stable_key": "ctb.LifeWorkTable",
+    "names": [
+      "LifeWorkTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1138763137,
+      "bytes": 748,
+      "sha256": "sha256:10fa0df93c0f250a0ccadb4c2c0246f8f78481c7013004904c0122aac8e54af1"
+    },
+    "shape": {
+      "rows": 8,
+      "row_size": 52,
+      "row_data_bytes": 416,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 28
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 140
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 101,
+      "maximum": 205,
+      "unique": 8,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 16,
+    "exact_string_references": 2
+  },
+  {
+    "table_key": 4055194421,
+    "table_key_hex": "0xf1b55b35",
+    "stable_key": "ctb.FishingAreaTable",
+    "names": [
+      "FishingAreaTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1093942303,
+      "bytes": 566,
+      "sha256": "sha256:4c7599151d9d804a463067b052ec769787c778daf6213bae1559e2d5c279b46e"
+    },
+    "shape": {
+      "rows": 6,
+      "row_size": 24,
+      "row_data_bytes": 144,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 264
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 10
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 2200,
+      "maximum": 2205,
+      "unique": 6,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 6,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 895965964,
+    "table_key_hex": "0x35675b0c",
+    "stable_key": "ctb.RecipeTable",
+    "names": [
+      "RecipeTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1256946743,
+      "bytes": 406,
+      "sha256": "sha256:8878bf12e6d5674f0d9666022e9fde50c792a1b51426dcc8a4faef3adf5e1f4f"
+    },
+    "shape": {
+      "rows": 6,
+      "row_size": 20,
+      "row_data_bytes": 120,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 138
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1030006,
+      "maximum": 1030011,
+      "unique": 6,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 5,
+    "exact_string_references": 5
+  },
+  {
+    "table_key": 4153453502,
+    "table_key_hex": "0xf790abbe",
+    "stable_key": "ctb.FishingTypeTable",
+    "names": [
+      "FishingTypeTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1109093027,
+      "bytes": 398,
+      "sha256": "sha256:b18b5272e28a92e5030a382ebdfcfc1dc4fc12b3011817f66b189b7a8af4a448"
+    },
+    "shape": {
+      "rows": 4,
+      "row_size": 20,
+      "row_data_bytes": 80,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 186
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 99,
+      "unique": 4,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 6,
+    "exact_string_references": 5
+  },
+  {
+    "table_key": 3472638881,
+    "table_key_hex": "0xcefc43a1",
+    "stable_key": "ctb.FishingRodTable",
+    "names": [
+      "FishingRodTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1006038008,
+      "bytes": 313,
+      "sha256": "sha256:d764c36a912a3fc256a625a9a57b55a71c0000400dc4fc8ef2d1b8a4f2264806"
+    },
+    "shape": {
+      "rows": 3,
+      "row_size": 56,
+      "row_data_bytes": 168,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 21
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 11034001,
+      "maximum": 11034003,
+      "unique": 3,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 12,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1968781806,
+    "table_key_hex": "0x755939ee",
+    "stable_key": "ctb.CraftEnergyTable",
+    "names": [
+      "CraftEnergyTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "professions",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 443664832,
+      "bytes": 180,
+      "sha256": "sha256:db8a66e5a07851bcc089cefb41b4bfaf592b5ebc5c252d192117a6d154ed968d"
+    },
+    "shape": {
+      "rows": 1,
+      "row_size": 24,
+      "row_data_bytes": 24,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 48
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 20003,
+      "maximum": 20003,
+      "unique": 1,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 5,
+    "exact_string_references": 0
+  }
+]

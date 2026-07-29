@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.12.description",
+    "text": "Manie une <color=#fcbe03>épée et un bouclier</color>, excellant dans le <color=#fcbe03>combat rapproché</color>. Porte une armure de lumière forgée, offrant une <color=#fcbe03>défense</color> et une <color=#fcbe03>auto-guérison</color> remarquables.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154215",
+      "confidence": "verified"
+    }
+  }
+]

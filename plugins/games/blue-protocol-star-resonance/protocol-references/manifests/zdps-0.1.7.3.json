@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "reference_id": "zdps-0.1.7.3",
+  "lineage_id": "zdps",
+  "project": "Blue-Protocol-Source/BPSR-ZDPS",
+  "revision": "c0a375cc8b858562e6d381a4357e10955a80340c",
+  "source_urls": [
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/ServiceIds.cs",
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/tree/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/ServiceMethods",
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/ServiceMethods/WorldActivityNtf.cs"
+  ],
+  "claims": [
+    {
+      "route": { "direction": "client_to_server", "fragment": "call", "service_id": 103198054, "method_id": 4098 },
+      "service_name": "World",
+      "method_name": "ConnectWorld"
+    },
+    {
+      "route": { "direction": "client_to_server", "fragment": "call", "service_id": 103198054, "method_id": 24579 },
+      "service_name": "World",
+      "method_name": "LoadMapSuccess"
+    },
+    {
+      "route": { "direction": "client_to_server", "fragment": "call", "service_id": 1232729813, "method_id": 1 },
+      "service_name": "GrpcCharactor",
+      "method_name": "Login"
+    },
+    {
+      "route": { "direction": "client_to_server", "fragment": "call", "service_id": 1232729813, "method_id": 3 },
+      "service_name": "GrpcCharactor",
+      "method_name": "SelectChar"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 78136601, "method_id": 3 },
+      "service_name": "WorldLoginNtf",
+      "method_name": "NotifyEnterWorld"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 164931432, "method_id": 1 },
+      "service_name": "ChitChatNtf",
+      "method_name": "NotifyNewestChitChatMsgs"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 548813240, "method_id": 450561 },
+      "service_name": "WorldActNtf",
+      "method_name": "SyncWorldActData"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 625772963, "method_id": 1 },
+      "service_name": "SocialNtf",
+      "method_name": "NotifySocialData"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 3 },
+      "service_name": "WorldNtf",
+      "method_name": "EnterScene"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 4 },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyLoadSceneEnd"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 6 },
+      "service_name": "WorldNtf",
+      "method_name": "SyncNearEntities"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 20 },
+      "service_name": "WorldNtf",
+      "method_name": "EnterGame"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 21 },
+      "service_name": "WorldNtf",
+      "method_name": "SyncContainerData"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 22 },
+      "service_name": "WorldNtf",
+      "method_name": "SyncContainerDirtyData"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 23 },
+      "service_name": "WorldNtf",
+      "method_name": "SyncDungeonData"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 27 },
+      "service_name": "WorldNtf",
+      "method_name": "SyncSeason"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 43 },
+      "service_name": "WorldNtf",
+      "method_name": "SyncServerTime"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 45 },
+      "service_name": "WorldNtf",
+      "method_name": "SyncNearDeltaInfo"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 46 },
+      "service_name": "WorldNtf",
+      "method_name": "SyncToMeDeltaInfo"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 62 },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyUserCloseFunction"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 63 },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyServerCloseFunction"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 72 },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyTimerList"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 74 },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyUserAllSourcePriviledgeEffectData"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 79 },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyUserAllValidBattlePassData"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 385025 },
+      "service_name": "WorldNtf",
+      "method_name": "SignRewardNotify"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1753654261, "method_id": 2 },
+      "service_name": "MailNtf",
+      "method_name": "SyncMailListNum"
+    }
+  ]
+}

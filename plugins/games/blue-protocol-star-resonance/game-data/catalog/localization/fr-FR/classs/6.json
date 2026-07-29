@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "fr-FR",
+    "key": "class.3.description",
+    "text": "Excelle dans le combat à <color=#fcbe03>courte portée</color>, utilisant des <color=#fcbe03>Haches doubles</color> comme arme. Les mouvements sont aussi vifs et féroces que le feu, avec d'excellentes capacités d'<color=#fcbe03>attaque de zone réduite</color>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367319",
+      "confidence": "verified"
+    }
+  }
+]

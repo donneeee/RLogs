@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "kind": "equipment",
+  "id": 2070412,
+  "stable_key": "equipment.2070412",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "equipment_id": 2070412,
+    "model_path": "equip/parts/clothes/ch_f_clothes_bujia_01_lod0"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.EquipTable",
+    "reference": "client-build:global/steam/24252055@sha256:26398bacecd7a4cf4be5e518ec35e00adac03fcaa925f94e614d1efc5bce69f8",
+    "confidence": "corroborated"
+  }
+}

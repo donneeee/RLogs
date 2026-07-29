@@ -1,0 +1,74 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 223,
+  "stable_key": "talent.223",
+  "localization_key": "talent.223.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "frost-mage",
+    "spec_key": "shared",
+    "classification_state": "current_build_multi_branch_talent_relation",
+    "row_key": 223,
+    "design_name": "琉璃浩瀚",
+    "name_id": 1051079539,
+    "description_id": 0,
+    "profession_id": 2,
+    "icon_address": "ui/atlas/talent_passive_2/talent_passive_icon_general_tank_suppressex",
+    "talent_type": 4,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        3,
+        2204210,
+        1
+      ]
+    ],
+    "buff_parameters": [
+      [
+        0
+      ]
+    ],
+    "unlock_costs": [
+      [
+        1020054,
+        1
+      ]
+    ],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.223.name",
+    "tree_nodes": [
+      {
+        "node_id": 263001,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          262001,
+          223026
+        ]
+      },
+      {
+        "node_id": 240001,
+        "branch": 0,
+        "prerequisite_node_ids": [
+          243001,
+          223027
+        ]
+      }
+    ],
+    "class_id": 2
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

@@ -1,0 +1,54 @@
+schema_version = 1
+id = "app.rlogs.game.blue-protocol-star-resonance"
+game_id = "blue-protocol-star-resonance"
+name = "Blue Protocol: Star Resonance"
+version = "0.1.0"
+api_version = 1
+runtime = "trusted_native"
+capabilities = [
+  "process_discovery",
+  "packet_framing",
+  "packet_decoding",
+  "region_resolution",
+  "game_data",
+  "character_profiles",
+  "website_profiles",
+  "localization",
+]
+
+[process_selector]
+windows_executable_names = ["BPSR_STEAM.exe"]
+linux_process_names = ["BPSR_STEAM.exe", "BPSR_STEAM"]
+
+[resources]
+protocol_packs = "protocol-packs"
+game_data_catalog = "game-data/catalog"
+research_inventory = "research/game-file-inventory"
+localization_staging = "game-data/catalog/localization"
+
+[[resource_exports]]
+name = "catalog"
+kind = "game-data-catalog"
+path = "game-data/catalog"
+schema_id = "app.rlogs.bpsr.game-data"
+schema_version = 2
+
+[[resource_exports]]
+name = "icons"
+kind = "game-assets"
+storage = "shared_assets"
+path = "icons"
+schema_id = "app.rlogs.bpsr.game-icons"
+schema_version = 1
+
+[[resource_exports]]
+name = "localization"
+kind = "localization-catalog"
+path = "game-data/catalog/localization"
+schema_id = "app.rlogs.bpsr.localization"
+schema_version = 2
+
+[website_profiles]
+payload_schema_id = "app.rlogs.bpsr.character-profile"
+payload_schema_version = 1
+relative_endpoint = "/v1/games/blue-protocol-star-resonance/profiles"

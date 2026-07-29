@@ -21,6 +21,7 @@ popularity and activity are only discovery signals and will change.
 | [BPSR-ZDPS](https://github.com/Blue-Protocol-Source/BPSR-ZDPS) | stable `v0.1.7.3` at `c0a375cc8b858562e6d381a4357e10955a80340c` | Independent C# framing, TCP reconstruction, message routing, and broad feature coverage |
 | [resonance-logs-cn](https://github.com/fudiyangjin/resonance-logs-cn) | `0.2.0` at `ccdeef23c7806be5072f95a9e80b103794af3544` | Pinned CN-region protocol and feature baseline |
 | [resonance-logs](https://github.com/resonance-logs/resonance-logs) | `f4aff36e573674e04db1bb09216c603ddf9fb7f6` | Historical native meter and character projection evidence: profile identity, level, fight power, gear/equipment structures, progression, encounter upload, and website integration |
+| [resonance-website](https://github.com/resonance-logs/resonance-website) | `0baff9e4b625a11d09c9d579af19285695d38e12` | Historical website consumer contract: game avatar/profile images, detailed character views, Discord account linking, and upload/API behavior |
 | [BPSR-Meter by Denoder](https://github.com/Denoder/BPSR-Meter) | `c8c4518c36de9145362b1cabee7652905559aa99` | StarResonanceDamageCounter-derived behavior and compatibility changes |
 | [BlueMeter](https://github.com/caaatto/BlueMeter) | `c29251637b2a74567ca21028fe57ed415e3fc7aa` | Independent C# combat meter and desktop workflow |
 | [StarResonanceDps](https://github.com/DannyDog/StarResonanceDps) | `1063994fc531633c40a8164a39f3bfc0d97545bb` | C# parser behavior and English-localization branch |
@@ -36,6 +37,12 @@ predates the current game by months, so its character fields—including owned
 Imagines, equipment, level, seasonal progression/power, and related profile
 surfaces—are extraction requirements and schema hypotheses until reverified
 against a current client build. RLogs does not fork or import its parser.
+
+The website pin is also a behavioral reference, not a server implementation
+dependency. Its game character portrait comes from the character
+`AvatarInfo`, while Discord avatars belong to the separate linked website
+account. Its broad JSON upload model is not adopted; RLogs uses typed,
+privacy-reviewed profile patches.
 
 ## Current framing consensus and variants
 

@@ -1,0 +1,1852 @@
+[
+  {
+    "table_key": 4207737656,
+    "table_key_hex": "0xfaccfb38",
+    "stable_key": "ctb.ChatBubble",
+    "names": [
+      "ChatBubble.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1135146340,
+      "bytes": 47644,
+      "sha256": "sha256:4fc8a73690a52dde90f78eed6bc540ea7463b8fae193c21952b7bbb4d4e1c054"
+    },
+    "shape": {
+      "rows": 1981,
+      "row_size": 16,
+      "row_data_bytes": 31696,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 2101054702,
+      "unique": 1981,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 4,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 755039901,
+    "table_key_hex": "0x2d00fe9d",
+    "stable_key": "ctb.UnionResolveTable",
+    "names": [
+      "UnionResolveTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1239667604,
+      "bytes": 31672,
+      "sha256": "sha256:42d9cb26cf7e9fd395ccce81dcbae2912e36dbcd38ae5c98e3d0092a0a209f06"
+    },
+    "shape": {
+      "rows": 501,
+      "row_size": 36,
+      "row_data_bytes": 18036,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 74
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 9454
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 501,
+      "unique": 501,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 15,
+    "exact_string_references": 400
+  },
+  {
+    "table_key": 1525905852,
+    "table_key_hex": "0x5af379bc",
+    "stable_key": "ctb.ChatStickersTable",
+    "names": [
+      "ChatStickersTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 335011073,
+      "bytes": 18615,
+      "sha256": "sha256:509fa098a505bcf70b64b6944a1a2b3c0bfdf38f82d1a076adac71b735b583b4"
+    },
+    "shape": {
+      "rows": 313,
+      "row_size": 37,
+      "row_data_bytes": 11581,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 34
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 4396
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1001,
+      "maximum": 15020,
+      "unique": 313,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 15,
+    "exact_string_references": 305
+  },
+  {
+    "table_key": 2030100599,
+    "table_key_hex": "0x7900e077",
+    "stable_key": "ctb.MailTable",
+    "names": [
+      "MailTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 460218361,
+      "bytes": 4802,
+      "sha256": "sha256:bec61f6e57e65d2037fc3d7d8c0fd3d135dcbc1941402c240525a3da8494ab5b"
+    },
+    "shape": {
+      "rows": 90,
+      "row_size": 44,
+      "row_data_bytes": 3960,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 22
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1000,
+      "maximum": 4003,
+      "unique": 90,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 14,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 3175369986,
+    "table_key_hex": "0xbd444d02",
+    "stable_key": "ctb.TeamTargetTable",
+    "names": [
+      "TeamTargetTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 941870826,
+      "bytes": 10032,
+      "sha256": "sha256:41df488fea906f3d3828b93670bc3333b3a9e008870aace4a9b70ec79276f806"
+    },
+    "shape": {
+      "rows": 83,
+      "row_size": 80,
+      "row_data_bytes": 6640,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 616
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 2012
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 999,
+      "maximum": 8003,
+      "unique": 83,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 32,
+    "exact_string_references": 61
+  },
+  {
+    "table_key": 529901442,
+    "table_key_hex": "0x1f95a782",
+    "stable_key": "ctb.ChatHyperlink",
+    "names": [
+      "ChatHyperlink.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1165708690,
+      "bytes": 3747,
+      "sha256": "sha256:891b8ab6dfede89f27878d9614f7c7c182a42533375a0bbb3539faf8948a8059"
+    },
+    "shape": {
+      "rows": 73,
+      "row_size": 41,
+      "row_data_bytes": 2993,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 36
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 34
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 3622,
+      "maximum": 10000001,
+      "unique": 73,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 12,
+    "exact_string_references": 1
+  },
+  {
+    "table_key": 565127846,
+    "table_key_hex": "0x21af2aa6",
+    "stable_key": "ctb.UnionIconTable",
+    "names": [
+      "UnionIconTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1167049898,
+      "bytes": 4062,
+      "sha256": "sha256:2d5fce33d55e6bf14fa436e09037aca02cb5dba3021caec6da64f5bb22a3dad1"
+    },
+    "shape": {
+      "rows": 41,
+      "row_size": 32,
+      "row_data_bytes": 1312,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 2322
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1001,
+      "maximum": 3010,
+      "unique": 41,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 9,
+    "exact_string_references": 60
+  },
+  {
+    "table_key": 1822668823,
+    "table_key_hex": "0x6ca3b817",
+    "stable_key": "ctb.UnionUpradingTable",
+    "names": [
+      "UnionUpradingTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 368781726,
+      "bytes": 2592,
+      "sha256": "sha256:c06348e343ce8ba8173ff99df32be9d13319123a9d2ad3721ad467a5c3d044b6"
+    },
+    "shape": {
+      "rows": 30,
+      "row_size": 52,
+      "row_data_bytes": 1560,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 692
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 101,
+      "maximum": 701,
+      "unique": 30,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 20,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 3444902406,
+    "table_key_hex": "0xcd550a06",
+    "stable_key": "ctb.UnionAuthorityTable",
+    "names": [
+      "UnionAuthorityTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 996320847,
+      "bytes": 340,
+      "sha256": "sha256:5284010c3ff4bbc6aad7505fabcd3f5ccd17c8265b720ca3bcdeba046d70b206"
+    },
+    "shape": {
+      "rows": 15,
+      "row_size": 8,
+      "row_data_bytes": 120,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 500201,
+      "maximum": 500221,
+      "unique": 15,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 1,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2908633337,
+    "table_key_hex": "0xad5e38f9",
+    "stable_key": "ctb.UnionTagTable",
+    "names": [
+      "UnionTagTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 879651582,
+      "bytes": 1105,
+      "sha256": "sha256:3a73f7a2e149c6c9a2b1a78e4a9f0a82bfce5535536dffc24d5fef4c5f67317b"
+    },
+    "shape": {
+      "rows": 13,
+      "row_size": 24,
+      "row_data_bytes": 312,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 589
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 101,
+      "maximum": 208,
+      "unique": 13,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 6,
+    "exact_string_references": 12
+  },
+  {
+    "table_key": 573695167,
+    "table_key_hex": "0x2231e4bf",
+    "stable_key": "ctb.UnionEventTable",
+    "names": [
+      "UnionEventTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1167144898,
+      "bytes": 292,
+      "sha256": "sha256:d93d6df862f0cd7f21d47b5b915122b1360af4605cdddd14665d28172256b4e5"
+    },
+    "shape": {
+      "rows": 12,
+      "row_size": 8,
+      "row_data_bytes": 96,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 12,
+      "unique": 12,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 1,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 458986377,
+    "table_key_hex": "0x1b5b9389",
+    "stable_key": "ctb.UnionUpradingPurviewTable",
+    "names": [
+      "UnionUpradingPurviewTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1139219890,
+      "bytes": 917,
+      "sha256": "sha256:ad8ea7908ccb83d1bf650ac64c4c5b04c151ffc37fa666618f45e36d40fd190b"
+    },
+    "shape": {
+      "rows": 12,
+      "row_size": 16,
+      "row_data_bytes": 192,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 106
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 423
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 12,
+      "unique": 12,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 6,
+    "exact_string_references": 10
+  },
+  {
+    "table_key": 1947243801,
+    "table_key_hex": "0x74109519",
+    "stable_key": "ctb.FriendshipTotalValue",
+    "names": [
+      "FriendshipTotalValue.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 443364406,
+      "bytes": 352,
+      "sha256": "sha256:8d3e36ac1a554004183c5d0331400e10acb1e17ae57a98a3222e104300a37f74"
+    },
+    "shape": {
+      "rows": 10,
+      "row_size": 17,
+      "row_data_bytes": 170,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 2
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 10,
+      "unique": 10,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 3,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 3220898869,
+    "table_key_hex": "0xbffb0435",
+    "stable_key": "ctb.UnionActiveListTable",
+    "names": [
+      "UnionActiveListTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 969854674,
+      "bytes": 1389,
+      "sha256": "sha256:b7eb509461e65caa758ae74c863a50004879cb327e30d9a819ca57b429452af8"
+    },
+    "shape": {
+      "rows": 8,
+      "row_size": 60,
+      "row_data_bytes": 480,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 472
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 273
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 8,
+      "unique": 8,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 20,
+    "exact_string_references": 7
+  },
+  {
+    "table_key": 2938064870,
+    "table_key_hex": "0xaf1f4fe6",
+    "stable_key": "ctb.UnionManageTable",
+    "names": [
+      "UnionManageTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 880031748,
+      "bytes": 1460,
+      "sha256": "sha256:de5fcb175183e9d5d3aa92379f31e17354292a859e25d98db2121911d7c3c23a"
+    },
+    "shape": {
+      "rows": 8,
+      "row_size": 24,
+      "row_data_bytes": 192,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 80
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 1024
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 13,
+      "unique": 8,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 7,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1774430904,
+    "table_key_hex": "0x69c3aab8",
+    "stable_key": "ctb.ChatStatusTable",
+    "names": [
+      "ChatStatusTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 359794222,
+      "bytes": 415,
+      "sha256": "sha256:3879e3239b54d1149d2a9a65f4c29ec4fd654b968922d270e408531d3f8b0287"
+    },
+    "shape": {
+      "rows": 7,
+      "row_size": 21,
+      "row_data_bytes": 147,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 112
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 7,
+      "unique": 7,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 5,
+    "exact_string_references": 5
+  },
+  {
+    "table_key": 2445364619,
+    "table_key_hex": "0x91c14d8b",
+    "stable_key": "ctb.UnionBuildingTable",
+    "names": [
+      "UnionBuildingTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 783555427,
+      "bytes": 1072,
+      "sha256": "sha256:75af4b656d2a1569df13afc5ae03d31ec9f9255db4481c25a43a66957b166161"
+    },
+    "shape": {
+      "rows": 7,
+      "row_size": 40,
+      "row_data_bytes": 280,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 136
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 500
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 7,
+      "unique": 7,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 15,
+    "exact_string_references": 13
+  },
+  {
+    "table_key": 2126929272,
+    "table_key_hex": "0x7ec65d78",
+    "stable_key": "ctb.ChatPersonalizedTag",
+    "names": [
+      "ChatPersonalizedTag.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 635871922,
+      "bytes": 350,
+      "sha256": "sha256:b3adbe84eaec692d5e72476751fac7bc139e452457a7e237f01a3ea0231b5315"
+    },
+    "shape": {
+      "rows": 6,
+      "row_size": 20,
+      "row_data_bytes": 120,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 82
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 6,
+      "unique": 6,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 6,
+    "exact_string_references": 3
+  },
+  {
+    "table_key": 722482608,
+    "table_key_hex": "0x2b1035b0",
+    "stable_key": "ctb.FriendshipLevel",
+    "names": [
+      "FriendshipLevel.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 1239097064,
+      "bytes": 318,
+      "sha256": "sha256:1c9694c4bc9ab39d3c0b5feced434e2a540a6feaed2098e0dfb7ce444ea240e2"
+    },
+    "shape": {
+      "rows": 6,
+      "row_size": 25,
+      "row_data_bytes": 150,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 18
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 2
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 6,
+      "unique": 6,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 5,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1141793494,
+    "table_key_hex": "0x440e62d6",
+    "stable_key": "ctb.UnionActiveValueTable",
+    "names": [
+      "UnionActiveValueTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 30029145,
+      "bytes": 444,
+      "sha256": "sha256:1cd9bbda745e178a2dbcb8eeafe18cf7aaa5f03bbbe25509cab0f16553610382"
+    },
+    "shape": {
+      "rows": 6,
+      "row_size": 24,
+      "row_data_bytes": 144,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 152
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 6,
+      "unique": 6,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 7,
+    "exact_string_references": 7
+  },
+  {
+    "table_key": 2532248419,
+    "table_key_hex": "0x96ef0b63",
+    "stable_key": "ctb.WeChatShareTable",
+    "names": [
+      "WeChatShareTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 785296291,
+      "bytes": 791,
+      "sha256": "sha256:e8f500dbeba4d9f15d12bc5f5b023ff33d449554c4ca5c2a18a69b6635aad049"
+    },
+    "shape": {
+      "rows": 4,
+      "row_size": 28,
+      "row_data_bytes": 112,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 56
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 491
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 4,
+      "unique": 4,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 8,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2287991149,
+    "table_key_hex": "0x885ff96d",
+    "stable_key": "ctb.ChatBanReasonTable",
+    "names": [
+      "ChatBanReasonTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 762133509,
+      "bytes": 148,
+      "sha256": "sha256:d8f0649b7681a21f851d33eabdd17af0772bf93c30780533935fe3a72601c1af"
+    },
+    "shape": {
+      "rows": 3,
+      "row_size": 8,
+      "row_data_bytes": 24,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 3,
+      "unique": 3,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 1,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1881208170,
+    "table_key_hex": "0x7020f56a",
+    "stable_key": "ctb.FriendshipValueGetEvents",
+    "names": [
+      "FriendshipValueGetEvents.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 439181997,
+      "bytes": 206,
+      "sha256": "sha256:9a4aa4c5534249ac3b7251f48b5a9afa0c02df1dc7ed950a88c4dda7bb1e4c08"
+    },
+    "shape": {
+      "rows": 3,
+      "row_size": 16,
+      "row_data_bytes": 48,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 34
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 3,
+      "unique": 3,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 4,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 2243385664,
+    "table_key_hex": "0x85b75940",
+    "stable_key": "ctb.ChatContactsGroupTable",
+    "names": [
+      "ChatContactsGroupTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 729808332,
+      "bytes": 140,
+      "sha256": "sha256:b69bcbdbb9f663f6ff4d83de70553aba35fedf87990d12d9dc7c7a0a4ee0d2a7"
+    },
+    "shape": {
+      "rows": 2,
+      "row_size": 12,
+      "row_data_bytes": 24,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 0
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 0
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 99,
+      "unique": 2,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 2,
+    "exact_string_references": 0
+  },
+  {
+    "table_key": 1930750730,
+    "table_key_hex": "0x7314eb0a",
+    "stable_key": "ctb.UnionActivityTable",
+    "names": [
+      "UnionActivityTable.ctb"
+    ],
+    "state": "named",
+    "name_confidence": "corroborated_hash_match",
+    "domain": "social",
+    "source": {
+      "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+      "offset": 443160059,
+      "bytes": 577,
+      "sha256": "sha256:9a4bcb2b6e171abf4ad4163c1a1816136d0c920c04f3068bb2f2fcba22e18cda"
+    },
+    "shape": {
+      "rows": 2,
+      "row_size": 88,
+      "row_data_bytes": 176,
+      "pool_lengths": [
+        {
+          "type": 1,
+          "bytes": 92
+        },
+        {
+          "type": 2,
+          "bytes": 0
+        },
+        {
+          "type": 3,
+          "bytes": 0
+        },
+        {
+          "type": 4,
+          "bytes": 0
+        },
+        {
+          "type": 5,
+          "bytes": 0
+        },
+        {
+          "type": 6,
+          "bytes": 193
+        },
+        {
+          "type": 7,
+          "bytes": 0
+        },
+        {
+          "type": 8,
+          "bytes": 0
+        },
+        {
+          "type": 9,
+          "bytes": 0
+        },
+        {
+          "type": 10,
+          "bytes": 0
+        }
+      ],
+      "trailing_bytes": 0
+    },
+    "row_ids": {
+      "minimum": 1,
+      "maximum": 2,
+      "unique": 2,
+      "duplicate_rows": 0,
+      "zero_rows": 0
+    },
+    "candidate_field_relations": 27,
+    "exact_string_references": 3
+  }
+]

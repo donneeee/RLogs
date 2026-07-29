@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "name_card.9030001.acquisition",
+    "text": "Langsung didapat",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-965230667",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "name_card.9030001.name",
+    "text": "Latar Kartu Nama 1 (Sementara)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-989769508",
+      "confidence": "verified"
+    }
+  }
+]

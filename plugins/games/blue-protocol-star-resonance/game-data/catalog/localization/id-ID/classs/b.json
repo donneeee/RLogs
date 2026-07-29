@@ -1,0 +1,56 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.14.description",
+    "text": "Mahir bertarung dalam <color=#fcbe03>jarak jauh</color> dan memiliki daya serang yang luar biasa.<br>Dapat menyerang musuh dalam jangkauan luas dengan intensitas tinggi dari jarak jauh. Tambahkan <color=#fcbe03>Imprint Chance Boost</color> untuk meningkatkan peluang memicunya.<br>Dia juga dapat melakukan <color=#fcbe03>charge</color> dari jarak dekat untuk mengakibatkan Burst DMG yang luar biasa. Tambahkan <color=#fcbe03>Critical Chance</color> untuk mencapai hasil yang dahsyat.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1657154217",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.4.name",
+    "text": "Gale Lancer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964621",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "id-ID",
+    "key": "class.9.name",
+    "text": "Heavy Guardian",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1486964626",
+      "confidence": "verified"
+    }
+  }
+]

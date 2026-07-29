@@ -1,0 +1,38 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.11.name",
+    "text": "Atirador de Elite",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1825192187",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "class.5.description",
+    "text": "Maneja um <color=#fcbe03>Anel da Natureza</color> e é eficaz em <color=#fcbe03>cura à longa distância</color>. Canaliza a essência verdejante da floresta para fornecer <color=#fcbe03>cura</color> e <color=#fcbe03>bonificações</color> excepcionais.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-180367321",
+      "confidence": "verified"
+    }
+  }
+]

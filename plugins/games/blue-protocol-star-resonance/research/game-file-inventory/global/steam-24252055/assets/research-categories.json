@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "categories": [
+    {
+      "category": "monsters-and-npcs",
+      "address_count": 26597,
+      "distinct_bundle_hashes": 17625,
+      "examples": [
+        "anim/cut/dragon002-03/as_cut_dragon002-03_cam01_boss_spawn",
+        "anim/cut/dragon002-03/as_cut_dragon002-05_cam01_boss_die",
+        "anim/eff/summon/as_eff_summon_attack01air_end",
+        "anim/eff/summon/as_eff_summon_attack01air_start",
+        "anim/eff/summon03/as_eff_summon03_born01",
+        "anim/eff/summon03/as_eff_summon03_idle01",
+        "anim/eff/tinaboss/as_mon_tina_atk_b_burst_eff",
+        "anim/eff/summon/as_eff_summon_skill_ult01",
+        "anim/eff/summon/as_eff_summon_attack01_ex",
+        "anim/eff/summon/as_eff_summon_attack01air_ex",
+        "anim/eff/summon/as_eff_summon_attack01air_loop",
+        "anim/eff/summon/as_eff_summon_attack02_ex"
+      ]
+    },
+    {
+      "category": "dungeons-and-objectives",
+      "address_count": 21625,
+      "distinct_bundle_hashes": 20600,
+      "examples": [
+        "anim/env/cutscene-book/as_env_cutscene-book_idle",
+        "as_f_base_vehicle_horse_idle_afraid",
+        "as_f_base_playerlevel_idle",
+        "as_f_base_playerlevel_risearm",
+        "as_mon_gebulin_afraid01",
+        "as_mon_gebulin_afraid02",
+        "bin/areamap/blueland001/0_0_0",
+        "bin/areamap/blueland001/0_0_1",
+        "bin/areamap/blueland001/0_0_2",
+        "bin/areamap/blueland001/0_0_3",
+        "bin/areamap/blueland001/0_0_4",
+        "bin/areamap/blueland001/0_0_5"
+      ]
+    },
+    {
+      "category": "housing",
+      "address_count": 11362,
+      "distinct_bundle_hashes": 9303,
+      "examples": [
+        "bin/ecs/ctrl/skm_home_bandstage_fence001_a",
+        "bin/ecs/ctrl/skm_home_bandstage_fence002_a",
+        "bin/ecs/ctrl/skm_home_bandstage_fence003_a",
+        "bin/ecs/ctrl/skm_home_bandstage_floodlight_01",
+        "bin/ecs/ctrl/skm_home_bandstage_frame001_a",
+        "bin/ecs/ctrl/skm_home_bandstage_hexagonallight001_a",
+        "bin/ecs/ctrl/skm_home_bandstage_horn_01",
+        "bin/ecs/ctrl/skm_home_bandstage_lightbar001_a",
+        "bin/ecs/ctrl/skm_home_bandstage_pedestal001_a",
+        "bin/ecs/ctrl/skm_home_bandstage_pedestal002_a",
+        "bin/ecs/ctrl/skm_home_bandstage_pedestal003_a",
+        "bin/ecs/ctrl/skm_home_bandstage_shelf001_a"
+      ]
+    },
+    {
+      "category": "equipment-and-items",
+      "address_count": 9752,
+      "distinct_bundle_hashes": 8205,
+      "examples": [
+        "as_f_base_emo_itemtakeout01",
+        "as_f_base_emo_itemtakeout02",
+        "as_mon_tripod_atk_satellitefallweaponlost",
+        "animtpl/ch_item_mhead01_01",
+        "animtpl/ch_npc_f_child_equip_common001",
+        "animtpl/ch_npc_f_child_equip_common001_delta02",
+        "animtpl/ch_npc_f_child_equip_common001_delta03",
+        "animtpl/ch_npc_f_child_equip_common001_delta04",
+        "animtpl/ch_npc_f_child_equip_common001_delta05",
+        "animtpl/ch_npc_f_child_equip_common001_delta06",
+        "animtpl/ch_npc_f_child_equip_common002",
+        "animtpl/ch_npc_f_child_equip_common003"
+      ]
+    },
+    {
+      "category": "icons-and-atlases",
+      "address_count": 7950,
+      "distinct_bundle_hashes": 7910,
+      "examples": [
+        "armband_res/armband_icon_base",
+        "back_icon_c_alice01",
+        "back_icon_c_alice02",
+        "back_icon_c_angelwings01",
+        "back_icon_c_bag01",
+        "back_icon_c_bag02",
+        "back_icon_c_bag03",
+        "back_icon_c_balloon01",
+        "back_icon_c_balloon02",
+        "back_icon_c_band01",
+        "back_icon_c_band02",
+        "back_icon_c_bubblepup01"
+      ]
+    },
+    {
+      "category": "skills-and-statuses",
+      "address_count": 6412,
+      "distinct_bundle_hashes": 5928,
+      "examples": [
+        "anim/camera/skill/as_camera_skill_controller",
+        "anim/camera/skill/as_camera_skill_start",
+        "anim/eff/fujiman/as_eff_fujiman_skill01_01",
+        "anim/eff/fujiman/as_eff_fujiman_skill01_02",
+        "anim/eff/fujiman/as_eff_fujiman_skill01_03",
+        "anim/eff/fujiman/as_eff_fujiman_skill01_04",
+        "anim/eff/fujiman/as_eff_fujiman_skill01_05",
+        "anim/eff/fujiman/as_eff_fujiman_skill01_06",
+        "anim/eff/fujiman/as_eff_fujiman_skill01_07",
+        "anim/eff/fujiman/as_eff_fujiman_skill04_001",
+        "anim/eff/fujiman/as_eff_fujiman_skill04_002",
+        "anim/eff/fujiman/as_eff_fujiman_skill04_003"
+      ]
+    },
+    {
+      "category": "quests-and-events",
+      "address_count": 5367,
+      "distinct_bundle_hashes": 5244,
+      "examples": [
+        "anim/env/fld001_mainquest_vine/skm_env_fld001_mainquest_vine_aidle",
+        "anim/env/fld001_mainquest_vine/skm_env_fld001_mainquest_vine_attack",
+        "anim/env/fld001_mainquest_vine/skm_env_fld001_mainquest_vine_idle",
+        "as_mon_snake_eventdeath",
+        "bin/ai/3rd_maintask_712971",
+        "bin/ai/3rd_maintask_712972",
+        "bin/ai/3rd_maintask_712973",
+        "bin/ai/3rd_maintask_712974",
+        "bin/ai/3rd_maintask_712975",
+        "bin/ai/3rd_maintask_712976",
+        "bin/ai/3rd_maintask_712977",
+        "bin/ai/3rd_maintask_npc_504422_cbase"
+      ]
+    },
+    {
+      "category": "combat-and-mechanics",
+      "address_count": 4197,
+      "distinct_bundle_hashes": 3691,
+      "examples": [
+        "anim/env/mutual001b/as_env_mutual001b_behit",
+        "anim/env/coll-andelafeiliao_01/as_env_coll-andelafeiliao_01_hit",
+        "anim/env/dng003_dragonscar_stone01anim/as_skm_env_dng003_dragonscar_stone_01_anim_hit",
+        "anim/env/mutual001b/as_env_mutual001b_behit 1",
+        "anim/env/mutual001b/as_env_mutual001b_behit_bkp",
+        "anim/env/mutual001b/as_env_mutual001b_behit_common",
+        "anim/env/mutual003b_a/as_env_mutual003b_a_behit_f",
+        "anim/env/mutual003b_a/as_env_mutual003b_a_behit_m",
+        "as_mon_battlenappo_born_c",
+        "as_mon_battlenappo_death_c",
+        "as_mon_solider_behitkneel",
+        "as_f_base_behit_r"
+      ]
+    },
+    {
+      "category": "guilds-and-social",
+      "address_count": 1455,
+      "distinct_bundle_hashes": 1281,
+      "examples": [
+        "as_f_base_emo_clubdance_end",
+        "as_f_base_emo_clubdance_loop",
+        "as_f_base_emo_clubdance_start",
+        "as_f_base_skinpoolparty_idle",
+        "as_f_base_skinpoolparty_perform01_end",
+        "as_f_base_skinpoolparty_perform01_loop",
+        "as_f_base_skinpoolparty_perform01_start",
+        "as_f_base_team_fsidle01",
+        "as_m_base_skinpoolparty_idle",
+        "as_m_base_skinpoolparty_perform01_end",
+        "as_m_base_skinpoolparty_perform01_loop",
+        "as_m_base_skinpoolparty_perform01_start"
+      ]
+    },
+    {
+      "category": "seasons-and-ranking",
+      "address_count": 956,
+      "distinct_bundle_hashes": 774,
+      "examples": [
+        "as_wpnpc_f_base_iruna_skt_prank_end",
+        "as_wpnpc_f_base_iruna_skt_prank_loop",
+        "as_wpnpc_f_base_iruna_skt_prank_start",
+        "as_wpnpc_f_hair_iruna_skt_prank_end",
+        "as_wpnpc_f_hair_iruna_skt_prank_loop",
+        "as_wpnpc_f_hair_iruna_skt_prank_start",
+        "bin/ecs/anim/as_wpnpc_f_base_iruna_skt_prank_end",
+        "bin/ecs/anim/as_wpnpc_f_base_iruna_skt_prank_loop",
+        "bin/ecs/anim/as_wpnpc_f_base_iruna_skt_prank_start",
+        "bin/ecs/anim/as_wpnpc_f_hair_iruna_skt_prank_end",
+        "bin/ecs/anim/as_wpnpc_f_hair_iruna_skt_prank_loop",
+        "bin/ecs/anim/as_wpnpc_f_hair_iruna_skt_prank_start"
+      ]
+    },
+    {
+      "category": "chat",
+      "address_count": 704,
+      "distinct_bundle_hashes": 644,
+      "examples": [
+        "as_npc_m_youth_sitandchat1",
+        "as_npc_m_middle_sitandchat1_start",
+        "as_npc_m_middle_sitandchat1",
+        "as_npc_m_youth_sitandchat2",
+        "as_npc_f_middle_sitandchat1",
+        "as_npc_f_middle_sitandchat1_end",
+        "as_npc_f_middle_sitandchat1_loop",
+        "as_npc_f_middle_sitandchat1_start",
+        "as_npc_f_middle_sitandchat2",
+        "as_npc_f_middle_sitandchat2_end",
+        "as_npc_f_middle_sitandchat2_loop",
+        "as_npc_f_middle_sitandchat2_start"
+      ]
+    },
+    {
+      "category": "phantom-factors-and-imagines",
+      "address_count": 704,
+      "distinct_bundle_hashes": 629,
+      "examples": [
+        "as_mon_battlenappo_atk_phantom_fail",
+        "as_mon_battlenappo_atk_phantom_perform",
+        "as_mon_battlenappo_atk_phantom_sing",
+        "as_mon_battlenappo_atk_phantom_sing_end",
+        "as_mon_battlenappo_atk_phantom_success",
+        "as_mon_dajiqiren04_atk_phantom_core",
+        "as_mon_puppet_atk_phantom_loop",
+        "as_mon_puppet_atk_phantom_start",
+        "as_wpnpc_f_base_tinaboss_atk_ex_phantom_doppel",
+        "as_wpnpc_f_base_tinaboss_atk_ex_phantom_end",
+        "as_wpnpc_f_base_tinaboss_atk_ex_phantom_loop",
+        "as_wpnpc_f_base_tinaboss_atk_ex_phantom_start"
+      ]
+    },
+    {
+      "category": "professions-and-crafting",
+      "address_count": 354,
+      "distinct_bundle_hashes": 287,
+      "examples": [
+        "as_f_base_emo_witchcraft_loop",
+        "as_f_base_emo_witchcraft_end",
+        "as_f_base_emo_witchcraft_start",
+        "as_f_base_gather01_loop",
+        "as_f_base_gather01_end",
+        "as_f_base_gather01_start",
+        "as_f_base_gather02_end",
+        "as_f_base_gather02_loop",
+        "as_f_base_gather02_start",
+        "as_f_base_gather03_end",
+        "as_f_base_gather03_loop",
+        "as_f_base_gather03_start"
+      ]
+    },
+    {
+      "category": "characters-and-profiles",
+      "address_count": 156,
+      "distinct_bundle_hashes": 155,
+      "examples": [
+        "eff/hand/mesh/ch_eff_hand01_avatar",
+        "eff/hand/mesh/ch_eff_hand02_avatar",
+        "eff/linglu/mesh/ch_eff_linglu_avatar",
+        "eff/summon01/mesh/ch_eff_summon01_01_avatar",
+        "eff/summon02/mesh/ch_eff_summon02_01_avatar",
+        "effect/character/armband/p_fx_armband_001",
+        "effect/character/armband/p_fx_armband_blue",
+        "effect/character/armband/p_fx_armband_color",
+        "effect/character/armband/p_fx_armband_colormax",
+        "effect/character/armband/p_fx_armband_green",
+        "effect/character/armband/p_fx_armband_orange",
+        "effect/character/armband/p_fx_armband_purple"
+      ]
+    }
+  ]
+}

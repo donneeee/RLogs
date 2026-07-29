@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "kind": "talent",
+  "id": 166,
+  "stable_key": "talent.166",
+  "localization_key": "talent.166.name",
+  "icon": null,
+  "attributes": {
+    "class_key": "stormblade",
+    "spec_key": "moonstrike-spec",
+    "classification_state": "current_build_talent_tree_branch_relation",
+    "row_key": 166,
+    "design_name": "月影锐击",
+    "name_id": 1051078585,
+    "description_id": 0,
+    "profession_id": 1,
+    "icon_address": "ui/atlas/talent_passive_1/taidao166",
+    "talent_type": 4,
+    "talent_level": 1,
+    "talent_reference_id": 0,
+    "talent_effect_parameters": [
+      [
+        3,
+        2200680,
+        1
+      ]
+    ],
+    "buff_parameters": [
+      [
+        0
+      ]
+    ],
+    "unlock_costs": [
+      [
+        1020054,
+        2
+      ]
+    ],
+    "talent_points_cost": 1,
+    "fight_value": 26,
+    "name_localization_key": "talent.166.name",
+    "tree_nodes": [
+      {
+        "node_id": 115012,
+        "branch": 1,
+        "prerequisite_node_ids": [
+          37082
+        ]
+      }
+    ],
+    "class_id": 1,
+    "specialization_id": 102
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TalentTable",
+    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "confidence": "corroborated"
+  }
+}

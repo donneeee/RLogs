@@ -15,6 +15,21 @@ The same frame stream must produce the same result regardless of its adapter.
 Optional sources may be added later, but they feed this same boundary and do
 not create another parser.
 
+## Live ownership filtering
+
+The live adapter contract includes process ownership, not only a startup BPF
+expression. World-server endpoints can rotate during a scene transition.
+Windows uses continuous process/socket-table attribution with executable names
+provided by the selected trusted game plug-in; the Linux
+adapter will provide the equivalent attribution through its native
+process/socket view.
+
+Only an exact flow confirmed as game-owned may leave the bounded capture
+ingress. Unattributed frames are held briefly for connection-table race
+resolution and then discarded. They are never reconstructed, decoded, or
+written to a raw capture or journal. `DumpcapLiveCapture` writes only to a pipe;
+`OwnedProcessCapture` is the mandatory persistence boundary around it.
+
 ## Offline replay
 
 `OfflineCapture` currently streams legacy pcap and pcapng without requiring a

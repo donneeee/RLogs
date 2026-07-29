@@ -1,0 +1,1676 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1002202.name",
+    "text": "Golpe Descendente",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642148642",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1005302.name",
+    "text": "Morte Instantânea Sombria",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642257542",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1005704.name",
+    "text": "Corte",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642261900",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1005806.name",
+    "text": "Rajada",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-642262991",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1011101.description",
+    "text": "Tempestade de Lâminas",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26191102",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1011102.name",
+    "text": "Corte Aéreo Espiral",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643297537",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1011806.name",
+    "text": "Arcano! Martelo de Repolho",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643305164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1011904.description",
+    "text": "Fortalecer, fortalecer!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-26199817",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1011910.name",
+    "text": "Inferno",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-643306280",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.102651.name",
+    "text": "Cavaleiro Javali",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1906717978",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.10290121.name",
+    "text": "Impacto Rochoso",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1950053851",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1090502.description",
+    "text": "<linktext=1501><style=\"ItemQuality_5\">Lampejo</style></linktext> melhorado consome todos os <style=\"accent-gn\">Símbolos do Trovão</style>, depois se energiza e avança para cortar todos os inimigos no caminho, causando <style=\"accent-gn\">510%</style> de ATQ como <style=\"physical\">Dano de Ataque</style> (que escala com o Nível/Categoria de <linktext=1501><style=\"ItemQuality_5\">Lampejo</style></linktext>). <style=\"accent-gn\">Cada</style> <style=\"accent-gn\">Símbolo do Trovão</style> consumido aumenta o dano em <style=\"accent-gn\">25%</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35646890",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1090902.description",
+    "text": "Consome <style=\"accent-gn\">3</style> <style=\"accent-gn\">Cristais de Areia</style>, causando <style=\"physical\">Dano de Ataque</style> no alvo e reduzindo o dano sofrido em <style=\"accent-gn\">10%</style> pelos próximos <style=\"accent-gn\">10 s</style> (não acumula).<br><br><size=22><style=\"tipsYellow\">Dicas: Quando você tiver Cristais de Areia suficientes, um bom uso de Fúria de Granito causa alto dano e garante altas chances de sobrevivência.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-35651246",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1101.name",
+    "text": "Marcador 1",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943310",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1103.name",
+    "text": "Marcador 3",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943312",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1106.name",
+    "text": "Marcador 6",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817943315",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.111102.name",
+    "text": "Restos – Reparo",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1907862353",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.115350.description",
+    "text": "Flor de Imobilização",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-783028792",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1223.name",
+    "text": "Investida Fantasma",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944467",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1245.name",
+    "text": "Abrigo Glacial",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817944535",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1409.name",
+    "text": "Corte do Tufão",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946585",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1419.name",
+    "text": "Queda Celeste",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946618",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1499.name",
+    "text": "Intrepidez: Bênção do Guardião do Vento",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817946882",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1505.description",
+    "text": "Realiza um salto suave, invocando vinhas para deslizar e causar <style=\"dendro\">Dano de Floresta</style>.<br><style=\"accent-gn\">Florescer</style><br>Durante o deslize, conjura Florescer instantaneamente para lançar 3 Sementes de Cuscuta. <style=\"dendro\">Dança</style> pode ser usada duas vezes seguidas.<br><br><size=22><style=\"tipsYellow\">Dicas de Mestre: esta é uma habilidade com cargas. Preste atenção no limite de cargas para não as desperdiçar. Após a conjuração, use o Ataque Básico para ativar Florescer, causando acertos extras e mais 3 Sementes de Cuscuta</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342164",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1514.description",
+    "text": "Canaliza o poder da floresta para invocar um cervo espiritual que avança, causando <style=\"dendro\">Dano de Floresta</style> massivo a todos os inimigos em seu caminho. Ao desaparecer, deixa para trás um Domínio Fértil que cura os aliados que estiverem dentro.<br><i><style=\"text_third_gray\">\"Poder da terra, coração da floresta... que a fonte da vida jamais se esgote!\"</style></i><br><br><size=22><style=\"tipsYellow\">Dicas de Mestre: esta Habilidade Suprema cria um amplo caminho retangular de dano e uma zona de cura. Preste atenção ao posicionamento dos inimigos antes de conjurar. Enquanto estiver ativa, cada habilidade de ataque que atingir um inimigo gerará uma Semente de Cuscuta. Encadeie suas habilidades para gerar mais.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342196",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1556.description",
+    "text": "Semente em Flor",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342330",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1561.description",
+    "text": "Círculo de Cura (Dano e cura de ida e volta)",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505342358",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1606.name",
+    "text": "Corte Frenético",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948760",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1621.name",
+    "text": "Inferno Cadente.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817948821",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1698.name",
+    "text": "Ataque Básico: Giro Escaldante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949059",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1700393.name",
+    "text": "Teia de Contenção do Aracnoguejo",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-916025906",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.170106.name",
+    "text": "Grande Salto",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1914941946",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1713.description",
+    "text": "Uma técnica de espada suprema afiada o suficiente para cortar o ar em si. Libera uma rajada de cortes à frente, causando <style=\"physical\">Dano de Ataque</style> a todos os inimigos no alcance. Concede o máximo de <style=\"accent-gn\">Símbolos do Trovão</style> e restaura totalmente a <style=\"accent-gn\">Intenção da Lâmina</style> no fim do golpe.<br><i><style=\"text_third_gray\">\"A arma celestial ofusca até as estrelas mais brilhantes.\"</style></i><br><br><size=22><style=\"tipsYellow\">Dicas: Use quando os Símbolos do Trovão estiverem vazios para carregá-los rapidamente. Também é eficaz contra múltiplos alvos para causar um dano em área devastador.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344373",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1724.description",
+    "text": "Dois Cortes de Iaido ultrarrápidos. Causa <style=\"physical\">Dano de Ataque</style> nos inimigos ao custo de <style=\"accent-gn\">50</style> de <style=\"accent-gn\">Intenção da Lâmina</style>. Quando a Velocidade de Ataque atinge <style=\"accent-gn\">25%</style>|<style=\"accent-gn\">50%</style>|<style=\"accent-gn\">80%</style>, causa <style=\"accent-gn\">1</style>|<style=\"accent-gn\">2</style>|<style=\"accent-gn\">3</style> ataque(s) adicional(is). Se restar <style=\"accent-gn\">Intenção da Lâmina</style> após o golpe, a habilidade pode ser lançada novamente. <br><br><size=22><style=\"tipsYellow\">Dicas: Habilidade principal da Especialização. Consome Intenção da Lâmina para causar dano. Libere quando a Intenção da Lâmina estiver no máximo.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344407",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1737.description",
+    "text": "Corta verticalmente à frente com força com uma foice envolta em poder destrutivo, causando <style=\"physical\">Dano de Ataque</style> igual a <style=\"accent-gn\">1500%</style> do ATQ aos inimigos. Escala com o Nível/Categoria do <style=\"accent-gn\">Ataque Básico</style>.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505344443",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1743.name",
+    "text": "Surto de Voltagem",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949978",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1744.name",
+    "text": "​Visão Verdadeira​",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817949979",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1899.name",
+    "text": "Luz de Purificação",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817951238",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1922.description",
+    "text": "Consome <style=\"accent-gn\">40</style> de <style=\"accent-gn\">Fúria</style> para liberar uma poderosa onda de choque que causa <style=\"physical\">Dano de Ataque</style> a todos os inimigos próximos. Quando houver <style=\"accent-gn\">Cristais de Areia</style> suficientes disponíveis, <style=\"accent-gn\">eles</style> são consumidos para gerar um <linktext=1035><style=\"ItemQuality_5\">Escudo</style></linktext> que absorve todo o dano sofrido, durando <style=\"accent-gn\">12 s</style>. Para <style=\"accent-gn\">cada</style> <style=\"accent-gn\">Cristal de Areia</style> adicional consumido, um valor adicional é adicionado ao escudo, com um máximo de <style=\"accent-gn\">2</style> <style=\"accent-gn\">Cristais de Areia</style> consumidos por vez. (Os escudos podem acumular, mas não podem exceder <style=\"accent-gn\">150%</style> do PV Máximo.)<br><br><size=22><style=\"tipsYellow\">Dicas: Recomenda-se lançar quando nenhum escudo estiver ativo para garantir o tempo de atividade contínuo do escudo.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346583",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1930.description",
+    "text": "Consome <style=\"accent-gn\">40</style> pontos de <style=\"accent-gn\">Fúria</style>, bate a arma violentamente no chão, causando <style=\"physical\">Dano de Ataque</style> a inimigos ao redor e entra no estado <style=\"accent-gn\">Bloqueio Esmagador</style>. Durante esse tempo, a Taxa de Bloqueio aumenta em <style=\"accent-gn\">100%</style>, o <style=\"physical\">Dano de Ataque</style> sofrido de bloqueios diminui em <style=\"accent-gn\">30%</style>. <br><br><size=22><style=\"tipsYellow\">Dicas: Muito eficaz em ambientes com, principalmente, Dano de Ataque. Após usar, a chance de bloqueio aumenta, reduzindo confiavelmente o Dano de Ataque sofrido.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346614",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1940.description",
+    "text": "Consome <style=\"accent-gn\">50</style> de <style=\"accent-gn\">Fúria</style> e <style=\"accent-gn\">5</style> <style=\"accent-gn\">Cristais de Areia</style> para soltar um rugido, causando <style=\"physical\">Dano de Ataque</style> a inimigos próximos e concedendo um <linktext=1035><style=\"ItemQuality_5\">Escudo</style></linktext> que absorve todo o dano (acumula até <style=\"accent-gn\">50%</style> do PV Máximo). Também reduz o <style=\"physical\">Dano de Ataque</style> recebido em <style=\"accent-gn\">10%</style> por <style=\"accent-gn\">12</style> segundos. <br><br><size=22><style=\"tipsYellow\">Dicas: Permite causar dano quando há pouca pressão para sobreviver e concede mais Redução de Dano em situações onde os inimigos causam principalmente Dano de Ataque.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505346647",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.1999.name",
+    "text": "Poder da Rocha",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817952327",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2001631.description",
+    "text": "Flecha Dividida",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316478694",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2001637.name",
+    "text": "Flechas Divididas Rápidas",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1933585134",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2001740.description",
+    "text": "Ressoa com o poder do Elite: Bandido Batedor para teletransportar-se ao lado do alvo, aplicando <linktext=3005><style=\"ItemQuality_5\">Atordoamento</style></linktext> e causando <style=\"physical\">Dano de Ataque</style>. Além disso, reduz a DEF do alvo por <style=\"accent-gn\">10 s</style>. <br><style=\"accent-gn\">[Este efeito não acumula e apenas um será efetivo.]</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1316479815",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2209.name",
+    "text": "Raio Luminar",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817980344",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2235.description",
+    "text": "Salta rapidamente e dispara contra inimigos, causando <style=\"physical\">Dano de Ataque</style>. Concede imunidade a <style=\"physical\">Dano de Ataque</style> para você e até <style=\"accent-gn\">10</style> aliados próximos por <style=\"accent-gn\">5 s</style>. <br>Essa habilidade tem <style=\"accent-gn\">2</style> cargas. <br><br><size=22><style=\"tipsYellow\">Dicas: Funciona melhor em situações de alta pressão para aumentar a sobrevivência.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374933",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2238.description",
+    "text": "Dispara uma <style=\"accent-gn\">Flecha Explosiva</style> no alvo que detona ao impacto. A <style=\"accent-gn\">Flecha Explosiva</style> causa <style=\"physical\">Dano de Ataque</style> a todos os inimigos próximos. <br>Cada vez que uma <style=\"accent-gn\">Habilidade de Classe</style> causa Dano Crítico, <style=\"accent-gn\">Flecha Explosiva</style> ganha <style=\"accent-gn\">1</style> carga. Com <style=\"accent-gn\">5</style> cargas ou após <style=\"accent-gn\">6 s</style>, a <style=\"accent-gn\">Flecha Explosiva</style> explode, <style=\"accent-gn\">cada</style> carga aumenta o dano de <style=\"accent-gn\">Flecha Explosiva</style> em <style=\"accent-gn\">100%</style>. <br><br><size=22><style=\"tipsYellow\">Dicas: Combine com a Especialização Falcoaria. Foque no Dano Crítico para fortalecer a explosão.</style></size>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505374936",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2314.description",
+    "text": "Como a obra de um amante apaixonado de música, uma performance de improviso concede imediatamente <style=\"accent-gn\">5</style> de <style=\"accent-gn\">Paixão de Performance</style>. Isso também cura os aliados próximos e lhes concede um <style=\"accent-gn\">Escudo</style> que dura <style=\"accent-gn\">10</style> s, enquanto causa <style=\"magic\">Dano Mágico</style> aos inimigos próximos.<br><style=\"accent-gn\">Paixão de Performance</style>: necessária para executar música. Regenera <style=\"accent-gn\">1</style> acúmulo a cada <style=\"accent-gn\">5</style> s.<br><br><size=22><style=\"tipsYellow\">Dicas: em emergências, este escudo poderoso pode aliviar a pressão de sobrevivência da equipe. Calcule o momento da conjuração com cuidado.</size></style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505375955",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2314.name",
+    "text": "Agitar o Palco",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981461",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2316.name",
+    "text": "Palco Central",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817981463",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2414.name",
+    "text": "Barreira Sagrada",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982550",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2415.name",
+    "text": "Proteção de Égide",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1817982551",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.2900640.name",
+    "text": "Arcano! Coração de Fogo",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-138284112",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.300491.description",
+    "text": "Dança",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-859935194",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.300498.name",
+    "text": "Impeça Nappo!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914851",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.300499.name",
+    "text": "Poção da Revelação",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1984914852",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3022.name",
+    "text": "Rugido Flamejante",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818014162",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3040120.description",
+    "text": "Corpo Virtual Bomba de Fumaça",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-465165283",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3350065.name",
+    "text": "Posicionar Cristal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200862865",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3350113.name",
+    "text": "Pesadelo Assombroso",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1200863787",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3520305.description",
+    "text": "",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-658472523",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3603.description",
+    "text": "Concentra sua Energia e entra no estado de Carga. Enquanto ativo, <style=\"accent-gn\">Acertos Consecutivos</style> e <style=\"accent-gn\">inimigos derrotados</style> geram <style=\"accent-gn\">até 5</style> Orbes de Engrama. Ao fim da duração ou ao lançar a habilidade novamente, causa dano com base no número de orbes armazenados.<br>A cada <style=\"accent-gn\">8</style> acertos, 1 Orbe de Engrama é gerado.<br>A <style=\"accent-gn\">cada</style> derrota, 1 Orbe de Engrama é gerado.<br><i><style=\"ItemQuality_0\">Dano de Área que acerta múltiplos alvos ainda é contado como um único acerto.</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505415125",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3932.name",
+    "text": "Proeza! Dança da Roda de Chamas",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023996",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3934.name",
+    "text": "Proeza! Emboscada Rápida",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818023998",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3941.name",
+    "text": "Proeza! Transformação em Abelha",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818024028",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3972.description",
+    "text": "<style=\"accent-gn\">Invoca</style> o Chefe: Aranha Predadora para causar <style=\"physical\">Dano de Ataque</style>.<br>Após a conjuração, seu bônus de <style=\"accent-gn\">ATQ</style> passivo é temporariamente melhorado de acordo com sua <style=\"accent-gn\">Porcentagem de Maestria</style>. Cada <style=\"accent-gn\">5%</style> de Maestria concede ATQ extra para cada acúmulo passivo (até um limite máximo).",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418622",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.3983.description",
+    "text": "<style=\"accent-gn\">Transforma-se no </style>Dragon Slayer do Fogo – Natsu, substituindo o conjunto de habilidades enquanto ganha <linktext=1217><style=\"ItemQuality_5\">Conversão de Capacidade</style></linktext>.<br>Passiva: lançar habilidades que não sejam a Habilidade Suprema concede acúmulos de <style=\"accent-gn\">Chama do Dragão</style> com base no tipo de habilidade. A cada 10 acúmulos de <style=\"accent-gn\">Chama do Dragão</style>, ocorre uma conversão automática em 1 acúmulo de <style=\"accent-gn\">Dragon Force</style>. <style=\"accent-gn\">Dragon Force</style> pode acumular até 5 vezes. Cada acúmulo de <style=\"accent-gn\">Dragon Force</style> concede um Bônus de Fogo.<br>1. <style=\"accent-gn\">Punho de Ferro do Dragão de Fogo</style>: carrega brevemente antes de lançar um soco em chamas para a frente, causando <style=\"physical\">Dano de Ataque</style> de Fogo e armazenando 5 acúmulos de <style=\"accent-gn\">Chama do Dragão</style>.<br>2. <style=\"accent-gn\">Ataque de Asas do Dragão de Fogo</style>: salta ferozmente e avança para a frente, causando <style=\"physical\">Dano de Ataque</style> de Fogo e armazenando 5 acúmulos de <style=\"accent-gn\">Chama do Dragão</style>.<br>3. <style=\"accent-gn\">Rugido do Dragão de Fogo</style>: reúne o poder das chamas para cuspir uma explosão massiva de fogo para a frente, causando <style=\"physical\">Dano de Ataque</style> de Fogo. Se estiver com o máximo de acúmulos de <style=\"accent-gn\">Dragon Force</style>, consome todos os acúmulos de <style=\"accent-gn\">Dragon Force</style> para ganhar redução de TR para as habilidades do Natsu e um Bônus de Fogo. Esse efeito persiste durante a transformação atual e pode acumular até <style=\"accent-gn\">3</style> vezes.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505418656",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4009.name",
+    "text": "Redefinir",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818050040",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4040020.description",
+    "text": "Inferno",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1756632163",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4101.name",
+    "text": "Explosão de Cristal",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818051121",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4501.description",
+    "text": "Após o uso, avança. Avance bravamente!",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505449971",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4509.name",
+    "text": "Coelho Foguete",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055485",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4533.description",
+    "text": "Deriva de Cauda! Velocidade do TR +100% ao correr.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450072",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4544.description",
+    "text": "Avance e corra com o vento! - 100% de tempo de carga durante corrida. Pode acumular até 3 cargas.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505450106",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4547.name",
+    "text": "Salto do Amanhecer",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818055615",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4602.description",
+    "text": "Segure para ativar o Hiperimpulso para realizar um golpe de alto risco. Libere no momento perfeito para avançar e reduzir o TR de Investida Flamejante.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505451061",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4704.description",
+    "text": "A sorte auspiciosa segue o leão, reunindo mil bênçãos. Após lançar, pode se transformar em diferentes partes.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452152",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4706.name",
+    "text": "Salto Perfurador da Lua",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057660",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4707.description",
+    "text": "Quando ativado, permite que o usuário ressoe com jogadores próximos montados em um Dragão Caçador da Lua. Jogadores conectados sincronizarão automaticamente e seguirão os movimentos do alvo.<br><style=\"accent-gn\">Conexão Máxima: 10 jogadores.</style>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452155",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4712.name",
+    "text": "Ascensão Sônica",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057689",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4731.description",
+    "text": "O ritmo continua — marche para a frente! Concede um aumento de velocidade por uma certa duração após conjurar a habilidade.<br><style=\"tipsYellow\">Não pode ser conjurada enquanto estiver na postura de formação de marcha.<br><style=\"tipsYellow\">",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505452248",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.4731.name",
+    "text": "Arrancada da Abertura",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818057754",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.5000.name",
+    "text": "Sair do Brinquedo",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818085968",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.5543.name",
+    "text": "Poção de Baixa Gravidade",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091548",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.5556.name",
+    "text": "Invocar Torreta de Barragem",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818091584",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.5622.name",
+    "text": "Superataque de Bombinha",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818092570",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.6515.description",
+    "text": "Teletransporta em <style=\"physical\">10 m</style> para a frente.<br>Não pode atravessar paredes.",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505521882",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.6519.name",
+    "text": "Parede de Gelo",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818127392",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.6600.description",
+    "text": "<style=\"physical\">Consome 10</style> de PV para atacar com um Bastão de Madeira.<br>Se o ataque <style=\"physical\">atingir um Perseguidor</style>, <style=\"physical\">restaura 50</style> de PV.<br>Eliminar um Perseguidor restaura o PV por completo.<br><style=\"physical\">Não pode ser usada quando o PV for insuficiente.</style><br>O dano real é calculado com base na <style=\"physical\">Armadura do objeto no qual o Perseguidor se transformou</style>.</style><br><i><style=\"text_third_gray\">\"Um verdadeiro mestre não se importa com a qualidade da sua arma.\"</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505522933",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.6600.name",
+    "text": "Base Sólida",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1818128439",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.6700.description",
+    "text": "<style=\"physical\">Consome 10</style> de PV para atacar com um Bastão de Madeira.<br>Se o ataque <style=\"physical\">atingir um Perseguidor</style>, <style=\"physical\">restaura 50</style> de PV.<br>Eliminar um Perseguidor restaura o PV por completo.<br><style=\"physical\">Não pode ser usada quando o PV for insuficiente.</style><br>O dano real é calculado com base na <style=\"physical\">Armadura do objeto no qual o Perseguidor se transformou</style>.</style><br><i><style=\"text_third_gray\">\"Um verdadeiro mestre não se importa com a qualidade da sua arma.\"</style></i>",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1505524022",
+      "confidence": "verified"
+    }
+  },
+  {
+    "schema_version": 2,
+    "locale": "pt-BR",
+    "key": "skill.8110905.name",
+    "text": "Socos Normais Consecutivos",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "official-game-localization",
+      "reference": "client-build:global/steam/24252055#localization-1132746899",
+      "confidence": "verified"
+    }
+  }
+]

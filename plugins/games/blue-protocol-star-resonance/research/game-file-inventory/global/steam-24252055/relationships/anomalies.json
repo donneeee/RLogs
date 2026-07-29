@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "distribution_app_id": "3681810",
+    "build_id": "24252055"
+  },
+  "quarantined_table_candidates": [
+    {
+      "table_key": 639435656,
+      "table_key_hex": "0x261d0388",
+      "package_index": 0,
+      "offset": 1190910380,
+      "bytes": 242,
+      "row_count": 10,
+      "row_size": 10,
+      "pool_types": [
+        393216,
+        458752,
+        524288,
+        589824
+      ],
+      "reason": "does_not_match_the_observed_1_through_10_pool_sequence_or_exact_extent"
+    }
+  ],
+  "row_occurrence_audit": {
+    "records": 329729,
+    "occurrences": 329774,
+    "confirmed_occurrences": 329764,
+    "quarantined_occurrences": 10
+  },
+  "catalog_to_container_audit": {
+    "container_bundle_keys": 186273,
+    "addressed_bundle_hashes": 154625,
+    "unaddressed_bundle_keys": 31649,
+    "address_hashes_without_bundle_entry": 1
+  },
+  "interpretation": [
+    "The single quarantined candidate aligned by chance but did not have the observed CTB pool sequence.",
+    "Every row from every confirmed table is represented in the occurrence recount.",
+    "A bundle without an address-catalog entry remains inventoried by package, offset, length, signature, and digest.",
+    "Unknown tables retain stable hash identities and are never discarded."
+  ]
+}
