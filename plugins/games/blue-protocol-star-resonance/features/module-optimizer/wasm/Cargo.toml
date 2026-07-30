@@ -1,0 +1,20 @@
+[package]
+name = "rlogs-bpsr-module-optimizer-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+build = "build.rs"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rlogs-bpsr-module-optimizer = { path = ".." }
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen = "0.2"
+
+[build-dependencies]
+rlogs-bpsr-module-optimizer = { path = ".." }
+serde_json.workspace = true

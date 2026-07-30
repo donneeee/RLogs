@@ -29,6 +29,15 @@ impl ScoringRules {
         self.attributes.contains_key(&attribute_id)
     }
 
+    /// Exact-build total-link fight values used by browser/runtime packagers.
+    ///
+    /// The optimizer remains the owner of scoring behavior. This read-only
+    /// view exists so deployment adapters can package the reviewed catalog
+    /// without duplicating formulas in another language.
+    pub fn link_power(&self) -> &[i32] {
+        &self.link_power
+    }
+
     pub(crate) fn attribute_power(&self, attribute_id: i32, value: i32) -> (Option<i32>, i32) {
         let Some(levels) = self.attributes.get(&attribute_id) else {
             return (None, 0);
@@ -106,7 +115,11 @@ impl ScoringRules {
         }
     }
 
-    pub(crate) fn from_catalog_entries(
+    /// Rebuild scoring rules from a reviewed, versioned optimizer catalog.
+    ///
+    /// Browser and server adapters use this constructor after loading their
+    /// packaged catalog. Native installs normally use `load_catalog_from_path`.
+    pub fn from_catalog_entries(
         catalog_revision: String,
         attributes: &[AttributeCatalogEntry],
         link_power: Vec<i32>,

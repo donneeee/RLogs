@@ -16,6 +16,7 @@ members = [
     "plugins/builtin/combat-meter",
     "plugins/games/blue-protocol-star-resonance",
     "plugins/games/blue-protocol-star-resonance/features/module-optimizer",
+    "plugins/games/blue-protocol-star-resonance/features/module-optimizer/wasm",
     "tools/capture-inspect",
     "tools/game-data-build",
     "tools/plugin-inspect",

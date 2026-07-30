@@ -574,6 +574,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlogs-bpsr-module-optimizer-wasm"
+version = "0.1.0"
+dependencies = [
+ "rlogs-bpsr-module-optimizer",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "rlogs-bpsr-offline-recorder"
 version = "0.1.0"
 dependencies = [
