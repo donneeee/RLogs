@@ -155,6 +155,11 @@ h3 { margin-bottom: 0; font-size: 14px; letter-spacing: -.01em; }
 }
 .optimizer-field textarea:focus, .optimizer-field input:focus, .optimizer-field select:focus,
 .optimizer-attribute-row input:focus, .optimizer-attribute-row select:focus { border-color: var(--blue); }
+.optimizer-search-help {
+  display: block; min-height: 2.6em; margin-top: 6px; color: var(--muted);
+  font-size: 8px; font-weight: 500; letter-spacing: 0; line-height: 1.45;
+  text-transform: none;
+}
 .optimizer-check {
   display: flex; align-items: center; gap: 9px; margin: 14px 0; color: var(--muted);
   font-size: 10px; line-height: 1.4;

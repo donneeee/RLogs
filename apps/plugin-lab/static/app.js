@@ -99,6 +99,7 @@ function renderOptimizerCatalog() {
     row.append(identity, mode, minimum);
     return row;
   }));
+  updateOptimizerExactSearchAvailability();
 }
 
 function renderFixtures() {
@@ -400,6 +401,7 @@ function loadOptimizerDemo() {
   );
   if (strength) strength.value = "target";
   $("#optimizer-require-target").checked = false;
+  updateOptimizerExactSearchAvailability();
   $("#optimizer-status").textContent =
     "Safe 12-module demo loaded. No character data is included.";
 }
@@ -427,6 +429,80 @@ function optimizerInputFromJson(value) {
   );
 }
 
+function optimizerCombinationCount(itemCount, selectionSize) {
+  if (
+    !Number.isSafeInteger(itemCount) ||
+    !Number.isSafeInteger(selectionSize) ||
+    itemCount < 0 ||
+    selectionSize < 0 ||
+    selectionSize > itemCount
+  ) return 0n;
+  const smallerSide = Math.min(selectionSize, itemCount - selectionSize);
+  let result = 1n;
+  for (let index = 1; index <= smallerSide; index += 1) {
+    result =
+      (result * BigInt(itemCount - smallerSide + index)) / BigInt(index);
+  }
+  return result;
+}
+
+function optimizerExactEstimate(modules) {
+  const minimumTotalRaw = $("#optimizer-min-total").value;
+  const minimumTotal =
+    minimumTotalRaw === "" ? null : Number(minimumTotalRaw);
+  const priorityAttributes = new Set(
+    [...document.querySelectorAll(".optimizer-attribute-row")]
+      .filter((row) => row.querySelector("select").value === "target")
+      .map((row) => Number(row.dataset.attributeId)),
+  );
+  const requirePriority =
+    $("#optimizer-require-target").checked && priorityAttributes.size > 0;
+  const candidateCount = modules.filter((module) => {
+    if (!Array.isArray(module.parts) || module.parts.length < 2) return false;
+    const total = module.parts.reduce(
+      (sum, part) => sum + Number(part.initial_link_points || 0),
+      0,
+    );
+    if (minimumTotal != null && total < minimumTotal) return false;
+    return (
+      !requirePriority ||
+      module.parts.some((part) => priorityAttributes.has(Number(part.part_id)))
+    );
+  }).length;
+  return {
+    candidateCount,
+    combinations: optimizerCombinationCount(
+      candidateCount,
+      Number($("#optimizer-combination-size").value),
+    ),
+  };
+}
+
+function updateOptimizerExactSearchAvailability() {
+  let modules = [];
+  try {
+    const text = $("#optimizer-inventory").value.trim();
+    if (text) modules = optimizerInputFromJson(JSON.parse(text)).modules;
+  } catch {
+    // The main Optimize action reports malformed JSON; feasibility can wait.
+  }
+  const estimate = optimizerExactEstimate(modules);
+  const tooLarge = estimate.combinations > 500000n;
+  const searchMode = $("#optimizer-search-mode");
+  const exactOption = searchMode.querySelector('option[value="exact"]');
+  exactOption.disabled = tooLarge;
+  exactOption.textContent = tooLarge
+    ? "Exact verification (too many sets)"
+    : "Exact verification";
+  if (tooLarge && searchMode.value === "exact") searchMode.value = "auto";
+  $("#optimizer-search-help").textContent = modules.length === 0
+    ? "Exact verification is available for small inventories."
+    : tooLarge
+      ? `Exact disabled: ${formatNumber(estimate.candidateCount)} eligible modules can produce ` +
+        `up to ${estimate.combinations.toLocaleString()} sets. Auto uses bounded search.`
+      : `Exact available for ${estimate.combinations.toLocaleString()} possible sets.`;
+}
+
 async function runModuleOptimizer() {
   const button = $("#run-optimizer");
   button.disabled = true;
@@ -447,6 +523,14 @@ async function runModuleOptimizer() {
       if (minimum > 0) minimums[attributeId] = minimum;
     });
     const minimumTotalRaw = $("#optimizer-min-total").value;
+    const exactEstimate = optimizerExactEstimate(modules);
+    const fellBackFromExact =
+      $("#optimizer-search-mode").value === "exact" &&
+      exactEstimate.combinations > 500000n;
+    if (fellBackFromExact) {
+      $("#optimizer-search-mode").value = "auto";
+      updateOptimizerExactSearchAvailability();
+    }
     const payload = {
       modules,
       current_instance_ids: currentInstanceIds,
@@ -460,7 +544,10 @@ async function runModuleOptimizer() {
       require_target_match: $("#optimizer-require-target").checked,
     };
     $("#optimizer-status").textContent =
-      `Searching ${formatNumber(modules.length)} modules with ${view.optimizerCatalog.catalog_revision}...`;
+      fellBackFromExact
+        ? `Exact search would require ${exactEstimate.combinations.toLocaleString()} sets; ` +
+          "using bounded search automatically."
+        : `Searching ${formatNumber(modules.length)} modules with ${view.optimizerCatalog.catalog_revision}...`;
     const response = await fetch("/api/module-optimizer/optimize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -576,6 +663,26 @@ function formatBytes(bytes) {
 $("#refresh").addEventListener("click", scan);
 $("#optimizer-demo").addEventListener("click", loadOptimizerDemo);
 $("#run-optimizer").addEventListener("click", runModuleOptimizer);
+$("#optimizer-combination-size").addEventListener(
+  "change",
+  updateOptimizerExactSearchAvailability,
+);
+$("#optimizer-min-total").addEventListener(
+  "input",
+  updateOptimizerExactSearchAvailability,
+);
+$("#optimizer-require-target").addEventListener(
+  "change",
+  updateOptimizerExactSearchAvailability,
+);
+$("#optimizer-attributes").addEventListener(
+  "change",
+  updateOptimizerExactSearchAvailability,
+);
+$("#optimizer-inventory").addEventListener(
+  "input",
+  updateOptimizerExactSearchAvailability,
+);
 $("#run-replay").addEventListener("click", runReplay);
 $("#toggle-paths").addEventListener("click", () => {
   view.showPaths = !view.showPaths;

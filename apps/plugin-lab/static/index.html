@@ -102,9 +102,12 @@
                     <span>Search</span>
                     <select id="optimizer-search-mode">
                       <option value="auto">Auto</option>
-                      <option value="exact">Exact verification</option>
                       <option value="beam">Bounded beam</option>
+                      <option value="exact">Exact verification (small inventories)</option>
                     </select>
+                    <small id="optimizer-search-help" class="optimizer-search-help">
+                      Exact verification is available for small inventories.
+                    </small>
                   </label>
                   <label class="optimizer-field">
                     <span>Minimum module total</span>
