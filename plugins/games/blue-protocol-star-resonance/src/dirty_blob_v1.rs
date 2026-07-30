@@ -110,15 +110,7 @@ pub(crate) fn decode_character_update(
     bytes: &[u8],
     stream_type: i32,
 ) -> Result<DirtyCharacterUpdate, DirtyBlobError> {
-    if bytes.len() > MAX_BLOB_BYTES {
-        return Err(DirtyBlobError::BlobTooLarge);
-    }
-    let stream_safe = match stream_type {
-        0 => true,
-        1 => false,
-        other => return Err(DirtyBlobError::UnsupportedStreamType(other)),
-    };
-    let mut reader = BlobReader::new(bytes, stream_safe);
+    let mut reader = BlobReader::for_stream(bytes, stream_type)?;
     let root_end = reader.begin_object()?;
     let mut update = DirtyCharacterUpdate::default();
 
@@ -332,22 +324,30 @@ fn positive_u32(value: i32) -> Option<u32> {
     (value > 0).then(|| u32::try_from(value).expect("positive i32 always fits u32"))
 }
 
-struct BlobReader<'a> {
+pub(crate) struct BlobReader<'a> {
     bytes: &'a [u8],
     offset: usize,
     stream_safe: bool,
 }
 
 impl<'a> BlobReader<'a> {
-    fn new(bytes: &'a [u8], stream_safe: bool) -> Self {
-        Self {
+    pub(crate) fn for_stream(bytes: &'a [u8], stream_type: i32) -> Result<Self, DirtyBlobError> {
+        if bytes.len() > MAX_BLOB_BYTES {
+            return Err(DirtyBlobError::BlobTooLarge);
+        }
+        let stream_safe = match stream_type {
+            0 => true,
+            1 => false,
+            other => return Err(DirtyBlobError::UnsupportedStreamType(other)),
+        };
+        Ok(Self {
             bytes,
             offset: 0,
             stream_safe,
-        }
+        })
     }
 
-    fn is_finished(&self) -> bool {
+    pub(crate) fn is_finished(&self) -> bool {
         self.offset == self.bytes.len()
     }
 
@@ -375,7 +375,7 @@ impl<'a> BlobReader<'a> {
         Ok(self.read_raw(1)?[0])
     }
 
-    fn read_i32(&mut self) -> Result<i32, DirtyBlobError> {
+    pub(crate) fn read_i32(&mut self) -> Result<i32, DirtyBlobError> {
         Ok(i32::from_le_bytes(
             self.read_raw(4)?
                 .try_into()
@@ -383,7 +383,7 @@ impl<'a> BlobReader<'a> {
         ))
     }
 
-    fn read_u32(&mut self) -> Result<u32, DirtyBlobError> {
+    pub(crate) fn read_u32(&mut self) -> Result<u32, DirtyBlobError> {
         Ok(u32::from_le_bytes(
             self.read_raw(4)?
                 .try_into()
@@ -437,7 +437,7 @@ impl<'a> BlobReader<'a> {
             .map_err(|_| DirtyBlobError::InvalidUtf8)
     }
 
-    fn begin_object(&mut self) -> Result<usize, DirtyBlobError> {
+    pub(crate) fn begin_object(&mut self) -> Result<usize, DirtyBlobError> {
         let marker = self.read_i32()?;
         if marker != OBJECT_BEGIN {
             return Err(DirtyBlobError::InvalidObjectMarker(marker));
@@ -454,7 +454,7 @@ impl<'a> BlobReader<'a> {
         Ok(end)
     }
 
-    fn next_field(&mut self, object_end: usize) -> Result<Option<i32>, DirtyBlobError> {
+    pub(crate) fn next_field(&mut self, object_end: usize) -> Result<Option<i32>, DirtyBlobError> {
         if self.offset == object_end {
             return Ok(None);
         }
@@ -471,11 +471,11 @@ impl<'a> BlobReader<'a> {
         Ok(Some(field))
     }
 
-    fn skip_object_body(&mut self, object_end: usize) {
+    pub(crate) fn skip_object_body(&mut self, object_end: usize) {
         self.offset = object_end;
     }
 
-    fn finish_object(&mut self, object_end: usize) -> Result<(), DirtyBlobError> {
+    pub(crate) fn finish_object(&mut self, object_end: usize) -> Result<(), DirtyBlobError> {
         if self.offset != object_end {
             return Err(DirtyBlobError::InvalidObjectSize);
         }
@@ -556,7 +556,7 @@ impl<'a> BlobReader<'a> {
         checked_collection_count(count)
     }
 
-    fn read_map_counts(&mut self) -> Result<MapCounts, DirtyBlobError> {
+    pub(crate) fn read_map_counts(&mut self) -> Result<MapCounts, DirtyBlobError> {
         let first = self.read_i32()?;
         if first == EMPTY_COLLECTION {
             return Ok(MapCounts::default());
@@ -584,10 +584,10 @@ impl<'a> BlobReader<'a> {
 }
 
 #[derive(Default)]
-struct MapCounts {
-    add: usize,
-    remove: usize,
-    update: usize,
+pub(crate) struct MapCounts {
+    pub(crate) add: usize,
+    pub(crate) remove: usize,
+    pub(crate) update: usize,
 }
 
 fn checked_collection_count(value: i32) -> Result<usize, DirtyBlobError> {

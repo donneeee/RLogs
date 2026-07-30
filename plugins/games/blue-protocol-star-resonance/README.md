@@ -33,6 +33,7 @@ blue-protocol-star-resonance/
     decoder.rs                reviewed message -> canonical event drafts
     dirty_blob_v1.rs          bounded selective dirty-container reader
     profile.rs                typed public character profile
+    profile_projection.rs     sealed local patches -> review packages
     offline_recording.rs      pcap-decoded events -> sealed rlog and coverage
     website.rs                BPSR profile -> neutral website request
   protocol-packs/
@@ -117,6 +118,14 @@ are not declared.
 Account ID/data subtrees and user-supplied profile/half-body image URLs are
 absent from the compiled social schema. A synthetic full-envelope test proves
 that those skipped values cannot reach canonical events.
+
+The local Profile Sync projector accepts only personal-gameplay profile events,
+so viewing another character through the public social route cannot replace or
+join the user's own package. It merges partial local updates, preserves prior
+season details when a later packet carries only a new season ID, re-verifies
+the complete `.rlog` seal, and produces the existing Core-validated relative
+website request without a remote host or credentials.
+
 Dungeon snapshots retain public scene-instance, difficulty, objective ID,
 objective value, and completion state. Only explicit flow transitions create
 run events: `Playing` starts a run and `End` ends it without guessing whether

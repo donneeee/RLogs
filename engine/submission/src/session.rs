@@ -4,8 +4,8 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 use thiserror::Error;
 
 use crate::{
-    LogChunkDescriptor, ServerReportReceipt, Sha256Digest, SubmissionMetadata, SubmissionMode,
-    SubmissionState, UploadManifest,
+    LocalLogArtifact, LogChunkDescriptor, ServerReportReceipt, Sha256Digest, SubmissionMetadata,
+    SubmissionMode, SubmissionState, UploadManifest,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -38,6 +38,29 @@ impl SubmissionSession {
         Ok(session)
     }
 
+    pub fn new_post_run_artifact(
+        metadata: SubmissionMetadata,
+        artifact: &LocalLogArtifact,
+    ) -> Result<Self, SubmissionError> {
+        if metadata.capture_session_id != artifact.header.session_id {
+            return Err(SubmissionError::ArtifactSessionMismatch {
+                metadata: metadata.capture_session_id,
+                artifact: artifact.header.session_id.clone(),
+            });
+        }
+        if metadata.log_format_version != artifact.header.schema_version {
+            return Err(SubmissionError::ArtifactFormatMismatch {
+                metadata: metadata.log_format_version,
+                artifact: artifact.header.schema_version,
+            });
+        }
+        Self::new_post_run(
+            metadata,
+            artifact.chunks.clone(),
+            artifact.file_sha256.clone(),
+        )
+    }
+
     fn new(mode: SubmissionMode, metadata: SubmissionMetadata) -> Self {
         Self {
             mode,
@@ -56,6 +79,18 @@ impl SubmissionSession {
 
     pub fn state(&self) -> SubmissionState {
         self.state
+    }
+
+    pub fn metadata(&self) -> &SubmissionMetadata {
+        &self.metadata
+    }
+
+    pub fn chunks(&self) -> &[LogChunkDescriptor] {
+        &self.chunks
+    }
+
+    pub fn sealed_log_digest(&self) -> Option<&Sha256Digest> {
+        self.sealed_log_digest.as_ref()
     }
 
     pub fn receipt(&self) -> Option<&ServerReportReceipt> {
@@ -416,6 +451,14 @@ pub enum SubmissionError {
     LogAlreadySealed,
     #[error("a post-run upload must reference a sealed local log")]
     PostRunLogNotSealed,
+    #[error(
+        "submission capture session {metadata:?} does not match sealed artifact session {artifact:?}"
+    )]
+    ArtifactSessionMismatch { metadata: String, artifact: String },
+    #[error(
+        "submission log format version {metadata} does not match sealed artifact version {artifact}"
+    )]
+    ArtifactFormatMismatch { metadata: u16, artifact: u16 },
     #[error("the live log must be sealed before finalization")]
     LiveLogNotSealed,
     #[error("an empty local log cannot be sealed")]

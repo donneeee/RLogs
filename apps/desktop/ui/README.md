@@ -34,7 +34,11 @@ cargo run -p rlogs-desktop-host
 
 Open `http://127.0.0.1:7419`. The Session Recorder workspace appears only when
 the Rust API is present. It can run the safe replay, process an existing
-private capture, or start/stop Windows process-owned live capture.
+private capture, or start/stop Windows process-owned live capture. The same
+adapter publishes separate Log Uploader and BPSR Profile Sync workspaces.
+Profile Sync can build bounded local packages from the last sealed log,
+summarize current packages, and lazily inspect exact JSON without external
+network activity.
 
 ## Host boundary
 

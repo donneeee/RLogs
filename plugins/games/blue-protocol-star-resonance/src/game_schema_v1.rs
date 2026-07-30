@@ -166,6 +166,12 @@ pub(crate) struct SyncDungeonData {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub(crate) struct SyncDungeonDirtyData {
+    #[prost(message, optional, tag = "1")]
+    pub data: Option<BufferStream>,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub(crate) struct DungeonSyncData {
     #[prost(int64, optional, tag = "1")]
     pub scene_uuid: Option<i64>,

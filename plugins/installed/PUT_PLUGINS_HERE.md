@@ -26,6 +26,11 @@ or selects a host-derived game-neutral namespace under
 `assets/rlogs/`; the manifest cannot choose a different plug-in's folder.
 Game-specific resources remain under `assets/<game-id>/`.
 
+After adding or updating a folder, open Plug-in Manager and choose **Rescan
+folder**. A newly discovered package is disabled by default. Review its
+declared permissions, subscriptions, dependencies, and diagnostics before
+enabling it.
+
 Bundled game integrations under `plugins/games/` publish named read-only
 resources. Import those resources in `plugin.toml` instead of copying game
 catalogs, UUID/UID tables, localization, or icons into another plug-in.

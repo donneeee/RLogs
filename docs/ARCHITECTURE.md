@@ -24,16 +24,55 @@ trusted game plug-in
     v
 versioned canonical events
     |
+    +--> raw-ID Event Viewer
     +--> run and encounter reducers
     +--> bundled plugins
     +--> community plugins
     +--> local overlays and integrations
     +--> private log writer
     +--> sanitized submission builder
+              |
+              v
+         local draft queue
 ```
 
 There is no legacy parser running beside it. Offline replay passes through the
 same reconstruction, decode, event, and reducer interfaces as live capture.
+The sealed canonical event stream is also the authoritative combat submission;
+clients may preview calculations, but the service replays the evidence and
+owns ranked results. See [Canonical timeline](CANONICAL_TIMELINE.md).
+
+The local draft queue is host infrastructure, not a network client. A real
+completed capture is verified once, described by exact full-file and
+canonical-event SHA-256 values, split into deterministic chunk descriptors,
+and atomically persisted as one bounded entry per artifact digest. Reference
+fixtures are not queued. The host-only `.rlog` path never enters the upload
+manifest, and no draft is transmitted until a separately enabled uploader and
+user-authorized device transport exist.
+
+The desktop exposes Log Uploader and BPSR Profile Sync as separate first-party
+workspaces with independent, disabled-by-default policies. The policy store is
+host-owned and atomically replaced. Enabling one never grants the other.
+Before HTTP or authentication exists, Log Uploader can exercise the exact
+resumable lifecycle against a bounded in-process receiver: both sender and
+receiver are serialized and restored mid-upload, chunk acknowledgements and
+the final receipt are validated, and no external request or artifact deletion
+can occur.
+
+Profile Sync replays the same fully sealed canonical format but consumes only
+personal-gameplay character observations from the trusted game integration.
+The BPSR projector merges partial local-character patches, excludes public
+social lookups for other characters, and passes the result through Core's
+credential/account-field rejection. Core wraps the game-owned relative request
+with sealed-log source evidence and a deterministic digest. The host atomically
+stores one current package per game/deployment/region/server/character UID and
+revalidates it before exact JSON inspection.
+
+Existing sealed logs use the same one-pass verifier as newly recorded logs, so
+recovery does not create a weaker artifact class. Re-verification is
+intentionally ephemeral: the future transport must repeat it immediately
+before reading upload chunks rather than trusting a saved checkbox or
+timestamp.
 
 ## Game-neutral Core
 

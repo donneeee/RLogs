@@ -16,3 +16,8 @@ order, and drops optional contributions when their target is absent.
 The host contract is independent from any desktop UI. A desktop build may scan
 an application-data `plugins/` folder while repository development scans
 `plugins/installed/`.
+
+The development desktop host now uses this crate for startup discovery,
+dependency resolution, persisted desired enablement, diagnostics, and safe
+workspace publication. Executable entrypoints remain declarative until the
+sandboxed component and authenticated external-process adapters are ready.

@@ -6,6 +6,7 @@ import {
 import type {
   DesktopHostAdapter,
   MountedSurface,
+  PluginCatalogSnapshot,
   ShellPreferences,
   WorkspaceDescriptor,
   WorkspaceTabDescriptor,
@@ -24,6 +25,7 @@ export class DesktopShell {
   #mountedSurface: MountedSurface | null = null;
   #mountSequence = 0;
   #draggedWorkspaceId: string | null = null;
+  #pluginCatalog: PluginCatalogSnapshot | null = null;
 
   constructor(root: HTMLElement, adapter: DesktopHostAdapter) {
     this.#root = root;
@@ -35,10 +37,12 @@ export class DesktopShell {
     this.#setMainNotice("Loading plug-in workspaces…", "loading");
 
     try {
-      const [workspaces, preferences] = await Promise.all([
+      const [workspaces, preferences, pluginCatalog] = await Promise.all([
         this.#adapter.loadWorkspaces(),
         this.#adapter.loadPreferences(),
+        this.#adapter.loadPluginCatalog?.() ?? Promise.resolve(null),
       ]);
+      this.#pluginCatalog = pluginCatalog;
       this.#applySnapshot(workspaces, preferences);
       this.#render();
     } catch (error) {
@@ -527,46 +531,170 @@ export class DesktopShell {
 
   #renderPluginManager(): void {
     this.#disposeSurface();
+    const catalog = this.#pluginCatalog;
+    const activeCount =
+      catalog?.packages.filter((plugin) => plugin.active).length ?? 0;
+    const packageCount = catalog?.packages.length ?? 0;
     const content = this.#prepareMain(
       "Plug-in Manager",
-      "Install, enable, and inspect isolated features.",
-      `${this.#workspaces.size} enabled`,
+      "Discover, enable, and inspect folder-installed features.",
+      catalog === null ? "Prototype" : `${activeCount}/${packageCount} active`,
     );
     const panel = element("section", "host-panel");
+    const toolbar = element("div", "manager-toolbar");
+    const toolbarCopy = element("div", "manager-toolbar-copy");
     const heading = document.createElement("h2");
     heading.textContent =
-      this.#workspaces.size === 0 ? "No plug-ins enabled" : "Enabled workspaces";
+      catalog === null
+        ? "Native package manager unavailable"
+        : packageCount === 0
+          ? "No folder packages installed"
+          : "Installed packages";
     const body = document.createElement("p");
     body.textContent =
-      this.#workspaces.size === 0
-        ? "The native package installer is not connected to this UI prototype yet."
-        : "These development descriptors exercise the same shell boundary that installed plug-ins will use.";
-    panel.append(heading, body);
+      catalog === null
+        ? "Run the UI through the local Rust host to inspect installed packages."
+        : `Folder: ${catalog.installedRoot}`;
+    toolbarCopy.append(heading, body);
+    toolbar.append(toolbarCopy);
+    if (this.#adapter.refreshPlugins !== undefined) {
+      const refresh = element("button", "quiet-button");
+      refresh.type = "button";
+      refresh.textContent = "Rescan folder";
+      refresh.addEventListener("click", () => {
+        refresh.disabled = true;
+        void this.#reloadPluginCatalog("refresh").catch((error: unknown) => {
+          body.textContent =
+            error instanceof Error ? error.message : String(error);
+          refresh.disabled = false;
+        });
+      });
+      toolbar.append(refresh);
+    }
+    panel.append(toolbar);
 
-    if (this.#workspaces.size > 0) {
+    if (catalog !== null && catalog.packages.length > 0) {
       const list = element("div", "manager-list");
-      for (const id of this.#order) {
-        const workspace = this.#workspaces.get(id);
-        if (workspace === undefined) {
-          continue;
-        }
+      for (const plugin of catalog.packages) {
         const row = element("div", "manager-row");
         const icon = element("span", "workspace-icon");
-        icon.textContent = workspace.iconFallback;
-        const copy = element("span", "manager-row-copy");
+        icon.textContent = iconFallback(plugin.name);
+        const copy = element("div", "manager-row-copy");
         const name = document.createElement("strong");
-        name.textContent = workspace.name;
+        name.textContent = plugin.name;
         const detail = document.createElement("small");
-        detail.textContent = `${workspace.id} · v${workspace.version}`;
-        copy.append(name, detail);
+        detail.textContent =
+          `${plugin.id} · v${plugin.version} · ${formatIdentifier(plugin.runtime)}`;
+        const statusDetail = document.createElement("p");
+        statusDetail.textContent = plugin.statusDetail;
+        const permissions = element("div", "permission-list");
+        const requested = [
+          ...plugin.capabilities.map(formatIdentifier),
+          ...plugin.subscriptions.map(
+            (subscription) => `${formatIdentifier(subscription)} events`,
+          ),
+        ];
+        if (requested.length === 0) {
+          requested.push("No capabilities");
+        }
+        for (const permission of requested) {
+          const chip = element("span", "permission-chip");
+          chip.textContent = permission;
+          permissions.append(chip);
+        }
+        copy.append(name, detail, statusDetail, permissions);
+        const actions = element("div", "manager-row-actions");
         const state = element("span", "state-pill");
-        state.textContent = "Enabled";
-        row.append(icon, copy, state);
+        state.dataset.state = plugin.active
+          ? "active"
+          : plugin.enabled
+            ? "blocked"
+            : "disabled";
+        state.textContent = plugin.active
+          ? "Active"
+          : plugin.enabled
+            ? "Blocked"
+            : "Disabled";
+        actions.append(state);
+        if (this.#adapter.setPluginEnabled !== undefined) {
+          const toggle = element("button", "quiet-button plugin-toggle");
+          toggle.type = "button";
+          toggle.textContent = plugin.enabled ? "Disable" : "Enable";
+          toggle.addEventListener("click", () => {
+            toggle.disabled = true;
+            void this.#reloadPluginCatalog(
+              "enablement",
+              plugin.id,
+              !plugin.enabled,
+            ).catch((error: unknown) => {
+              statusDetail.textContent =
+                error instanceof Error ? error.message : String(error);
+              statusDetail.classList.add("error");
+              toggle.disabled = false;
+            });
+          });
+          actions.append(toggle);
+        }
+        row.append(icon, copy, actions);
         list.append(row);
       }
       panel.append(list);
+    } else if (catalog !== null) {
+      panel.append(
+        this.#messageCard(
+          "Drop one folder per plug-in",
+          "Each package needs a validated plugin.toml and all declared files inside its own folder. New packages remain disabled until you review and enable them here.",
+          "empty-state",
+        ),
+      );
     }
     content.append(panel);
+
+    if (catalog !== null && catalog.issues.length > 0) {
+      const diagnostics = element("section", "host-panel diagnostic-panel");
+      const diagnosticHeading = document.createElement("h2");
+      diagnosticHeading.textContent = "Diagnostics";
+      const diagnosticIntro = document.createElement("p");
+      diagnosticIntro.textContent =
+        "Invalid and blocked packages are isolated without preventing independent plug-ins from loading.";
+      const list = element("div", "diagnostic-list");
+      for (const issue of catalog.issues) {
+        const item = element("article", "diagnostic-item");
+        const title = document.createElement("strong");
+        title.textContent =
+          issue.pluginId ?? issue.packagePath ?? formatIdentifier(issue.kind);
+        const detail = document.createElement("p");
+        detail.textContent = issue.detail;
+        item.append(title, detail);
+        list.append(item);
+      }
+      diagnostics.append(diagnosticHeading, diagnosticIntro, list);
+      content.append(diagnostics);
+    }
+  }
+
+  async #reloadPluginCatalog(
+    operation: "refresh" | "enablement",
+    pluginId?: string,
+    enabled?: boolean,
+  ): Promise<void> {
+    const catalog =
+      operation === "refresh"
+        ? await this.#adapter.refreshPlugins?.()
+        : pluginId !== undefined && enabled !== undefined
+          ? await this.#adapter.setPluginEnabled?.(pluginId, enabled)
+          : undefined;
+    if (catalog === undefined) {
+      throw new Error("The local plug-in manager is unavailable.");
+    }
+    this.#pluginCatalog = catalog;
+    const [workspaces, preferences] = await Promise.all([
+      this.#adapter.loadWorkspaces(),
+      this.#adapter.loadPreferences(),
+    ]);
+    this.#applySnapshot(workspaces, preferences);
+    this.#activeHostView = "plugins";
+    this.#render();
   }
 
   #renderSettings(): void {
@@ -690,6 +818,24 @@ function requireElement<T extends Element = HTMLElement>(
 
 function safeDomId(value: string): string {
   return value.replaceAll(/[^a-zA-Z0-9_-]/g, "-");
+}
+
+function formatIdentifier(value: string): string {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function iconFallback(name: string): string {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("");
+  return (initials.length >= 2 ? initials : name.slice(0, 2)).toUpperCase();
 }
 
 function tabId(workspaceId: string, tabIdValue: string): string {

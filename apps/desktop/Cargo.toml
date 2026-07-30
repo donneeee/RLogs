@@ -12,14 +12,20 @@ rlogs-events = { path = "../../engine/events" }
 rlogs-game-bpsr = { path = "../../plugins/games/blue-protocol-star-resonance" }
 rlogs-log-format = { path = "../../engine/log-format" }
 rlogs-network = { path = "../../engine/network" }
+rlogs-plugin-api = { path = "../../engine/plugin-api" }
 rlogs-plugin-combat-meter = { path = "../../plugins/builtin/combat-meter" }
+rlogs-plugin-encounter-recorder = { path = "../../plugins/builtin/encounter-recorder" }
+rlogs-plugin-host = { path = "../../engine/plugin-host" }
 rlogs-plugin-runtime = { path = "../../engine/plugin-runtime" }
+rlogs-profiles = { path = "../../engine/profiles" }
+rlogs-submission = { path = "../../engine/submission" }
 serde.workspace = true
 serde_json.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_ToolHelp",
 ] }
 

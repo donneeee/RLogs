@@ -21,6 +21,48 @@ export interface WorkspaceDescriptor {
   tabs: readonly WorkspaceTabDescriptor[];
 }
 
+export type PluginRuntimeKind =
+  | "data_only"
+  | "wasm_component"
+  | "browser_overlay"
+  | "external_process"
+  | "native_developer";
+
+export interface PluginDependencyDescriptor {
+  pluginId: string;
+  optional: boolean;
+}
+
+export interface InstalledPluginDescriptor {
+  id: string;
+  name: string;
+  version: string;
+  folderName: string;
+  runtime: PluginRuntimeKind;
+  capabilities: readonly string[];
+  subscriptions: readonly string[];
+  allowedNetworkDomains: readonly string[];
+  dependencies: readonly PluginDependencyDescriptor[];
+  publishesWorkspace: boolean;
+  enabled: boolean;
+  active: boolean;
+  statusDetail: string;
+}
+
+export interface PluginIssueDescriptor {
+  kind: string;
+  pluginId: string | null;
+  packagePath: string | null;
+  detail: string;
+}
+
+export interface PluginCatalogSnapshot {
+  schemaVersion: number;
+  installedRoot: string;
+  packages: readonly InstalledPluginDescriptor[];
+  issues: readonly PluginIssueDescriptor[];
+}
+
 export interface ShellPreferences {
   workspaceOrder: readonly string[];
   activeWorkspaceId: string | null;
@@ -41,5 +83,11 @@ export interface DesktopHostAdapter {
     tab: WorkspaceTabDescriptor,
     container: HTMLElement,
   ): Promise<MountedSurface>;
+  loadPluginCatalog?(): Promise<PluginCatalogSnapshot>;
+  setPluginEnabled?(
+    pluginId: string,
+    enabled: boolean,
+  ): Promise<PluginCatalogSnapshot>;
+  refreshPlugins?(): Promise<PluginCatalogSnapshot>;
   setExampleWorkspacesEnabled?(enabled: boolean): Promise<void>;
 }

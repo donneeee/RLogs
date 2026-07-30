@@ -906,6 +906,25 @@ button:focus-visible,
   padding: 23px;
 }
 
+.manager-toolbar,
+.manager-row-actions {
+  display: flex;
+  align-items: center;
+}
+
+.manager-toolbar {
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.manager-toolbar-copy {
+  min-width: 0;
+}
+
+.manager-toolbar-copy p {
+  overflow-wrap: anywhere;
+}
+
 .manager-list {
   display: grid;
   gap: 7px;
@@ -946,11 +965,98 @@ button:focus-visible,
   font: 8px "Cascadia Code", Consolas, monospace;
 }
 
+.manager-row-copy p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.manager-row-copy p.error {
+  color: #ff929d;
+}
+
+.manager-row-actions {
+  flex: 0 0 auto;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.permission-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.permission-chip {
+  padding: 3px 5px;
+  border: 1px solid #26364b;
+  border-radius: 5px;
+  color: #91a5bd;
+  background: #111a27;
+  font-size: 7px;
+}
+
+.plugin-toggle {
+  min-height: 28px;
+}
+
 .state-pill {
   padding: 5px 7px;
   color: var(--green);
   border-color: rgb(112 221 166 / 22%);
   background: rgb(112 221 166 / 7%);
+}
+
+.state-pill[data-state="blocked"] {
+  color: #ffd479;
+  border-color: rgb(255 212 121 / 24%);
+  background: rgb(255 212 121 / 7%);
+}
+
+.state-pill[data-state="disabled"] {
+  color: #93a1b4;
+  border-color: rgb(147 161 180 / 22%);
+  background: rgb(147 161 180 / 7%);
+}
+
+.diagnostic-panel {
+  margin-top: 12px;
+}
+
+.diagnostic-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+}
+
+.diagnostic-item {
+  padding: 11px 12px;
+  border: 1px solid rgb(255 146 157 / 24%);
+  border-radius: 8px;
+  background: rgb(255 146 157 / 5%);
+}
+
+.diagnostic-item strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #ffadb5;
+  font: 9px "Cascadia Code", Consolas, monospace;
+}
+
+.diagnostic-item p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.package-inspection-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
 }
 
 .settings-rule {
@@ -1131,6 +1237,23 @@ button:focus-visible,
   font: 10px "Cascadia Code", Consolas, monospace;
 }
 
+.runtime-field select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 30px 0 11px;
+  border: 1px solid #28374b;
+  border-radius: 8px;
+  outline: 0;
+  color: var(--text);
+  background: #0a1019;
+  font: 10px "Cascadia Code", Consolas, monospace;
+}
+
+.runtime-field select:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgb(92 228 212 / 7%);
+}
+
 .runtime-field input:focus {
   border-color: var(--cyan);
   box-shadow: 0 0 0 3px rgb(92 228 212 / 7%);
@@ -1218,6 +1341,436 @@ button:focus-visible,
   text-align: center;
 }
 
+.submission-queue-surface,
+.submission-queue-content {
+  display: grid;
+  gap: 13px;
+}
+
+.submission-policy-surface,
+.profile-sync-status-surface {
+  display: grid;
+  gap: 13px;
+}
+
+.submission-policy-form {
+  display: grid;
+  overflow: hidden;
+}
+
+.submission-policy-toggle,
+.submission-policy-select {
+  display: grid;
+  min-height: 78px;
+  align-items: center;
+  gap: 16px;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.submission-policy-toggle {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.submission-policy-select {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
+}
+
+.submission-policy-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--cyan);
+}
+
+.submission-policy-toggle span,
+.submission-policy-select > span {
+  min-width: 0;
+}
+
+.submission-policy-toggle strong,
+.submission-policy-toggle small,
+.submission-policy-select strong,
+.submission-policy-select small {
+  display: block;
+}
+
+.submission-policy-toggle strong,
+.submission-policy-select strong {
+  font-size: 11px;
+}
+
+.submission-policy-toggle small,
+.submission-policy-select small {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.submission-policy-select select {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #28374b;
+  border-radius: 8px;
+  outline: 0;
+  color: var(--text);
+  background: #0a1019;
+  font: 10px "Cascadia Code", Consolas, monospace;
+}
+
+.submission-policy-select select:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 3px rgb(92 228 212 / 7%);
+}
+
+.submission-policy-actions {
+  margin: 0;
+  padding: 15px 18px;
+}
+
+.profile-package-content,
+.profile-package-list {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-package-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.profile-package-entry {
+  overflow: hidden;
+}
+
+.profile-package-inspection {
+  overflow: hidden;
+}
+
+.profile-package-inspection > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.profile-package-inspection h2,
+.profile-package-inspection p {
+  margin: 0;
+}
+
+.profile-package-inspection h2 {
+  font-size: 13px;
+}
+
+.profile-package-inspection p {
+  max-width: 760px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.profile-package-inspection .runtime-card-actions {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.profile-package-inspection pre {
+  max-height: 560px;
+  margin: 0;
+  overflow: auto;
+  padding: 18px;
+  color: #b7c6d9;
+  background: #080d15;
+  font: 9px/1.6 "Cascadia Code", Consolas, monospace;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.submission-queue-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.submission-queue-list {
+  display: grid;
+  gap: 10px;
+}
+
+.submission-import-form .runtime-field {
+  max-width: none;
+}
+
+.submission-queue-entry {
+  overflow: hidden;
+}
+
+.submission-queue-entry > header,
+.profile-package-entry > header {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 17px;
+  border-bottom: 1px solid var(--line);
+}
+
+.submission-queue-entry > header strong,
+.submission-queue-entry > header small,
+.profile-package-entry > header strong,
+.profile-package-entry > header small {
+  display: block;
+}
+
+.submission-queue-entry > header strong,
+.profile-package-entry > header strong {
+  font-size: 11px;
+}
+
+.submission-queue-entry > header small,
+.profile-package-entry > header small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.submission-queue-entry .state-pill,
+.profile-package-entry .state-pill {
+  flex: 0 0 auto;
+  border: 1px solid rgb(112 221 166 / 22%);
+  border-radius: 6px;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.submission-queue-entry-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 7px 17px;
+}
+
+.submission-queue-entry-details > div {
+  display: grid;
+  grid-template-columns: 135px minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.submission-queue-entry-details > div:nth-child(odd) {
+  padding-right: 17px;
+  border-right: 1px solid var(--line);
+}
+
+.submission-queue-entry-details > div:nth-child(even) {
+  padding-left: 17px;
+}
+
+.submission-queue-entry-details > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.submission-queue-entry-details span {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.submission-queue-entry-details code {
+  overflow: hidden;
+  color: #b7c6d9;
+  font: 8px "Cascadia Code", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.submission-verification-actions {
+  margin: 0;
+  padding: 12px 17px;
+  border-top: 1px solid var(--line);
+}
+
+.submission-verification-actions .runtime-action-message {
+  overflow-wrap: anywhere;
+}
+
+.event-viewer-surface {
+  display: grid;
+  gap: 13px;
+}
+
+.event-viewer-controls {
+  padding: 18px;
+}
+
+.event-filter-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(150px, 0.8fr)
+    minmax(160px, 0.9fr)
+    minmax(260px, 1.8fr)
+    120px;
+  gap: 11px;
+}
+
+.event-filter-grid .runtime-field:first-child {
+  grid-column: auto;
+  max-width: none;
+}
+
+.event-viewer-actions {
+  margin-top: 14px;
+}
+
+.event-viewer-metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 8px 17px;
+}
+
+.event-viewer-metadata > div {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.event-viewer-metadata > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.event-viewer-metadata > div:nth-child(odd) {
+  padding-right: 17px;
+  border-right: 1px solid var(--line);
+}
+
+.event-viewer-metadata > div:nth-child(even) {
+  padding-left: 17px;
+}
+
+.event-viewer-metadata span {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.event-viewer-metadata code {
+  overflow: hidden;
+  color: #b7c6d9;
+  font: 8px "Cascadia Code", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-table-wrap {
+  overflow: auto;
+  max-height: min(58vh, 720px);
+}
+
+.event-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+.event-table th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  padding: 10px 12px;
+  color: #8799b1;
+  background: #0d1521;
+  font-size: 7px;
+  letter-spacing: 0.09em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.event-table td {
+  max-width: 520px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  color: #aebdd0;
+  font: 8px "Cascadia Code", Consolas, monospace;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.event-table tbody tr[data-selected] {
+  background: rgb(92 228 212 / 7%);
+}
+
+.event-table td:nth-child(1),
+.event-table td:nth-child(2),
+.event-table td:nth-child(5) {
+  white-space: nowrap;
+}
+
+.event-table td:nth-child(3) strong,
+.event-table td:nth-child(3) small {
+  display: block;
+}
+
+.event-table td:nth-child(3) strong {
+  color: #d9e5f4;
+  font-size: 8px;
+}
+
+.event-table td:nth-child(3) small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 7px;
+}
+
+.event-sequence-button {
+  padding: 0;
+  border: 0;
+  color: var(--cyan);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.event-sequence-button:hover {
+  text-decoration: underline;
+}
+
+.event-viewer-detail {
+  min-height: 160px;
+}
+
+.event-detail-header {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.event-detail-header h2 {
+  margin: 0;
+  font-size: 12px;
+}
+
+.event-viewer-detail pre {
+  overflow: auto;
+  max-height: 440px;
+  margin: 0;
+  padding: 17px;
+  color: #b8c7da;
+  background: #091019;
+  font: 8px/1.65 "Cascadia Code", Consolas, monospace;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 900px) {
   :root {
     --rail-width: 82px;
@@ -1270,6 +1823,10 @@ button:focus-visible,
   .runtime-result-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .event-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 650px) {
@@ -1302,6 +1859,7 @@ button:focus-visible,
   .card-heading,
   .option-row,
   .credential-box,
+  .profile-package-inspection > header,
   .settings-rule {
     align-items: flex-start;
     flex-direction: column;
@@ -1321,6 +1879,35 @@ button:focus-visible,
   .runtime-form-grid,
   .runtime-result-grid {
     grid-template-columns: 1fr;
+  }
+
+  .event-filter-grid,
+  .event-viewer-metadata,
+  .submission-queue-entry-details {
+    grid-template-columns: 1fr;
+  }
+
+  .submission-policy-select {
+    grid-template-columns: 1fr;
+  }
+
+  .event-viewer-metadata > div,
+  .event-viewer-metadata > div:nth-child(odd),
+  .event-viewer-metadata > div:nth-child(even),
+  .event-viewer-metadata > div:nth-last-child(-n + 2),
+  .submission-queue-entry-details > div,
+  .submission-queue-entry-details > div:nth-child(odd),
+  .submission-queue-entry-details > div:nth-child(even),
+  .submission-queue-entry-details > div:nth-last-child(-n + 2) {
+    padding-right: 0;
+    padding-left: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .event-viewer-metadata > div:last-child,
+  .submission-queue-entry-details > div:last-child {
+    border-bottom: 0;
   }
 
   .runtime-field:first-child {

@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub const RLOG_SCHEMA_VERSION: u16 = 1;
+pub const MINIMUM_SUPPORTED_EVENT_SCHEMA_VERSION: u16 = 1;
 pub const DEFAULT_MAXIMUM_LINE_BYTES: usize = 2 * 1024 * 1024;
 pub const DEFAULT_MAXIMUM_EVENTS: u64 = 2_000_000;
 
@@ -43,7 +44,9 @@ impl RlogHeader {
                 actual: self.schema_version,
             });
         }
-        if self.event_schema_version != EVENT_SCHEMA_VERSION {
+        if !(MINIMUM_SUPPORTED_EVENT_SCHEMA_VERSION..=EVENT_SCHEMA_VERSION)
+            .contains(&self.event_schema_version)
+        {
             return Err(RlogError::UnsupportedEventSchema {
                 actual: self.event_schema_version,
             });
@@ -189,6 +192,7 @@ pub struct RlogReader<R: BufRead> {
     previous_observed_micros: Option<u64>,
     first_observed_micros: Option<u64>,
     finished: bool,
+    summary: Option<RlogReplaySummary>,
 }
 
 impl<R: BufRead> RlogReader<R> {
@@ -213,6 +217,7 @@ impl<R: BufRead> RlogReader<R> {
             previous_observed_micros: None,
             first_observed_micros: None,
             finished: false,
+            summary: None,
         })
     }
 
@@ -220,81 +225,96 @@ impl<R: BufRead> RlogReader<R> {
         &self.header
     }
 
+    /// Returns one canonical event at a time while preserving all ordering,
+    /// privacy, limit, and integrity state in the reader.
+    ///
+    /// `None` means the integrity seal and end-of-file were validated. Callers
+    /// may pause between events without loading the complete log into memory.
+    pub fn next_event(&mut self) -> Result<Option<EventEnvelope>, RlogError> {
+        if self.finished {
+            return Ok(None);
+        }
+        self.line_number = self
+            .line_number
+            .checked_add(1)
+            .ok_or(RlogError::LineNumberOverflow)?;
+        let Some(line) = read_bounded_line(
+            &mut self.input,
+            self.limits.maximum_line_bytes,
+            self.line_number,
+        )?
+        else {
+            return Err(RlogError::MissingSeal);
+        };
+        match parse_record(&line, self.line_number)? {
+            RlogRecord::Header { .. } => Err(RlogError::DuplicateHeader),
+            RlogRecord::Event { envelope } => {
+                if self.event_count >= self.limits.maximum_events {
+                    return Err(RlogError::EventLimitExceeded {
+                        maximum: self.limits.maximum_events,
+                    });
+                }
+                validate_envelope(
+                    &self.header,
+                    &envelope,
+                    self.previous_sequence,
+                    self.previous_timeline_sequence,
+                    self.previous_observed_micros,
+                )?;
+                update_content_digest(&mut self.hasher, &envelope)?;
+                self.event_count += 1;
+                self.previous_sequence = Some(envelope.sequence);
+                if let CanonicalEvent::Timeline(event) = &envelope.event {
+                    self.previous_timeline_sequence = Some(event.sequence);
+                }
+                self.previous_observed_micros = Some(envelope.time.observed_micros);
+                self.first_observed_micros
+                    .get_or_insert(envelope.time.observed_micros);
+                Ok(Some(*envelope))
+            }
+            RlogRecord::Seal { seal } => {
+                if seal.event_count != self.event_count {
+                    return Err(RlogError::SealEventCountMismatch {
+                        expected: self.event_count,
+                        actual: seal.event_count,
+                    });
+                }
+                let actual_digest = digest_string(self.hasher.clone().finalize());
+                if seal.content_sha256 != actual_digest {
+                    return Err(RlogError::SealDigestMismatch {
+                        expected: seal.content_sha256,
+                        actual: actual_digest,
+                    });
+                }
+                ensure_end_of_file(
+                    &mut self.input,
+                    self.limits.maximum_line_bytes,
+                    self.line_number,
+                )?;
+                self.finished = true;
+                self.summary = Some(RlogReplaySummary {
+                    event_count: self.event_count,
+                    first_observed_micros: self.first_observed_micros,
+                    last_observed_micros: self.previous_observed_micros,
+                    content_sha256: actual_digest,
+                });
+                Ok(None)
+            }
+        }
+    }
+
+    pub fn summary(&self) -> Option<&RlogReplaySummary> {
+        self.summary.as_ref()
+    }
+
     pub fn replay(
         mut self,
         mut on_event: impl FnMut(&EventEnvelope) -> Result<(), String>,
     ) -> Result<RlogReplaySummary, RlogError> {
-        loop {
-            self.line_number = self
-                .line_number
-                .checked_add(1)
-                .ok_or(RlogError::LineNumberOverflow)?;
-            let Some(line) = read_bounded_line(
-                &mut self.input,
-                self.limits.maximum_line_bytes,
-                self.line_number,
-            )?
-            else {
-                return Err(RlogError::MissingSeal);
-            };
-            match parse_record(&line, self.line_number)? {
-                RlogRecord::Header { .. } => return Err(RlogError::DuplicateHeader),
-                RlogRecord::Event { envelope } => {
-                    if self.finished {
-                        return Err(RlogError::RecordAfterSeal);
-                    }
-                    if self.event_count >= self.limits.maximum_events {
-                        return Err(RlogError::EventLimitExceeded {
-                            maximum: self.limits.maximum_events,
-                        });
-                    }
-                    validate_envelope(
-                        &self.header,
-                        &envelope,
-                        self.previous_sequence,
-                        self.previous_timeline_sequence,
-                        self.previous_observed_micros,
-                    )?;
-                    update_content_digest(&mut self.hasher, &envelope)?;
-                    on_event(&envelope).map_err(|detail| RlogError::Consumer { detail })?;
-                    self.event_count += 1;
-                    self.previous_sequence = Some(envelope.sequence);
-                    if let CanonicalEvent::Timeline(event) = &envelope.event {
-                        self.previous_timeline_sequence = Some(event.sequence);
-                    }
-                    self.previous_observed_micros = Some(envelope.time.observed_micros);
-                    self.first_observed_micros
-                        .get_or_insert(envelope.time.observed_micros);
-                }
-                RlogRecord::Seal { seal } => {
-                    self.finished = true;
-                    if seal.event_count != self.event_count {
-                        return Err(RlogError::SealEventCountMismatch {
-                            expected: self.event_count,
-                            actual: seal.event_count,
-                        });
-                    }
-                    let actual_digest = digest_string(self.hasher.finalize());
-                    if seal.content_sha256 != actual_digest {
-                        return Err(RlogError::SealDigestMismatch {
-                            expected: seal.content_sha256,
-                            actual: actual_digest,
-                        });
-                    }
-                    ensure_end_of_file(
-                        &mut self.input,
-                        self.limits.maximum_line_bytes,
-                        self.line_number,
-                    )?;
-                    return Ok(RlogReplaySummary {
-                        event_count: self.event_count,
-                        first_observed_micros: self.first_observed_micros,
-                        last_observed_micros: self.previous_observed_micros,
-                        content_sha256: actual_digest,
-                    });
-                }
-            }
+        while let Some(envelope) = self.next_event()? {
+            on_event(&envelope).map_err(|detail| RlogError::Consumer { detail })?;
         }
+        self.summary.take().ok_or(RlogError::MissingSeal)
     }
 }
 
@@ -335,6 +355,20 @@ fn validate_envelope(
                 expected: expected_timeline_sequence,
                 actual: event.sequence,
             });
+        }
+        if let rlogs_events::TimelineEventKind::RecorderPause(pause) = &event.kind {
+            if pause.resumed_micros < pause.started_micros {
+                return Err(RlogError::RecorderPauseMovedBackward {
+                    started_micros: pause.started_micros,
+                    resumed_micros: pause.resumed_micros,
+                });
+            }
+            if pause.resumed_micros != envelope.time.observed_micros {
+                return Err(RlogError::RecorderPauseResumeMismatch {
+                    event_observed_micros: envelope.time.observed_micros,
+                    resumed_micros: pause.resumed_micros,
+                });
+            }
         }
     }
     if let Some(previous) = previous_observed_micros
@@ -505,6 +539,20 @@ pub enum RlogError {
     #[error("timeline event sequence should be {expected}, but was {actual}")]
     TimelineSequenceMismatch { expected: u64, actual: u64 },
 
+    #[error("recorder pause ended at {resumed_micros}us before it started at {started_micros}us")]
+    RecorderPauseMovedBackward {
+        started_micros: u64,
+        resumed_micros: u64,
+    },
+
+    #[error(
+        "recorder pause resumed at {resumed_micros}us but its canonical event was observed at {event_observed_micros}us"
+    )]
+    RecorderPauseResumeMismatch {
+        event_observed_micros: u64,
+        resumed_micros: u64,
+    },
+
     #[error("event time moved backward from {previous}us to {next}us")]
     ObservedTimeMovedBackward { previous: u64, next: u64 },
 
@@ -526,8 +574,9 @@ mod tests {
     use std::io::{BufReader, Cursor};
 
     use rlogs_events::{
-        BoundaryReason, CanonicalEvent, CombatState, EventProvenance, EventTime, RegionEvidence,
-        RegionEvidenceKind, RegionIdentity, TimelineEvent, TimelineEventKind,
+        BoundaryReason, CanonicalEvent, CombatState, EventProvenance, EventTime,
+        RecorderPauseEvent, RegionEvidence, RegionEvidenceKind, RegionIdentity, TimelineEvent,
+        TimelineEventKind,
     };
 
     use super::*;
@@ -610,6 +659,21 @@ mod tests {
     }
 
     #[test]
+    fn incremental_reader_pauses_without_buffering_the_complete_log() {
+        let bytes = encoded_log();
+        let mut reader =
+            RlogReader::new(BufReader::new(Cursor::new(bytes)), RlogLimits::default()).unwrap();
+
+        assert_eq!(reader.next_event().unwrap().unwrap().sequence, 1);
+        assert!(reader.summary().is_none());
+        assert_eq!(reader.next_event().unwrap().unwrap().sequence, 2);
+        assert!(reader.summary().is_none());
+        assert!(reader.next_event().unwrap().is_none());
+        assert_eq!(reader.summary().unwrap().event_count, 2);
+        assert!(reader.next_event().unwrap().is_none());
+    }
+
+    #[test]
     fn tampered_event_is_rejected_by_the_seal() {
         let bytes = encoded_log();
         let text = String::from_utf8(bytes).unwrap();
@@ -657,5 +721,50 @@ mod tests {
                 actual: 2
             })
         ));
+    }
+
+    #[test]
+    fn malformed_recorder_pause_intervals_are_rejected_before_sealing() {
+        let header = RlogHeader::new("session-1", region(), "unit-test");
+        let mut writer = RlogWriter::new(Vec::new(), header.clone()).unwrap();
+        let mut backward = envelope(1, 20);
+        let CanonicalEvent::Timeline(timeline) = &mut backward.event else {
+            unreachable!();
+        };
+        timeline.kind = TimelineEventKind::RecorderPause(RecorderPauseEvent {
+            started_micros: 21,
+            resumed_micros: 20,
+        });
+        assert!(matches!(
+            writer.push(&backward),
+            Err(RlogError::RecorderPauseMovedBackward {
+                started_micros: 21,
+                resumed_micros: 20
+            })
+        ));
+
+        let mut writer = RlogWriter::new(Vec::new(), header).unwrap();
+        let mut mismatched = envelope(1, 20);
+        let CanonicalEvent::Timeline(timeline) = &mut mismatched.event else {
+            unreachable!();
+        };
+        timeline.kind = TimelineEventKind::RecorderPause(RecorderPauseEvent {
+            started_micros: 10,
+            resumed_micros: 19,
+        });
+        assert!(matches!(
+            writer.push(&mismatched),
+            Err(RlogError::RecorderPauseResumeMismatch {
+                event_observed_micros: 20,
+                resumed_micros: 19
+            })
+        ));
+    }
+
+    #[test]
+    fn version_one_event_logs_remain_readable_after_additive_schema_updates() {
+        let mut header = RlogHeader::new("session-1", region(), "unit-test");
+        header.event_schema_version = 1;
+        assert!(header.validate().is_ok());
     }
 }

@@ -398,6 +398,7 @@ impl ReplayPlugin for CombatTimelinePlugin {
             TimelineEventKind::RunBoundary { .. }
             | TimelineEventKind::EntityAttributes(_)
             | TimelineEventKind::Cooldown(_)
+            | TimelineEventKind::RecorderPause(_)
             | TimelineEventKind::Status(_) => {}
         }
         Ok(())

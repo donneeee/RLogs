@@ -36,7 +36,8 @@ impl ReplayPluginDescriptor {
                 plugin_id: self.id.clone(),
             });
         }
-        if self.subscriptions.contains(&EventTopic::Encounter)
+        if (self.subscriptions.contains(&EventTopic::Encounter)
+            || self.subscriptions.contains(&EventTopic::Dungeon))
             && !self
                 .capabilities
                 .contains(&PluginCapability::EncountersRead)

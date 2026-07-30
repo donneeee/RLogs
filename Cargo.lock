@@ -621,6 +621,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlogs-combat"
+version = "0.1.0"
+dependencies = [
+ "rlogs-events",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "rlogs-core"
 version = "0.1.0"
 dependencies = [
@@ -644,8 +653,13 @@ dependencies = [
  "rlogs-game-bpsr",
  "rlogs-log-format",
  "rlogs-network",
+ "rlogs-plugin-api",
  "rlogs-plugin-combat-meter",
+ "rlogs-plugin-encounter-recorder",
+ "rlogs-plugin-host",
  "rlogs-plugin-runtime",
+ "rlogs-profiles",
+ "rlogs-submission",
  "serde",
  "serde_json",
  "windows-sys",
@@ -675,6 +689,7 @@ dependencies = [
  "rlogs-log-format",
  "rlogs-network",
  "rlogs-plugin-host",
+ "rlogs-profiles",
  "rlogs-submission",
  "serde",
  "serde_json",
@@ -761,6 +776,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlogs-plugin-encounter-recorder"
+version = "0.1.0"
+dependencies = [
+ "rlogs-combat",
+ "rlogs-events",
+ "rlogs-log-format",
+ "rlogs-plugin-api",
+ "rlogs-plugin-runtime",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rlogs-plugin-host"
 version = "0.1.0"
 dependencies = [
@@ -824,6 +852,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlogs-profiles"
+version = "0.1.0"
+dependencies = [
+ "rlogs-submission",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "rlogs-protocol-coverage"
 version = "0.1.0"
 dependencies = [
@@ -865,8 +904,11 @@ dependencies = [
 name = "rlogs-submission"
 version = "0.1.0"
 dependencies = [
+ "rlogs-events",
+ "rlogs-log-format",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 

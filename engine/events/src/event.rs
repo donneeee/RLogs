@@ -52,6 +52,15 @@ impl EventProvenance {
             },
         }
     }
+
+    pub fn manual(reason: impl Into<String>) -> Self {
+        Self {
+            confidence: EvidenceConfidence::Exact,
+            source: EvidenceSource::Manual {
+                reason: reason.into(),
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -100,6 +109,9 @@ pub enum TimelineEventKind {
     },
     Status(StatusEvent),
     Position(PositionEvent),
+    /// A completed user-requested pause interval. This is emitted when capture
+    /// resumes so the sealed log contains both exact endpoints.
+    RecorderPause(RecorderPauseEvent),
     DataGap(DataGapEvent),
 }
 
@@ -118,7 +130,7 @@ impl TimelineEventKind {
             | Self::Healing(_)
             | Self::Shield(_)
             | Self::Status(_) => EventTopic::Combat,
-            Self::DataGap(_) => EventTopic::DataQuality,
+            Self::RecorderPause(_) | Self::DataGap(_) => EventTopic::DataQuality,
         }
     }
 }
@@ -343,6 +355,12 @@ pub struct PositionEvent {
     pub y: f32,
     pub z: f32,
     pub facing_radians: Option<f32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecorderPauseEvent {
+    pub started_micros: u64,
+    pub resumed_micros: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

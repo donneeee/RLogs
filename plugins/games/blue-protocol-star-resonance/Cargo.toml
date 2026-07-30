@@ -14,6 +14,7 @@ rlogs-events = { path = "../../../engine/events" }
 rlogs-game-plugin-api = { path = "../../../engine/game-plugin-api" }
 rlogs-log-format = { path = "../../../engine/log-format" }
 rlogs-network = { path = "../../../engine/network" }
+rlogs-profiles = { path = "../../../engine/profiles" }
 rlogs-submission = { path = "../../../engine/submission" }
 serde.workspace = true
 serde_json.workspace = true

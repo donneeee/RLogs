@@ -16,8 +16,9 @@ pub use event::{
     ActorEvent, ActorKind, ActorState, BoundaryReason, CastEvent, CastState, CombatState,
     CooldownEvent, DamageEvent, DamageFlags, DataGapEvent, DataGapKind, EncounterState,
     EntityAttribute, EntityAttributeEvent, EntityAttributeValue, EventProvenance, EventTime,
-    EvidenceConfidence, EvidenceSource, HealingEvent, LifeState, PositionEvent, RunState,
-    ShieldEvent, StatusEvent, StatusState, TimelineEvent, TimelineEventDraft, TimelineEventKind,
+    EvidenceConfidence, EvidenceSource, HealingEvent, LifeState, PositionEvent, RecorderPauseEvent,
+    RunState, ShieldEvent, StatusEvent, StatusState, TimelineEvent, TimelineEventDraft,
+    TimelineEventKind,
 };
 pub use identity::{
     CharacterIdentity, RegionContext, RegionEvidence, RegionEvidenceKind, RegionIdentity,
@@ -27,4 +28,7 @@ pub use ids::{
 };
 pub use profile::{GameProfileEvent, WorldContext};
 pub use timeline::{RunTimeline, TimelineError};
-pub use world::{ChatChannel, ChatEvent, DungeonEvent, DungeonEventKind, MapEvent, MapEventKind};
+pub use world::{
+    ChatChannel, ChatEvent, DungeonEvent, DungeonEventKind, DungeonFlowPhase, DungeonFlowSnapshot,
+    MapEvent, MapEventKind,
+};

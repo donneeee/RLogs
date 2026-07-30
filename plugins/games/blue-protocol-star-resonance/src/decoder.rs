@@ -4,16 +4,17 @@ use prost::Message;
 use rlogs_events::{
     AbilityId, ActorEvent, ActorId, ActorKind, ActorState, BoundaryReason, CanonicalEventDraft,
     CanonicalEventDraftKind, CharacterIdentity, CooldownEvent, DamageEvent, DamageFlags,
-    DataGapEvent, DataGapKind, DungeonEvent, DungeonEventKind, EntityAttribute,
-    EntityAttributeEvent, EntityAttributeValue, EntityRef, EntityUuid, EventEnvelope,
-    EventEnvelopeFactory, EventProvenance, EventSensitivity, EventTime, HealingEvent, LifeState,
-    MonsterId, PositionEvent, RegionContext, RegionEvidence, RegionEvidenceKind, RegionIdentity,
-    RunState, SceneId, TimelineEventKind, WorldContext,
+    DataGapEvent, DataGapKind, DungeonEvent, DungeonEventKind, DungeonFlowPhase,
+    DungeonFlowSnapshot, EntityAttribute, EntityAttributeEvent, EntityAttributeValue, EntityRef,
+    EntityUuid, EventEnvelope, EventEnvelopeFactory, EventProvenance, EventSensitivity, EventTime,
+    HealingEvent, LifeState, MonsterId, PositionEvent, RegionContext, RegionEvidence,
+    RegionEvidenceKind, RegionIdentity, RunState, SceneId, TimelineEventKind, WorldContext,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::dirty_blob_v1;
+use crate::dungeon_dirty_v1::{self, DirtyDungeonObjectiveMutation};
 use crate::game_schema_v1 as schema;
 use crate::{
     ActivityProgress, AllowedDataDomain, BattleImagineSkill, CaptureGapKind, CaptureRecord,
@@ -59,6 +60,7 @@ pub enum DecoderKind {
     SyncServerTimeV1,
     SyncSeasonV1,
     SyncDungeonDataV1,
+    SyncDungeonDirtyDataV1,
     EnterSceneV1,
     NotifyLoadSceneEndV1,
     SyncNearEntitiesV1,
@@ -77,7 +79,7 @@ impl DecoderKind {
             | Self::SyncServerTimeV1
             | Self::EnterSceneV1
             | Self::NotifyLoadSceneEndV1 => AllowedDataDomain::WorldState,
-            Self::SyncDungeonDataV1 => AllowedDataDomain::Encounter,
+            Self::SyncDungeonDataV1 | Self::SyncDungeonDirtyDataV1 => AllowedDataDomain::Encounter,
             Self::SyncNearEntitiesV1 => AllowedDataDomain::ActorState,
             Self::SyncContainerDataV1
             | Self::SyncContainerDirtyDataV1
@@ -405,7 +407,18 @@ struct ServerClockAnchor {
 
 #[derive(Debug, Default)]
 struct DungeonTracker {
+    instance_id: Option<String>,
+    difficulty_id: Option<i32>,
     state: Option<i32>,
+    flow: Option<DungeonFlowSnapshot>,
+    objectives: BTreeMap<i32, DungeonObjectiveState>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct DungeonObjectiveState {
+    target_id: Option<i32>,
+    value: Option<i32>,
+    complete: Option<i32>,
 }
 
 #[derive(Debug, Default)]
@@ -494,6 +507,9 @@ fn decode_message(
             decode_sync_season(payload, metadata, &profile.local_character)
         }
         DecoderKind::SyncDungeonDataV1 => decode_sync_dungeon(payload, metadata, dungeon),
+        DecoderKind::SyncDungeonDirtyDataV1 => {
+            decode_sync_dungeon_dirty(payload, metadata, dungeon)
+        }
         DecoderKind::EnterSceneV1 => decode_enter_scene(payload, metadata, entities),
         DecoderKind::NotifyLoadSceneEndV1 => decode_load_scene_end(payload, metadata),
         DecoderKind::SyncNearEntitiesV1 => decode_sync_near_entities(payload, metadata, entities),
@@ -889,11 +905,152 @@ fn decode_sync_dungeon(
     let Some(dungeon) = message.dungeon else {
         return Ok(Vec::new());
     };
-    let instance_id = dungeon.scene_uuid.map(|uuid| uuid.to_string());
-    let difficulty_id = dungeon.scene_info.and_then(|info| info.difficulty);
     let mut drafts = Vec::new();
+    prepare_dungeon_identity(
+        tracker,
+        dungeon.scene_uuid.map(|uuid| uuid.to_string()),
+        dungeon.scene_info.and_then(|info| info.difficulty),
+    );
+    record_dungeon_flow(
+        metadata,
+        tracker,
+        dungeon.flow_info.and_then(flow_snapshot),
+        false,
+        &mut drafts,
+    );
 
-    if let Some(state) = dungeon.flow_info.and_then(|flow| flow.state) {
+    if let Some(target) = dungeon.target {
+        let mut targets = target.target_data.into_iter().collect::<Vec<_>>();
+        targets.sort_unstable_by_key(|(map_key, _)| *map_key);
+        for (map_key, target) in targets {
+            let next = DungeonObjectiveState {
+                target_id: target.target_id,
+                value: target.value,
+                complete: target.complete,
+            };
+            if tracker.objectives.get(&map_key) == Some(&next) {
+                continue;
+            }
+            tracker.objectives.insert(map_key, next.clone());
+            emit_objective_update(metadata, tracker, map_key, &next, &mut drafts);
+        }
+    }
+
+    Ok(drafts)
+}
+
+fn decode_sync_dungeon_dirty(
+    payload: &[u8],
+    metadata: &DecodeMetadata,
+    tracker: &mut DungeonTracker,
+) -> Result<Vec<CanonicalEventDraft>, ProtocolMessageError> {
+    let message = schema::SyncDungeonDirtyData::decode(payload)?;
+    let Some(data) = message.data else {
+        return Ok(Vec::new());
+    };
+    let Some(buffer) = data.buffer else {
+        return Ok(Vec::new());
+    };
+    let patch =
+        dungeon_dirty_v1::decode_dungeon_update(&buffer, data.stream_type.unwrap_or_default())?;
+    let mut drafts = Vec::new();
+    prepare_dungeon_identity(tracker, patch.scene_uuid.map(|uuid| uuid.to_string()), None);
+    record_dungeon_flow(metadata, tracker, patch.flow, true, &mut drafts);
+
+    for mutation in patch.objectives {
+        match mutation {
+            DirtyDungeonObjectiveMutation::Upsert {
+                map_key,
+                target_id,
+                value,
+                complete,
+            } => {
+                let previous = tracker.objectives.get(&map_key).cloned();
+                let mut next = previous.clone().unwrap_or_default();
+                if let Some(target_id) = target_id {
+                    next.target_id = Some(target_id);
+                }
+                if let Some(value) = value {
+                    next.value = Some(value);
+                }
+                if let Some(complete) = complete {
+                    next.complete = Some(complete);
+                }
+                if previous.as_ref() == Some(&next) {
+                    continue;
+                }
+                tracker.objectives.insert(map_key, next.clone());
+                emit_objective_update(metadata, tracker, map_key, &next, &mut drafts);
+            }
+            DirtyDungeonObjectiveMutation::Remove { map_key } => {
+                let removed = tracker.objectives.remove(&map_key);
+                let mut event = dungeon_event(tracker, DungeonEventKind::ObjectiveRemoved);
+                event.objective_map_key = Some(map_key);
+                event.objective_id = Some(i64::from(
+                    removed.and_then(|state| state.target_id).unwrap_or(map_key),
+                ));
+                drafts.push(dungeon_draft(metadata, event));
+            }
+        }
+    }
+    Ok(drafts)
+}
+
+fn prepare_dungeon_identity(
+    tracker: &mut DungeonTracker,
+    instance_id: Option<String>,
+    difficulty_id: Option<i32>,
+) {
+    if instance_id.is_some() && tracker.instance_id != instance_id {
+        tracker.instance_id = instance_id;
+        tracker.difficulty_id = None;
+        tracker.state = None;
+        tracker.flow = None;
+        tracker.objectives.clear();
+    }
+    if let Some(difficulty_id) = difficulty_id {
+        tracker.difficulty_id = Some(difficulty_id);
+    }
+}
+
+fn flow_snapshot(flow: schema::DungeonFlowInfo) -> Option<DungeonFlowSnapshot> {
+    let state_id = flow.state;
+    let snapshot = DungeonFlowSnapshot {
+        state_id,
+        phase: state_id.map(DungeonFlowPhase::from_protocol_id),
+        active_time_raw: flow.active_time,
+        ready_time_raw: flow.ready_time,
+        play_time_raw: flow.play_time,
+        end_time_raw: flow.end_time,
+        settlement_time_raw: flow.settlement_time,
+        dungeon_times_raw: flow.dungeon_times,
+        result_id: flow.result,
+    };
+    snapshot.has_evidence().then_some(snapshot)
+}
+
+fn record_dungeon_flow(
+    metadata: &DecodeMetadata,
+    tracker: &mut DungeonTracker,
+    incoming: Option<DungeonFlowSnapshot>,
+    merge: bool,
+    drafts: &mut Vec<CanonicalEventDraft>,
+) {
+    let Some(incoming) = incoming else {
+        return;
+    };
+    let next = if merge {
+        merge_dungeon_flow(tracker.flow.clone().unwrap_or_default(), incoming)
+    } else {
+        incoming
+    };
+    if tracker.flow.as_ref() == Some(&next) {
+        return;
+    }
+    tracker.flow = Some(next.clone());
+    let mut attached_to_boundary = false;
+
+    if let Some(state) = next.state_id {
         let previous = tracker.state.replace(state);
         if previous != Some(state) {
             let transition = match state {
@@ -917,17 +1074,11 @@ fn decode_sync_dungeon(
                 DUNGEON_STATE_END => Some((DungeonEventKind::Ended, Some(RunState::Ended))),
                 _ => None,
             };
-
             if let Some((kind, run_state)) = transition {
-                drafts.push(dungeon_draft(
-                    metadata,
-                    kind,
-                    instance_id.clone(),
-                    difficulty_id,
-                    None,
-                    None,
-                    None,
-                ));
+                let mut event = dungeon_event(tracker, kind);
+                event.flow = Some(next.clone());
+                drafts.push(dungeon_draft(metadata, event));
+                attached_to_boundary = true;
                 if let Some(run_state) = run_state {
                     drafts.push(timeline_draft(
                         metadata,
@@ -941,48 +1092,70 @@ fn decode_sync_dungeon(
             }
         }
     }
-
-    if let Some(target) = dungeon.target {
-        let mut targets = target.target_data.into_iter().collect::<Vec<_>>();
-        targets.sort_unstable_by_key(|(map_key, _)| *map_key);
-        for (map_key, target) in targets {
-            let objective_id = target.target_id.unwrap_or(map_key);
-            drafts.push(dungeon_draft(
-                metadata,
-                DungeonEventKind::ObjectiveUpdated,
-                instance_id.clone(),
-                difficulty_id,
-                Some(i64::from(objective_id)),
-                target.value.map(i64::from),
-                target.complete.map(|value| value != 0),
-            ));
-        }
+    if !attached_to_boundary {
+        let mut event = dungeon_event(tracker, DungeonEventKind::FlowUpdated);
+        event.flow = Some(next);
+        drafts.push(dungeon_draft(metadata, event));
     }
-
-    Ok(drafts)
 }
 
-fn dungeon_draft(
+fn merge_dungeon_flow(
+    mut current: DungeonFlowSnapshot,
+    patch: DungeonFlowSnapshot,
+) -> DungeonFlowSnapshot {
+    macro_rules! replace_some {
+        ($field:ident) => {
+            if patch.$field.is_some() {
+                current.$field = patch.$field;
+            }
+        };
+    }
+    replace_some!(state_id);
+    replace_some!(phase);
+    replace_some!(active_time_raw);
+    replace_some!(ready_time_raw);
+    replace_some!(play_time_raw);
+    replace_some!(end_time_raw);
+    replace_some!(settlement_time_raw);
+    replace_some!(dungeon_times_raw);
+    replace_some!(result_id);
+    current
+}
+
+fn emit_objective_update(
     metadata: &DecodeMetadata,
-    kind: DungeonEventKind,
-    instance_id: Option<String>,
-    difficulty_id: Option<i32>,
-    objective_id: Option<i64>,
-    objective_value: Option<i64>,
-    objective_complete: Option<bool>,
-) -> CanonicalEventDraft {
+    tracker: &DungeonTracker,
+    map_key: i32,
+    objective: &DungeonObjectiveState,
+    drafts: &mut Vec<CanonicalEventDraft>,
+) {
+    let mut event = dungeon_event(tracker, DungeonEventKind::ObjectiveUpdated);
+    event.objective_map_key = Some(map_key);
+    event.objective_id = Some(i64::from(objective.target_id.unwrap_or(map_key)));
+    event.objective_value = objective.value.map(i64::from);
+    event.objective_complete = objective.complete.map(|value| value != 0);
+    drafts.push(dungeon_draft(metadata, event));
+}
+
+fn dungeon_event(tracker: &DungeonTracker, kind: DungeonEventKind) -> DungeonEvent {
+    DungeonEvent {
+        kind,
+        dungeon_id: None,
+        instance_id: tracker.instance_id.clone(),
+        difficulty_id: tracker.difficulty_id,
+        objective_map_key: None,
+        objective_id: None,
+        objective_value: None,
+        objective_complete: None,
+        flow: None,
+    }
+}
+
+fn dungeon_draft(metadata: &DecodeMetadata, event: DungeonEvent) -> CanonicalEventDraft {
     draft(
         metadata,
         EventSensitivity::PublicGameplay,
-        CanonicalEventDraftKind::Dungeon(DungeonEvent {
-            kind,
-            dungeon_id: None,
-            instance_id,
-            difficulty_id,
-            objective_id,
-            objective_value,
-            objective_complete,
-        }),
+        CanonicalEventDraftKind::Dungeon(event),
     )
 }
 
@@ -1600,13 +1773,15 @@ fn container_talent_progress(
         })
 }
 
-fn container_professions(
-    professions: Option<&schema::ProfessionList>,
-) -> (
+type ProfessionContainerProjection = (
     Option<Vec<CombatProfessionProfile>>,
     Option<Vec<SkillLevel>>,
     Option<Vec<TalentLevel>>,
-) {
+);
+
+fn container_professions(
+    professions: Option<&schema::ProfessionList>,
+) -> ProfessionContainerProjection {
     let Some(professions) = professions else {
         return (None, None, None);
     };
@@ -2955,6 +3130,25 @@ mod tests {
         message.encode_to_vec()
     }
 
+    fn safe_dirty_scalar(value: i32) -> Vec<u8> {
+        let mut bytes = value.to_le_bytes().to_vec();
+        bytes.extend_from_slice(&[0; 4]);
+        bytes
+    }
+
+    fn safe_dirty_object(fields: Vec<(i32, Vec<u8>)>) -> Vec<u8> {
+        let mut body = Vec::new();
+        for (field, value) in fields {
+            body.extend(safe_dirty_scalar(field));
+            body.extend(value);
+        }
+        let mut bytes = safe_dirty_scalar(-2);
+        bytes.extend(safe_dirty_scalar(i32::try_from(body.len()).unwrap()));
+        bytes.extend(body);
+        bytes.extend(safe_dirty_scalar(-3));
+        bytes
+    }
+
     fn int_attr(id: i32, value: u64) -> schema::Attr {
         let mut bytes = Vec::new();
         let mut remaining = value;
@@ -3033,6 +3227,7 @@ mod tests {
                 route(4, DecoderKind::NotifyLoadSceneEndV1),
                 route(6, DecoderKind::SyncNearEntitiesV1),
                 route(23, DecoderKind::SyncDungeonDataV1),
+                route(24, DecoderKind::SyncDungeonDirtyDataV1),
                 route(27, DecoderKind::SyncSeasonV1),
                 route(43, DecoderKind::SyncServerTimeV1),
                 route(0x15, DecoderKind::SyncContainerDataV1),
@@ -3396,6 +3591,307 @@ mod tests {
                         ..
                     }
                 )
+        )));
+    }
+
+    #[test]
+    fn dungeon_flow_snapshot_preserves_raw_values_without_inventing_units_or_results() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+        let flow = schema::DungeonFlowInfo {
+            state: Some(DUNGEON_STATE_READY),
+            active_time: Some(-17),
+            ready_time: Some(1_700_000_001),
+            play_time: Some(123_456),
+            end_time: Some(1_700_000_999),
+            settlement_time: Some(45),
+            dungeon_times: Some(3),
+            result: Some(91),
+        };
+
+        let first = runtime
+            .process(&record(
+                1,
+                23,
+                encode(schema::SyncDungeonData {
+                    dungeon: Some(schema::DungeonSyncData {
+                        scene_uuid: Some(808),
+                        flow_info: Some(flow),
+                        scene_info: Some(schema::DungeonSceneInfo {
+                            difficulty: Some(20),
+                        }),
+                        ..schema::DungeonSyncData::default()
+                    }),
+                }),
+            ))
+            .unwrap();
+        let decoded = first
+            .events
+            .iter()
+            .find_map(|event| match &event.event {
+                rlogs_events::CanonicalEvent::Dungeon(DungeonEvent {
+                    kind: DungeonEventKind::Entered,
+                    flow: Some(flow),
+                    ..
+                }) => Some(flow),
+                _ => None,
+            })
+            .expect("entered event with exact flow evidence");
+        assert_eq!(decoded.state_id, Some(DUNGEON_STATE_READY));
+        assert_eq!(decoded.phase, Some(DungeonFlowPhase::Ready));
+        assert_eq!(decoded.active_time_raw, Some(-17));
+        assert_eq!(decoded.ready_time_raw, Some(1_700_000_001));
+        assert_eq!(decoded.play_time_raw, Some(123_456));
+        assert_eq!(decoded.end_time_raw, Some(1_700_000_999));
+        assert_eq!(decoded.settlement_time_raw, Some(45));
+        assert_eq!(decoded.dungeon_times_raw, Some(3));
+        assert_eq!(decoded.result_id, Some(91));
+
+        let update = runtime
+            .process(&record(
+                2,
+                23,
+                encode(schema::SyncDungeonData {
+                    dungeon: Some(schema::DungeonSyncData {
+                        scene_uuid: Some(808),
+                        flow_info: Some(schema::DungeonFlowInfo {
+                            state: Some(DUNGEON_STATE_READY),
+                            play_time: Some(123_457),
+                            ..schema::DungeonFlowInfo::default()
+                        }),
+                        ..schema::DungeonSyncData::default()
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert!(update.events.iter().any(|event| matches!(
+            &event.event,
+            rlogs_events::CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::FlowUpdated,
+                flow: Some(DungeonFlowSnapshot {
+                    play_time_raw: Some(123_457),
+                    ..
+                }),
+                ..
+            })
+        )));
+
+        let ended = runtime
+            .process(&record(
+                3,
+                23,
+                encode(schema::SyncDungeonData {
+                    dungeon: Some(schema::DungeonSyncData {
+                        scene_uuid: Some(808),
+                        flow_info: Some(schema::DungeonFlowInfo {
+                            state: Some(DUNGEON_STATE_END),
+                            result: Some(1),
+                            ..schema::DungeonFlowInfo::default()
+                        }),
+                        ..schema::DungeonSyncData::default()
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert!(ended.events.iter().any(|event| matches!(
+            &event.event,
+            rlogs_events::CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::Ended,
+                flow: Some(DungeonFlowSnapshot {
+                    result_id: Some(1),
+                    ..
+                }),
+                ..
+            })
+        )));
+        assert!(!ended.events.iter().any(|event| matches!(
+            &event.event,
+            rlogs_events::CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::Completed | DungeonEventKind::Failed,
+                ..
+            })
+        )));
+    }
+
+    #[test]
+    fn a_new_instance_restarts_flow_deduplication_even_when_state_is_unchanged() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+
+        for (capture_sequence, scene_uuid) in [(1, 1001), (2, 2002)] {
+            let batch = runtime
+                .process(&record(
+                    capture_sequence,
+                    23,
+                    encode(schema::SyncDungeonData {
+                        dungeon: Some(schema::DungeonSyncData {
+                            scene_uuid: Some(scene_uuid),
+                            flow_info: Some(schema::DungeonFlowInfo {
+                                state: Some(DUNGEON_STATE_PLAYING),
+                                ..schema::DungeonFlowInfo::default()
+                            }),
+                            ..schema::DungeonSyncData::default()
+                        }),
+                    }),
+                ))
+                .unwrap();
+            assert!(batch.events.iter().any(|event| matches!(
+                &event.event,
+                rlogs_events::CanonicalEvent::Dungeon(DungeonEvent {
+                    kind: DungeonEventKind::Started,
+                    instance_id: Some(instance_id),
+                    ..
+                }) if instance_id == &scene_uuid.to_string()
+            )));
+        }
+    }
+
+    #[test]
+    fn identical_dungeon_objective_snapshots_are_emitted_once() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+        let snapshot = || schema::SyncDungeonData {
+            dungeon: Some(schema::DungeonSyncData {
+                scene_uuid: Some(303),
+                target: Some(schema::DungeonTarget {
+                    target_data: [(
+                        9,
+                        schema::DungeonTargetData {
+                            target_id: Some(44),
+                            value: Some(2),
+                            complete: Some(0),
+                        },
+                    )]
+                    .into_iter()
+                    .collect(),
+                }),
+                ..schema::DungeonSyncData::default()
+            }),
+        };
+
+        let first = runtime.process(&record(1, 23, encode(snapshot()))).unwrap();
+        let duplicate = runtime.process(&record(2, 23, encode(snapshot()))).unwrap();
+        assert!(first.events.iter().any(|event| matches!(
+            &event.event,
+            rlogs_events::CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::ObjectiveUpdated,
+                ..
+            })
+        )));
+        assert!(duplicate.events.is_empty());
+    }
+
+    #[test]
+    fn dungeon_dirty_patch_merges_flow_and_objectives_without_losing_snapshot_identity() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+        runtime
+            .process(&record(
+                1,
+                23,
+                encode(schema::SyncDungeonData {
+                    dungeon: Some(schema::DungeonSyncData {
+                        scene_uuid: Some(555),
+                        flow_info: Some(schema::DungeonFlowInfo {
+                            state: Some(DUNGEON_STATE_PLAYING),
+                            ..schema::DungeonFlowInfo::default()
+                        }),
+                        target: Some(schema::DungeonTarget {
+                            target_data: [(
+                                41,
+                                schema::DungeonTargetData {
+                                    target_id: Some(9_001),
+                                    value: Some(2),
+                                    complete: Some(0),
+                                },
+                            )]
+                            .into_iter()
+                            .collect(),
+                        }),
+                        scene_info: Some(schema::DungeonSceneInfo {
+                            difficulty: Some(7),
+                        }),
+                    }),
+                }),
+            ))
+            .unwrap();
+
+        let flow = safe_dirty_object(vec![(4, safe_dirty_scalar(321))]);
+        let objective =
+            safe_dirty_object(vec![(2, safe_dirty_scalar(3)), (3, safe_dirty_scalar(1))]);
+        let mut objective_map = safe_dirty_scalar(0);
+        objective_map.extend(safe_dirty_scalar(0));
+        objective_map.extend(safe_dirty_scalar(1));
+        objective_map.extend(safe_dirty_scalar(41));
+        objective_map.extend(objective);
+        let targets = safe_dirty_object(vec![(1, objective_map)]);
+        let patch = safe_dirty_object(vec![(2, flow), (4, targets)]);
+        let updated = runtime
+            .process(&record(
+                2,
+                24,
+                encode(schema::SyncDungeonDirtyData {
+                    data: Some(schema::BufferStream {
+                        buffer: Some(patch),
+                        stream_type: Some(0),
+                    }),
+                }),
+            ))
+            .unwrap();
+
+        assert!(updated.events.iter().any(|event| matches!(
+            &event.event,
+            rlogs_events::CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::FlowUpdated,
+                instance_id: Some(instance_id),
+                difficulty_id: Some(7),
+                flow: Some(DungeonFlowSnapshot {
+                    state_id: Some(DUNGEON_STATE_PLAYING),
+                    play_time_raw: Some(321),
+                    ..
+                }),
+                ..
+            }) if instance_id == "555"
+        )));
+        assert!(updated.events.iter().any(|event| matches!(
+            &event.event,
+            rlogs_events::CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::ObjectiveUpdated,
+                objective_map_key: Some(41),
+                objective_id: Some(9_001),
+                objective_value: Some(3),
+                objective_complete: Some(true),
+                ..
+            })
+        )));
+
+        let mut remove_map = safe_dirty_scalar(0);
+        remove_map.extend(safe_dirty_scalar(1));
+        remove_map.extend(safe_dirty_scalar(0));
+        remove_map.extend(safe_dirty_scalar(41));
+        let removed = runtime
+            .process(&record(
+                3,
+                24,
+                encode(schema::SyncDungeonDirtyData {
+                    data: Some(schema::BufferStream {
+                        buffer: Some(safe_dirty_object(vec![(
+                            4,
+                            safe_dirty_object(vec![(1, remove_map)]),
+                        )])),
+                        stream_type: Some(0),
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert!(removed.events.iter().any(|event| matches!(
+            &event.event,
+            rlogs_events::CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::ObjectiveRemoved,
+                objective_map_key: Some(41),
+                objective_id: Some(9_001),
+                ..
+            })
         )));
     }
 

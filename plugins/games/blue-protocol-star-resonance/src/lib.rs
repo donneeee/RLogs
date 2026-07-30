@@ -4,6 +4,7 @@ mod catalog;
 mod coverage;
 mod decoder;
 mod dirty_blob_v1;
+mod dungeon_dirty_v1;
 mod framer_set;
 mod framing;
 mod game_schema_v1;
@@ -14,6 +15,7 @@ mod packet;
 mod pipeline;
 mod privacy;
 mod profile;
+mod profile_projection;
 mod region;
 mod route;
 mod stream;
@@ -79,6 +81,9 @@ pub use profile::{
     ModuleProfile, ModuleUpgradeRecord, ProfileEventError, ReputationProgress, RgbColor,
     SeasonCultivationProfile, SeasonMedalHole, SeasonMedalNode, SeasonMedalProfile, SeasonProfile,
     SkillLevel, SocialDisplay, TalentLevel, TalentProgressProfile, WeeklyTowerProgress,
+};
+pub use profile_projection::{
+    BpsrProfileProjectionError, MAXIMUM_LOCAL_PROFILE_CHARACTERS, project_local_profile_packages,
 };
 pub use region::{
     RegionEndpointRule, RegionResolver, RegionResolverError, ResolvedRegion,

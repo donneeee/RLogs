@@ -12,4 +12,6 @@ and verifies a SHA-256 digest over canonical event content before accepting the
 seal.
 
 The reader delivers events incrementally. It does not load the entire dungeon
-timeline into memory.
+timeline into memory. Consumers may pull one event at a time, pause between
+bounded pages, and receive the verified replay summary only after the seal and
+end-of-file are accepted. Full plug-in replay uses that same incremental path.

@@ -678,6 +678,18 @@ mod tests {
                 decoder: DecoderKind::SyncDungeonDataV1
             }
         );
+        let dungeon_dirty = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 24)
+            .expect("current-build dungeon dirty route");
+        assert_eq!(dungeon_dirty.method_name, "SyncDungeonDirtyData");
+        assert_eq!(dungeon_dirty.confidence, MappingConfidence::Candidate);
+        assert_eq!(
+            dungeon_dirty.disposition,
+            ProtocolPackRouteDisposition::Opaque
+        );
         let season = pack
             .definition()
             .routes
