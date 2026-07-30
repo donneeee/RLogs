@@ -19,7 +19,10 @@ games/
 A game folder may depend on the game-neutral engine crates. Engine crates must
 not depend on a concrete game plug-in. Ordinary community add-ons must use
 `engine/plugin-api`; raw reconstructed streams are reserved for manifests
-validated through `engine/game-plugin-api`.
+validated through `engine/game-plugin-api`. Core owns network capture and hands
+the selected trusted integration only process-filtered reconstructed streams;
+the integration owns framing, optional protocol decryption, decompression, and
+decoding.
 
 The first implementation is
 [`blue-protocol-star-resonance/`](blue-protocol-star-resonance/).

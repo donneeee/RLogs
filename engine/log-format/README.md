@@ -1,6 +1,15 @@
-# Log format
+# rLogs replay format
 
-This engine will write and replay the versioned `.rlog` container. The format
-will contain allowlisted canonical evidence, integrity metadata, region/build
-context, and reducer compatibility information—not private raw traffic.
+This crate writes and streams the versioned `.rlog` container. A file contains
+one header, ordered canonical event records, and one integrity seal. It never
+contains raw packets, credentials, login payloads, private chat, or account
+data.
 
+The first format is newline-delimited JSON so fixtures remain inspectable and
+language-neutral. Replay is still bounded: the reader caps line length and
+event count, validates session/region/schema identity and monotonic sequences,
+and verifies a SHA-256 digest over canonical event content before accepting the
+seal.
+
+The reader delivers events incrementally. It does not load the entire dungeon
+timeline into memory.

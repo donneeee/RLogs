@@ -1,0 +1,19 @@
+[package]
+name = "rlogs-bpsr-offline-recorder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rlogs-capture = { path = "../../../../../engine/capture" }
+rlogs-core = { path = "../../../../../engine/core" }
+rlogs-events = { path = "../../../../../engine/events" }
+rlogs-game-bpsr = { path = "../.." }
+serde_json.workspace = true
+
+[dev-dependencies]
+bytes.workspace = true
+etherparse.workspace = true
+rlogs-log-format = { path = "../../../../../engine/log-format" }
+rlogs-network = { path = "../../../../../engine/network" }

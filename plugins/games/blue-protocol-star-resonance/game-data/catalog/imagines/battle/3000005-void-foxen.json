@@ -1,0 +1,33 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000005,
+  "stable_key": "imagine.battle.3000005",
+  "localization_key": "imagine.3000005.name",
+  "icon": "icons/imagines/battle/3000005-void-foxen.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000005,
+    "item_tier": 3,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359899635,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_011",
+    "icon_pixel_sha256": "e8308dccb3b5c5ff30b0c0798e11b8024f8d825e7f8dd08a4195c6d7e271ed21",
+    "aoyi_mapping_state": "unresolved_no_current_direct_relation",
+    "will_item_id": 3010005,
+    "will_name_localization_key": "imagine_will.3010005.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000005",
+    "confidence": "verified"
+  }
+}

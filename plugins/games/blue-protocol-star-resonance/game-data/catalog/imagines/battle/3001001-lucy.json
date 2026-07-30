@@ -1,0 +1,159 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3001001,
+  "stable_key": "imagine.battle.3001001",
+  "localization_key": "imagine.3001001.name",
+  "icon": "icons/imagines/battle/3001001-lucy.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3001001,
+    "item_tier": 4,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359935568,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_086",
+    "icon_pixel_sha256": "0a19abf3432d4bfda6f8a2ecbe998a983d55dd9c48bb84d9ec9d63cfeac54065",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3982.description",
+    "monster_name_localization_key": "battle_imagine_skill.3982.monster_name",
+    "aoyi_skill_id": 3982,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3982.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture086",
+    "skill_effect_id": 398201,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 356,
+        "effect_record_offset": 28124,
+        "values": [
+          {
+            "key": "shieldHp",
+            "raw_value": 150
+          },
+          {
+            "key": "attrA",
+            "raw_value": 60
+          },
+          {
+            "key": "attrB",
+            "raw_value": 60
+          },
+          {
+            "key": "attrC",
+            "raw_value": 60
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 357,
+        "effect_record_offset": 28214,
+        "values": [
+          {
+            "key": "shieldHp",
+            "raw_value": 300
+          },
+          {
+            "key": "attrA",
+            "raw_value": 120
+          },
+          {
+            "key": "attrB",
+            "raw_value": 120
+          },
+          {
+            "key": "attrC",
+            "raw_value": 120
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 358,
+        "effect_record_offset": 28304,
+        "values": [
+          {
+            "key": "shieldHp",
+            "raw_value": 450
+          },
+          {
+            "key": "attrA",
+            "raw_value": 180
+          },
+          {
+            "key": "attrB",
+            "raw_value": 180
+          },
+          {
+            "key": "attrC",
+            "raw_value": 180
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 359,
+        "effect_record_offset": 28384,
+        "values": [
+          {
+            "key": "shieldHp",
+            "raw_value": 600
+          },
+          {
+            "key": "attrA",
+            "raw_value": 240
+          },
+          {
+            "key": "attrB",
+            "raw_value": 240
+          },
+          {
+            "key": "attrC",
+            "raw_value": 240
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 360,
+        "effect_record_offset": 28474,
+        "values": [
+          {
+            "key": "shieldHp",
+            "raw_value": 750
+          },
+          {
+            "key": "attrA",
+            "raw_value": 300
+          },
+          {
+            "key": "attrB",
+            "raw_value": 300
+          },
+          {
+            "key": "attrC",
+            "raw_value": 300
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3011001,
+    "will_name_localization_key": "imagine_will.3011001.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3001001",
+    "confidence": "verified"
+  }
+}

@@ -9,59 +9,14 @@
   },
   "tables": [
     {
-      "table": "ProfessionSystemTable.ctb",
-      "records": 13,
-      "source_sha256": "sha256:2b906629a8cf7211fc84e5a3357d169b661c2cbba210cd9893ebee7053cd1b5e"
-    },
-    {
-      "table": "TalentSchoolTable.ctb",
-      "records": 20,
-      "source_sha256": "sha256:087255cf24eeb1fcea3308decffa3df55f97dc55c5f9cf481af69ab07053b953"
-    },
-    {
-      "table": "TalentTable.ctb",
-      "records": 648,
-      "source_sha256": "sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7"
-    },
-    {
-      "table": "SkillTable.ctb",
-      "records": 4796,
-      "source_sha256": "sha256:d90d05d9851a4cc1fa788200702f3c202d1406ca00be64095dce8c1abe277c35"
-    },
-    {
-      "table": "SkillEffectTable.ctb",
-      "records": 4813,
-      "source_sha256": "sha256:b91e9b17400c0a9e5c7c43de68a69b8f93db97a1426cfe3f4869046f0aee3f8d"
-    },
-    {
       "table": "BuffTable.ctb",
       "records": 10008,
       "source_sha256": "sha256:56425196ed9c635ef4a23afad38d3dbb4a76ecccaa6192d4a3f6879725e61550"
     },
     {
-      "table": "RecountTable.ctb",
-      "records": 349,
-      "source_sha256": "sha256:c866b295a318dfd5f4d1c6fc45af5a41260161bbcae7f7ce56422ce5b4819370"
-    },
-    {
-      "table": "ProfileImageTable.ctb",
-      "records": 809,
-      "source_sha256": "sha256:851ca4beabe31e112468ac4fee592d677c533013cd20d777d9f046645004da49"
-    },
-    {
-      "table": "NameCardTable.ctb",
-      "records": 3,
-      "source_sha256": "sha256:ccabb5a2fc5a02bf36c84b49bf79ccdc7fcd1963115bae603b8cd4d6f1d86ebf"
-    },
-    {
-      "table": "MedalTable.ctb",
-      "records": 183,
-      "source_sha256": "sha256:460dce56c6644c03315c4b0fdba5eb332a68f2a8b32fc83d5e0410e6da60ff07"
-    },
-    {
-      "table": "UnionIconTable.ctb",
-      "records": 41,
-      "source_sha256": "sha256:2d5fce33d55e6bf14fa436e09037aca02cb5dba3021caec6da64f5bb22a3dad1"
+      "table": "DungeonsTable.ctb",
+      "records": 589,
+      "source_sha256": "sha256:f1e86db717895d8dbb6be8cc115c964b63903056eb4cddda0885eceb5ebc0033"
     },
     {
       "table": "EquipTable.ctb",
@@ -74,9 +29,59 @@
       "source_sha256": "sha256:59169cfde4f1876b8814261d16f90c7bd37ff83bc396a641973c5eddb68987bc"
     },
     {
+      "table": "ItemTable.ctb",
+      "records": 86,
+      "source_sha256": "sha256:3a13da0ca47ccaf62e2b91d0102da24fd083cd155877b6912d70c2e3910b0991"
+    },
+    {
+      "table": "MapInfoTable.ctb",
+      "records": 203,
+      "source_sha256": "sha256:560c46d985f79f5e1ebbb5a8a3cd894650dd4c3fe6ce892bbe7c4ad189c38ecc"
+    },
+    {
+      "table": "MedalTable.ctb",
+      "records": 183,
+      "source_sha256": "sha256:460dce56c6644c03315c4b0fdba5eb332a68f2a8b32fc83d5e0410e6da60ff07"
+    },
+    {
+      "table": "ModEffectLibTable.ctb",
+      "records": 132,
+      "source_sha256": "sha256:8c4e893b4b8b19412e2f0dfadaa9565182f6aced95fefae0e599834001e5dc9b"
+    },
+    {
+      "table": "ModEffectTable.ctb",
+      "records": 147,
+      "source_sha256": "sha256:bcfe2d0d694d398e74abf23d01d389368353785c0df5d98202a218bb70e317c3"
+    },
+    {
+      "table": "ModHoleTable.ctb",
+      "records": 5,
+      "source_sha256": "sha256:0bae15229be21cd35fd89d09fccdb6caf3087e22f0075e647a43f215766b4e53"
+    },
+    {
+      "table": "ModLinkEffectTable.ctb",
+      "records": 121,
+      "source_sha256": "sha256:c500899c05a083f483d4b7112b9311616896df5134cfe7c5edd8c28a619b209a"
+    },
+    {
+      "table": "ModTable.ctb",
+      "records": 12,
+      "source_sha256": "sha256:99efcc74fbf60df610ce39e6ecdbbaa3a1dcf8551f405c94311536d145f7ccdb"
+    },
+    {
+      "table": "ModTypeTable.ctb",
+      "records": 6,
+      "source_sha256": "sha256:15556cd2a56fb5d02cb77ba7d8b4a4b5815430cb4074d24ad67a89b87dbcf4f2"
+    },
+    {
       "table": "MonsterTable.ctb",
       "records": 3128,
       "source_sha256": "sha256:42a3d585f929111a0ae7e69742077b9fcaa4dc729a72dcc1fb4904e69cd3232a"
+    },
+    {
+      "table": "NameCardTable.ctb",
+      "records": 3,
+      "source_sha256": "sha256:ccabb5a2fc5a02bf36c84b49bf79ccdc7fcd1963115bae603b8cd4d6f1d86ebf"
     },
     {
       "table": "NpcTable.ctb",
@@ -84,22 +89,62 @@
       "source_sha256": "sha256:d09302387edbe36da1804ff7b901adccfc775abebce10046383f529502de7eb9"
     },
     {
+      "table": "ProfessionSystemTable.ctb",
+      "records": 13,
+      "source_sha256": "sha256:2b906629a8cf7211fc84e5a3357d169b661c2cbba210cd9893ebee7053cd1b5e"
+    },
+    {
+      "table": "ProfileImageTable.ctb",
+      "records": 809,
+      "source_sha256": "sha256:851ca4beabe31e112468ac4fee592d677c533013cd20d777d9f046645004da49"
+    },
+    {
+      "table": "RecountTable.ctb",
+      "records": 349,
+      "source_sha256": "sha256:c866b295a318dfd5f4d1c6fc45af5a41260161bbcae7f7ce56422ce5b4819370"
+    },
+    {
       "table": "SceneTable.ctb",
       "records": 610,
       "source_sha256": "sha256:c1d4723bb5dd9db0691fe85f688aaee9929a5652e649ce8ad803263f9f8cc30f"
     },
     {
-      "table": "DungeonsTable.ctb",
-      "records": 589,
-      "source_sha256": "sha256:f1e86db717895d8dbb6be8cc115c964b63903056eb4cddda0885eceb5ebc0033"
+      "table": "SkillEffectTable.ctb",
+      "records": 4813,
+      "source_sha256": "sha256:b91e9b17400c0a9e5c7c43de68a69b8f93db97a1426cfe3f4869046f0aee3f8d"
     },
     {
-      "table": "MapInfoTable.ctb",
-      "records": 203,
-      "source_sha256": "sha256:560c46d985f79f5e1ebbb5a8a3cd894650dd4c3fe6ce892bbe7c4ad189c38ecc"
+      "table": "SkillTable.ctb",
+      "records": 4796,
+      "source_sha256": "sha256:d90d05d9851a4cc1fa788200702f3c202d1406ca00be64095dce8c1abe277c35"
+    },
+    {
+      "table": "TalentSchoolTable.ctb",
+      "records": 20,
+      "source_sha256": "sha256:087255cf24eeb1fcea3308decffa3df55f97dc55c5f9cf481af69ab07053b953"
+    },
+    {
+      "table": "TalentStageTable.ctb",
+      "records": 36,
+      "source_sha256": "sha256:9a8b3258252c911f29ea8a7aea1621c0912498c867e6707d0aac23813c2b389c"
+    },
+    {
+      "table": "TalentTable.ctb",
+      "records": 648,
+      "source_sha256": "sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7"
+    },
+    {
+      "table": "TalentTreeTable.ctb",
+      "records": 1350,
+      "source_sha256": "sha256:4214ce9890679abecc2d60a6cd23d9b2432905dbdcc35687b440d7666da2d812"
+    },
+    {
+      "table": "UnionIconTable.ctb",
+      "records": 41,
+      "source_sha256": "sha256:2d5fce33d55e6bf14fa436e09037aca02cb5dba3021caec6da64f5bb22a3dad1"
     }
   ],
-  "records": 36136,
+  "records": 36387,
   "referenced_localization_ids": 15723,
   "missing_english_display_names": 29,
   "missing_all_locale_display_names": 29,
@@ -371,6 +416,63 @@
     "ambiguous_spec_status_relations_preserved": 0,
     "skill_spec_state": "specialized_only_by_current_build_talent_or_skill_graph_relation"
   },
+  "battle_imagines": {
+    "records": 86,
+    "direct_item_to_aoyi_relations": 73,
+    "unresolved_item_to_aoyi_relations": 13,
+    "aoyi_skills": 73,
+    "enhancement_tier_rows": 365,
+    "official_locales": 11,
+    "unique_source_icons": 82,
+    "materialized_record_icons": 86,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "supporting_source_tables": [
+      {
+        "table": "SkillAoyiTable.ctb",
+        "source_rows": 73,
+        "source_sha256": "sha256:9698600eb2cc69bf05e5b711769c1f5883182321a7847b619afc8d3384b59ad0"
+      },
+      {
+        "table": "SkillAoyiItemTable.ctb",
+        "source_rows": 154,
+        "promoted_direct_relations": 73,
+        "source_sha256": "sha256:0d773cfd5499d99e397915b7714481b315ce37b69524d4eade2276bd3c6dfd7f"
+      },
+      {
+        "table": "SkillAoyiStarTable.ctb",
+        "source_rows": 365,
+        "promoted_tier_rows": 365,
+        "source_sha256": "sha256:34ddaa70f08ad70f067f75f750106c5133f1a6fc86420cb10dca7e9d2efd56be"
+      }
+    ],
+    "official_localization_gaps": [
+      {
+        "key": "imagine.3000125.name",
+        "missing_locales": [
+          "th-TH"
+        ]
+      },
+      {
+        "key": "imagine.3000128.name",
+        "missing_locales": [
+          "th-TH"
+        ]
+      },
+      {
+        "key": "imagine_will.3011001.name",
+        "missing_locales": [
+          "ja-JP"
+        ]
+      },
+      {
+        "key": "imagine_will.3011002.name",
+        "missing_locales": [
+          "ja-JP"
+        ]
+      }
+    ],
+    "promotion_rule": "Only current-build direct ItemTable, SkillAoyiTable, SkillAoyiItemTable, and SkillAoyiStarTable relations are canonical; older page and icon fallbacks remain non-canonical."
+  },
   "policy": {
     "canonical_catalog_is_not_region_partitioned": true,
     "build_identity_is_availability_metadata": true,
@@ -381,5 +483,21 @@
     "spec_specific_skill_ownership_requires_a_unique_current_build_relation": true,
     "ambiguous_spec_relations_remain_shared": true,
     "private_acquisition_details_promoted": false
+  },
+  "profile_catalog": {
+    "modules": 12,
+    "module_types": 6,
+    "module_slots": 5,
+    "module_effects": 21,
+    "module_effect_levels": 147,
+    "module_link_effects": 121,
+    "module_records": 165,
+    "module_localization_entries": 3663,
+    "talent_nodes": 1350,
+    "talent_prerequisite_edges": 1603,
+    "active_stage_talent_nodes": 990,
+    "unassigned_current_table_nodes": 360,
+    "unique_talent_icons": 605,
+    "unique_module_icons": 35
   }
 }

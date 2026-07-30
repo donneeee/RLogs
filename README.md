@@ -39,6 +39,24 @@ retransmissions, overlaps, resynchronization, decompression failures,
 evictions, and memory-pressure gaps remain explicit. See
 [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
+The BPSR offline recorder now carries that same stream through an exact
+protocol pack, privacy-reviewed canonical decoding, and the sealed `.rlog`
+writer. It also emits a payload-free coverage sidecar containing route,
+decoder, feature, event-topic, and gap counts:
+
+```text
+cargo run -p rlogs-bpsr-offline-recorder -- \
+  --private-research \
+  --pack plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json \
+  --connections private/run.connections.json \
+  --session-id run-001 \
+  private/run.pcap \
+  private/run.rlog
+```
+
+See the [offline-recorder guide](plugins/games/blue-protocol-star-resonance/tools/offline-recorder/README.md)
+for the current research-only inputs and trust boundary.
+
 Windows live capture now follows server rotation by continuously attributing
 exact TCP connections to `BPSR_STEAM`. Broad adapter traffic exists only in a
 bounded in-memory ingress; unrelated frames are discarded before persistence
@@ -53,8 +71,10 @@ game-data rules are in [`game-data/README.md`](game-data/README.md), and the
 automated profile field census is in
 [`docs/CHARACTER_PROFILE_COVERAGE.md`](docs/CHARACTER_PROFILE_COVERAGE.md).
 The website-facing profile boundary is in
-[`docs/PROFILE_AUTOMATION.md`](docs/PROFILE_AUTOMATION.md), and the current
-38-route world-load reconciliation is in
+[`docs/PROFILE_AUTOMATION.md`](docs/PROFILE_AUTOMATION.md); its module-optimizer
+and talent-board contract is in
+[`docs/WEBSITE_MODULES_AND_TALENTS.md`](docs/WEBSITE_MODULES_AND_TALENTS.md).
+The current 38-route world-load reconciliation is in
 [`docs/WORLD_LOAD_ROUTE_RESEARCH.md`](docs/WORLD_LOAD_ROUTE_RESEARCH.md).
 The first complete BPSR client-file inventory is summarized in
 [`docs/GAME_FILE_RESEARCH.md`](docs/GAME_FILE_RESEARCH.md), with its compact
@@ -66,16 +86,41 @@ profile/equipment fields are documented in
 
 ## Plugin Lab
 
-The first UI is a read-only extension workbench. It rescans installed,
-built-in, example, and game plug-ins; shows API compatibility, declared
-capabilities, imports/exports, resource storage, dependency order, and every
-before/after Core hook stage.
+The first UI is an extension workbench and deterministic replay test bench. It
+rescans installed, built-in, example, and game plug-ins; shows API
+compatibility, declared capabilities, imports/exports, resource storage,
+dependency order, and every before/after Core hook stage. It can also stream a
+sealed, sanitized `.rlog` fixture through the bounded runtime and display the
+first-party combat timeline output.
 
 ```text
 cargo run -p rlogs-plugin-lab
 ```
 
-Open `http://127.0.0.1:7418`. The lab never executes plug-in code.
+Open `http://127.0.0.1:7418`, choose the reference combat fixture under
+**Replay**, and select **Run fixture**. Only explicitly bundled native replay
+plug-ins execute in this early runtime. Installed community packages remain
+inspection-only until the isolated component runtime is implemented.
+
+## Local runtime controls
+
+The pre-installer runtime is served only on loopback. It connects the web shell
+to real Rust session orchestration while keeping the eventual packaged desktop
+boundary intact:
+
+```powershell
+cd apps/desktop/ui
+npm install
+npm run build
+cd ../../..
+cargo run -p rlogs-desktop-host
+```
+
+Open `http://127.0.0.1:7419`. Session Recorder can verify the bundled replay,
+process an existing PCAP plus exact connection evidence, or start a Windows
+process-owned capture and cooperatively stop/finalize it. Private PCAP and
+connection evidence remain local; the sealed `.rlog` is the privacy-reviewed
+replay and future submission boundary.
 
 ## Repository map
 

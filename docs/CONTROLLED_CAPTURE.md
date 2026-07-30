@@ -1,8 +1,10 @@
 # Controlled Global capture
 
 This workflow is for private protocol research on the exact installed Global
-Steam build. It does not capture the login flow and it never produces a
-website-submission file.
+Steam build. It does not capture the login flow. Raw pcaps and protocol
+journals are never submission files; the optional offline recorder produces
+the privacy-reviewed `.rlog` boundary that will support submission after
+server verification exists.
 
 ## Before capturing
 
@@ -82,7 +84,7 @@ or persistence. The capture stops on its bounded timer.
 $research = Join-Path $env:LOCALAPPDATA 'RLogs\private-research'
 cargo run -p rlogs-protocol-journal -- `
   --private-research `
-  --pack '.\protocol-packs\global\steam-24252055\pack.json' `
+  --pack '.\plugins\games\blue-protocol-star-resonance\protocol-packs\global\steam-24252055\pack.json' `
   --connections (Join-Path $research 'profile-baseline-001.connections.json') `
   --capture-id 'profile-baseline-001' `
   (Join-Path $research 'profile-baseline-001.pcapng') `
@@ -92,12 +94,38 @@ cargo run -p rlogs-protocol-journal -- `
 The JSONL contains opaque payload evidence. It remains local-only and must not
 be committed, uploaded, or shared.
 
+## Build a canonical rlog and coverage report
+
+This path bypasses raw JSONL persistence. It streams the private pcap through
+the same reconstruction/framing pipeline, permits only reviewed protocol-pack
+decoders to create canonical events, and seals those events into `.rlog`:
+
+```powershell
+$research = Join-Path $env:LOCALAPPDATA 'RLogs\private-research'
+cargo run -p rlogs-bpsr-offline-recorder -- `
+  --private-research `
+  --pack '.\plugins\games\blue-protocol-star-resonance\protocol-packs\global\steam-24252055\pack.json' `
+  --connections (Join-Path $research 'profile-baseline-001.connections.json') `
+  --session-id 'profile-baseline-001' `
+  (Join-Path $research 'profile-baseline-001.pcapng') `
+  (Join-Path $research 'profile-baseline-001.rlog')
+```
+
+The adjacent `profile-baseline-001.coverage.json` records counts and route IDs
+without packet payloads or network endpoints. `global` is the deployment, not
+a realm: Asteria and Bahamar are distinct realm IDs. Until reviewed game
+evidence maps the announced world-entry endpoint to one of them, the recorder
+uses `global` only as an explicitly unresolved region fallback and does not
+invent a realm. The `.rlog` is safe for local replay but should not be uploaded
+until realm resolution, server-side verification, and the submission policy
+are implemented.
+
 ## Measure route coverage
 
 ```powershell
 $research = Join-Path $env:LOCALAPPDATA 'RLogs\private-research'
 cargo run -p rlogs-protocol-coverage -- `
-  --pack '.\protocol-packs\global\steam-24252055\pack.json' `
+  --pack '.\plugins\games\blue-protocol-star-resonance\protocol-packs\global\steam-24252055\pack.json' `
   (Join-Path $research 'profile-baseline-001.jsonl')
 ```
 
@@ -125,9 +153,16 @@ events.
 
 The first `profile-baseline` observation did not resend the complete character
 snapshot. It produced one `SyncContainerDirtyData` update whose dirty tree
-included `char_base` and current-build field `104`. The route stays opaque
-because `char_base` can contain both allowed character fields and prohibited
-account identifiers.
+included `char_base` and current-build field `104`. The route stayed opaque
+until a bounded selective reader can distinguish approved character fields
+from account identifiers and private behavioral fields.
+
+That reader is now implemented for the exact build. It consumes known account
+and open identifiers without materializing them, discards private online-time
+values and the internal save serial, and stops at an unknown field whose width
+is not proven. Replaying `world-load-process-001` decodes all five dirty
+updates with zero failures and correctly emits zero canonical events: the
+packets were empty, quest/story-only, or private time/internal-serial changes.
 
 The endpoint-filtered attempts did not observe the full snapshot and proved
 that world entry can rotate servers. The process-aware

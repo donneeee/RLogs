@@ -1,0 +1,119 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000124,
+  "stable_key": "imagine.battle.3000124",
+  "localization_key": "imagine.3000124.name",
+  "icon": "icons/imagines/battle/3000124-predator-spider.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000124,
+    "item_tier": 4,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359900789,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_075",
+    "icon_pixel_sha256": "312461499c3abb88864b6b7fc5b43288404ac01b235bb4c761ad22a170a8f49f",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3972.description",
+    "monster_name_localization_key": "battle_imagine_skill.3972.monster_name",
+    "aoyi_skill_id": 3972,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3972.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture075",
+    "skill_effect_id": 397201,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 306,
+        "effect_record_offset": 23992,
+        "values": [
+          {
+            "key": "attrElse",
+            "raw_value": 4
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 48
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 307,
+        "effect_record_offset": 24114,
+        "values": [
+          {
+            "key": "attrElse",
+            "raw_value": 8
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 96
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 308,
+        "effect_record_offset": 24188,
+        "values": [
+          {
+            "key": "attrElse",
+            "raw_value": 12
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 144
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 309,
+        "effect_record_offset": 24294,
+        "values": [
+          {
+            "key": "attrElse",
+            "raw_value": 16
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 192
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 310,
+        "effect_record_offset": 24376,
+        "values": [
+          {
+            "key": "attrElse",
+            "raw_value": 20
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 240
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3010124,
+    "will_name_localization_key": "imagine_will.3010124.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000124",
+    "confidence": "verified"
+  }
+}

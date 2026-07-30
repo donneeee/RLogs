@@ -1,0 +1,279 @@
+{
+  "schema_version": 2,
+  "kind": "module_effect",
+  "id": 2304,
+  "stable_key": "module-effect.2304",
+  "localization_key": "module-effect.2304.name",
+  "icon": "icons/modules/effects/2304-final-protection.png",
+  "attributes": {
+    "effect_type": 3,
+    "effect_library_ids": [
+      131,
+      231,
+      331,
+      332
+    ],
+    "is_negative": false,
+    "show_shield": false,
+    "name_id": 985304985,
+    "icon_address": "ui/atlas/mod_effect/mod_effect_icon_045",
+    "levels": [
+      {
+        "row_id": 120,
+        "level": 0,
+        "name_id": 985304985,
+        "overview_id": 647913775,
+        "required_link_points": 0,
+        "player_level": 1,
+        "effect_config_records": [],
+        "effect_keys": [
+          [
+            "attr",
+            "hpPct",
+            "hpLosePct",
+            "attrAdd"
+          ]
+        ],
+        "effect_values": [],
+        "fight_value": 0,
+        "name_localization_key": "module-effect.2304.level.0.name",
+        "overview_localization_key": "module-effect.2304.level.0.overview"
+      },
+      {
+        "row_id": 121,
+        "level": 1,
+        "name_id": 985304986,
+        "overview_id": 647913776,
+        "required_link_points": 1,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11322,
+            600
+          ]
+        ],
+        "effect_keys": [
+          [
+            "attr",
+            "hpPct",
+            "hpLosePct",
+            "attrAdd"
+          ]
+        ],
+        "effect_values": [
+          [
+            0
+          ]
+        ],
+        "fight_value": 14,
+        "name_localization_key": "module-effect.2304.level.1.name",
+        "overview_localization_key": "module-effect.2304.level.1.overview"
+      },
+      {
+        "row_id": 122,
+        "level": 2,
+        "name_id": 985304987,
+        "overview_id": 647913777,
+        "required_link_points": 4,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11322,
+            1200
+          ]
+        ],
+        "effect_keys": [
+          [
+            "attr",
+            "hpPct",
+            "hpLosePct",
+            "attrAdd"
+          ]
+        ],
+        "effect_values": [
+          [
+            0
+          ]
+        ],
+        "fight_value": 29,
+        "name_localization_key": "module-effect.2304.level.2.name",
+        "overview_localization_key": "module-effect.2304.level.2.overview"
+      },
+      {
+        "row_id": 123,
+        "level": 3,
+        "name_id": 985304988,
+        "overview_id": 647913778,
+        "required_link_points": 8,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11322,
+            1800
+          ],
+          [
+            1,
+            11012,
+            20
+          ]
+        ],
+        "effect_keys": [
+          [
+            "attr",
+            "hpPct",
+            "hpLosePct",
+            "attrAdd"
+          ]
+        ],
+        "effect_values": [
+          [
+            0
+          ]
+        ],
+        "fight_value": 59,
+        "name_localization_key": "module-effect.2304.level.3.name",
+        "overview_localization_key": "module-effect.2304.level.3.overview"
+      },
+      {
+        "row_id": 124,
+        "level": 4,
+        "name_id": 985304989,
+        "overview_id": 647913779,
+        "required_link_points": 12,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11322,
+            2400
+          ],
+          [
+            1,
+            11012,
+            40
+          ]
+        ],
+        "effect_keys": [
+          [
+            "attr",
+            "hpPct",
+            "hpLosePct",
+            "attrAdd"
+          ]
+        ],
+        "effect_values": [
+          [
+            0
+          ]
+        ],
+        "fight_value": 89,
+        "name_localization_key": "module-effect.2304.level.4.name",
+        "overview_localization_key": "module-effect.2304.level.4.overview"
+      },
+      {
+        "row_id": 125,
+        "level": 5,
+        "name_id": 985304990,
+        "overview_id": 647913780,
+        "required_link_points": 16,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11322,
+            3000
+          ],
+          [
+            1,
+            11012,
+            60
+          ],
+          [
+            3,
+            2300820,
+            1
+          ]
+        ],
+        "effect_keys": [
+          [
+            "attr",
+            "hpPct",
+            "hpLosePct",
+            "attrAdd"
+          ]
+        ],
+        "effect_values": [
+          [
+            200,
+            7000,
+            2000,
+            240
+          ]
+        ],
+        "fight_value": 298,
+        "name_localization_key": "module-effect.2304.level.5.name",
+        "overview_localization_key": "module-effect.2304.level.5.overview"
+      },
+      {
+        "row_id": 126,
+        "level": 6,
+        "name_id": 985304991,
+        "overview_id": 647913781,
+        "required_link_points": 20,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11322,
+            3600
+          ],
+          [
+            1,
+            11012,
+            80
+          ],
+          [
+            3,
+            2300820,
+            1
+          ]
+        ],
+        "effect_keys": [
+          [
+            "attr",
+            "hpPct",
+            "hpLosePct",
+            "attrAdd"
+          ]
+        ],
+        "effect_values": [
+          [
+            350,
+            7000,
+            2000,
+            400
+          ]
+        ],
+        "fight_value": 448,
+        "name_localization_key": "module-effect.2304.level.6.name",
+        "overview_localization_key": "module-effect.2304.level.6.overview"
+      }
+    ],
+    "name_localization_key": "module-effect.2304.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ModEffectTable+ctb.ModEffectLibTable",
+    "reference": "client-build:global/steam/24252055@sha256:bcfe2d0d694d398e74abf23d01d389368353785c0df5d98202a218bb70e317c3+sha256:8c4e893b4b8b19412e2f0dfadaa9565182f6aced95fefae0e599834001e5dc9b",
+    "confidence": "verified"
+  }
+}

@@ -134,6 +134,9 @@ fn compile_source(
 
         let expected_kind = domain_kind(top)
             .ok_or_else(|| format!("unrecognized top-level path {}", relative.display()))?;
+        if entry.file_name() == OsStr::new("README.md") {
+            continue;
+        }
         require_json(relative)?;
         let record: GameDataRecord = serde_json::from_slice(&fs::read(entry.path())?)?;
         if record.kind != expected_kind {
@@ -513,23 +516,23 @@ fn build_assets(
     records: &[GameDataRecord],
     root: &Path,
 ) -> Result<Vec<AssetRecord>, Box<dyn std::error::Error>> {
-    let mut by_path = BTreeMap::<String, String>::new();
+    let mut by_key = BTreeMap::<String, String>::new();
     for record in records {
         let Some(path) = &record.icon else {
             continue;
         };
-        if let Some(existing) = by_path.insert(path.clone(), record.stable_key.clone()) {
+        if let Some(existing) = by_key.insert(record.stable_key.clone(), path.clone()) {
             return Err(format!(
-                "icon {} is assigned to both {} and {}",
-                path, existing, record.stable_key
+                "asset key {} is assigned to both {} and {}",
+                record.stable_key, existing, path
             )
             .into());
         }
     }
 
-    by_path
+    by_key
         .into_iter()
-        .map(|(path, key)| {
+        .map(|(key, path)| {
             let bytes = fs::read(root.join(&path))?;
             Ok(AssetRecord {
                 key,
@@ -606,7 +609,32 @@ mod tests {
         assert_eq!(domain_kind("monsters"), Some(SymbolKind::Monster));
         assert_eq!(domain_kind("maps"), Some(SymbolKind::Map));
         assert_eq!(domain_kind("dungeons"), Some(SymbolKind::Dungeon));
+        assert_eq!(domain_kind("modules"), Some(SymbolKind::Module));
+        assert_eq!(
+            domain_kind("module-effects"),
+            Some(SymbolKind::ModuleEffect)
+        );
         assert_eq!(domain_kind("unknown-folder"), None);
+    }
+
+    #[test]
+    fn shared_icon_files_are_exposed_through_each_record_key() {
+        let source = compile_source(&fixture_root(), &fixture_root()).unwrap();
+        let mut first = source
+            .records
+            .iter()
+            .find(|record| record.icon.is_some())
+            .unwrap()
+            .clone();
+        let mut second = first.clone();
+        first.stable_key = "shared-icon.first".into();
+        second.stable_key = "shared-icon.second".into();
+
+        let assets = build_assets(&[first, second], &fixture_root()).unwrap();
+        assert_eq!(assets.len(), 2);
+        assert_eq!(assets[0].relative_path, assets[1].relative_path);
+        assert_ne!(assets[0].key, assets[1].key);
+        assert_eq!(assets[0].sha256, assets[1].sha256);
     }
 
     #[test]

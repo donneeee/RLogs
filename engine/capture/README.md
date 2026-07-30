@@ -13,7 +13,8 @@ Platform adapters normalize frames without interpreting game messages:
 TCP reconstruction and game protocol decoding are downstream responsibilities.
 The same frame stream must produce the same result regardless of its adapter.
 Optional sources may be added later, but they feed this same boundary and do
-not create another parser.
+not create another parser. Trusted game plug-ins consume the resulting
+process-filtered streams; they do not capture traffic themselves.
 
 ## Live ownership filtering
 
@@ -29,6 +30,13 @@ ingress. Unattributed frames are held briefly for connection-table race
 resolution and then discarded. They are never reconstructed, decoded, or
 written to a raw capture or journal. `DumpcapLiveCapture` writes only to a pipe;
 `OwnedProcessCapture` is the mandatory persistence boundary around it.
+
+Live sessions expose a cooperative stop handle. A stop request terminates only
+the private dumpcap child, causing its pipe to reach EOF. The ownership filter
+then refreshes and drains its bounded queue before the shared file recorder
+flushes and atomically publishes the process-owned PCAP and exact connection
+evidence. The command-line capture tool and localhost host use this same
+recorder rather than maintaining separate persistence implementations.
 
 ## Offline replay
 

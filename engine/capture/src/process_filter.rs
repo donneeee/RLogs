@@ -237,6 +237,10 @@ impl<S: CaptureSource, O: ProcessSocketOwner> OwnedProcessCapture<S, O> {
             .collect()
     }
 
+    pub(crate) fn source(&self) -> &S {
+        &self.source
+    }
+
     fn refresh_ownership(&mut self) -> Result<(), CaptureError> {
         for connection in self.owner.snapshot()? {
             if connection.client != connection.server {

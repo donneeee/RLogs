@@ -1,0 +1,33 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000023,
+  "stable_key": "imagine.battle.3000023",
+  "localization_key": "imagine.3000023.name",
+  "icon": "icons/imagines/battle/3000023-mutant-yeti.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000023,
+    "item_tier": 3,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359899699,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_028",
+    "icon_pixel_sha256": "fe9561fd2683ccd48381010ef7b2dcfae891df2d9056ddd573993052f28df8ec",
+    "aoyi_mapping_state": "unresolved_no_current_direct_relation",
+    "will_item_id": 3010023,
+    "will_name_localization_key": "imagine_will.3010023.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000023",
+    "confidence": "verified"
+  }
+}

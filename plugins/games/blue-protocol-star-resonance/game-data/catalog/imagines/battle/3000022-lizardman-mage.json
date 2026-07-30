@@ -1,0 +1,104 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000022,
+  "stable_key": "imagine.battle.3000022",
+  "localization_key": "imagine.3000022.name",
+  "icon": "icons/imagines/battle/3000022-lizardman-mage.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000022,
+    "item_tier": 3,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359899698,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_039",
+    "icon_pixel_sha256": "6a21f9243fdb6bfc15b57bc353ba719d66ca2c0221a06b9bc801e551b246dad7",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3936.description",
+    "monster_name_localization_key": "battle_imagine_skill.3936.monster_name",
+    "aoyi_skill_id": 3936,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3936.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture039",
+    "skill_effect_id": 393601,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 126,
+        "effect_record_offset": 9204,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 160
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 127,
+        "effect_record_offset": 1286,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 320
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 128,
+        "effect_record_offset": 9316,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 480
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 129,
+        "effect_record_offset": 1362,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 640
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 130,
+        "effect_record_offset": 1146,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 800
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3010022,
+    "will_name_localization_key": "imagine_will.3010022.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000022",
+    "confidence": "verified"
+  }
+}

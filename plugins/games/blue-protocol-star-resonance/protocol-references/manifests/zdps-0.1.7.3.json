@@ -7,7 +7,15 @@
   "source_urls": [
     "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/ServiceIds.cs",
     "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/tree/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/ServiceMethods",
-    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/ServiceMethods/WorldActivityNtf.cs"
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/ServiceMethods/WorldActivityNtf.cs",
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/protos/ServUnionNtf.cs",
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/protos/StruNotifyUnionActivityRequest.cs",
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/protos/StruNotifyMemberOnlineRequest.cs",
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/ServiceMethods/WorldNtf.cs",
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/protos/StruNotifyAllValidBattlePassData.cs",
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/protos/StruBattlePass.cs",
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/commit/4a4203c702b269d9a95f1e7356405f3cfc16379d",
+    "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/releases/tag/v0.1.7.3"
   ],
   "claims": [
     {
@@ -49,6 +57,16 @@
       "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 625772963, "method_id": 1 },
       "service_name": "SocialNtf",
       "method_name": "NotifySocialData"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 504281929, "method_id": 6 },
+      "service_name": "UnionNtf",
+      "method_name": "NotifyUnionActivity"
+    },
+    {
+      "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 504281929, "method_id": 13 },
+      "service_name": "UnionNtf",
+      "method_name": "NotifyMemberOnline"
     },
     {
       "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 3 },

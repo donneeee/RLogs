@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <title>rLogs Plugin Lab</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <link rel="icon" href="data:,">
+    <title>rLogs Plugin Lab</title>
   <link rel="stylesheet" href="/app.css">
   <script src="/app.js" defer></script>
 </head>
@@ -18,13 +19,15 @@
       <nav aria-label="Plugin Lab">
         <a class="nav-link active" href="#overview"><span>01</span>Overview</a>
         <a class="nav-link" href="#plugins"><span>02</span>Plug-ins</a>
-        <a class="nav-link" href="#resources"><span>03</span>Resources</a>
-        <a class="nav-link" href="#pipeline"><span>04</span>Pipeline</a>
-        <a class="nav-link" href="#issues"><span>05</span>Diagnostics</a>
+        <a class="nav-link" href="#optimizer"><span>03</span>Optimizer</a>
+        <a class="nav-link" href="#replay"><span>04</span>Replay</a>
+        <a class="nav-link" href="#resources"><span>05</span>Resources</a>
+        <a class="nav-link" href="#pipeline"><span>06</span>Pipeline</a>
+        <a class="nav-link" href="#issues"><span>07</span>Diagnostics</a>
       </nav>
       <div class="sidebar-note">
         <span class="status-dot"></span>
-        <div><strong>Read-only lab</strong><small>No plug-in code is executed.</small></div>
+        <div><strong>Bounded replay</strong><small>Only bundled replay plug-ins execute.</small></div>
       </div>
     </aside>
 
@@ -67,6 +70,126 @@
           <div id="filters" class="filters" aria-label="Plugin source filters"></div>
           <div id="plugin-grid" class="plugin-grid"></div>
           <div id="plugin-empty" class="empty" hidden>No plug-ins match this view.</div>
+        </section>
+
+        <section id="optimizer" class="section">
+          <div class="section-heading">
+            <div><p class="eyebrow">CN 0.2.0 compatible</p><h2>Module optimizer</h2></div>
+            <span id="optimizer-revision" class="muted">Loading exact-build scoring catalog...</span>
+          </div>
+          <article class="panel optimizer-panel">
+            <div class="optimizer-notice">
+              <strong>Runs locally.</strong>
+              Paste an inventory array, a <code>modules</code> profile object, or a full
+              profile containing <code>modules.inventory</code>. Instance IDs stay strings.
+              Account, login, password, and token fields are neither needed nor read.
+            </div>
+            <div class="optimizer-layout">
+              <div class="optimizer-input-column">
+                <div class="optimizer-settings">
+                  <label class="optimizer-field">
+                    <span>Modules to equip</span>
+                    <select id="optimizer-combination-size">
+                      <option value="4">4 modules</option>
+                      <option value="5">5 modules</option>
+                    </select>
+                  </label>
+                  <label class="optimizer-field">
+                    <span>Results</span>
+                    <input id="optimizer-result-count" type="number" min="1" max="60" value="10">
+                  </label>
+                  <label class="optimizer-field">
+                    <span>Search</span>
+                    <select id="optimizer-search-mode">
+                      <option value="auto">Auto</option>
+                      <option value="exact">Exact verification</option>
+                      <option value="beam">Bounded beam</option>
+                    </select>
+                  </label>
+                  <label class="optimizer-field">
+                    <span>Minimum module total</span>
+                    <input id="optimizer-min-total" type="number" min="0" placeholder="none">
+                  </label>
+                </div>
+                <label class="optimizer-check">
+                  <input id="optimizer-require-target" type="checkbox" checked>
+                  Only consider modules containing a selected target attribute
+                </label>
+                <label class="optimizer-field optimizer-inventory">
+                  <span>Module inventory JSON</span>
+                  <textarea id="optimizer-inventory" spellcheck="false" placeholder='[{"instance_id":"...","config_id":5500101,"parts":[{"part_id":1110,"initial_link_points":4}]}]'></textarea>
+                </label>
+                <div class="optimizer-actions">
+                  <button id="optimizer-demo" class="text-button" type="button">Load safe demo</button>
+                  <button id="run-optimizer" type="button">Optimize modules</button>
+                  <span id="optimizer-status" class="muted">Load a demo or paste profile module data.</span>
+                </div>
+              </div>
+              <div class="optimizer-attribute-column">
+                <div class="optimizer-attribute-heading">
+                  <div><strong>Attribute policy</strong><small>Target = 2x threshold power; exclude = 0x</small></div>
+                  <span class="pill">minimums optional</span>
+                </div>
+                <div class="optimizer-attribute-labels">
+                  <span>Attribute</span><span>Scoring</span><span>Minimum</span>
+                </div>
+                <div id="optimizer-attributes" class="optimizer-attributes"></div>
+              </div>
+            </div>
+            <div id="optimizer-result" class="optimizer-result" hidden>
+              <div id="optimizer-metrics" class="replay-metrics"></div>
+              <div class="replay-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Score</th>
+                      <th>Module instance IDs</th>
+                      <th>Attribute totals</th>
+                    </tr>
+                  </thead>
+                  <tbody id="optimizer-result-rows"></tbody>
+                </table>
+              </div>
+              <div id="optimizer-footnote" class="replay-footnote"></div>
+            </div>
+          </article>
+        </section>
+
+        <section id="replay" class="section">
+          <div class="section-heading">
+            <div><p class="eyebrow">Deterministic test bench</p><h2>Replay a combat fixture</h2></div>
+            <span class="muted">sealed .rlog &#8594; capability filter &#8594; combat timeline</span>
+          </div>
+          <article class="panel replay-panel">
+            <div class="replay-controls">
+              <label>
+                <span>Replay fixture</span>
+                <select id="replay-fixture" aria-label="Replay fixture"></select>
+              </label>
+              <button id="run-replay" type="button">Run fixture</button>
+              <span id="replay-status" class="muted">Choose a sanitized fixture.</span>
+            </div>
+            <div id="replay-result" hidden>
+              <div id="replay-metrics" class="replay-metrics"></div>
+              <div class="replay-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Actor</th>
+                      <th>Damage</th>
+                      <th>DPS</th>
+                      <th>Effective healing</th>
+                      <th>Deaths</th>
+                      <th>Movement</th>
+                    </tr>
+                  </thead>
+                  <tbody id="replay-actors"></tbody>
+                </table>
+              </div>
+              <div id="replay-footnote" class="replay-footnote"></div>
+            </div>
+          </article>
         </section>
 
         <section id="resources" class="section">

@@ -1,0 +1,47 @@
+{
+  "schema_version": 2,
+  "kind": "module_link_effect",
+  "id": 90,
+  "stable_key": "module-link-effect.90",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "source_row_id": 91,
+    "link_value": 90,
+    "effect_config_records": [
+      [
+        1,
+        11012,
+        180
+      ],
+      [
+        1,
+        11022,
+        180
+      ],
+      [
+        1,
+        11032,
+        180
+      ],
+      [
+        1,
+        11042,
+        180
+      ]
+    ],
+    "fight_value": 524
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ModLinkEffectTable",
+    "reference": "client-build:global/steam/24252055@sha256:c500899c05a083f483d4b7112b9311616896df5134cfe7c5edd8c28a619b209a",
+    "confidence": "verified"
+  }
+}

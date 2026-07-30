@@ -1,0 +1,359 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000045,
+  "stable_key": "imagine.battle.3000045",
+  "localization_key": "imagine.3000045.name",
+  "icon": "icons/imagines/battle/3000045-goblin-king.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000045,
+    "item_tier": 4,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359899767,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_050",
+    "icon_pixel_sha256": "8a4a84f05a24bc9813417a110dcda6121f23f7917abc88d94ab771349c8bf214",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3946.description",
+    "monster_name_localization_key": "battle_imagine_skill.3946.monster_name",
+    "aoyi_skill_id": 3946,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3946.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture050",
+    "skill_effect_id": 394601,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 181,
+        "effect_record_offset": 12592,
+        "values": [
+          {
+            "key": "attrPer3914",
+            "raw_value": 150
+          },
+          {
+            "key": "attrAdd3914",
+            "raw_value": 130
+          },
+          {
+            "key": "attrPer3915",
+            "raw_value": 200
+          },
+          {
+            "key": "attrAdd3915",
+            "raw_value": 896
+          },
+          {
+            "key": "attrPer3927",
+            "raw_value": 200
+          },
+          {
+            "key": "attrPer3926",
+            "raw_value": 320
+          },
+          {
+            "key": "attrAdd3926",
+            "raw_value": 1120
+          },
+          {
+            "key": "attrPer3940",
+            "raw_value": 160
+          },
+          {
+            "key": "prob1",
+            "raw_value": 2000
+          },
+          {
+            "key": "prob2",
+            "raw_value": 2000
+          },
+          {
+            "key": "attrLv3915",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax3915",
+            "raw_value": 896
+          },
+          {
+            "key": "attrLv3926",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax3926",
+            "raw_value": 1120
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 182,
+        "effect_record_offset": 12808,
+        "values": [
+          {
+            "key": "attrPer3914",
+            "raw_value": 300
+          },
+          {
+            "key": "attrAdd3914",
+            "raw_value": 260
+          },
+          {
+            "key": "attrPer3915",
+            "raw_value": 400
+          },
+          {
+            "key": "attrAdd3915",
+            "raw_value": 1792
+          },
+          {
+            "key": "attrPer3927",
+            "raw_value": 400
+          },
+          {
+            "key": "attrPer3926",
+            "raw_value": 640
+          },
+          {
+            "key": "attrAdd3926",
+            "raw_value": 2240
+          },
+          {
+            "key": "attrPer3940",
+            "raw_value": 320
+          },
+          {
+            "key": "prob1",
+            "raw_value": 2000
+          },
+          {
+            "key": "prob2",
+            "raw_value": 2000
+          },
+          {
+            "key": "attrLv3915",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax3915",
+            "raw_value": 1792
+          },
+          {
+            "key": "attrLv3926",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax3926",
+            "raw_value": 2240
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 183,
+        "effect_record_offset": 13024,
+        "values": [
+          {
+            "key": "attrPer3914",
+            "raw_value": 450
+          },
+          {
+            "key": "attrAdd3914",
+            "raw_value": 390
+          },
+          {
+            "key": "attrPer3915",
+            "raw_value": 600
+          },
+          {
+            "key": "attrAdd3915",
+            "raw_value": 2688
+          },
+          {
+            "key": "attrPer3927",
+            "raw_value": 600
+          },
+          {
+            "key": "attrPer3926",
+            "raw_value": 960
+          },
+          {
+            "key": "attrAdd3926",
+            "raw_value": 3360
+          },
+          {
+            "key": "attrPer3940",
+            "raw_value": 480
+          },
+          {
+            "key": "prob1",
+            "raw_value": 4000
+          },
+          {
+            "key": "prob2",
+            "raw_value": 4000
+          },
+          {
+            "key": "attrLv3915",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax3915",
+            "raw_value": 2688
+          },
+          {
+            "key": "attrLv3926",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax3926",
+            "raw_value": 3360
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 184,
+        "effect_record_offset": 13248,
+        "values": [
+          {
+            "key": "attrPer3914",
+            "raw_value": 600
+          },
+          {
+            "key": "attrAdd3914",
+            "raw_value": 520
+          },
+          {
+            "key": "attrPer3915",
+            "raw_value": 800
+          },
+          {
+            "key": "attrAdd3915",
+            "raw_value": 3584
+          },
+          {
+            "key": "attrPer3927",
+            "raw_value": 800
+          },
+          {
+            "key": "attrPer3926",
+            "raw_value": 1280
+          },
+          {
+            "key": "attrAdd3926",
+            "raw_value": 4480
+          },
+          {
+            "key": "attrPer3940",
+            "raw_value": 640
+          },
+          {
+            "key": "prob1",
+            "raw_value": 4000
+          },
+          {
+            "key": "prob2",
+            "raw_value": 4000
+          },
+          {
+            "key": "attrLv3915",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax3915",
+            "raw_value": 3584
+          },
+          {
+            "key": "attrLv3926",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax3926",
+            "raw_value": 4480
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 185,
+        "effect_record_offset": 13468,
+        "values": [
+          {
+            "key": "attrPer3914",
+            "raw_value": 750
+          },
+          {
+            "key": "attrAdd3914",
+            "raw_value": 650
+          },
+          {
+            "key": "attrPer3915",
+            "raw_value": 1000
+          },
+          {
+            "key": "attrAdd3915",
+            "raw_value": 4480
+          },
+          {
+            "key": "attrPer3927",
+            "raw_value": 1000
+          },
+          {
+            "key": "attrPer3926",
+            "raw_value": 1600
+          },
+          {
+            "key": "attrAdd3926",
+            "raw_value": 5600
+          },
+          {
+            "key": "attrPer3940",
+            "raw_value": 800
+          },
+          {
+            "key": "prob1",
+            "raw_value": 4000
+          },
+          {
+            "key": "prob2",
+            "raw_value": 6000
+          },
+          {
+            "key": "attrLv3915",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax3915",
+            "raw_value": 4480
+          },
+          {
+            "key": "attrLv3926",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax3926",
+            "raw_value": 5600
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3010045,
+    "will_name_localization_key": "imagine_will.3010045.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000045",
+    "confidence": "verified"
+  }
+}

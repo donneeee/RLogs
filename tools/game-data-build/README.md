@@ -5,7 +5,7 @@ discovery, extraction, decryption, or conversion logic.
 
 ```text
 cargo run -p rlogs-game-data-build -- \
-  --asset-root assets/shared/blue-protocol-star-resonance \
+  --asset-root assets/blue-protocol-star-resonance/shared \
   plugins/games/blue-protocol-star-resonance/game-data/catalog \
   <compiled-folder>
 ```
@@ -14,6 +14,10 @@ The build fails on duplicate IDs, duplicate stable keys, mismatched
 class/spec folders, missing icons, unreferenced icons, locale mismatches,
 unknown top-level folders, an existing output folder, or any shard larger than
 8 MiB uncompressed.
+
+Multiple records may reference the same reviewed icon path. The compiled asset
+index keeps an alias for each record stable key while hashing and storing one
+shared file on disk.
 
 `--asset-root` points at the provider namespace whose `icons/` folder is
 referenced by catalog records. It defaults to the catalog folder for compact

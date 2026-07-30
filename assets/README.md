@@ -5,14 +5,18 @@ plug-in code.
 
 ```text
 assets/
-├── <plugin-folder>/                 # private to one plug-in
-└── shared/
-    └── <provider-plugin-folder>/    # exported for other plug-ins to reuse
+├── <game-id>/
+│   ├── shared/                       # canonical resources for that game
+│   └── plugins/<plugin-folder>/      # game-specific plug-in resources
+└── rlogs/
+    ├── shared/<provider-folder>/     # game-neutral shared resources
+    └── plugins/<plugin-folder>/      # game-neutral plug-in resources
 ```
 
-The host derives both folder names from the provider plug-in's package folder.
-A manifest can select `plugin_assets` or `shared_assets` storage and a relative
-path, but it cannot choose a different plug-in's namespace.
+Game names use filesystem-safe IDs such as `blue-protocol-star-resonance`; the
+display name may still be `Blue Protocol: Star Resonance`. A manifest selects
+an allowed storage class and a relative path, but it cannot escape the
+host-derived namespace or claim another provider's resources.
 
 Shared assets are still accessed through declared resource exports and imports.
 Consumers should not hard-code another provider's filesystem path.

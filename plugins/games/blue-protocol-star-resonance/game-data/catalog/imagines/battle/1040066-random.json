@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 1040066,
+  "stable_key": "imagine.battle.1040066",
+  "localization_key": "imagine.1040066.name",
+  "icon": "icons/imagines/battle/1040066-random.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 1040066,
+    "item_tier": 3,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 929191228,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "item_icons_equip_random02",
+    "icon_pixel_sha256": "9a556e9c6cf2b4fb235b06e9c0db139242f726d6b490bdce611eda44179b78c4",
+    "aoyi_mapping_state": "unresolved_no_current_direct_relation"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-1040066",
+    "confidence": "verified"
+  }
+}

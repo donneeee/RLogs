@@ -72,10 +72,15 @@ pub enum SymbolKind {
     GuildIcon,
     Profession,
     Talent,
+    Module,
+    ModuleType,
+    ModuleSlot,
+    ModuleEffect,
+    ModuleLinkEffect,
 }
 
 impl SymbolKind {
-    pub const ALL: [Self; 29] = [
+    pub const ALL: [Self; 34] = [
         Self::Class,
         Self::Specialization,
         Self::Skill,
@@ -105,6 +110,11 @@ impl SymbolKind {
         Self::GuildIcon,
         Self::Profession,
         Self::Talent,
+        Self::Module,
+        Self::ModuleType,
+        Self::ModuleSlot,
+        Self::ModuleEffect,
+        Self::ModuleLinkEffect,
     ];
 
     pub const fn folder(self) -> &'static str {
@@ -138,6 +148,11 @@ impl SymbolKind {
             Self::GuildIcon => "guild-icons",
             Self::Profession => "professions",
             Self::Talent => "talents",
+            Self::Module => "modules",
+            Self::ModuleType => "module-types",
+            Self::ModuleSlot => "module-slots",
+            Self::ModuleEffect => "module-effects",
+            Self::ModuleLinkEffect => "module-link-effects",
         }
     }
 }
@@ -328,13 +343,14 @@ fn validate_localization_references(
             .extend(&entry.availability);
     }
     for record in records {
-        let references = record.localization_key.iter().map(String::as_str).chain(
-            record
-                .attributes
-                .iter()
-                .filter(|(name, _)| name.ends_with("_localization_key"))
-                .filter_map(|(_, value)| value.as_str()),
-        );
+        let mut references = record
+            .localization_key
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        for (name, value) in &record.attributes {
+            collect_localization_references(name, value, &mut references);
+        }
         for key in references {
             let available = availability_by_key.get(key).ok_or_else(|| {
                 GameDataError::MissingLocalizationReference {
@@ -358,6 +374,31 @@ fn validate_localization_references(
         }
     }
     Ok(())
+}
+
+fn collect_localization_references<'a>(
+    name: &str,
+    value: &'a serde_json::Value,
+    references: &mut Vec<&'a str>,
+) {
+    if name.ends_with("_localization_key")
+        && let Some(key) = value.as_str()
+    {
+        references.push(key);
+    }
+    match value {
+        serde_json::Value::Object(values) => {
+            for (nested_name, nested_value) in values {
+                collect_localization_references(nested_name, nested_value, references);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for nested_value in values {
+                collect_localization_references(name, nested_value, references);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn validate_public_boundaries(
@@ -490,15 +531,9 @@ fn validate_availability(
 
 fn validate_assets(assets: &[AssetRecord]) -> Result<(), GameDataError> {
     let mut keys = HashSet::with_capacity(assets.len());
-    let mut paths = HashSet::with_capacity(assets.len());
     for asset in assets {
         if !keys.insert(asset.key.clone()) {
             return Err(GameDataError::DuplicateAssetKey(asset.key.clone()));
-        }
-        if !paths.insert(asset.relative_path.clone()) {
-            return Err(GameDataError::DuplicateAssetPath(
-                asset.relative_path.clone(),
-            ));
         }
         if !asset.sha256.starts_with("sha256:") {
             return Err(GameDataError::InvalidAssetDigest(asset.key.clone()));
@@ -573,9 +608,6 @@ pub enum GameDataError {
 
     #[error("duplicate asset key {0}")]
     DuplicateAssetKey(String),
-
-    #[error("duplicate asset path {0}")]
-    DuplicateAssetPath(String),
 
     #[error("asset {0} does not have a sha256 digest")]
     InvalidAssetDigest(String),
@@ -670,6 +702,8 @@ mod tests {
         assert_eq!(SymbolKind::NameCard.folder(), "name-cards");
         assert_eq!(SymbolKind::Medal.folder(), "medals");
         assert_eq!(SymbolKind::GuildIcon.folder(), "guild-icons");
+        assert_eq!(SymbolKind::Module.folder(), "modules");
+        assert_eq!(SymbolKind::ModuleEffect.folder(), "module-effects");
     }
 
     #[test]
@@ -702,6 +736,23 @@ mod tests {
         assert!(matches!(
             result,
             Err(GameDataError::ProhibitedAttribute { .. })
+        ));
+    }
+
+    #[test]
+    fn source_validation_checks_nested_localization_references() {
+        let mut record = skill(1714, "skill.one");
+        record.localization_key = None;
+        record.attributes.insert(
+            "levels".into(),
+            serde_json::json!([{
+                "overview_localization_key": "module-effect.1110.level.1.overview"
+            }]),
+        );
+        let result = validate_source_data(&manifest(), &[record], &[], &[]);
+        assert!(matches!(
+            result,
+            Err(GameDataError::MissingLocalizationReference { .. })
         ));
     }
 }

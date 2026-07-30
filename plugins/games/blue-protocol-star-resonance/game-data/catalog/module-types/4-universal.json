@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "kind": "module_type",
+  "id": 4,
+  "stable_key": "module-type.4",
+  "localization_key": "module-type.4.name",
+  "icon": "icons/modules/types/4-universal.png",
+  "attributes": {
+    "name_id": 891958722,
+    "icon_address": "ui/atlas/item/c_tab_icon/com_icon_tab_107",
+    "selected_icon_address": "ui/atlas/item/c_tab_icon/com_icon_tab_107",
+    "unknown_value_16": 43,
+    "name_localization_key": "module-type.4.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ModTypeTable",
+    "reference": "client-build:global/steam/24252055@sha256:15556cd2a56fb5d02cb77ba7d8b4a4b5815430cb4074d24ad67a89b87dbcf4f2",
+    "confidence": "verified"
+  }
+}

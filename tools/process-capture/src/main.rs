@@ -1,21 +1,12 @@
+#[cfg(windows)]
+use rlogs_capture::{
+    DumpcapLiveConfig, OwnedProcessCaptureConfig, WindowsOwnedDumpcapCapture,
+    record_owned_capture_to_files,
+};
 #[cfg(any(windows, test))]
 use std::ffi::{OsStr, OsString};
 #[cfg(any(windows, test))]
 use std::path::PathBuf;
-#[cfg(windows)]
-use std::{
-    fs::{File, OpenOptions},
-    io::{BufWriter, Write},
-    path::Path,
-};
-
-#[cfg(windows)]
-use rlogs_capture::{
-    CaptureSource, DumpcapLiveConfig, OwnedProcessCaptureConfig, PcapWriter, TcpConnection,
-    WindowsOwnedDumpcapCapture,
-};
-#[cfg(windows)]
-use serde::Serialize;
 
 fn main() {
     if let Err(error) = run() {
@@ -32,10 +23,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(windows)]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let arguments = arguments()?;
-    let paths = CapturePaths::new(&arguments.output_directory, &arguments.capture_id)?;
-    paths.ensure_available()?;
-
-    let mut capture = WindowsOwnedDumpcapCapture::spawn(
+    let capture = WindowsOwnedDumpcapCapture::spawn(
         arguments.process_id,
         DumpcapLiveConfig::new(
             &arguments.dumpcap,
@@ -44,62 +32,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         )?,
         OwnedProcessCaptureConfig::default(),
     )?;
-    let mut writer: Option<PcapWriter<BufWriter<File>>> = None;
-
-    while let Some(frame) = capture.next_frame()? {
-        let writer = match &mut writer {
-            Some(writer) => writer,
-            None => writer.insert(PcapWriter::new(
-                BufWriter::new(
-                    OpenOptions::new()
-                        .write(true)
-                        .create_new(true)
-                        .open(&paths.capture_partial)?,
-                ),
-                frame.link_type,
-            )?),
-        };
-        writer.write_frame(&frame)?;
-    }
-
-    let metrics = capture.metrics().clone();
-    let connections = capture.confirmed_connections();
-    let Some(mut writer) = writer else {
-        return Err(format!(
-            "no frames owned by the target process were captured; empty partial file remains at {}",
-            paths.capture_partial.display()
-        )
-        .into());
-    };
-    writer.flush()?;
-    let mut capture_buffer = writer.into_inner();
-    capture_buffer.flush()?;
-    capture_buffer.get_ref().sync_all()?;
-    drop(capture_buffer);
-
-    if connections.is_empty() {
-        return Err("owned frames were emitted without connection evidence".into());
-    }
-    let accounted_frames = metrics
-        .emitted_frames
-        .saturating_add(metrics.non_tcp_frames_discarded)
-        .saturating_add(metrics.unattributed_frames_discarded);
-    if accounted_frames != metrics.ingress_frames {
-        return Err(format!(
-            "capture accounting mismatch: ingested {} frames but classified {}",
-            metrics.ingress_frames, accounted_frames
-        )
-        .into());
-    }
-    write_connection_evidence(&paths.connections_partial, connections)?;
-    std::fs::rename(&paths.capture_partial, &paths.capture)?;
-    std::fs::rename(&paths.connections_partial, &paths.connections)?;
+    let recording =
+        record_owned_capture_to_files(capture, &arguments.output_directory, &arguments.capture_id)?;
+    let metrics = &recording.metrics;
 
     println!(
         "captured {} process-owned frames ({} bytes) across {} exact game connection(s)",
         metrics.emitted_frames,
         metrics.emitted_bytes,
-        capture.confirmed_connections().len()
+        recording.connections.len()
     );
     println!(
         "discarded {} unattributed interface frames before persistence or protocol decoding",
@@ -117,10 +58,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .non_tcp_frames_discarded
             .saturating_add(metrics.unattributed_frames_discarded)
     );
-    println!("private capture: {}", paths.capture.display());
+    println!("private capture: {}", recording.capture_path.display());
     println!(
         "private connection evidence: {}",
-        paths.connections.display()
+        recording.connections_path.display()
     );
     println!("these files remain local research data and are not website submissions");
     Ok(())
@@ -249,74 +190,6 @@ fn valid_capture_id(value: &str) -> bool {
 #[cfg(any(windows, test))]
 fn usage() -> String {
     "usage: rlogs-process-capture --private-research --process-id <pid> --interface <npcap-interface> --dumpcap <dumpcap.exe> --capture-id <id> --duration-seconds <1-3600> --output-directory <directory>".into()
-}
-
-#[cfg(windows)]
-#[derive(Debug)]
-struct CapturePaths {
-    capture: PathBuf,
-    capture_partial: PathBuf,
-    connections: PathBuf,
-    connections_partial: PathBuf,
-}
-
-#[cfg(windows)]
-impl CapturePaths {
-    fn new(directory: &Path, capture_id: &str) -> Result<Self, std::io::Error> {
-        std::fs::create_dir_all(directory)?;
-        let directory = std::fs::canonicalize(directory)?;
-        Ok(Self {
-            capture: directory.join(format!("{capture_id}.pcap")),
-            capture_partial: directory.join(format!("{capture_id}.partial.pcap")),
-            connections: directory.join(format!("{capture_id}.connections.json")),
-            connections_partial: directory.join(format!("{capture_id}.connections.partial.json")),
-        })
-    }
-
-    fn ensure_available(&self) -> Result<(), Box<dyn std::error::Error>> {
-        for path in [
-            &self.capture,
-            &self.capture_partial,
-            &self.connections,
-            &self.connections_partial,
-        ] {
-            if path.exists() {
-                return Err(format!(
-                    "refusing to overwrite existing private research file: {}",
-                    path.display()
-                )
-                .into());
-            }
-        }
-        Ok(())
-    }
-}
-
-#[cfg(windows)]
-#[derive(Serialize)]
-struct ConnectionEvidence {
-    schema_version: u16,
-    connections: Vec<TcpConnection>,
-}
-
-#[cfg(windows)]
-fn write_connection_evidence(
-    path: &Path,
-    connections: Vec<TcpConnection>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let file = OpenOptions::new().write(true).create_new(true).open(path)?;
-    let mut writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(
-        &mut writer,
-        &ConnectionEvidence {
-            schema_version: 1,
-            connections,
-        },
-    )?;
-    writer.write_all(b"\n")?;
-    writer.flush()?;
-    writer.get_ref().sync_all()?;
-    Ok(())
 }
 
 #[cfg(test)]

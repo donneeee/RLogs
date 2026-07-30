@@ -1,0 +1,159 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000120,
+  "stable_key": "imagine.battle.3000120",
+  "localization_key": "imagine.3000120.name",
+  "icon": "icons/imagines/battle/3000120-denvel.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000120,
+    "item_tier": 4,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359900785,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_071",
+    "icon_pixel_sha256": "24bd0845f3a3cc38d0d54fe028c5b4cfb14ccd1dffc4fef45c3345444e9a7998",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3968.description",
+    "monster_name_localization_key": "battle_imagine_skill.3968.monster_name",
+    "aoyi_skill_id": 3968,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3968.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture071",
+    "skill_effect_id": 396801,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 286,
+        "effect_record_offset": 21706,
+        "values": [
+          {
+            "key": "attr",
+            "raw_value": 100
+          },
+          {
+            "key": "attrElse",
+            "raw_value": 60
+          },
+          {
+            "key": "hp",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 400
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 287,
+        "effect_record_offset": 21842,
+        "values": [
+          {
+            "key": "attr",
+            "raw_value": 200
+          },
+          {
+            "key": "attrElse",
+            "raw_value": 120
+          },
+          {
+            "key": "hp",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 800
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 288,
+        "effect_record_offset": 21944,
+        "values": [
+          {
+            "key": "attr",
+            "raw_value": 300
+          },
+          {
+            "key": "attrElse",
+            "raw_value": 180
+          },
+          {
+            "key": "hp",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 1200
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 289,
+        "effect_record_offset": 22074,
+        "values": [
+          {
+            "key": "attr",
+            "raw_value": 400
+          },
+          {
+            "key": "attrElse",
+            "raw_value": 240
+          },
+          {
+            "key": "hp",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 1600
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 290,
+        "effect_record_offset": 22190,
+        "values": [
+          {
+            "key": "attr",
+            "raw_value": 500
+          },
+          {
+            "key": "attrElse",
+            "raw_value": 300
+          },
+          {
+            "key": "hp",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 2000
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3010120,
+    "will_name_localization_key": "imagine_will.3010120.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000120",
+    "confidence": "verified"
+  }
+}

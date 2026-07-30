@@ -3,10 +3,12 @@
 mod catalog;
 mod coverage;
 mod decoder;
+mod dirty_blob_v1;
 mod framer_set;
 mod framing;
 mod game_schema_v1;
 mod journal;
+mod offline_recording;
 mod pack;
 mod packet;
 mod pipeline;
@@ -35,8 +37,8 @@ pub use coverage::{
     ProtocolPackCoverageSummary, RouteCoverage,
 };
 pub use decoder::{
-    DecoderKind, ProtocolDecodeBatch, ProtocolDecodeStatus, ProtocolRuntime, ProtocolRuntimeConfig,
-    ProtocolRuntimeError,
+    AnnouncedServerEndpoint, DecoderKind, ProtocolDecodeBatch, ProtocolDecodeStatus,
+    ProtocolRuntime, ProtocolRuntimeConfig, ProtocolRuntimeError, ServerClockObservation,
 };
 pub use framer_set::{
     BpsrFramerSet, BpsrFramerSetConfig, BpsrFramerSetConfigError, BpsrFramerSetMetrics,
@@ -47,6 +49,12 @@ pub use framing::{
     BpsrReturnLayout, BpsrStreamFramer,
 };
 pub use journal::{CaptureSession, GameBuild, JournalError, ProtocolJournal};
+pub use offline_recording::{
+    CaptureCoverageSummary, DecodeCoverageSummary, EventTopicCoverage, FeatureRecordingCoverage,
+    GapRecordingCoverage, OFFLINE_RECORDING_REPORT_SCHEMA_VERSION, OfflineRecordingConfig,
+    OfflineRecordingError, OfflineRecordingLimits, OfflineRecordingReport, OfflineRecordingResult,
+    RouteRecordingCoverage, RouteRecordingDisposition, record_offline_capture,
+};
 pub use pack::{
     PROTOCOL_PACK_SCHEMA_VERSION, ProtocolFeature, ProtocolPack, ProtocolPackDefinition,
     ProtocolPackError, ProtocolPackRegistry, ProtocolPackRegistryError, ProtocolPackRoute,
@@ -62,12 +70,21 @@ pub use privacy::{
     ProtocolPrivacyPolicy,
 };
 pub use profile::{
-    CharacterAppearance, CharacterProfilePatch, CharacterProgression, CollectionSummary,
-    CombatProfessionProfile, CosmeticOwnership, EquipmentItem, ImagineOwnership,
-    LifeProfessionProfile, ProfileEventError, RgbColor, SeasonProfile, SkillLevel, SocialDisplay,
-    TalentLevel,
+    ActivityProgress, BattleImagineSkill, CharacterAppearance, CharacterProfilePatch,
+    CharacterProgression, CollectionSummary, CombatPowerBreakdown, CombatPowerComponent,
+    CombatPowerSubcomponent, CombatProfessionProfile, CosmeticOwnership, CultivationAreaProfile,
+    CultivationLineProfile, DungeonProgress, DungeonTargetProgress, EquipmentAttributeProfile,
+    EquipmentEnchantmentProfile, EquipmentItem, HandbookProgress, ImagineOwnership,
+    LifeProfessionProfile, MasterModeDungeonProgress, ModuleItemProfile, ModulePartProfile,
+    ModuleProfile, ModuleUpgradeRecord, ProfileEventError, ReputationProgress, RgbColor,
+    SeasonCultivationProfile, SeasonMedalHole, SeasonMedalNode, SeasonMedalProfile, SeasonProfile,
+    SkillLevel, SocialDisplay, TalentLevel, TalentProgressProfile, WeeklyTowerProgress,
 };
-pub use region::{RegionEndpointRule, RegionResolver, RegionResolverError, ResolvedRegion};
+pub use region::{
+    RegionEndpointRule, RegionResolver, RegionResolverError, ResolvedRegion,
+    SERVER_REALM_CATALOG_SCHEMA_VERSION, ServerRealmCatalog, ServerRealmCatalogDefinition,
+    ServerRealmCatalogError, ServerRealmDefinition,
+};
 pub use route::{FragmentKind, PacketDirection, RouteKey, RoutedMessage};
 pub use stream::{JsonlJournalError, JsonlJournalReader, JsonlJournalSummary, JsonlJournalWriter};
 pub use website::{BpsrWebsiteProfileError, website_profile_request};
@@ -114,12 +131,14 @@ mod manifest_tests {
                 ResourceStorage::PluginAssets => root
                     .join("../../..")
                     .join("assets")
+                    .join("blue-protocol-star-resonance")
+                    .join("plugins")
                     .join("blue-protocol-star-resonance"),
                 ResourceStorage::SharedAssets => root
                     .join("../../..")
                     .join("assets")
-                    .join("shared")
-                    .join("blue-protocol-star-resonance"),
+                    .join("blue-protocol-star-resonance")
+                    .join("shared"),
             };
             assert!(
                 export_root.join(&export.path).exists(),
@@ -131,11 +150,13 @@ mod manifest_tests {
         let install_root = root.join("../../..");
         let plugin_assets = install_root
             .join("assets")
+            .join("blue-protocol-star-resonance")
+            .join("plugins")
             .join("blue-protocol-star-resonance");
         let shared_assets = install_root
             .join("assets")
-            .join("shared")
-            .join("blue-protocol-star-resonance");
+            .join("blue-protocol-star-resonance")
+            .join("shared");
         let mut registry = SharedResourceRegistry::default();
         registry
             .register_exports_with_asset_roots(

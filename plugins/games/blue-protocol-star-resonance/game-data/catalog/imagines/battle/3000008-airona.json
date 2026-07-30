@@ -1,0 +1,124 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000008,
+  "stable_key": "imagine.battle.3000008",
+  "localization_key": "imagine.3000008.name",
+  "icon": "icons/imagines/battle/3000008-airona.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000008,
+    "item_tier": 4,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359899638,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_013",
+    "icon_pixel_sha256": "8f3254d3f5b1ce289143e7a876615fcb0c63702e6cebc09c28f665151fe31bef",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3920.description",
+    "monster_name_localization_key": "battle_imagine_skill.3920.monster_name",
+    "aoyi_skill_id": 3920,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3920.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture013",
+    "skill_effect_id": 392001,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 31,
+        "effect_record_offset": 2318,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 1000
+          },
+          {
+            "key": "skillPerLv",
+            "raw_value": 1
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 32,
+        "effect_record_offset": 2442,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 2000
+          },
+          {
+            "key": "skillPerLv",
+            "raw_value": 2
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 33,
+        "effect_record_offset": 2442,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 2000
+          },
+          {
+            "key": "skillPerLv",
+            "raw_value": 2
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 34,
+        "effect_record_offset": 2678,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 3000
+          },
+          {
+            "key": "skillPerLv",
+            "raw_value": 3
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 35,
+        "effect_record_offset": 2806,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 4000
+          },
+          {
+            "key": "skillPerLv",
+            "raw_value": 4
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3010008,
+    "will_name_localization_key": "imagine_will.3010008.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000008",
+    "confidence": "verified"
+  }
+}

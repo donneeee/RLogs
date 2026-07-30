@@ -4,7 +4,7 @@
   "id": 326,
   "stable_key": "talent.326",
   "localization_key": "talent.326.name",
-  "icon": null,
+  "icon": "icons/talents/shared/twin-striker-shared-326-wasteland-finale.png",
   "attributes": {
     "class_key": "twin-striker",
     "spec_key": "shared",
@@ -41,18 +41,48 @@
     "name_localization_key": "talent.326.name",
     "tree_nodes": [
       {
-        "node_id": 326006,
-        "branch": 0,
-        "prerequisite_node_ids": [
-          3188
-        ]
-      },
-      {
         "node_id": 326005,
+        "talent_id": 326,
+        "profession_id": 3,
         "branch": 1,
+        "is_specialization_node": true,
         "prerequisite_node_ids": [
           6909
-        ]
+        ],
+        "dependent_node_ids": [
+          3185
+        ],
+        "position": {
+          "x": 60,
+          "y": 4260
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 129,
+        "stage_node_index": 18,
+        "specialization_id": 129
+      },
+      {
+        "node_id": 326006,
+        "talent_id": 326,
+        "profession_id": 3,
+        "branch": 0,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          3188
+        ],
+        "dependent_node_ids": [
+          6894
+        ],
+        "position": {
+          "x": -2370,
+          "y": 5340
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 128,
+        "stage_node_index": 24,
+        "specialization_id": 128
       }
     ],
     "class_id": 3
@@ -65,8 +95,8 @@
     }
   ],
   "provenance": {
-    "source": "ctb.TalentTable",
-    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "source": "ctb.TalentTable+ctb.TalentTreeTable+ctb.TalentStageTable",
+    "reference": "client-build:global/steam/24252055@sha256:4214ce9890679abecc2d60a6cd23d9b2432905dbdcc35687b440d7666da2d812+sha256:9a8b3258252c911f29ea8a7aea1621c0912498c867e6707d0aac23813c2b389c",
     "confidence": "corroborated"
   }
 }

@@ -1,0 +1,164 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000016,
+  "stable_key": "imagine.battle.3000016",
+  "localization_key": "imagine.3000016.name",
+  "icon": "icons/imagines/battle/3000016-lizardman-hunter.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000016,
+    "item_tier": 3,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359899669,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_040",
+    "icon_pixel_sha256": "0b7e1b5775fb135ba08d996a14476b50f8752dc9082172120230749dd838a982",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3937.description",
+    "monster_name_localization_key": "battle_imagine_skill.3937.monster_name",
+    "aoyi_skill_id": 3937,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3937.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture040",
+    "skill_effect_id": 393701,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 131,
+        "effect_record_offset": 5110,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 200
+          },
+          {
+            "key": "attrAdd",
+            "raw_value": 896
+          },
+          {
+            "key": "attrLv",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 896
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 132,
+        "effect_record_offset": 5198,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 400
+          },
+          {
+            "key": "attrAdd",
+            "raw_value": 1792
+          },
+          {
+            "key": "attrLv",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 1792
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 133,
+        "effect_record_offset": 5262,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 600
+          },
+          {
+            "key": "attrAdd",
+            "raw_value": 2688
+          },
+          {
+            "key": "attrLv",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 2688
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 134,
+        "effect_record_offset": 5344,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 800
+          },
+          {
+            "key": "attrAdd",
+            "raw_value": 3584
+          },
+          {
+            "key": "attrLv",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 3584
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 135,
+        "effect_record_offset": 5412,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 1000
+          },
+          {
+            "key": "attrAdd",
+            "raw_value": 4480
+          },
+          {
+            "key": "attrLv",
+            "raw_value": 0
+          },
+          {
+            "key": "attrMax",
+            "raw_value": 4480
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3010016,
+    "will_name_localization_key": "imagine_will.3010016.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000016",
+    "confidence": "verified"
+  }
+}

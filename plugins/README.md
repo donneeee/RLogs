@@ -23,8 +23,8 @@ plugins/installed/<plugin-name>/
   bin/ or web/
   resources/
 
-assets/<plugin-name>/...
-assets/shared/<plugin-name>/...
+assets/rlogs/plugins/<plugin-name>/...
+assets/rlogs/shared/<plugin-name>/...
 ```
 
 The small TOML file declares identity, compatibility, permissions, imports,
@@ -36,7 +36,8 @@ loose JSON document as a plug-in. Files, archives, or binaries placed directly
 in `installed/` are ignored.
 
 Named shared resources retain one provider whether their files live in the
-package or in `assets/shared/<provider>/`. A plug-in can import the BPSR
+package or in `assets/rlogs/shared/<provider>/`. Game integrations use
+`assets/<game-id>/shared/`. A plug-in can import the BPSR
 catalog, UID mappings, localization, or icons without shipping another copy.
 Imports declare schema compatibility, and the host exposes read-only access
 inside the exported path.
@@ -52,3 +53,9 @@ capabilities and may contain official game text plus rLogs UI text for exactly
 one locale. The built-in `en-US` package defines the default layout under
 `plugins/builtin/localization/`. Game text is namespaced by game plug-in ID so
 one locale add-on can support multiple installed games without collisions.
+
+The first executable host path is deliberately narrower than the final public
+model: it runs only native plug-ins that are linked into RLogs itself. Community
+packages are discovered and validated but are not executed yet. The future
+sandboxed component adapter will enforce the same public capabilities,
+subscriptions, limits, and versioned output schemas.

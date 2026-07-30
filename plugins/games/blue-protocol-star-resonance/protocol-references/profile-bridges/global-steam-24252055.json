@@ -7,6 +7,20 @@
     "build_id": "24252055"
   },
   "purpose": "Join privacy-reviewed character runtime evidence to exact-build static definitions without treating catalog membership as character ownership.",
+  "runtime_schema_references": [
+    {
+      "project": "Blue-Protocol-Source/BPSR-Deeps",
+      "revision": "5e28141345c1ddf70c0e0719f663698a6acefeda",
+      "source_urls": [
+        "https://github.com/Blue-Protocol-Source/BPSR-Deeps/blob/5e28141345c1ddf70c0e0719f663698a6acefeda/BPSR-ZDPSLib/protos/StruCharSerialize.cs",
+        "https://github.com/Blue-Protocol-Source/BPSR-Deeps/blob/5e28141345c1ddf70c0e0719f663698a6acefeda/BPSR-ZDPSLib/protos/StruCharBaseInfo.cs",
+        "https://github.com/Blue-Protocol-Source/BPSR-Deeps/blob/5e28141345c1ddf70c0e0719f663698a6acefeda/BPSR-ZDPSLib/protos/StruEquipList.cs",
+        "https://github.com/Blue-Protocol-Source/BPSR-Deeps/blob/5e28141345c1ddf70c0e0719f663698a6acefeda/BPSR-ZDPSLib/protos/StruProfessionList.cs",
+        "https://github.com/Blue-Protocol-Source/BPSR-Deeps/blob/5e28141345c1ddf70c0e0719f663698a6acefeda/BPSR-ZDPSLib/protos/StruLifeProfession.cs",
+        "https://github.com/Blue-Protocol-Source/BPSR-Deeps/blob/5e28141345c1ddf70c0e0719f663698a6acefeda/BPSR-ZDPSLib/protos/StruFashionMgr.cs"
+      ]
+    }
+  ],
   "rules": [
     "Only current-build runtime evidence can establish ownership, equipped state, level, or progression for a character.",
     "Static CTB records can name and describe an ID after that ID is observed on an allowed character-facing route.",
@@ -25,7 +39,7 @@
         "server_id"
       ],
       "runtime": {
-        "route": "WorldNtf/SyncContainerData",
+        "route": "WorldNtf/SyncContainerData and SocialNtf/NotifySocialData",
         "state": "partially_verified",
         "verified_fields": [
           "character.character_id",
@@ -50,11 +64,18 @@
         "route": "WorldNtf/SyncContainerData",
         "state": "partially_verified",
         "verified_fields": [
-          "class_id"
+          "class_id",
+          "combat_professions[].profession_id",
+          "combat_professions[].level",
+          "combat_professions[].experience",
+          "combat_professions[].skills",
+          "combat_professions[].active_skill_ids",
+          "combat_professions[].slotted_skill_ids",
+          "combat_professions[].weapon_skin_id",
+          "combat_professions[].talent_node_ids"
         ],
         "unmapped_fields": [
-          "specialization_id",
-          "combat_professions"
+          "specialization_id"
         ]
       },
       "static_definitions": [
@@ -72,15 +93,19 @@
         "season_strength"
       ],
       "runtime": {
-        "route": "WorldNtf/SyncContainerData",
+        "route": "WorldNtf/SyncContainerData, WorldNtf/SyncSeason, and SocialNtf/NotifySocialData",
         "state": "partially_verified",
         "verified_fields": [
-          "level"
+          "level",
+          "progression.current_experience",
+          "progression.previous_season_max_level",
+          "season.season_id",
+          "season.level",
+          "season.experience",
+          "season_strength"
         ],
         "unmapped_fields": [
-          "progression",
-          "season",
-          "season_strength"
+          "season.power"
         ]
       },
       "static_definitions": [
@@ -94,16 +119,20 @@
       "surface": "combat_power_and_panel_attributes",
       "canonical_fields": [
         "combat_power",
+        "combat_power_breakdown",
         "season_strength"
       ],
       "runtime": {
-        "route": "WorldNtf/SyncContainerData",
+        "route": "WorldNtf/SyncContainerData and SocialNtf/NotifySocialData",
         "state": "partially_verified",
         "verified_fields": [
-          "combat_power"
+          "combat_power",
+          "combat_power_breakdown.total",
+          "combat_power_breakdown.components",
+          "combat_power_breakdown.components[].subcomponents",
+          "season_strength"
         ],
         "unmapped_fields": [
-          "season_strength",
           "typed panel attribute snapshot"
         ]
       },
@@ -115,20 +144,39 @@
     {
       "surface": "appearance_and_profile_images",
       "canonical_fields": [
+        "appearance.gender_id",
+        "appearance.body_size_id",
+        "appearance.height",
+        "appearance.voice_id",
+        "appearance.face_options",
+        "appearance.color_options",
         "appearance.avatar_id",
         "appearance.business_card_style_id",
-        "appearance.avatar_frame_id"
+        "appearance.avatar_frame_id",
+        "appearance.unlocked_profile_image_ids",
+        "appearance.unlocked_face_item_ids",
+        "appearance.unlocked_voice_ids"
       ],
       "runtime": {
-        "route": "WorldNtf/SyncContainerData",
-        "state": "structural_only",
-        "verified_shape": "CharacterBase tag 25 has the five-part AvatarInfo outer structure",
+        "route": "WorldNtf/SyncContainerData and SocialNtf/NotifySocialData",
+        "state": "partially_verified",
+        "verified_fields": [
+          "appearance.gender_id",
+          "appearance.body_size_id",
+          "appearance.height",
+          "appearance.voice_id",
+          "appearance.face_options",
+          "appearance.color_options",
+          "appearance.avatar_id",
+          "appearance.business_card_style_id",
+          "appearance.avatar_frame_id",
+          "appearance.unlocked_profile_image_ids",
+          "appearance.unlocked_face_item_ids",
+          "appearance.unlocked_voice_ids"
+        ],
         "unmapped_fields": [
-          "avatar_id",
           "profile picture reference",
-          "half-body picture reference",
-          "business_card_style_id",
-          "avatar_frame_id"
+          "half-body picture reference"
         ]
       },
       "static_definitions": [
@@ -145,13 +193,19 @@
       ],
       "runtime": {
         "route": "WorldNtf/SyncContainerData",
-        "state": "unmapped_current_build",
-        "historical_hypotheses": [
-          "equipment slot",
-          "item instance UUID",
-          "refinement",
-          "recast attributes",
-          "enchantments",
+        "state": "partially_verified",
+        "verified_fields": [
+          "equipment[].slot_id",
+          "equipment[].item_id",
+          "equipment[].instance_id",
+          "equipment[].quality",
+          "equipment[].refinement_level",
+          "equipment[].refinement_failed_count",
+          "equipment[].attributes",
+          "equipment[].enchantments"
+        ],
+        "unmapped_fields": [
+          "equipment[].level",
           "set bonuses"
         ]
       },
@@ -169,6 +223,48 @@
         "ctb.EquipSuitTable"
       ],
       "website_policy": "public only after owner-character runtime correlation"
+    },
+    {
+      "surface": "modules",
+      "canonical_fields": [
+        "modules.equipped_slots",
+        "modules.inventory"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "verified_current_build",
+        "verified_fields": [
+          "modules.equipped_slots",
+          "modules.inventory[].instance_id",
+          "modules.inventory[].config_id",
+          "modules.inventory[].count",
+          "modules.inventory[].quality",
+          "modules.inventory[].load_flag",
+          "modules.inventory[].module_type",
+          "modules.inventory[].level",
+          "modules.inventory[].parts",
+          "modules.inventory[].upgrade_records",
+          "modules.inventory[].success_rate"
+        ],
+        "snapshot_counts": {
+          "equipped_slots": 5,
+          "inventory": 649,
+          "parts": 1937,
+          "upgrade_records": 9526,
+          "modules_with_initial_link_points": 649
+        }
+      },
+      "static_definitions": [
+        "ctb.ModTable",
+        "ctb.ModTypeTable",
+        "ctb.ModHoleTable",
+        "ctb.ModInitializationTable",
+        "ctb.ModEffectTable",
+        "ctb.ModEffectLibTable",
+        "ctb.ModLinkEffectTable",
+        "ctb.AssessModuleTable"
+      ],
+      "website_policy": "opt-in; static definitions and optimizer formulas are joined per exact build"
     },
     {
       "surface": "imagines",
@@ -191,11 +287,26 @@
       "surface": "skills_and_talents",
       "canonical_fields": [
         "active_skills",
-        "talents"
+        "talents",
+        "talent_progress"
       ],
       "runtime": {
         "route": "WorldNtf/SyncContainerData and reviewed combat routes",
-        "state": "runtime_evidence_not_profile_mapped"
+        "state": "verified_current_build",
+        "verified_fields": [
+          "active_skills",
+          "talents",
+          "combat_professions[].skills",
+          "combat_professions[].active_skill_ids",
+          "combat_professions[].slotted_skill_ids",
+          "combat_professions[].talent_node_ids",
+          "combat_professions[].talent_points_used",
+          "talent_progress.total_points"
+        ],
+        "implemented_but_not_present_in_verified_snapshot": [
+          "combat_professions[].talent_stage_config_id",
+          "talent_progress.total_reset_count"
+        ]
       },
       "static_definitions": [
         "ctb.SkillTable",
@@ -203,9 +314,11 @@
         "ctb.SkillEffectTable",
         "ctb.TalentTable",
         "ctb.TalentTreeTable",
-        "ctb.TalentPoolTable"
+        "ctb.TalentPoolTable",
+        "ctb.TalentStageTable",
+        "ctb.TalentSchoolTable"
       ],
-      "website_policy": "public after stable loadout projection"
+      "website_policy": "public after stable loadout projection; game-like layout requires reviewed tree coordinates and icons"
     },
     {
       "surface": "life_professions",
@@ -214,7 +327,13 @@
       ],
       "runtime": {
         "route": "WorldNtf/SyncContainerData",
-        "state": "unmapped_current_build"
+        "state": "verified_current_build",
+        "verified_fields": [
+          "life_professions[].profession_id",
+          "life_professions[].level",
+          "life_professions[].experience",
+          "life_professions[].specialization_levels"
+        ]
       },
       "static_definitions": [
         "ctb.LifeProfessionTable"
@@ -229,7 +348,20 @@
       ],
       "runtime": {
         "route": "WorldNtf/SyncContainerData",
-        "state": "unmapped_current_build"
+        "state": "partially_verified",
+        "verified_fields": [
+          "collection_summary.fashion_points",
+          "collection_summary.mount_points",
+          "collection_summary.weapon_skin_points",
+          "collection_summary.equipped_fashion_ids",
+          "collection_summary.owned_fashion_ids",
+          "collection_summary.owned_mount_ids",
+          "collection_summary.owned_weapon_skin_ids",
+          "collection_summary.owned_dye_ids"
+        ],
+        "unmapped_fields": [
+          "cosmetics"
+        ]
       },
       "static_definitions": [
         "ctb.FashionTable",
@@ -247,8 +379,16 @@
         "social_display.medal_ids"
       ],
       "runtime": {
-        "route": "reviewed SocialNtf and UnionNtf methods",
-        "state": "unmapped_current_build"
+        "route": "SocialNtf/NotifySocialData",
+        "state": "partially_verified",
+        "verified_fields": [
+          "social_display.guild_id",
+          "social_display.guild_name",
+          "social_display.title_ids"
+        ],
+        "semantics_pending": [
+          "whether PersonalZone medal-map values represent owned, slotted, or displayed medals"
+        ]
       },
       "static_definitions": [
         "ctb.UnionIconTable",

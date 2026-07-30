@@ -156,8 +156,82 @@ struct ProfileFieldPresence {
     display_uid: bool,
     server_id: bool,
     class_id: bool,
+    specialization_id: bool,
     level: bool,
+    progression: bool,
     combat_power: bool,
+    season_strength: bool,
+    appearance: bool,
+    face_option_count: usize,
+    color_option_count: usize,
+    unlocked_profile_image_count: usize,
+    unlocked_face_item_count: usize,
+    unlocked_voice_count: usize,
+    equipment: bool,
+    equipment_count: usize,
+    equipment_with_attributes: usize,
+    equipment_with_enchantments: usize,
+    modules: bool,
+    equipped_module_slot_count: usize,
+    module_inventory_count: usize,
+    module_part_count: usize,
+    module_upgrade_record_count: usize,
+    modules_with_initial_link_points: usize,
+    combat_power_component_count: usize,
+    combat_power_subcomponent_count: usize,
+    season_profile: bool,
+    season_experience: bool,
+    owned_imagine_count: usize,
+    equipped_owned_imagine_count: usize,
+    battle_imagine_skill_count: usize,
+    equipped_battle_imagine_skill_count: usize,
+    active_skill_count: usize,
+    talent_count: usize,
+    talent_progress: bool,
+    total_talent_points: bool,
+    total_talent_reset_count: bool,
+    profession_talent_loadout_count: usize,
+    selected_talent_node_count: usize,
+    talent_loadouts_with_used_points: usize,
+    talent_loadouts_with_stage_config: usize,
+    combat_profession_count: usize,
+    life_profession_count: usize,
+    cosmetic_count: usize,
+    collection_summary: bool,
+    equipped_fashion_count: usize,
+    owned_fashion_count: usize,
+    owned_mount_count: usize,
+    owned_weapon_skin_count: usize,
+    owned_dye_count: usize,
+    unlocked_module_count: usize,
+    ride_count: usize,
+    ride_skin_count: usize,
+    unlocked_emoji_count: usize,
+    vanity_pet_count: usize,
+    summoned_vanity_pet: bool,
+    fantasy_atlas_stage_count: usize,
+    handbook: bool,
+    handbook_entry_count: usize,
+    activity_progress: bool,
+    challenge_dungeon_count: usize,
+    challenge_target_count: usize,
+    master_mode_dungeon_count: usize,
+    weekly_tower: bool,
+    season_medals: bool,
+    season_medal_hole_count: usize,
+    season_medal_node_count: usize,
+    season_cultivation_count: usize,
+    cultivation_line_count: usize,
+    cultivation_area_count: usize,
+    reputation_count: usize,
+    current_profession_project: bool,
+    social_display: bool,
+    guild_id: bool,
+    guild_name: bool,
+    title_count: usize,
+    medal_count: usize,
+    medal_slot_count: usize,
+    profile_theme: bool,
 }
 
 impl ProfileFieldPresence {
@@ -167,8 +241,248 @@ impl ProfileFieldPresence {
         self.display_uid |= profile.display_id.is_some();
         self.server_id |= profile.server_id.is_some();
         self.class_id |= profile.class_id.is_some();
+        self.specialization_id |= profile.specialization_id.is_some();
         self.level |= profile.level.is_some();
+        self.progression |= profile.progression.is_some();
         self.combat_power |= profile.combat_power.is_some();
+        self.season_strength |= profile.season_strength.is_some();
+        self.appearance |= profile.appearance.is_some();
+        if let Some(appearance) = &profile.appearance {
+            self.face_option_count = self.face_option_count.max(appearance.face_options.len());
+            self.color_option_count = self.color_option_count.max(appearance.color_options.len());
+            self.unlocked_profile_image_count = self
+                .unlocked_profile_image_count
+                .max(appearance.unlocked_profile_image_ids.len());
+            self.unlocked_face_item_count = self
+                .unlocked_face_item_count
+                .max(appearance.unlocked_face_item_ids.len());
+            self.unlocked_voice_count = self
+                .unlocked_voice_count
+                .max(appearance.unlocked_voice_ids.len());
+        }
+        self.equipment |= profile.equipment.is_some();
+        if let Some(equipment) = &profile.equipment {
+            self.equipment_count = self.equipment_count.max(equipment.len());
+            self.equipment_with_attributes = self.equipment_with_attributes.max(
+                equipment
+                    .iter()
+                    .filter(|item| item.attributes.is_some())
+                    .count(),
+            );
+            self.equipment_with_enchantments = self.equipment_with_enchantments.max(
+                equipment
+                    .iter()
+                    .filter(|item| !item.enchantments.is_empty())
+                    .count(),
+            );
+        }
+        self.modules |= profile.modules.is_some();
+        if let Some(modules) = &profile.modules {
+            self.equipped_module_slot_count = self
+                .equipped_module_slot_count
+                .max(modules.equipped_slots.len());
+            self.module_inventory_count = self.module_inventory_count.max(modules.inventory.len());
+            self.module_part_count = self.module_part_count.max(
+                modules
+                    .inventory
+                    .iter()
+                    .map(|module| module.parts.len())
+                    .sum(),
+            );
+            self.module_upgrade_record_count = self.module_upgrade_record_count.max(
+                modules
+                    .inventory
+                    .iter()
+                    .map(|module| module.upgrade_records.len())
+                    .sum(),
+            );
+            self.modules_with_initial_link_points = self.modules_with_initial_link_points.max(
+                modules
+                    .inventory
+                    .iter()
+                    .filter(|module| {
+                        module
+                            .parts
+                            .iter()
+                            .any(|part| part.initial_link_points.is_some())
+                    })
+                    .count(),
+            );
+        }
+        if let Some(power) = &profile.combat_power_breakdown {
+            self.combat_power_component_count = self
+                .combat_power_component_count
+                .max(power.components.len());
+            self.combat_power_subcomponent_count = self.combat_power_subcomponent_count.max(
+                power
+                    .components
+                    .iter()
+                    .map(|component| component.subcomponents.len())
+                    .sum(),
+            );
+        }
+        self.season_profile |= profile.season.is_some();
+        self.season_experience |= profile
+            .season
+            .as_ref()
+            .and_then(|season| season.experience)
+            .is_some();
+        if let Some(imagines) = &profile.owned_imagines {
+            self.owned_imagine_count = self.owned_imagine_count.max(imagines.len());
+            self.equipped_owned_imagine_count = self.equipped_owned_imagine_count.max(
+                imagines
+                    .iter()
+                    .filter(|imagine| imagine.equipped_slot.is_some())
+                    .count(),
+            );
+        }
+        if let Some(skills) = &profile.battle_imagine_skills {
+            self.battle_imagine_skill_count = self.battle_imagine_skill_count.max(skills.len());
+            self.equipped_battle_imagine_skill_count =
+                self.equipped_battle_imagine_skill_count.max(
+                    skills
+                        .iter()
+                        .filter(|skill| skill.equipped_slot.is_some())
+                        .count(),
+                );
+        }
+        self.active_skill_count = self
+            .active_skill_count
+            .max(profile.active_skills.as_ref().map_or(0, Vec::len));
+        self.talent_count = self
+            .talent_count
+            .max(profile.talents.as_ref().map_or(0, Vec::len));
+        self.talent_progress |= profile.talent_progress.is_some();
+        if let Some(progress) = &profile.talent_progress {
+            self.total_talent_points |= progress.total_points.is_some();
+            self.total_talent_reset_count |= progress.total_reset_count.is_some();
+        }
+        self.combat_profession_count = self
+            .combat_profession_count
+            .max(profile.combat_professions.as_ref().map_or(0, Vec::len));
+        if let Some(professions) = &profile.combat_professions {
+            self.profession_talent_loadout_count = self.profession_talent_loadout_count.max(
+                professions
+                    .iter()
+                    .filter(|profession| {
+                        !profession.talent_node_ids.is_empty()
+                            || profession.talent_points_used.is_some()
+                            || profession.talent_stage_config_id.is_some()
+                    })
+                    .count(),
+            );
+            self.selected_talent_node_count = self.selected_talent_node_count.max(
+                professions
+                    .iter()
+                    .map(|profession| profession.talent_node_ids.len())
+                    .sum(),
+            );
+            self.talent_loadouts_with_used_points = self.talent_loadouts_with_used_points.max(
+                professions
+                    .iter()
+                    .filter(|profession| profession.talent_points_used.is_some())
+                    .count(),
+            );
+            self.talent_loadouts_with_stage_config = self.talent_loadouts_with_stage_config.max(
+                professions
+                    .iter()
+                    .filter(|profession| profession.talent_stage_config_id.is_some())
+                    .count(),
+            );
+        }
+        self.life_profession_count = self
+            .life_profession_count
+            .max(profile.life_professions.as_ref().map_or(0, Vec::len));
+        self.cosmetic_count = self
+            .cosmetic_count
+            .max(profile.cosmetics.as_ref().map_or(0, Vec::len));
+        self.collection_summary |= profile.collection_summary.is_some();
+        if let Some(collection) = &profile.collection_summary {
+            self.equipped_fashion_count = self
+                .equipped_fashion_count
+                .max(collection.equipped_fashion_ids.len());
+            self.owned_fashion_count = self
+                .owned_fashion_count
+                .max(collection.owned_fashion_ids.len());
+            self.owned_mount_count = self.owned_mount_count.max(collection.owned_mount_ids.len());
+            self.owned_weapon_skin_count = self
+                .owned_weapon_skin_count
+                .max(collection.owned_weapon_skin_ids.len());
+            self.owned_dye_count = self.owned_dye_count.max(collection.owned_dye_ids.len());
+            self.unlocked_module_count = self
+                .unlocked_module_count
+                .max(collection.unlocked_module_ids.len());
+            self.ride_count = self.ride_count.max(collection.ride_ids.len());
+            self.ride_skin_count = self.ride_skin_count.max(collection.ride_skin_ids.len());
+            self.unlocked_emoji_count = self
+                .unlocked_emoji_count
+                .max(collection.unlocked_emoji_ids.len());
+            self.vanity_pet_count = self.vanity_pet_count.max(collection.vanity_pet_ids.len());
+            self.summoned_vanity_pet |= collection.summoned_vanity_pet_id.is_some();
+            self.fantasy_atlas_stage_count = self
+                .fantasy_atlas_stage_count
+                .max(collection.fantasy_atlas_stages.len());
+            self.handbook |= collection.handbook.is_some();
+            if let Some(handbook) = &collection.handbook {
+                self.handbook_entry_count = self.handbook_entry_count.max(
+                    handbook.important_people_ids.len()
+                        + handbook.reading_book_ids.len()
+                        + handbook.dictionary_entry_ids.len()
+                        + handbook.postcard_ids.len()
+                        + handbook.monthly_card_ids.len(),
+                );
+            }
+        }
+        self.activity_progress |= profile.activity_progress.is_some();
+        if let Some(activity) = &profile.activity_progress {
+            self.challenge_dungeon_count = self
+                .challenge_dungeon_count
+                .max(activity.challenge_dungeons.len());
+            self.challenge_target_count = self
+                .challenge_target_count
+                .max(activity.challenge_targets.len());
+            self.master_mode_dungeon_count = self
+                .master_mode_dungeon_count
+                .max(activity.master_mode_dungeons.len());
+            self.weekly_tower |= activity.weekly_tower.is_some();
+        }
+        self.season_medals |= profile.season_medals.is_some();
+        if let Some(medals) = &profile.season_medals {
+            self.season_medal_hole_count = self
+                .season_medal_hole_count
+                .max(medals.normal_holes.len() + usize::from(medals.core_hole.is_some()));
+            self.season_medal_node_count =
+                self.season_medal_node_count.max(medals.core_nodes.len());
+        }
+        if let Some(seasons) = &profile.season_cultivation {
+            self.season_cultivation_count = self.season_cultivation_count.max(seasons.len());
+            self.cultivation_line_count = self.cultivation_line_count.max(
+                seasons
+                    .iter()
+                    .map(|season| season.lines.len())
+                    .sum::<usize>(),
+            );
+            self.cultivation_area_count = self.cultivation_area_count.max(
+                seasons
+                    .iter()
+                    .flat_map(|season| &season.lines)
+                    .map(|line| line.areas.len())
+                    .sum::<usize>(),
+            );
+        }
+        self.reputation_count = self
+            .reputation_count
+            .max(profile.reputations.as_ref().map_or(0, Vec::len));
+        self.current_profession_project |= profile.current_profession_project_id.is_some();
+        self.social_display |= profile.social_display.is_some();
+        if let Some(social) = &profile.social_display {
+            self.guild_id |= social.guild_id.is_some();
+            self.guild_name |= social.guild_name.is_some();
+            self.title_count = self.title_count.max(social.title_ids.len());
+            self.medal_count = self.medal_count.max(social.medal_ids.len());
+            self.medal_slot_count = self.medal_slot_count.max(social.medal_slots.len());
+            self.profile_theme |= social.profile_theme_id.is_some();
+        }
     }
 }
 

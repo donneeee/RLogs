@@ -4,7 +4,7 @@
   "id": 1353,
   "stable_key": "talent.1353",
   "localization_key": "talent.1353.name",
-  "icon": null,
+  "icon": "icons/talents/shared/beat-performer-concerto-spec-1353-tower-flame-blast.png",
   "attributes": {
     "class_key": "beat-performer",
     "spec_key": "concerto-spec",
@@ -42,11 +42,28 @@
     "tree_nodes": [
       {
         "node_id": 1356001,
+        "talent_id": 1353,
+        "profession_id": 13,
         "branch": 1,
+        "is_specialization_node": true,
         "prerequisite_node_ids": [
           6576,
           1322006
-        ]
+        ],
+        "dependent_node_ids": [
+          7357
+        ],
+        "position": {
+          "x": 4410,
+          "y": 4620
+        },
+        "unlock_condition_records": [
+          [
+            3,
+            50
+          ]
+        ],
+        "layout_state": "not_referenced_by_current_talent_stage"
       }
     ],
     "class_id": 13,
@@ -60,8 +77,8 @@
     }
   ],
   "provenance": {
-    "source": "ctb.TalentTable",
-    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "source": "ctb.TalentTable+ctb.TalentTreeTable+ctb.TalentStageTable",
+    "reference": "client-build:global/steam/24252055@sha256:4214ce9890679abecc2d60a6cd23d9b2432905dbdcc35687b440d7666da2d812+sha256:9a8b3258252c911f29ea8a7aea1621c0912498c867e6707d0aac23813c2b389c",
     "confidence": "corroborated"
   }
 }

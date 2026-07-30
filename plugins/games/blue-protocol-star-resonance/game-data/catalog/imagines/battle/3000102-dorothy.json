@@ -1,0 +1,74 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000102,
+  "stable_key": "imagine.battle.3000102",
+  "localization_key": "imagine.3000102.name",
+  "icon": "icons/imagines/battle/3000102-dorothy.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000102,
+    "item_tier": 4,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359900721,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_053",
+    "icon_pixel_sha256": "fae11e7c3d96b9128cf14066345704d31a7c923b3c980f8d0d043264ed2cd548",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3949.description",
+    "monster_name_localization_key": "battle_imagine_skill.3949.monster_name",
+    "aoyi_skill_id": 3949,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3949.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture053",
+    "skill_effect_id": 394901,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 196,
+        "effect_record_offset": 0,
+        "values": []
+      },
+      {
+        "tier": 2,
+        "row_id": 197,
+        "effect_record_offset": 0,
+        "values": []
+      },
+      {
+        "tier": 3,
+        "row_id": 198,
+        "effect_record_offset": 0,
+        "values": []
+      },
+      {
+        "tier": 4,
+        "row_id": 199,
+        "effect_record_offset": 0,
+        "values": []
+      },
+      {
+        "tier": 5,
+        "row_id": 200,
+        "effect_record_offset": 0,
+        "values": []
+      }
+    ],
+    "will_item_id": 3010102,
+    "will_name_localization_key": "imagine_will.3010102.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000102",
+    "confidence": "verified"
+  }
+}

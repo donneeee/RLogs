@@ -1,0 +1,139 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3001002,
+  "stable_key": "imagine.battle.3001002",
+  "localization_key": "imagine.3001002.name",
+  "icon": "icons/imagines/battle/3001002-natsu.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3001002,
+    "item_tier": 4,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359935569,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_085",
+    "icon_pixel_sha256": "dfc00c4663c231ac72dbabeaaa872295922e9da5b4363fae5f327f9a25ba9f5b",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3983.description",
+    "monster_name_localization_key": "battle_imagine_skill.3983.monster_name",
+    "aoyi_skill_id": 3983,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3983.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture085",
+    "skill_effect_id": 398301,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 361,
+        "effect_record_offset": 28564,
+        "values": [
+          {
+            "key": "attr",
+            "raw_value": 0
+          },
+          {
+            "key": "attrA",
+            "raw_value": 0
+          },
+          {
+            "key": "attrB",
+            "raw_value": 0
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 362,
+        "effect_record_offset": 28564,
+        "values": [
+          {
+            "key": "attr",
+            "raw_value": 0
+          },
+          {
+            "key": "attrA",
+            "raw_value": 0
+          },
+          {
+            "key": "attrB",
+            "raw_value": 0
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 363,
+        "effect_record_offset": 28740,
+        "values": [
+          {
+            "key": "attr",
+            "raw_value": 270
+          },
+          {
+            "key": "attrA",
+            "raw_value": 750
+          },
+          {
+            "key": "attrB",
+            "raw_value": 1680
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 364,
+        "effect_record_offset": 28740,
+        "values": [
+          {
+            "key": "attr",
+            "raw_value": 270
+          },
+          {
+            "key": "attrA",
+            "raw_value": 750
+          },
+          {
+            "key": "attrB",
+            "raw_value": 1680
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 365,
+        "effect_record_offset": 28916,
+        "values": [
+          {
+            "key": "attr",
+            "raw_value": 540
+          },
+          {
+            "key": "attrA",
+            "raw_value": 1500
+          },
+          {
+            "key": "attrB",
+            "raw_value": 3370
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3011002,
+    "will_name_localization_key": "imagine_will.3011002.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3001002",
+    "confidence": "verified"
+  }
+}

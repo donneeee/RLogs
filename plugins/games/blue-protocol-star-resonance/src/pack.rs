@@ -82,6 +82,8 @@ pub enum ProtocolFeature {
     EntityAttributes,
     CharacterIdentity,
     CharacterProfile,
+    Progression,
+    BattlePass,
     MonsterIdentity,
     Position,
     Movement,
@@ -527,7 +529,6 @@ mod tests {
             (1_321_197_368, 12, ProhibitedDataClass::PrivateCommunication),
             (1_321_197_368, 19, ProhibitedDataClass::PrivateCommunication),
             (78_136_601, 2, ProhibitedDataClass::PrivateAccountData),
-            (78_136_601, 3, ProhibitedDataClass::PrivateAccountData),
             (1_664_308_034, 74, ProhibitedDataClass::PrivateAccountData),
             (1_753_654_261, 2, ProhibitedDataClass::PrivateCommunication),
         ];
@@ -541,7 +542,10 @@ mod tests {
                     })
                 })
                 .filter(|route| {
-                    !(route.route.service_id == 1_664_308_034 && route.route.method_id == 21)
+                    !((route.route.service_id == 1_664_308_034
+                        && [3, 4, 6, 21, 22, 23, 27, 43, 45, 46].contains(&route.route.method_id))
+                        || (route.route.service_id == 78_136_601 && route.route.method_id == 3)
+                        || (route.route.service_id == 625_772_963 && route.route.method_id == 1))
                 })
                 .all(|route| route.disposition == ProtocolPackRouteDisposition::Opaque)
         );
@@ -574,6 +578,151 @@ mod tests {
                 decoder: DecoderKind::SyncContainerDataV1
             }
         );
+        let enter_scene = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 3)
+            .expect("current-build enter-scene route");
+        assert_eq!(enter_scene.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            enter_scene.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::WorldState,
+                decoder: DecoderKind::EnterSceneV1
+            }
+        );
+        let load_scene_end = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 4)
+            .expect("current-build load-scene completion route");
+        assert_eq!(load_scene_end.method_name, "NotifyLoadSceneEnd");
+        assert_eq!(load_scene_end.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            load_scene_end.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::WorldState,
+                decoder: DecoderKind::NotifyLoadSceneEndV1
+            }
+        );
+        let near_entities = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 6)
+            .expect("current-build nearby-entities route");
+        assert_eq!(near_entities.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            near_entities.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::ActorState,
+                decoder: DecoderKind::SyncNearEntitiesV1
+            }
+        );
+        let near_delta = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 45)
+            .expect("current-build nearby-delta route");
+        assert_eq!(near_delta.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            near_delta.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::Combat,
+                decoder: DecoderKind::SyncNearDeltaV1
+            }
+        );
+        let self_delta = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 46)
+            .expect("current-build self-delta route");
+        assert_eq!(self_delta.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            self_delta.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::Combat,
+                decoder: DecoderKind::SyncToMeDeltaV1
+            }
+        );
+        let server_time = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 43)
+            .expect("current-build server-time route");
+        assert_eq!(server_time.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            server_time.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::WorldState,
+                decoder: DecoderKind::SyncServerTimeV1
+            }
+        );
+        let dungeon = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 23)
+            .expect("current-build dungeon snapshot route");
+        assert_eq!(dungeon.method_name, "SyncDungeonData");
+        assert_eq!(dungeon.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            dungeon.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::Encounter,
+                decoder: DecoderKind::SyncDungeonDataV1
+            }
+        );
+        let season = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 27)
+            .expect("current-build season route");
+        assert_eq!(season.method_name, "SyncSeason");
+        assert_eq!(season.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            season.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::CharacterProfile,
+                decoder: DecoderKind::SyncSeasonV1
+            }
+        );
+        let social = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 625_772_963 && route.route.method_id == 1)
+            .expect("current-build social profile route");
+        assert_eq!(social.method_name, "NotifySocialData");
+        assert_eq!(social.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            social.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::CharacterProfile,
+                decoder: DecoderKind::NotifySocialDataV1
+            }
+        );
+        let world_entry = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 78_136_601 && route.route.method_id == 3)
+            .expect("current-build world-entry server announcement");
+        assert_eq!(world_entry.method_name, "NotifyEnterWorld");
+        assert_eq!(world_entry.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            world_entry.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::WorldState,
+                decoder: DecoderKind::NotifyEnterWorldV1
+            }
+        );
         let dirty = pack
             .definition()
             .routes
@@ -582,13 +731,60 @@ mod tests {
             .expect("current-build dirty profile route");
         assert_eq!(dirty.method_name, "SyncContainerDirtyData");
         assert_eq!(dirty.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            dirty.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::CharacterProfile,
+                decoder: DecoderKind::SyncContainerDirtyDataV1
+            }
+        );
+        let union_activity = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 504_281_929 && route.route.method_id == 6)
+            .expect("current-build union activity route");
+        assert_eq!(union_activity.method_name, "NotifyUnionActivity");
+        assert_eq!(union_activity.confidence, MappingConfidence::Candidate);
+        assert_eq!(
+            union_activity.disposition,
+            ProtocolPackRouteDisposition::Opaque
+        );
+        let union_member_online = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 504_281_929 && route.route.method_id == 15)
+            .expect("current-build union member presence route");
+        assert_eq!(union_member_online.method_name, "NotifyMemberOnline");
+        assert_eq!(union_member_online.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            union_member_online.disposition,
+            ProtocolPackRouteDisposition::Opaque
+        );
+        let battle_pass = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 79)
+            .expect("current-build all-valid-battle-pass route");
+        assert_eq!(battle_pass.method_name, "NotifyUserAllValidBattlePassData");
+        assert_eq!(battle_pass.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            battle_pass.disposition,
+            ProtocolPackRouteDisposition::Opaque
+        );
         assert!(
             pack.definition()
                 .routes
                 .iter()
                 .filter(|route| {
-                    !(route.route.service_id == 1_664_308_034
-                        && [21, 22].contains(&route.route.method_id))
+                    !((route.route.service_id == 1_664_308_034
+                        && [3, 4, 6, 21, 22, 23, 27, 43, 45, 46].contains(&route.route.method_id))
+                        || (route.route.service_id == 78_136_601 && route.route.method_id == 3)
+                        || (route.route.service_id == 625_772_963 && route.route.method_id == 1)
+                        || (route.route.service_id == 504_281_929 && route.route.method_id == 15)
+                        || (route.route.service_id == 1_664_308_034 && route.route.method_id == 79))
                 })
                 .all(|route| route.confidence == MappingConfidence::Candidate)
         );
@@ -596,6 +792,66 @@ mod tests {
         let mut nearby = exact;
         nearby.build_id = "24252056".into();
         assert!(!pack.matches(&nearby));
+    }
+
+    #[test]
+    fn union_shape_observation_retains_no_presence_or_identity_values() {
+        let observation: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../protocol-packs/global/steam-24252055/observations/union-notify-shapes-001.json"
+        ))
+        .unwrap();
+
+        let retained = observation["retained_data"].as_object().unwrap();
+        assert!(retained.values().all(|value| value == false));
+
+        let routes = observation["routes"].as_array().unwrap();
+        let member_online = routes
+            .iter()
+            .find(|route| route["route"]["method_id"] == 15)
+            .expect("sanitized member-presence shape");
+        assert_eq!(member_online["method_name"], "NotifyMemberOnline");
+        assert_eq!(member_online["confidence"], "verified");
+        assert_eq!(member_online["disposition"], "opaque");
+        assert_eq!(member_online["approved_profile_value"], "none");
+        assert_eq!(
+            member_online["wire_shape"]["request_fields"][0]["encoding"],
+            "packed_int64"
+        );
+        assert_eq!(
+            member_online["wire_shape"]["request_fields"][1]["reference_name"],
+            "offline_timer"
+        );
+    }
+
+    #[test]
+    fn world_notify_79_shape_resolves_battle_pass_without_retaining_values() {
+        let observation: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../protocol-packs/global/steam-24252055/observations/world-notify-79-shape-001.json"
+        ))
+        .unwrap();
+
+        let retained = observation["retained_data"].as_object().unwrap();
+        assert!(retained.values().all(|value| value == false));
+        assert_eq!(
+            observation["resolution"]["method_name"],
+            "NotifyUserAllValidBattlePassData"
+        );
+        assert_eq!(observation["resolution"]["confidence"], "verified");
+        assert_eq!(observation["resolution"]["disposition"], "opaque");
+        assert_eq!(
+            observation["resolution"]["profile_status"],
+            "not_approved_pending_opt_in_field_policy"
+        );
+        assert_eq!(
+            observation["wire_shape"]["award_map_entry_shape"]["entry_count"],
+            17
+        );
+        assert_eq!(observation["wire_shape"]["string_fields"], 0);
+        assert_eq!(
+            observation["candidate_results"][1]["method_name"],
+            "NotifySceneLineInfo"
+        );
+        assert_eq!(observation["candidate_results"][1]["result"], "rejected");
     }
 
     #[test]
@@ -651,8 +907,8 @@ mod tests {
             }
         }
 
-        assert_eq!(allowed_packets, 1);
-        assert_eq!(opaque_packets, 1_925);
-        assert_eq!(prohibited_packets, 18);
+        assert_eq!(allowed_packets, 1_886);
+        assert_eq!(opaque_packets, 41);
+        assert_eq!(prohibited_packets, 17);
     }
 }

@@ -21,17 +21,35 @@ pub struct CharacterProfilePatch {
     pub level: Option<u32>,
     pub progression: Option<CharacterProgression>,
     pub combat_power: Option<i64>,
+    #[serde(default)]
+    pub combat_power_breakdown: Option<CombatPowerBreakdown>,
     pub season_strength: Option<i64>,
     pub season: Option<SeasonProfile>,
     pub appearance: Option<CharacterAppearance>,
     pub equipment: Option<Vec<EquipmentItem>>,
+    #[serde(default)]
+    pub modules: Option<ModuleProfile>,
     pub owned_imagines: Option<Vec<ImagineOwnership>>,
+    #[serde(default)]
+    pub battle_imagine_skills: Option<Vec<BattleImagineSkill>>,
     pub active_skills: Option<Vec<SkillLevel>>,
     pub talents: Option<Vec<TalentLevel>>,
+    #[serde(default)]
+    pub talent_progress: Option<TalentProgressProfile>,
     pub combat_professions: Option<Vec<CombatProfessionProfile>>,
     pub life_professions: Option<Vec<LifeProfessionProfile>>,
     pub cosmetics: Option<Vec<CosmeticOwnership>>,
     pub collection_summary: Option<CollectionSummary>,
+    #[serde(default)]
+    pub activity_progress: Option<ActivityProgress>,
+    #[serde(default)]
+    pub season_medals: Option<SeasonMedalProfile>,
+    #[serde(default)]
+    pub season_cultivation: Option<Vec<SeasonCultivationProfile>>,
+    #[serde(default)]
+    pub reputations: Option<Vec<ReputationProgress>>,
+    #[serde(default)]
+    pub current_profession_project_id: Option<i32>,
     pub social_display: Option<SocialDisplay>,
 }
 
@@ -95,11 +113,19 @@ pub struct CharacterAppearance {
     pub gender_id: Option<i32>,
     pub body_size_id: Option<i32>,
     pub height: Option<f32>,
+    #[serde(default)]
+    pub voice_id: Option<i32>,
     pub face_options: BTreeMap<i32, i32>,
     pub color_options: BTreeMap<i32, RgbColor>,
     pub avatar_id: Option<i32>,
     pub business_card_style_id: Option<i32>,
     pub avatar_frame_id: Option<i32>,
+    #[serde(default)]
+    pub unlocked_profile_image_ids: Vec<i64>,
+    #[serde(default)]
+    pub unlocked_face_item_ids: Vec<i64>,
+    #[serde(default)]
+    pub unlocked_voice_ids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,8 +143,74 @@ pub struct EquipmentItem {
     pub level: Option<u32>,
     pub quality: Option<i32>,
     pub refinement_level: Option<u32>,
+    #[serde(default)]
+    pub refinement_failed_count: Option<u32>,
+    #[serde(default)]
+    pub attributes: Option<EquipmentAttributeProfile>,
     pub enchantment_ids: Vec<i64>,
+    #[serde(default)]
+    pub enchantments: Vec<EquipmentEnchantmentProfile>,
     pub set_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EquipmentAttributeProfile {
+    pub base: BTreeMap<i32, i64>,
+    pub basic: BTreeMap<i32, i64>,
+    pub advanced: BTreeMap<i32, i64>,
+    pub recast: BTreeMap<i32, i64>,
+    pub rare_quality: BTreeMap<i32, i64>,
+    pub perfection_value: Option<i32>,
+    pub perfection_level: Option<i32>,
+    pub max_perfection_value: Option<i32>,
+    pub recast_count: Option<i32>,
+    pub total_recast_count: Option<i32>,
+    pub breakthrough_count: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EquipmentEnchantmentProfile {
+    pub enchantment_id: i64,
+    pub level: Option<u32>,
+    pub enchantment_type: Option<i32>,
+}
+
+/// Module inventory and equipped-slot state needed by profile displays and
+/// deterministic optimizers.
+///
+/// Only package 5 (the game's module package) is projected. Instance IDs remain
+/// strings so browsers never lose precision when joining inventory entries to
+/// equipped slots.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleProfile {
+    pub equipped_slots: BTreeMap<i32, String>,
+    pub inventory: Vec<ModuleItemProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleItemProfile {
+    pub instance_id: String,
+    pub config_id: i32,
+    pub count: Option<i64>,
+    pub quality: Option<i32>,
+    pub load_flag: Option<i32>,
+    pub module_type: Option<i32>,
+    pub level: Option<u32>,
+    pub parts: Vec<ModulePartProfile>,
+    pub upgrade_records: Vec<ModuleUpgradeRecord>,
+    pub success_rate: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModulePartProfile {
+    pub part_id: i32,
+    pub initial_link_points: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModuleUpgradeRecord {
+    pub part_id: i32,
+    pub succeeded: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,8 +225,31 @@ pub struct ImagineOwnership {
 pub struct SeasonProfile {
     pub season_id: Option<i64>,
     pub level: Option<u32>,
+    #[serde(default)]
+    pub experience: Option<i64>,
     pub power: Option<i64>,
     pub strength: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CombatPowerBreakdown {
+    pub total: Option<i64>,
+    pub components: Vec<CombatPowerComponent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CombatPowerComponent {
+    pub function_type_id: i32,
+    pub total_points: Option<i64>,
+    pub points: Option<i64>,
+    pub subcomponents: Vec<CombatPowerSubcomponent>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CombatPowerSubcomponent {
+    pub function_type_id: i32,
+    pub root_function_type_id: Option<i32>,
+    pub points: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -146,7 +261,33 @@ pub struct CosmeticOwnership {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillLevel {
     pub skill_id: i64,
+    #[serde(default)]
+    pub base_skill_id: Option<i64>,
     pub level: Option<u32>,
+    #[serde(default)]
+    pub remodel_level: Option<u32>,
+    #[serde(default)]
+    pub skin_id: Option<i64>,
+    #[serde(default)]
+    pub replacement_skill_ids: Vec<i64>,
+    #[serde(default)]
+    pub unlocked_skin_ids: Vec<i64>,
+}
+
+/// Battle Imagine skill evidence exposed by the current character snapshot.
+///
+/// Skill IDs are intentionally kept separate from Fantasy IDs and inventory
+/// item IDs until an exact-build static crosswalk proves those relationships.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BattleImagineSkill {
+    pub skill_id: i64,
+    pub base_skill_id: Option<i64>,
+    pub level: Option<u32>,
+    pub remodel_level: Option<u32>,
+    pub skin_id: Option<i64>,
+    pub replacement_skill_ids: Vec<i64>,
+    pub unlocked_skin_ids: Vec<i64>,
+    pub equipped_slot: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,15 +296,27 @@ pub struct TalentLevel {
     pub level: Option<u32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TalentProgressProfile {
+    pub total_points: Option<u32>,
+    pub total_reset_count: Option<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CombatProfessionProfile {
     pub profession_id: i32,
     pub level: Option<u32>,
     pub experience: Option<i64>,
+    #[serde(default)]
+    pub skills: Vec<SkillLevel>,
     pub active_skill_ids: Vec<i64>,
     pub slotted_skill_ids: BTreeMap<i32, i64>,
     pub weapon_skin_id: Option<i64>,
     pub talent_node_ids: Vec<i64>,
+    #[serde(default)]
+    pub talent_points_used: Option<u32>,
+    #[serde(default)]
+    pub talent_stage_config_id: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,16 +332,146 @@ pub struct CollectionSummary {
     pub fashion_points: Option<i64>,
     pub mount_points: Option<i64>,
     pub weapon_skin_points: Option<i64>,
+    #[serde(default)]
+    pub equipped_fashion_ids: BTreeMap<i32, i64>,
     pub owned_fashion_ids: Vec<i64>,
     pub owned_mount_ids: Vec<i64>,
     pub owned_weapon_skin_ids: Vec<i64>,
+    #[serde(default)]
+    pub owned_dye_ids: Vec<i64>,
+    #[serde(default)]
+    pub unlocked_module_ids: Vec<i64>,
+    #[serde(default)]
+    pub ride_ids: Vec<i64>,
+    #[serde(default)]
+    pub ride_skin_ids: Vec<i64>,
+    #[serde(default)]
+    pub unlocked_emoji_ids: Vec<i64>,
+    #[serde(default)]
+    pub vanity_pet_ids: Vec<i64>,
+    #[serde(default)]
+    pub summoned_vanity_pet_id: Option<i64>,
+    #[serde(default)]
+    pub fantasy_atlas_stages: BTreeMap<i64, u32>,
+    #[serde(default)]
+    pub handbook: Option<HandbookProgress>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HandbookProgress {
+    pub important_people_ids: Vec<i64>,
+    pub reading_book_ids: Vec<i64>,
+    pub dictionary_entry_ids: Vec<i64>,
+    pub postcard_ids: Vec<i64>,
+    pub monthly_card_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActivityProgress {
+    pub challenge_dungeons: Vec<DungeonProgress>,
+    pub challenge_targets: Vec<DungeonTargetProgress>,
+    pub master_mode_dungeons: Vec<MasterModeDungeonProgress>,
+    pub weekly_tower: Option<WeeklyTowerProgress>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DungeonProgress {
+    pub dungeon_id: i32,
+    pub completion_count: Option<u32>,
+    pub award_state: Option<i32>,
+    pub score: Option<i32>,
+    /// Raw game value; the exact time unit is not promoted yet.
+    pub pass_time: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DungeonTargetProgress {
+    pub dungeon_id: i32,
+    pub target_id: i32,
+    pub progress: Option<i32>,
+    pub award_state: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MasterModeDungeonProgress {
+    pub season_id: i32,
+    pub difficulty_id: i32,
+    pub dungeon: DungeonProgress,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WeeklyTowerProgress {
+    pub rule_id: Option<i32>,
+    pub maximum_floor_id: Option<i32>,
+    pub previous_maximum_floor_id: Option<i32>,
+    pub claimed_floor_ids: Vec<i32>,
+    pub maximum_jump_reward_floor_id: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeasonMedalProfile {
+    pub season_id: Option<u32>,
+    pub normal_holes: Vec<SeasonMedalHole>,
+    pub core_hole: Option<SeasonMedalHole>,
+    pub core_nodes: Vec<SeasonMedalNode>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeasonMedalHole {
+    pub hole_id: u32,
+    pub level: Option<u32>,
+    pub current_experience: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeasonMedalNode {
+    pub node_id: u32,
+    pub level: Option<u32>,
+    pub selected: Option<bool>,
+    pub slot_id: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeasonCultivationProfile {
+    pub season_id: i32,
+    pub lines: Vec<CultivationLineProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CultivationLineProfile {
+    pub line_type_id: i32,
+    pub area_ids: Vec<i32>,
+    pub areas: Vec<CultivationAreaProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CultivationAreaProfile {
+    pub area_id: i32,
+    pub active: Option<bool>,
+    pub active_effect_score: Option<i32>,
+    pub normal_node_levels: BTreeMap<i32, u32>,
+    pub middle_node_item_ids: BTreeMap<i32, i64>,
+    pub big_node_fantasy_ids: BTreeMap<i32, i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReputationProgress {
+    pub reputation_id: u32,
+    pub level: Option<u32>,
+    pub experience: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SocialDisplay {
     pub guild_id: Option<i64>,
+    #[serde(default)]
+    pub guild_name: Option<String>,
     pub title_ids: Vec<i64>,
     pub medal_ids: Vec<i64>,
+    #[serde(default)]
+    pub medal_slots: BTreeMap<i32, i64>,
+    #[serde(default)]
+    pub profile_theme_id: Option<i64>,
 }
 
 #[cfg(test)]
@@ -217,17 +500,26 @@ mod tests {
             level: Some(60),
             progression: None,
             combat_power: None,
+            combat_power_breakdown: None,
             season_strength: None,
             season: None,
             appearance: None,
             equipment: None,
+            modules: None,
             owned_imagines: None,
+            battle_imagine_skills: None,
             active_skills: None,
             talents: None,
+            talent_progress: None,
             combat_professions: None,
             life_professions: None,
             cosmetics: None,
             collection_summary: None,
+            activity_progress: None,
+            season_medals: None,
+            season_cultivation: None,
+            reputations: None,
+            current_profession_project_id: None,
             social_display: None,
         };
 

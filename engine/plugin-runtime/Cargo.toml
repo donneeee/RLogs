@@ -1,0 +1,14 @@
+[package]
+name = "rlogs-plugin-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rlogs-events = { path = "../events" }
+rlogs-log-format = { path = "../log-format" }
+rlogs-plugin-api = { path = "../plugin-api" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

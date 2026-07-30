@@ -10,6 +10,7 @@ bytes.workspace = true
 etherparse.workspace = true
 pcap-parser.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(windows)'.dependencies]

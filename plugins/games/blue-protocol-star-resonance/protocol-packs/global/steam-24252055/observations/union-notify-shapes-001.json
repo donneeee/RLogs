@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "observation_id": "union-notify-shapes-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "sources": [
+    {
+      "observation_id": "world-load-process-001",
+      "routes": [
+        { "service_id": 504281929, "method_id": 6, "packet_count": 1 },
+        { "service_id": 504281929, "method_id": 15, "packet_count": 3 }
+      ]
+    },
+    {
+      "observation_id": "profile-screen-baseline-001",
+      "routes": [
+        { "service_id": 504281929, "method_id": 15, "packet_count": 1 }
+      ]
+    }
+  ],
+  "reference": {
+    "project": "Blue-Protocol-Source/BPSR-ZDPS",
+    "revision": "c0a375cc8b858562e6d381a4357e10955a80340c",
+    "service_schema": "BPSR-ZDPSLib/protos/ServUnionNtf.cs",
+    "request_schemas": [
+      "BPSR-ZDPSLib/protos/StruNotifyUnionActivityRequest.cs",
+      "BPSR-ZDPSLib/protos/StruNotifyMemberOnlineRequest.cs"
+    ]
+  },
+  "routes": [
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": "notify",
+        "service_id": 504281929,
+        "method_id": 6
+      },
+      "method_name": "NotifyUnionActivity",
+      "observed_packets": 1,
+      "application_lengths": [2],
+      "wire_shape": {
+        "envelope_tags": [1],
+        "request_tags": []
+      },
+      "reference_method_id": 6,
+      "reference_request_fields": [
+        { "tag": 2, "wire_type": "varint", "name": "activity_id" },
+        { "tag": 3, "wire_type": "varint", "name": "notify_type" }
+      ],
+      "confidence": "candidate",
+      "reason": "The current request is empty. It is compatible with the historical method and schema, but does not independently distinguish that schema from another empty request.",
+      "disposition": "opaque",
+      "approved_profile_value": "none_observed"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": "notify",
+        "service_id": 504281929,
+        "method_id": 15
+      },
+      "method_name": "NotifyMemberOnline",
+      "observed_packets": 4,
+      "application_lengths": [10, 11, 15],
+      "wire_shape": {
+        "envelope_tags": [1],
+        "request_tags": [1, 2],
+        "request_fields": [
+          {
+            "tag": 1,
+            "wire_type": "length_delimited",
+            "encoding": "packed_int64",
+            "values_per_packet": [1, 1, 1, 1],
+            "reference_name": "member_id_list"
+          },
+          {
+            "tag": 2,
+            "wire_type": "length_delimited",
+            "encoding": "packed_int64",
+            "values_per_packet": [1, 1, 1, 1],
+            "zero_value_packets": 3,
+            "nonzero_value_packets": 1,
+            "reference_name": "offline_timer"
+          }
+        ]
+      },
+      "reference_method_id": 13,
+      "semantic_check": "The retained-free inspection found that the nonzero field-2 value is a valid Unix-millisecond time on the observation date, matching the reference offline-timer meaning.",
+      "confidence": "verified",
+      "reason": "All four current-build packets exactly match the two packed repeated-int64 fields of the historical NotifyMemberOnline request, including online-zero and offline-timestamp behavior.",
+      "disposition": "opaque",
+      "approved_profile_value": "none",
+      "privacy_reason": "Union member identifiers are not proven public character identifiers, and member presence is not an approved website or profile field."
+    }
+  ],
+  "retained_data": {
+    "packet_payloads": false,
+    "member_ids": false,
+    "offline_timestamps": false,
+    "network_endpoints": false,
+    "account_identifiers": false,
+    "authentication_material": false,
+    "chat_content": false,
+    "character_names": false,
+    "guild_names": false
+  }
+}

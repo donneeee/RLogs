@@ -565,6 +565,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "rlogs-bpsr-module-optimizer"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "rlogs-bpsr-offline-recorder"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "etherparse",
+ "rlogs-capture",
+ "rlogs-core",
+ "rlogs-events",
+ "rlogs-game-bpsr",
+ "rlogs-log-format",
+ "rlogs-network",
+ "serde_json",
+]
+
+[[package]]
 name = "rlogs-capture"
 version = "0.1.0"
 dependencies = [
@@ -572,6 +596,7 @@ dependencies = [
  "etherparse",
  "pcap-parser",
  "serde",
+ "serde_json",
  "thiserror",
  "windows-sys",
 ]
@@ -598,6 +623,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlogs-desktop-host"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "etherparse",
+ "rlogs-capture",
+ "rlogs-core",
+ "rlogs-events",
+ "rlogs-game-bpsr",
+ "rlogs-log-format",
+ "rlogs-network",
+ "rlogs-plugin-combat-meter",
+ "rlogs-plugin-runtime",
+ "serde",
+ "serde_json",
+ "windows-sys",
+]
+
+[[package]]
 name = "rlogs-events"
 version = "0.1.0"
 dependencies = [
@@ -618,6 +662,7 @@ dependencies = [
  "rlogs-core",
  "rlogs-events",
  "rlogs-game-plugin-api",
+ "rlogs-log-format",
  "rlogs-network",
  "rlogs-plugin-host",
  "rlogs-submission",
@@ -661,6 +706,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlogs-log-format"
+version = "0.1.0"
+dependencies = [
+ "rlogs-events",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "rlogs-network"
 version = "0.1.0"
 dependencies = [
@@ -683,6 +739,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlogs-plugin-combat-meter"
+version = "0.1.0"
+dependencies = [
+ "rlogs-events",
+ "rlogs-log-format",
+ "rlogs-plugin-api",
+ "rlogs-plugin-runtime",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rlogs-plugin-host"
 version = "0.1.0"
 dependencies = [
@@ -702,11 +770,27 @@ dependencies = [
 name = "rlogs-plugin-lab"
 version = "0.1.0"
 dependencies = [
+ "rlogs-bpsr-module-optimizer",
  "rlogs-game-plugin-api",
+ "rlogs-log-format",
  "rlogs-plugin-api",
+ "rlogs-plugin-combat-meter",
  "rlogs-plugin-host",
+ "rlogs-plugin-runtime",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "rlogs-plugin-runtime"
+version = "0.1.0"
+dependencies = [
+ "rlogs-events",
+ "rlogs-log-format",
+ "rlogs-plugin-api",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -755,6 +839,16 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "rlogs-rlog-build"
+version = "0.1.0"
+dependencies = [
+ "rlogs-events",
+ "rlogs-log-format",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

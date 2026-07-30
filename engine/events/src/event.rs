@@ -140,6 +140,8 @@ pub enum BoundaryReason {
 #[serde(rename_all = "snake_case")]
 pub enum RunState {
     Entered,
+    Started,
+    Ended,
     Completed,
     Failed,
     Exited,

@@ -12,6 +12,7 @@ rlogs-capture = { path = "../../../engine/capture" }
 rlogs-core = { path = "../../../engine/core" }
 rlogs-events = { path = "../../../engine/events" }
 rlogs-game-plugin-api = { path = "../../../engine/game-plugin-api" }
+rlogs-log-format = { path = "../../../engine/log-format" }
 rlogs-network = { path = "../../../engine/network" }
 rlogs-submission = { path = "../../../engine/submission" }
 serde.workspace = true

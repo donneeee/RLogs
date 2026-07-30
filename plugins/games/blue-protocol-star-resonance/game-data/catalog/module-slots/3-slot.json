@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "kind": "module_slot",
+  "id": 3,
+  "stable_key": "module-slot.3",
+  "localization_key": null,
+  "icon": "icons/modules/slots/3-empty.png",
+  "attributes": {
+    "empty_icon_address": "ui/atlas/mod_new/mod_device_empty_3",
+    "rule_values": [
+      16
+    ],
+    "unknown_value_12": 50
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ModHoleTable",
+    "reference": "client-build:global/steam/24252055@sha256:0bae15229be21cd35fd89d09fccdb6caf3087e22f0075e647a43f215766b4e53",
+    "confidence": "verified"
+  }
+}

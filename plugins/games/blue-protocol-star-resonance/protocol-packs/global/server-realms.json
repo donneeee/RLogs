@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "deployment_id": "global",
+  "realms": [
+    {
+      "realm_id": "asteria",
+      "display_name": "Asteria",
+      "region_id": null
+    },
+    {
+      "realm_id": "bahamar",
+      "display_name": "Bahamar",
+      "region_id": null
+    }
+  ],
+  "endpoint_rules": [
+    {
+      "rule_id": "global-asteria-world-load-001",
+      "identity": {
+        "deployment_id": "global",
+        "region_id": "unknown",
+        "realm_id": "asteria",
+        "world_id": null
+      },
+      "cidr": "43.174.232.118/32",
+      "ports": [10099]
+    }
+  ]
+}

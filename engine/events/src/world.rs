@@ -50,6 +50,7 @@ pub struct MapEvent {
 pub enum DungeonEventKind {
     Entered,
     Started,
+    Ended,
     ObjectiveUpdated,
     BossEngaged,
     BossDefeated,
@@ -66,4 +67,6 @@ pub struct DungeonEvent {
     pub difficulty_id: Option<i32>,
     pub objective_id: Option<i64>,
     pub objective_value: Option<i64>,
+    #[serde(default)]
+    pub objective_complete: Option<bool>,
 }

@@ -11,17 +11,20 @@ plugins/
       resources/              small IDs, aliases, schemas, and other data
 
 assets/
-  my-plugin/                   private external assets
-  shared/
-    my-plugin/                 provider-owned assets exported for reuse
+  rlogs/
+    plugins/my-plugin/         private game-neutral external assets
+    shared/my-plugin/          provider-owned game-neutral shared assets
+  <game-id>/
+    plugins/my-plugin/         private game-specific external assets
+    shared/                    canonical shared game assets
 ```
 
 Do not place loose DLL, WASM, ZIP, JSON, or asset files directly in
 `installed/`. rLogs discovers child folders containing `plugin.toml`. Every
 entrypoint stays inside the package. A resource either stays in that package
-or selects the host-derived `assets/my-plugin/` or
-`assets/shared/my-plugin/` namespace; the manifest cannot choose a different
-plug-in's folder.
+or selects a host-derived game-neutral namespace under
+`assets/rlogs/`; the manifest cannot choose a different plug-in's folder.
+Game-specific resources remain under `assets/<game-id>/`.
 
 Bundled game integrations under `plugins/games/` publish named read-only
 resources. Import those resources in `plugin.toml` instead of copying game

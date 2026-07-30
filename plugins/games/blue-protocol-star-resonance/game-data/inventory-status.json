@@ -199,11 +199,12 @@
         "distinct_addressed_bundles": 154625,
         "class_icons_promoted": 13,
         "guild_icons_promoted": 41,
-        "icon_layout": "assets/shared/blue-protocol-star-resonance/icons/classes/<class>/horizontal.png",
-        "guild_icon_layout": "assets/shared/blue-protocol-star-resonance/icons/guilds/badges/<id>-<name>.png",
-        "compiled_assets": 54
+        "icon_layout": "assets/blue-protocol-star-resonance/shared/icons/classes/<class>/horizontal.png",
+        "guild_icon_layout": "assets/blue-protocol-star-resonance/shared/icons/guilds/badges/<id>-<name>.png",
+        "imagine_icon_layout": "assets/blue-protocol-star-resonance/shared/icons/imagines/battle/<item-id>-<name>.png",
+        "compiled_assets": 140
       },
-      "next": "resolve skill, status, equipment, imagine, entity, map, and profile icons into matching searchable domain folders"
+      "next": "resolve skill, status, equipment, entity, map, and profile icons into matching searchable domain folders"
     },
     {
       "domain": "network_protocol",

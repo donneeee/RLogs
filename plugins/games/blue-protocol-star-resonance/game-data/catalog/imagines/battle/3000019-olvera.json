@@ -1,0 +1,99 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000019,
+  "stable_key": "imagine.battle.3000019",
+  "localization_key": "imagine.3000019.name",
+  "icon": "icons/imagines/battle/3000019-olvera.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000019,
+    "item_tier": 4,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359899672,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_025",
+    "icon_pixel_sha256": "8c2f5f22e07cdc50461ae966ead0f2c8c0de4e34be0c8c71280b2b41b401654a",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3922.description",
+    "monster_name_localization_key": "battle_imagine_skill.3922.monster_name",
+    "aoyi_skill_id": 3922,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3922.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture025",
+    "skill_effect_id": 392201,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 76,
+        "effect_record_offset": 5774,
+        "values": [
+          {
+            "key": "prob",
+            "raw_value": 1200
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 77,
+        "effect_record_offset": 5842,
+        "values": [
+          {
+            "key": "prob",
+            "raw_value": 2400
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 78,
+        "effect_record_offset": 5900,
+        "values": [
+          {
+            "key": "prob",
+            "raw_value": 3600
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 79,
+        "effect_record_offset": 5976,
+        "values": [
+          {
+            "key": "prob",
+            "raw_value": 4800
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 80,
+        "effect_record_offset": 6038,
+        "values": [
+          {
+            "key": "prob",
+            "raw_value": 6000
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3010019,
+    "will_name_localization_key": "imagine_will.3010019.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000019",
+    "confidence": "verified"
+  }
+}

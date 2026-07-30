@@ -13,9 +13,11 @@ classification policy as the runtime.
   process-owned frames.
 - `plugin-inspect`: validates the `plugins/installed/` folder and prints
   discovered packages, shared imports/exports, load order, and operation hooks.
+- `rlog-build`: turns a human-readable sanitized canonical-event source into a
+  sealed `.rlog` replay fixture.
 - `reference-reconcile`: compares sanitized observed routes with
   exact-revision, lineage-aware route-name manifests and preserves conflicts.
 
-The BPSR-specific `profile-audit`, `protocol-journal`, and
+The BPSR-specific `offline-recorder`, `profile-audit`, `protocol-journal`, and
 `protocol-coverage` tools live at
 `plugins/games/blue-protocol-star-resonance/tools/`.

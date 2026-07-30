@@ -4,7 +4,7 @@
   "id": 1115,
   "stable_key": "talent.1115",
   "localization_key": "talent.1115.name",
-  "icon": null,
+  "icon": "icons/talents/shared/marksman-falconry-spec-1115-radiant-spirit.png",
   "attributes": {
     "class_key": "marksman",
     "spec_key": "falconry-spec",
@@ -42,10 +42,23 @@
     "tree_nodes": [
       {
         "node_id": 1152001,
+        "talent_id": 1115,
+        "profession_id": 11,
         "branch": 1,
+        "is_specialization_node": true,
         "prerequisite_node_ids": [
           34107
-        ]
+        ],
+        "dependent_node_ids": [],
+        "position": {
+          "x": 1680,
+          "y": 3360
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 117,
+        "stage_node_index": 11,
+        "specialization_id": 117
       }
     ],
     "class_id": 11,
@@ -59,8 +72,8 @@
     }
   ],
   "provenance": {
-    "source": "ctb.TalentTable",
-    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "source": "ctb.TalentTable+ctb.TalentTreeTable+ctb.TalentStageTable",
+    "reference": "client-build:global/steam/24252055@sha256:4214ce9890679abecc2d60a6cd23d9b2432905dbdcc35687b440d7666da2d812+sha256:9a8b3258252c911f29ea8a7aea1621c0912498c867e6707d0aac23813c2b389c",
     "confidence": "corroborated"
   }
 }

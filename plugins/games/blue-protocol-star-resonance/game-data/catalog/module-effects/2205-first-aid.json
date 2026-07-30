@@ -1,0 +1,261 @@
+{
+  "schema_version": 2,
+  "kind": "module_effect",
+  "id": 2205,
+  "stable_key": "module-effect.2205",
+  "localization_key": "module-effect.2205.name",
+  "icon": "icons/modules/effects/2205-first-aid.png",
+  "attributes": {
+    "effect_type": 2,
+    "effect_library_ids": [
+      121,
+      221,
+      321,
+      322
+    ],
+    "is_negative": false,
+    "show_shield": false,
+    "name_id": 985304955,
+    "icon_address": "ui/atlas/mod_effect/mod_effect_icon_024",
+    "levels": [
+      {
+        "row_id": 113,
+        "level": 0,
+        "name_id": 985304955,
+        "overview_id": 647913745,
+        "required_link_points": 0,
+        "player_level": 1,
+        "effect_config_records": [],
+        "effect_keys": [
+          [
+            "hpPct",
+            "attr"
+          ]
+        ],
+        "effect_values": [],
+        "fight_value": 0,
+        "name_localization_key": "module-effect.2205.level.0.name",
+        "overview_localization_key": "module-effect.2205.level.0.overview"
+      },
+      {
+        "row_id": 114,
+        "level": 1,
+        "name_id": 985304956,
+        "overview_id": 647913746,
+        "required_link_points": 1,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11342,
+            10
+          ]
+        ],
+        "effect_keys": [
+          [
+            "hpPct",
+            "attr"
+          ]
+        ],
+        "effect_values": [
+          [
+            0
+          ]
+        ],
+        "fight_value": 14,
+        "name_localization_key": "module-effect.2205.level.1.name",
+        "overview_localization_key": "module-effect.2205.level.1.overview"
+      },
+      {
+        "row_id": 115,
+        "level": 2,
+        "name_id": 985304957,
+        "overview_id": 647913747,
+        "required_link_points": 4,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11342,
+            20
+          ]
+        ],
+        "effect_keys": [
+          [
+            "hpPct",
+            "attr"
+          ]
+        ],
+        "effect_values": [
+          [
+            0
+          ]
+        ],
+        "fight_value": 29,
+        "name_localization_key": "module-effect.2205.level.2.name",
+        "overview_localization_key": "module-effect.2205.level.2.overview"
+      },
+      {
+        "row_id": 116,
+        "level": 3,
+        "name_id": 985304958,
+        "overview_id": 647913748,
+        "required_link_points": 8,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11342,
+            30
+          ],
+          [
+            1,
+            11022,
+            20
+          ]
+        ],
+        "effect_keys": [
+          [
+            "hpPct",
+            "attr"
+          ]
+        ],
+        "effect_values": [
+          [
+            0
+          ]
+        ],
+        "fight_value": 59,
+        "name_localization_key": "module-effect.2205.level.3.name",
+        "overview_localization_key": "module-effect.2205.level.3.overview"
+      },
+      {
+        "row_id": 117,
+        "level": 4,
+        "name_id": 985304959,
+        "overview_id": 647913749,
+        "required_link_points": 12,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11342,
+            40
+          ],
+          [
+            1,
+            11022,
+            40
+          ]
+        ],
+        "effect_keys": [
+          [
+            "hpPct",
+            "attr"
+          ]
+        ],
+        "effect_values": [
+          [
+            0
+          ]
+        ],
+        "fight_value": 89,
+        "name_localization_key": "module-effect.2205.level.4.name",
+        "overview_localization_key": "module-effect.2205.level.4.overview"
+      },
+      {
+        "row_id": 118,
+        "level": 5,
+        "name_id": 985304960,
+        "overview_id": 647913750,
+        "required_link_points": 16,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11342,
+            50
+          ],
+          [
+            1,
+            11022,
+            60
+          ],
+          [
+            3,
+            2302320,
+            1
+          ]
+        ],
+        "effect_keys": [
+          [
+            "hpPct",
+            "attr"
+          ]
+        ],
+        "effect_values": [
+          [
+            5000,
+            720
+          ]
+        ],
+        "fight_value": 298,
+        "name_localization_key": "module-effect.2205.level.5.name",
+        "overview_localization_key": "module-effect.2205.level.5.overview"
+      },
+      {
+        "row_id": 119,
+        "level": 6,
+        "name_id": 985304961,
+        "overview_id": 647913751,
+        "required_link_points": 20,
+        "player_level": 1,
+        "effect_config_records": [
+          [
+            1,
+            11342,
+            60
+          ],
+          [
+            1,
+            11022,
+            80
+          ],
+          [
+            3,
+            2302320,
+            1
+          ]
+        ],
+        "effect_keys": [
+          [
+            "hpPct",
+            "attr"
+          ]
+        ],
+        "effect_values": [
+          [
+            5000,
+            1200
+          ]
+        ],
+        "fight_value": 448,
+        "name_localization_key": "module-effect.2205.level.6.name",
+        "overview_localization_key": "module-effect.2205.level.6.overview"
+      }
+    ],
+    "name_localization_key": "module-effect.2205.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ModEffectTable+ctb.ModEffectLibTable",
+    "reference": "client-build:global/steam/24252055@sha256:bcfe2d0d694d398e74abf23d01d389368353785c0df5d98202a218bb70e317c3+sha256:8c4e893b4b8b19412e2f0dfadaa9565182f6aced95fefae0e599834001e5dc9b",
+    "confidence": "verified"
+  }
+}

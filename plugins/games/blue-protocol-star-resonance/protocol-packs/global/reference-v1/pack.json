@@ -221,10 +221,10 @@
         "method_id": 79
       },
       "service_name": "WorldNtf",
-      "method_name": "NotifySceneLineInfo",
-      "message_name": "NotifySceneLineInfo",
+      "method_name": "UnknownWorldNotify79",
+      "message_name": null,
       "confidence": "candidate",
-      "features": ["scene", "map", "world_state"],
+      "features": ["world_state", "character_profile", "unknown_research"],
       "disposition": "opaque"
     },
     {

@@ -22,26 +22,36 @@ Reference pins:
 | display ID | `display_id` | verified in Global Steam build 24252055 complete snapshot | opt-in public |
 | character name | `display_name` | verified in Global Steam build 24252055 complete snapshot | opt-in public |
 | server ID | `server_id` | decoder implemented; absent from the verified complete snapshot | required for region/world resolution |
-| class/profession ID | `class_id` | verified in the complete snapshot; exact-build profession names, descriptions, icons, and theme references statically corroborated | public |
+| class/profession ID | `class_id` | current profession verified in the complete snapshot; exact-build profession names, descriptions, icons, and theme references statically corroborated | public |
 | specialization | `specialization_id` | observed through skills, talents, and buffs in Global; projection rule pending | public |
 | character level | `level` | verified in the complete snapshot; `PlayerLevelTable` primary level key statically corroborated | public |
-| character experience and prior-season max level | `progression` | historical schema located; current mapping not declared | public |
+| character experience and prior-season max level | `progression` | both fields verified in the complete snapshot | public |
 | combat/fight power | `combat_power` | verified in Global Steam build 24252055 complete snapshot | public |
-| season strength | `season_strength` | current Global attribute candidate; profile correlation pending | public |
-| season ID, level, and power | `season` | canonical contract implemented; season-level static keys corroborated, current character-state mapping still needed | public |
-| gender, body size, face choices, colors, and height | `appearance` | historical character-facing schema located; current mapping not declared | explicit opt-in |
-| avatar, card style, and frame IDs | `appearance` | all five `AvatarInfo` outer fields structurally verified; profile-image, objective, and name-card static definitions corroborated | opt-in public |
+| season strength | `season_strength` | verified through `NotifySocialData` | public |
+| season ID, level, experience, and power | `season` | ID, level, and experience verified; power remains unmapped | public |
+| gender, body size, voice, face choices, colors, and height | `appearance` | active selections and unlocked face-item/voice IDs verified in the complete snapshot | explicit opt-in |
+| avatar, card style, and frame IDs | `appearance` | verified through the complete snapshot and social route; profile-image, objective, and name-card static definitions corroborated | opt-in public |
+| unlocked profile-image IDs | `appearance.unlocked_profile_image_ids` | current decoder verified; the saved character had no enabled entries | explicit opt-in |
 | game profile and half-body pictures | future reviewed image reference | URL tag and changed verification substructure verified without rendering values | explicit opt-in through reviewed CDN proxy |
-| equipped gear | `equipment` | item/type, equipment part/model, and weapon-design definitions corroborated; owner loadout schema still needed | public |
-| refinement, enchantments, and sets | nested equipment fields | current static candidate arrays located but intentionally unresolved; runtime schema/game-data relations needed | public |
-| owned/equipped Imagines | `owned_imagines` | canonical contract and extraction requirement implemented; current source mapping needed | opt-in public |
-| active skills and levels | `active_skills` | Global packet evidence exists; stable profile projection pending | public |
-| talents and levels | `talents` | Global packet evidence exists; stable profile projection pending | public |
-| combat-profession levels, experience, loadouts, skins, and talent nodes | `combat_professions` | profession display catalog corroborated; character progression/loadout mapping not declared | public |
-| life-profession levels, experience, and specializations | `life_professions` | detailed historical schema located; current mapping not declared | opt-in public |
-| owned cosmetics | `cosmetics` | fashion, weapon-skin, and vehicle definitions corroborated; ownership source mapping needed | opt-in public |
-| fashion, mount, and weapon-skin ownership/collection points | `collection_summary` | fashion collection milestones corroborated; character totals and ownership remain unmapped | opt-in public |
-| guild, titles, and displayed medals | `social_display` | medal/name-card/guild-icon definitions corroborated; guild identity and displayed role still need current runtime verification | public guild identity/display; opt-in titles and medals |
+| equipped gear | `equipment` | 11 slots joined to item instance/config IDs in the complete snapshot; quality and exact-build static definitions available | public |
+| refinement, enchantments, and sets | nested equipment fields | refinement/failure counts, attribute maps, and enchantment IDs/levels/types verified; effective item level and set ID remain unmapped | public |
+| equipped modules and module inventory | `modules` | verified: 5 equipped slots and 649 package-5 module instances, with browser-safe string instance IDs | opt-in public |
+| module parts, initial links, upgrade history, type, level, quality, and success rate | nested `modules.inventory` fields | verified: 1,937 current parts, initial-link values on all 649 modules, and 9,526 upgrade records | opt-in public |
+| owned/equipped Imagine item state | `owned_imagines` | decoder implemented; the verified snapshot carried no entries on this source | opt-in public |
+| Battle Imagine skill library and equipped slots | `battle_imagine_skills` | 29 current skill records verified, including 2 equipped slots; 73 exact current-build skill-to-item definitions are statically mapped | opt-in public |
+| active skills and levels | `active_skills` | current-profession loadout and skill level/remodel/skin IDs verified | public |
+| current talents | `talents` | 70 selected node IDs verified for the current profession; per-node level semantics remain absent | public |
+| talent point progress | `talent_progress` | total talent points verified; reset count was absent in the saved snapshot | public |
+| combat-profession levels, experience, loadouts, skins, and talent nodes | `combat_professions` | all 9 profession records verified; 4 carried talent loadouts with 200 selected nodes and used-point counts; stage configuration was absent | public |
+| life-profession levels, experience, and specializations | `life_professions` | all 9 profession records and specialization levels verified | opt-in public |
+| owned cosmetics | `cosmetics` | generic decoder implemented; the verified snapshot carried no entries on this source | opt-in public |
+| fashion, mount, weapon-skin, and dye ownership/collection points | `collection_summary` | 10 equipped fashion slots, owned IDs, and collection-point totals verified | opt-in public |
+| rides, ride skins, emojis, vanity pets, Fantasy Atlas, and handbook | nested `collection_summary` fields | 1 ride, 1 ride skin, 53 emojis, 2 pets, 2 atlas stages, and 440 handbook entries verified | opt-in public |
+| dungeon, master-mode, and weekly-tower progression | `activity_progress` | 133 master-mode rows and weekly-tower state verified; normal challenge arrays were empty | opt-in public |
+| seasonal medals and cultivation | `season_medals`, `season_cultivation` | 7 holes, 8 nodes, 2 season records, 4 lines, and 16 areas verified | opt-in public |
+| reputation and current profession project | `reputations`, `current_profession_project_id` | one reputation row and a current project ID verified | opt-in public |
+| guild, titles, and medal map | `social_display` | guild identity/name and title verified; medal IDs are retained locally while owned-vs-displayed semantics remain pending | public guild identity/display; opt-in titles and medals |
+| combat-power component breakdown | `combat_power_breakdown` | total plus 6 function components and 4 nested subcomponents verified | public per build |
 | panel combat stats | future typed stat snapshot | many Global attribute IDs observed; current formula/unit verification required | public per log/build |
 | current position | timeline `Position` event | decoder implemented for entity attributes | never part of public profile by default |
 
@@ -70,16 +80,25 @@ rediscovered and proven for an exact current client build.
 
 The process-aware `world-load-process-001` observation verified
 `WorldNtf/SyncContainerData` on Global Steam build `24252055`. The selective
-decoder produced one character-profile event with character UID, display UID,
-display name, class ID, level, and combat power. The snapshot did not carry
-server ID or scene data, so region/world and map context remain separate
-evidence requirements.
+decoder now produces one privacy-reviewed character-profile patch containing
+identity, complete face/color/avatar appearance, level progression, 11
+equipped items with attributes and enchantments, 5 equipped modules, a
+649-instance module inventory, 9 combat professions and their loadouts, 9 life
+professions, and the fashion/mount/weapon-skin collection. The expanded replay
+also verifies 29 Battle Imagine skill records with 2 equipped slots, 4
+profession talent loadouts containing 200 selected nodes, total talent points,
+extended ride/emoji/pet/atlas/handbook collections, 133 master-mode dungeon
+rows, weekly-tower progress, seasonal medal and cultivation state, reputation,
+and the current profession project. The snapshot did not carry server ID,
+talent reset count, talent-stage configuration, or scene data, so
+region/world and map context remain separate evidence requirements.
 
 The current character container has observed top-level tags through `121`.
-Tags `102`, `103`, `104`, and `106` through `121` are present beyond the
-historical reference ceiling and remain intentionally unmapped. They are a
-current-client extraction backlog, not permission to copy old names onto new
-fields.
+The current BPSR-Deeps schema names every observed top-level tag, including
+`102`, `103`, `104`, and `106` through `121` beyond the older reference
+ceiling. The sanitized tag-to-name census is
+`world-load-character-surfaces-001.json`. Names establish a research route;
+they do not bypass per-field semantic and privacy review.
 
 The character-base section also contained tags `2` and `27`, historically
 associated with account ID and open ID. RLogs does not declare either field in
@@ -121,15 +140,18 @@ inventory and unresolved worklist are under
 
 ## Additional profile surfaces worth investigating
 
-- equipped and owned Imagine levels, breakthroughs, passives, and slots;
-- gear instance IDs, base items, slot refinement, recast rolls, enchantments,
-  suit/set bonuses, quality, and effective item level;
-- specialization selectors, passive ownership, active skill levels, cooldown
-  configuration, talent nodes, and seasonal cultivation choices;
-- character level/experience, seasonal level/strength/power, rank/reduction
-  levels, and other progression systems;
+- the still-empty Imagine item-ownership source and exact semantics for the
+  verified Battle Imagine skill levels, remodels, skins, and slots;
+- gear suit/set bonuses and effective item level;
+- proven names for the three remaining module-initialization roll dimensions
+  and user-facing optimizer scoring presets;
+- specialization selectors, passive ownership, cooldown configuration, and
+  seasonal cultivation choices;
+- the website implementation of the now-promoted exact talent-board layout,
+  active-stage filtering, icons, and accessible list view;
+- seasonal power, rank/reduction levels, and other progression systems;
 - combat-power components and complete panel-stat snapshots;
-- profession levels, profession equipment, and profession skill progression;
+- profession equipment and remaining profession skill metadata;
 - reviewed game-hosted profile/half-body pictures, avatars, frames, titles,
   cards, fashion, dyes, mounts, and other cosmetics;
 - achievement/collection summaries that are explicitly character-facing;

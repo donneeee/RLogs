@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "kind": "module",
+  "id": 5500304,
+  "stable_key": "module.5500304",
+  "localization_key": "module.5500304.name",
+  "icon": "icons/modules/items/guard/5500304-excellent-guard-module-premium.png",
+  "attributes": {
+    "category_id": 3,
+    "category_key": "guard",
+    "item_name_id": 1991032156,
+    "configuration_name_id": 1020673709,
+    "effect_library_ids": [
+      331,
+      332,
+      332
+    ],
+    "effect_ids": [
+      2304,
+      1307,
+      1308,
+      2404,
+      2405,
+      1407,
+      1408,
+      1409,
+      1410
+    ],
+    "is_unique": false,
+    "similar_config_id": 5500300,
+    "decompose_award_packs": [
+      [
+        0,
+        99,
+        20000090
+      ]
+    ],
+    "initialization_id": 104,
+    "can_link": false,
+    "item_icon_address": "item_icons_device_protect5",
+    "name_localization_key": "module.5500304.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ModTable",
+    "reference": "client-build:global/steam/24252055@sha256:99efcc74fbf60df610ce39e6ecdbbaa3a1dcf8551f405c94311536d145f7ccdb",
+    "confidence": "verified"
+  }
+}

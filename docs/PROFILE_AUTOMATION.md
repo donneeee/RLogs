@@ -29,10 +29,44 @@ publisher ID, Discord ID, or session identifier.
 
 Global Steam build `24252055` sent one complete
 `WorldNtf/SyncContainerData` snapshot during the process-aware world load. The
-selective decoder verified character UID, display UID, name, class, level, and
-combat power.
+selective decoder verifies character UID, display UID, name, current
+profession, level/experience, prior-season maximum level, combat power, full
+face/color/avatar appearance, equipped gear identity/quality/refinement/
+attributes/enchantments, equipped modules and module inventory, combat-
+profession skill and talent loadouts, life professions, and collection
+ownership.
 
-A structural-only audit also verified that character-base tag `25` still has
+In the saved snapshot this comprises 11 equipped items, 5 equipped module
+slots, 649 module instances, 1,937 module parts, 9 combat professions, 11
+active skills, 70 current-profession talent nodes, 4 profession talent
+loadouts containing 200 nodes, 9 life professions, 29 Battle Imagine skills
+with 2 equipped slots, 193 fashion IDs with 10 equipped slots, 11 mount IDs, 4
+weapon-skin IDs, 1 ride and ride skin, 53 emojis, 2 vanity pets, 2 Fantasy
+Atlas stages, 440 handbook entries, 133 master-mode dungeon rows, weekly-tower
+progress, 7 seasonal medal holes, 8 medal nodes, 2 cultivation seasons with 4
+lines and 16 areas, one reputation row, and a combat-power breakdown with 6
+top-level and 4 nested components. Current-season experience, total talent
+points, and the current profession project are also present. The audit reports
+only field presence and counts; it does not print captured character values.
+
+The module projection reads only package 5 and the character's module state.
+It emits config IDs, browser-safe string instance IDs, equipped-slot joins,
+quality/type/level, part IDs, initial link values, upgrade outcomes, and the
+reported success rate. It deliberately omits acquisition/expiration times,
+binding/source state, currencies, and arbitrary effect-parameter strings.
+Static names, icons, effect definitions, and scoring rules are joined by the
+website from the exact-build game-data catalog rather than duplicated in every
+profile.
+
+Seven `SocialNtf/NotifySocialData` packets in the same capture now pass a
+second selective decoder. The privacy-reviewed projection verifies public
+character/display IDs, name and level, gender/body/avatar/frame/card IDs,
+current profession and weapon skin, equipped item IDs, combat power, season
+level/strength, guild ID/name, titles/medals, and world/line context. Equipment
+is sorted before comparison so protobuf collection order cannot invent profile
+changes; profile and world-context updates are deduplicated independently.
+
+The structural audit also verifies that character-base tag `25` still has
 the historical five-part `AvatarInfo` outer shape:
 
 | Avatar surface | Current structural evidence |
@@ -68,6 +102,30 @@ The machine-readable bridge at
 records this
 boundary for each canonical profile surface.
 
+## Opt-in profile-sync plug-in boundary
+
+The direct implementation path is now proven well enough to separate profile
+publication from parsing:
+
+- the BPSR game plug-in captures and decodes approved character state into
+  local `CharacterProfile` events;
+- a separate `bpsr-profile-sync` plug-in subscribes only to those canonical
+  events, assembles the website profile, and owns the explicit network
+  capability;
+- disabling or removing `bpsr-profile-sync` stops profile assembly,
+  persistence, and submission without disabling packet parsing, combat logs,
+  or other ACT-style plug-ins;
+- the profile-sync plug-in never receives raw packets, journals, login
+  messages, account identifiers, or authentication material;
+- localization and ID/icon resolution remain shared BPSR assets instead of
+  being copied into the profile-sync plug-in.
+
+The existing website-payload projection will move behind this plug-in boundary
+before profile submission is enabled. Its first baseline will use the already
+reviewed `SyncContainerData`, `SyncContainerDirtyData`, `NotifySocialData`, and
+`SyncSeason` events. Additional surfaces are added only after their individual
+field policies pass privacy tests.
+
 ## What the original projects tell us
 
 The historical native parser is useful as a schema inventory:
@@ -91,6 +149,13 @@ statistics, dungeon, currency, and progression-shaped data. Discord avatar
 URLs are a separate login/account-linking surface and are not game character
 pictures.
 
+Its module page also demonstrates the useful behavioral split RLogs retains:
+character module state comes from the parser, while module names, icons,
+attribute definitions, scoring presets, and optimization logic live in the
+website. RLogs does not retain the historical implementation's whole-container
+storage/upload path. The website receives only the typed allowlist described
+above.
+
 The historical website tree does not expose union/guild profile fields, but
 RLogs explicitly allows public guild identity and display data: guild ID/name,
 the displayed badge, and a character's public guild role/rank. Exact current
@@ -104,12 +169,23 @@ user-generated-content surface and are never promoted automatically.
 Profile automation is built in this order:
 
 1. `WorldNtf/SyncContainerData` supplies the owner-character snapshot.
-2. `WorldNtf/SyncContainerDirtyData` supplies reviewed incremental updates.
-3. `SocialNtf/NotifySocialData` supplies public display data for other
-   characters after its current shape is verified.
+2. `WorldNtf/SyncContainerDirtyData` supplies reviewed incremental updates
+   through a bounded proprietary-stream decoder. It consumes known private
+   fields without retaining them and abandons a bounded object when an unknown
+   field type cannot be skipped safely. In the current five-packet world-load
+   sample, all updates were empty, quest/story-only, or private time/internal
+   serial changes, so they intentionally produced no profile events.
+3. `SocialNtf/NotifySocialData` supplies its now-verified public character,
+   appearance, profession, equipment, power, season, guild, and display data.
 4. `UnionNtf` supplies guild identity and display changes after exact methods
-   and current schemas are proven.
-5. Current game descriptors and data tables provide IDs, schemas,
+   and current schemas are proven. The resolved `NotifyUnionActivity` and
+   `NotifyMemberOnline` routes do not supply approved guild identity/display
+   fields and remain opaque; member presence is not website-bound profile data.
+5. `WorldNtf/NotifyUserAllValidBattlePassData` is now structurally verified,
+   but remains opaque because progression is mixed with unlock, purchase, and
+   reward-claim state. Any future projection belongs to the explicit opt-in
+   profile-sync field policy.
+6. Current game descriptors and data tables provide IDs, schemas,
    localization, icon relations, and exact-build provenance.
 
 For every field, runtime evidence establishes character state and static game

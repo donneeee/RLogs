@@ -4,7 +4,7 @@
   "id": 1331,
   "stable_key": "talent.1331",
   "localization_key": "talent.1331.name",
-  "icon": null,
+  "icon": "icons/talents/shared/beat-performer-shared-1331-encore-chain.png",
   "attributes": {
     "class_key": "beat-performer",
     "spec_key": "shared",
@@ -41,19 +41,47 @@
     "name_localization_key": "talent.1331.name",
     "tree_nodes": [
       {
-        "node_id": 1364001,
-        "branch": 1,
-        "prerequisite_node_ids": [
-          1355001
-        ]
-      },
-      {
         "node_id": 1342001,
+        "talent_id": 1331,
+        "profession_id": 13,
         "branch": 0,
+        "is_specialization_node": true,
         "prerequisite_node_ids": [
           6737,
           6565
-        ]
+        ],
+        "dependent_node_ids": [],
+        "position": {
+          "x": 1830,
+          "y": 5430
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 119,
+        "stage_node_index": 39,
+        "specialization_id": 119
+      },
+      {
+        "node_id": 1364001,
+        "talent_id": 1331,
+        "profession_id": 13,
+        "branch": 1,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          1355001
+        ],
+        "dependent_node_ids": [
+          1358001
+        ],
+        "position": {
+          "x": 3330,
+          "y": 5430
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 120,
+        "stage_node_index": 35,
+        "specialization_id": 120
       }
     ],
     "class_id": 13
@@ -66,8 +94,8 @@
     }
   ],
   "provenance": {
-    "source": "ctb.TalentTable",
-    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "source": "ctb.TalentTable+ctb.TalentTreeTable+ctb.TalentStageTable",
+    "reference": "client-build:global/steam/24252055@sha256:4214ce9890679abecc2d60a6cd23d9b2432905dbdcc35687b440d7666da2d812+sha256:9a8b3258252c911f29ea8a7aea1621c0912498c867e6707d0aac23813c2b389c",
     "confidence": "corroborated"
   }
 }

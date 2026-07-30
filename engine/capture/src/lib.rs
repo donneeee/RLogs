@@ -5,18 +5,24 @@ mod offline;
 mod pcap_writer;
 mod process_filter;
 #[cfg(windows)]
+mod recording;
+#[cfg(windows)]
 mod windows;
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub use dumpcap::DumpcapLiveConfig;
+pub use dumpcap::{DumpcapLiveConfig, LiveCaptureStopHandle};
 pub use offline::OfflineCapture;
 pub use pcap_writer::{PcapWriteError, PcapWriter};
 pub use process_filter::{
     OwnedProcessCapture, OwnedProcessCaptureConfig, OwnedProcessCaptureConfigError,
     OwnedProcessCaptureMetrics, ProcessSocketOwner, TcpConnection, TcpEndpoint,
+};
+#[cfg(windows)]
+pub use recording::{
+    OwnedCaptureRecordingError, OwnedCaptureRecordingResult, record_owned_capture_to_files,
 };
 #[cfg(windows)]
 pub use windows::{WindowsOwnedDumpcapCapture, WindowsProcessSocketOwner};

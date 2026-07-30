@@ -37,9 +37,17 @@
       "service_name": "WorldNtf",
       "method_name": "EnterScene",
       "message_name": "EnterScene",
-      "confidence": "candidate",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/world-load-process-001.json"
+        }
+      ],
       "features": ["scene", "map", "entity_lifecycle", "character_identity"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "world_state",
+      "decoder": "enter_scene_v1"
     },
     {
       "route": {
@@ -51,9 +59,17 @@
       "service_name": "WorldNtf",
       "method_name": "SyncNearEntities",
       "message_name": "SyncNearEntities",
-      "confidence": "candidate",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/world-load-process-001.json"
+        }
+      ],
       "features": ["entity_lifecycle", "entity_attributes", "character_identity", "monster_identity", "position"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "actor_state",
+      "decoder": "sync_near_entities_v1"
     },
     {
       "route": {
@@ -95,7 +111,9 @@
         }
       ],
       "features": ["character_profile", "equipment", "profession", "talent", "unknown_research"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "sync_container_dirty_data_v1"
     },
     {
       "route": {
@@ -107,7 +125,7 @@
       "service_name": "WorldNtf",
       "method_name": "SyncServerTime",
       "message_name": "SyncServerTime",
-      "confidence": "candidate",
+      "confidence": "verified",
       "provenance": [
         {
           "source": "controlled-current-build-observation",
@@ -115,7 +133,9 @@
         }
       ],
       "features": ["world_state"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "world_state",
+      "decoder": "sync_server_time_v1"
     },
     {
       "route": {
@@ -127,9 +147,17 @@
       "service_name": "WorldNtf",
       "method_name": "SyncNearDeltaInfo",
       "message_name": "SyncNearDeltaInfo",
-      "confidence": "candidate",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/world-load-process-001.json"
+        }
+      ],
       "features": ["entity_attributes", "position", "skill", "damage", "healing", "shield", "death", "status_effect"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "combat",
+      "decoder": "sync_near_delta_v1"
     },
     {
       "route": {
@@ -161,9 +189,17 @@
       "service_name": "WorldNtf",
       "method_name": "SyncToMeDeltaInfo",
       "message_name": "SyncToMeDeltaInfo",
-      "confidence": "candidate",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/world-load-process-001.json"
+        }
+      ],
       "features": ["entity_attributes", "position", "skill", "cooldown", "damage", "healing", "shield", "death", "status_effect"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "combat",
+      "decoder": "sync_to_me_delta_v1"
     },
     {
       "route": {
@@ -231,9 +267,17 @@
       "service_name": "WorldNtf",
       "method_name": "SyncDungeonData",
       "message_name": "SyncDungeonData",
-      "confidence": "candidate",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/world-load-process-001.json"
+        }
+      ],
       "features": ["dungeon", "dungeon_objective"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "encounter",
+      "decoder": "sync_dungeon_data_v1"
     },
     {
       "route": {
@@ -305,16 +349,20 @@
         "method_id": 79
       },
       "service_name": "WorldNtf",
-      "method_name": "UnknownWorldNotify79",
-      "message_name": null,
-      "confidence": "candidate",
+      "method_name": "NotifyUserAllValidBattlePassData",
+      "message_name": "NotifyUserAllValidBattlePassData",
+      "confidence": "verified",
       "provenance": [
         {
-          "source": "controlled-current-build-observation",
-          "reference": "protocol-packs/global/steam-24252055/observations/world-load-process-001.json"
+          "source": "controlled-current-build-shape-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/world-notify-79-shape-001.json"
+        },
+        {
+          "source": "historical-descriptor-exact-shape-match",
+          "reference": "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/protos/StruBattlePass.cs"
         }
       ],
-      "features": ["world_state", "character_profile", "unknown_research"],
+      "features": ["character_profile", "progression", "battle_pass"],
       "disposition": "opaque"
     },
     {
@@ -355,9 +403,11 @@
       "service_name": "SocialNtf",
       "method_name": "NotifySocialData",
       "message_name": "NotifySocialData",
-      "confidence": "candidate",
+      "confidence": "verified",
       "features": ["social", "character_profile"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "notify_social_data_v1"
     },
     {
       "route": {
@@ -387,16 +437,20 @@
         "method_id": 15
       },
       "service_name": "UnionNtf",
-      "method_name": "UnknownUnionNotify15",
-      "message_name": null,
-      "confidence": "candidate",
+      "method_name": "NotifyMemberOnline",
+      "message_name": "NotifyMemberOnline",
+      "confidence": "verified",
       "provenance": [
         {
-          "source": "controlled-current-build-observation",
-          "reference": "protocol-packs/global/steam-24252055/observations/profile-screen-baseline-001.json"
+          "source": "controlled-current-build-shape-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/union-notify-shapes-001.json"
+        },
+        {
+          "source": "historical-descriptor-exact-shape-match",
+          "reference": "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/protos/StruNotifyMemberOnlineRequest.cs"
         }
       ],
-      "features": ["unknown_research"],
+      "features": ["social"],
       "disposition": "opaque"
     },
     {
@@ -469,18 +523,23 @@
         "method_id": 3
       },
       "service_name": "WorldLoginNtf",
-      "method_name": "UnknownWorldLoginNotify3",
-      "message_name": null,
-      "confidence": "candidate",
+      "method_name": "NotifyEnterWorld",
+      "message_name": "NotifyEnterWorld",
+      "confidence": "verified",
       "provenance": [
         {
           "source": "controlled-current-build-observation",
           "reference": "protocol-packs/global/steam-24252055/observations/world-load-profile-001.json"
+        },
+        {
+          "source": "zdps-0.1.7.3",
+          "reference": "Blue-Protocol-Source/BPSR-ZDPS@4a4203c702b269d9a95f1e7356405f3cfc16379d"
         }
       ],
-      "features": ["unknown_research"],
-      "disposition": "prohibited",
-      "class": "private_account_data"
+      "features": ["world_state"],
+      "disposition": "allowed",
+      "domain": "world_state",
+      "decoder": "notify_enter_world_v1"
     },
     {
       "route": {
@@ -689,10 +748,20 @@
         "method_id": 6
       },
       "service_name": "UnionNtf",
-      "method_name": "UnknownUnionNotify6",
-      "message_name": null,
+      "method_name": "NotifyUnionActivity",
+      "message_name": "NotifyUnionActivity",
       "confidence": "candidate",
-      "features": ["social", "character_profile", "unknown_research"],
+      "provenance": [
+        {
+          "source": "controlled-current-build-shape-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/union-notify-shapes-001.json"
+        },
+        {
+          "source": "historical-descriptor-catalog",
+          "reference": "https://github.com/Blue-Protocol-Source/BPSR-ZDPS/blob/c0a375cc8b858562e6d381a4357e10955a80340c/BPSR-ZDPSLib/protos/ServUnionNtf.cs"
+        }
+      ],
+      "features": ["social"],
       "disposition": "opaque"
     },
     {
@@ -718,10 +787,18 @@
       },
       "service_name": "WorldNtf",
       "method_name": "NotifyLoadSceneEnd",
-      "message_name": null,
-      "confidence": "candidate",
+      "message_name": "NotifyLoadSceneEnd",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/world-load-process-001.json"
+        }
+      ],
       "features": ["scene", "map", "world_state"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "world_state",
+      "decoder": "notify_load_scene_end_v1"
     },
     {
       "route": {
@@ -746,10 +823,18 @@
       },
       "service_name": "WorldNtf",
       "method_name": "SyncSeason",
-      "message_name": null,
-      "confidence": "candidate",
+      "message_name": "SyncSeason",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/world-load-process-001.json"
+        }
+      ],
       "features": ["character_profile", "world_state"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "sync_season_v1"
     },
     {
       "route": {

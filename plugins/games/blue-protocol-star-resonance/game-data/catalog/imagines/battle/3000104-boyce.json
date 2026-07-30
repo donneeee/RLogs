@@ -1,0 +1,164 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000104,
+  "stable_key": "imagine.battle.3000104",
+  "localization_key": "imagine.3000104.name",
+  "icon": "icons/imagines/battle/3000104-boyce.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000104,
+    "item_tier": 4,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359900723,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_055",
+    "icon_pixel_sha256": "7cb44785850164fc809518affdc323b63ff2d499ef1f8650ab54b617eda395a9",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3950.description",
+    "monster_name_localization_key": "battle_imagine_skill.3950.monster_name",
+    "aoyi_skill_id": 3950,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3950.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture055",
+    "skill_effect_id": 395001,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 201,
+        "effect_record_offset": 14622,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 160
+          },
+          {
+            "key": "attrPerElse",
+            "raw_value": 20
+          },
+          {
+            "key": "speed1",
+            "raw_value": 100
+          },
+          {
+            "key": "speed2",
+            "raw_value": 200
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 202,
+        "effect_record_offset": 14726,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 320
+          },
+          {
+            "key": "attrPerElse",
+            "raw_value": 40
+          },
+          {
+            "key": "speed1",
+            "raw_value": 200
+          },
+          {
+            "key": "speed2",
+            "raw_value": 400
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 203,
+        "effect_record_offset": 14820,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 480
+          },
+          {
+            "key": "attrPerElse",
+            "raw_value": 60
+          },
+          {
+            "key": "speed1",
+            "raw_value": 300
+          },
+          {
+            "key": "speed2",
+            "raw_value": 600
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 204,
+        "effect_record_offset": 14932,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 640
+          },
+          {
+            "key": "attrPerElse",
+            "raw_value": 80
+          },
+          {
+            "key": "speed1",
+            "raw_value": 400
+          },
+          {
+            "key": "speed2",
+            "raw_value": 800
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 205,
+        "effect_record_offset": 15030,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 800
+          },
+          {
+            "key": "attrPerElse",
+            "raw_value": 100
+          },
+          {
+            "key": "speed1",
+            "raw_value": 500
+          },
+          {
+            "key": "speed2",
+            "raw_value": 1000
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3010104,
+    "will_name_localization_key": "imagine_will.3010104.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000104",
+    "confidence": "verified"
+  }
+}

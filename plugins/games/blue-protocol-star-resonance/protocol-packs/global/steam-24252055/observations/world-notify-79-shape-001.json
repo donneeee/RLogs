@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "observation_id": "world-notify-79-shape-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "source": {
+    "observation_id": "world-load-process-001",
+    "route": {
+      "direction": "server_to_client",
+      "fragment": "notify",
+      "service_id": 1664308034,
+      "method_id": 79
+    },
+    "packet_count": 1,
+    "application_lengths": [199]
+  },
+  "reference": {
+    "project": "Blue-Protocol-Source/BPSR-ZDPS",
+    "revision": "c0a375cc8b858562e6d381a4357e10955a80340c",
+    "method_catalog": "BPSR-ZDPSLib/ServiceMethods/WorldNtf.cs",
+    "schemas": [
+      "BPSR-ZDPSLib/protos/ServWorldNtf.cs",
+      "BPSR-ZDPSLib/protos/StruNotifyAllValidBattlePassData.cs",
+      "BPSR-ZDPSLib/protos/StruBattlePass.cs",
+      "BPSR-ZDPSLib/protos/StruBattlePassAwardInfo.cs"
+    ]
+  },
+  "wire_shape": {
+    "notify_tags": [
+      { "tag": 1, "wire_type": "length_delimited", "count": 1 }
+    ],
+    "all_valid_battle_pass_data_tags": [
+      { "tag": 1, "wire_type": "length_delimited", "count": 1 }
+    ],
+    "battle_pass_map_entry_tags": [
+      { "tag": 1, "wire_type": "varint", "count": 1, "role": "map_key" },
+      { "tag": 2, "wire_type": "length_delimited", "count": 1, "role": "map_value" }
+    ],
+    "battle_pass_present_tags": [
+      { "tag": 1, "wire_type": "varint", "count": 1, "reference_name": "id" },
+      { "tag": 2, "wire_type": "varint", "count": 1, "reference_name": "level" },
+      { "tag": 3, "wire_type": "varint", "count": 1, "reference_name": "current_exp" },
+      { "tag": 5, "wire_type": "varint", "count": 1, "reference_name": "exp_last_time" },
+      { "tag": 6, "wire_type": "varint", "count": 1, "reference_name": "is_unlock" },
+      { "tag": 8, "wire_type": "varint", "count": 1, "reference_name": "buy_prime_pass" },
+      { "tag": 9, "wire_type": "length_delimited", "count": 17, "reference_name": "award" },
+      { "tag": 10, "wire_type": "varint", "count": 1, "reference_name": "is_valid" }
+    ],
+    "award_map_entry_shape": {
+      "entry_count": 17,
+      "entry_tags": [
+        { "tag": 1, "wire_type": "varint", "count_per_entry": 1, "role": "map_key" },
+        { "tag": 2, "wire_type": "length_delimited", "count_per_entry": 1, "role": "map_value" }
+      ],
+      "award_info_tags": [
+        { "tag": 1, "wire_type": "varint", "count_per_entry": 1, "reference_name": "free_award" },
+        { "tag": 2, "wire_type": "varint", "count_per_entry": 1, "reference_name": "paid_award" }
+      ]
+    },
+    "string_fields": 0
+  },
+  "candidate_results": [
+    {
+      "method_name": "NotifyUserAllValidBattlePassData",
+      "result": "exact_shape_match",
+      "reason": "The current packet matches the outer notification, valid-battle-pass map, BattlePass scalar tags, and all 17 nested award-map entries."
+    },
+    {
+      "method_name": "NotifySceneLineInfo",
+      "result": "rejected",
+      "reason": "The candidate scene-data object permits scene and line-list tags, but the current object has BattlePass-only scalar tags. Its repeated tag-9 entries are numeric award maps and contain no scene GUID string field."
+    }
+  ],
+  "resolution": {
+    "method_name": "NotifyUserAllValidBattlePassData",
+    "confidence": "verified",
+    "disposition": "opaque",
+    "profile_status": "not_approved_pending_opt_in_field_policy",
+    "privacy_reason": "The route includes progression plus unlock, pass-purchase, validity, and reward-claim state. No field is website-bound until an explicit opt-in profile policy reviews it."
+  },
+  "retained_data": {
+    "packet_payloads": false,
+    "numeric_values": false,
+    "battle_pass_ids": false,
+    "levels_or_experience": false,
+    "purchase_or_unlock_state": false,
+    "reward_claim_state": false,
+    "network_endpoints": false,
+    "character_identifiers": false,
+    "account_identifiers": false,
+    "authentication_material": false
+  }
+}

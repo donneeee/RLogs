@@ -1,22 +1,29 @@
 [workspace]
 members = [
+    "apps/desktop",
     "apps/plugin-lab",
     "engine/capture",
     "engine/core",
     "engine/events",
     "engine/game-data",
     "engine/game-plugin-api",
+    "engine/log-format",
     "engine/network",
     "engine/plugin-api",
     "engine/plugin-host",
+    "engine/plugin-runtime",
     "engine/submission",
+    "plugins/builtin/combat-meter",
     "plugins/games/blue-protocol-star-resonance",
+    "plugins/games/blue-protocol-star-resonance/features/module-optimizer",
     "tools/capture-inspect",
     "tools/game-data-build",
     "tools/plugin-inspect",
     "tools/process-capture",
     "tools/reference-reconcile",
+    "tools/rlog-build",
     "plugins/games/blue-protocol-star-resonance/tools/profile-audit",
+    "plugins/games/blue-protocol-star-resonance/tools/offline-recorder",
     "plugins/games/blue-protocol-star-resonance/tools/protocol-journal",
     "plugins/games/blue-protocol-star-resonance/tools/protocol-coverage",
 ]
@@ -41,3 +48,9 @@ toml = "0.8"
 walkdir = "2"
 windows-sys = "0.61"
 zstd = { version = "0.13.3", default-features = false }
+
+# Plugin Lab is a development binary, but full profile optimization is a
+# compute-heavy hot path. Keep this isolated crate optimized in dev builds so
+# testing the website does not turn a 649-module search into a minute-long wait.
+[profile.dev.package.rlogs-bpsr-module-optimizer]
+opt-level = 3

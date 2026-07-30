@@ -4,7 +4,7 @@
   "id": 21,
   "stable_key": "talent.21",
   "localization_key": "talent.21.name",
-  "icon": null,
+  "icon": "icons/talents/shared/frost-mage-shared-20-ice-attack.png",
   "attributes": {
     "class_key": "heavy-guardian",
     "spec_key": "shared",
@@ -32,131 +32,380 @@
     "name_localization_key": "talent.21.name",
     "tree_nodes": [
       {
-        "node_id": 6717,
+        "node_id": 1491,
+        "talent_id": 21,
+        "profession_id": 9,
         "branch": 0,
+        "is_specialization_node": false,
         "prerequisite_node_ids": [
-          22089,
-          902011
-        ]
+          912027,
+          22089
+        ],
+        "dependent_node_ids": [
+          6059
+        ],
+        "position": {
+          "x": 300,
+          "y": 900
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 112,
+        "stage_node_index": 27
+      },
+      {
+        "node_id": 6057,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 1,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          1492
+        ],
+        "dependent_node_ids": [
+          963001
+        ],
+        "position": {
+          "x": 1440,
+          "y": 6630
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 114,
+        "stage_node_index": 24,
+        "specialization_id": 114
+      },
+      {
+        "node_id": 6062,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 1,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          930006
+        ],
+        "dependent_node_ids": [
+          8578,
+          7296
+        ],
+        "position": {
+          "x": 1440,
+          "y": 3270
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 114,
+        "stage_node_index": 1,
+        "specialization_id": 114
+      },
+      {
+        "node_id": 6065,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 0,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          931006
+        ],
+        "dependent_node_ids": [
+          8579,
+          9037
+        ],
+        "position": {
+          "x": -600,
+          "y": 3390
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 113,
+        "stage_node_index": 1,
+        "specialization_id": 113
+      },
+      {
+        "node_id": 6072,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 0,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          1488
+        ],
+        "dependent_node_ids": [
+          945001
+        ],
+        "position": {
+          "x": -600,
+          "y": 6630
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 113,
+        "stage_node_index": 24,
+        "specialization_id": 113
+      },
+      {
+        "node_id": 6076,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 0,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          1489
+        ],
+        "dependent_node_ids": [
+          932008
+        ],
+        "position": {
+          "x": -600,
+          "y": 4890
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 113,
+        "stage_node_index": 10,
+        "specialization_id": 113
       },
       {
         "node_id": 6077,
+        "talent_id": 21,
+        "profession_id": 9,
         "branch": 1,
+        "is_specialization_node": true,
         "prerequisite_node_ids": [
           906012,
           923013,
           6064
-        ]
-      },
-      {
-        "node_id": 6076,
-        "branch": 0,
-        "prerequisite_node_ids": [
-          1489
-        ]
-      },
-      {
-        "node_id": 935004,
-        "branch": 1,
-        "prerequisite_node_ids": [
-          6060,
-          6061
-        ]
-      },
-      {
-        "node_id": 926018,
-        "branch": 0,
-        "prerequisite_node_ids": [
-          41038,
-          6067
-        ]
-      },
-      {
-        "node_id": 924018,
-        "branch": 1,
-        "prerequisite_node_ids": [
-          42031,
+        ],
+        "dependent_node_ids": [
+          964001,
           966001
-        ]
+        ],
+        "position": {
+          "x": 1440,
+          "y": 5190
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 114,
+        "stage_node_index": 11,
+        "specialization_id": 114
       },
       {
-        "node_id": 1491,
+        "node_id": 6717,
+        "talent_id": 21,
+        "profession_id": 9,
         "branch": 0,
+        "is_specialization_node": false,
         "prerequisite_node_ids": [
-          912027,
-          22089
-        ]
-      },
-      {
-        "node_id": 924017,
-        "branch": 0,
-        "prerequisite_node_ids": [
-          41037,
-          6066
-        ]
-      },
-      {
-        "node_id": 6072,
-        "branch": 0,
-        "prerequisite_node_ids": [
-          1488
-        ]
-      },
-      {
-        "node_id": 919007,
-        "branch": 0,
-        "prerequisite_node_ids": [
-          8583,
-          9040
-        ]
-      },
-      {
-        "node_id": 6065,
-        "branch": 0,
-        "prerequisite_node_ids": [
-          931006
-        ]
-      },
-      {
-        "node_id": 927012,
-        "branch": 0,
-        "prerequisite_node_ids": [
-          1486
-        ]
-      },
-      {
-        "node_id": 926017,
-        "branch": 1,
-        "prerequisite_node_ids": [
-          37118,
-          964001
-        ]
-      },
-      {
-        "node_id": 6062,
-        "branch": 1,
-        "prerequisite_node_ids": [
-          930006
-        ]
-      },
-      {
-        "node_id": 22086,
-        "branch": 0,
-        "prerequisite_node_ids": []
+          22089,
+          902011
+        ],
+        "dependent_node_ids": [
+          929007
+        ],
+        "position": {
+          "x": -240,
+          "y": 900
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 112,
+        "stage_node_index": 24
       },
       {
         "node_id": 10441,
+        "talent_id": 21,
+        "profession_id": 9,
         "branch": 0,
+        "is_specialization_node": false,
         "prerequisite_node_ids": [
           22089
-        ]
+        ],
+        "dependent_node_ids": [
+          1485
+        ],
+        "position": {
+          "x": 30,
+          "y": 900
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 112,
+        "stage_node_index": 21
       },
       {
-        "node_id": 6057,
-        "branch": 1,
+        "node_id": 22086,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 0,
+        "is_specialization_node": false,
+        "prerequisite_node_ids": [],
+        "dependent_node_ids": [
+          10439
+        ],
+        "position": {
+          "x": 300,
+          "y": -540
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 112,
+        "stage_node_index": 0
+      },
+      {
+        "node_id": 919007,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 0,
+        "is_specialization_node": true,
         "prerequisite_node_ids": [
+          8583,
+          9040
+        ],
+        "dependent_node_ids": [
+          1488
+        ],
+        "position": {
+          "x": -600,
+          "y": 6030
+        },
+        "unlock_condition_records": [
+          [
+            3,
+            50
+          ]
+        ],
+        "layout_state": "not_referenced_by_current_talent_stage"
+      },
+      {
+        "node_id": 924017,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 0,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          41037,
+          6066
+        ],
+        "dependent_node_ids": [
+          6068
+        ],
+        "position": {
+          "x": -1200,
+          "y": 5790
+        },
+        "unlock_condition_records": [],
+        "layout_state": "not_referenced_by_current_talent_stage"
+      },
+      {
+        "node_id": 924018,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 1,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          42031,
+          966001
+        ],
+        "dependent_node_ids": [
+          6055
+        ],
+        "position": {
+          "x": 840,
+          "y": 5790
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 114,
+        "stage_node_index": 20,
+        "specialization_id": 114
+      },
+      {
+        "node_id": 926017,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 1,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          37118,
+          964001
+        ],
+        "dependent_node_ids": [
+          932007
+        ],
+        "position": {
+          "x": 2040,
+          "y": 5790
+        },
+        "unlock_condition_records": [],
+        "layout_state": "not_referenced_by_current_talent_stage"
+      },
+      {
+        "node_id": 926018,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 0,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          41038,
+          6067
+        ],
+        "dependent_node_ids": [
+          6071
+        ],
+        "position": {
+          "x": 0,
+          "y": 5790
+        },
+        "unlock_condition_records": [],
+        "layout_state": "not_referenced_by_current_talent_stage"
+      },
+      {
+        "node_id": 927012,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 0,
+        "is_specialization_node": false,
+        "prerequisite_node_ids": [
+          1486
+        ],
+        "dependent_node_ids": [
+          10440,
+          1490
+        ],
+        "position": {
+          "x": 570,
+          "y": 360
+        },
+        "unlock_condition_records": [],
+        "layout_state": "active_current_stage",
+        "stage_id": 112,
+        "stage_node_index": 6
+      },
+      {
+        "node_id": 935004,
+        "talent_id": 21,
+        "profession_id": 9,
+        "branch": 1,
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [
+          6060,
+          6061
+        ],
+        "dependent_node_ids": [
           1492
-        ]
+        ],
+        "position": {
+          "x": 1440,
+          "y": 6030
+        },
+        "unlock_condition_records": [
+          [
+            3,
+            50
+          ]
+        ],
+        "layout_state": "not_referenced_by_current_talent_stage"
       }
     ],
     "class_id": 9
@@ -169,8 +418,8 @@
     }
   ],
   "provenance": {
-    "source": "ctb.TalentTable",
-    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "source": "ctb.TalentTable+ctb.TalentTreeTable+ctb.TalentStageTable",
+    "reference": "client-build:global/steam/24252055@sha256:4214ce9890679abecc2d60a6cd23d9b2432905dbdcc35687b440d7666da2d812+sha256:9a8b3258252c911f29ea8a7aea1621c0912498c867e6707d0aac23813c2b389c",
     "confidence": "corroborated"
   }
 }

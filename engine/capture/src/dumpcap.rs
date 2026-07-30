@@ -2,6 +2,10 @@ use std::{
     fmt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use crate::{
@@ -54,17 +58,66 @@ impl DumpcapLiveConfig {
 /// by dumpcap. `OwnedProcessCapture` must wrap this source before any consumer
 /// writes frames or sends them into the protocol pipeline.
 pub(crate) struct DumpcapLiveCapture {
-    child: Child,
+    control: Arc<DumpcapLiveControl>,
     source: OfflineCapture,
     metadata: CaptureSourceMetadata,
     finished: bool,
 }
 
-impl fmt::Debug for DumpcapLiveCapture {
+struct DumpcapLiveControl {
+    child: Mutex<Child>,
+    stop_requested: AtomicBool,
+}
+
+impl fmt::Debug for DumpcapLiveControl {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
+            .debug_struct("DumpcapLiveControl")
+            .field(
+                "stop_requested",
+                &self.stop_requested.load(Ordering::Relaxed),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+/// Thread-safe cooperative stop token for one live capture.
+///
+/// Stopping terminates only the private dumpcap ingress. The capture consumer
+/// still receives EOF and can flush process-owned frames, connection evidence,
+/// and log files before reporting completion.
+#[derive(Debug, Clone)]
+pub struct LiveCaptureStopHandle {
+    control: Arc<DumpcapLiveControl>,
+}
+
+impl LiveCaptureStopHandle {
+    pub fn request_stop(&self) -> Result<(), CaptureError> {
+        self.control.stop_requested.store(true, Ordering::Release);
+        let mut child = self
+            .control
+            .child
+            .lock()
+            .map_err(|_| adapter_error("dumpcap process lock was poisoned"))?;
+        if child
+            .try_wait()
+            .map_err(|error| adapter_error(format!("could not inspect dumpcap: {error}")))?
+            .is_none()
+        {
+            child
+                .kill()
+                .map_err(|error| adapter_error(format!("could not stop dumpcap: {error}")))?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Debug for DumpcapLiveCapture {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let child_id = self.control.child.lock().ok().map(|child| child.id());
+        formatter
             .debug_struct("DumpcapLiveCapture")
-            .field("child_id", &self.child.id())
+            .field("child_id", &child_id)
             .field("metadata", &self.metadata)
             .field("finished", &self.finished)
             .finish_non_exhaustive()
@@ -112,7 +165,10 @@ impl DumpcapLiveCapture {
         };
 
         Ok(Self {
-            child,
+            control: Arc::new(DumpcapLiveControl {
+                child: Mutex::new(child),
+                stop_requested: AtomicBool::new(false),
+            }),
             source,
             metadata: CaptureSourceMetadata {
                 source_id: "dumpcap-process-owned".into(),
@@ -125,16 +181,25 @@ impl DumpcapLiveCapture {
         })
     }
 
+    pub(crate) fn stop_handle(&self) -> LiveCaptureStopHandle {
+        LiveCaptureStopHandle {
+            control: Arc::clone(&self.control),
+        }
+    }
+
     fn finish_child(&mut self) -> Result<(), CaptureError> {
         if self.finished {
             return Ok(());
         }
         let status = self
+            .control
             .child
+            .lock()
+            .map_err(|_| adapter_error("dumpcap process lock was poisoned"))?
             .wait()
             .map_err(|error| adapter_error(format!("could not wait for dumpcap: {error}")))?;
         self.finished = true;
-        if !status.success() {
+        if !status.success() && !self.control.stop_requested.load(Ordering::Acquire) {
             return Err(adapter_error(format!(
                 "dumpcap exited unsuccessfully ({status})"
             )));
@@ -167,10 +232,12 @@ impl Drop for DumpcapLiveCapture {
         if self.finished {
             return;
         }
-        if self.child.try_wait().ok().flatten().is_none() {
-            let _ = self.child.kill();
+        if let Ok(mut child) = self.control.child.lock() {
+            if child.try_wait().ok().flatten().is_none() {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
         }
-        let _ = self.child.wait();
         self.finished = true;
     }
 }

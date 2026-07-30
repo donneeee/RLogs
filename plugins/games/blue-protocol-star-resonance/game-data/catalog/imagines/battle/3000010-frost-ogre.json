@@ -1,0 +1,104 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000010,
+  "stable_key": "imagine.battle.3000010",
+  "localization_key": "imagine.3000010.name",
+  "icon": "icons/imagines/battle/3000010-frost-ogre.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000010,
+    "item_tier": 4,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359899663,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_015",
+    "icon_pixel_sha256": "3379f91e7a6b32b721a0eb5e926a44608b9544801863b0ba63d418a77009d3a6",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3906.description",
+    "monster_name_localization_key": "battle_imagine_skill.3906.monster_name",
+    "aoyi_skill_id": 3906,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3906.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture015",
+    "skill_effect_id": 390601,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 41,
+        "effect_record_offset": 3262,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 900
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 42,
+        "effect_record_offset": 3336,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 1800
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 43,
+        "effect_record_offset": 3390,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 2700
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 44,
+        "effect_record_offset": 3472,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 3600
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 45,
+        "effect_record_offset": 3540,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 4500
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3010010,
+    "will_name_localization_key": "imagine_will.3010010.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000010",
+    "confidence": "verified"
+  }
+}

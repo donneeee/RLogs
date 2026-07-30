@@ -42,7 +42,8 @@ in the reusable Core:
 
 - cross-platform capture-source interfaces;
 - allocation-conscious network decoding and bounded TCP reconstruction;
-- the versioned trusted-game-plug-in manifest and stream handoff;
+- selection of one trusted game integration and the versioned reconstructed
+  stream handoff to it;
 - canonical event ordering and provenance;
 - plugin isolation, permissions, lifecycle, and resource limits;
 - folder-package discovery, shared read-only resources, dependency resolution,
@@ -54,13 +55,19 @@ in the reusable Core:
 Core contains no game names, executable names, framing rules, opcodes, route
 catalogs, region endpoints, profile fields, or game-data IDs.
 
+Core is the only network-capture owner. A game plug-in cannot open a second
+capture path or silently broaden the process/connection filter. This mirrors
+ACT's host-and-plug-in experience while keeping capture behavior identical
+across games and platforms.
+
 ## Trusted game plug-ins
 
 Each game integration is a privileged native plug-in because packet decoders
 must receive reconstructed game streams. It owns:
 
 - executable/process selectors;
-- framing, decompression, protocol packs, route and opcode knowledge;
+- message framing, protocol decryption when a game requires it, bounded
+  decompression, protocol packs, route and opcode knowledge;
 - region/build resolution and selective decoders;
 - game-data catalogs and sanitized mapping inventories;
 - typed character profiles;
@@ -85,12 +92,16 @@ runtime targets are:
 Normal plugins receive canonical events, never credentials, login payloads,
 or unreviewed raw packets. They are not trusted game plug-ins. Protocol
 research remains local to a game integration and cannot publish raw evidence.
+Credential, account-authentication, and login-token fields are prohibited even
+inside a game integration's normal decoder surface.
 
 Community packages are installed as directories under `plugins/installed/`.
 `plugin.toml` is only the declaration layer; the same directory owns its
-entrypoint and small resources. Large private resources can use the
-host-derived `assets/<plugin-folder>/` namespace. Provider-owned resources
-intended for reuse use `assets/shared/<provider-plugin-folder>/`. Published
+entrypoint and small resources. Game-neutral private resources use the
+host-derived `assets/rlogs/plugins/<plugin-folder>/` namespace. Provider-owned
+resources intended for reuse use
+`assets/rlogs/shared/<provider-plugin-folder>/`. Game integrations keep their
+resources under `assets/<game-id>/`. Published
 resources retain a single owner and other plug-ins import them by owner ID,
 resource name, schema ID, and minimum schema version. The host provides
 read-only access rather than copying the data or letting manifests choose

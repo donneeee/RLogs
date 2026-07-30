@@ -26,6 +26,9 @@ pub enum PluginCapability {
     SharedResourcesRead,
     LocalizationTransform,
     SubmissionTransform,
+    /// Publishes a host-rendered workspace with one or more packaged web
+    /// surfaces. This does not grant access to any engine data by itself.
+    UiWorkspacePublish,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,15 +50,67 @@ pub struct PluginDependency {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum PluginWorkspaceTabKind {
+    #[default]
+    Content,
+    Options,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginWorkspaceTab {
+    /// Stable, human-readable slug used for tab state and deep links.
+    pub id: String,
+    pub label: String,
+    /// Browser surface relative to the plug-in package root.
+    pub entrypoint: String,
+    #[serde(default)]
+    pub kind: PluginWorkspaceTabKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginWorkspace {
+    /// Optional navigation icon relative to the plug-in package root. The host
+    /// treats this as an image, never executable markup.
+    pub icon: Option<String>,
+    /// Bundled default only. A user's saved drag order always wins.
+    #[serde(default)]
+    pub default_order: i32,
+    pub tabs: Vec<PluginWorkspaceTab>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginWorkspaceTabContribution {
+    /// Plug-in whose left-side workspace will host this tab.
+    pub target_plugin_id: String,
+    /// Stable only within the contributing plug-in. The host namespaces it by
+    /// contributor ID so two add-ons cannot collide.
+    pub id: String,
+    pub label: String,
+    /// Browser surface relative to the contributing plug-in's package root.
+    pub entrypoint: String,
+    #[serde(default)]
+    pub kind: PluginWorkspaceTabKind,
+    /// Owner tabs occupy their declared order starting at zero. Contributions
+    /// default after them but can request a deliberate relative position.
+    #[serde(default = "default_workspace_tab_contribution_order")]
+    pub default_order: i32,
+}
+
+fn default_workspace_tab_contribution_order() -> i32 {
+    1_000
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ResourceStorage {
     /// The resource ships inside the plug-in package.
     #[default]
     Package,
     /// The resource lives under the host-derived
-    /// `assets/<plugin-folder-name>/` namespace.
+    /// `assets/rlogs/plugins/<plugin-folder-name>/` namespace.
     PluginAssets,
     /// A provider-owned resource intended for reuse by other plug-ins. It
-    /// lives under `assets/shared/<provider-plugin-folder-name>/`.
+    /// lives under `assets/rlogs/shared/<provider-plugin-folder-name>/`.
     SharedAssets,
 }
 
@@ -162,6 +217,14 @@ pub struct PluginManifest {
     pub resource_imports: Vec<SharedResourceImport>,
     #[serde(default)]
     pub hooks: Vec<PluginHook>,
+    /// Optional top-level desktop workspace. The selected plug-in owns these
+    /// real tabs; the rLogs host owns only navigation and containment.
+    #[serde(default)]
+    pub workspace: Option<PluginWorkspace>,
+    /// Additional tabs contributed to another plug-in's workspace. The target
+    /// must also be declared as a dependency.
+    #[serde(default)]
+    pub workspace_tab_contributions: Vec<PluginWorkspaceTabContribution>,
 }
 
 impl PluginManifest {
@@ -225,6 +288,100 @@ impl PluginManifest {
             (_, Some(path)) => validate_relative_path("entrypoint", path)?,
         }
 
+        if let Some(workspace) = &self.workspace {
+            if !self
+                .capabilities
+                .contains(&PluginCapability::UiWorkspacePublish)
+            {
+                return Err(ManifestError::WorkspaceWithoutCapability);
+            }
+            if self.runtime == PluginRuntime::DataOnly {
+                return Err(ManifestError::DataOnlyWorkspace);
+            }
+            if let Some(icon) = &workspace.icon {
+                validate_relative_path("workspace icon", icon)?;
+            }
+            if workspace.tabs.is_empty() {
+                return Err(ManifestError::WorkspaceWithoutTabs);
+            }
+            if workspace.tabs.len() > 16 {
+                return Err(ManifestError::TooManyWorkspaceTabs { maximum: 16 });
+            }
+
+            let mut tab_ids = BTreeSet::new();
+            let mut has_options = false;
+            for tab in &workspace.tabs {
+                validate_slug("workspace tab id", &tab.id)?;
+                if !tab_ids.insert(tab.id.as_str()) {
+                    return Err(ManifestError::DuplicateWorkspaceTab {
+                        tab: tab.id.clone(),
+                    });
+                }
+                let label = tab.label.trim();
+                if label.is_empty() {
+                    return Err(ManifestError::EmptyWorkspaceTabLabel {
+                        tab: tab.id.clone(),
+                    });
+                }
+                if label.chars().count() > 48 {
+                    return Err(ManifestError::WorkspaceTabLabelTooLong {
+                        tab: tab.id.clone(),
+                    });
+                }
+                validate_relative_path("workspace tab entrypoint", &tab.entrypoint)?;
+                if tab.kind == PluginWorkspaceTabKind::Options {
+                    if has_options {
+                        return Err(ManifestError::DuplicateOptionsTab);
+                    }
+                    has_options = true;
+                }
+            }
+        }
+
+        if !self.workspace_tab_contributions.is_empty() {
+            if !self
+                .capabilities
+                .contains(&PluginCapability::UiWorkspacePublish)
+            {
+                return Err(ManifestError::WorkspaceWithoutCapability);
+            }
+            if self.runtime == PluginRuntime::DataOnly {
+                return Err(ManifestError::DataOnlyWorkspace);
+            }
+        }
+        let mut contributed_tabs = BTreeSet::new();
+        for contribution in &self.workspace_tab_contributions {
+            validate_id(&contribution.target_plugin_id)?;
+            if contribution.target_plugin_id == self.id {
+                return Err(ManifestError::SelfWorkspaceTabContribution);
+            }
+            validate_slug("workspace tab contribution id", &contribution.id)?;
+            let label = contribution.label.trim();
+            if label.is_empty() {
+                return Err(ManifestError::EmptyWorkspaceTabLabel {
+                    tab: contribution.id.clone(),
+                });
+            }
+            if label.chars().count() > 48 {
+                return Err(ManifestError::WorkspaceTabLabelTooLong {
+                    tab: contribution.id.clone(),
+                });
+            }
+            validate_relative_path(
+                "workspace tab contribution entrypoint",
+                &contribution.entrypoint,
+            )?;
+            if !contributed_tabs.insert((
+                contribution.target_plugin_id.as_str(),
+                contribution.id.as_str(),
+            )) {
+                return Err(ManifestError::DuplicateWorkspaceTabContribution {
+                    target_plugin_id: contribution.target_plugin_id.clone(),
+                    tab: contribution.id.clone(),
+                });
+            }
+        }
+
         let mut dependency_ids = BTreeSet::new();
         for dependency in &self.dependencies {
             validate_id(&dependency.plugin_id)?;
@@ -234,6 +391,13 @@ impl PluginManifest {
             if !dependency_ids.insert(&dependency.plugin_id) {
                 return Err(ManifestError::DuplicateDependency {
                     plugin_id: dependency.plugin_id.clone(),
+                });
+            }
+        }
+        for contribution in &self.workspace_tab_contributions {
+            if !dependency_ids.contains(&contribution.target_plugin_id) {
+                return Err(ManifestError::WorkspaceTabContributionWithoutDependency {
+                    target_plugin_id: contribution.target_plugin_id.clone(),
                 });
             }
         }
@@ -431,6 +595,42 @@ pub enum ManifestError {
     #[error("executable plug-ins must declare an entrypoint")]
     MissingEntrypoint,
 
+    #[error("a workspace requires the ui_workspace_publish capability")]
+    WorkspaceWithoutCapability,
+
+    #[error("data-only plug-ins cannot publish interactive workspaces")]
+    DataOnlyWorkspace,
+
+    #[error("a plug-in workspace must declare at least one tab")]
+    WorkspaceWithoutTabs,
+
+    #[error("a plug-in workspace cannot declare more than {maximum} tabs")]
+    TooManyWorkspaceTabs { maximum: usize },
+
+    #[error("duplicate workspace tab {tab}")]
+    DuplicateWorkspaceTab { tab: String },
+
+    #[error("workspace tab {tab} has an empty label")]
+    EmptyWorkspaceTabLabel { tab: String },
+
+    #[error("workspace tab {tab} label exceeds 48 characters")]
+    WorkspaceTabLabelTooLong { tab: String },
+
+    #[error("a plug-in workspace cannot declare more than one options tab")]
+    DuplicateOptionsTab,
+
+    #[error("a plug-in should declare its own tabs in its workspace")]
+    SelfWorkspaceTabContribution,
+
+    #[error("duplicate tab contribution {tab} for {target_plugin_id}")]
+    DuplicateWorkspaceTabContribution {
+        target_plugin_id: String,
+        tab: String,
+    },
+
+    #[error("a tab contribution to {target_plugin_id} requires a declared dependency")]
+    WorkspaceTabContributionWithoutDependency { target_plugin_id: String },
+
     #[error("unsafe relative package path in {field}: {value}")]
     UnsafeRelativePath { field: &'static str, value: String },
 
@@ -524,6 +724,8 @@ mod tests {
             resource_exports: Vec::new(),
             resource_imports: Vec::new(),
             hooks: Vec::new(),
+            workspace: None,
+            workspace_tab_contributions: Vec::new(),
         }
     }
 
@@ -654,5 +856,143 @@ resource = "aliases"
             plugin.validate(),
             Err(ManifestError::UnsafeRelativePath { .. })
         ));
+    }
+
+    #[test]
+    fn a_workspace_publishes_real_packaged_tabs() {
+        let mut plugin = manifest(PluginRuntime::WasmComponent);
+        plugin
+            .capabilities
+            .insert(PluginCapability::UiWorkspacePublish);
+        plugin.workspace = Some(PluginWorkspace {
+            icon: Some("ui/profile.svg".into()),
+            default_order: 20,
+            tabs: vec![
+                PluginWorkspaceTab {
+                    id: "profile".into(),
+                    label: "Profile".into(),
+                    entrypoint: "ui/profile.html".into(),
+                    kind: PluginWorkspaceTabKind::Content,
+                },
+                PluginWorkspaceTab {
+                    id: "options".into(),
+                    label: "Options".into(),
+                    entrypoint: "ui/options.html".into(),
+                    kind: PluginWorkspaceTabKind::Options,
+                },
+            ],
+        });
+
+        assert_eq!(plugin.validate(), Ok(()));
+    }
+
+    #[test]
+    fn a_workspace_requires_explicit_ui_permission() {
+        let mut plugin = manifest(PluginRuntime::BrowserOverlay);
+        plugin.workspace = Some(PluginWorkspace {
+            icon: None,
+            default_order: 0,
+            tabs: vec![PluginWorkspaceTab {
+                id: "live".into(),
+                label: "Live".into(),
+                entrypoint: "web/live.html".into(),
+                kind: PluginWorkspaceTabKind::Content,
+            }],
+        });
+
+        assert_eq!(
+            plugin.validate(),
+            Err(ManifestError::WorkspaceWithoutCapability)
+        );
+    }
+
+    #[test]
+    fn workspace_tab_ids_are_unique_and_paths_stay_in_the_package() {
+        let mut plugin = manifest(PluginRuntime::BrowserOverlay);
+        plugin
+            .capabilities
+            .insert(PluginCapability::UiWorkspacePublish);
+        plugin.workspace = Some(PluginWorkspace {
+            icon: None,
+            default_order: 0,
+            tabs: vec![
+                PluginWorkspaceTab {
+                    id: "live".into(),
+                    label: "Live".into(),
+                    entrypoint: "web/live.html".into(),
+                    kind: PluginWorkspaceTabKind::Content,
+                },
+                PluginWorkspaceTab {
+                    id: "live".into(),
+                    label: "Options".into(),
+                    entrypoint: "../options.html".into(),
+                    kind: PluginWorkspaceTabKind::Options,
+                },
+            ],
+        });
+
+        assert_eq!(
+            plugin.validate(),
+            Err(ManifestError::DuplicateWorkspaceTab { tab: "live".into() })
+        );
+
+        plugin.workspace.as_mut().unwrap().tabs[1].id = "options".into();
+        assert!(matches!(
+            plugin.validate(),
+            Err(ManifestError::UnsafeRelativePath {
+                field: "workspace tab entrypoint",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn an_add_on_can_contribute_a_namespaced_tab_to_another_workspace() {
+        let mut plugin = manifest(PluginRuntime::WasmComponent);
+        plugin.id = "app.rlogs.module-optimizer".into();
+        plugin
+            .capabilities
+            .insert(PluginCapability::UiWorkspacePublish);
+        plugin.dependencies.push(PluginDependency {
+            plugin_id: "app.rlogs.character-profiles".into(),
+            optional: true,
+        });
+        plugin
+            .workspace_tab_contributions
+            .push(PluginWorkspaceTabContribution {
+                target_plugin_id: "app.rlogs.character-profiles".into(),
+                id: "modules".into(),
+                label: "Modules".into(),
+                entrypoint: "ui/profile-modules.html".into(),
+                kind: PluginWorkspaceTabKind::Content,
+                default_order: 200,
+            });
+
+        assert_eq!(plugin.validate(), Ok(()));
+    }
+
+    #[test]
+    fn a_tab_contribution_requires_an_explicit_dependency() {
+        let mut plugin = manifest(PluginRuntime::BrowserOverlay);
+        plugin
+            .capabilities
+            .insert(PluginCapability::UiWorkspacePublish);
+        plugin
+            .workspace_tab_contributions
+            .push(PluginWorkspaceTabContribution {
+                target_plugin_id: "app.rlogs.character-profiles".into(),
+                id: "extra".into(),
+                label: "Extra".into(),
+                entrypoint: "web/extra.html".into(),
+                kind: PluginWorkspaceTabKind::Content,
+                default_order: 1_000,
+            });
+
+        assert_eq!(
+            plugin.validate(),
+            Err(ManifestError::WorkspaceTabContributionWithoutDependency {
+                target_plugin_id: "app.rlogs.character-profiles".into(),
+            },)
+        );
     }
 }

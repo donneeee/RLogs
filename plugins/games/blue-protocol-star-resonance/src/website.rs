@@ -79,17 +79,49 @@ mod tests {
             level: Some(60),
             progression: None,
             combat_power: None,
+            combat_power_breakdown: None,
             season_strength: None,
             season: None,
             appearance: None,
             equipment: None,
+            modules: Some(crate::ModuleProfile {
+                equipped_slots: [(1, "9007199254740993".into())].into_iter().collect(),
+                inventory: vec![crate::ModuleItemProfile {
+                    instance_id: "9007199254740993".into(),
+                    config_id: 20_001,
+                    count: Some(1),
+                    quality: Some(5),
+                    load_flag: Some(1),
+                    module_type: Some(2),
+                    level: Some(4),
+                    parts: vec![crate::ModulePartProfile {
+                        part_id: 301,
+                        initial_link_points: Some(2),
+                    }],
+                    upgrade_records: vec![crate::ModuleUpgradeRecord {
+                        part_id: 301,
+                        succeeded: Some(true),
+                    }],
+                    success_rate: Some(75),
+                }],
+            }),
             owned_imagines: None,
+            battle_imagine_skills: None,
             active_skills: None,
             talents: None,
+            talent_progress: Some(crate::TalentProgressProfile {
+                total_points: Some(10),
+                total_reset_count: Some(1),
+            }),
             combat_professions: None,
             life_professions: None,
             cosmetics: None,
             collection_summary: None,
+            activity_progress: None,
+            season_medals: None,
+            season_cultivation: None,
+            reputations: None,
+            current_profession_project_id: None,
             social_display: None,
         };
 
@@ -100,6 +132,11 @@ mod tests {
             request.payload.routing.get("character-id").unwrap(),
             "public-character-123"
         );
+        assert_eq!(
+            request.payload.body["modules"]["inventory"][0]["instance_id"],
+            "9007199254740993"
+        );
+        assert_eq!(request.payload.body["talent_progress"]["total_points"], 10);
         assert!(request.payload.body.get("account_id").is_none());
     }
 }

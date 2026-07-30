@@ -7,7 +7,8 @@ use std::path::{Component, Path, PathBuf};
 
 use rlogs_plugin_api::{
     HookPhase, OperationStage, PLUGIN_MANIFEST_FILE_NAME, PluginHook, PluginManifest,
-    PluginManifestLoadError, ResourceStorage, SharedResourceExport, SharedResourceImport,
+    PluginManifestLoadError, PluginWorkspaceTabKind, ResourceStorage, SharedResourceExport,
+    SharedResourceImport,
 };
 use thiserror::Error;
 
@@ -46,6 +47,27 @@ impl PluginPackage {
     pub fn manifest(&self) -> &PluginManifest {
         &self.manifest
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedWorkspaceTab {
+    /// Globally stable ID namespaced by the package that owns the surface.
+    pub id: String,
+    pub local_id: String,
+    pub contributor_plugin_id: String,
+    pub label: String,
+    pub kind: PluginWorkspaceTabKind,
+    pub entrypoint: PathBuf,
+    pub default_order: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedPluginWorkspace {
+    pub owner_plugin_id: String,
+    pub name: String,
+    pub icon: Option<PathBuf>,
+    pub default_order: i32,
+    pub tabs: Vec<ResolvedWorkspaceTab>,
 }
 
 #[derive(Debug)]
@@ -191,14 +213,30 @@ fn load_package(
         .and_then(|name| name.to_str())
         .ok_or_else(|| PluginPackageError::InvalidPackageFolderName { path: root.clone() })?
         .to_owned();
-    let asset_root = install_root.join("assets").join(&folder_name);
+    let asset_root = install_root
+        .join("assets")
+        .join("rlogs")
+        .join("plugins")
+        .join(&folder_name);
     let shared_asset_root = install_root
         .join("assets")
+        .join("rlogs")
         .join("shared")
         .join(&folder_name);
 
     if let Some(entrypoint) = &manifest.entrypoint {
         resolve_existing_package_path(&root, entrypoint)?;
+    }
+    if let Some(workspace) = &manifest.workspace {
+        if let Some(icon) = &workspace.icon {
+            resolve_existing_package_path(&root, icon)?;
+        }
+        for tab in &workspace.tabs {
+            resolve_existing_package_path(&root, &tab.entrypoint)?;
+        }
+    }
+    for contribution in &manifest.workspace_tab_contributions {
+        resolve_existing_package_path(&root, &contribution.entrypoint)?;
     }
     for resource in &manifest.resource_exports {
         resolve_existing_export_path(&root, &asset_root, &shared_asset_root, resource)?;
@@ -292,6 +330,118 @@ fn validate_relative_path(relative: &str) -> Result<(), PluginPackageError> {
         });
     }
     Ok(())
+}
+
+/// Aggregates enabled workspace owners and cross-plug-in tab contributions.
+///
+/// Tab surfaces always resolve from the package that declared them. Extension
+/// IDs are namespaced by contributor so independent add-ons cannot collide.
+/// Contributions with an absent optional target are ignored.
+pub fn resolve_plugin_workspaces(
+    packages: &[PluginPackage],
+) -> Result<Vec<ResolvedPluginWorkspace>, PluginWorkspaceError> {
+    let packages_by_id: BTreeMap<_, _> = packages
+        .iter()
+        .map(|package| (package.manifest.id.as_str(), package))
+        .collect();
+    let mut workspaces = BTreeMap::<String, ResolvedPluginWorkspace>::new();
+
+    for package in packages {
+        let Some(workspace) = &package.manifest.workspace else {
+            continue;
+        };
+        let tabs = workspace
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(index, tab)| ResolvedWorkspaceTab {
+                id: namespaced_tab_id(&package.manifest.id, &tab.id),
+                local_id: tab.id.clone(),
+                contributor_plugin_id: package.manifest.id.clone(),
+                label: tab.label.clone(),
+                kind: tab.kind,
+                entrypoint: package.root.join(&tab.entrypoint),
+                default_order: i32::try_from(index).unwrap_or(i32::MAX),
+            })
+            .collect();
+        workspaces.insert(
+            package.manifest.id.clone(),
+            ResolvedPluginWorkspace {
+                owner_plugin_id: package.manifest.id.clone(),
+                name: package.manifest.name.clone(),
+                icon: workspace
+                    .icon
+                    .as_ref()
+                    .map(|relative| package.root.join(relative)),
+                default_order: workspace.default_order,
+                tabs,
+            },
+        );
+    }
+
+    for package in packages {
+        for contribution in &package.manifest.workspace_tab_contributions {
+            let Some(target_workspace) = workspaces.get_mut(&contribution.target_plugin_id) else {
+                let target_dependency = package
+                    .manifest
+                    .dependencies
+                    .iter()
+                    .find(|dependency| dependency.plugin_id == contribution.target_plugin_id)
+                    .expect("validated tab contributions declare their target dependency");
+                if target_dependency.optional
+                    && !packages_by_id.contains_key(contribution.target_plugin_id.as_str())
+                {
+                    continue;
+                }
+                return Err(PluginWorkspaceError::TargetHasNoWorkspace {
+                    contributor_plugin_id: package.manifest.id.clone(),
+                    target_plugin_id: contribution.target_plugin_id.clone(),
+                });
+            };
+            target_workspace.tabs.push(ResolvedWorkspaceTab {
+                id: namespaced_tab_id(&package.manifest.id, &contribution.id),
+                local_id: contribution.id.clone(),
+                contributor_plugin_id: package.manifest.id.clone(),
+                label: contribution.label.clone(),
+                kind: contribution.kind,
+                entrypoint: package.root.join(&contribution.entrypoint),
+                default_order: contribution.default_order,
+            });
+        }
+    }
+
+    for workspace in workspaces.values_mut() {
+        workspace.tabs.sort_by(|left, right| {
+            (left.kind == PluginWorkspaceTabKind::Options)
+                .cmp(&(right.kind == PluginWorkspaceTabKind::Options))
+                .then_with(|| left.default_order.cmp(&right.default_order))
+                .then_with(|| left.contributor_plugin_id.cmp(&right.contributor_plugin_id))
+                .then_with(|| left.local_id.cmp(&right.local_id))
+        });
+    }
+    let mut resolved: Vec<_> = workspaces.into_values().collect();
+    resolved.sort_by(|left, right| {
+        left.default_order
+            .cmp(&right.default_order)
+            .then_with(|| left.name.cmp(&right.name))
+            .then_with(|| left.owner_plugin_id.cmp(&right.owner_plugin_id))
+    });
+    Ok(resolved)
+}
+
+fn namespaced_tab_id(contributor_plugin_id: &str, local_tab_id: &str) -> String {
+    format!("{contributor_plugin_id}:{local_tab_id}")
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum PluginWorkspaceError {
+    #[error(
+        "{contributor_plugin_id} contributes a tab to {target_plugin_id}, but the target has no enabled workspace"
+    )]
+    TargetHasNoWorkspace {
+        contributor_plugin_id: String,
+        target_plugin_id: String,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -850,6 +1000,127 @@ mod tests {
     }
 
     #[test]
+    fn add_on_tabs_are_namespaced_and_resolved_from_the_contributor() {
+        let install_root = temporary_install_root();
+        let installed_root = install_root.join("plugins/installed");
+        let profile_root = installed_root.join("character-profiles");
+        let optimizer_root = installed_root.join("module-optimizer");
+        fs::create_dir_all(profile_root.join("ui")).unwrap();
+        fs::create_dir_all(optimizer_root.join("ui")).unwrap();
+        for path in [
+            profile_root.join("ui/runtime.html"),
+            profile_root.join("ui/profile.html"),
+            profile_root.join("ui/options.html"),
+            optimizer_root.join("ui/runtime.html"),
+            optimizer_root.join("ui/modules.html"),
+        ] {
+            fs::write(path, "<!doctype html>").unwrap();
+        }
+        fs::write(
+            profile_root.join(PLUGIN_MANIFEST_FILE_NAME),
+            br#"
+schema_version = 1
+id = "app.rlogs.character-profiles"
+name = "Profile Sync"
+version = "0.1.0"
+api_version = 1
+runtime = "browser_overlay"
+entrypoint = "ui/runtime.html"
+capabilities = ["ui_workspace_publish"]
+subscriptions = []
+allowed_network_domains = []
+
+[workspace]
+default_order = 20
+
+[[workspace.tabs]]
+id = "profile"
+label = "Profile"
+entrypoint = "ui/profile.html"
+
+[[workspace.tabs]]
+id = "options"
+label = "Options"
+entrypoint = "ui/options.html"
+kind = "options"
+"#,
+        )
+        .unwrap();
+        fs::write(
+            optimizer_root.join(PLUGIN_MANIFEST_FILE_NAME),
+            br#"
+schema_version = 1
+id = "app.rlogs.module-optimizer"
+name = "Module Optimizer"
+version = "0.1.0"
+api_version = 1
+runtime = "browser_overlay"
+entrypoint = "ui/runtime.html"
+capabilities = ["ui_workspace_publish"]
+subscriptions = []
+allowed_network_domains = []
+
+[[dependencies]]
+plugin_id = "app.rlogs.character-profiles"
+optional = true
+
+[[workspace_tab_contributions]]
+target_plugin_id = "app.rlogs.character-profiles"
+id = "modules"
+label = "Modules"
+entrypoint = "ui/modules.html"
+default_order = 200
+"#,
+        )
+        .unwrap();
+
+        let report = discover_installed_plugins(&installed_root).unwrap();
+        assert!(report.issues.is_empty(), "{:?}", report.issues);
+        let workspaces = resolve_plugin_workspaces(&report.packages).unwrap();
+
+        assert_eq!(workspaces.len(), 1);
+        assert_eq!(
+            workspaces[0]
+                .tabs
+                .iter()
+                .map(|tab| (tab.id.as_str(), tab.contributor_plugin_id.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                (
+                    "app.rlogs.character-profiles:profile",
+                    "app.rlogs.character-profiles",
+                ),
+                (
+                    "app.rlogs.module-optimizer:modules",
+                    "app.rlogs.module-optimizer",
+                ),
+                (
+                    "app.rlogs.character-profiles:options",
+                    "app.rlogs.character-profiles",
+                ),
+            ]
+        );
+        assert!(
+            workspaces[0].tabs[1]
+                .entrypoint
+                .starts_with(fs::canonicalize(&optimizer_root).unwrap())
+        );
+        let optimizer_only = report
+            .packages
+            .iter()
+            .find(|package| package.manifest.id == "app.rlogs.module-optimizer")
+            .unwrap()
+            .clone();
+        assert!(
+            resolve_plugin_workspaces(&[optimizer_only])
+                .unwrap()
+                .is_empty()
+        );
+
+        fs::remove_dir_all(install_root).unwrap();
+    }
+
+    #[test]
     fn locale_alias_runs_after_canonical_localization() {
         let report = discover_installed_plugins(&example_root()).unwrap();
         let plan = resolve_hook_plan(&report.packages, OperationStage::LocalizationLookup).unwrap();
@@ -905,7 +1176,7 @@ mod tests {
     fn shared_assets_are_confined_to_the_provider_folder_namespace() {
         let install_root = temporary_install_root();
         let package_root = install_root.join("plugins/installed/example-assets");
-        let shared_root = install_root.join("assets/shared/example-assets/icons");
+        let shared_root = install_root.join("assets/rlogs/shared/example-assets/icons");
         fs::create_dir_all(&package_root).unwrap();
         fs::create_dir_all(&shared_root).unwrap();
         fs::write(shared_root.join("sample.svg"), "<svg/>").unwrap();
@@ -940,7 +1211,7 @@ schema_version = 1
         let canonical_shared_root = fs::canonicalize(&shared_root).unwrap();
         assert_eq!(
             package.shared_asset_root(),
-            canonical_install_root.join("assets/shared/example-assets")
+            canonical_install_root.join("assets/rlogs/shared/example-assets")
         );
         let mut registry = SharedResourceRegistry::default();
         registry.register_package(package).unwrap();

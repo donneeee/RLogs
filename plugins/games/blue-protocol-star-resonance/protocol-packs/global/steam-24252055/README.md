@@ -24,8 +24,10 @@ The process-aware world-load observation followed three process-owned
 connections across the character-to-world transition without broadening the
 persistent capture. It observed and selectively decoded one complete
 `WorldNtf/SyncContainerData` snapshot. Character UID, display identity, class,
-level, and combat power were present. Server ID and scene data were absent from
-this particular snapshot and must come from other reviewed evidence.
+level progression, combat power, appearance, detailed equipment, combat and
+life professions, skill/talent loadouts, and cosmetic collections were
+present. Server ID and scene data were absent from this particular snapshot
+and must come from other reviewed evidence.
 
 The same structural-only audit confirmed the current outer `AvatarInfo` shape:
 avatar ID, profile picture, half-body picture, business-card style, and avatar
@@ -39,9 +41,10 @@ audit and a synthetic-secret regression test enforce this boundary. The
 observed `WorldLoginNtf` method remains explicitly prohibited from schema
 decoding.
 
-Method 79 has conflicting candidate names between the historical Global
-reference and ZDPS 0.1.7.3. The exact-build pack therefore uses a neutral name
-and leaves the route opaque until its current payload shape is verified.
+Method 79 conflicted between the historical Global reference and ZDPS
+0.1.7.3. Exact payload-shape analysis resolves it as
+`NotifyUserAllValidBattlePassData`. It remains opaque because pass progression
+is co-located with purchase and reward-claim state.
 
 The pack is deployment-wide because no evidence currently proves that Global
 regions use different wire schemas. Region is still resolved and recorded per

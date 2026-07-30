@@ -17,8 +17,8 @@ use windows_sys::Win32::{
 use crate::dumpcap::DumpcapLiveCapture;
 use crate::{
     CaptureError, CaptureSource, CaptureSourceMetadata, CapturedFrame, DumpcapLiveConfig,
-    OwnedProcessCapture, OwnedProcessCaptureConfig, OwnedProcessCaptureMetrics, ProcessSocketOwner,
-    TcpConnection, TcpEndpoint,
+    LiveCaptureStopHandle, OwnedProcessCapture, OwnedProcessCaptureConfig,
+    OwnedProcessCaptureMetrics, ProcessSocketOwner, TcpConnection, TcpEndpoint,
 };
 
 const MAX_TABLE_QUERY_ATTEMPTS: usize = 4;
@@ -155,6 +155,10 @@ impl WindowsOwnedDumpcapCapture {
 
     pub fn confirmed_connections(&self) -> Vec<TcpConnection> {
         self.inner.confirmed_connections()
+    }
+
+    pub fn stop_handle(&self) -> LiveCaptureStopHandle {
+        self.inner.source().stop_handle()
     }
 }
 

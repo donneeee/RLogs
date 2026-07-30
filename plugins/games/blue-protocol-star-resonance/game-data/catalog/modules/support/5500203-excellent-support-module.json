@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "kind": "module",
+  "id": 5500203,
+  "stable_key": "module.5500203",
+  "localization_key": "module.5500203.name",
+  "icon": null,
+  "attributes": {
+    "category_id": 2,
+    "category_key": "support",
+    "item_name_id": 1991031066,
+    "configuration_name_id": 1020672619,
+    "effect_library_ids": [
+      321,
+      322,
+      322
+    ],
+    "effect_ids": [
+      2204,
+      2205,
+      1205,
+      1206,
+      2404,
+      2405,
+      2406,
+      1407,
+      1408,
+      1409,
+      1410
+    ],
+    "is_unique": false,
+    "similar_config_id": 5500200,
+    "decompose_award_packs": [
+      [
+        0,
+        99,
+        20000090
+      ]
+    ],
+    "initialization_id": 103,
+    "can_link": false,
+    "name_localization_key": "module.5500203.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ModTable",
+    "reference": "client-build:global/steam/24252055@sha256:99efcc74fbf60df610ce39e6ecdbbaa3a1dcf8551f405c94311536d145f7ccdb",
+    "confidence": "verified"
+  }
+}

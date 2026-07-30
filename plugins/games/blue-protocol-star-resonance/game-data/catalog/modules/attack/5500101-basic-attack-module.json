@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "kind": "module",
+  "id": 5500101,
+  "stable_key": "module.5500101",
+  "localization_key": "module.5500101.name",
+  "icon": null,
+  "attributes": {
+    "category_id": 1,
+    "category_key": "attack",
+    "item_name_id": 1991029975,
+    "configuration_name_id": 1020671528,
+    "effect_library_ids": [
+      111
+    ],
+    "effect_ids": [
+      2104,
+      2105,
+      1110,
+      1111,
+      1112,
+      1113,
+      1114,
+      2404,
+      2405,
+      1407,
+      1408,
+      1409,
+      1410
+    ],
+    "is_unique": false,
+    "similar_config_id": 5500100,
+    "decompose_award_packs": [
+      [
+        0,
+        99,
+        20000070
+      ]
+    ],
+    "initialization_id": 101,
+    "can_link": false,
+    "name_localization_key": "module.5500101.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ModTable",
+    "reference": "client-build:global/steam/24252055@sha256:99efcc74fbf60df610ce39e6ecdbbaa3a1dcf8551f405c94311536d145f7ccdb",
+    "confidence": "verified"
+  }
+}

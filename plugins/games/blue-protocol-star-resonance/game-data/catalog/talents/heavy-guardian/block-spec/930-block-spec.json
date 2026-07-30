@@ -4,7 +4,7 @@
   "id": 930,
   "stable_key": "talent.930",
   "localization_key": "talent.930.name",
-  "icon": null,
+  "icon": "icons/talents/shared/heavy-guardian-block-spec-930-block-spec.png",
   "attributes": {
     "class_key": "heavy-guardian",
     "spec_key": "block-spec",
@@ -48,8 +48,28 @@
     "tree_nodes": [
       {
         "node_id": 930006,
+        "talent_id": 930,
+        "profession_id": 9,
         "branch": 1,
-        "prerequisite_node_ids": []
+        "is_specialization_node": true,
+        "prerequisite_node_ids": [],
+        "dependent_node_ids": [
+          6062
+        ],
+        "position": {
+          "x": 1440,
+          "y": 2940
+        },
+        "unlock_condition_records": [
+          [
+            3,
+            30
+          ]
+        ],
+        "layout_state": "active_current_stage",
+        "stage_id": 114,
+        "stage_node_index": 0,
+        "specialization_id": 114
       }
     ],
     "class_id": 9,
@@ -63,8 +83,8 @@
     }
   ],
   "provenance": {
-    "source": "ctb.TalentTable",
-    "reference": "client-build:global/steam/24252055@sha256:b03accf85ca0a180162fe707113a3d258953c4b2becb84559bc4a6a12f8634b7",
+    "source": "ctb.TalentTable+ctb.TalentTreeTable+ctb.TalentStageTable",
+    "reference": "client-build:global/steam/24252055@sha256:4214ce9890679abecc2d60a6cd23d9b2432905dbdcc35687b440d7666da2d812+sha256:9a8b3258252c911f29ea8a7aea1621c0912498c867e6707d0aac23813c2b389c",
     "confidence": "corroborated"
   }
 }

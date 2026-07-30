@@ -1,0 +1,104 @@
+{
+  "schema_version": 2,
+  "kind": "imagine",
+  "id": 3000118,
+  "stable_key": "imagine.battle.3000118",
+  "localization_key": "imagine.3000118.name",
+  "icon": "icons/imagines/battle/3000118-emerald-caprahorn.png",
+  "attributes": {
+    "imagine_system": "battle_imagine",
+    "item_id": 3000118,
+    "item_tier": 3,
+    "item_tier_state": "current_build_exact_unmapped_rarity",
+    "item_name_id": 1359900760,
+    "item_description_mapping_state": "pending_exact_current_build_item_table_field",
+    "source_icon_address": "skill_aoyi_product_icon_069",
+    "icon_pixel_sha256": "0e9e6cc462d04fbf99a3bbef0144ba15b931103e9e35bd15c488b36b67f31db6",
+    "aoyi_mapping_state": "current_build_direct",
+    "aoyi_skill_description_localization_key": "battle_imagine_skill.3966.description",
+    "monster_name_localization_key": "battle_imagine_skill.3966.monster_name",
+    "aoyi_skill_id": 3966,
+    "aoyi_skill_name_localization_key": "battle_imagine_skill.3966.name",
+    "aoyi_advanced_icon_address": "skill_aoyi_advanced_texture069",
+    "skill_effect_id": 396601,
+    "base_tier": 0,
+    "maximum_tier": 5,
+    "tier_effect_semantics_state": "current_build_raw_keys",
+    "enhancement_tiers": [
+      {
+        "tier": 1,
+        "row_id": 281,
+        "effect_record_offset": 17806,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 130
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "row_id": 282,
+        "effect_record_offset": 17904,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 260
+          }
+        ]
+      },
+      {
+        "tier": 3,
+        "row_id": 283,
+        "effect_record_offset": 17982,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 390
+          }
+        ]
+      },
+      {
+        "tier": 4,
+        "row_id": 284,
+        "effect_record_offset": 18078,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 520
+          }
+        ]
+      },
+      {
+        "tier": 5,
+        "row_id": 285,
+        "effect_record_offset": 18160,
+        "values": [
+          {
+            "key": "attrPer",
+            "scope": "owner",
+            "raw_value": 650
+          }
+        ]
+      }
+    ],
+    "will_item_id": 3010118,
+    "will_name_localization_key": "imagine_will.3010118.name"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.ItemTable+SkillAoyiTable+SkillAoyiItemTable+SkillAoyiStarTable",
+    "reference": "client-build:global/steam/24252055@sha256:99891b1849d4d9d7ca7844aac06cebd6fa7f95067eb5919de27d0091bfbc622d#battle-imagine-item-3000118",
+    "confidence": "verified"
+  }
+}

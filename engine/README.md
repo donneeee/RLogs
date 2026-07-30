@@ -17,7 +17,9 @@ Each folder owns one boundary:
 - `combat`: future deterministic encounter reducers;
 - `profiles`: future privacy-reviewed character projections;
 - `attribution`: future rDPS and support contribution ledger;
-- `log-format`: future `.rlog` container and replay validation;
+- `log-format`: sealed streaming `.rlog` records and bounded replay validation;
+- `plugin-runtime`: capability-filtered replay execution, resource limits,
+  diagnostics, and versioned plug-in outputs;
 - `submission`: resumable upload state and integrity contracts.
 
 Feature code must not bypass canonical events to read mutable parser state.

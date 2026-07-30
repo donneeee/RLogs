@@ -53,9 +53,10 @@ plugins/games/<game>/game-data/catalog/skills/<class>/<spec>/<id>-<name>.json
 ```
 
 The same rule applies to classes, statuses, monsters, scenes, maps, dungeons,
-items, equipment, Imagines, professions, talents, and cosmetics. Icon paths
-mirror the domain below
-`assets/shared/<game-plugin-folder>/icons/`; records retain short paths such as
+items, equipment, Imagines, professions, talents, modules, and cosmetics.
+Module records are split into readable item, effect, type, slot, and
+link-effect folders rather than one large file. Icon paths mirror the domain below
+`assets/<game-id>/shared/icons/`; records retain short paths such as
 `icons/skills/<class>/<spec>/<file>`. During mapping, localization is grouped
 by locale and visible domain beside the catalog so reference validation
 remains exhaustive; one file may contain a reviewed array so the repository
@@ -65,6 +66,10 @@ entries move into the data-only add-ons under
 that locale's separate `ui/` namespace. Exact
 deployment/channel/client-build availability lives on each canonical record
 and official game string. Player regions never split either tree.
+
+Several records may intentionally reference one physical icon when the game
+uses the same address. The compiler emits one asset alias per record key while
+retaining one shared file path, so shared visuals never require copied bytes.
 
 ## Runtime bundle
 

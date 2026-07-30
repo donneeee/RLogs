@@ -6,8 +6,12 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+rlogs-bpsr-module-optimizer = { path = "../../plugins/games/blue-protocol-star-resonance/features/module-optimizer" }
 rlogs-game-plugin-api = { path = "../../engine/game-plugin-api" }
+rlogs-log-format = { path = "../../engine/log-format" }
 rlogs-plugin-api = { path = "../../engine/plugin-api" }
+rlogs-plugin-combat-meter = { path = "../../plugins/builtin/combat-meter" }
 rlogs-plugin-host = { path = "../../engine/plugin-host" }
+rlogs-plugin-runtime = { path = "../../engine/plugin-runtime" }
 serde.workspace = true
 serde_json.workspace = true

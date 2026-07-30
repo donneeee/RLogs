@@ -6,7 +6,7 @@
     "distribution_app_id": "3681810",
     "build_id": "24252055"
   },
-  "table_count": 113,
+  "table_count": 117,
   "rule": "Names select candidates only; fields are not exposed until table schemas and packet/runtime behavior corroborate them.",
   "tables": [
     {
@@ -8370,6 +8370,302 @@
       },
       "candidate_field_relations": 5,
       "exact_string_references": 0
+    },
+    {
+      "table_key": 3999038802,
+      "table_key_hex": "0xee5c7d52",
+      "stable_key": "ctb.FantasyHoleTable",
+      "names": [
+        "FantasyHoleTable.ctb"
+      ],
+      "state": "named",
+      "name_confidence": "corroborated_hash_match",
+      "domain": "system-and-other",
+      "source": {
+        "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+        "offset": 1093033744,
+        "bytes": 1331,
+        "sha256": "sha256:5f048d9a137095d3e370e7e4da70727f3e9adb506682d0335c947c18bb26d2a6"
+      },
+      "shape": {
+        "rows": 18,
+        "row_size": 24,
+        "row_data_bytes": 432,
+        "pool_lengths": [
+          {
+            "type": 1,
+            "bytes": 2
+          },
+          {
+            "type": 2,
+            "bytes": 0
+          },
+          {
+            "type": 3,
+            "bytes": 0
+          },
+          {
+            "type": 4,
+            "bytes": 0
+          },
+          {
+            "type": 5,
+            "bytes": 0
+          },
+          {
+            "type": 6,
+            "bytes": 653
+          },
+          {
+            "type": 7,
+            "bytes": 0
+          },
+          {
+            "type": 8,
+            "bytes": 0
+          },
+          {
+            "type": 9,
+            "bytes": 0
+          },
+          {
+            "type": 10,
+            "bytes": 0
+          }
+        ],
+        "trailing_bytes": 0
+      },
+      "row_ids": {
+        "minimum": 101,
+        "maximum": 306,
+        "unique": 18,
+        "duplicate_rows": 0,
+        "zero_rows": 0
+      },
+      "candidate_field_relations": 7,
+      "exact_string_references": 22
+    },
+    {
+      "table_key": 3528275335,
+      "table_key_hex": "0xd24d3587",
+      "stable_key": "ctb.FantasySolutionTable",
+      "names": [
+        "FantasySolutionTable.ctb"
+      ],
+      "state": "named",
+      "name_confidence": "corroborated_hash_match",
+      "domain": "system-and-other",
+      "source": {
+        "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+        "offset": 1007106159,
+        "bytes": 1504,
+        "sha256": "sha256:85b8061e7e5a7b889703f0ba051dce4c194400992bf932ed0af74591707b1704"
+      },
+      "shape": {
+        "rows": 26,
+        "row_size": 20,
+        "row_data_bytes": 520,
+        "pool_lengths": [
+          {
+            "type": 1,
+            "bytes": 676
+          },
+          {
+            "type": 2,
+            "bytes": 0
+          },
+          {
+            "type": 3,
+            "bytes": 0
+          },
+          {
+            "type": 4,
+            "bytes": 0
+          },
+          {
+            "type": 5,
+            "bytes": 0
+          },
+          {
+            "type": 6,
+            "bytes": 0
+          },
+          {
+            "type": 7,
+            "bytes": 0
+          },
+          {
+            "type": 8,
+            "bytes": 0
+          },
+          {
+            "type": 9,
+            "bytes": 0
+          },
+          {
+            "type": 10,
+            "bytes": 0
+          }
+        ],
+        "trailing_bytes": 0
+      },
+      "row_ids": {
+        "minimum": 101,
+        "maximum": 308,
+        "unique": 26,
+        "duplicate_rows": 0,
+        "zero_rows": 0
+      },
+      "candidate_field_relations": 5,
+      "exact_string_references": 0
+    },
+    {
+      "table_key": 4121273610,
+      "table_key_hex": "0xf5a5a50a",
+      "stable_key": "ctb.FantasyTable",
+      "names": [
+        "FantasyTable.ctb"
+      ],
+      "state": "named",
+      "name_confidence": "corroborated_hash_match",
+      "domain": "system-and-other",
+      "source": {
+        "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+        "offset": 1108571001,
+        "bytes": 12014,
+        "sha256": "sha256:09903a75b37077454ce76df7e65eb4b5b43e1c5881a6b64cf1461cc1a1f44706"
+      },
+      "shape": {
+        "rows": 100,
+        "row_size": 33,
+        "row_data_bytes": 3300,
+        "pool_lengths": [
+          {
+            "type": 1,
+            "bytes": 3360
+          },
+          {
+            "type": 2,
+            "bytes": 0
+          },
+          {
+            "type": 3,
+            "bytes": 0
+          },
+          {
+            "type": 4,
+            "bytes": 0
+          },
+          {
+            "type": 5,
+            "bytes": 0
+          },
+          {
+            "type": 6,
+            "bytes": 4454
+          },
+          {
+            "type": 7,
+            "bytes": 0
+          },
+          {
+            "type": 8,
+            "bytes": 0
+          },
+          {
+            "type": 9,
+            "bytes": 0
+          },
+          {
+            "type": 10,
+            "bytes": 0
+          }
+        ],
+        "trailing_bytes": 0
+      },
+      "row_ids": {
+        "minimum": 5110001,
+        "maximum": 5150110,
+        "unique": 100,
+        "duplicate_rows": 0,
+        "zero_rows": 0
+      },
+      "candidate_field_relations": 13,
+      "exact_string_references": 104
+    },
+    {
+      "table_key": 2781178412,
+      "table_key_hex": "0xa5c56a2c",
+      "stable_key": "ctb.FantasyTypeTable",
+      "names": [
+        "FantasyTypeTable.ctb"
+      ],
+      "state": "named",
+      "name_confidence": "corroborated_hash_match",
+      "domain": "entities",
+      "source": {
+        "relative_path": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+        "offset": 836010666,
+        "bytes": 905,
+        "sha256": "sha256:f472aaff719c6c68345c486fdd8cdb220a778df46937a6150dec8cb93e361ff4"
+      },
+      "shape": {
+        "rows": 7,
+        "row_size": 20,
+        "row_data_bytes": 140,
+        "pool_lengths": [
+          {
+            "type": 1,
+            "bytes": 0
+          },
+          {
+            "type": 2,
+            "bytes": 0
+          },
+          {
+            "type": 3,
+            "bytes": 0
+          },
+          {
+            "type": 4,
+            "bytes": 0
+          },
+          {
+            "type": 5,
+            "bytes": 0
+          },
+          {
+            "type": 6,
+            "bytes": 609
+          },
+          {
+            "type": 7,
+            "bytes": 0
+          },
+          {
+            "type": 8,
+            "bytes": 0
+          },
+          {
+            "type": 9,
+            "bytes": 0
+          },
+          {
+            "type": 10,
+            "bytes": 0
+          }
+        ],
+        "trailing_bytes": 0
+      },
+      "row_ids": {
+        "minimum": 0,
+        "maximum": 6,
+        "unique": 7,
+        "duplicate_rows": 0,
+        "zero_rows": 1
+      },
+      "candidate_field_relations": 7,
+      "exact_string_references": 20
     }
   ]
 }
