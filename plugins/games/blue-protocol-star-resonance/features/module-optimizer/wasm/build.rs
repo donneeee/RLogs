@@ -36,4 +36,9 @@ fn watch_catalog(root: &Path) {
     ] {
         println!("cargo:rerun-if-changed={}", root.join(relative).display());
     }
+    println!(
+        "cargo:rerun-if-changed={}",
+        root.join("../../features/module-optimizer/localization/en-US/attribute-aliases.json")
+            .display()
+    );
 }

@@ -8,11 +8,15 @@ The scoring and search behavior is a Rust port of the module optimizer in
 `fudiyangjin/resonance-logs-cn` version `0.2.0`, commit
 `ccdeef23c7806be5072f95a9e80b103794af3544`, used under AGPL-3.0. The port:
 
-- preserves CN's module-part aggregation, target/exclusion weighting, minimum
+- preserves CN's module-part aggregation, preference-weighted ranking, minimum
   attribute constraints, thresholds, total-link scoring, and 4/5-module search;
 - reads thresholds and fight values from the exact-build RLogs catalog instead
   of freezing current game values in the website;
 - uses browser-safe string instance IDs;
+- returns actual unweighted power separately from the preference score used to
+  rank recommendations, plus an optional scored current-equipment baseline;
+- uses reviewed optimizer aliases without overwriting exact game-client
+  localization strings in the shared catalog;
 - supplies deterministic tie-breaking, an exact verification mode, and a
   bounded beam mode for full inventories (512 states by default, adjustable
   through the API);

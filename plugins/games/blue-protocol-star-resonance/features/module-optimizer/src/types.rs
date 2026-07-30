@@ -33,6 +33,12 @@ pub enum SearchMode {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OptimizeRequest {
     pub modules: Vec<ModuleCandidate>,
+    /// Module instance IDs currently equipped by the character, in slot order.
+    ///
+    /// This optional baseline is scored with the same catalog and preference
+    /// policy but is never added to or removed from the search inventory.
+    #[serde(default)]
+    pub current_instance_ids: Vec<String>,
     #[serde(default)]
     pub target_attributes: Vec<i32>,
     #[serde(default)]
@@ -61,6 +67,7 @@ impl Default for OptimizeRequest {
     fn default() -> Self {
         Self {
             modules: Vec::new(),
+            current_instance_ids: Vec::new(),
             target_attributes: Vec::new(),
             exclude_attributes: Vec::new(),
             min_attr_requirements: BTreeMap::new(),
@@ -104,6 +111,7 @@ const fn default_require_target_match() -> bool {
 pub struct OptimizeResponse {
     pub scoring_revision: String,
     pub catalog_revision: String,
+    pub current_setup: Option<ModuleSolution>,
     pub solutions: Vec<ModuleSolution>,
     pub search: SearchSummary,
 }
@@ -112,13 +120,19 @@ pub struct OptimizeResponse {
 pub struct ModuleSolution {
     pub instance_ids: Vec<String>,
     pub modules: Vec<ModuleCandidate>,
+    /// Actual in-game module power without preference weighting.
     pub score: i32,
+    /// Internal ordering score after target/exclusion preference weighting.
+    pub ranking_score: i32,
     pub breakdown: ScoreBreakdown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ScoreBreakdown {
+    /// Actual threshold power before optimizer preferences are applied.
     pub threshold_power: i32,
+    /// Threshold power used for ranking after preferences are applied.
+    pub ranking_threshold_power: i32,
     pub total_link_points: i32,
     pub total_link_power: i32,
     pub attributes: Vec<AttributeScore>,
@@ -162,7 +176,11 @@ pub struct OptimizerCatalog {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AttributeCatalogEntry {
     pub id: i32,
+    /// Reviewed optimizer terminology for the active locale.
     pub name: String,
+    /// Exact game-client text when the optimizer uses a clearer alias.
+    #[serde(default)]
+    pub official_name: Option<String>,
     pub icon: Option<String>,
     pub thresholds: Vec<i32>,
     pub fight_values: Vec<i32>,

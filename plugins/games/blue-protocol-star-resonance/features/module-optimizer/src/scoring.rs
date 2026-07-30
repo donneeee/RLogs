@@ -56,14 +56,14 @@ impl ScoringRules {
         self.link_power[index]
     }
 
-    pub(crate) fn score_dense(
+    pub(crate) fn ranking_score_dense(
         &self,
         values: &[i32],
         total_link_points: i32,
         target_attributes: &BTreeSet<i32>,
         exclude_attributes: &BTreeSet<i32>,
     ) -> i32 {
-        let threshold_power = self
+        let ranking_threshold_power = self
             .attributes
             .keys()
             .zip(values)
@@ -72,7 +72,7 @@ impl ScoringRules {
                 power * attribute_multiplier(*attribute_id, target_attributes, exclude_attributes)
             })
             .sum::<i32>();
-        threshold_power + self.total_link_power(total_link_points)
+        ranking_threshold_power + self.total_link_power(total_link_points)
     }
 
     pub(crate) fn score_breakdown(
@@ -106,9 +106,11 @@ impl ScoringRules {
                 }
             })
             .collect::<Vec<_>>();
-        let threshold_power = attributes.iter().map(|entry| entry.applied_power).sum();
+        let threshold_power = attributes.iter().map(|entry| entry.base_power).sum();
+        let ranking_threshold_power = attributes.iter().map(|entry| entry.applied_power).sum();
         ScoreBreakdown {
             threshold_power,
+            ranking_threshold_power,
             total_link_points,
             total_link_power: self.total_link_power(total_link_points),
             attributes,

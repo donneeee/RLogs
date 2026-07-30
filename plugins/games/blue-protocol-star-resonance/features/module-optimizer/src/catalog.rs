@@ -28,6 +28,12 @@ struct LocalizationEntry {
 }
 
 #[derive(Debug, Deserialize)]
+struct OptimizerAliases {
+    locale: String,
+    aliases: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct EffectRecord {
     id: i32,
     localization_key: Option<String>,
@@ -80,6 +86,24 @@ pub fn load_catalog_from_path(
         .into_iter()
         .map(|entry| (entry.key, entry.text))
         .collect::<BTreeMap<_, _>>();
+    let game_plugin_root = catalog_root
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| {
+            OptimizerError::InvalidCatalog(format!(
+                "catalog root {} is not under a game-data directory",
+                catalog_root.display()
+            ))
+        })?;
+    let aliases_path = game_plugin_root
+        .join("features/module-optimizer/localization/en-US/attribute-aliases.json");
+    let optimizer_aliases: OptimizerAliases = read_json(&aliases_path)?;
+    if optimizer_aliases.locale != "en-US" {
+        return Err(OptimizerError::InvalidCatalog(format!(
+            "optimizer aliases use locale {}, expected en-US",
+            optimizer_aliases.locale
+        )));
+    }
 
     let mut attributes = read_json_directory::<EffectRecord>(&catalog_root.join("module-effects"))?
         .into_iter()
@@ -91,15 +115,20 @@ pub fn load_catalog_from_path(
                 .filter(|level| level.required_link_points > 0)
                 .collect::<Vec<_>>();
             levels.sort_by_key(|level| level.required_link_points);
-            let name = effect
-                .localization_key
-                .as_ref()
+            let localization_key = effect.localization_key.as_deref();
+            let official_name = localization_key
                 .and_then(|key| localization.get(key))
                 .cloned()
                 .unwrap_or_else(|| format!("Module effect {}", effect.id));
+            let name = localization_key
+                .and_then(|key| optimizer_aliases.aliases.get(key))
+                .cloned()
+                .unwrap_or_else(|| official_name.clone());
+            let official_name = (official_name != name).then_some(official_name);
             AttributeCatalogEntry {
                 id: effect.id,
                 name,
+                official_name,
                 icon: effect.icon,
                 thresholds: levels
                     .iter()
@@ -210,5 +239,21 @@ mod tests {
         assert_eq!(actual.link_power, expected.link_power);
         assert_eq!(catalog.attributes.len(), 21);
         assert_eq!(catalog.client_builds, ["24252055"]);
+        assert_eq!(
+            catalog
+                .attributes
+                .iter()
+                .find(|entry| entry.id == 1112)
+                .map(|entry| (entry.name.as_str(), entry.official_name.as_deref())),
+            Some(("Intelligence Boost", Some("Intellect Boost")))
+        );
+        assert_eq!(
+            catalog
+                .attributes
+                .iter()
+                .find(|entry| entry.id == 1307)
+                .map(|entry| entry.name.as_str()),
+            Some("Resistance (Magic)")
+        );
     }
 }

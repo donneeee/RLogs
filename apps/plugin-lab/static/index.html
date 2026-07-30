@@ -113,7 +113,7 @@
                 </div>
                 <label class="optimizer-check">
                   <input id="optimizer-require-target" type="checkbox" checked>
-                  Only consider modules containing a selected target attribute
+                  Only consider modules containing a selected priority attribute
                 </label>
                 <label class="optimizer-field optimizer-inventory">
                   <span>Module inventory JSON</span>
@@ -127,7 +127,7 @@
               </div>
               <div class="optimizer-attribute-column">
                 <div class="optimizer-attribute-heading">
-                  <div><strong>Attribute policy</strong><small>Target = 2x threshold power; exclude = 0x</small></div>
+                  <div><strong>Attribute policy</strong><small>Preferences affect ranking only; actual power remains unweighted.</small></div>
                   <span class="pill">minimums optional</span>
                 </div>
                 <div class="optimizer-attribute-labels">
@@ -142,8 +142,9 @@
                 <table>
                   <thead>
                     <tr>
-                      <th>Rank</th>
-                      <th>Score</th>
+                      <th>Set</th>
+                      <th>Actual power</th>
+                      <th>Preference score</th>
                       <th>Module instance IDs</th>
                       <th>Attribute totals</th>
                     </tr>

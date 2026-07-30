@@ -23,13 +23,13 @@ struct DenseCandidate {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RankedCombination {
     indices: Vec<usize>,
-    score: i32,
+    ranking_score: i32,
 }
 
 impl Ord for RankedCombination {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.score
-            .cmp(&other.score)
+        self.ranking_score
+            .cmp(&other.ranking_score)
             .then_with(|| other.indices.cmp(&self.indices))
     }
 }
@@ -46,7 +46,7 @@ struct BeamState {
     values: [i32; MAX_ATTRIBUTE_SLOTS],
     depth: u8,
     total_link_points: i32,
-    score: i32,
+    ranking_score: i32,
     upper_bound: i32,
 }
 
@@ -54,7 +54,7 @@ impl Ord for BeamState {
     fn cmp(&self, other: &Self) -> Ordering {
         self.upper_bound
             .cmp(&other.upper_bound)
-            .then_with(|| self.score.cmp(&other.score))
+            .then_with(|| self.ranking_score.cmp(&other.ranking_score))
             .then_with(|| {
                 other.indices[..usize::from(other.depth)]
                     .cmp(&self.indices[..usize::from(self.depth)])
@@ -75,6 +75,8 @@ pub fn optimize(
     validate_request(rules, request)?;
     let target_attributes = request.target_attributes.iter().copied().collect();
     let exclude_attributes = request.exclude_attributes.iter().copied().collect();
+    let current_setup =
+        build_current_setup(rules, request, &target_attributes, &exclude_attributes)?;
     let (candidates, excluded_module_count) =
         prepare_candidates(rules, request, &target_attributes)?;
     if candidates.len() < request.combination_size {
@@ -103,7 +105,7 @@ pub fn optimize(
         SearchMode::Beam => SearchMode::Beam,
     };
 
-    let (ranked, evaluated_states) = match used_mode {
+    let (mut ranked, evaluated_states) = match used_mode {
         SearchMode::Exact => exact_search(
             rules,
             &candidates,
@@ -120,6 +122,18 @@ pub fn optimize(
         ),
         SearchMode::Auto => unreachable!("auto mode is resolved before search"),
     };
+    if let Some(current) = current_ranked_combination(
+        rules,
+        &candidates,
+        request,
+        &target_attributes,
+        &exclude_attributes,
+    ) {
+        ranked.push(current);
+        ranked.sort_by(|left, right| right.cmp(left));
+        ranked.dedup_by(|left, right| left.indices == right.indices);
+        ranked.truncate(request.max_solutions);
+    }
     let solutions = ranked
         .into_iter()
         .map(|ranked| {
@@ -136,6 +150,7 @@ pub fn optimize(
     Ok(OptimizeResponse {
         scoring_revision: rules.scoring_revision().into(),
         catalog_revision: rules.catalog_revision().into(),
+        current_setup,
         solutions,
         search: SearchSummary {
             requested_mode: request.search_mode,
@@ -149,6 +164,42 @@ pub fn optimize(
             combination_size: request.combination_size,
             beam_width: (used_mode == SearchMode::Beam).then_some(request.beam_width),
         },
+    })
+}
+
+fn current_ranked_combination(
+    rules: &ScoringRules,
+    candidates: &[DenseCandidate],
+    request: &OptimizeRequest,
+    target_attributes: &BTreeSet<i32>,
+    exclude_attributes: &BTreeSet<i32>,
+) -> Option<RankedCombination> {
+    if request.current_instance_ids.len() != request.combination_size {
+        return None;
+    }
+    let indices_by_id = candidates
+        .iter()
+        .enumerate()
+        .map(|(index, candidate)| (candidate.module.instance_id.as_str(), index))
+        .collect::<BTreeMap<_, _>>();
+    let mut indices = request
+        .current_instance_ids
+        .iter()
+        .map(|instance_id| indices_by_id.get(instance_id.as_str()).copied())
+        .collect::<Option<Vec<_>>>()?;
+    indices.sort_unstable();
+    let (values, total_link_points) = sum_combination(candidates, &indices);
+    if !meets_requirements(rules, &values, &request.min_attr_requirements) {
+        return None;
+    }
+    Some(RankedCombination {
+        ranking_score: rules.ranking_score_dense(
+            &values,
+            total_link_points,
+            target_attributes,
+            exclude_attributes,
+        ),
+        indices,
     })
 }
 
@@ -339,7 +390,7 @@ fn exact_search(
         evaluated += 1;
         let (values, total_link_points) = sum_combination(candidates, &combination);
         if meets_requirements(rules, &values, &request.min_attr_requirements) {
-            let score = rules.score_dense(
+            let ranking_score = rules.ranking_score_dense(
                 &values,
                 total_link_points,
                 target_attributes,
@@ -349,7 +400,7 @@ fn exact_search(
                 &mut top,
                 RankedCombination {
                     indices: combination.clone(),
-                    score,
+                    ranking_score,
                 },
                 request.max_solutions,
             );
@@ -374,7 +425,7 @@ fn beam_search(
         values: [0; MAX_ATTRIBUTE_SLOTS],
         depth: 0,
         total_link_points: 0,
-        score: 0,
+        ranking_score: 0,
         upper_bound: i32::MAX,
     }];
     let mut evaluated = 0_u64;
@@ -413,14 +464,14 @@ fn beam_search(
                 ) {
                     continue;
                 }
-                let score = rules.score_dense(
+                let ranking_score = rules.ranking_score_dense(
                     &values[..rules.attributes.len()],
                     total_link_points,
                     target_attributes,
                     exclude_attributes,
                 );
                 let upper_bound = if remaining_after_pick == 0 {
-                    score
+                    ranking_score
                 } else {
                     score_upper_bound(
                         rules,
@@ -444,7 +495,7 @@ fn beam_search(
                         values,
                         depth: state.depth + 1,
                         total_link_points,
-                        score,
+                        ranking_score,
                         upper_bound,
                     },
                     request.beam_width,
@@ -469,7 +520,7 @@ fn beam_search(
                         .iter()
                         .map(|index| usize::from(*index))
                         .collect(),
-                    score: state.score,
+                    ranking_score: state.ranking_score,
                 },
                 request.max_solutions,
             );
@@ -490,19 +541,70 @@ fn build_solution(
         .iter()
         .map(|index| candidates[*index].module.clone())
         .collect::<Vec<_>>();
+    let solution = module_solution(rules, modules, target_attributes, exclude_attributes);
+    debug_assert_eq!(ranked.ranking_score, solution.ranking_score);
+    solution
+}
+
+fn build_current_setup(
+    rules: &ScoringRules,
+    request: &OptimizeRequest,
+    target_attributes: &BTreeSet<i32>,
+    exclude_attributes: &BTreeSet<i32>,
+) -> Result<Option<ModuleSolution>, OptimizerError> {
+    if request.current_instance_ids.is_empty() {
+        return Ok(None);
+    }
+    if request.current_instance_ids.len() > MAX_COMBINATION_SIZE {
+        return Err(OptimizerError::InvalidRequest(format!(
+            "current setup contains {} modules; at most {MAX_COMBINATION_SIZE} are supported",
+            request.current_instance_ids.len()
+        )));
+    }
+    let modules_by_id = request
+        .modules
+        .iter()
+        .map(|module| (module.instance_id.as_str(), module))
+        .collect::<BTreeMap<_, _>>();
+    let mut seen = BTreeSet::new();
+    let mut modules = Vec::with_capacity(request.current_instance_ids.len());
+    for instance_id in &request.current_instance_ids {
+        if !seen.insert(instance_id.as_str()) {
+            return Err(OptimizerError::InvalidRequest(format!(
+                "current setup contains duplicate module instance_id {instance_id}"
+            )));
+        }
+        let module = modules_by_id.get(instance_id.as_str()).ok_or_else(|| {
+            OptimizerError::InvalidRequest(format!(
+                "current module instance_id {instance_id} is not in the inventory"
+            ))
+        })?;
+        modules.push((*module).clone());
+    }
+    Ok(Some(module_solution(
+        rules,
+        modules,
+        target_attributes,
+        exclude_attributes,
+    )))
+}
+
+fn module_solution(
+    rules: &ScoringRules,
+    modules: Vec<ModuleCandidate>,
+    target_attributes: &BTreeSet<i32>,
+    exclude_attributes: &BTreeSet<i32>,
+) -> ModuleSolution {
     let instance_ids = modules
         .iter()
         .map(|module| module.instance_id.clone())
         .collect();
     let breakdown = rules.score_breakdown(&modules, target_attributes, exclude_attributes);
-    debug_assert_eq!(
-        ranked.score,
-        breakdown.threshold_power + breakdown.total_link_power
-    );
     ModuleSolution {
         instance_ids,
         modules,
-        score: ranked.score,
+        score: breakdown.threshold_power + breakdown.total_link_power,
+        ranking_score: breakdown.ranking_threshold_power + breakdown.total_link_power,
         breakdown,
     }
 }
@@ -599,7 +701,7 @@ fn score_upper_bound(
         .enumerate()
         .map(|(slot, value)| value + suffix_values[slot][next_start][remaining])
         .collect::<Vec<_>>();
-    rules.score_dense(
+    rules.ranking_score_dense(
         &maximum_values,
         total_link_points + suffix_totals[next_start][remaining],
         target_attributes,
@@ -687,12 +789,15 @@ mod tests {
             module("9007199254740995", &[(1111, 8), (2104, 4)]),
             module("9007199254740996", &[(1112, 4), (2105, 4)]),
         ];
-        let (score, breakdown) = score_modules(&rules, &modules, &[1110], &[1111]).unwrap();
+        let (score, breakdown) = score_modules(&rules, &modules, &[1110], &[]).unwrap();
 
-        // 1110 reaches 8 (29) and is doubled; 1111 is excluded; 1112 reaches
-        // 4 (14); special 2104 reaches 8 (59); special 2105 reaches 4 (29).
-        // Total link points are 32, which contributes 186.
-        assert_eq!(breakdown.threshold_power, 58 + 14 + 59 + 29);
+        // Actual power remains unweighted: 1110 reaches 8 (29), 1111 reaches
+        // 8 (29), 1112 reaches 4 (14), special 2104 reaches 8 (59), and
+        // special 2105 reaches 4 (29). The separate ranking threshold doubles
+        // only the preferred 1110 contribution. Total link points are 32,
+        // which contributes 186.
+        assert_eq!(breakdown.threshold_power, 29 + 29 + 14 + 59 + 29);
+        assert_eq!(breakdown.ranking_threshold_power, 58 + 29 + 14 + 59 + 29);
         assert_eq!(breakdown.total_link_power, 186);
         assert_eq!(score, 346);
     }
@@ -792,7 +897,51 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(beam.solutions[0].score, exact.solutions[0].score);
+        assert_eq!(
+            beam.solutions[0].ranking_score,
+            exact.solutions[0].ranking_score
+        );
+        assert_eq!(
+            beam.solutions[0].instance_ids,
+            exact.solutions[0].instance_ids
+        );
+    }
+
+    #[test]
+    fn current_setup_is_scored_separately_without_changing_search_candidates() {
+        let rules = ScoringRules::cn_0_2_0_fixture();
+        let request = OptimizeRequest {
+            modules: vec![
+                module("a", &[(1110, 4), (1111, 1)]),
+                module("b", &[(1110, 4), (1112, 1)]),
+                module("c", &[(1110, 4), (1113, 1)]),
+                module("d", &[(1110, 4), (1114, 1)]),
+                module("e", &[(1111, 4), (1112, 4)]),
+                module("f", &[(1113, 4), (1114, 4)]),
+            ],
+            current_instance_ids: vec!["e".into(), "b".into(), "a".into(), "d".into()],
+            target_attributes: vec![1110],
+            search_mode: SearchMode::Exact,
+            require_target_match: false,
+            ..OptimizeRequest::default()
+        };
+        let response = optimize(&rules, &request).unwrap();
+        let current = response.current_setup.unwrap();
+
+        assert_eq!(current.instance_ids, ["e", "b", "a", "d"]);
+        assert_eq!(response.search.input_module_count, 6);
+        assert_eq!(response.search.candidate_module_count, 6);
+        assert_eq!(response.search.total_combinations, 15);
+        assert_eq!(
+            current.score,
+            current.breakdown.threshold_power + current.breakdown.total_link_power
+        );
+        assert_eq!(
+            current.ranking_score,
+            current.breakdown.ranking_threshold_power + current.breakdown.total_link_power
+        );
+        assert!(current.ranking_score > current.score);
+        assert!(response.solutions[0].ranking_score >= current.ranking_score);
     }
 
     #[test]
@@ -805,6 +954,12 @@ mod tests {
                 module("9007199254740997", &[(1110, 4), (1111, 4)]),
                 module("9007199254740999", &[(1110, 4), (1111, 4)]),
             ],
+            current_instance_ids: vec![
+                "9007199254740999".into(),
+                "9007199254740993".into(),
+                "9007199254740997".into(),
+                "9007199254740995".into(),
+            ],
             search_mode: SearchMode::Exact,
             ..OptimizeRequest::default()
         };
@@ -816,6 +971,15 @@ mod tests {
                 "9007199254740995",
                 "9007199254740997",
                 "9007199254740999"
+            ]
+        );
+        assert_eq!(
+            response.current_setup.unwrap().instance_ids,
+            [
+                "9007199254740999",
+                "9007199254740993",
+                "9007199254740997",
+                "9007199254740995"
             ]
         );
     }

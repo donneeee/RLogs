@@ -79,9 +79,10 @@ profile module inventory
 ```
 
 The implemented result contains selected string instance IDs, complete module
-records, threshold and total-link score components, attribute totals, search
-statistics, and the exact catalog/scoring revision. Small searches use exact
-enumeration. Full inventories automatically use bounded beam search with
+records, actual threshold and total-link power, a separate preference ranking
+score, attribute totals, the scored currently equipped baseline when supplied,
+search statistics, and the exact catalog/scoring revision. Small searches use
+exact enumeration. Full inventories automatically use bounded beam search with
 suffix upper bounds and minimum-threshold feasibility pruning. Exact search
 remains available for parity tests, and all result tie-breaking is
 deterministic.
@@ -90,15 +91,18 @@ The CN-compatible scoring behavior is:
 
 - sum each effect ID's link points across the selected modules;
 - apply the catalog thresholds `1/4/8/12/16/20`;
-- double threshold power for target attributes;
-- remove threshold power for excluded attributes;
+- double preferred threshold contributions only in the internal ranking score;
+- remove ignored threshold contributions only from the internal ranking score;
 - enforce optional minimum attribute totals;
 - add the `ModLinkEffectTable` fight value for total link points;
-- select four or five modules and rank the highest scores.
+- select four or five modules and rank the highest preference scores;
+- report actual module power without either preference adjustment.
 
-Target weighting takes precedence if the same effect is also excluded, matching
-CN 0.2.0. RLogs reads fight values from the exact-build catalog rather than
-freezing current game values inside the web page.
+Priority weighting takes precedence if the same effect is also ignored,
+matching CN 0.2.0. RLogs reads fight values from the exact-build catalog rather
+than freezing current game values inside the web page. The English optimizer
+terminology is a reviewed alias layer; exact current-client names remain
+available separately rather than being overwritten.
 
 The current-build static catalog now includes:
 

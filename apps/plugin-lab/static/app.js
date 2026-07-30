@@ -79,8 +79,8 @@ function renderOptimizerCatalog() {
     const mode = make("select");
     [
       ["normal", "Normal"],
-      ["target", "Target 2x"],
-      ["exclude", "Exclude 0x"],
+      ["target", "Priority"],
+      ["exclude", "Ignore"],
     ].forEach(([value, label]) => {
       const option = make("option", "", label);
       option.value = value;
@@ -389,7 +389,12 @@ function loadOptimizerDemo() {
       initial_link_points: 3 + ((index + partIndex * 3) % 8),
     })),
   }));
-  $("#optimizer-inventory").value = JSON.stringify(modules, null, 2);
+  $("#optimizer-inventory").value = JSON.stringify({
+    inventory: modules,
+    equipped_slots: Object.fromEntries(
+      modules.slice(0, 4).map((module, index) => [index + 1, module.instance_id]),
+    ),
+  }, null, 2);
   const strength = document.querySelector(
     '.optimizer-attribute-row[data-attribute-id="1110"] select',
   );
@@ -399,11 +404,24 @@ function loadOptimizerDemo() {
     "Safe 12-module demo loaded. No character data is included.";
 }
 
-function optimizerModulesFromJson(value) {
-  if (Array.isArray(value)) return value;
-  if (Array.isArray(value?.inventory)) return value.inventory;
-  if (Array.isArray(value?.modules)) return value.modules;
-  if (Array.isArray(value?.modules?.inventory)) return value.modules.inventory;
+function optimizerInputFromJson(value) {
+  if (Array.isArray(value)) return { modules: value, currentInstanceIds: [] };
+  const moduleState = Array.isArray(value?.inventory)
+    ? value
+    : Array.isArray(value?.modules?.inventory)
+      ? value.modules
+      : Array.isArray(value?.body?.modules?.inventory)
+        ? value.body.modules
+        : null;
+  if (moduleState) {
+    const currentInstanceIds = Object.entries(moduleState.equipped_slots || {})
+      .sort(([left], [right]) => Number(left) - Number(right))
+      .map(([, instanceId]) => instanceId);
+    return { modules: moduleState.inventory, currentInstanceIds };
+  }
+  if (Array.isArray(value?.modules)) {
+    return { modules: value.modules, currentInstanceIds: [] };
+  }
   throw new Error(
     "JSON must be an inventory array, a modules object, or a profile with modules.inventory",
   );
@@ -416,7 +434,7 @@ async function runModuleOptimizer() {
   $("#optimizer-result").hidden = true;
   try {
     const parsed = JSON.parse($("#optimizer-inventory").value);
-    const modules = optimizerModulesFromJson(parsed);
+    const { modules, currentInstanceIds } = optimizerInputFromJson(parsed);
     const targetAttributes = [];
     const excludeAttributes = [];
     const minimums = {};
@@ -431,6 +449,7 @@ async function runModuleOptimizer() {
     const minimumTotalRaw = $("#optimizer-min-total").value;
     const payload = {
       modules,
+      current_instance_ids: currentInstanceIds,
       target_attributes: targetAttributes,
       exclude_attributes: excludeAttributes,
       min_attr_requirements: minimums,
@@ -463,20 +482,30 @@ async function runModuleOptimizer() {
 }
 
 function renderOptimizerResult(result) {
+  const current = result.current_setup;
+  const top = result.solutions[0];
+  const currentIsComparable =
+    current?.instance_ids.length === result.search.combination_size;
   const metrics = [
-    [result.solutions.length, "solutions"],
+    [current ? formatNumber(current.score) : "-", "current actual"],
+    [top ? formatNumber(top.score) : "-", "best found actual"],
+    [
+      currentIsComparable && current && top
+        ? `${top.score - current.score >= 0 ? "+" : ""}${formatNumber(top.score - current.score)}`
+        : "-",
+      "actual change",
+    ],
+    [top ? formatNumber(top.ranking_score) : "-", "preference score"],
     [formatNumber(result.search.candidate_module_count), "candidates"],
-    [formatNumber(result.search.total_combinations), "possible sets"],
-    [formatNumber(result.search.evaluated_states), "evaluated states"],
-    [result.search.exact ? "exact" : "bounded", "search result"],
   ];
   $("#optimizer-metrics").replaceChildren(...metrics.map(([value, label]) => {
     const cell = make("div");
     cell.append(make("strong", "", value), make("span", "", label));
     return cell;
   }));
-  $("#optimizer-result-rows").replaceChildren(...result.solutions.map((solution, index) => {
+  const solutionRow = (solution, label, isCurrent = false) => {
     const row = make("tr");
+    if (isCurrent) row.classList.add("optimizer-current-row");
     const ids = make("td", "optimizer-module-ids");
     solution.modules.forEach((module) => {
       const line = make("span");
@@ -497,23 +526,37 @@ function renderOptimizerResult(result) {
           (entry) => entry.id === attribute.attribute_id,
         );
         const suffix = attribute.multiplier === 2
-          ? " x2"
+          ? " (priority)"
           : attribute.multiplier === 0
-            ? " excluded"
+            ? " (ignored for ranking)"
             : "";
         return `${catalog?.name || attribute.attribute_id}: ${attribute.total}${suffix}`;
       })
       .join(" - ");
     row.append(
-      make("td", "", `#${index + 1}`),
+      make("td", isCurrent ? "optimizer-current-label" : "", label),
       make("td", "optimizer-score", formatNumber(solution.score)),
+      make("td", "optimizer-ranking-score", formatNumber(solution.ranking_score)),
       ids,
       make("td", "optimizer-attribute-summary", attributes),
     );
     return row;
-  }));
+  };
+  const signature = (solution) => [...solution.instance_ids].sort().join("\0");
+  const currentSignature = current ? signature(current) : null;
+  const recommendations = result.solutions.filter(
+    (solution) => signature(solution) !== currentSignature,
+  );
+  const rows = recommendations.map((solution, index) =>
+    solutionRow(solution, `#${index + 1}`),
+  );
+  if (current) rows.unshift(solutionRow(current, "Current", true));
+  $("#optimizer-result-rows").replaceChildren(...rows);
   $("#optimizer-footnote").textContent =
-    `${result.scoring_revision} - total-link and threshold power are shown as one CN-compatible score.`;
+    `Actual power is unweighted. Preference score only orders recommendations. ` +
+    `${formatNumber(result.search.total_combinations)} possible sets; ` +
+    `${formatNumber(result.search.evaluated_states)} states evaluated with ` +
+    `${result.search.exact ? "exact" : "bounded"} search. ${result.scoring_revision}.`;
   $("#optimizer-result").hidden = false;
 }
 

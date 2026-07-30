@@ -112,6 +112,12 @@ mod tests {
             .collect::<Vec<_>>();
         let request = json!({
             "modules": modules,
+            "current_instance_ids": [
+                "9007199254740993",
+                "9007199254740995",
+                "9007199254740997",
+                "9007199254740999"
+            ],
             "target_attributes": [1110],
             "combination_size": 4,
             "max_solutions": 3,
@@ -128,6 +134,19 @@ mod tests {
                 .starts_with("900719925474099")
         );
         assert_eq!(response["search"]["used_mode"], "exact");
+        assert_eq!(
+            response["current_setup"]["instance_ids"],
+            json!([
+                "9007199254740993",
+                "9007199254740995",
+                "9007199254740997",
+                "9007199254740999"
+            ])
+        );
+        assert!(
+            response["current_setup"]["ranking_score"].as_i64().unwrap()
+                > response["current_setup"]["score"].as_i64().unwrap()
+        );
     }
 
     #[test]
@@ -178,7 +197,8 @@ mod tests {
 
         assert_eq!(response["search"]["total_combinations"], 495);
         assert_eq!(response["search"]["evaluated_states"], 495);
-        assert_eq!(response["solutions"][0]["score"], 766);
+        assert_eq!(response["solutions"][0]["score"], 599);
+        assert_eq!(response["solutions"][0]["ranking_score"], 766);
         assert_eq!(
             response["solutions"][0]["instance_ids"],
             json!([

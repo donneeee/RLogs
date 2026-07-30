@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "locale": "en-US",
+  "aliases": {
+    "module-effect.1110.name": "Strength Boost",
+    "module-effect.1111.name": "Agility Boost",
+    "module-effect.1112.name": "Intelligence Boost",
+    "module-effect.1113.name": "Special Attack",
+    "module-effect.1114.name": "Elite Strike",
+    "module-effect.1205.name": "Healing Boost",
+    "module-effect.1206.name": "Healing Enhance",
+    "module-effect.1307.name": "Resistance (Magic)",
+    "module-effect.1308.name": "Armor (Physical)",
+    "module-effect.1407.name": "Cast Focus",
+    "module-effect.1408.name": "Attack SPD",
+    "module-effect.1409.name": "Crit Focus",
+    "module-effect.1410.name": "Luck Focus",
+    "module-effect.2104.name": "Damage Stack",
+    "module-effect.2105.name": "Agile",
+    "module-effect.2204.name": "Life Condense",
+    "module-effect.2205.name": "First Aid",
+    "module-effect.2304.name": "Final Protection",
+    "module-effect.2404.name": "Life Wave",
+    "module-effect.2405.name": "Life Drain",
+    "module-effect.2406.name": "Team Luck & Crit"
+  },
+  "provenance": {
+    "source": "reviewed-rlogs-optimizer-terminology",
+    "reference": "resonance-logs-cn-0.2.0-compatible-global-aliases",
+    "confidence": "reviewed"
+  }
+}
