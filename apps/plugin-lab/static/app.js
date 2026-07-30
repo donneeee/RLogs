@@ -503,6 +503,35 @@ function updateOptimizerExactSearchAvailability() {
       : `Exact available for ${estimate.combinations.toLocaleString()} possible sets.`;
 }
 
+function optimizerComputeBudget() {
+  const cores =
+    Number.isFinite(navigator.hardwareConcurrency) &&
+    navigator.hardwareConcurrency > 0
+      ? navigator.hardwareConcurrency
+      : 4;
+  const memoryGb =
+    Number.isFinite(navigator.deviceMemory) && navigator.deviceMemory > 0
+      ? navigator.deviceMemory
+      : undefined;
+  const mobile =
+    navigator.userAgentData?.mobile ??
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  if (cores <= 2 || (memoryGb !== undefined && memoryGb <= 2)) {
+    return { beamWidth: 128, label: "constrained" };
+  }
+  if (cores <= 4 || (memoryGb !== undefined && memoryGb <= 4)) {
+    return { beamWidth: 256, label: mobile ? "mobile" : "constrained" };
+  }
+  if (mobile) return { beamWidth: 512, label: "mobile" };
+  if (cores >= 12 && memoryGb !== undefined && memoryGb >= 16) {
+    return { beamWidth: 2048, label: "workstation" };
+  }
+  if (cores >= 8 && (memoryGb === undefined || memoryGb >= 8)) {
+    return { beamWidth: 1024, label: "thorough" };
+  }
+  return { beamWidth: 512, label: "balanced" };
+}
+
 async function runModuleOptimizer() {
   const button = $("#run-optimizer");
   button.disabled = true;
@@ -531,6 +560,7 @@ async function runModuleOptimizer() {
       $("#optimizer-search-mode").value = "auto";
       updateOptimizerExactSearchAvailability();
     }
+    const computeBudget = optimizerComputeBudget();
     const payload = {
       modules,
       current_instance_ids: currentInstanceIds,
@@ -540,14 +570,16 @@ async function runModuleOptimizer() {
       combination_size: Number($("#optimizer-combination-size").value),
       max_solutions: Number($("#optimizer-result-count").value),
       search_mode: $("#optimizer-search-mode").value,
+      beam_width: computeBudget.beamWidth,
       minimum_module_total: minimumTotalRaw === "" ? null : Number(minimumTotalRaw),
       require_target_match: $("#optimizer-require-target").checked,
     };
     $("#optimizer-status").textContent =
       fellBackFromExact
         ? `Exact search would require ${exactEstimate.combinations.toLocaleString()} sets; ` +
-          "using bounded search automatically."
-        : `Searching ${formatNumber(modules.length)} modules with ${view.optimizerCatalog.catalog_revision}...`;
+          `using ${computeBudget.label} bounded search automatically.`
+        : `Searching ${formatNumber(modules.length)} modules with ${view.optimizerCatalog.catalog_revision} ` +
+          `and the ${computeBudget.label} device budget (${formatNumber(computeBudget.beamWidth)} beam states)...`;
     const response = await fetch("/api/module-optimizer/optimize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -575,7 +607,7 @@ function renderOptimizerResult(result) {
     current?.instance_ids.length === result.search.combination_size;
   const metrics = [
     [current ? formatNumber(current.score) : "-", "current actual"],
-    [top ? formatNumber(top.score) : "-", "best found actual"],
+    [top ? formatNumber(top.score) : "-", "top recommendation"],
     [
       currentIsComparable && current && top
         ? `${top.score - current.score >= 0 ? "+" : ""}${formatNumber(top.score - current.score)}`

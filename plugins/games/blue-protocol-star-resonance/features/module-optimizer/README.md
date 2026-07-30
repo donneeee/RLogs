@@ -15,11 +15,16 @@ The scoring and search behavior is a Rust port of the module optimizer in
 - uses browser-safe string instance IDs;
 - returns actual unweighted power separately from the preference score used to
   rank recommendations, plus an optional scored current-equipment baseline;
+- keeps that current baseline outside `max_solutions`, so requesting 20
+  results returns 20 alternative recommendations plus Current;
 - uses reviewed optimizer aliases without overwriting exact game-client
   localization strings in the shared catalog;
 - supplies deterministic tie-breaking, an exact verification mode, and a
   bounded beam mode for full inventories (512 states by default, adjustable
   through the API);
+- lets browser clients choose a conservative 128-2048-state beam budget from
+  the device's reported CPU, memory, and mobile capabilities without changing
+  the scoring rules or blocking the browser's main thread;
 - contains no packet capture, account, login, password, or token handling.
 
 The Plugin Lab exposes this crate through a loopback-only JSON API and browser

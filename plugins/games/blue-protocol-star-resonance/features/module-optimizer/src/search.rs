@@ -86,6 +86,8 @@ pub fn optimize(
             request.combination_size
         )));
     }
+    let current_combination = current_combination_indices(rules, &candidates, request);
+    let solution_limit = request.max_solutions + usize::from(current_combination.is_some());
 
     let total_combinations = combination_count(candidates.len(), request.combination_size);
     let used_mode = match request.search_mode {
@@ -112,6 +114,7 @@ pub fn optimize(
             request,
             &target_attributes,
             &exclude_attributes,
+            solution_limit,
         ),
         SearchMode::Beam => beam_search(
             rules,
@@ -119,21 +122,14 @@ pub fn optimize(
             request,
             &target_attributes,
             &exclude_attributes,
+            solution_limit,
         ),
         SearchMode::Auto => unreachable!("auto mode is resolved before search"),
     };
-    if let Some(current) = current_ranked_combination(
-        rules,
-        &candidates,
-        request,
-        &target_attributes,
-        &exclude_attributes,
-    ) {
-        ranked.push(current);
-        ranked.sort_by(|left, right| right.cmp(left));
-        ranked.dedup_by(|left, right| left.indices == right.indices);
-        ranked.truncate(request.max_solutions);
+    if let Some(current_indices) = current_combination {
+        ranked.retain(|combination| combination.indices != current_indices);
     }
+    ranked.truncate(request.max_solutions);
     let solutions = ranked
         .into_iter()
         .map(|ranked| {
@@ -167,13 +163,11 @@ pub fn optimize(
     })
 }
 
-fn current_ranked_combination(
+fn current_combination_indices(
     rules: &ScoringRules,
     candidates: &[DenseCandidate],
     request: &OptimizeRequest,
-    target_attributes: &BTreeSet<i32>,
-    exclude_attributes: &BTreeSet<i32>,
-) -> Option<RankedCombination> {
+) -> Option<Vec<usize>> {
     if request.current_instance_ids.len() != request.combination_size {
         return None;
     }
@@ -188,19 +182,11 @@ fn current_ranked_combination(
         .map(|instance_id| indices_by_id.get(instance_id.as_str()).copied())
         .collect::<Option<Vec<_>>>()?;
     indices.sort_unstable();
-    let (values, total_link_points) = sum_combination(candidates, &indices);
+    let (values, _) = sum_combination(candidates, &indices);
     if !meets_requirements(rules, &values, &request.min_attr_requirements) {
         return None;
     }
-    Some(RankedCombination {
-        ranking_score: rules.ranking_score_dense(
-            &values,
-            total_link_points,
-            target_attributes,
-            exclude_attributes,
-        ),
-        indices,
-    })
+    Some(indices)
 }
 
 pub fn score_modules(
@@ -382,6 +368,7 @@ fn exact_search(
     request: &OptimizeRequest,
     target_attributes: &BTreeSet<i32>,
     exclude_attributes: &BTreeSet<i32>,
+    solution_limit: usize,
 ) -> (Vec<RankedCombination>, u64) {
     let mut top = BinaryHeap::<Reverse<RankedCombination>>::new();
     let mut combination = (0..request.combination_size).collect::<Vec<_>>();
@@ -402,7 +389,7 @@ fn exact_search(
                     indices: combination.clone(),
                     ranking_score,
                 },
-                request.max_solutions,
+                solution_limit,
             );
         }
         if !next_combination(&mut combination, candidates.len()) {
@@ -418,6 +405,7 @@ fn beam_search(
     request: &OptimizeRequest,
     target_attributes: &BTreeSet<i32>,
     exclude_attributes: &BTreeSet<i32>,
+    solution_limit: usize,
 ) -> (Vec<RankedCombination>, u64) {
     let (suffix_values, suffix_totals) = suffix_upper_bounds(candidates, request.combination_size);
     let mut frontier = vec![BeamState {
@@ -522,7 +510,7 @@ fn beam_search(
                         .collect(),
                     ranking_score: state.ranking_score,
                 },
-                request.max_solutions,
+                solution_limit,
             );
         }
     }
@@ -922,6 +910,7 @@ mod tests {
             current_instance_ids: vec!["e".into(), "b".into(), "a".into(), "d".into()],
             target_attributes: vec![1110],
             search_mode: SearchMode::Exact,
+            max_solutions: 3,
             require_target_match: false,
             ..OptimizeRequest::default()
         };
@@ -941,7 +930,14 @@ mod tests {
             current.breakdown.ranking_threshold_power + current.breakdown.total_link_power
         );
         assert!(current.ranking_score > current.score);
-        assert!(response.solutions[0].ranking_score >= current.ranking_score);
+        assert_eq!(response.solutions.len(), 3);
+        let mut current_ids = current.instance_ids.clone();
+        current_ids.sort();
+        assert!(response.solutions.iter().all(|solution| {
+            let mut solution_ids = solution.instance_ids.clone();
+            solution_ids.sort();
+            solution_ids != current_ids
+        }));
     }
 
     #[test]
@@ -953,6 +949,7 @@ mod tests {
                 module("9007199254740995", &[(1110, 4), (1111, 4)]),
                 module("9007199254740997", &[(1110, 4), (1111, 4)]),
                 module("9007199254740999", &[(1110, 4), (1111, 4)]),
+                module("9007199254741001", &[(1110, 4), (1111, 4)]),
             ],
             current_instance_ids: vec![
                 "9007199254740999".into(),
@@ -964,15 +961,13 @@ mod tests {
             ..OptimizeRequest::default()
         };
         let response = optimize(&rules, &request).unwrap();
-        assert_eq!(
-            response.solutions[0].instance_ids,
-            [
-                "9007199254740993",
-                "9007199254740995",
-                "9007199254740997",
-                "9007199254740999"
-            ]
-        );
+        assert_eq!(response.solutions.len(), 4);
+        assert!(response.solutions.iter().all(|solution| {
+            solution
+                .instance_ids
+                .iter()
+                .all(|instance_id| instance_id.parse::<u64>().unwrap() > 9_007_199_254_740_991)
+        }));
         assert_eq!(
             response.current_setup.unwrap().instance_ids,
             [

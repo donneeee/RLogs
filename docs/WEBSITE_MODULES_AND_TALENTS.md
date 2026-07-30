@@ -87,6 +87,16 @@ suffix upper bounds and minimum-threshold feasibility pruning. Exact search
 remains available for parity tests, and all result tie-breaking is
 deterministic.
 
+The current-equipment baseline is not a recommendation and never consumes the
+requested result limit. For example, a request for 20 results returns Current
+plus up to 20 alternative module sets in both Plugin Lab and the website.
+
+The browser interfaces select a conservative bounded-search beam width from
+reported device CPU, memory, and mobile capabilities. The website runs the
+shared Rust engine inside a Web Worker, so this adaptive CPU/WASM work does not
+block the page. WebGPU is a future search backend and must not be claimed unless
+the scoring and top-k reduction are actually running in a compute shader.
+
 The CN-compatible scoring behavior is:
 
 - sum each effect ID's link points across the selected modules;
