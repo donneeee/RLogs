@@ -83,9 +83,10 @@ records, actual threshold and total-link power, a separate preference ranking
 score, attribute totals, the scored currently equipped baseline when supplied,
 search statistics, and the exact catalog/scoring revision. Small searches use
 exact enumeration. Full inventories automatically use bounded beam search with
-suffix upper bounds and minimum-threshold feasibility pruning. Exact search
-remains available for parity tests, and all result tie-breaking is
-deterministic.
+three complementary candidate orderings, feasible greedy completion scores,
+and minimum-threshold feasibility pruning. This avoids discarding threshold
+synergies merely because their first partial set looks weak. Exact search
+remains available for parity tests, and all result tie-breaking is deterministic.
 
 The current-equipment baseline is not a recommendation and never consumes the
 requested result limit. For example, a request for 20 results returns Current

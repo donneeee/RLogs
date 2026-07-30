@@ -44,8 +44,7 @@ impl ScoringRules {
         };
         levels
             .iter()
-            .filter(|(threshold, _)| value >= *threshold)
-            .next_back()
+            .rfind(|(threshold, _)| value >= *threshold)
             .map_or((None, 0), |(threshold, power)| (Some(*threshold), *power))
     }
 

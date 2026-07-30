@@ -1,7 +1,7 @@
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
-use crate::scoring::ScoringRules;
+use crate::scoring::{ScoringRules, attribute_multiplier};
 use crate::types::{
     ModuleCandidate, ModuleSolution, OptimizeRequest, OptimizeResponse, OptimizerError,
     ScoreBreakdown, SearchMode, SearchSummary,
@@ -18,6 +18,80 @@ struct DenseCandidate {
     module: ModuleCandidate,
     values: Vec<i32>,
     total_link_points: i32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CandidateSortMetrics {
+    original_index: usize,
+    primary_slot: usize,
+    primary_power: i32,
+    maximum_special_power: i32,
+    constraint_contribution: i32,
+    total_link_points: i32,
+}
+
+struct DenseScorer<'a> {
+    rules: &'a ScoringRules,
+    attribute_power: Vec<Vec<i32>>,
+}
+
+impl<'a> DenseScorer<'a> {
+    fn new(
+        rules: &'a ScoringRules,
+        target_attributes: &BTreeSet<i32>,
+        exclude_attributes: &BTreeSet<i32>,
+    ) -> Self {
+        let attribute_power = rules
+            .attribute_ids()
+            .map(|attribute_id| {
+                let multiplier =
+                    attribute_multiplier(attribute_id, target_attributes, exclude_attributes);
+                let maximum_value = rules
+                    .attributes
+                    .get(&attribute_id)
+                    .and_then(|levels| levels.last())
+                    .map_or(0, |(threshold, _)| *threshold)
+                    .max(0);
+                (0..=maximum_value)
+                    .map(|value| rules.attribute_power(attribute_id, value).1 * multiplier)
+                    .collect()
+            })
+            .collect();
+        Self {
+            rules,
+            attribute_power,
+        }
+    }
+
+    fn score(&self, values: &[i32], total_link_points: i32) -> i32 {
+        self.attribute_power
+            .iter()
+            .zip(values)
+            .map(|(power, value)| power[score_table_index(power, *value)])
+            .sum::<i32>()
+            + self.rules.total_link_power(total_link_points)
+    }
+
+    fn score_with_addition(&self, values: &[i32], addition: &[i32], total_link_points: i32) -> i32 {
+        self.attribute_power
+            .iter()
+            .zip(values)
+            .zip(addition)
+            .map(|((power, value), addition)| power[score_table_index(power, value + addition)])
+            .sum::<i32>()
+            + self.rules.total_link_power(total_link_points)
+    }
+
+    fn attribute_score(&self, slot: usize, value: i32) -> i32 {
+        let power = &self.attribute_power[slot];
+        power[score_table_index(power, value)]
+    }
+}
+
+fn score_table_index(power: &[i32], value: i32) -> usize {
+    usize::try_from(value.max(0))
+        .unwrap_or(usize::MAX)
+        .min(power.len().saturating_sub(1))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -352,12 +426,6 @@ fn prepare_candidates(
             total_link_points,
         });
     }
-    candidates.sort_by(|left, right| {
-        left.module
-            .instance_id
-            .cmp(&right.module.instance_id)
-            .then_with(|| left.module.config_id.cmp(&right.module.config_id))
-    });
     let excluded = request.modules.len().saturating_sub(candidates.len());
     Ok((candidates, excluded))
 }
@@ -407,7 +475,39 @@ fn beam_search(
     exclude_attributes: &BTreeSet<i32>,
     solution_limit: usize,
 ) -> (Vec<RankedCombination>, u64) {
-    let (suffix_values, suffix_totals) = suffix_upper_bounds(candidates, request.combination_size);
+    let scorer = DenseScorer::new(rules, target_attributes, exclude_attributes);
+    let mut top = BinaryHeap::<Reverse<RankedCombination>>::new();
+    let mut seen = BTreeSet::new();
+    let mut evaluated = 0_u64;
+    for ordering in candidate_orderings(rules, candidates, request, &scorer) {
+        let ordered = ordering
+            .iter()
+            .map(|index| candidates[*index].clone())
+            .collect::<Vec<_>>();
+        let (ranked, strategy_evaluated) =
+            beam_search_ordered(rules, &ordered, request, &scorer, solution_limit);
+        evaluated = evaluated.saturating_add(strategy_evaluated);
+        for mut combination in ranked {
+            for index in &mut combination.indices {
+                *index = ordering[*index];
+            }
+            combination.indices.sort_unstable();
+            if seen.insert(combination.indices.clone()) {
+                retain_ranked(&mut top, combination, solution_limit);
+            }
+        }
+    }
+    (finish_ranked(top), evaluated)
+}
+
+fn beam_search_ordered(
+    rules: &ScoringRules,
+    candidates: &[DenseCandidate],
+    request: &OptimizeRequest,
+    scorer: &DenseScorer<'_>,
+    solution_limit: usize,
+) -> (Vec<RankedCombination>, u64) {
+    let suffix_values = suffix_value_upper_bounds(candidates, request.combination_size);
     let mut frontier = vec![BeamState {
         indices: [0; MAX_COMBINATION_SIZE],
         values: [0; MAX_ATTRIBUTE_SLOTS],
@@ -452,25 +552,18 @@ fn beam_search(
                 ) {
                     continue;
                 }
-                let ranking_score = rules.ranking_score_dense(
-                    &values[..rules.attributes.len()],
-                    total_link_points,
-                    target_attributes,
-                    exclude_attributes,
-                );
+                let ranking_score =
+                    scorer.score(&values[..rules.attributes.len()], total_link_points);
                 let upper_bound = if remaining_after_pick == 0 {
                     ranking_score
                 } else {
-                    score_upper_bound(
-                        rules,
+                    greedy_completion_score(
+                        candidates,
+                        scorer,
                         &values[..rules.attributes.len()],
                         total_link_points,
                         next_start,
                         remaining_after_pick,
-                        &suffix_values,
-                        &suffix_totals,
-                        target_attributes,
-                        exclude_attributes,
                     )
                 };
                 let mut indices = state.indices;
@@ -515,6 +608,143 @@ fn beam_search(
         }
     }
     (finish_ranked(top), evaluated)
+}
+
+fn candidate_orderings(
+    rules: &ScoringRules,
+    candidates: &[DenseCandidate],
+    request: &OptimizeRequest,
+    scorer: &DenseScorer<'_>,
+) -> Vec<Vec<usize>> {
+    let attribute_ids = rules.attribute_ids().collect::<Vec<_>>();
+    let highest_attribute_power = attribute_ids
+        .iter()
+        .map(|attribute_id| rules.attribute_power(*attribute_id, i32::MAX).1)
+        .max()
+        .unwrap_or_default();
+    let metrics = candidates
+        .iter()
+        .enumerate()
+        .map(|(original_index, candidate)| {
+            let mut primary_slot = attribute_ids.len();
+            let mut primary_power = 0;
+            let mut primary_value = 0;
+            let mut maximum_special_power = 0;
+            let mut constraint_contribution = 0;
+            for (slot, (attribute_id, value)) in
+                attribute_ids.iter().zip(&candidate.values).enumerate()
+            {
+                if request.min_attr_requirements.contains_key(attribute_id) {
+                    constraint_contribution += *value;
+                }
+                let power = scorer.attribute_score(slot, *value);
+                if rules.attribute_power(*attribute_id, i32::MAX).1 == highest_attribute_power {
+                    maximum_special_power = maximum_special_power.max(power);
+                }
+                if power > primary_power
+                    || (power == primary_power && *value > primary_value)
+                    || (power == primary_power && *value == primary_value && slot < primary_slot)
+                {
+                    primary_slot = slot;
+                    primary_power = power;
+                    primary_value = *value;
+                }
+            }
+            CandidateSortMetrics {
+                original_index,
+                primary_slot,
+                primary_power,
+                maximum_special_power,
+                constraint_contribution,
+                total_link_points: candidate.total_link_points,
+            }
+        })
+        .collect::<Vec<_>>();
+    let strategy_count = if request.min_attr_requirements.is_empty() {
+        3
+    } else {
+        4
+    };
+    (0..strategy_count)
+        .map(|strategy| {
+            let mut ordered = metrics.clone();
+            ordered.sort_by(|left, right| {
+                let ordering = match strategy {
+                    1 => right
+                        .maximum_special_power
+                        .cmp(&left.maximum_special_power)
+                        .then_with(|| left.primary_slot.cmp(&right.primary_slot))
+                        .then_with(|| right.total_link_points.cmp(&left.total_link_points)),
+                    2 => right
+                        .total_link_points
+                        .cmp(&left.total_link_points)
+                        .then_with(|| right.primary_power.cmp(&left.primary_power)),
+                    3 => right
+                        .constraint_contribution
+                        .cmp(&left.constraint_contribution)
+                        .then_with(|| right.primary_power.cmp(&left.primary_power))
+                        .then_with(|| right.total_link_points.cmp(&left.total_link_points)),
+                    _ => left
+                        .primary_slot
+                        .cmp(&right.primary_slot)
+                        .then_with(|| right.primary_power.cmp(&left.primary_power))
+                        .then_with(|| right.total_link_points.cmp(&left.total_link_points)),
+                };
+                ordering.then_with(|| left.original_index.cmp(&right.original_index))
+            });
+            ordered
+                .into_iter()
+                .map(|entry| entry.original_index)
+                .collect()
+        })
+        .collect()
+}
+
+fn greedy_completion_score(
+    candidates: &[DenseCandidate],
+    scorer: &DenseScorer<'_>,
+    values: &[i32],
+    total_link_points: i32,
+    next_start: usize,
+    remaining: usize,
+) -> i32 {
+    let mut values = values.to_vec();
+    let mut total_link_points = total_link_points;
+    let mut score = scorer.score(&values, total_link_points);
+    let mut search_start = next_start;
+    for pick in 0..remaining {
+        let scan_window = 64_usize.max((remaining - pick) * 32);
+        let scan_end = candidates
+            .len()
+            .min(search_start.saturating_add(scan_window));
+        let mut best = None;
+        for (candidate_index, candidate) in candidates
+            .iter()
+            .enumerate()
+            .take(scan_end)
+            .skip(search_start)
+        {
+            let trial_total = total_link_points + candidate.total_link_points;
+            let trial_score = scorer.score_with_addition(&values, &candidate.values, trial_total);
+            if best
+                .as_ref()
+                .is_none_or(|(_, best_score)| trial_score > *best_score)
+            {
+                best = Some((candidate_index, trial_score));
+            }
+        }
+        let Some((candidate_index, next_score)) = best else {
+            break;
+        };
+        let candidate = &candidates[candidate_index];
+        for (value, addition) in values.iter_mut().zip(&candidate.values) {
+            *value += *addition;
+        }
+        total_link_points += candidate.total_link_points;
+        score = next_score;
+        search_start = candidate_index + 1;
+    }
+    score
 }
 
 fn build_solution(
@@ -672,54 +902,25 @@ fn can_meet_requirements(
         })
 }
 
-#[allow(clippy::too_many_arguments)]
-fn score_upper_bound(
-    rules: &ScoringRules,
-    values: &[i32],
-    total_link_points: i32,
-    next_start: usize,
-    remaining: usize,
-    suffix_values: &[Vec<[i32; 6]>],
-    suffix_totals: &[[i32; 6]],
-    target_attributes: &BTreeSet<i32>,
-    exclude_attributes: &BTreeSet<i32>,
-) -> i32 {
-    let maximum_values = values
-        .iter()
-        .enumerate()
-        .map(|(slot, value)| value + suffix_values[slot][next_start][remaining])
-        .collect::<Vec<_>>();
-    rules.ranking_score_dense(
-        &maximum_values,
-        total_link_points + suffix_totals[next_start][remaining],
-        target_attributes,
-        exclude_attributes,
-    )
-}
-
-fn suffix_upper_bounds(
+fn suffix_value_upper_bounds(
     candidates: &[DenseCandidate],
     maximum_picks: usize,
-) -> (Vec<Vec<[i32; 6]>>, Vec<[i32; 6]>) {
+) -> Vec<Vec<[i32; 6]>> {
     let count = candidates.len();
     let slots = candidates[0].values.len();
     let mut values = vec![vec![[0; 6]; count + 1]; slots];
-    let mut totals = vec![[0; 6]; count + 1];
     for index in (0..count).rev() {
-        totals[index] = totals[index + 1];
         for slot_values in &mut values {
             slot_values[index] = slot_values[index + 1];
         }
         for picks in 1..=maximum_picks {
-            totals[index][picks] = totals[index][picks]
-                .max(candidates[index].total_link_points + totals[index + 1][picks - 1]);
             for (slot, slot_values) in values.iter_mut().enumerate() {
                 slot_values[index][picks] = slot_values[index][picks]
                     .max(candidates[index].values[slot] + slot_values[index + 1][picks - 1]);
             }
         }
     }
-    (values, totals)
+    values
 }
 
 fn next_combination(combination: &mut [usize], item_count: usize) -> bool {
@@ -893,6 +1094,75 @@ mod tests {
             beam.solutions[0].instance_ids,
             exact.solutions[0].instance_ids
         );
+    }
+
+    #[test]
+    fn clustered_beam_recovers_the_sanitized_profile_best_set() {
+        let rules = ScoringRules::cn_0_2_0_fixture();
+        let modules = vec![
+            module("10129", &[(1408, 3), (1410, 10), (1110, 4)]),
+            module("10154", &[(1110, 8), (1111, 9), (1112, 1)]),
+            module("10189", &[(2104, 10), (1112, 2), (1410, 2)]),
+            module("10870", &[(1111, 10), (1112, 9), (1409, 3)]),
+            module("11353", &[(2105, 3), (1114, 9), (1410, 3)]),
+            module("11608", &[(1114, 10), (1110, 5), (1410, 3)]),
+            module("11803", &[(2404, 9), (1409, 5), (1407, 1)]),
+            module("13048", &[(2405, 9), (1110, 5), (1410, 5)]),
+            module("13958", &[(1114, 6), (1410, 8), (1110, 3)]),
+            module("14874", &[(2104, 10), (1110, 2), (1111, 3)]),
+            module("14917", &[(1409, 9), (1110, 5), (1410, 3)]),
+            module("14949", &[(2104, 10), (1408, 3), (1410, 4)]),
+            module("16613", &[(1112, 10), (1110, 6), (1409, 1)]),
+            module("18394", &[(1410, 9), (1110, 3), (1407, 5)]),
+            module("5458", &[(2105, 3), (1114, 10), (1407, 3)]),
+            module("7586", &[(2405, 6), (1110, 8), (1409, 3)]),
+            module("7588", &[(1111, 5), (1410, 10), (1407, 2)]),
+            module("7594", &[(1111, 8), (1112, 9), (1110, 2)]),
+            module("8153", &[(2105, 9), (1113, 6), (1111, 3)]),
+            module("8154", &[(1114, 10), (1111, 4), (1110, 5)]),
+            module("11742", &[(1111, 7), (1110, 8), (1408, 3)]),
+            module("15749", &[(2404, 3), (1410, 10), (1114, 3)]),
+            module("18322", &[(2404, 8), (1410, 5), (1113, 3)]),
+            module("18324", &[(1110, 3), (1410, 10), (1112, 4)]),
+            module("4977", &[(2105, 8), (1110, 7), (1114, 2)]),
+            module("5431", &[(1409, 10), (1114, 3), (1110, 3)]),
+            module("5460", &[(2405, 5), (1409, 8), (1114, 3)]),
+            module("15844", &[(1409, 9), (1410, 6), (1407, 3)]),
+            module("16142", &[(2405, 6), (1409, 8), (1308, 2)]),
+            module("18549", &[(1410, 5), (1409, 10), (1307, 3)]),
+        ];
+        let exact = optimize(
+            &rules,
+            &OptimizeRequest {
+                modules: modules.clone(),
+                combination_size: 5,
+                max_solutions: 20,
+                search_mode: SearchMode::Exact,
+                exact_combination_limit: 200_000,
+                require_target_match: false,
+                ..OptimizeRequest::default()
+            },
+        )
+        .unwrap();
+        let beam = optimize(
+            &rules,
+            &OptimizeRequest {
+                modules,
+                combination_size: 5,
+                max_solutions: 20,
+                search_mode: SearchMode::Beam,
+                beam_width: 64,
+                require_target_match: false,
+                ..OptimizeRequest::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(exact.solutions[0].score, 1676);
+        assert_eq!(beam.solutions[0].score, exact.solutions[0].score);
+        let mut best_ids = beam.solutions[0].instance_ids.clone();
+        best_ids.sort();
+        assert_eq!(best_ids, ["10154", "10870", "14874", "14949", "16613"]);
     }
 
     #[test]

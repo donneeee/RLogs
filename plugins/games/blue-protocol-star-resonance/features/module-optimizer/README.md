@@ -22,7 +22,10 @@ The scoring and search behavior is a Rust port of the module optimizer in
 - supplies deterministic tie-breaking, an exact verification mode, and a
   bounded beam mode for full inventories (512 states by default, adjustable
   through the API);
-- lets browser clients choose a conservative 128-2048-state beam budget from
+- runs complementary attribute-cluster, special-effect, and total-link
+  candidate orderings with feasible greedy completion scoring so threshold
+  synergies survive early pruning;
+- lets browser clients choose a conservative 64-512-state beam width from
   the device's reported CPU, memory, and mobile capabilities without changing
   the scoring rules or blocking the browser's main thread;
 - contains no packet capture, account, login, password, or token handling.

@@ -517,19 +517,19 @@ function optimizerComputeBudget() {
     navigator.userAgentData?.mobile ??
     /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
   if (cores <= 2 || (memoryGb !== undefined && memoryGb <= 2)) {
-    return { beamWidth: 128, label: "constrained" };
+    return { beamWidth: 64, label: "constrained" };
   }
   if (cores <= 4 || (memoryGb !== undefined && memoryGb <= 4)) {
-    return { beamWidth: 256, label: mobile ? "mobile" : "constrained" };
+    return { beamWidth: 128, label: mobile ? "mobile" : "constrained" };
   }
-  if (mobile) return { beamWidth: 512, label: "mobile" };
+  if (mobile) return { beamWidth: 128, label: "mobile" };
   if (cores >= 12 && memoryGb !== undefined && memoryGb >= 16) {
-    return { beamWidth: 2048, label: "workstation" };
+    return { beamWidth: 512, label: "workstation" };
   }
   if (cores >= 8 && (memoryGb === undefined || memoryGb >= 8)) {
-    return { beamWidth: 1024, label: "thorough" };
+    return { beamWidth: 512, label: "thorough" };
   }
-  return { beamWidth: 512, label: "balanced" };
+  return { beamWidth: 256, label: "balanced" };
 }
 
 async function runModuleOptimizer() {
