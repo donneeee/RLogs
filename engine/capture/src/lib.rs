@@ -1,5 +1,6 @@
 //! Platform-neutral packet capture and replay contracts.
 
+#[cfg(windows)]
 mod dumpcap;
 mod offline;
 mod pcap_writer;
@@ -13,6 +14,7 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+#[cfg(windows)]
 pub use dumpcap::{DumpcapLiveConfig, LiveCaptureStopHandle};
 pub use offline::OfflineCapture;
 pub use pcap_writer::{PcapWriteError, PcapWriter};

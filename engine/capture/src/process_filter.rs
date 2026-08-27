@@ -237,6 +237,7 @@ impl<S: CaptureSource, O: ProcessSocketOwner> OwnedProcessCapture<S, O> {
             .collect()
     }
 
+    #[cfg(windows)]
     pub(crate) fn source(&self) -> &S {
         &self.source
     }
@@ -271,10 +272,7 @@ impl<S: CaptureSource, O: ProcessSocketOwner> OwnedProcessCapture<S, O> {
     }
 
     fn drain_resolved_front(&mut self, observed_micros: u64, source_finished: bool) {
-        loop {
-            let Some(front) = self.queue.front() else {
-                break;
-            };
+        while let Some(front) = self.queue.front() {
             if front.owned {
                 let mut queued = self.queue.pop_front().expect("front exists");
                 self.pending_bytes = self.pending_bytes.saturating_sub(queued.frame.bytes.len());
