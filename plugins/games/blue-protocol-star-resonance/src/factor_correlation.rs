@@ -9,14 +9,15 @@ use serde::{Deserialize, Serialize};
 use crate::{
     BPSR_GAME_PLUGIN_ID, BPSR_PROFILE_SCHEMA_ID, BPSR_PROFILE_SCHEMA_VERSION,
     CharacterProfilePatch, DreamscopeBuildInferenceAnalyzer, DreamscopeBuildInferenceError,
-    DreamscopeBuildInferenceReport, PsychoscopeActionRelationKind, PsychoscopeFactorStat,
-    PsychoscopeFactorValueUnit, PsychoscopeFormulaInputRole, PsychoscopeStatCreditPolicy,
-    character_id_from_entity_uuid, combat_action_presentation, dreamscope_catalog_game_build,
+    DreamscopeBuildInferenceReport, DreamscopeSourceKind, PsychoscopeActionRelationKind,
+    PsychoscopeFactorStat, PsychoscopeFactorValueUnit, PsychoscopeFormulaInputRole,
+    PsychoscopeStatCreditPolicy, character_id_from_entity_uuid, combat_action_presentation,
+    dreamscope_candidates_for_terminal_effect, dreamscope_catalog_game_build,
     dreamscope_factor_item_by_id, psychoscope_factor_by_item_id, psychoscope_factor_rules,
     psychoscope_factor_runtime_rules_enabled,
 };
 
-pub const FACTOR_CORRELATION_SCHEMA_VERSION: u16 = 7;
+pub const FACTOR_CORRELATION_SCHEMA_VERSION: u16 = 8;
 const FACTOR_CORRELATION_POLICY: &str =
     "evidence_only_disable_rdps_until_provider_recipient_stacking_review";
 const MAXIMUM_CORRELATION_WINDOWS: usize = 100_000;
@@ -576,12 +577,7 @@ impl PsychoscopeFactorCorrelationAnalyzer {
         status: &StatusEvent,
     ) -> Result<(), FactorCorrelationError> {
         let effect_id = status.effect.0;
-        let static_candidates = psychoscope_factor_rules()
-            .map_err(FactorCorrelationError::Catalog)?
-            .iter()
-            .filter(|factor| factor.primary_buff_id == Some(effect_id))
-            .map(|factor| factor.item_id)
-            .collect::<BTreeSet<_>>();
+        let static_candidates = factor_item_candidates_for_effect(effect_id)?;
         if static_candidates.is_empty() {
             return Ok(());
         }
@@ -1009,6 +1005,32 @@ impl PsychoscopeFactorCorrelationAnalyzer {
             });
         Ok(())
     }
+}
+
+/// Returns every exact-build item/grade identity that can terminate at this
+/// packet-observed effect. The reviewed attribution catalog is retained as a
+/// fallback for explicit runtime-only routes, but it must not narrow an exact
+/// family to the one or two grades whose mechanics have already been reviewed.
+///
+/// This is identity evidence only. Damage/action correlation below still uses
+/// `psychoscope_factor_by_item_id`, so unreviewed grades cannot become formula
+/// inputs or rDPS credit merely because their selection is now preserved.
+fn factor_item_candidates_for_effect(
+    effect_id: i64,
+) -> Result<BTreeSet<i64>, FactorCorrelationError> {
+    let mut candidates = psychoscope_factor_rules()
+        .map_err(FactorCorrelationError::Catalog)?
+        .iter()
+        .filter(|factor| factor.primary_buff_id == Some(effect_id))
+        .map(|factor| factor.item_id)
+        .collect::<BTreeSet<_>>();
+    candidates.extend(
+        dreamscope_candidates_for_terminal_effect(effect_id)
+            .iter()
+            .filter(|candidate| candidate.source_kind == DreamscopeSourceKind::FactorFamily)
+            .flat_map(|candidate| candidate.item_ids.iter().copied()),
+    );
+    Ok(candidates)
 }
 
 fn factor_recount_groups_for_ability(
@@ -1710,6 +1732,43 @@ mod tests {
         assert_eq!(window.action_damage.len(), 1);
         assert_eq!(window.close_reason, Some(FactorWindowCloseReason::Removed));
         assert_eq!(report.rule_summaries[0].matched_action_damage.amount, 2_000);
+    }
+
+    #[test]
+    fn unreviewed_exact_grade_uses_complete_family_for_lifecycle_identity() {
+        let owner = entity(1, 3_296_036);
+        let mut analyzer = PsychoscopeFactorCorrelationAnalyzer::new();
+        for event in [
+            profile_event(1, 1_000, 20_020_400),
+            status_event_between(
+                2,
+                2_000,
+                Some(owner),
+                owner,
+                3_053_070,
+                77,
+                StatusState::Applied,
+                Some(1),
+            ),
+        ] {
+            analyzer.observe(&event).unwrap();
+        }
+
+        let report = analyzer.finish().unwrap();
+        assert_eq!(report.schema_version, FACTOR_CORRELATION_SCHEMA_VERSION);
+        assert!(!report.rdps_attribution_enabled);
+        assert_eq!(report.selection_observations.len(), 1);
+        assert_eq!(
+            report.selection_observations[0].unreviewed_factor_item_ids,
+            vec![20_020_400]
+        );
+        assert_eq!(report.windows.len(), 1);
+        assert_eq!(report.windows[0].factor_item_ids, vec![20_020_400]);
+        assert_eq!(
+            report.windows[0].selection_evidence,
+            FactorSelectionEvidence::SourceAndRecipientOwnFactor
+        );
+        assert!(report.windows[0].action_damage.is_empty());
     }
 
     #[test]
