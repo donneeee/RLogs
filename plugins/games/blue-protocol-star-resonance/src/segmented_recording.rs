@@ -313,9 +313,9 @@ mod tests {
     use std::io::BufReader;
 
     use rlogs_events::{
-        BoundaryReason, CanonicalEventDraft, CanonicalEventDraftKind, DungeonEvent,
-        DungeonEventKind, EventEnvelopeFactory, EventProvenance, EventSensitivity, EventTime,
-        RegionContext, RegionIdentity, RunState, TimelineEventKind,
+        BoundaryReason, CanonicalEventDraft, CanonicalEventDraftKind, CharacterIdentity,
+        DungeonEvent, DungeonEventKind, EventEnvelopeFactory, EventProvenance, EventSensitivity,
+        EventTime, GameProfileEvent, RegionContext, RegionIdentity, RunState, TimelineEventKind,
     };
     use rlogs_log_format::{RlogLimits, RlogReader};
 
@@ -366,7 +366,29 @@ mod tests {
         std::fs::create_dir_all(&directory).unwrap();
 
         let region = region();
-        let mut envelopes = EventEnvelopeFactory::new("continuous", region);
+        let mut envelopes = EventEnvelopeFactory::new("continuous", region.clone());
+        let profile_context = envelopes
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: 500,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(1, 1664308034, 21),
+                sensitivity: EventSensitivity::PersonalGameplay,
+                kind: CanonicalEventDraftKind::CharacterProfileObserved {
+                    profile: Box::new(GameProfileEvent {
+                        game_plugin_id: "blue-protocol-star-resonance".into(),
+                        payload_schema_id: "bpsr-character-profile".into(),
+                        payload_schema_version: 1,
+                        character: CharacterIdentity {
+                            region: region.identity,
+                            character_id: "3296036".into(),
+                        },
+                        payload: serde_json::json!({"season_cultivation": [{"season_id": 3}]}),
+                    }),
+                },
+            })
+            .unwrap();
         let before = envelopes
             .emit(CanonicalEventDraft {
                 time: EventTime {
@@ -406,6 +428,7 @@ mod tests {
 
         let mut writer =
             SegmentedDungeonLogWriter::new(&directory, "continuous", "unit-test").unwrap();
+        assert!(writer.consume_batch([profile_context]).unwrap().is_empty());
         assert!(writer.consume_batch([before]).unwrap().is_empty());
         assert!(writer.consume_batch([entered]).unwrap().is_empty());
         let sealed = writer
@@ -413,7 +436,7 @@ mod tests {
             .unwrap();
         assert_eq!(sealed.len(), 1);
         assert!(sealed[0].is_completed());
-        assert_eq!(sealed[0].seal.event_count, 4);
+        assert_eq!(sealed[0].seal.event_count, 5);
 
         let file = File::open(&sealed[0].path).unwrap();
         let mut reader = RlogReader::new(BufReader::new(file), RlogLimits::default()).unwrap();
@@ -422,6 +445,21 @@ mod tests {
         assert_eq!(first.sequence, 1);
         assert!(matches!(
             first.event,
+            CanonicalEvent::CharacterProfileObserved { .. }
+        ));
+        assert_eq!(first.time.observed_micros, 500);
+        assert!(matches!(
+            first.provenance.source,
+            rlogs_events::EvidenceSource::Wire {
+                capture_sequence: 1,
+                connection_id: 1664308034,
+                stream_id: 21,
+            }
+        ));
+        let second = reader.next_event().unwrap().unwrap();
+        assert_eq!(second.sequence, 2);
+        assert!(matches!(
+            second.event,
             CanonicalEvent::Timeline(rlogs_events::TimelineEvent {
                 kind: TimelineEventKind::RunBoundary {
                     state: RunState::Entered,
@@ -430,20 +468,20 @@ mod tests {
                 ..
             })
         ));
-        let second = reader.next_event().unwrap().unwrap();
-        assert_eq!(second.sequence, 2);
+        let third = reader.next_event().unwrap().unwrap();
+        assert_eq!(third.sequence, 3);
         assert!(matches!(
-            second.event,
+            third.event,
             CanonicalEvent::Dungeon(DungeonEvent {
                 kind: DungeonEventKind::Entered,
                 ..
             })
         ));
-        let third = reader.next_event().unwrap().unwrap();
-        assert_eq!(third.sequence, 3);
         let fourth = reader.next_event().unwrap().unwrap();
         assert_eq!(fourth.sequence, 4);
-        let CanonicalEvent::Timeline(timeline) = fourth.event else {
+        let fifth = reader.next_event().unwrap().unwrap();
+        assert_eq!(fifth.sequence, 5);
+        let CanonicalEvent::Timeline(timeline) = fifth.event else {
             panic!("expected completion timeline");
         };
         assert_eq!(timeline.sequence, 2);

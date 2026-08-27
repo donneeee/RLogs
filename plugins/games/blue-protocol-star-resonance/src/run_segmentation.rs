@@ -4,6 +4,8 @@
 //! Core keeps network ingress available, while the game plug-in decides which
 //! decoded events are safe and relevant to persist as one dungeon run.
 
+use std::collections::BTreeMap;
+
 use rlogs_events::{
     CanonicalEvent, DungeonEvent, DungeonEventKind, EventEnvelope, EventTime, RunState,
     TimelineEventKind,
@@ -68,8 +70,11 @@ pub struct DungeonRunSegmenter {
     pending_dungeon_identity: Option<EventEnvelope>,
     pending_scene_entry: Option<EventEnvelope>,
     pending_party: Option<EventEnvelope>,
+    pending_profiles: BTreeMap<String, EventEnvelope>,
     current_world_scene_id: Option<i32>,
 }
+
+const MAX_PENDING_PROFILE_CONTEXTS: usize = 64;
 
 impl DungeonRunSegmenter {
     pub fn is_recording(&self) -> bool {
@@ -82,6 +87,7 @@ impl DungeonRunSegmenter {
     ) -> Vec<DungeonSegmentAction> {
         let mut actions = Vec::new();
         for event in events {
+            self.remember_profile_context(&event);
             let event_time = event.time;
             let next_world_scene_id = match &event.event {
                 CanonicalEvent::WorldChanged(world) => world.scene_id.map(|scene| scene.0),
@@ -239,6 +245,27 @@ impl DungeonRunSegmenter {
         }
     }
 
+    fn remember_profile_context(&mut self, event: &EventEnvelope) {
+        let CanonicalEvent::CharacterProfileObserved { profile } = &event.event else {
+            return;
+        };
+        let character_id = profile.character.character_id.clone();
+        if character_id.is_empty() {
+            return;
+        }
+        if self.pending_profiles.len() >= MAX_PENDING_PROFILE_CONTEXTS
+            && !self.pending_profiles.contains_key(&character_id)
+            && let Some(oldest_character_id) = self
+                .pending_profiles
+                .iter()
+                .min_by_key(|(_, envelope)| envelope.sequence)
+                .map(|(character_id, _)| character_id.clone())
+        {
+            self.pending_profiles.remove(&oldest_character_id);
+        }
+        self.pending_profiles.insert(character_id, event.clone());
+    }
+
     fn take_entry_context(&mut self) -> Vec<EventEnvelope> {
         let mut context = [
             self.pending_world.take(),
@@ -249,6 +276,7 @@ impl DungeonRunSegmenter {
         .into_iter()
         .flatten()
         .collect::<Vec<_>>();
+        context.extend(self.pending_profiles.values().cloned());
         context.sort_unstable_by_key(|event| event.sequence);
         context
     }
@@ -296,9 +324,10 @@ fn distinct_instances(current: Option<&str>, next: Option<&str>) -> bool {
 #[cfg(test)]
 mod tests {
     use rlogs_events::{
-        BoundaryReason, CanonicalEventDraft, CanonicalEventDraftKind, DungeonEvent,
-        DungeonEventKind, EventEnvelopeFactory, EventProvenance, EventSensitivity, RegionContext,
-        RegionIdentity, RunState, SceneId, TimelineEventKind, WorldContext,
+        BoundaryReason, CanonicalEventDraft, CanonicalEventDraftKind, CharacterIdentity,
+        DungeonEvent, DungeonEventKind, EventEnvelopeFactory, EventProvenance, EventSensitivity,
+        GameProfileEvent, RegionContext, RegionIdentity, RunState, SceneId, TimelineEventKind,
+        WorldContext,
     };
 
     use super::*;
@@ -392,6 +421,35 @@ mod tests {
             .unwrap()
     }
 
+    fn profile(
+        factory: &mut EventEnvelopeFactory,
+        sequence: u64,
+        character_id: &str,
+    ) -> EventEnvelope {
+        factory
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: sequence * 1_000,
+                    game_time_millis: Some(sequence as i64),
+                },
+                provenance: EventProvenance::wire(sequence, 1664308034, 21),
+                sensitivity: EventSensitivity::PersonalGameplay,
+                kind: CanonicalEventDraftKind::CharacterProfileObserved {
+                    profile: Box::new(GameProfileEvent {
+                        game_plugin_id: "blue-protocol-star-resonance".into(),
+                        payload_schema_id: "bpsr-character-profile".into(),
+                        payload_schema_version: 1,
+                        character: CharacterIdentity {
+                            region: factory.region().identity.clone(),
+                            character_id: character_id.into(),
+                        },
+                        payload: serde_json::json!({"season_cultivation": [{"season_id": 3}]}),
+                    }),
+                },
+            })
+            .unwrap()
+    }
+
     #[test]
     fn holds_safe_scene_context_until_authoritative_dungeon_entry() {
         let mut factory = factory();
@@ -420,6 +478,52 @@ mod tests {
         ));
         assert!(matches!(&actions[2], DungeonSegmentAction::Record(_)));
         assert!(segmenter.is_recording());
+    }
+
+    #[test]
+    fn carries_latest_pre_entry_profile_into_each_persisted_run_without_synthesis() {
+        let mut factory = factory();
+        let mut segmenter = DungeonRunSegmenter::default();
+        let observed_profile = profile(&mut factory, 1, "3296036");
+        let original_time = observed_profile.time;
+        let original_provenance = observed_profile.provenance.clone();
+        assert!(segmenter.observe_batch([observed_profile]).is_empty());
+
+        let entry = dungeon(&mut factory, 2, DungeonEventKind::Entered, "run-1");
+        let actions = segmenter.observe_batch([entry]);
+        let carried = actions
+            .iter()
+            .find_map(|action| match action {
+                DungeonSegmentAction::Record(envelope)
+                    if matches!(
+                        envelope.event,
+                        CanonicalEvent::CharacterProfileObserved { .. }
+                    ) =>
+                {
+                    Some(envelope)
+                }
+                _ => None,
+            })
+            .expect("carried profile context");
+        assert_eq!(carried.time, original_time);
+        assert_eq!(carried.provenance, original_provenance);
+
+        let failed = dungeon(&mut factory, 3, DungeonEventKind::Failed, "run-1");
+        assert!(
+            segmenter
+                .observe_batch([failed])
+                .iter()
+                .any(|action| matches!(action, DungeonSegmentAction::Seal { .. }))
+        );
+        let next_entry = dungeon(&mut factory, 4, DungeonEventKind::Entered, "run-2");
+        let next_actions = segmenter.observe_batch([next_entry]);
+        assert!(next_actions.iter().any(|action| matches!(
+            action,
+            DungeonSegmentAction::Record(EventEnvelope {
+                event: CanonicalEvent::CharacterProfileObserved { .. },
+                ..
+            })
+        )));
     }
 
     #[test]
