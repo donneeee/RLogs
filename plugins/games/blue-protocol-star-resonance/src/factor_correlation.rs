@@ -1642,6 +1642,7 @@ mod tests {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn resource_event(
         sequence: u64,
         observed_micros: u64,

@@ -523,8 +523,10 @@ mod tests {
 
     #[test]
     fn validates_custom_specialization_colors() {
-        let mut settings = CombatMeterSettings::default();
-        settings.history_party_color_mode = HistoryPartyColorMode::Specialization;
+        let mut settings = CombatMeterSettings {
+            history_party_color_mode: HistoryPartyColorMode::Specialization,
+            ..CombatMeterSettings::default()
+        };
         settings
             .history_specialization_colors
             .insert("117".into(), "#f97316".into());

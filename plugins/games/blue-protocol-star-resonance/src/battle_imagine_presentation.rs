@@ -194,11 +194,10 @@ mod tests {
 
         let igoreus = battle_imagine_presentation(3_969).unwrap().unwrap();
         assert_eq!(igoreus.item_id, 3_000_121);
-        assert_eq!(
+        assert!(
             localized_battle_imagine_name(igoreus.item_id, "ja-JP")
                 .unwrap()
-                .is_some(),
-            true
+                .is_some()
         );
     }
 

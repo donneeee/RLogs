@@ -475,6 +475,7 @@ impl ActorRuntimeSelectionState {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_loadout_evidence_lane(
     evidence: ActorLoadoutEvidence,
     slots: &[ActorLoadoutSlot],
@@ -4243,15 +4244,15 @@ impl RdpsValidationAnalyzer {
         let matching = self
             .status_windows
             .iter()
-            .filter_map(|(candidate, window)| {
-                (candidate.target_actor == key.target_actor && candidate.effect_id == key.effect_id)
-                    .then(|| {
-                        (
-                            *candidate,
-                            window.obligations.clone(),
-                            window.dreamscope_effect_id,
-                        )
-                    })
+            .filter(|(candidate, _)| {
+                candidate.target_actor == key.target_actor && candidate.effect_id == key.effect_id
+            })
+            .map(|(candidate, window)| {
+                (
+                    *candidate,
+                    window.obligations.clone(),
+                    window.dreamscope_effect_id,
+                )
             })
             .collect::<Vec<_>>();
         if matching.is_empty() {
@@ -5673,7 +5674,8 @@ fn mask_names(mask: u16) -> Vec<String> {
         (SHIELD_STATE, "shield_state"),
     ]
     .into_iter()
-    .filter_map(|(bit, name)| (mask & bit != 0).then(|| name.to_owned()))
+    .filter(|(bit, _)| mask & *bit != 0)
+    .map(|(_, name)| name.to_owned())
     .collect()
 }
 
@@ -6148,7 +6150,7 @@ mod tests {
             attribute_type: Some(2),
             attributes: BTreeMap::from([(attribute_key, 1)]),
         }]);
-        *profile = Box::new(patch.into_game_event().unwrap());
+        **profile = patch.into_game_event().unwrap();
         envelope
     }
 
@@ -8855,17 +8857,18 @@ mod tests {
     }
 
     #[test]
-    fn current_build_research_candidate_passes_capture_preflight() {
+    fn newer_promoted_pack_remains_provisional_against_the_bundled_watch() {
         let analyzer = RdpsValidationAnalyzer::bundled().unwrap();
         let pack = ProtocolPack::from_json(include_bytes!(
-            "../research/game-file-inventory/global/steam-24609362/protocol-pack-static-candidate.v2.json"
+            "../protocol-packs/global/steam-24687926/pack.json"
         ))
         .unwrap();
 
         let preflight = analyzer.ensure_capture_capable(&pack).unwrap();
         assert!(preflight.capture_capable);
-        assert!(preflight.exact_build_proof_capable);
-        assert_eq!(preflight.protocol_pack_game_build, "24609362");
+        assert!(!preflight.exact_build_match);
+        assert!(!preflight.exact_build_proof_capable);
+        assert_eq!(preflight.protocol_pack_game_build, "24687926");
         assert!(preflight.missing_event_kinds.is_empty());
     }
 

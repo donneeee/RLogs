@@ -30,6 +30,9 @@ pub struct DungeonSegmentBoundary {
     pub time: EventTime,
 }
 
+/// Recorded envelopes dominate this stream and remain inline to avoid a heap
+/// allocation on every retained event.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum DungeonSegmentAction {
     Open {

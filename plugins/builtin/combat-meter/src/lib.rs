@@ -1199,20 +1199,17 @@ impl CombatTimelinePlugin {
             return;
         }
         if let CanonicalEvent::Dungeon(dungeon) = &envelope.event {
-            match dungeon.kind {
-                DungeonEventKind::Entered => {
-                    self.record_run_entry(envelope.time.observed_micros);
-                    self.push_history_fact(CombatFact {
-                        observed_micros: envelope.time.observed_micros,
-                        source_actor_id: 0,
-                        source_entity_uuid: 0,
-                        target: None,
-                        ability_id: None,
-                        kind: CombatFactKind::StatusReset,
-                    });
-                    self.live_attribution.reset_statuses();
-                }
-                _ => {}
+            if dungeon.kind == DungeonEventKind::Entered {
+                self.record_run_entry(envelope.time.observed_micros);
+                self.push_history_fact(CombatFact {
+                    observed_micros: envelope.time.observed_micros,
+                    source_actor_id: 0,
+                    source_entity_uuid: 0,
+                    target: None,
+                    ability_id: None,
+                    kind: CombatFactKind::StatusReset,
+                });
+                self.live_attribution.reset_statuses();
             }
             if let Some(connection_id) = wire_connection_id(&envelope.provenance) {
                 self.relevant_connection_ids.insert(connection_id);
@@ -3031,14 +3028,14 @@ impl CombatTimelinePlugin {
         if inferred > 0 {
             return inferred;
         }
-        self.history_facts
-            .iter()
-            .any(|fact| {
-                matches!(&fact.kind, CombatFactKind::Damage { reported, .. } if *reported > 0)
-                    && history_fact_offset(fact.observed_micros, intervals, 0, false).is_some()
-            })
-            .then_some(MINIMUM_PERSONAL_ACTIVE_MICROS)
-            .unwrap_or(0)
+        if self.history_facts.iter().any(|fact| {
+            matches!(&fact.kind, CombatFactKind::Damage { reported, .. } if *reported > 0)
+                && history_fact_offset(fact.observed_micros, intervals, 0, false).is_some()
+        }) {
+            MINIMUM_PERSONAL_ACTIVE_MICROS
+        } else {
+            0
+        }
     }
 
     fn finish_history_actor(
@@ -5158,20 +5155,6 @@ mod tests {
             EventEnvelopeFactory::new(header.session_id.clone(), header.region.clone());
         let mut plugin = CombatTimelinePlugin::new();
         plugin.begin_live(&header);
-        let mut emit = |observed_micros, kind| {
-            let envelope = factory
-                .emit(CanonicalEventDraft {
-                    time: EventTime {
-                        observed_micros,
-                        game_time_millis: None,
-                    },
-                    provenance: EventProvenance::wire(observed_micros, 1, 1),
-                    sensitivity: EventSensitivity::PublicGameplay,
-                    kind,
-                })
-                .unwrap();
-            plugin.observe_live(&envelope);
-        };
         let player = EntityRef {
             actor_id: ActorId(1),
             entity_uuid: EntityUuid(100),
@@ -5212,14 +5195,29 @@ mod tests {
             })
         };
 
-        emit(1_000_000, damage(9_000));
-        emit(
-            4_000_000,
-            dungeon(DungeonEventKind::ObjectiveUpdated, Some(true)),
-        );
-        emit(5_000_000, damage(3_000));
-        emit(14_000_000, dungeon(DungeonEventKind::FlowUpdated, None));
-        drop(emit);
+        {
+            let mut emit = |observed_micros, kind| {
+                let envelope = factory
+                    .emit(CanonicalEventDraft {
+                        time: EventTime {
+                            observed_micros,
+                            game_time_millis: None,
+                        },
+                        provenance: EventProvenance::wire(observed_micros, 1, 1),
+                        sensitivity: EventSensitivity::PublicGameplay,
+                        kind,
+                    })
+                    .unwrap();
+                plugin.observe_live(&envelope);
+            };
+            emit(1_000_000, damage(9_000));
+            emit(
+                4_000_000,
+                dungeon(DungeonEventKind::ObjectiveUpdated, Some(true)),
+            );
+            emit(5_000_000, damage(3_000));
+            emit(14_000_000, dungeon(DungeonEventKind::FlowUpdated, None));
+        }
 
         let snapshot = plugin.live_snapshot().unwrap();
         assert_eq!(snapshot.combat_window_count, 2);

@@ -3,14 +3,15 @@ use std::fs::OpenOptions;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use rlogs_capture::{CaptureSource, OfflineCapture};
 use rlogs_core::ResearchConnectionFile;
 use rlogs_events::{RegionEvidence, RegionEvidenceKind, RegionIdentity};
 use rlogs_game_bpsr::{
-    GameBuild, NetworkEndpoint, OfflineRecordingConfig, OfflineRecordingLimits, ProtocolPack,
-    ProtocolRuntimeConfig, RegionResolverError, ResolvedRegion, ServerRealmCatalog,
-    record_offline_capture,
+    GameBuild, GameDataObjectiveCatalog, NetworkEndpoint, ObjectiveCatalogResolver,
+    OfflineRecordingConfig, OfflineRecordingLimits, ProtocolPack, ProtocolRuntimeConfig,
+    RegionResolverError, ResolvedRegion, ServerRealmCatalog, record_offline_capture,
 };
 
 fn main() -> ExitCode {
@@ -85,6 +86,14 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), Box<dyn std:
         )
         .into());
     }
+    let objective_catalog = arguments
+        .game_data
+        .as_ref()
+        .map(|root| {
+            GameDataObjectiveCatalog::open_for_game_build(root, &build)
+                .map(|catalog| Arc::new(catalog) as Arc<dyn ObjectiveCatalogResolver>)
+        })
+        .transpose()?;
 
     let source = OfflineCapture::open(&arguments.input)?;
     let adapter_name = source.metadata().source_id.clone();
@@ -102,6 +111,7 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), Box<dyn std:
         region_evidence,
         limits: OfflineRecordingLimits::default(),
         decoder: ProtocolRuntimeConfig::default(),
+        objective_catalog,
     };
     let result = record_offline_capture(
         source,
@@ -219,6 +229,7 @@ struct Arguments {
     connections: PathBuf,
     session_id: String,
     region_id: Option<String>,
+    game_data: Option<PathBuf>,
     report: Option<PathBuf>,
     input: PathBuf,
     output: PathBuf,
@@ -230,6 +241,7 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
     let mut connections = None;
     let mut session_id = None;
     let mut region_id = None;
+    let mut game_data = None;
     let mut report = None;
     let mut positional = Vec::new();
     let mut arguments = arguments.into_iter();
@@ -245,6 +257,8 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
             session_id = unique_value(session_id, arguments.next(), "--session-id")?;
         } else if argument == OsStr::new("--region-id") {
             region_id = unique_value(region_id, arguments.next(), "--region-id")?;
+        } else if argument == OsStr::new("--game-data") {
+            game_data = unique_value(game_data, arguments.next(), "--game-data")?;
         } else if argument == OsStr::new("--report") {
             report = unique_value(report, arguments.next(), "--report")?;
         } else if argument.to_string_lossy().starts_with('-') {
@@ -270,6 +284,7 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
         connections: connections.map(PathBuf::from).ok_or_else(usage)?,
         session_id,
         region_id,
+        game_data: game_data.map(PathBuf::from),
         report: report.map(PathBuf::from),
         input: positional.remove(0),
         output,
@@ -343,7 +358,7 @@ fn partial_path(output: &Path) -> Result<PathBuf, String> {
 }
 
 fn usage() -> String {
-    "usage: rlogs-bpsr-offline-recorder --private-research --pack <pack.json> --connections <connections.json> --session-id <id> [--region-id <region>] [--report <coverage.json>] <capture.pcap|capture.pcapng> <output.rlog>".into()
+    "usage: rlogs-bpsr-offline-recorder --private-research --pack <pack.json> --connections <connections.json> --session-id <id> [--region-id <region>] [--game-data <compiled-bundle>] [--report <coverage.json>] <capture.pcap|capture.pcapng> <output.rlog>".into()
 }
 
 #[cfg(test)]
@@ -526,6 +541,7 @@ mod tests {
                 }],
                 limits: OfflineRecordingLimits::default(),
                 decoder: ProtocolRuntimeConfig::default(),
+                objective_catalog: None,
             },
             Vec::new(),
         )

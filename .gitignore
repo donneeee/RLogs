@@ -10,6 +10,7 @@ Thumbs.db
 *.pcapng
 *.jsonl
 *.rlog
+!tests/fixtures/replay/*.rlog
 *.rlog.partial
 *.connections.json
 *.connections.partial.json

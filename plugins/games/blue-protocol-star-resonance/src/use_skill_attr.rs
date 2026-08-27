@@ -259,7 +259,7 @@ pub fn decode_use_skill_attr_into(
     let iv = &envelope[..IV_LENGTH];
     let expected_mac = &envelope[IV_LENGTH..ENVELOPE_PREFIX_LENGTH];
     let ciphertext = &envelope[ENVELOPE_PREFIX_LENGTH..];
-    if ciphertext.is_empty() || !ciphertext.len().is_multiple_of(AES_BLOCK_LENGTH) {
+    if ciphertext.is_empty() || ciphertext.len() % AES_BLOCK_LENGTH != 0 {
         return Err(UseSkillAttrDecodeError::InvalidCiphertextLength {
             actual: ciphertext.len(),
         });
@@ -892,9 +892,7 @@ fn decode_int32(
     field: u32,
 ) -> Result<i32, UseSkillAttrDecodeError> {
     let value = decode_varint(raw, cursor)?;
-    if value <= i32::MAX as u64 {
-        Ok(value as i32)
-    } else if value >= u64::MAX - i32::MAX as u64 {
+    if value <= i32::MAX as u64 || value >= u64::MAX - i32::MAX as u64 {
         Ok(value as i32)
     } else {
         Err(UseSkillAttrDecodeError::Int32Overflow { field })

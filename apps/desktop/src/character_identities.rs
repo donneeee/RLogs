@@ -298,6 +298,7 @@ fn identity_from_event(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resolved_display_name(
     observed: Option<&str>,
     class_id: Option<i32>,

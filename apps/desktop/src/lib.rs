@@ -771,7 +771,7 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                         ability_ids,
                         "en-US",
                     )
-                    .unwrap_or_else(|_| {
+                    .unwrap_or({
                         rlogs_game_bpsr::ActorCombatPresentation {
                             class_id: actor.class_id,
                             specialization_id: None,
@@ -5337,6 +5337,7 @@ fn capture_time_plugin_report(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn postprocess_continuous_run(
     log: SealedDungeonRunLog,
     mut projection: CapturedRunProjection,
@@ -10255,17 +10256,18 @@ kind = "content"
             .unwrap();
         let controller = RuntimeController::new(install_root).unwrap();
         let queued_before = controller.submission_queue().entry_count;
+        let import_error = controller
+            .import_submission_artifact(SubmissionImportRequest {
+                artifact_path: controller
+                    .install_root
+                    .join("tests/fixtures/replay/reference-combat.rlog")
+                    .display()
+                    .to_string(),
+            })
+            .unwrap_err();
         assert!(
-            controller
-                .import_submission_artifact(SubmissionImportRequest {
-                    artifact_path: controller
-                        .install_root
-                        .join("tests/fixtures/replay/reference-combat.rlog")
-                        .display()
-                        .to_string(),
-                })
-                .unwrap_err()
-                .contains("protocol pack digest is invalid")
+            import_error.contains("protocol pack digest is invalid"),
+            "unexpected import error: {import_error}",
         );
         let reference = controller.run_reference_replay().unwrap();
         assert_eq!(

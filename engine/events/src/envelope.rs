@@ -32,6 +32,9 @@ pub enum EventSensitivity {
     LocalSensitive,
 }
 
+/// Timeline events are the dominant hot path and remain inline to avoid a heap
+/// allocation for every decoded combat event.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum CanonicalEvent {
@@ -76,6 +79,9 @@ pub struct CanonicalEventDraft {
     pub kind: CanonicalEventDraftKind,
 }
 
+/// Draft timeline events stay inline for the same allocation-free hot path as
+/// their canonical envelopes.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", content = "data", rename_all = "snake_case")]
 pub enum CanonicalEventDraftKind {

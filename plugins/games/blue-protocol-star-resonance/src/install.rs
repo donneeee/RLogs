@@ -1,3 +1,7 @@
+// Selection errors retain complete exact-build diagnostics for operators; keep
+// those values inline instead of boxing every fallible protocol-pack call.
+#![allow(clippy::result_large_err)]
+
 use std::path::{Path, PathBuf};
 
 use thiserror::Error;
@@ -96,7 +100,7 @@ pub fn resolve_live_steam_protocol_pack(
             actual: app_id,
         });
     }
-    let build_id = acf_value(&manifest, "buildid").ok_or_else(|| {
+    let build_id = acf_value(&manifest, "buildid").ok_or({
         LiveProtocolPackSelectionError::MissingManifestValue {
             path: manifest_path,
             key: "buildid",
@@ -387,32 +391,31 @@ mod tests {
         std::fs::write(
             steamapps.join("appmanifest_3681810.acf"),
             r#""appid" "3681810"
-"buildid" "24609362""#,
+"buildid" "24687926""#,
         )
         .unwrap();
 
-        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join(
-            "research/game-file-inventory/global/steam-24609362/protocol-pack-static-candidate.v2.json",
-        );
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("protocol-packs/global/steam-24687926/pack.json");
         let plugin_root = root.join("plugin");
         let candidate = plugin_root.join(
-            "research/game-file-inventory/global/steam-24609362/protocol-pack-static-candidate.v2.json",
+            "research/game-file-inventory/global/steam-24687926/protocol-pack-static-candidate.v2.json",
         );
         std::fs::create_dir_all(candidate.parent().unwrap()).unwrap();
         std::fs::copy(&source, &candidate).unwrap();
 
         let selected = resolve_live_steam_protocol_pack(&plugin_root, &executable).unwrap();
         assert_eq!(selected.kind, LiveProtocolPackKind::ResearchCandidate);
-        assert_eq!(selected.build_id, "24609362");
-        assert_eq!(selected.pack_build_id, "24609362");
+        assert_eq!(selected.build_id, "24687926");
+        assert_eq!(selected.pack_build_id, "24687926");
         assert_eq!(selected.path, candidate);
 
-        let promoted = plugin_root.join("protocol-packs/global/steam-24609362/pack.json");
+        let promoted = plugin_root.join("protocol-packs/global/steam-24687926/pack.json");
         std::fs::create_dir_all(promoted.parent().unwrap()).unwrap();
         std::fs::copy(source, &promoted).unwrap();
         let selected = resolve_live_steam_protocol_pack(&plugin_root, &executable).unwrap();
         assert_eq!(selected.kind, LiveProtocolPackKind::Promoted);
-        assert_eq!(selected.pack_build_id, "24609362");
+        assert_eq!(selected.pack_build_id, "24687926");
         assert_eq!(selected.path, promoted);
 
         std::fs::remove_dir_all(root).unwrap();
@@ -434,28 +437,27 @@ mod tests {
         std::fs::write(
             steamapps.join("appmanifest_3681810.acf"),
             r#""appid" "3681810"
-"buildid" "24687926""#,
+"buildid" "24699999""#,
         )
         .unwrap();
 
-        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join(
-            "research/game-file-inventory/global/steam-24609362/protocol-pack-static-candidate.v2.json",
-        );
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("protocol-packs/global/steam-24687926/pack.json");
         let plugin_root = root.join("plugin");
         let candidate = plugin_root.join(
-            "research/game-file-inventory/global/steam-24609362/protocol-pack-static-candidate.v2.json",
+            "research/game-file-inventory/global/steam-24687926/protocol-pack-static-candidate.v2.json",
         );
         std::fs::create_dir_all(candidate.parent().unwrap()).unwrap();
         std::fs::copy(source, &candidate).unwrap();
 
         let selected = resolve_live_steam_protocol_pack(&plugin_root, &executable).unwrap();
         assert_eq!(selected.kind, LiveProtocolPackKind::CompatibilityFallback);
-        assert_eq!(selected.build_id, "24687926");
-        assert_eq!(selected.pack_build_id, "24609362");
+        assert_eq!(selected.build_id, "24699999");
+        assert_eq!(selected.pack_build_id, "24687926");
         assert_eq!(selected.path, candidate);
 
         let loaded = selected.load_pack().unwrap();
-        assert_eq!(loaded.definition().target.build_id, "24687926");
+        assert_eq!(loaded.definition().target.build_id, "24699999");
         assert!(
             loaded
                 .definition()
@@ -464,7 +466,7 @@ mod tests {
         );
         assert!(loaded.definition().provenance.iter().any(|entry| {
             entry.source == "provisional-compatible-build-fallback"
-                && entry.reference == "pack_build=24609362;observed_build=24687926"
+                && entry.reference == "pack_build=24687926;observed_build=24699999"
         }));
 
         std::fs::remove_dir_all(root).unwrap();

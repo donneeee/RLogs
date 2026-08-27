@@ -214,7 +214,7 @@ pub fn exact_external_speed_capacity_fraction(
 }
 
 /// Packet-time inputs consumed by the current-client stage-speed boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SkillStageSpeedInputs {
     /// Entity type `8` selects the pet-specific speed family before stage type.
     pub is_pet: bool,
@@ -232,21 +232,6 @@ pub struct SkillStageSpeedInputs {
     pub charge_speed_basis_points: i64,
     /// Attribute 11990.
     pub pet_attack_speed_basis_points: i64,
-}
-
-impl Default for SkillStageSpeedInputs {
-    fn default() -> Self {
-        Self {
-            is_pet: false,
-            attack_speed_enabled: false,
-            attack_speed_basis_points: 0,
-            temporary_attack_speed_basis_points: 0,
-            cast_speed_basis_points: 0,
-            temporary_cast_speed_basis_points: 0,
-            charge_speed_basis_points: 0,
-            pet_attack_speed_basis_points: 0,
-        }
-    }
 }
 
 /// Replays the current-client speed multiplier for a non-singing skill stage.

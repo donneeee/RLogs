@@ -666,10 +666,7 @@ fn digest_after_encoded_event(hasher: &Sha256, encoded: &[u8]) -> Sha256 {
     next
 }
 
-fn legacy_event_envelope_bytes<'a>(
-    line: &'a [u8],
-    line_number: u64,
-) -> Result<&'a [u8], RlogError> {
+fn legacy_event_envelope_bytes(line: &[u8], line_number: u64) -> Result<&[u8], RlogError> {
     const PREFIX: &[u8] = br#"{"record":"event","envelope":"#;
     line.strip_prefix(PREFIX)
         .and_then(|encoded| encoded.strip_suffix(b"}"))

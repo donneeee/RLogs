@@ -494,11 +494,11 @@ impl RdpsRuntimeConfig {
                 })
                 && (self.runtime_promotion_allowed() == self.promotion_blockers.is_empty())
                 && (self.policy.critical_damage_factor_interpretation_authority
-                    == !self.promotion_blockers.iter().any(|blocker| {
+                    != self.promotion_blockers.iter().any(|blocker| {
                         blocker == "critical-damage-factor-interpretation-authority"
                     }))
                 && (self.policy.party_support_formula_frontier_complete
-                    == !self
+                    != self
                         .promotion_blockers
                         .iter()
                         .any(|blocker| blocker == "party-support-formula-frontier"));
@@ -590,8 +590,7 @@ impl RdpsRuntimeConfig {
             || (amp.formula_authority_basis == "target-build-direct-packet-replay"
                 && (!amp.attack_magic_target_build_effect_occurrence_observed
                     || !amp.attack_magic_target_build_damage_replay_observed))
-            || (amp.formula_authority_basis
-                != "target-build-direct-packet-replay"
+            || (amp.formula_authority_basis != "target-build-direct-packet-replay"
                 && amp.formula_authority_basis
                     != "historical-replay-plus-target-static-and-protocol-schema-migration")
             || (amp.attack_magic_runtime_transfer_enabled
@@ -691,8 +690,7 @@ impl RdpsRuntimeConfig {
             || !harmony.unresolved_overlap_fails_closed
             || !harmony_runtime_classes_are_valid
             || (harmony.runtime_transfer_enabled
-                && (!harmony_runtime_authority
-                    || harmony.runtime_recipient_class_ids != [11]))
+                && (!harmony_runtime_authority || harmony.runtime_recipient_class_ids != [11]))
             || (!harmony.runtime_transfer_enabled
                 && !harmony.runtime_recipient_class_ids.is_empty())
         {
@@ -1138,7 +1136,11 @@ mod tests {
                 .functional_amp
                 .dormant_activation_requires_observed_lifecycle
         );
-        assert!(!current.functional_amp.server_integer_counterfactual_authority);
+        assert!(
+            !current
+                .functional_amp
+                .server_integer_counterfactual_authority
+        );
         assert!(!current.functional_amp.attack_magic_runtime_transfer_enabled);
         assert!(!current.functional_amp.speed_runtime_transfer_enabled);
         assert!(!current.has_any_runtime_transfer_enabled());
@@ -1146,8 +1148,8 @@ mod tests {
         assert!(!current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
 
         let mut transfer_without_current_build_replay = base.clone();
-        transfer_without_current_build_replay["functional_amp"]
-            ["attack_magic_runtime_transfer_enabled"] = serde_json::Value::Bool(true);
+        transfer_without_current_build_replay["functional_amp"]["attack_magic_runtime_transfer_enabled"] =
+            serde_json::Value::Bool(true);
         assert!(
             runtime_from_value(transfer_without_current_build_replay)
                 .validate()
@@ -1156,14 +1158,12 @@ mod tests {
         );
 
         let mut transfer_without_integer_authority = base.clone();
-        transfer_without_integer_authority["functional_amp"]
-            ["attack_magic_target_build_effect_occurrence_observed"] =
+        transfer_without_integer_authority["functional_amp"]["attack_magic_target_build_effect_occurrence_observed"] =
             serde_json::Value::Bool(true);
-        transfer_without_integer_authority["functional_amp"]
-            ["attack_magic_target_build_damage_replay_observed"] =
+        transfer_without_integer_authority["functional_amp"]["attack_magic_target_build_damage_replay_observed"] =
             serde_json::Value::Bool(true);
-        transfer_without_integer_authority["functional_amp"]
-            ["attack_magic_runtime_transfer_enabled"] = serde_json::Value::Bool(true);
+        transfer_without_integer_authority["functional_amp"]["attack_magic_runtime_transfer_enabled"] =
+            serde_json::Value::Bool(true);
         assert!(
             runtime_from_value(transfer_without_integer_authority)
                 .validate()
@@ -1214,8 +1214,18 @@ mod tests {
                 .server_integer_counterfactual_authority
         );
         assert!(current.mechanical_power.unresolved_overlap_fails_closed);
-        assert!(current.mechanical_power.runtime_recipient_class_ids.is_empty());
-        assert!(current.mechanical_power.runtime_primary_percent_raw_deltas.is_empty());
+        assert!(
+            current
+                .mechanical_power
+                .runtime_recipient_class_ids
+                .is_empty()
+        );
+        assert!(
+            current
+                .mechanical_power
+                .runtime_primary_percent_raw_deltas
+                .is_empty()
+        );
         assert_eq!(
             current
                 .mechanical_power
@@ -1238,13 +1248,14 @@ mod tests {
         premature_transfer["mechanical_power"]["runtime_primary_percent_raw_deltas"] =
             serde_json::json!([750]);
         assert!(
-            runtime_from_value(premature_transfer.clone()).validate().is_err(),
+            runtime_from_value(premature_transfer.clone())
+                .validate()
+                .is_err(),
             "packet lifecycle and a candidate marginal do not prove the damage operator",
         );
 
         let mut complete_proof_contract = premature_transfer;
-        complete_proof_contract["mechanical_power"]
-            ["class_11_tier_0_exact_rational_attribution_authority"] =
+        complete_proof_contract["mechanical_power"]["class_11_tier_0_exact_rational_attribution_authority"] =
             serde_json::Value::Bool(true);
         complete_proof_contract["mechanical_power"]["damage_stage_operation_order_authority"] =
             serde_json::Value::Bool(true);
@@ -1252,7 +1263,11 @@ mod tests {
             serde_json::Value::Bool(true);
         complete_proof_contract["mechanical_power"]["server_integer_counterfactual_authority"] =
             serde_json::Value::Bool(true);
-        assert!(runtime_from_value(complete_proof_contract).validate().is_ok());
+        assert!(
+            runtime_from_value(complete_proof_contract)
+                .validate()
+                .is_ok()
+        );
 
         let mut wrong_projection = base.clone();
         wrong_projection["mechanical_power"]["rational_integer_projection"] =
@@ -1301,14 +1316,22 @@ mod tests {
             serde_json::Value::Bool(true);
         premature_transfer["harmony_grace"]["runtime_recipient_class_ids"] =
             serde_json::json!([11]);
-        assert!(runtime_from_value(premature_transfer.clone()).validate().is_err());
+        assert!(
+            runtime_from_value(premature_transfer.clone())
+                .validate()
+                .is_err()
+        );
 
         let mut complete_proof_contract = premature_transfer;
-        complete_proof_contract["harmony_grace"]
-            ["class_11_exact_rational_attribution_authority"] = serde_json::Value::Bool(true);
+        complete_proof_contract["harmony_grace"]["class_11_exact_rational_attribution_authority"] =
+            serde_json::Value::Bool(true);
         complete_proof_contract["harmony_grace"]["server_integer_counterfactual_authority"] =
             serde_json::Value::Bool(true);
-        assert!(runtime_from_value(complete_proof_contract).validate().is_ok());
+        assert!(
+            runtime_from_value(complete_proof_contract)
+                .validate()
+                .is_ok()
+        );
 
         let mut guessed_overlap = base.clone();
         guessed_overlap["harmony_grace"]["unresolved_overlap_fails_closed"] =
@@ -1332,6 +1355,11 @@ mod tests {
             promoted_remote_effect_magnitude_model(3_003_052).unwrap(),
             Some(PromotedRemoteEffectMagnitudeModel::CounterfactualReplay)
         );
-        assert!(!rdps_runtime_config().unwrap().harmony_grace.runtime_transfer_enabled);
+        assert!(
+            !rdps_runtime_config()
+                .unwrap()
+                .harmony_grace
+                .runtime_transfer_enabled
+        );
     }
 }

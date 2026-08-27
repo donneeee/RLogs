@@ -309,7 +309,7 @@ fn build_combat_overlay_window(
 ) -> tauri::Result<()> {
     let url = format!("http://{}/?surface=combat-overlay", host.address())
         .parse()
-        .map_err(|error| tauri::Error::InvalidUrl(error))?;
+        .map_err(tauri::Error::InvalidUrl)?;
     WebviewWindowBuilder::new(app, "combat-overlay", WebviewUrl::External(url))
         .title("rLogs Combat Overlay")
         .decorations(false)
@@ -626,6 +626,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
         combat_overlay_damage_started, combat_overlay_hostile_activity_started,

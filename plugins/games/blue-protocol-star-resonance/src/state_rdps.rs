@@ -299,8 +299,7 @@ impl TargetVulnerabilityRdpsCatalog {
         critical: Option<bool>,
         lucky: Option<bool>,
     ) -> &[usize] {
-        let (Some(hit_event_id), Some(critical), Some(lucky)) =
-            (hit_event_id, critical, lucky)
+        let (Some(hit_event_id), Some(critical), Some(lucky)) = (hit_event_id, critical, lucky)
         else {
             return &[];
         };
@@ -4957,7 +4956,7 @@ impl BpsrStateDamageContributionProjector {
         self.target_vulnerability_windows.retain(|_, window| {
             window
                 .expires_at_observed_micros
-                .map_or(true, |expires_at| expires_at > observed_micros)
+                .is_none_or(|expires_at| expires_at > observed_micros)
         });
     }
 
@@ -5223,6 +5222,7 @@ fn attribute_family_rounding_name(rounding: AttributeFamilyRounding) -> &'static
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn exact_team_luck_accounting_fraction(
     observed_damage: i64,
     critical: bool,
@@ -6084,6 +6084,7 @@ fn unchanged_or_observed_delta(previous: Option<i64>, next: Option<i64>) -> Opti
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn exact_inspiration_occurrence_fraction(
     observed_damage: i64,
     critical: bool,
@@ -6281,12 +6282,7 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(
-            target_catalog.rule_indices_for_damage(
-                2_203_291,
-                Some(7),
-                Some(true),
-                Some(false),
-            ),
+            target_catalog.rule_indices_for_damage(2_203_291, Some(7), Some(true), Some(false),),
             &[0],
         );
         assert!(
@@ -6560,11 +6556,13 @@ mod tests {
 
     #[test]
     fn same_deployment_hotfix_disables_rdps_and_requires_an_exact_build() {
-        let mut projector = BpsrStateDamageContributionProjector::default();
-        projector.observed_deployment_id = Some(runtime().deployment_id.clone());
-        projector.observed_client_build = Some("hotfix-after-formula-pack".into());
-        projector.observed_protocol_pack_digest = Some(runtime().protocol_pack_digest.clone());
-        projector.runtime_applicable = false;
+        let projector = BpsrStateDamageContributionProjector {
+            observed_deployment_id: Some(runtime().deployment_id.clone()),
+            observed_client_build: Some("hotfix-after-formula-pack".into()),
+            observed_protocol_pack_digest: Some(runtime().protocol_pack_digest.clone()),
+            runtime_applicable: false,
+            ..BpsrStateDamageContributionProjector::default()
+        };
 
         assert!(!projector.enabled());
         assert!(
@@ -6580,10 +6578,12 @@ mod tests {
 
     #[test]
     fn exact_current_build_retains_formula_identity_but_transfers_no_unproven_credit() {
-        let mut projector = BpsrStateDamageContributionProjector::default();
-        projector.observed_deployment_id = Some(runtime().deployment_id.clone());
-        projector.observed_client_build = Some(runtime().game_build.clone());
-        projector.observed_protocol_pack_digest = Some(runtime().protocol_pack_digest.clone());
+        let projector = BpsrStateDamageContributionProjector {
+            observed_deployment_id: Some(runtime().deployment_id.clone()),
+            observed_client_build: Some(runtime().game_build.clone()),
+            observed_protocol_pack_digest: Some(runtime().protocol_pack_digest.clone()),
+            ..BpsrStateDamageContributionProjector::default()
+        };
 
         assert!(!runtime().runtime_promotion_allowed());
         assert!(
@@ -6610,7 +6610,11 @@ mod tests {
             )
             .unwrap()
         );
-        assert!(proven_state_damage_contribution_effect_ids().unwrap().is_empty());
+        assert!(
+            proven_state_damage_contribution_effect_ids()
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(
             projector.status(),
             "formula_pack_blocked: formula=global/24687926; blockers=canonical-replay-conservation,critical-damage-factor-interpretation-authority,party-support-formula-frontier"
@@ -6627,11 +6631,14 @@ mod tests {
 
     #[test]
     fn exact_build_with_a_different_protocol_pack_fails_closed() {
-        let mut projector = BpsrStateDamageContributionProjector::default();
-        projector.observed_deployment_id = Some(runtime().deployment_id.clone());
-        projector.observed_client_build = Some(runtime().game_build.clone());
-        projector.observed_protocol_pack_digest =
-            Some("sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".into());
+        let projector = BpsrStateDamageContributionProjector {
+            observed_deployment_id: Some(runtime().deployment_id.clone()),
+            observed_client_build: Some(runtime().game_build.clone()),
+            observed_protocol_pack_digest: Some(
+                "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff".into(),
+            ),
+            ..BpsrStateDamageContributionProjector::default()
+        };
 
         assert!(!projector.enabled());
         assert_eq!(

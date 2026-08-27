@@ -993,17 +993,12 @@ pub struct PublicRun {
     pub participants: Vec<PublicParticipant>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunCorrelationMethod {
     ExactInstanceId,
+    #[default]
     IsolatedArtifact,
-}
-
-impl Default for RunCorrelationMethod {
-    fn default() -> Self {
-        Self::IsolatedArtifact
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1489,12 +1484,12 @@ fn digest_bytes(bytes: &[u8]) -> Result<Sha256Digest, ServiceError> {
 }
 
 fn unix_millis() -> Result<u64, ServiceError> {
-    Ok(SystemTime::now()
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| ServiceError::ClockBeforeEpoch)?
         .as_millis()
         .try_into()
-        .map_err(|_| ServiceError::SizeOverflow)?)
+        .map_err(|_| ServiceError::SizeOverflow)
 }
 
 fn validate_identifier(value: &str, label: &'static str) -> Result<(), ServiceError> {

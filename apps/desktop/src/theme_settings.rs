@@ -139,10 +139,12 @@ mod tests {
 
     #[test]
     fn validates_user_visible_theme_controls() {
-        let mut settings = ThemeSettings::default();
-        settings.accent = "#AABBCC".into();
-        settings.font_scale_percent = 115;
-        settings.background = "glass".into();
+        let mut settings = ThemeSettings {
+            accent: "#AABBCC".into(),
+            font_scale_percent: 115,
+            background: "glass".into(),
+            ..ThemeSettings::default()
+        };
         assert!(validate(&settings).is_ok());
         settings.accent = "blue".into();
         assert!(validate(&settings).is_err());

@@ -772,8 +772,10 @@ mod tests {
 
     #[test]
     fn compact_overlay_height_is_supported() {
-        let mut settings = CombatOverlaySettings::default();
-        settings.canvas_height = MIN_CANVAS_HEIGHT;
+        let mut settings = CombatOverlaySettings {
+            canvas_height: MIN_CANVAS_HEIGHT,
+            ..CombatOverlaySettings::default()
+        };
         validate(&settings).expect("the overlay may be collapsed to the native window minimum");
 
         settings.canvas_height = MIN_CANVAS_HEIGHT - 1;
@@ -804,8 +806,10 @@ mod tests {
 
     #[test]
     fn class_and_specialization_bar_colors_are_validated() {
-        let mut settings = CombatOverlaySettings::default();
-        settings.bar_color_mode = OverlayBarColorMode::Specialization;
+        let mut settings = CombatOverlaySettings {
+            bar_color_mode: OverlayBarColorMode::Specialization,
+            ..CombatOverlaySettings::default()
+        };
         settings
             .bar_color_overrides
             .insert("class:11".into(), "#d95b68".into());
@@ -875,8 +879,10 @@ mod tests {
 
     #[test]
     fn custom_background_requires_an_uploaded_revision() {
-        let mut settings = CombatOverlaySettings::default();
-        settings.background_mode = OverlayBackgroundMode::Custom;
+        let mut settings = CombatOverlaySettings {
+            background_mode: OverlayBackgroundMode::Custom,
+            ..CombatOverlaySettings::default()
+        };
         assert!(validate(&settings).is_err());
 
         settings.custom_background_revision = Some(1);

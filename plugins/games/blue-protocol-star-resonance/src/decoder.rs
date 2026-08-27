@@ -844,6 +844,7 @@ impl EntityRegistry {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn decode_message(
     decoder: DecoderKind,
     payload: &[u8],
@@ -4744,6 +4745,7 @@ fn emit_status_event(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_unresolved_status_event(
     target_uuid: i64,
     buff_uuid: Option<i32>,
