@@ -3746,16 +3746,13 @@ impl RuntimeController {
         let mut transmitted = 0_usize;
         let mut resumed_after_restart = false;
 
-        loop {
-            let Some(chunk) = session
-                .pending_chunks(1)
-                .map_err(|error| format!("mock upload could not read pending chunks: {error}"))?
-                .first()
-                .cloned()
-                .cloned()
-            else {
-                break;
-            };
+        while let Some(chunk) = session
+            .pending_chunks(1)
+            .map_err(|error| format!("mock upload could not read pending chunks: {error}"))?
+            .first()
+            .cloned()
+            .cloned()
+        {
             let bytes = read_artifact_chunk(&mut file, &chunk)?;
             let acknowledgement = receiver
                 .receive_chunk(chunk.sequence, &bytes)
