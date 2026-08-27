@@ -47,9 +47,10 @@ use crate::{
 };
 
 const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
+const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 2;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v7";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v8";
 
 static STATE_RDPS_FORMULA_IDENTITY: OnceLock<String> = OnceLock::new();
 
@@ -81,9 +82,9 @@ pub fn state_damage_contribution_formula_identity() -> &'static str {
                     include_bytes!("../game-data/runtime/external-state-rdps.v1.json").as_slice(),
                 ),
                 (
-                    "external-target-vulnerability-rdps.v1.json",
+                    "external-target-vulnerability-rdps.v2.json",
                     include_bytes!(
-                        "../game-data/runtime/external-target-vulnerability-rdps.v1.json"
+                        "../game-data/runtime/external-target-vulnerability-rdps.v2.json"
                     )
                     .as_slice(),
                 ),
@@ -246,21 +247,66 @@ struct TargetVulnerabilityRdpsRule {
     ability_id: i64,
     hit_event_id: i32,
     damage_attr_id: i64,
-    inactive_factor: i64,
+    projection: TargetVulnerabilityProjection,
+    inactive_factor: Option<i64>,
+    active_factor: Option<i64>,
     provider_raw_delta: i64,
-    rounding: String,
+    rounding: Option<String>,
+    integer_projection: Option<String>,
     required_critical: bool,
     required_lucky: bool,
 }
 
 impl TargetVulnerabilityRdpsRule {
+    fn active_factor(&self) -> Option<i64> {
+        match self.projection {
+            TargetVulnerabilityProjection::ExactInteger => {
+                self.inactive_factor?.checked_add(self.provider_raw_delta)
+            }
+            TargetVulnerabilityProjection::ExactRationalObservedOutput => self.active_factor,
+        }
+    }
+
     fn fixed_point_rounding(&self) -> Option<PositiveFixedPointRounding> {
-        match self.rounding.as_str() {
+        if self.projection != TargetVulnerabilityProjection::ExactInteger {
+            return None;
+        }
+        match self.rounding.as_deref()? {
             "floor" => Some(PositiveFixedPointRounding::Floor),
             "half_up" => Some(PositiveFixedPointRounding::HalfUp),
             _ => None,
         }
     }
+
+    fn is_valid(&self) -> bool {
+        match self.projection {
+            TargetVulnerabilityProjection::ExactInteger => {
+                self.inactive_factor.is_some_and(|factor| factor > 0)
+                    && self.active_factor.is_none()
+                    && self.provider_raw_delta > 0
+                    && self.active_factor().is_some()
+                    && self.fixed_point_rounding().is_some()
+                    && self.integer_projection.is_none()
+            }
+            TargetVulnerabilityProjection::ExactRationalObservedOutput => {
+                self.inactive_factor.is_none()
+                    && self
+                        .active_factor
+                        .is_some_and(|factor| factor > self.provider_raw_delta)
+                    && self.provider_raw_delta > 0
+                    && self.rounding.is_none()
+                    && self.integer_projection.as_deref()
+                        == Some("sum_exact_then_half_up_per_effect_provider_recipient")
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum TargetVulnerabilityProjection {
+    ExactInteger,
+    ExactRationalObservedOutput,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -323,14 +369,14 @@ fn target_vulnerability_rdps_catalog() -> Result<&'static TargetVulnerabilityRdp
     TARGET_VULNERABILITY_RDPS_CATALOG
         .get_or_init(|| {
             let mut catalog: TargetVulnerabilityRdpsCatalog = serde_json::from_str(include_str!(
-                "../game-data/runtime/external-target-vulnerability-rdps.v1.json"
+                "../game-data/runtime/external-target-vulnerability-rdps.v2.json"
             ))
             .map_err(|error| {
                 format!("bundled BPSR target-vulnerability rDPS catalog is invalid: {error}")
             })?;
             let runtime = rdps_runtime_config_for("global", &catalog.game_build)?
                 .ok_or_else(|| "bundled BPSR target-vulnerability rDPS catalog has no matching formula authority".to_string())?;
-            if catalog.schema_version != STATE_RDPS_SCHEMA_VERSION
+            if catalog.schema_version != TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION
                 || catalog.game_build != runtime.game_build
                 || catalog.rules.is_empty()
             {
@@ -344,13 +390,7 @@ fn target_vulnerability_rdps_catalog() -> Result<&'static TargetVulnerabilityRdp
                     || rule.ability_id <= 0
                     || rule.hit_event_id < 0
                     || rule.damage_attr_id <= 0
-                    || rule.inactive_factor <= 0
-                    || rule.provider_raw_delta <= 0
-                    || rule
-                        .inactive_factor
-                        .checked_add(rule.provider_raw_delta)
-                        .is_none()
-                    || rule.fixed_point_rounding().is_none()
+                    || !rule.is_valid()
             }) {
                 return Err(
                     "bundled BPSR target-vulnerability rDPS rule contains an invalid value".into(),
@@ -1255,7 +1295,7 @@ impl BpsrStateDamageContributionProjector {
                     self.thunderwind_contribution(envelope.time.observed_micros, damage);
                 let target_vulnerability_catalog = target_vulnerability_rdps_catalog()
                     .expect("catalog was validated when the projector was built");
-                let target_vulnerability_contributions = damage
+                let target_vulnerability_rule_indices = damage
                     .ability
                     .map(|ability| ability.0)
                     .into_iter()
@@ -1267,8 +1307,22 @@ impl BpsrStateDamageContributionProjector {
                             damage.flags.lucky,
                         )
                     })
+                    .copied()
+                    .collect::<Vec<_>>();
+                let target_vulnerability_contributions = target_vulnerability_rule_indices
+                    .iter()
                     .filter_map(|index| {
-                        self.target_vulnerability_contribution(
+                        self.target_vulnerability_exact_contribution(
+                            envelope,
+                            damage,
+                            &target_vulnerability_catalog.rules[*index],
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let target_vulnerability_rational_contributions = target_vulnerability_rule_indices
+                    .iter()
+                    .filter_map(|index| {
+                        self.target_vulnerability_rational_contribution(
                             envelope,
                             damage,
                             &target_vulnerability_catalog.rules[*index],
@@ -1318,14 +1372,18 @@ impl BpsrStateDamageContributionProjector {
                 let rational_candidate_count = usize::from(team_luck_contribution.is_some())
                     + attack_contributions.len()
                     + usize::from(inspiration_occurrence_contribution.is_some())
-                    + usize::from(thunderwind_contribution.is_some());
+                    + usize::from(thunderwind_contribution.is_some())
+                    + target_vulnerability_rational_contributions.len();
                 let vulnerability_gate = self.target_vulnerability_audit_gate(damage);
-                let has_target_vulnerability_candidate =
-                    !target_vulnerability_contributions.is_empty();
+                let has_target_vulnerability_candidate = !target_vulnerability_contributions
+                    .is_empty()
+                    || !target_vulnerability_rational_contributions.is_empty();
                 self.last_target_vulnerability_audit = Some(TargetVulnerabilityAudit {
                     gate: if has_target_vulnerability_candidate {
                         if exact_candidate_count == 1 && rational_candidate_count == 0 {
                             "emitted_exact"
+                        } else if exact_candidate_count == 0 && rational_candidate_count == 1 {
+                            "emitted_rational"
                         } else if exact_candidate_count > 1 {
                             "suppressed_exact_overlap"
                         } else if rational_candidate_count > 0 {
@@ -1356,14 +1414,17 @@ impl BpsrStateDamageContributionProjector {
                         team_luck_contribution,
                         inspiration_occurrence_contribution,
                         thunderwind_contribution,
+                        target_vulnerability_rational_contributions.as_slice(),
                     ) {
-                        (Some(team_luck), None, None) => Some(team_luck),
-                        (None, Some(inspiration), None) => Some(inspiration),
-                        (None, None, Some(thunderwind)) => Some(thunderwind),
-                        (None, None, None) => None,
+                        (Some(team_luck), None, None, []) => Some(team_luck),
+                        (None, Some(inspiration), None, []) => Some(inspiration),
+                        (None, None, Some(thunderwind), []) => Some(thunderwind),
+                        (None, None, None, [target_vulnerability]) => Some(*target_vulnerability),
+                        (None, None, None, []) => None,
                         // Team Luck and Thunderwind both modify the critical
-                        // stage. Their multi-provider allocation and shared
-                        // cross-term have not been packet-proven.
+                        // stage. Target vulnerability is also a later damage
+                        // bucket. Any unresolved multi-provider allocation or
+                        // shared cross-term remains fail-closed.
                         _ => return,
                     };
                     if attack_contributions.is_empty() {
@@ -1418,6 +1479,8 @@ impl BpsrStateDamageContributionProjector {
                             && contribution.effect_id == self.runtime.harmony_grace.effect_id)
                         || (self.mechanical_power_candidate_audit_enabled
                             && contribution.effect_id == self.runtime.mechanical_power.effect_id)
+                        || (self.target_vulnerability_candidate_audit_enabled
+                            && exact_candidate_effect_ids.contains(&contribution.effect_id))
                 })
                 .collect::<Vec<_>>();
             rational_output.extend(retained_rational);
@@ -4607,12 +4670,15 @@ impl BpsrStateDamageContributionProjector {
         ])
     }
 
-    fn target_vulnerability_contribution(
+    fn target_vulnerability_exact_contribution(
         &self,
         envelope: &EventEnvelope,
         damage: &rlogs_events::DamageEvent,
         rule: &TargetVulnerabilityRdpsRule,
     ) -> Option<ExactDamageContributionEvent> {
+        if rule.projection != TargetVulnerabilityProjection::ExactInteger {
+            return None;
+        }
         if damage.amount <= 0
             || damage.ability.map(|ability| ability.0) != Some(rule.ability_id)
             || damage.hit_event_id != Some(rule.hit_event_id)
@@ -4635,7 +4701,7 @@ impl BpsrStateDamageContributionProjector {
             return None;
         }
 
-        let current_factor = rule.inactive_factor.checked_add(rule.provider_raw_delta)?;
+        let current_factor = rule.active_factor()?;
         let amount = exact_additive_fixed_point_marginal_from_observed_output(
             damage.amount,
             current_factor,
@@ -4648,6 +4714,50 @@ impl BpsrStateDamageContributionProjector {
             provider_actor_id,
             recipient_actor_id,
             amount,
+            observed_damage: damage.amount,
+            included: true,
+        })
+    }
+
+    fn target_vulnerability_rational_contribution(
+        &self,
+        envelope: &EventEnvelope,
+        damage: &rlogs_events::DamageEvent,
+        rule: &TargetVulnerabilityRdpsRule,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        if rule.projection != TargetVulnerabilityProjection::ExactRationalObservedOutput {
+            return None;
+        }
+        if damage.amount <= 0
+            || damage.ability.map(|ability| ability.0) != Some(rule.ability_id)
+            || damage.hit_event_id != Some(rule.hit_event_id)
+            || damage.flags.critical != Some(rule.required_critical)
+            || damage.flags.lucky != Some(rule.required_lucky)
+        {
+            return None;
+        }
+
+        let recipient_actor_id = damage.source.actor_id.0;
+        let target_actor_id = damage.target.actor_id.0;
+        let (provider_ids, _) = self.target_vulnerability_provider_ids(
+            recipient_actor_id,
+            target_actor_id,
+            rule.effect_id,
+        );
+        let mut providers = provider_ids.into_iter();
+        let provider_actor_id = providers.next()?;
+        if providers.next().is_some() {
+            return None;
+        }
+
+        Some(ExactRationalDamageContributionEvent {
+            observed_micros: envelope.time.observed_micros,
+            effect_id: rule.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            numerator: i128::from(damage.amount)
+                .checked_mul(i128::from(rule.provider_raw_delta))?,
+            denominator: i128::from(rule.active_factor()?),
             observed_damage: damage.amount,
             included: true,
         })
@@ -6296,6 +6406,10 @@ mod tests {
             target_catalog.rule_indices_for_damage(2_203_291, Some(7), Some(true), Some(false),),
             &[0],
         );
+        assert_eq!(
+            target_catalog.rule_indices_for_damage(2_031_102, Some(3), Some(true), Some(true),),
+            &[1],
+        );
         assert!(
             target_catalog
                 .rule_indices_for_damage(2_203_291, Some(7), Some(false), Some(false))
@@ -6307,7 +6421,7 @@ mod tests {
         assert_eq!(target_rule.ability_id, 2_203_291);
         assert_eq!(target_rule.hit_event_id, 7);
         assert_eq!(target_rule.damage_attr_id, 2_220_329_107);
-        assert_eq!(target_rule.inactive_factor, 15_600);
+        assert_eq!(target_rule.active_factor(), Some(16_600));
         assert_eq!(target_rule.provider_raw_delta, 1_000);
         assert_eq!(
             target_rule.fixed_point_rounding(),
@@ -6315,6 +6429,16 @@ mod tests {
         );
         assert!(target_rule.required_critical);
         assert!(!target_rule.required_lucky);
+        let rational_rule = &target_catalog.rules[1];
+        assert_eq!(rational_rule.effect_id, 55_228);
+        assert_eq!(rational_rule.ability_id, 2_031_102);
+        assert_eq!(rational_rule.hit_event_id, 3);
+        assert_eq!(rational_rule.damage_attr_id, 2_203_110_203);
+        assert_eq!(rational_rule.active_factor(), Some(19_455));
+        assert_eq!(rational_rule.provider_raw_delta, 1_000);
+        assert_eq!(rational_rule.fixed_point_rounding(), None);
+        assert!(rational_rule.required_critical);
+        assert!(rational_rule.required_lucky);
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             Vec::<i64>::new(),
@@ -6325,6 +6449,44 @@ mod tests {
             vec![55_228],
             "offline candidate identity must remain explicit and separate from proven production rules"
         );
+    }
+
+    #[test]
+    fn target_vulnerability_formula_shapes_fail_closed() {
+        let mixed: TargetVulnerabilityRdpsRule = serde_json::from_str(
+            r#"{
+                "effect_id": 55228,
+                "ability_id": 2031102,
+                "hit_event_id": 3,
+                "damage_attr_id": 2203110203,
+                "projection": "exact_rational_observed_output",
+                "inactive_factor": 18455,
+                "active_factor": 19455,
+                "provider_raw_delta": 1000,
+                "integer_projection": "sum_exact_then_half_up_per_effect_provider_recipient",
+                "required_critical": true,
+                "required_lucky": true
+            }"#,
+        )
+        .unwrap();
+        assert!(!mixed.is_valid());
+
+        let unknown = serde_json::from_str::<TargetVulnerabilityRdpsRule>(
+            r#"{
+                "effect_id": 55228,
+                "ability_id": 2031102,
+                "hit_event_id": 3,
+                "damage_attr_id": 2203110203,
+                "projection": "exact_rational_observed_output",
+                "active_factor": 19455,
+                "provider_raw_delta": 1000,
+                "integer_projection": "sum_exact_then_half_up_per_effect_provider_recipient",
+                "required_critical": true,
+                "required_lucky": true,
+                "unreviewed_formula_field": 1
+            }"#,
+        );
+        assert!(unknown.is_err());
     }
 
     #[test]
@@ -6869,7 +7031,7 @@ mod tests {
         let damage = critical_test_damage(test_entity(4, 40), 90_015);
         let envelope = target_vulnerability_test_envelope(damage.clone());
         let contribution = projector
-            .target_vulnerability_contribution(&envelope, &damage, rule)
+            .target_vulnerability_exact_contribution(&envelope, &damage, rule)
             .expect("same-wire provider is exact packet evidence");
         assert_eq!(contribution.provider_actor_id, 2);
         assert_eq!(contribution.recipient_actor_id, 4);
@@ -6877,6 +7039,43 @@ mod tests {
         assert_eq!(
             projector.target_vulnerability_audit_gate(&damage),
             "candidate_same_wire_provider"
+        );
+    }
+
+    #[test]
+    fn target_vulnerability_candidate_retains_exact_rational_observed_output() {
+        let rule = &target_vulnerability_rdps_catalog().unwrap().rules[1];
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            latest_observed_micros: 123,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_target_vulnerability_status(
+            &target_vulnerability_test_status(2, 17, StatusState::Applied),
+            100,
+        );
+        let mut damage = critical_test_damage(test_entity(4, 40), 272_418);
+        damage.ability = Some(rlogs_events::AbilityId(2_031_102));
+        damage.hit_event_id = Some(3);
+        damage.flags.lucky = Some(true);
+        let envelope = target_vulnerability_test_envelope(damage.clone());
+
+        assert_eq!(
+            projector.target_vulnerability_rational_contribution(&envelope, &damage, rule),
+            Some(ExactRationalDamageContributionEvent {
+                observed_micros: 123,
+                effect_id: 55_228,
+                provider_actor_id: 2,
+                recipient_actor_id: 4,
+                numerator: 272_418_000,
+                denominator: 19_455,
+                observed_damage: 272_418,
+                included: true,
+            })
+        );
+        assert_eq!(
+            projector.target_vulnerability_exact_contribution(&envelope, &damage, rule),
+            None,
         );
     }
 
