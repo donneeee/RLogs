@@ -1,23 +1,26 @@
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{BufRead, Write};
+use std::sync::Arc;
 
 use rlogs_capture::{
-    CaptureError, CaptureSource, CaptureSourceMetadata, CapturedFrame, ValidatedCapture,
+    CaptureError, CaptureFileFormat, CaptureSource, CaptureSourceKind, CaptureSourceMetadata,
+    CapturedFrame, ValidatedCapture,
 };
 use rlogs_core::GameConnectionFilter;
 use rlogs_events::{EventTopic, RegionEvidence, RegionIdentity};
 use rlogs_log_format::{RlogError, RlogHeader, RlogSeal, RlogWriter};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    CaptureGapKind, CaptureRecord, CaptureRecordDraft, CaptureRecordKind, CoverageReport,
-    DecoderKind, GameBuild, ProtocolDecodeBatch, ProtocolDecodeStatus, ProtocolFeature,
+    CaptureGap, CaptureGapKind, CaptureRecord, CaptureRecordDraft, CaptureRecordKind,
+    CoverageReport, DecoderKind, GameBuild, JsonlJournalError, JsonlJournalReader,
+    ObjectiveCatalogResolver, ProtocolDecodeBatch, ProtocolDecodeStatus, ProtocolFeature,
     ProtocolPack, ProtocolPackRouteDisposition, ProtocolRuntime, ProtocolRuntimeConfig,
     ProtocolRuntimeError, ResearchPipeline, RouteKey,
 };
 
-pub const OFFLINE_RECORDING_REPORT_SCHEMA_VERSION: u16 = 3;
+pub const OFFLINE_RECORDING_REPORT_SCHEMA_VERSION: u16 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OfflineRecordingLimits {
@@ -45,6 +48,7 @@ pub struct OfflineRecordingConfig {
     pub region_evidence: Vec<RegionEvidence>,
     pub limits: OfflineRecordingLimits,
     pub decoder: ProtocolRuntimeConfig,
+    pub objective_catalog: Option<Arc<dyn ObjectiveCatalogResolver>>,
 }
 
 pub struct OfflineRecordingResult<W> {
@@ -52,13 +56,24 @@ pub struct OfflineRecordingResult<W> {
     pub report: OfflineRecordingReport,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum JournalTailPolicy {
+    #[default]
+    Strict,
+    /// Preserve the valid prefix and append an explicit malformed-frame gap
+    /// only when the final, unterminated JSON line ends unexpectedly.
+    RecoverTruncatedFinalLine,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OfflineRecordingReport {
     pub schema_version: u16,
     pub session_id: String,
     pub source: CaptureSourceMetadata,
     pub protocol_pack_id: String,
     pub protocol_pack_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protocol_pack_transition: Option<ProtocolPackTransitionRecording>,
     pub frame_count: u64,
     pub record_count: u64,
     pub rlog: RlogSeal,
@@ -70,7 +85,17 @@ pub struct OfflineRecordingReport {
     pub gaps: Vec<GapRecordingCoverage>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProtocolPackTransitionRecording {
+    pub policy: String,
+    pub source_protocol_pack_id: String,
+    pub source_protocol_pack_digest: String,
+    pub destination_protocol_pack_id: String,
+    pub destination_protocol_pack_digest: String,
+    pub demoted_route_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CaptureCoverageSummary {
     pub packet_count: u64,
     pub gap_count: u64,
@@ -87,7 +112,7 @@ pub struct CaptureCoverageSummary {
     pub prohibited_packet_count: u64,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecodeCoverageSummary {
     pub decoded_records: u64,
     /// Count only; the announced hostname and IP are intentionally omitted.
@@ -146,13 +171,13 @@ impl DecodeCoverageSummary {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventTopicCoverage {
     pub topic: EventTopic,
     pub event_count: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RouteRecordingDisposition {
     Allowed,
@@ -161,7 +186,7 @@ pub enum RouteRecordingDisposition {
     Unknown,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RouteRecordingCoverage {
     pub route: RouteKey,
     pub service_name: Option<String>,
@@ -176,7 +201,7 @@ pub struct RouteRecordingCoverage {
     pub decode: DecodeCoverageSummary,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeatureRecordingCoverage {
     pub feature: ProtocolFeature,
     pub route_count: u64,
@@ -186,7 +211,7 @@ pub struct FeatureRecordingCoverage {
     pub prohibited_packet_count: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GapRecordingCoverage {
     pub kind: CaptureGapKind,
     pub count: u64,
@@ -203,8 +228,26 @@ pub enum OfflineRecordingError {
     #[error(transparent)]
     Rlog(#[from] RlogError),
 
+    #[error(transparent)]
+    Journal(#[from] JsonlJournalError),
+
     #[error("offline capture contains no packet frames")]
     EmptyCapture,
+
+    #[error("protocol journal contains no capture records")]
+    EmptyJournal,
+
+    #[error("protocol journal build does not match the requested decoder build")]
+    JournalBuildMismatch,
+
+    #[error("protocol journal was recorded with another protocol-pack digest")]
+    JournalProtocolPackMismatch,
+
+    #[error("protocol journal does not declare its source protocol-pack digest")]
+    JournalProtocolPackDigestMissing,
+
+    #[error("unsafe protocol-pack journal transition: {0}")]
+    UnsafeJournalProtocolPackTransition(String),
 
     #[error("offline recording limits must be greater than zero")]
     InvalidLimits,
@@ -241,6 +284,7 @@ where
     let first = capture
         .next_frame()?
         .ok_or(OfflineRecordingError::EmptyCapture)?;
+    let objective_catalog = config.objective_catalog.clone();
     let mut runtime = ProtocolRuntime::new(
         pack,
         config.session_id.clone(),
@@ -249,6 +293,9 @@ where
         config.region_evidence,
         config.decoder,
     )?;
+    if let Some(objective_catalog) = objective_catalog {
+        runtime = runtime.with_objective_catalog(objective_catalog);
+    }
     let header = RlogHeader::new(
         config.session_id.clone(),
         runtime.region_context().clone(),
@@ -286,8 +333,311 @@ where
 
     let source = capture.metadata().clone();
     let (output, seal) = writer.finish_with_seal()?;
-    let report = build_report(config.session_id, source, pack, state, seal);
+    let report = build_report(config.session_id, source, pack, None, state, seal);
     Ok(OfflineRecordingResult { output, report })
+}
+
+/// Replays an already framed research journal through the same protocol runtime and
+/// coverage accounting used by offline packet captures.
+///
+/// This avoids a second packet-framing implementation while still producing the
+/// exact per-route decode report required for protocol-pack promotion. The report
+/// intentionally records zero source frames because a protocol journal starts
+/// after packet capture, TCP reassembly, and BPSR framing.
+pub fn record_offline_journal<R, W>(
+    reader: R,
+    pack: &ProtocolPack,
+    config: OfflineRecordingConfig,
+    output: W,
+) -> Result<OfflineRecordingResult<W>, OfflineRecordingError>
+where
+    R: BufRead,
+    W: Write,
+{
+    record_offline_journal_with_tail_policy(reader, pack, config, output, JournalTailPolicy::Strict)
+}
+
+pub fn record_offline_journal_with_tail_policy<R, W>(
+    reader: R,
+    pack: &ProtocolPack,
+    config: OfflineRecordingConfig,
+    output: W,
+    tail_policy: JournalTailPolicy,
+) -> Result<OfflineRecordingResult<W>, OfflineRecordingError>
+where
+    R: BufRead,
+    W: Write,
+{
+    record_offline_journal_with_digest_policy(
+        reader,
+        pack,
+        JournalDigestPolicy::AllowMissing(pack.digest()),
+        None,
+        config,
+        output,
+        tail_policy,
+    )
+}
+
+/// Replays a journal recorded under `source_pack` with `destination_pack` only
+/// when the destination is a fail-closed, monotonic demotion of the source.
+///
+/// This path requires the journal header to contain the exact source-pack
+/// digest. It permits unchanged routes and `allowed` to `opaque` demotions;
+/// route additions, removals, decoder activations, and semantic changes fail.
+pub fn record_offline_journal_transition_with_tail_policy<R, W>(
+    reader: R,
+    source_pack: &ProtocolPack,
+    destination_pack: &ProtocolPack,
+    config: OfflineRecordingConfig,
+    output: W,
+    tail_policy: JournalTailPolicy,
+) -> Result<OfflineRecordingResult<W>, OfflineRecordingError>
+where
+    R: BufRead,
+    W: Write,
+{
+    let validation = validate_monotonic_pack_transition(source_pack, destination_pack)?;
+    let transition = ProtocolPackTransitionRecording {
+        policy: "monotonic_allowed_to_opaque_only".to_owned(),
+        source_protocol_pack_id: source_pack.definition().pack_id.clone(),
+        source_protocol_pack_digest: source_pack.digest().to_owned(),
+        destination_protocol_pack_id: destination_pack.definition().pack_id.clone(),
+        destination_protocol_pack_digest: destination_pack.digest().to_owned(),
+        demoted_route_count: validation.demoted_route_count,
+    };
+    record_offline_journal_with_digest_policy(
+        reader,
+        destination_pack,
+        JournalDigestPolicy::Require(source_pack.digest()),
+        Some(transition),
+        config,
+        output,
+        tail_policy,
+    )
+}
+
+#[derive(Debug, Clone, Copy)]
+enum JournalDigestPolicy<'a> {
+    AllowMissing(&'a str),
+    Require(&'a str),
+}
+
+fn record_offline_journal_with_digest_policy<R, W>(
+    reader: R,
+    runtime_pack: &ProtocolPack,
+    journal_digest_policy: JournalDigestPolicy<'_>,
+    transition: Option<ProtocolPackTransitionRecording>,
+    config: OfflineRecordingConfig,
+    output: W,
+    tail_policy: JournalTailPolicy,
+) -> Result<OfflineRecordingResult<W>, OfflineRecordingError>
+where
+    R: BufRead,
+    W: Write,
+{
+    validate_limits(config.limits)?;
+    let mut stream = JsonlJournalReader::new(reader).into_record_stream()?;
+    let capture_session = stream.session().clone();
+    if capture_session.game_build != config.build {
+        return Err(OfflineRecordingError::JournalBuildMismatch);
+    }
+    match (
+        journal_digest_policy,
+        capture_session.protocol_pack_digest.as_deref(),
+    ) {
+        (JournalDigestPolicy::AllowMissing(expected), Some(actual))
+        | (JournalDigestPolicy::Require(expected), Some(actual))
+            if actual != expected =>
+        {
+            return Err(OfflineRecordingError::JournalProtocolPackMismatch);
+        }
+        (JournalDigestPolicy::Require(_), None) => {
+            return Err(OfflineRecordingError::JournalProtocolPackDigestMissing);
+        }
+        _ => {}
+    }
+
+    let objective_catalog = config.objective_catalog.clone();
+    let mut runtime = ProtocolRuntime::new(
+        runtime_pack,
+        config.session_id.clone(),
+        &config.build,
+        config.region,
+        config.region_evidence,
+        config.decoder,
+    )?;
+    if let Some(objective_catalog) = objective_catalog {
+        runtime = runtime.with_objective_catalog(objective_catalog);
+    }
+    let header = RlogHeader::new(
+        config.session_id.clone(),
+        runtime.region_context().clone(),
+        config.producer,
+    );
+    let mut writer = RlogWriter::new(output, header)?;
+    let mut state = RecordingState::default();
+
+    loop {
+        let record = match stream.next_record() {
+            Ok(Some(record)) => record,
+            Ok(None) => break,
+            Err(JsonlJournalError::InvalidJson { line, source })
+                if tail_policy == JournalTailPolicy::RecoverTruncatedFinalLine
+                    && source.is_eof()
+                    && stream
+                        .truncated_tail()
+                        .is_some_and(|(tail_line, _, _)| tail_line == line) =>
+            {
+                let (_, truncated_bytes, observed_micros) =
+                    stream.truncated_tail().expect("tail was checked above");
+                append_record(
+                    &mut runtime,
+                    &mut writer,
+                    &mut state,
+                    config.limits,
+                    CaptureRecordDraft {
+                        observed_micros,
+                        wall_clock_unix_micros: None,
+                        kind: CaptureRecordKind::Gap(CaptureGap {
+                            kind: CaptureGapKind::MalformedFrame,
+                            connection_id: None,
+                            stream_id: None,
+                            lost_bytes: Some(truncated_bytes as u64),
+                            detail: format!(
+                                "protocol journal ended during JSONL record {line}; valid prefix retained"
+                            ),
+                        }),
+                    },
+                )?;
+                break;
+            }
+            Err(error) => return Err(error.into()),
+        };
+        append_record(
+            &mut runtime,
+            &mut writer,
+            &mut state,
+            config.limits,
+            CaptureRecordDraft {
+                observed_micros: record.observed_micros,
+                wall_clock_unix_micros: record.wall_clock_unix_micros,
+                kind: record.kind,
+            },
+        )?;
+    }
+    if state.record_count == 0 {
+        return Err(OfflineRecordingError::EmptyJournal);
+    }
+
+    let source = CaptureSourceMetadata {
+        source_id: capture_session.capture_id,
+        display_name: "BPSR protocol journal replay".to_owned(),
+        kind: CaptureSourceKind::Replay,
+        link_types: Vec::new(),
+        file_format: Some(CaptureFileFormat::RlogsEvidence),
+    };
+    let (output, seal) = writer.finish_with_seal()?;
+    let report = build_report(
+        config.session_id,
+        source,
+        runtime_pack,
+        transition,
+        state,
+        seal,
+    );
+    Ok(OfflineRecordingResult { output, report })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PackTransitionValidation {
+    demoted_route_count: usize,
+}
+
+fn validate_monotonic_pack_transition(
+    source: &ProtocolPack,
+    destination: &ProtocolPack,
+) -> Result<PackTransitionValidation, OfflineRecordingError> {
+    let source_definition = source.definition();
+    let destination_definition = destination.definition();
+    let unsafe_transition =
+        |reason: String| OfflineRecordingError::UnsafeJournalProtocolPackTransition(reason);
+
+    if source_definition.schema_version != destination_definition.schema_version {
+        return Err(unsafe_transition("schema version changed".to_owned()));
+    }
+    if source_definition.target != destination_definition.target {
+        return Err(unsafe_transition("exact build target changed".to_owned()));
+    }
+    if !equivalent_provenance(
+        &source_definition.provenance,
+        &destination_definition.provenance,
+    ) {
+        return Err(unsafe_transition(
+            "pack provenance changed beyond path-separator normalization".to_owned(),
+        ));
+    }
+    if source_definition.routes.len() != destination_definition.routes.len() {
+        return Err(unsafe_transition("route count changed".to_owned()));
+    }
+
+    let mut demoted_route_count = 0usize;
+    for source_route in &source_definition.routes {
+        let Some(destination_route) = destination.route(&source_route.route) else {
+            return Err(unsafe_transition(format!(
+                "route removed: {:?}",
+                source_route.route
+            )));
+        };
+        if source_route.service_name != destination_route.service_name
+            || source_route.method_name != destination_route.method_name
+            || source_route.message_name != destination_route.message_name
+            || source_route.confidence != destination_route.confidence
+            || source_route.features != destination_route.features
+        {
+            return Err(unsafe_transition(format!(
+                "route semantics changed: {:?}",
+                source_route.route
+            )));
+        }
+        if !equivalent_provenance(&source_route.provenance, &destination_route.provenance) {
+            return Err(unsafe_transition(format!(
+                "route provenance changed beyond path-separator normalization: {:?}",
+                source_route.route
+            )));
+        }
+        match (source_route.disposition, destination_route.disposition) {
+            (source_disposition, destination_disposition)
+                if source_disposition == destination_disposition => {}
+            (
+                ProtocolPackRouteDisposition::Allowed { .. },
+                ProtocolPackRouteDisposition::Opaque,
+            ) => {
+                demoted_route_count = demoted_route_count.saturating_add(1);
+            }
+            (source_disposition, destination_disposition) => {
+                return Err(unsafe_transition(format!(
+                    "route disposition changed non-monotonically for {:?}: {source_disposition:?} -> {destination_disposition:?}",
+                    source_route.route
+                )));
+            }
+        }
+    }
+
+    Ok(PackTransitionValidation {
+        demoted_route_count,
+    })
+}
+
+fn equivalent_provenance(
+    source: &[crate::MappingProvenance],
+    destination: &[crate::MappingProvenance],
+) -> bool {
+    source.len() == destination.len()
+        && source.iter().zip(destination).all(|(source, destination)| {
+            source.source == destination.source
+                && source.reference.replace('\\', "/") == destination.reference.replace('\\', "/")
+        })
 }
 
 fn validate_limits(limits: OfflineRecordingLimits) -> Result<(), OfflineRecordingError> {
@@ -438,6 +788,7 @@ fn build_report(
     session_id: String,
     source: CaptureSourceMetadata,
     pack: &ProtocolPack,
+    protocol_pack_transition: Option<ProtocolPackTransitionRecording>,
     state: RecordingState,
     seal: RlogSeal,
 ) -> OfflineRecordingReport {
@@ -527,6 +878,7 @@ fn build_report(
         source,
         protocol_pack_id: pack.definition().pack_id.clone(),
         protocol_pack_digest: pack.digest().to_owned(),
+        protocol_pack_transition,
         frame_count: state.frame_count,
         record_count: state.record_count,
         rlog: seal,
@@ -536,5 +888,94 @@ fn build_report(
         routes,
         features,
         gaps,
+    }
+}
+
+#[cfg(test)]
+mod transition_tests {
+    use super::*;
+    use crate::{
+        AllowedDataDomain, DecoderKind, FragmentKind, MappingConfidence, MappingProvenance,
+        PacketDirection, ProtocolPackDefinition, ProtocolPackRoute, ProtocolPackTarget,
+    };
+
+    fn pack(pack_id: &str, disposition: ProtocolPackRouteDisposition) -> ProtocolPack {
+        ProtocolPack::build(ProtocolPackDefinition {
+            schema_version: 1,
+            pack_id: pack_id.to_owned(),
+            target: ProtocolPackTarget {
+                deployment_id: "global".to_owned(),
+                region_id: None,
+                channel: "steam".to_owned(),
+                build_id: "24687926".to_owned(),
+                executable_version: None,
+            },
+            provenance: vec![MappingProvenance {
+                source: "test".to_owned(),
+                reference: if pack_id.ends_with("v2") {
+                    "research\\route.json".to_owned()
+                } else {
+                    "research/route.json".to_owned()
+                },
+            }],
+            routes: vec![ProtocolPackRoute {
+                route: RouteKey::new(
+                    PacketDirection::ClientToServer,
+                    FragmentKind::Call,
+                    103_198_054,
+                    0x3D002,
+                ),
+                service_name: "World".to_owned(),
+                method_name: "UseSlot".to_owned(),
+                message_name: Some("UseSlotReq".to_owned()),
+                confidence: MappingConfidence::Candidate,
+                provenance: vec![MappingProvenance {
+                    source: "test".to_owned(),
+                    reference: if pack_id.ends_with("v2") {
+                        "research\\use-slot.json".to_owned()
+                    } else {
+                        "research/use-slot.json".to_owned()
+                    },
+                }],
+                features: vec![ProtocolFeature::Skill],
+                disposition,
+            }],
+        })
+        .expect("test pack must be valid")
+    }
+
+    #[test]
+    fn monotonic_transition_allows_only_allowed_to_opaque_demotion() {
+        let source = pack(
+            "candidate-v2",
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::Combat,
+                decoder: DecoderKind::WorldUseSlotV1,
+            },
+        );
+        let destination = pack("candidate-v3", ProtocolPackRouteDisposition::Opaque);
+
+        let validation = validate_monotonic_pack_transition(&source, &destination)
+            .expect("fail-closed demotion must be replay-safe");
+        assert_eq!(validation.demoted_route_count, 1);
+    }
+
+    #[test]
+    fn monotonic_transition_rejects_decoder_activation() {
+        let source = pack("candidate-v2", ProtocolPackRouteDisposition::Opaque);
+        let destination = pack(
+            "candidate-v3",
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::Combat,
+                decoder: DecoderKind::WorldUseSlotV1,
+            },
+        );
+
+        assert!(matches!(
+            validate_monotonic_pack_transition(&source, &destination),
+            Err(OfflineRecordingError::UnsafeJournalProtocolPackTransition(
+                _
+            ))
+        ));
     }
 }

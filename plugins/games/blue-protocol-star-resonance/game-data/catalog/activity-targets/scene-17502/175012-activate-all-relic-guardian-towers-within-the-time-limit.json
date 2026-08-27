@@ -1,0 +1,88 @@
+{
+  "schema_version": 2,
+  "kind": "activity_target",
+  "id": 175012,
+  "stable_key": "activity-target.175012",
+  "localization_key": "activity-target.175012.description",
+  "icon": null,
+  "attributes": {
+    "activity_target_id": 175012,
+    "target_type_id": 10,
+    "required_count": 3,
+    "scene_id": 17502,
+    "scene_key": "scene.17502",
+    "scene_resolution": "current_scene",
+    "parameters": [],
+    "target_positions": [
+      [
+        4,
+        13
+      ],
+      [
+        4,
+        7
+      ],
+      [
+        4,
+        5
+      ]
+    ],
+    "team_shared": true,
+    "description_id": 1908547941,
+    "show_progress": false,
+    "special_variables": [
+      [
+        "1",
+        "node1_progress_target"
+      ],
+      [
+        "1",
+        "node2_progress_target"
+      ],
+      [
+        "1",
+        "node3_progress_target"
+      ]
+    ],
+    "special_variable_limits": [
+      [
+        "1",
+        "progresslim"
+      ],
+      [
+        "1",
+        "progresslim"
+      ],
+      [
+        "1",
+        "progresslim"
+      ]
+    ],
+    "special_variable_names": [
+      "",
+      "",
+      ""
+    ],
+    "show_special_variable_progress": [
+      1,
+      1,
+      1
+    ],
+    "show_change": [],
+    "show_color": [],
+    "scene_event_ids": [],
+    "scene_event_keys": []
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TargetTable",
+    "reference": "client-build:global/steam/24252055@sha256:56c6745b26d181832ce6e63d322fc49fe0c697ef4526b58741364a8cc7176b3e",
+    "confidence": "corroborated"
+  }
+}

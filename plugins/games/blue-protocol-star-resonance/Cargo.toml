@@ -6,11 +6,16 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+aes.workspace = true
 bytes.workspace = true
+cbc.workspace = true
+hmac.workspace = true
 prost.workspace = true
 rlogs-capture = { path = "../../../engine/capture" }
+rlogs-combat = { path = "../../../engine/combat" }
 rlogs-core = { path = "../../../engine/core" }
 rlogs-events = { path = "../../../engine/events" }
+rlogs-game-data = { path = "../../../engine/game-data" }
 rlogs-game-plugin-api = { path = "../../../engine/game-plugin-api" }
 rlogs-log-format = { path = "../../../engine/log-format" }
 rlogs-network = { path = "../../../engine/network" }
@@ -21,6 +26,16 @@ serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 zstd.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
 
 [dev-dependencies]
 criterion = "0.7.0"

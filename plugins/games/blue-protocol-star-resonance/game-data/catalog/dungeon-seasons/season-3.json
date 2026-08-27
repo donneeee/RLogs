@@ -1,0 +1,86 @@
+{
+  "schema_version": 2,
+  "kind": "dungeon_season",
+  "id": 3,
+  "stable_key": "dungeon-season.3",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "season_id": 3,
+    "activity_families": [
+      {
+        "family": "master",
+        "difficulty_family": "master",
+        "label_format_localization_key": "difficulty.master.label_format",
+        "tier_identity": {
+          "minimum": 1,
+          "maximum": 20,
+          "count": 20,
+          "row_id_rule": "row_id = dungeon_id * 100 + tier"
+        },
+        "activities": [
+          {
+            "dungeon_id": 1150,
+            "dungeon_key": "dungeon.1150",
+            "scene_id": 1150,
+            "play_type": 17,
+            "first_tier_row_id": 115001,
+            "last_tier_row_id": 115020
+          },
+          {
+            "dungeon_id": 1633,
+            "dungeon_key": "dungeon.1633",
+            "scene_id": 1633,
+            "play_type": 17,
+            "first_tier_row_id": 163301,
+            "last_tier_row_id": 163320
+          },
+          {
+            "dungeon_id": 6515,
+            "dungeon_key": "dungeon.6515",
+            "scene_id": 6515,
+            "play_type": 17,
+            "first_tier_row_id": 651501,
+            "last_tier_row_id": 651520
+          },
+          {
+            "dungeon_id": 6525,
+            "dungeon_key": "dungeon.6525",
+            "scene_id": 6525,
+            "play_type": 17,
+            "first_tier_row_id": 652501,
+            "last_tier_row_id": 652520
+          },
+          {
+            "dungeon_id": 6545,
+            "dungeon_key": "dungeon.6545",
+            "scene_id": 6545,
+            "play_type": 17,
+            "first_tier_row_id": 654501,
+            "last_tier_row_id": 654520
+          },
+          {
+            "dungeon_id": 6565,
+            "dungeon_key": "dungeon.6565",
+            "scene_id": 6565,
+            "play_type": 17,
+            "first_tier_row_id": 656501,
+            "last_tier_row_id": 656520
+          }
+        ]
+      }
+    ]
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.MasterChallengeDungeonTable",
+    "reference": "client-build:global/steam/24252055@sha256:96d8d237fdd2c571c55556d6c3a27fd4127505a2040e8ab1eb827dc3eaacfb43",
+    "confidence": "verified"
+  }
+}

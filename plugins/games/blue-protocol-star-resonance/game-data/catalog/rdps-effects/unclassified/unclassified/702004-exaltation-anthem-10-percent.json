@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "game_build": "24252055",
+  "rule": {
+    "effect_id": 702004,
+    "review_state": "candidate",
+    "contribution_kind": "direct_damage_amplification",
+    "source_scope": "unresolved",
+    "target_scope": "effect_target",
+    "magnitude_basis_points": 1000,
+    "stacking_rule": "fixed",
+    "attribution_enabled": false
+  },
+  "evidence": [
+    "Current-build status-effect row 702004 is mapped.",
+    "Official en-US description states that damage dealt is increased by 10% and healing by 10%.",
+    "Provider ownership and whether this is player-supplied or environmental remain unresolved."
+  ]
+}

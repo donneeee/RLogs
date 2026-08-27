@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseEventViewerPage } from "./event-viewer";
+import { parseEventViewerPage, parseLiveEventBatch } from "./event-viewer";
 
 function examplePage(): Record<string, unknown> {
   return {
@@ -55,6 +55,12 @@ function examplePage(): Record<string, unknown> {
           },
           ability: "9007199254740993",
           status: null,
+          statusInstance: null,
+          statusOriginType: null,
+          statusOriginConfig: null,
+          statusState: null,
+          statusStacks: null,
+          statusDurationMillis: null,
           monster: null,
           scene: null,
           map: null,
@@ -88,5 +94,29 @@ describe("Event Viewer page contract", () => {
     expect(() => parseEventViewerPage(page)).toThrow(
       "invalid Event Viewer page",
     );
+  });
+
+  it("accepts compact ID-first live lines without canonical JSON", () => {
+    const event = (examplePage().events as Array<Record<string, unknown>>)[0]!;
+    const batch = parseLiveEventBatch({
+      schemaVersion: 1,
+      sessionId: "live",
+      revision: 12,
+      droppedBefore: 0,
+      hasMore: false,
+      events: [
+        {
+          revision: 12,
+          sequence: event.sequence,
+          observedMicros: event.observedMicros,
+          topic: event.topic,
+          kind: event.kind,
+          rawIds: event.summary,
+        },
+      ],
+    });
+
+    expect(batch.events[0]?.rawIds).toContain("9223372036854775807");
+    expect("canonicalJson" in batch.events[0]!).toBe(false);
   });
 });

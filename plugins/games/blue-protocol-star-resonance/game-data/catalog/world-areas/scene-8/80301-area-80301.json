@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "kind": "world_area",
+  "id": 80301,
+  "stable_key": "world-area.80301",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "area_id": 80301,
+    "scene_id": 8,
+    "scene_key": "overworld-scene.8",
+    "name_id": 0,
+    "name_position": [],
+    "area_type": 1,
+    "background_music_event": "BGM_Cty001_Area_Bureau",
+    "reverb_audio_event": "Reverb_Normal",
+    "ambient_audio_events": [
+      "Amb_2D_Cty001_SetToLand_InDoor",
+      "FireworksCrowded_No"
+    ],
+    "environment_client_status_ids": []
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SceneAreaTable",
+    "reference": "client-build:global/steam/24252055@sha256:95e13cdc266f82179d774954ca38a48dec5e22e4caad07e2c5f728b87e6ed095",
+    "confidence": "verified"
+  }
+}

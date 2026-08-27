@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "specializations": [
+    { "specialization_id": 101, "class_id": 1, "role": "damage", "accent": "none", "icon": "icons/talents/shared/stormblade-iaido-slash-spec-130-iaido-slash-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 102, "class_id": 1, "role": "damage", "accent": "none", "icon": "icons/talents/shared/stormblade-moonstrike-spec-157-moonstrike-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 104, "class_id": 2, "role": "damage", "accent": "none", "icon": "icons/talents/shared/frost-mage-icicle-spec-233-icicle-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 105, "class_id": 2, "role": "damage", "accent": "none", "icon": "icons/talents/shared/frost-mage-frostbeam-spec-212-frostbeam-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 107, "class_id": 4, "role": "damage", "accent": "none", "icon": "icons/talents/shared/wind-knight-vanguard-spec-433-vanguard-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 108, "class_id": 4, "role": "damage", "accent": "none", "icon": "icons/talents/shared/wind-knight-skyward-spec-432-skyward-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 110, "class_id": 5, "role": "healer", "accent": "damage_glow", "icon": "icons/talents/shared/verdant-oracle-smite-spec-510-smite-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 111, "class_id": 5, "role": "healer", "accent": "none", "icon": "icons/talents/shared/verdant-oracle-lifebind-spec-531-lifebind-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 113, "class_id": 9, "role": "tank", "accent": "none", "icon": "icons/talents/shared/heavy-guardian-earthfort-spec-931-earthfort-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 114, "class_id": 9, "role": "tank", "accent": "none", "icon": "icons/talents/shared/heavy-guardian-block-spec-930-block-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 116, "class_id": 11, "role": "damage", "accent": "none", "icon": "icons/talents/shared/marksman-wildpack-spec-1126-wildpack-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 117, "class_id": 11, "role": "damage", "accent": "none", "icon": "icons/talents/shared/marksman-falconry-spec-1129-falconry-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 119, "class_id": 13, "role": "healer", "accent": "damage_glow", "icon": "icons/talents/shared/beat-performer-dissonance-spec-1308-dissonance-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 120, "class_id": 13, "role": "healer", "accent": "none", "icon": "icons/talents/shared/beat-performer-concerto-spec-1317-concerto-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 122, "class_id": 12, "role": "tank", "accent": "none", "icon": "icons/talents/shared/shield-knight-recovery-spec-1208-recovery-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 123, "class_id": 12, "role": "tank", "accent": "none", "icon": "icons/talents/shared/shield-knight-shield-spec-1218-shield-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 125, "class_id": 8, "role": "damage", "accent": "none", "icon": null, "mapping_state": "unresolved_current_build_talent_tree" },
+    { "specialization_id": 126, "class_id": 8, "role": "damage", "accent": "none", "icon": null, "mapping_state": "unresolved_current_build_talent_tree" },
+    { "specialization_id": 128, "class_id": 3, "role": "damage", "accent": "none", "icon": "icons/talents/shared/twin-striker-formless-spec-312-formless-expertise-spec.png", "mapping_state": "current_build_talent_tree" },
+    { "specialization_id": 129, "class_id": 3, "role": "damage", "accent": "none", "icon": "icons/talents/shared/twin-striker-crimson-spec-342-crimson-expertise-spec.png", "mapping_state": "current_build_talent_tree" }
+  ]
+}

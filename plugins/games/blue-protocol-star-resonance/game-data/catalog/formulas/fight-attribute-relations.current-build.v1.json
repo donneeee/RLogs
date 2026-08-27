@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "client_build": "24252055",
+  "policy": {
+    "runtime_formula_authority": false,
+    "packet_snapshot_and_delta_semantics_required": true,
+    "missing_attribute_is_zero": false,
+    "unresolved_evidence_is_hidden": false
+  },
+  "relations": [
+    {
+      "output_attribute_id": 11840,
+      "output_internal_name": "AttrExtDamInc",
+      "input_attribute_id": 11950,
+      "input_internal_name": "AttrVersatilityPct",
+      "formula": "floor(input * 35 / 100)",
+      "rounding": "mathematical_floor",
+      "independent_damage_axis": false,
+      "must_not_multiply_with": [11950],
+      "runtime_accounting_policy": "use either the input state or the derived output state for a tested formula stage, never both",
+      "proof_state": "packet_proven",
+      "trusted_actor_states": 140,
+      "distinct_input_output_pairs": 4,
+      "exact_matches": 140,
+      "mismatches": 0,
+      "observed_pairs": [
+        {
+          "input": 1644,
+          "output": 575
+        },
+        {
+          "input": 1794,
+          "output": 627
+        },
+        {
+          "input": 1944,
+          "output": 680
+        },
+        {
+          "input": 2004,
+          "output": 701
+        }
+      ],
+      "evidence": [
+        "Three sealed current-build packet replays supplied 3139 explicit attribute snapshots and 122066 explicit attribute deltas with zero unknown update events.",
+        "The relation was evaluated only after packet-marked snapshots or deltas established both values for the same actor lifecycle; omitted attributes were never materialized as zero.",
+        "All 140 evaluable states matched the integer floor formula exactly."
+      ]
+    }
+  ]
+}

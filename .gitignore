@@ -10,10 +10,55 @@ Thumbs.db
 *.pcapng
 *.jsonl
 *.rlog
+*.rlog.partial
 *.connections.json
 *.connections.partial.json
 captures/
 private-research/
+runtime-data/
+.codex_tmp/
+
+# Local Cargo target directories used by bounded validation runs. Keep the
+# named paths narrow so similarly named source directories remain visible.
+/target-*/
+/target_probe_check/
+/tmp-cargo-target/
+/.codex-target/
+/apps/desktop/target_probe_check/
+/apps/desktop/ui/target-overlay-reshow-fix/
+
+# Rebuildable game-table extracts and local developer reports. Reviewed,
+# versioned evidence belongs under the plugin research/catalog directories.
+/Excels/
+/DEV_exports/
+/proof-correlation-aggregate-*.json
+
+# User-selected overlay media is copied here at runtime and is not a bundled
+# application asset.
+/assets/app.rlogs.combat-overlay/backgrounds/
+
+# Interpreter caches and timestamped safety copies are local/rebuildable.
+**/__pycache__/
+*.pyc
+*.backup-*
+
+# Rebuildable research accelerators. The hashed source ledgers remain the
+# authority; these local SQLite indexes must not be shipped or committed.
+**/semantic-evidence-index.v1.sqlite
+**/semantic-evidence-index.v1.sqlite.building-*
+
+# Local proof receipts cite private capture/evidence paths. Generated proof
+# ledgers retain only hashes and byte counts and may remain reviewable.
+**/proof-attempt-receipts.v1.json
+
+# Content-addressed one-pass capture validation cache. Reports retain only
+# hashes, but the cache is rebuildable from private .rlog evidence.
+**/.proof-correlation-cache/
+
+# Installed plug-ins are local deployments. They may contain private code,
+# device credentials, and machine-specific configuration.
+plugins/installed/*
+!plugins/installed/PUT_PLUGINS_HERE.md
 secrets/
 .env
 .env.*

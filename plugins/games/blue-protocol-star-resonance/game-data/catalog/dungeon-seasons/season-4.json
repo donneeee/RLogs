@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "kind": "dungeon_season",
+  "id": 4,
+  "stable_key": "dungeon-season.4",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "season_id": 4,
+    "activity_families": [
+      {
+        "family": "master",
+        "difficulty_family": "master",
+        "label_format_localization_key": "difficulty.master.label_format",
+        "tier_identity": {
+          "minimum": 1,
+          "maximum": 20,
+          "count": 20,
+          "row_id_rule": "row_id = dungeon_id * 100 + tier"
+        },
+        "activities": [
+          {
+            "dungeon_id": 1235,
+            "dungeon_key": "dungeon.1235",
+            "scene_id": 1235,
+            "play_type": 17,
+            "first_tier_row_id": 123501,
+            "last_tier_row_id": 123520
+          }
+        ]
+      }
+    ]
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.MasterChallengeDungeonTable",
+    "reference": "client-build:global/steam/24252055@sha256:96d8d237fdd2c571c55556d6c3a27fd4127505a2040e8ab1eb827dc3eaacfb43",
+    "confidence": "verified"
+  }
+}

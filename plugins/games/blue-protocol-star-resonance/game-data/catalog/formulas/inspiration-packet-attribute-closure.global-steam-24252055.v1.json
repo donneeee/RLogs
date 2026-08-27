@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "game_build": "global-steam-24252055",
+  "effect_id": 2202041,
+  "source_config_id": 2202040,
+  "generated_for": "offline packet replay and rDPS formula proof",
+  "policy": {
+    "runtime_formula_authority": false,
+    "runtime_credit_authority": false,
+    "unresolved_evidence_is_hidden": false,
+    "direct_inputs": "effect-linked attribute families whose raw packet deltas were proven by exact lifecycle transitions",
+    "downstream_comparison_families": "families that changed between exact pre-transition controls and the Mastery-to-Light serialization gap; they are state-control inputs, not independently creditable effects",
+    "promotion_requirement": "prove each downstream equation, server calculation order, and event-level conserved counterfactual before enabling Inspiration transfer"
+  },
+  "direct_input_families": [
+    { "base_id": 11010, "name": "Strength", "family_ids": [11010, 11011, 11012, 11013, 11014, 11015] },
+    { "base_id": 11020, "name": "Intelligence", "family_ids": [11020, 11021, 11022, 11023, 11024, 11025] },
+    { "base_id": 11030, "name": "Dexterity", "family_ids": [11030, 11031, 11032, 11033, 11034, 11035] },
+    { "base_id": 11040, "name": "Vitality", "family_ids": [11040, 11041, 11042, 11043, 11044, 11045] },
+    { "base_id": 11330, "name": "Physical Attack", "family_ids": [11330, 11331, 11332, 11333, 11334, 11335] },
+    { "base_id": 11710, "name": "Critical chance", "family_ids": [11710, 11711, 11712, 11713, 11714, 11715] },
+    { "base_id": 11780, "name": "Lucky Strike chance", "family_ids": [11780, 11781, 11782, 11783, 11784, 11785] },
+    { "base_id": 11840, "name": "External damage increase", "family_ids": [11840] },
+    { "base_id": 11930, "name": "Haste percent", "family_ids": [11930, 11931, 11932, 11933, 11934, 11935] },
+    { "base_id": 11940, "name": "Mastery percent", "family_ids": [11940, 11941, 11942, 11943, 11944, 11945] },
+    { "base_id": 11950, "name": "Versatility percent", "family_ids": [11950, 11951, 11952, 11953, 11954, 11955] }
+  ],
+  "packet_observed_downstream_comparison_families": [
+    {
+      "base_id": 11120,
+      "name": "Haste rating",
+      "family_ids": [11120, 11121, 11122, 11123, 11124, 11125],
+      "retained_v14_base_member_differences": 254
+    },
+    {
+      "base_id": 11320,
+      "name": "Maximum HP",
+      "family_ids": [11320, 11321, 11322, 11323, 11324, 11325],
+      "retained_v14_base_member_differences": 256
+    },
+    {
+      "base_id": 11350,
+      "name": "Physical defense",
+      "family_ids": [11350, 11351, 11352, 11353, 11354, 11355],
+      "retained_v14_base_member_differences": 254
+    },
+    {
+      "base_id": 11360,
+      "name": "Magic defense",
+      "family_ids": [11360, 11361, 11362, 11363, 11364, 11365],
+      "retained_v14_base_member_differences": 254
+    },
+    {
+      "base_id": 11720,
+      "name": "Attack speed",
+      "family_ids": [11720, 11721, 11722, 11723, 11724, 11725],
+      "retained_v14_base_member_differences": 0,
+      "independent_packet_lifecycle_evidence": true
+    },
+    {
+      "base_id": 11730,
+      "name": "Cast speed",
+      "family_ids": [11730, 11731, 11732, 11733, 11734, 11735],
+      "retained_v14_base_member_differences": 254
+    },
+    {
+      "base_id": 11840,
+      "name": "External damage increase family",
+      "family_ids": [11840, 11841, 11842, 11843, 11844, 11845],
+      "retained_v14_base_member_differences": 254
+    },
+    {
+      "base_id": 11850,
+      "name": "Versatility resistance",
+      "family_ids": [11850, 11851, 11852, 11853, 11854, 11855],
+      "retained_v14_base_member_differences": 254
+    },
+    {
+      "base_id": 12510,
+      "name": "Critical damage",
+      "family_ids": [12510, 12511, 12512, 12513, 12514, 12515],
+      "retained_v14_base_member_differences": 0,
+      "independent_packet_formula_evidence": true
+    },
+    {
+      "base_id": 12530,
+      "name": "Lucky Strike damage multiplier",
+      "family_ids": [12530, 12531, 12532, 12533, 12534, 12535],
+      "retained_v14_base_member_differences": 0,
+      "independent_packet_formula_evidence": true
+    },
+    {
+      "base_id": 12720,
+      "name": "Lucky healing multiplier",
+      "family_ids": [12720, 12721, 12722, 12723, 12724, 12725],
+      "retained_v14_base_member_differences": 0,
+      "independent_packet_formula_evidence": true
+    },
+    {
+      "base_id": 13170,
+      "name": "Light damage increase",
+      "family_ids": [13170, 13171, 13172, 13173, 13174, 13175],
+      "retained_v14_base_member_differences": 0,
+      "mastery_to_light_delayed_serialization_events": 529
+    }
+  ],
+  "snapshot_boundary_proof": {
+    "report": ".codex_tmp/inspiration-elemental-snapshot-proof.skill-groups.v17.json",
+    "superseded_report": ".codex_tmp/inspiration-elemental-snapshot-proof.all-abilities.v16.json",
+    "superseded_reason": "The prior calculation identity omitted server skill-effect component index and component count, so its 3 prior-state and 9 next-state one-sided controls compared distinct sub-hits. The component-aware replay retains those observations as superseded evidence and authorizes none of them.",
+    "calculation_identity": "ability, hit event, packet flags, server skill-effect UUID when present, component index, and component count; group index is occurrence-local evidence only",
+    "gap_events": 374,
+    "gap_events_with_transition_boundary": 374,
+    "gap_events_with_both_boundary_observations": 1,
+    "prior_state_controlled_observations": 0,
+    "next_state_controlled_observations": 0,
+    "two_sided_state_controlled_observations": 0,
+    "runtime_authority": false
+  }
+}

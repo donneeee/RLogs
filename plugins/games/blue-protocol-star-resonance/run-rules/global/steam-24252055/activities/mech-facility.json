@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "app.rlogs.bpsr.global.steam-24252055.run-rules",
+  "ruleset_version": 2,
+  "target": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "client_build": "24252055"
+  },
+  "scenes": [
+    {
+      "scene_id": 6525,
+      "runtime_enabled": true,
+      "activity_kind": "dungeon",
+      "activity_id": "scene.6525",
+      "activity_family_id": "mech-facility",
+      "activity_localization_key": "scene.6525.name",
+      "difficulty_family": "master",
+      "difficulty_localization_key": null,
+      "difficulty_tier_range": {
+        "minimum": 1,
+        "maximum": 20
+      },
+      "route_id": null,
+      "raid_route_kind": null,
+      "partition": null,
+      "candidate_dungeon_ids": [
+        6525
+      ],
+      "mobbing_encounter_id": "scene.6525.mobbing",
+      "boss_encounter_id": "monster.33500",
+      "boss_monster_ids": [
+        33500
+      ],
+      "objective_rules": {
+        "6521006": {
+          "role": "mobbing_completion",
+          "on_complete": "clear_mobbing"
+        },
+        "6521003": {
+          "role": "run_completion",
+          "on_complete": "final_objective"
+        }
+      },
+      "evidence": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "monitor-1785569628138.run-0001:scene-6525-objective-map-6521006-boss-33500-final-6521003",
+          "confidence": "verified"
+        },
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "monitor-1785568370753.run-0001:scene-6525-objective-map-6521006-boss-33500-final-6521003",
+          "confidence": "verified"
+        },
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/dungeons/play-type-17/6525-mech-facility.json",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/dungeon-seasons/season-3.json:dungeon-6525",
+          "confidence": "verified"
+        },
+        {
+          "source": "official-current-build-localization",
+          "reference": "game-data/runtime/localization/en-US/scene-names.v1.json:scene-6525",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "official-current-build-localization",
+          "reference": "game-data/runtime/localization/en-US/monster-names.v1.json:monster-33500",
+          "confidence": "corroborated"
+        }
+      ]
+    }
+  ]
+}

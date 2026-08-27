@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "kind": "world_event",
+  "id": 7077,
+  "stable_key": "world-event.daily-world-event.7077",
+  "localization_key": "world-event.7077.name",
+  "icon": null,
+  "attributes": {
+    "event_id": 7077,
+    "event_kind": "daily-world-event",
+    "name_id": 211822814,
+    "description_id": 2046700956,
+    "target": [
+      1,
+      1,
+      0,
+      7077
+    ],
+    "scene_id": 7,
+    "scene_key": "overworld-scene.7",
+    "entity_selector": [
+      3,
+      21111
+    ],
+    "dungeon_id": 7077,
+    "event_type": 3,
+    "timer_id": 681,
+    "award_id": 11000010,
+    "banner_address": "ui/textures/worldquest/dungeon_worldevent_picture_6",
+    "description_localization_key": "world-event.7077.description"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.DailyWorldEventTable",
+    "reference": "client-build:global/steam/24252055@sha256:91a17c0192757beff34f6828b9de5a96bdc8016f43fa6eb56d7124ce3ade52e6",
+    "confidence": "verified"
+  }
+}

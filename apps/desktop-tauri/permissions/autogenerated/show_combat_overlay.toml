@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-show-combat-overlay"
+description = "Enables the show_combat_overlay command without any pre-configured scope."
+commands.allow = ["show_combat_overlay"]
+
+[[permission]]
+identifier = "deny-show-combat-overlay"
+description = "Denies the show_combat_overlay command without any pre-configured scope."
+commands.deny = ["show_combat_overlay"]

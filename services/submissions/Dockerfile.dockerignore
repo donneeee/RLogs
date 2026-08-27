@@ -1,0 +1,13 @@
+.git
+.github
+.codex_tmp
+private-research
+runtime-data
+target
+target-*
+**/node_modules
+**/dist
+**/*.pcap
+**/*.pcapng
+**/*.rlog
+**/*.jsonl

@@ -1,0 +1,44 @@
+{
+  "schema_version": 2,
+  "kind": "sub_scene",
+  "id": 4,
+  "stable_key": "subscene.4",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "subscene_id": 4,
+    "subscene_type_id": 1,
+    "resource_path": "scenes/cty001_parkour_multi01",
+    "owner_scene_ids": [
+      7004
+    ],
+    "owner_scene_keys": [
+      "scene.7004"
+    ],
+    "resource_scene_ids": [
+      8,
+      5000,
+      7004,
+      9001
+    ],
+    "resource_scene_keys": [
+      "scene.8",
+      "scene.5000",
+      "scene.7004",
+      "scene.9001"
+    ],
+    "activation_conditions": []
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SubSceneTable+SceneTable",
+    "reference": "client-build:global/steam/24252055@sha256:4291adf495848b5277daa4a49b5ba2a0a3a8156028bec2bd2f5ecbcfd51c4552",
+    "confidence": "verified"
+  }
+}

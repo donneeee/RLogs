@@ -65,39 +65,14 @@ impl GameConnectionFilter {
             return Err(ConnectionFilterError::Empty);
         }
 
-        let mut flows = HashMap::with_capacity(connections.len().saturating_mul(2));
-        for (index, connection) in connections.into_iter().enumerate() {
-            if connection.client == connection.server {
-                return Err(ConnectionFilterError::SameEndpoint(connection.client));
-            }
-            let connection_id = u64::try_from(index).unwrap_or(u64::MAX).saturating_add(1);
-            let client_to_server = TcpFlowKey::new(connection.client, connection.server);
-            let server_to_client = client_to_server.reverse();
-
-            insert_flow(
-                &mut flows,
-                client_to_server,
-                ConnectionIdentity {
-                    connection_id,
-                    stream_id: connection_id.saturating_mul(2).saturating_sub(1),
-                    direction: TransportDirection::ClientToServer,
-                },
-            )?;
-            insert_flow(
-                &mut flows,
-                server_to_client,
-                ConnectionIdentity {
-                    connection_id,
-                    stream_id: connection_id.saturating_mul(2),
-                    direction: TransportDirection::ServerToClient,
-                },
-            )?;
+        let mut filter = Self {
+            flows: HashMap::with_capacity(connections.len().saturating_mul(2)),
+            connection_count: 0,
+        };
+        for connection in connections {
+            filter.try_add_connection(connection)?;
         }
-
-        Ok(Self {
-            connection_count: flows.len() / 2,
-            flows,
-        })
+        Ok(filter)
     }
 
     pub fn connection_count(&self) -> usize {
@@ -106,6 +81,60 @@ impl GameConnectionFilter {
 
     pub fn classify(&self, flow: TcpFlowKey) -> Option<ConnectionIdentity> {
         self.flows.get(&flow).copied()
+    }
+
+    /// Adds a newly observed process-owned socket without resetting existing
+    /// TCP stream identities. Returns `false` when the exact connection was
+    /// already present.
+    pub fn try_add_connection(
+        &mut self,
+        connection: GameConnection,
+    ) -> Result<bool, ConnectionFilterError> {
+        if connection.client == connection.server {
+            return Err(ConnectionFilterError::SameEndpoint(connection.client));
+        }
+        let client_to_server = TcpFlowKey::new(connection.client, connection.server);
+        let server_to_client = client_to_server.reverse();
+        match (
+            self.flows.get(&client_to_server),
+            self.flows.get(&server_to_client),
+        ) {
+            (Some(client), Some(server))
+                if client.direction == TransportDirection::ClientToServer
+                    && server.direction == TransportDirection::ServerToClient =>
+            {
+                return Ok(false);
+            }
+            (None, None) => {}
+            _ => return Err(ConnectionFilterError::DuplicateFlow(client_to_server)),
+        }
+        let connection_id = u64::try_from(self.connection_count)
+            .unwrap_or(u64::MAX)
+            .checked_add(1)
+            .ok_or(ConnectionFilterError::ConnectionIdExhausted)?;
+        insert_flow(
+            &mut self.flows,
+            client_to_server,
+            ConnectionIdentity {
+                connection_id,
+                stream_id: connection_id.saturating_mul(2).saturating_sub(1),
+                direction: TransportDirection::ClientToServer,
+            },
+        )?;
+        insert_flow(
+            &mut self.flows,
+            server_to_client,
+            ConnectionIdentity {
+                connection_id,
+                stream_id: connection_id.saturating_mul(2),
+                direction: TransportDirection::ServerToClient,
+            },
+        )?;
+        self.connection_count = self
+            .connection_count
+            .checked_add(1)
+            .ok_or(ConnectionFilterError::ConnectionIdExhausted)?;
+        Ok(true)
     }
 }
 
@@ -133,6 +162,9 @@ pub enum ConnectionFilterError {
 
     #[error("connection list defines TCP flow more than once: {0:?}")]
     DuplicateFlow(TcpFlowKey),
+
+    #[error("game connection identity space is exhausted")]
+    ConnectionIdExhausted,
 }
 
 #[derive(Debug, Clone)]
@@ -182,6 +214,13 @@ impl TransportPipeline {
 
     pub fn connection_filter(&self) -> &GameConnectionFilter {
         &self.connections
+    }
+
+    pub fn try_add_connection(
+        &mut self,
+        connection: GameConnection,
+    ) -> Result<bool, ConnectionFilterError> {
+        self.connections.try_add_connection(connection)
     }
 
     pub fn process_frame(&mut self, frame: &CapturedFrame, mut emit: impl FnMut(TransportOutput)) {
@@ -297,6 +336,37 @@ mod tests {
         assert_eq!(incoming.stream_id, 2);
         assert_eq!(outgoing.direction, TransportDirection::ClientToServer);
         assert_eq!(incoming.direction, TransportDirection::ServerToClient);
+    }
+
+    #[test]
+    fn live_connection_additions_preserve_existing_stream_identities() {
+        let first = GameConnection {
+            client: endpoint4(1, 31_000),
+            server: endpoint4(2, 32_000),
+        };
+        let second = GameConnection {
+            client: endpoint4(1, 31_001),
+            server: endpoint4(3, 32_001),
+        };
+        let mut filter = GameConnectionFilter::try_new(vec![first]).unwrap();
+        let original = filter
+            .classify(TcpFlowKey::new(first.client, first.server))
+            .unwrap();
+
+        assert!(filter.try_add_connection(second).unwrap());
+        assert!(!filter.try_add_connection(second).unwrap());
+        assert_eq!(
+            filter
+                .classify(TcpFlowKey::new(first.client, first.server))
+                .unwrap(),
+            original
+        );
+        let added = filter
+            .classify(TcpFlowKey::new(second.client, second.server))
+            .unwrap();
+        assert_eq!(added.connection_id, 2);
+        assert_eq!(added.stream_id, 3);
+        assert_eq!(filter.connection_count(), 2);
     }
 
     #[test]

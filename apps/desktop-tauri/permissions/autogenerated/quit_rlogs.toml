@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-quit-rlogs"
+description = "Enables the quit_rlogs command without any pre-configured scope."
+commands.allow = ["quit_rlogs"]
+
+[[permission]]
+identifier = "deny-quit-rlogs"
+description = "Denies the quit_rlogs command without any pre-configured scope."
+commands.deny = ["quit_rlogs"]

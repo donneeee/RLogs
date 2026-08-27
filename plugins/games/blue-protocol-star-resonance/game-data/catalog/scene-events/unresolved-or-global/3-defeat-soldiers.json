@@ -1,0 +1,36 @@
+{
+  "schema_version": 2,
+  "kind": "scene_event",
+  "id": 3,
+  "stable_key": "scene-event.3",
+  "localization_key": "scene-event.3.name",
+  "icon": null,
+  "attributes": {
+    "scene_event_id": 3,
+    "name_id": 645116175,
+    "targets": [
+      {
+        "target_id": 100125,
+        "target_key": null,
+        "target_resolution": "unresolved_current_table_reference"
+      }
+    ],
+    "scene_ids": [],
+    "scene_keys": [],
+    "difficulty_flag": 0,
+    "completion_actions": [],
+    "time_limit_seconds": 200
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SceneEventTable+TargetTable",
+    "reference": "client-build:global/steam/24252055@sha256:cd985918f54fe3fc7aa846f3852186089601a776f35dc745d8feb7dd514f2d6a",
+    "confidence": "verified"
+  }
+}

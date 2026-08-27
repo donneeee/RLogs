@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { parsePluginCatalog } from "./plugin-catalog";
 
 describe("local plug-in catalog", () => {
-  it("accepts the version-one installed package contract", () => {
+  it("accepts the version-two installed package and Settings contract", () => {
     const catalog = parsePluginCatalog({
-      schemaVersion: 1,
+      schemaVersion: 2,
       installedRoot: "C:/rLogs/plugins/installed",
       packages: [
         {
@@ -25,6 +25,17 @@ describe("local plug-in catalog", () => {
         },
       ],
       issues: [],
+      settingsTabs: [
+        {
+          id: "dev.rlogs.timeline:settings",
+          label: "Timeline",
+          kind: "options",
+          entrypoint: "installed://dev.rlogs.timeline/settings",
+          contributorPluginId: "dev.rlogs.timeline",
+          sectionId: "dev.rlogs.timeline:settings",
+          defaultOrder: 200,
+        },
+      ],
       workspaces: [
         {
           id: "dev.rlogs.timeline",
@@ -41,6 +52,8 @@ describe("local plug-in catalog", () => {
               kind: "content",
               entrypoint: "installed://dev.rlogs.timeline/main",
               contributorPluginId: "dev.rlogs.timeline",
+              sectionId: "dev.rlogs.timeline:main",
+              defaultOrder: 0,
             },
           ],
         },
@@ -49,15 +62,16 @@ describe("local plug-in catalog", () => {
 
     expect(catalog.packages[0]?.id).toBe("dev.rlogs.timeline");
     expect(catalog.workspaces[0]?.tabs[0]?.kind).toBe("content");
+    expect(catalog.settingsTabs[0]?.label).toBe("Timeline");
   });
 
   it("rejects outdated or incomplete catalogs", () => {
-    expect(() => parsePluginCatalog({ schemaVersion: 2 })).toThrow(
+    expect(() => parsePluginCatalog({ schemaVersion: 1 })).toThrow(
       "unsupported plug-in catalog",
     );
     expect(() =>
       parsePluginCatalog({
-        schemaVersion: 1,
+        schemaVersion: 2,
         installedRoot: "plugins",
         packages: [],
         issues: [],
@@ -80,9 +94,10 @@ describe("local plug-in catalog", () => {
       statusDetail: "Disabled by user.",
     };
     const catalogBase = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       installedRoot: "C:/rLogs/plugins/installed",
       issues: [],
+      settingsTabs: [],
       workspaces: [],
     };
 

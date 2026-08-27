@@ -84,6 +84,7 @@ mod tests {
             season: None,
             appearance: None,
             equipment: None,
+            equipment_suit_entries: None,
             modules: Some(crate::ModuleProfile {
                 equipped_slots: [(1, "9007199254740993".into())].into_iter().collect(),
                 inventory: vec![crate::ModuleItemProfile {
@@ -107,6 +108,7 @@ mod tests {
             }),
             owned_imagines: None,
             battle_imagine_skills: None,
+            equipped_action_slots: None,
             active_skills: None,
             talents: None,
             talent_progress: Some(crate::TalentProgressProfile {

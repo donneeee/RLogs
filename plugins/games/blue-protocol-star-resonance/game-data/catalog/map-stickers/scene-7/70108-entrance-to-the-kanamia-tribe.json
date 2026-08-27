@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "kind": "map_sticker",
+  "id": 70108,
+  "stable_key": "map-sticker.70108",
+  "localization_key": "map-sticker.70108.name",
+  "icon": null,
+  "attributes": {
+    "map_sticker_id": 70108,
+    "name_id": 391988959,
+    "icon_address": "ui/atlas/scenicspot_clock/scenicspot_clock_icon/scenicspot_clock_icon_10",
+    "required_count": 5,
+    "sort_order": 8,
+    "description_id": 991775066,
+    "description_localization_key": "map-sticker.70108.description",
+    "scene_ids": [
+      7
+    ],
+    "scene_keys": [
+      "scene.7"
+    ],
+    "task_ids": [
+      7010801
+    ],
+    "tasks": [
+      {
+        "task_id": 7010801,
+        "target_ids": [
+          11
+        ],
+        "title_id": 701974516,
+        "title_localization_key": "map-sticker-task.7010801.title",
+        "description_id": 85201486,
+        "description_localization_key": "map-sticker-task.7010801.description",
+        "required_count": 0,
+        "targets": [
+          {
+            "target_id": 11,
+            "target_type": 321,
+            "parameters": [
+              70108
+            ],
+            "required_count": 1,
+            "scene_id": 7
+          }
+        ]
+      }
+    ],
+    "award_id": 10000280
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.MapStickerTables",
+    "reference": "client-build:global/steam/24252055@sha256:62f1d57bff8c0f7edd8a59f6e50c136a434f5a0265ba515d36c7031083087857",
+    "confidence": "verified"
+  }
+}

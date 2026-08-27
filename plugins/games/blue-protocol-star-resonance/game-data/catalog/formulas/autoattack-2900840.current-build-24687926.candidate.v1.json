@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "generated_by": "tools/bpsr-current-build-autoattack-formula-receipt.mjs",
+  "game_build": "24687926",
+  "deployment_id": "global",
+  "channel": "steam",
+  "promotion_state": "candidate-static-formula-rounding-open",
+  "identity": {
+    "ability_id": 2900840,
+    "damage_script": "AutoAttack",
+    "selected_stat": "Physical Attack",
+    "selected_attribute_id": 11330,
+    "packet_damage_mode": 1,
+    "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395"
+  },
+  "policy": {
+    "exact_numeric_ids_are_runtime_keys": true,
+    "localized_formula_text_is_supporting_evidence_only": true,
+    "current_character_snapshots_are_never_substituted": true,
+    "historical_packet_evidence_is_not_current_build_authority": true,
+    "unresolved_operator_and_rounding_are_retained": true,
+    "ordinary_damage_is_unchanged": true,
+    "provider_rdps_credit_allowed": false,
+    "runtime_promotion_allowed": false,
+    "ui_rdps_display_allowed": false
+  },
+  "sources": {
+    "formula_proof_carry_forward": {
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/formula-proof-carry-forward.v2.json",
+      "bytes": 9020,
+      "sha256": "7b180813987c8c1e832b27be2abaa4c348b7cf778b44b03f5d5c409f74da7eb1"
+    },
+    "current_build_formula_surface": {
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/damage-formula-surface.semantic.v2.json",
+      "bytes": 2635896,
+      "sha256": "52131bcc407db842a87738b5b4d816afe6e55b2d789d9c4c07f10afa0bf17086"
+    },
+    "one_skill_operator_frontier": {
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/autoattack-2900840-single-skill-operator-frontier.v13.json",
+      "bytes": 108546,
+      "sha256": "26297f982c6fbe66225face9ee930e7670bb42c2018bce3c45b8ab96c42ede1f"
+    },
+    "exact_build_client_operator_frontier": {
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/autoattack-2900840-client-operator-frontier.v1.json",
+      "bytes": 4246,
+      "sha256": "2c537737e281a5397000434c0c528b3156052a0d8aad2cc10fdc2b746565b036"
+    },
+    "rounding_acquisition_worklist": {
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/autoattack-2900840-rounding-acquisition-worklist.schema3.v11.json",
+      "bytes": 73209,
+      "sha256": "4755ed1618f8584e1fd8a0abffec185494a2fa98c752a7df43e6f58f3741fcfb"
+    },
+    "current_runtime_gate": {
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/rdps-formula-runtime.v1.json",
+      "bytes": 10751,
+      "sha256": "7723dd4f32362ce99491d78aa28bea6805817726dfcfe729fce70253715e62c4"
+    }
+  },
+  "proven_formula_surface": {
+    "relation": "PVEDamageRadio x Physical Attack + PVEFixedParameter",
+    "coefficient_denominator": 10000,
+    "selected_stat_attribute_id": 11330,
+    "damage_attr_rows": [
+      {
+        "hit_event_id": 3,
+        "damage_attr_id": 129008400103,
+        "damage_type": 1,
+        "coefficient_basis_points_by_stage": [
+          34500,
+          39670,
+          44850,
+          50020,
+          55200,
+          60370
+        ],
+        "fixed_parameter_by_level": [
+          34
+        ]
+      },
+      {
+        "hit_event_id": 5,
+        "damage_attr_id": 129008400105,
+        "damage_type": 1,
+        "coefficient_basis_points_by_stage": [
+          34500,
+          39670,
+          44850,
+          50020,
+          55200,
+          60370
+        ],
+        "fixed_parameter_by_level": [
+          34
+        ]
+      },
+      {
+        "hit_event_id": 7,
+        "damage_attr_id": 129008400107,
+        "damage_type": 1,
+        "coefficient_basis_points_by_stage": [
+          27000,
+          31040,
+          35100,
+          39150,
+          43200,
+          47250
+        ],
+        "fixed_parameter_by_level": [
+          27
+        ]
+      },
+      {
+        "hit_event_id": 8,
+        "damage_attr_id": 129008400108,
+        "damage_type": 1,
+        "coefficient_basis_points_by_stage": [
+          27000,
+          31040,
+          35100,
+          39150,
+          43200,
+          47250
+        ],
+        "fixed_parameter_by_level": [
+          27
+        ]
+      },
+      {
+        "hit_event_id": 9,
+        "damage_attr_id": 129008400109,
+        "damage_type": 1,
+        "coefficient_basis_points_by_stage": [
+          27000,
+          31040,
+          35100,
+          39150,
+          43200,
+          47250
+        ],
+        "fixed_parameter_by_level": [
+          27
+        ]
+      }
+    ],
+    "selected_coefficient_basis_points_by_hit_event_id": {
+      "3": 34500,
+      "5": 34500,
+      "7": 27000,
+      "8": 27000,
+      "9": 27000
+    },
+    "coefficient_selection_proven": true,
+    "fixed_addition_order_proven": true,
+    "physical_attack_lane_proven": true
+  },
+  "open_integer_boundary": {
+    "exact_server_operator_proven": false,
+    "authoritative_client_operator_found": false,
+    "exact_integer_rounding_proven": false,
+    "exact_controlled_pairs_available": 0,
+    "candidate_boundaries": [
+      "floor",
+      "ceil",
+      "nearest_half_up",
+      "unrounded_rational"
+    ],
+    "downstream_factor_cancellation_proven": false,
+    "exact_provider_counterfactual_proven": false,
+    "smallest_next_proof": "Capture a controlled same-hit ability-2900840 repeat across one exact current-Physical-Attack transition with identical downstream target and hit state, or identify and instruction-audit a new concrete indirect native consumer seed. Remote-player cast packets are not required.",
+    "controlled_capture_frontier": {
+      "retained_owner_samples": 2393,
+      "same_run_same_source_target_pairs_before_direct_instance_control": 91,
+      "independent_trials_with_same_packet_formula_context": 9,
+      "current_hp_normalized_pairs_with_same_target_attributes": 1,
+      "next_blocking_equal_fields": [
+        "target_status_state_id"
+      ],
+      "required_experiment": "replicated numeric monster-3000043 summon trials before, during, and after one exact effect-2110140 lifecycle with unchanged target statuses and all other controlled context"
+    }
+  },
+  "conclusion": {
+    "current_build_formula_catalog_entry": true,
+    "exact_static_formula_inputs_proven": true,
+    "exact_client_operator_search_completed": true,
+    "authoritative_client_operator_found": false,
+    "final_server_integer_boundary_open": true,
+    "provider_rdps_credit_allowed": false,
+    "runtime_promotion_allowed": false,
+    "ui_rdps_display_allowed": false
+  },
+  "content_sha256": "8ccf9659d64345d19cb4ce17fb84956fafeab1e3fb3d05255faa63897d4851b7"
+}

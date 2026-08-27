@@ -1,0 +1,34 @@
+{
+  "schema_version": 2,
+  "kind": "world_event",
+  "id": 17,
+  "stable_key": "world-event.world-boss-schedule.17",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "event_id": 17,
+    "event_kind": "world-boss-schedule",
+    "season_id": 1,
+    "schedule_day": 107,
+    "dungeon_id": 7150,
+    "match_id": 1,
+    "recommended_main_image_address": "ui/background/seasonact/activity_worldboss",
+    "main_image_address": "ui/textures/worldboss/worldboss_bg",
+    "match_image_address": "ui/uieffect/textures/ui_t_wordlboss_background_001",
+    "match_effect_address": "ui/uieffect/prefab/ui_sfx_world_boss_001",
+    "match_text_address": "ui/textures/worldboss/worldboss_title",
+    "match_text_effect_address": "ui/uieffect/prefab/ui_sfx_world_boss_wenzi_002"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.WorldBossSwitchTable",
+    "reference": "client-build:global/steam/24252055@sha256:b1ee080a84a67c42932d97416ea37ee21c1d7e28444b92e6581b7e8183fdcd12",
+    "confidence": "verified"
+  }
+}

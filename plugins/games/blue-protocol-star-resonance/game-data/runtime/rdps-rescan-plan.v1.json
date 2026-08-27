@@ -1,0 +1,421 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "policy": {
+    "extraction_runs_outside_live_parser": true,
+    "candidate_data_never_auto_promoted": true,
+    "packet_replay_required_for_runtime_rules": true,
+    "exact_party_conservation_required": true,
+    "canonical_events_retained": true,
+    "unresolved_events_hidden": false
+  },
+  "inputs": [
+    {
+      "id": "client-binary-identity",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/client-binary-identity.json",
+      "role": "sanitized exact-build GameAssembly and recovered IL2CPP metadata identity",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["game-file-schema-diff", "combat-table-diff", "formula-stage-replay", "protocol-event-coverage", "canonical-replay-conservation"]
+    },
+    {
+      "id": "seasonal-domain-skills",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/seasonal-domains/skills.v1.json",
+      "role": "row-level exact-table and derived-research fingerprints for all skill identities, effects, levels, upgrades, formulas, and relationships",
+      "domain": "skills",
+      "change_actions": ["Rebuild changed skill identities, formulas, effect links, damage chains, and recount relationships.", "Re-run formula, lifecycle, recipient, and conservation proofs for affected rows."],
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["combat-table-diff", "origin-graph-diff", "formula-stage-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "seasonal-domain-talents",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/seasonal-domains/talents.v1.json",
+      "role": "row-level exact-table and derived-research fingerprints for class and seasonal talent identities, ownership, effects, and scaling",
+      "domain": "talents",
+      "change_actions": ["Rebuild changed talent ownership, proc, effect, formula, and recount edges.", "Re-run specialization, provider, recipient, and conservation proofs for affected rows."],
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["combat-table-diff", "origin-graph-diff", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "seasonal-domain-imagines",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/seasonal-domains/imagines.v1.json",
+      "role": "row-level exact-table and derived-research fingerprints for every Imagine identity, tier, star, remodel, summon, linked effect, formula, icon reference, and seasonal scaling row",
+      "domain": "imagines",
+      "change_actions": ["Add new Imagine UIDs and preserve removed UIDs as migration evidence.", "Rebuild changed Imagine tiers, scaling, summon ownership, buffs, damage chains, recipient scope, and recount edges.", "Refresh icon and localization references without embedding localized strings in mechanics data."],
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["combat-table-diff", "origin-graph-diff", "formula-stage-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "seasonal-domain-psychoscope-factors",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/seasonal-domains/psychoscope-factors.v1.json",
+      "role": "row-level fingerprints for Polarity, Stasis, Inspiration, and Reality factor identities, grades, energy behavior, effects, attacks, and skill mutations",
+      "domain": "psychoscope-factors",
+      "change_actions": ["Rebuild changed factor grade scaling, energy generation and consumption, skill mutation, triggered attack, buff, and recount edges.", "Re-run factor lifecycle, stacking, formula, provider, recipient, and conservation proofs."],
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["factor-event-correlation", "origin-graph-diff", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "seasonal-domain-equipment-set-bonuses",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/seasonal-domains/equipment-set-bonuses.v1.json",
+      "role": "row-level fingerprints for equipment and set-bonus identities, thresholds, effects, formulas, and scaling",
+      "domain": "equipment-set-bonuses",
+      "change_actions": ["Rebuild changed set thresholds, set-to-buff links, triggered damage, skill mutations, and recount edges.", "Re-run formula, lifecycle, provider, recipient, and conservation proofs."],
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["combat-table-diff", "origin-graph-diff", "status-lifecycle-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "seasonal-domain-buffs-effects",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/seasonal-domains/buffs-effects.v1.json",
+      "role": "row-level fingerprints for every buff, effect, and damage identity with origin, lifecycle, stacking, recipient, and damage-chain evidence",
+      "domain": "buffs-effects",
+      "change_actions": ["Retain and classify every changed buff, effect, and damage row.", "Rebuild exact origin, lifecycle, stacking, recipient-scope, damage-chain, and recount edges without hiding unresolved rows."],
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["combat-table-diff", "status-lifecycle-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "seasonal-domain-formulas-scaling",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/seasonal-domains/formulas-scaling.v1.json",
+      "role": "row-level fingerprints for coefficients, units, percentages, curves, caps, HP scaling, mitigation, stage ordering, and rounding inputs",
+      "domain": "formulas-scaling",
+      "change_actions": ["Invalidate only proof families whose exact formula or scaling inputs changed.", "Re-run stage-order, formula, attribute-state, and conservation proofs for affected rows."],
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["formula-surface-diff", "formula-stage-replay", "attribute-state-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "seasonal-domain-relationships-recount",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/seasonal-domains/relationships-recount.v1.json",
+      "role": "row-level fingerprints for ownership, child-to-parent recount, provider, recipient, contribution, and damage-chain relationships",
+      "domain": "relationships-recount",
+      "change_actions": ["Rebuild changed ownership, child-to-parent recount, provider, recipient, contribution, and damage-chain edges.", "Preserve every child event while re-running exact party and skill conservation proofs."],
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["origin-graph-diff", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "seasonal-domain-activity-identity",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/seasonal-domains/seasonal-activity-identity.v1.json",
+      "role": "row-level exact-table fingerprints for season and activity identities used to scope mechanics evidence and replay fixtures",
+      "domain": "seasonal-activity-identity",
+      "change_actions": ["Rebuild changed season and activity routing from exact table identity without parsing localized titles."],
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["game-file-schema-diff", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-rpc-message-surface",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/rpc-message-surface.v2.json",
+      "role": "exact current-build generated message, enum, service, and native factory identity surface; field order is retained but never treated as protobuf tag authority",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["build-identity", "protobuf-coverage", "protocol-event-coverage", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-world-notification-route-proof",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/world-ntf-route-proof.v2.json",
+      "role": "exact native WorldNtf dispatcher branch and decoded-literal proof, locked to the GameAssembly and final RPC surface hashes; undefined IDs and unresolved non-WorldNtf services remain explicit",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["build-identity", "protobuf-coverage", "protocol-event-coverage", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-native-protobuf-wire-proof",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/protobuf-native-wire-proof.v1.json",
+      "role": "exact native InternalMergeFrom branch-to-instance-field proof for every current-build protobuf tag; generated declaration order is never tag authority",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["build-identity", "protobuf-coverage", "protocol-event-coverage", "canonical-replay-conservation"]
+    },
+    {
+      "id": "game-file-research-inventory",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}",
+      "role": "sanitized build-scoped client file, table, schema, relationship, and localization inventory",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["game-file-schema-diff", "combat-table-diff", "formula-stage-replay", "status-lifecycle-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "game-data-build-pipeline",
+      "path": "tools/game-data-build/src",
+      "role": "reviewed-data validator and deterministic runtime-bundle compiler source",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["game-file-schema-diff", "combat-table-diff", "canonical-replay-conservation"]
+    },
+    {
+      "id": "rdps-proof-tooling",
+      "path": "plugins/games/blue-protocol-star-resonance/tools",
+      "role": "offline packet replay, formula isolation, lifecycle correlation, and conservation proof source",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["formula-stage-replay", "attribute-state-replay", "status-lifecycle-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "protocol-pack-identity",
+      "path": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-{build}/pack.json",
+      "role": "build-scoped packet route and message identity",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["protocol-event-coverage", "canonical-replay-conservation"]
+    },
+    {
+      "id": "formula-proof-ledgers",
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/catalog/formulas",
+      "role": "human-readable current-build formula and unit proof ledgers",
+      "identity_manifest": "current-build-manifest.v1.json",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["formula-stage-replay", "attribute-state-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-magnitude-proof-watchlist",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/rdps-magnitude-proof-watchlist.v3.json",
+      "role": "generated packet effect, complete formula-context attribute, and exact BuffTable lifecycle watch surface for every formula candidate; self-only attributes are retained as explicitly non-attributable context and non-BuffTable numeric references remain explicit rejected evidence",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["attribute-state-replay", "status-lifecycle-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-formula-gap-watchlist",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/formula-magnitude-gap-watchlist.v3.json",
+      "role": "generated exact-build subset of the complete magnitude watchlist containing every unresolved formula coefficient rule, its packet-visible status IDs, and its exact formula and non-attributable context attributes; reduces offline replay work without removing any source row",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["attribute-state-replay", "status-lifecycle-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-formula-gap-reference-scan",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/formula-gap-exact-reference-scan.v3.json",
+      "role": "exhaustive exact-ID scan of every decoded current-build CTB row for every missing formula-value proof; proves the complete static reference surface and keeps missing owners or coefficients visible rather than inferred",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["origin-graph-diff", "formula-stage-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-formula-gap-ledger",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/formula-magnitude-gap-ledger.v11.json",
+      "role": "complete unresolved formula ledger generated from the authoritative magnitude watchlist and joined to the schema-v14 current-build owner ledger; every effect remains present, standalone SkillTable owners are conserved, exact passive and active modifier parameter consumers retain raw, percent, and decimal forms, ordered transferable tier fields retain recipient scope without being mislabeled as final magnitude, mirrored aliases are marked against double counting, semantic-only recipient/disposition evidence remains visible but cannot override declared scope, and exact owner-only component routes override stale unresolved scope without enabling runtime attribution",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["attribute-state-replay", "status-lifecycle-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-current-aoyi-origin-ledger",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/current-aoyi-rdps-origin-ledger.candidate.json",
+      "role": "current-build source graph joining Aoyi and standalone SkillTable owners, summon subskills, exact component routes, damage chains, relationship edges, source targets, and historical packet observations without enabling runtime attribution",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["origin-graph-diff", "formula-stage-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-recipient-scope-ledger",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/rdps-recipient-scope-ledger.v2.json",
+      "role": "complete formula and exact-produced-damage recipient-scope queue; declared scope, exact current component refinements, mixed evidence, historical observations, and all unresolved rows remain distinct while runtime attribution stays disabled",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["origin-graph-diff", "status-lifecycle-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-formula-proof-carry-forward",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/formula-proof-carry-forward.v2.json",
+      "role": "fail-closed inventory separating exact current extraction from retained historical formula evidence and the still-missing matching-build packet replay",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["build-identity", "formula-stage-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-formula-gap-source-chain-scan",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/formula-gap-source-chain-reference-scan.v1.json",
+      "role": "exact scalar source-chain reference inventory for selected skill, talent, Rogue-entry, buff, and damage candidates; name collisions remain explicit and never become ownership proof",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["origin-graph-diff", "formula-stage-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-fight-attribute-transform-surface",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/fight-attribute-transform-surface.v1.json",
+      "role": "complete decoded FightAttrTranTable rows and named conversion, mitigation, attenuation, cap, monster, and season fields; research-only until row selection, curve evaluation, rounding, and cross-stage ordering are proven by same-build packet replay",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["combat-table-diff", "formula-stage-replay", "attribute-state-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-damage-source-route-proof",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/damage-source-route-proof.candidate.v9.json",
+      "role": "current-build Buff, SkillTable EffectIDs (including explicit server-only effect references), SkillEffect, direct and indirect BulletAttr construction paths joined to exact Zproto EDamageSource discriminants; candidate-only until a same-build packet occurrence supplies the matching source value, with unknown and unresolved routes retained",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["damage-stage-event-coverage", "formula-stage-replay", "protobuf-coverage", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-damage-stage-candidate",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/damage-stage-rdps.candidate.v14.json",
+      "role": "current-build packet ability, semantic hit, and when required exact damage source to standard Attack or MAttack coefficient candidates; every decoded DamageAttr semantic field is retained and validated against the current table, formula-equivalent IDs and excluded nonstandard IDs remain explicit, source-disambiguated rules are build-scoped, and every remaining nonstandard key is retained as a coverage gap; never loaded by runtime until same-build packet replay proves selection and conservation",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["damage-stage-event-coverage", "formula-stage-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-nonstandard-damage-script-worklist",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/damage-script-family-worklist.v6.json",
+      "role": "complete build-locked inventory of every nonstandard and missing DamageScript candidate grouped only by exact script and the full decoded semantic table signature; all candidates, static routes, route gaps, HP, healing, shield, attenuation, lucky, shared, and scriptless families remain research-only until same-build formula and provider proofs pass",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["damage-stage-event-coverage", "formula-stage-replay", "attribute-state-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-damage-script-static-input-inventory",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/damage-script-static-input-inventory.v1.json",
+      "role": "complete per-DamageScript inventory of every current decoded semantic input and the exact client SyncDamageInfo and DamageAttr metadata boundary; records values without pretending they reveal server operators",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["formula-surface-diff", "formula-stage-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-damage-script-migration-gate",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/damage-script-build-migration-gate.v1.json",
+      "role": "fail-closed raw and decoded DamageAttr migration boundary; historical capture evidence remains replay guidance only and an absent decoded baseline is never interpreted as unchanged",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["combat-table-diff", "formula-surface-diff", "formula-stage-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-damage-resolution-ledger",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/damage-resolution-ledger.v2.json",
+      "role": "conserved join of all current DamageAttr candidates, exact packet-source routes, recount ownership, standard versus unproven formula state, and decoded-table research leads",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["damage-stage-event-coverage", "formula-stage-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-il2cpp-combat-surface",
+      "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-{build}/il2cpp-combat-surface.v2.json",
+      "role": "exact current-client combat enums, packet fields, attribute families, and client aggregation entrypoints for patch diffing; never authoritative for server damage arithmetic",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["build-identity", "formula-surface-diff", "protobuf-coverage"]
+    },
+    {
+      "id": "build-locked-damage-attribute-coefficient-evidence",
+      "path": "runtime-data/research/rdps/damage-attr-coefficient-proof.current-build-{build}.current-packets.v10.json",
+      "role": "optional same-build canonical replay evidence joining each packet result to one exact DamageAttr row by either a unique lookup or the packet damage-source route; requires and preserves the complete decoded DamageAttr row, runs sibling coefficient comparisons only within identical standard Attack or MAttack script families, and retains every nonstandard family as separate unresolved evidence; absent before a sealed capture and never runtime authority by itself",
+      "required": false,
+      "runtime_authority": false,
+      "proof_suites": ["damage-stage-event-coverage", "formula-stage-replay", "attribute-state-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "build-locked-healing-state-scaling-evidence",
+      "path": "plugins/games/blue-protocol-star-resonance/research/runtime-evidence/global/steam-{build}/state-scaling-healing-proof.json",
+      "role": "optional same-build canonical replay evidence grouped by exact healing formula family with full packet details and pre-event HP state retained; absent before a sealed capture and never runtime authority by itself",
+      "required": false,
+      "runtime_authority": false,
+      "proof_suites": ["formula-stage-replay", "attribute-state-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "rdps-formula-algorithms",
+      "path": "plugins/games/blue-protocol-star-resonance/src/state_formula.rs",
+      "role": "stable checked-integer and conserved-rational formula algorithms",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["formula-stage-replay", "attribute-state-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "rdps-state-projector",
+      "path": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+      "role": "live packet-state, provider-window, and contribution composition logic",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["status-lifecycle-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "rdps-runtime-pack-validator",
+      "path": "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+      "role": "fail-closed runtime-pack schema and current-build promotion validator",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["formula-stage-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "rdps-effect-source-catalog",
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/catalog/rdps-effects",
+      "role": "human-readable effect identity, scope, and proof state",
+      "identity_manifest": "current-build-manifest.v1.json",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["status-lifecycle-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "psychoscope-factor-source-catalog",
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/catalog/psychoscope-factors",
+      "role": "factor-to-buff, action, energy, and recount source graph",
+      "identity_manifest": "current-build-manifest.v1.json",
+      "required": true,
+      "runtime_authority": false,
+      "proof_suites": ["factor-event-correlation", "status-lifecycle-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "rdps-formula-runtime",
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/rdps-formula-runtime.v1.json",
+      "role": "promoted compact formula and attribute configuration",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["formula-stage-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "damage-stage-runtime",
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/damage-stage-rdps.v1.json",
+      "role": "unique packet ability and hit to DamageAttr coefficient lookup",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["damage-stage-event-coverage", "formula-stage-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "damage-attribute-stage-runtime",
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/damage-attr-formula-stage.v1.json",
+      "role": "promoted DamageAttr formula-stage field identities",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["formula-stage-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "external-state-runtime",
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/external-state-rdps.v1.json",
+      "role": "packet-proven external state-dependent marginal rules",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["attribute-state-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "target-vulnerability-runtime",
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/external-target-vulnerability-rdps.v1.json",
+      "role": "packet-proven external target vulnerability rules",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["target-vulnerability-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "effect-classification-runtime",
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/rdps-effect-classification.v1.json",
+      "role": "compact packet-observed effect classification",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["status-lifecycle-replay", "provider-recipient-replay", "canonical-replay-conservation"]
+    },
+    {
+      "id": "psychoscope-factor-runtime",
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/psychoscope-factor-attribution.v2.json",
+      "role": "compact build and season scoped factor graph",
+      "required": true,
+      "runtime_authority": true,
+      "proof_suites": ["factor-event-correlation", "provider-recipient-replay", "canonical-replay-conservation"]
+    }
+  ]
+}

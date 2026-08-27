@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "kind": "activity_target",
+  "id": 707005,
+  "stable_key": "activity-target.707005",
+  "localization_key": "activity-target.707005.description",
+  "icon": null,
+  "attributes": {
+    "activity_target_id": 707005,
+    "target_type_id": 10,
+    "required_count": 1,
+    "scene_id": 7070,
+    "scene_key": "scene.7070",
+    "scene_resolution": "current_scene",
+    "parameters": [],
+    "target_positions": [
+      [
+        4,
+        674
+      ]
+    ],
+    "team_shared": false,
+    "description_id": 2135130696,
+    "show_progress": false,
+    "special_variables": [],
+    "special_variable_limits": [],
+    "special_variable_names": [],
+    "show_special_variable_progress": [],
+    "show_change": [],
+    "show_color": [],
+    "scene_event_ids": [],
+    "scene_event_keys": []
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.TargetTable",
+    "reference": "client-build:global/steam/24252055@sha256:56c6745b26d181832ce6e63d322fc49fe0c697ef4526b58741364a8cc7176b3e",
+    "confidence": "corroborated"
+  }
+}

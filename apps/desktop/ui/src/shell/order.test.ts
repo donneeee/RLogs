@@ -27,6 +27,8 @@ function workspace(
         kind: "content",
         entrypoint: "ui/main.html",
         contributorPluginId: id,
+        sectionId: `${id}:main`,
+        defaultOrder: 0,
       },
     ],
   };

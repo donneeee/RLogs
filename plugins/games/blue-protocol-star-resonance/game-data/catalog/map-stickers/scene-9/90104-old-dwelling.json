@@ -1,0 +1,88 @@
+{
+  "schema_version": 2,
+  "kind": "map_sticker",
+  "id": 90104,
+  "stable_key": "map-sticker.90104",
+  "localization_key": "map-sticker.90104.name",
+  "icon": null,
+  "attributes": {
+    "map_sticker_id": 90104,
+    "name_id": 394360797,
+    "icon_address": "ui/textures/scenicspot/pic_scenicspotreputation_gaoyuanhedibu",
+    "required_count": 0,
+    "sort_order": 15,
+    "description_id": 994146904,
+    "description_localization_key": "map-sticker.90104.description",
+    "scene_ids": [
+      9
+    ],
+    "scene_keys": [
+      "scene.9"
+    ],
+    "task_ids": [
+      9010134,
+      9010104
+    ],
+    "tasks": [
+      {
+        "task_id": 9010134,
+        "target_ids": [
+          55
+        ],
+        "title_id": 1137419285,
+        "title_localization_key": "map-sticker-task.9010134.title",
+        "description_id": 520646255,
+        "description_localization_key": "map-sticker-task.9010134.description",
+        "required_count": 0,
+        "targets": [
+          {
+            "target_id": 55,
+            "target_type": 116,
+            "parameters": [
+              4294967295,
+              39101,
+              39101005
+            ],
+            "required_count": 1,
+            "scene_id": 0
+          }
+        ]
+      },
+      {
+        "task_id": 9010104,
+        "target_ids": [
+          25
+        ],
+        "title_id": 1137419186,
+        "title_localization_key": "map-sticker-task.9010104.title",
+        "description_id": 520646156,
+        "description_localization_key": "map-sticker-task.9010104.description",
+        "required_count": 0,
+        "targets": [
+          {
+            "target_id": 25,
+            "target_type": 321,
+            "parameters": [
+              90104
+            ],
+            "required_count": 1,
+            "scene_id": 9
+          }
+        ]
+      }
+    ],
+    "award_id": 10000464
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.MapStickerTables",
+    "reference": "client-build:global/steam/24252055@sha256:62f1d57bff8c0f7edd8a59f6e50c136a434f5a0265ba515d36c7031083087857",
+    "confidence": "verified"
+  }
+}

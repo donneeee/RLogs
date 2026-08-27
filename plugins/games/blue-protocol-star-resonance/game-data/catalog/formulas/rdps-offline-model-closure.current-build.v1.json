@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "game_build": "24609362",
+  "policy": {
+    "offline_complete_means": "the arithmetic, source relationship, event predicate, stacking rule, and recount ownership can be evaluated deterministically once the canonical packet fields named by the model are present",
+    "final_validation_is_not_offline_work": true,
+    "descriptions_are_not_runtime_formula_authority": true,
+    "unresolved_evidence_hidden": false,
+    "next_capture_is_one_comprehensive_validation_pass": true
+  },
+  "models": [
+    {
+      "model_id": "packet-attribute-family-transform",
+      "state": "offline-formula-complete",
+      "implementation": "state_formula::packet_attribute_family_provider_marginal",
+      "formula": "current=floor(add*(10000+percent)/10000)+extra_add; marginal=current-replay(all provider inputs removed together)",
+      "evidence": ["plugins/games/blue-protocol-star-resonance/src/state_formula.rs"]
+    },
+    {
+      "model_id": "max-hp-dependent-linear-damage-counterfactual",
+      "state": "offline-formula-complete",
+      "implementations": [
+        "state_formula::two_stage_percent_input_marginal",
+        "state_formula::linear_state_scaled_damage_marginal",
+        "state_rdps::StateRdpsReducer::exact_damage_marginal"
+      ],
+      "formula": "recipient_max_hp_marginal=two_stage_percent_input_marginal(base,active_raw_percent,provider_raw_percent,active_intermediate,active_extra_percent); damage_marginal=state_multiplier*recipient_max_hp_marginal",
+      "scope": "only packet-selected damage rules whose exact current-build row consumes the recipient Max HP state; Spring Breeze currently resolves ability 2206290 as 3*MaxHP-1 and never credits unrelated damage",
+      "evidence": [
+        "plugins/games/blue-protocol-star-resonance/src/state_formula.rs",
+        "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+        "plugins/games/blue-protocol-star-resonance/game-data/runtime/external-state-rdps.v1.json"
+      ]
+    },
+    {
+      "model_id": "standard-attack-coefficient-counterfactual",
+      "state": "offline-formula-complete",
+      "implementation": "state_formula::exact_external_attack_ordered_stage_fraction",
+      "formula": "observed_damage*(stage_with_provider-stage_without_provider)/active_stage_body",
+      "scope": "DamageScript Attack or MAttack only",
+      "evidence": ["plugins/games/blue-protocol-star-resonance/src/state_formula.rs"]
+    },
+    {
+      "model_id": "critical-chance-counterfactual",
+      "state": "offline-formula-complete",
+      "implementation": "state_formula::exact_external_critical_chance_fraction",
+      "scope": "packet row carrying the critical outcome",
+      "evidence": ["plugins/games/blue-protocol-star-resonance/src/state_formula.rs"]
+    },
+    {
+      "model_id": "critical-damage-counterfactual",
+      "state": "offline-formula-complete",
+      "implementation": "state_formula::exact_external_critical_damage_fraction",
+      "scope": "packet row carrying the critical outcome",
+      "evidence": ["plugins/games/blue-protocol-star-resonance/src/state_formula.rs"]
+    },
+    {
+      "model_id": "lucky-chance-counterfactual",
+      "state": "offline-formula-complete",
+      "implementation": "state_formula::exact_external_lucky_chance_fraction",
+      "scope": "packet Lucky component",
+      "evidence": ["plugins/games/blue-protocol-star-resonance/src/state_formula.rs"]
+    },
+    {
+      "model_id": "fixed-point-multiplier-counterfactual",
+      "state": "offline-formula-complete",
+      "implementation": "state_formula::exact_external_composite_damage_fraction",
+      "formula": "observed_damage*(active_composite-provider_removed_composite)/active_composite",
+      "evidence": ["plugins/games/blue-protocol-star-resonance/src/state_formula.rs"]
+    },
+    {
+      "model_id": "combined-provider-stage-conservation",
+      "state": "offline-formula-complete",
+      "implementation": "state_formula::exact_external_composite_damage_fraction",
+      "formula": "remove every component owned by one provider in one composite replay so shared cross-terms are assigned once",
+      "evidence": ["plugins/games/blue-protocol-star-resonance/src/state_formula.rs"]
+    },
+    {
+      "model_id": "first-hit-consume-arbitration",
+      "state": "offline-formula-complete",
+      "algorithm": "open the provider-owned target status on application; attribute only the first eligible damage event after open; close before processing later damage when its remove/consume event is observed",
+      "final_validation_fields": ["effect operation", "effect sequence", "source actor", "target actor", "damage sequence", "damage property", "boss classification"]
+    },
+    {
+      "model_id": "nonstacking-provider-arbitration",
+      "state": "offline-formula-complete",
+      "algorithm": "maintain packet-sequenced provider-owned windows per effect and recipient; use only the active authoritative window; never sum duplicate nonstacking applications",
+      "final_validation_fields": ["effect operation", "effect sequence", "source actor", "recipient actor", "layer", "count"]
+    },
+    {
+      "model_id": "role-count-aura-selector",
+      "state": "offline-formula-complete",
+      "algorithm": "count distinct packet-resolved party roles in the active aura window; clamp 5+5*role_count to 20 percent",
+      "final_validation_fields": ["party membership", "class/spec role", "provider window", "recipient distance/window"]
+    },
+    {
+      "model_id": "changed-stat-selector",
+      "state": "offline-formula-complete",
+      "algorithm": "select the corresponding transferred family from the packet attribute id that changed; do not infer it from the localized name",
+      "final_validation_fields": ["changed attribute id", "provider actor", "recipient actor", "lifecycle"]
+    },
+    {
+      "model_id": "damage-property-row-selector",
+      "state": "offline-formula-complete",
+      "algorithm": "select only packet damage components whose canonical property matches the source rule property; never select by localized ability name",
+      "final_validation_fields": ["damage property", "component amount", "source actor", "target actor"]
+    },
+    {
+      "model_id": "imagine-tier-selector",
+      "state": "offline-formula-complete",
+      "algorithm": "select the exact current-build ladder entry by the encounter-local equipped Imagine/Aoyi tier; never read the newest profile snapshot",
+      "final_validation_fields": ["character UID", "encounter timestamp", "Imagine identity", "tier"]
+    },
+    {
+      "model_id": "factor-grade-selector",
+      "state": "offline-formula-complete",
+      "algorithm": "select the exact current-build factor ladder entry by the encounter-local equipped factor grade; never read the newest profile snapshot",
+      "final_validation_fields": ["character UID", "encounter timestamp", "factor identity", "grade"]
+    },
+    {
+      "model_id": "target-physical-armor-counterfactual",
+      "state": "offline-proof-needed",
+      "missing_proof": "exact current-build armor and defense stage, cap, order, and integer rounding"
+    },
+    {
+      "model_id": "haste-action-opportunity-counterfactual",
+      "state": "offline-formula-complete",
+      "implementations": [
+        "skill_speed::exact_skill_stage_timing_counterfactual",
+        "skill_speed::exact_external_speed_capacity_fraction"
+      ],
+      "formulas": [
+        "stage_speed=(10000+packet_final_speed_basis_points+skill_scoped_temp_basis_points)/10000",
+        "provider_share=observed_action_linked_output*(observed_speed-provider_removed_speed)/observed_speed",
+        "cooldown_progress=initial_progress+elapsed*(1+cooldown_acceleration_rate)/real_cooldown_length"
+      ],
+      "conservation": "credit is carved from observed action-linked output and subtracted from the recipient; no expected or unobserved action is fabricated",
+      "scope": "only packet-resolved affected stage/cooldown lanes with exact historical provider deltas and action-to-output ancestry",
+      "evidence": [
+        "plugins/games/blue-protocol-star-resonance/src/skill_speed.rs",
+        "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/cooldown-acceleration-formula.v1.json",
+        "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/action-speed-formula-proof.v2.json"
+      ]
+    },
+    {
+      "model_id": "elemental-resistance-counterfactual",
+      "state": "offline-proof-needed",
+      "missing_proof": "exact resistance stage, caps, ordering, and interaction with same-property damage bonuses"
+    },
+    {
+      "model_id": "dream-damage-classification",
+      "state": "offline-formula-complete",
+      "canonical_name": "illusion-breaking-seasonal-damage-classification",
+      "algorithm": "select the canonical packet-snapshotted seasonal-damage stage through AttrSeasonDamInc 12690..12695, AttrSeasonDamRes 12700..12705, and the 11450->11440 target season-input mirror; Dream is not an EDamageProperty value",
+      "offensive_target_effect_ids": [3003012, 3003014],
+      "defensive_excluded_effect_ids": [3003071],
+      "evidence": [
+        "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/illusion-breaking-damage-classification-proof.v1.json",
+        "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/observations/season-target-input-001.json",
+        "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/observations/oblivion-dream-3003071-rdps-exclusion-001.json"
+      ]
+    },
+    {
+      "model_id": "encore-output-ancestry",
+      "state": "offline-formula-complete",
+      "algorithm": "select current-build recount group 215 and its exact child damage IDs while factor 3057060 is selected for the provider; apply the selected grade multiplier to Encore output triggered by either the provider or an ally, retaining the triggering actor as base-damage owner and assigning only the multiplier marginal to the factor owner",
+      "recount_id": 215,
+      "damage_ids": [25531401, 25531403, 323040100, 323050100],
+      "provider_factor_buff_id": 3057060,
+      "trigger_scope": "self-or-allies",
+      "evidence": [
+        "../BPSR-UID-Extractors/output-build-24609362/RecountTable.json",
+        "../BPSR-UID-Extractors/output-build-24609362/SeasonPhantomFactors.json",
+        "../BPSR-UID-Extractors/output-build-24609362/EffectSources.json"
+      ]
+    },
+    {
+      "model_id": "primary-stat-to-attack-transform",
+      "state": "offline-proof-needed",
+      "missing_proof": "exact class-specific primary-stat selection and current-build transform for every supported recipient class"
+    },
+    {
+      "model_id": "mastery-property-transform",
+      "state": "offline-proof-needed",
+      "missing_proof": "absolute current-build mastery-to-property stage for every class/spec, including integer rounding and snapshot timing"
+    }
+  ],
+  "source_model_routes": {
+    "mrs:aba6128b8881": ["max-hp-dependent-linear-damage-counterfactual", "combined-provider-stage-conservation"],
+    "mrs:38f875eb3123": ["max-hp-dependent-linear-damage-counterfactual", "combined-provider-stage-conservation"],
+    "current-component:effect:2110092": ["imagine-tier-selector", "target-physical-armor-counterfactual", "nonstacking-provider-arbitration"],
+    "mrs:dc24757b6559": ["haste-action-opportunity-counterfactual", "nonstacking-provider-arbitration"],
+    "mrs:679da5e1ff9f": ["critical-chance-counterfactual"],
+    "mrs:dc1aaa08960a": ["fixed-point-multiplier-counterfactual", "damage-property-row-selector", "first-hit-consume-arbitration"],
+    "mrs:7df26014ca71": ["packet-attribute-family-transform", "primary-stat-to-attack-transform", "standard-attack-coefficient-counterfactual", "critical-chance-counterfactual", "lucky-chance-counterfactual", "mastery-property-transform", "haste-action-opportunity-counterfactual", "combined-provider-stage-conservation"],
+    "mrs:bb70e0999d27": ["imagine-tier-selector", "fixed-point-multiplier-counterfactual", "elemental-resistance-counterfactual", "combined-provider-stage-conservation"],
+    "mrs:bf5a6e0bfc4c": ["dream-damage-classification", "fixed-point-multiplier-counterfactual", "nonstacking-provider-arbitration"],
+    "mrs:9b87362531f1": ["fixed-point-multiplier-counterfactual", "nonstacking-provider-arbitration"],
+    "mrs:9eb6784c8b6a": ["role-count-aura-selector", "packet-attribute-family-transform", "standard-attack-coefficient-counterfactual"],
+    "mrs:93ff3f913c1b": ["changed-stat-selector", "packet-attribute-family-transform", "critical-chance-counterfactual", "lucky-chance-counterfactual", "mastery-property-transform", "haste-action-opportunity-counterfactual", "combined-provider-stage-conservation"],
+    "mrs:82e6c1adc8be": ["factor-grade-selector", "encore-output-ancestry"],
+    "mrs:aedc14af8d2a": ["factor-grade-selector", "encore-output-ancestry"],
+    "mrs:0e330e7e3286": ["packet-attribute-family-transform", "primary-stat-to-attack-transform", "fixed-point-multiplier-counterfactual", "nonstacking-provider-arbitration", "combined-provider-stage-conservation"],
+    "mrs:2e14d5d0d605": ["packet-attribute-family-transform", "primary-stat-to-attack-transform", "fixed-point-multiplier-counterfactual", "nonstacking-provider-arbitration", "combined-provider-stage-conservation"],
+    "mrs:99182b2b1355": ["packet-attribute-family-transform", "standard-attack-coefficient-counterfactual"],
+    "mrs:d6905962338b": ["packet-attribute-family-transform", "standard-attack-coefficient-counterfactual"],
+    "mrs:4d5f3783f014": ["damage-property-row-selector", "fixed-point-multiplier-counterfactual"],
+    "mrs:b74ba0ef71a5": ["imagine-tier-selector", "target-physical-armor-counterfactual", "nonstacking-provider-arbitration"],
+    "mrs:35381d041427": ["critical-damage-counterfactual"]
+  }
+}

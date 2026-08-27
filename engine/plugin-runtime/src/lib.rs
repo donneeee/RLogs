@@ -246,6 +246,61 @@ pub fn replay_rlog<R: BufRead, P: ReplayPlugin>(
         .map_err(ReplayRunError::Plugin)
 }
 
+/// Replays one sealed log through two isolated plug-in hosts in a single
+/// integrity-checked streaming pass.
+///
+/// Both hosts retain independent capabilities, limits, metrics, and outputs.
+/// This avoids repeatedly parsing large canonical logs when built-in plug-ins
+/// need the same event stream.
+pub fn replay_rlog_pair<R, A, B>(
+    input: R,
+    first_plugin: A,
+    second_plugin: B,
+    rlog_limits: RlogLimits,
+    first_limits: PluginRunLimits,
+    second_limits: PluginRunLimits,
+) -> Result<(RlogHeader, PluginRunReport, PluginRunReport), ReplayRunError>
+where
+    R: BufRead,
+    A: ReplayPlugin,
+    B: ReplayPlugin,
+{
+    let reader = RlogReader::new(input, rlog_limits)?;
+    let header = reader.header().clone();
+    let mut first = ReplayPluginHost::new(first_plugin, first_limits)?;
+    let mut second = ReplayPluginHost::new(second_plugin, second_limits)?;
+    let wall_started = Instant::now();
+    first.begin(&header)?;
+    second.begin(&header)?;
+
+    let mut runtime_failure = None;
+    let rlog_result = reader.replay(|envelope| {
+        if let Err(error) = first.deliver(envelope) {
+            let detail = error.to_string();
+            runtime_failure = Some(error);
+            return Err(detail);
+        }
+        if let Err(error) = second.deliver(envelope) {
+            let detail = error.to_string();
+            runtime_failure = Some(error);
+            return Err(detail);
+        }
+        Ok(())
+    });
+    if let Some(error) = runtime_failure {
+        return Err(ReplayRunError::Plugin(error));
+    }
+    let rlog = rlog_result?;
+    let wall_elapsed = wall_started.elapsed();
+    let first = first
+        .finish(rlog.clone(), wall_elapsed)
+        .map_err(ReplayRunError::Plugin)?;
+    let second = second
+        .finish(rlog, wall_elapsed)
+        .map_err(ReplayRunError::Plugin)?;
+    Ok((header, first, second))
+}
+
 struct ReplayPluginHost<P: ReplayPlugin> {
     plugin: P,
     descriptor: ReplayPluginDescriptor,
@@ -663,6 +718,30 @@ mod tests {
                 PluginRuntimeError::PluginFailure { .. }
             ))
         ));
+    }
+
+    #[test]
+    fn paired_replay_delivers_one_verified_stream_to_both_plugins() {
+        let (header, first, second) = replay_rlog_pair(
+            BufReader::new(Cursor::new(rlog())),
+            CountingPlugin {
+                received: 0,
+                output_every_event: false,
+            },
+            CountingPlugin {
+                received: 0,
+                output_every_event: false,
+            },
+            RlogLimits::default(),
+            PluginRunLimits::default(),
+            PluginRunLimits::default(),
+        )
+        .unwrap();
+
+        assert_eq!(header.session_id, "runtime-test");
+        assert_eq!(first.rlog, second.rlog);
+        assert_eq!(first.metrics.events_delivered, 2);
+        assert_eq!(second.metrics.events_delivered, 2);
     }
 
     trait OutputSchema {

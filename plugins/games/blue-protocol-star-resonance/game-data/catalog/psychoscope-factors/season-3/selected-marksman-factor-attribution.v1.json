@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "game_build": "24252055",
+  "observation_id": "psychoscope-factor-capture-001",
+  "scope": "Selected Season 3 Marksman Deep-Slumber Psychoscope factors observed in the retained local-character snapshot. The runtime projection maps direct attributes, primary buffs, energy flow, action triggers, skill changes, and exact recount parents without suppressing raw child actions.",
+  "evidence": [
+    "The full WorldNtf/SyncContainerData snapshot supplies exact selected factor item IDs and grades for the captured character.",
+    "The fresh build-24252055 SeasonPhantomFactorTable scan supplies each selected grade description, primary buff, class gate, direct attribute row, and magnitude.",
+    "RecountTable and current-build combat action presentation supply the exact parent groups and observed raw child action links.",
+    "Localized skill-name relationships are retained as reviewed bridges and do not enable rDPS attribution until event formulas are verified."
+  ],
+  "selected_item_ids": [
+    20020397,
+    20020420,
+    20020425,
+    20020427,
+    20020887,
+    20020927,
+    20021025,
+    20021035,
+    20021155,
+    20021394,
+    20021947,
+    20021967
+  ],
+  "reviewed_recount_group_ids": [84, 85, 87, 88, 94, 95, 96, 97, 106],
+  "policy": "retain_raw_actions_disable_rdps_until_formula_review"
+}

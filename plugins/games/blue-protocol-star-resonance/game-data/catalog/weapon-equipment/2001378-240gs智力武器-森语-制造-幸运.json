@@ -1,24 +1,34 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "kind": "weapon_equipment",
   "id": 2001378,
   "stable_key": "weapon_equipment.2001378",
   "localization_key": null,
-  "icon": null,
+  "icon": "icons/weapons/items/ch_wp_iruna_02_01.png",
   "attributes": {
     "equipment_weapon_id": 2001378,
-    "design_name": "240GS智力武器-森语-制造-幸运"
+    "english_name": "Clarifying Spell Ring",
+    "profession_id": 5,
+    "weapon_skin_id": 7350002,
+    "quality": 4,
+    "item_table_icon_address": "ch_wp_iruna_02_01",
+    "level_progression": [
+      240
+    ],
+    "base_level": 240,
+    "maximum_level": 240,
+    "badge_kind": "weapon"
   },
   "availability": [
     {
       "deployment_id": "global",
       "channel": "steam",
-      "client_build": "24252055"
+      "client_build": "24687926"
     }
   ],
   "provenance": {
-    "source": "ctb.EquipWeaponTable",
-    "reference": "client-build:global/steam/24252055@sha256:59169cfde4f1876b8814261d16f90c7bd37ff83bc396a641973c5eddb68987bc",
+    "source": "ctb.ItemTable+EquipTable+EquipBreakThroughTable+EquipWeaponTable",
+    "reference": "client-build:global/steam/24687926@sha256:e6289b2e5431426f414f9b6e1412f6e58e7e8ad8fa8279242ec2213bc3bcb8da",
     "confidence": "corroborated"
   }
 }

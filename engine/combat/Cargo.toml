@@ -6,6 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+num-bigint.workspace = true
+num-integer.workspace = true
 rlogs-events = { path = "../events" }
 serde.workspace = true
 thiserror.workspace = true

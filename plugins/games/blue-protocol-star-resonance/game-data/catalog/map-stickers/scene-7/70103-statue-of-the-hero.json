@@ -1,0 +1,111 @@
+{
+  "schema_version": 2,
+  "kind": "map_sticker",
+  "id": 70103,
+  "stable_key": "map-sticker.70103",
+  "localization_key": "map-sticker.70103.name",
+  "icon": null,
+  "attributes": {
+    "map_sticker_id": 70103,
+    "name_id": 391988954,
+    "icon_address": "ui/atlas/scenicspot_clock/scenicspot_clock_icon/scenicspot_clock_icon_1",
+    "required_count": 3,
+    "sort_order": 3,
+    "description_id": 991775061,
+    "description_localization_key": "map-sticker.70103.description",
+    "scene_ids": [
+      7
+    ],
+    "scene_keys": [
+      "scene.7"
+    ],
+    "task_ids": [
+      7010301,
+      7010302,
+      7010303
+    ],
+    "tasks": [
+      {
+        "task_id": 7010301,
+        "target_ids": [
+          5
+        ],
+        "title_id": 701969071,
+        "title_localization_key": "map-sticker-task.7010301.title",
+        "description_id": 85196041,
+        "description_localization_key": "map-sticker-task.7010301.description",
+        "required_count": 0,
+        "targets": [
+          {
+            "target_id": 5,
+            "target_type": 321,
+            "parameters": [
+              70103
+            ],
+            "required_count": 1,
+            "scene_id": 7
+          }
+        ]
+      },
+      {
+        "task_id": 7010302,
+        "target_ids": [
+          18
+        ],
+        "title_id": 701969072,
+        "title_localization_key": "map-sticker-task.7010302.title",
+        "description_id": 85196042,
+        "description_localization_key": "map-sticker-task.7010302.description",
+        "required_count": 0,
+        "targets": [
+          {
+            "target_id": 18,
+            "target_type": 409,
+            "parameters": [
+              110075561,
+              0
+            ],
+            "required_count": 1,
+            "scene_id": 7
+          }
+        ]
+      },
+      {
+        "task_id": 7010303,
+        "target_ids": [
+          19
+        ],
+        "title_id": 701969073,
+        "title_localization_key": "map-sticker-task.7010303.title",
+        "description_id": 85196043,
+        "description_localization_key": "map-sticker-task.7010303.description",
+        "required_count": 0,
+        "targets": [
+          {
+            "target_id": 19,
+            "target_type": 409,
+            "parameters": [
+              110075571,
+              0
+            ],
+            "required_count": 1,
+            "scene_id": 7
+          }
+        ]
+      }
+    ],
+    "award_id": 10000230
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.MapStickerTables",
+    "reference": "client-build:global/steam/24252055@sha256:62f1d57bff8c0f7edd8a59f6e50c136a434f5a0265ba515d36c7031083087857",
+    "confidence": "verified"
+  }
+}

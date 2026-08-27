@@ -115,9 +115,14 @@ impl CharacterProfilePatch {
         merge_season(&mut self.season, newer.season);
         replace_if_some(&mut self.appearance, newer.appearance);
         replace_if_some(&mut self.equipment, newer.equipment);
+        replace_if_some(
+            &mut self.equipment_suit_entries,
+            newer.equipment_suit_entries,
+        );
         replace_if_some(&mut self.modules, newer.modules);
         replace_if_some(&mut self.owned_imagines, newer.owned_imagines);
         replace_if_some(&mut self.battle_imagine_skills, newer.battle_imagine_skills);
+        replace_if_some(&mut self.equipped_action_slots, newer.equipped_action_slots);
         replace_if_some(&mut self.active_skills, newer.active_skills);
         replace_if_some(&mut self.talents, newer.talents);
         replace_if_some(&mut self.talent_progress, newer.talent_progress);
@@ -252,9 +257,11 @@ mod tests {
             season: None,
             appearance: None,
             equipment: None,
+            equipment_suit_entries: None,
             modules: None,
             owned_imagines: None,
             battle_imagine_skills: None,
+            equipped_action_slots: None,
             active_skills: None,
             talents: None,
             talent_progress: None,

@@ -1,6 +1,6 @@
 //! Versioned, sealed, streaming `.rlog` files containing canonical events.
 
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Cursor, Read, Write};
 
 use rlogs_events::{
     CanonicalEvent, EVENT_SCHEMA_VERSION, EventEnvelope, EventSensitivity, RegionContext,
@@ -9,10 +9,20 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-pub const RLOG_SCHEMA_VERSION: u16 = 1;
+pub const RLOG_SCHEMA_VERSION: u16 = 2;
+pub const LEGACY_RLOG_SCHEMA_VERSION: u16 = 1;
 pub const MINIMUM_SUPPORTED_EVENT_SCHEMA_VERSION: u16 = 1;
 pub const DEFAULT_MAXIMUM_LINE_BYTES: usize = 2 * 1024 * 1024;
 pub const DEFAULT_MAXIMUM_EVENTS: u64 = 2_000_000;
+pub const DEFAULT_MAXIMUM_BLOCK_BYTES: usize = 4 * 1024 * 1024;
+pub const DEFAULT_MAXIMUM_BLOCK_EVENTS: u32 = 512;
+
+const RLOG_V2_MAGIC: &[u8; 8] = b"RLOG\x02\r\n\x1a";
+const RLOG_V2_EVENT_BLOCK: u8 = 1;
+const RLOG_V2_SEAL: u8 = 255;
+const WRITER_BLOCK_TARGET_BYTES: usize = 512 * 1024;
+const WRITER_BLOCK_TARGET_EVENTS: u32 = 256;
+const ZSTD_COMPRESSION_LEVEL: i32 = 3;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RlogHeader {
@@ -39,7 +49,7 @@ impl RlogHeader {
     }
 
     pub fn validate(&self) -> Result<(), RlogError> {
-        if self.schema_version != RLOG_SCHEMA_VERSION {
+        if !(LEGACY_RLOG_SCHEMA_VERSION..=RLOG_SCHEMA_VERSION).contains(&self.schema_version) {
             return Err(RlogError::UnsupportedSchema {
                 actual: self.schema_version,
             });
@@ -71,6 +81,8 @@ pub struct RlogSeal {
 pub struct RlogLimits {
     pub maximum_line_bytes: usize,
     pub maximum_events: u64,
+    pub maximum_block_bytes: usize,
+    pub maximum_block_events: u32,
 }
 
 impl Default for RlogLimits {
@@ -78,13 +90,19 @@ impl Default for RlogLimits {
         Self {
             maximum_line_bytes: DEFAULT_MAXIMUM_LINE_BYTES,
             maximum_events: DEFAULT_MAXIMUM_EVENTS,
+            maximum_block_bytes: DEFAULT_MAXIMUM_BLOCK_BYTES,
+            maximum_block_events: DEFAULT_MAXIMUM_BLOCK_EVENTS,
         }
     }
 }
 
 impl RlogLimits {
     fn validate(self) -> Result<Self, RlogError> {
-        if self.maximum_line_bytes == 0 || self.maximum_events == 0 {
+        if self.maximum_line_bytes == 0
+            || self.maximum_events == 0
+            || self.maximum_block_bytes == 0
+            || self.maximum_block_events == 0
+        {
             return Err(RlogError::InvalidLimits);
         }
         Ok(self)
@@ -115,17 +133,32 @@ pub struct RlogWriter<W: Write> {
     previous_sequence: Option<u64>,
     previous_timeline_sequence: Option<u64>,
     previous_observed_micros: Option<u64>,
+    encoding: RlogEncoding,
+    block: Vec<u8>,
+    block_event_count: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RlogEncoding {
+    LegacyJsonLines,
+    CompactBlocks,
 }
 
 impl<W: Write> RlogWriter<W> {
     pub fn new(mut output: W, header: RlogHeader) -> Result<Self, RlogError> {
         header.validate()?;
-        write_record(
-            &mut output,
-            &RlogRecord::Header {
-                header: header.clone(),
-            },
-        )?;
+        let encoding = if header.schema_version == LEGACY_RLOG_SCHEMA_VERSION {
+            write_record(
+                &mut output,
+                &RlogRecord::Header {
+                    header: header.clone(),
+                },
+            )?;
+            RlogEncoding::LegacyJsonLines
+        } else {
+            write_compact_header(&mut output, &header)?;
+            RlogEncoding::CompactBlocks
+        };
         Ok(Self {
             output,
             header,
@@ -134,6 +167,9 @@ impl<W: Write> RlogWriter<W> {
             previous_sequence: None,
             previous_timeline_sequence: None,
             previous_observed_micros: None,
+            encoding,
+            block: Vec::with_capacity(WRITER_BLOCK_TARGET_BYTES),
+            block_event_count: 0,
         })
     }
 
@@ -145,13 +181,12 @@ impl<W: Write> RlogWriter<W> {
             self.previous_timeline_sequence,
             self.previous_observed_micros,
         )?;
-        update_content_digest(&mut self.hasher, envelope)?;
-        write_record(
-            &mut self.output,
-            &RlogRecord::Event {
-                envelope: Box::new(envelope.clone()),
-            },
-        )?;
+        match self.encoding {
+            RlogEncoding::LegacyJsonLines => {
+                write_event_record(&mut self.output, &mut self.hasher, envelope)?;
+            }
+            RlogEncoding::CompactBlocks => self.push_compact(envelope)?,
+        }
         self.event_count = self
             .event_count
             .checked_add(1)
@@ -169,14 +204,62 @@ impl<W: Write> RlogWriter<W> {
     }
 
     pub fn finish_with_seal(mut self) -> Result<(W, RlogSeal), RlogError> {
+        if self.encoding == RlogEncoding::CompactBlocks {
+            self.flush_compact_block()?;
+        }
         let content_sha256 = digest_string(self.hasher.finalize());
         let seal = RlogSeal {
             event_count: self.event_count,
             content_sha256,
         };
-        write_record(&mut self.output, &RlogRecord::Seal { seal: seal.clone() })?;
+        match self.encoding {
+            RlogEncoding::LegacyJsonLines => {
+                write_record(&mut self.output, &RlogRecord::Seal { seal: seal.clone() })?;
+            }
+            RlogEncoding::CompactBlocks => write_compact_seal(&mut self.output, &seal)?,
+        }
         self.output.flush()?;
         Ok((self.output, seal))
+    }
+
+    fn push_compact(&mut self, envelope: &EventEnvelope) -> Result<(), RlogError> {
+        let encoded = serde_json::to_vec(envelope)?;
+        if encoded.len() > DEFAULT_MAXIMUM_LINE_BYTES {
+            return Err(RlogError::EventTooLarge {
+                actual: encoded.len(),
+                maximum: DEFAULT_MAXIMUM_LINE_BYTES,
+            });
+        }
+        let encoded_with_newline = encoded.len().saturating_add(1);
+        if self.block_event_count > 0
+            && (self.block.len().saturating_add(encoded_with_newline) > WRITER_BLOCK_TARGET_BYTES
+                || self.block_event_count >= WRITER_BLOCK_TARGET_EVENTS)
+        {
+            self.flush_compact_block()?;
+        }
+        self.hasher.update(&encoded);
+        self.hasher.update(b"\n");
+        self.block.extend_from_slice(&encoded);
+        self.block.push(b'\n');
+        self.block_event_count = self
+            .block_event_count
+            .checked_add(1)
+            .ok_or(RlogError::BlockEventCountOverflow)?;
+        Ok(())
+    }
+
+    fn flush_compact_block(&mut self) -> Result<(), RlogError> {
+        if self.block_event_count == 0 {
+            return Ok(());
+        }
+        write_compact_event_block(
+            &mut self.output,
+            self.block_event_count,
+            self.block.as_slice(),
+        )?;
+        self.block.clear();
+        self.block_event_count = 0;
+        Ok(())
     }
 }
 
@@ -193,16 +276,53 @@ pub struct RlogReader<R: BufRead> {
     first_observed_micros: Option<u64>,
     finished: bool,
     summary: Option<RlogReplaySummary>,
+    encoding: RlogEncoding,
+    block: Vec<u8>,
+    block_offset: usize,
+    block_events_remaining: u32,
 }
 
 impl<R: BufRead> RlogReader<R> {
     pub fn new(mut input: R, limits: RlogLimits) -> Result<Self, RlogError> {
         let limits = limits.validate()?;
-        let line = read_bounded_line(&mut input, limits.maximum_line_bytes, 1)?
+        let first = input
+            .fill_buf()?
+            .first()
+            .copied()
             .ok_or(RlogError::MissingHeader)?;
-        let record = parse_record(&line, 1)?;
-        let RlogRecord::Header { header } = record else {
-            return Err(RlogError::HeaderMustBeFirst);
+        let (encoding, header) = if first == RLOG_V2_MAGIC[0] {
+            let mut magic = [0_u8; RLOG_V2_MAGIC.len()];
+            input.read_exact(&mut magic)?;
+            if &magic != RLOG_V2_MAGIC {
+                return Err(RlogError::InvalidCompactMagic);
+            }
+            let header_bytes = read_length_prefixed_bytes(
+                &mut input,
+                limits.maximum_line_bytes,
+                "compact header",
+            )?;
+            let header: RlogHeader = serde_json::from_slice(&header_bytes)?;
+            if header.schema_version != RLOG_SCHEMA_VERSION {
+                return Err(RlogError::EncodingSchemaMismatch {
+                    encoding: "compact",
+                    actual: header.schema_version,
+                });
+            }
+            (RlogEncoding::CompactBlocks, header)
+        } else {
+            let line = read_bounded_line(&mut input, limits.maximum_line_bytes, 1)?
+                .ok_or(RlogError::MissingHeader)?;
+            let record = parse_record(&line, 1)?;
+            let RlogRecord::Header { header } = record else {
+                return Err(RlogError::HeaderMustBeFirst);
+            };
+            if header.schema_version != LEGACY_RLOG_SCHEMA_VERSION {
+                return Err(RlogError::EncodingSchemaMismatch {
+                    encoding: "json-lines",
+                    actual: header.schema_version,
+                });
+            }
+            (RlogEncoding::LegacyJsonLines, header)
         };
         header.validate()?;
         Ok(Self {
@@ -218,6 +338,10 @@ impl<R: BufRead> RlogReader<R> {
             first_observed_micros: None,
             finished: false,
             summary: None,
+            encoding,
+            block: Vec::new(),
+            block_offset: 0,
+            block_events_remaining: 0,
         })
     }
 
@@ -234,6 +358,13 @@ impl<R: BufRead> RlogReader<R> {
         if self.finished {
             return Ok(None);
         }
+        match self.encoding {
+            RlogEncoding::LegacyJsonLines => self.next_legacy_event(),
+            RlogEncoding::CompactBlocks => self.next_compact_event(),
+        }
+    }
+
+    fn next_legacy_event(&mut self) -> Result<Option<EventEnvelope>, RlogError> {
         self.line_number = self
             .line_number
             .checked_add(1)
@@ -249,58 +380,201 @@ impl<R: BufRead> RlogReader<R> {
         match parse_record(&line, self.line_number)? {
             RlogRecord::Header { .. } => Err(RlogError::DuplicateHeader),
             RlogRecord::Event { envelope } => {
-                if self.event_count >= self.limits.maximum_events {
-                    return Err(RlogError::EventLimitExceeded {
-                        maximum: self.limits.maximum_events,
-                    });
-                }
-                validate_envelope(
-                    &self.header,
-                    &envelope,
-                    self.previous_sequence,
-                    self.previous_timeline_sequence,
-                    self.previous_observed_micros,
-                )?;
-                update_content_digest(&mut self.hasher, &envelope)?;
-                self.event_count += 1;
-                self.previous_sequence = Some(envelope.sequence);
-                if let CanonicalEvent::Timeline(event) = &envelope.event {
-                    self.previous_timeline_sequence = Some(event.sequence);
-                }
-                self.previous_observed_micros = Some(envelope.time.observed_micros);
-                self.first_observed_micros
-                    .get_or_insert(envelope.time.observed_micros);
-                Ok(Some(*envelope))
+                let encoded = legacy_event_envelope_bytes(&line, self.line_number)?;
+                let next_hasher = digest_after_encoded_event(&self.hasher, encoded);
+                self.accept_event(*envelope, next_hasher).map(Some)
             }
-            RlogRecord::Seal { seal } => {
-                if seal.event_count != self.event_count {
-                    return Err(RlogError::SealEventCountMismatch {
-                        expected: self.event_count,
-                        actual: seal.event_count,
-                    });
-                }
-                let actual_digest = digest_string(self.hasher.clone().finalize());
-                if seal.content_sha256 != actual_digest {
-                    return Err(RlogError::SealDigestMismatch {
-                        expected: seal.content_sha256,
-                        actual: actual_digest,
-                    });
-                }
+            RlogRecord::Seal { seal } => self.finish_replay(seal, |reader| {
                 ensure_end_of_file(
-                    &mut self.input,
-                    self.limits.maximum_line_bytes,
-                    self.line_number,
-                )?;
-                self.finished = true;
-                self.summary = Some(RlogReplaySummary {
-                    event_count: self.event_count,
-                    first_observed_micros: self.first_observed_micros,
-                    last_observed_micros: self.previous_observed_micros,
-                    content_sha256: actual_digest,
-                });
-                Ok(None)
+                    &mut reader.input,
+                    reader.limits.maximum_line_bytes,
+                    reader.line_number,
+                )
+            }),
+        }
+    }
+
+    fn next_compact_event(&mut self) -> Result<Option<EventEnvelope>, RlogError> {
+        loop {
+            if self.block_events_remaining > 0 {
+                let relative_end = self.block[self.block_offset..]
+                    .iter()
+                    .position(|byte| *byte == b'\n')
+                    .ok_or(RlogError::CompactBlockMissingDelimiter)?;
+                let end = self.block_offset.saturating_add(relative_end);
+                let event_bytes = &self.block[self.block_offset..end];
+                if event_bytes.is_empty() {
+                    return Err(RlogError::CompactBlockEmptyEvent);
+                }
+                if event_bytes.len() > self.limits.maximum_line_bytes {
+                    return Err(RlogError::LineTooLong {
+                        line: self.event_count.saturating_add(1),
+                        maximum: self.limits.maximum_line_bytes,
+                    });
+                }
+                let next_hasher = digest_after_encoded_event(&self.hasher, event_bytes);
+                let envelope: EventEnvelope =
+                    serde_json::from_slice(event_bytes).map_err(|source| {
+                        RlogError::InvalidRecord {
+                            line: self.event_count.saturating_add(1),
+                            source,
+                        }
+                    })?;
+                self.block_offset = end.saturating_add(1);
+                self.block_events_remaining -= 1;
+                if self.block_events_remaining == 0 && self.block_offset != self.block.len() {
+                    return Err(RlogError::CompactBlockEventCountMismatch);
+                }
+                return self.accept_event(envelope, next_hasher).map(Some);
+            }
+
+            let Some(tag) = read_optional_byte(&mut self.input)? else {
+                return Err(RlogError::MissingSeal);
+            };
+            match tag {
+                RLOG_V2_EVENT_BLOCK => self.read_compact_block()?,
+                RLOG_V2_SEAL => {
+                    let seal_bytes = read_length_prefixed_bytes(
+                        &mut self.input,
+                        self.limits.maximum_line_bytes,
+                        "compact seal",
+                    )?;
+                    let seal: RlogSeal = serde_json::from_slice(&seal_bytes)?;
+                    return self.finish_replay(seal, |reader| {
+                        ensure_binary_end_of_file(&mut reader.input)
+                    });
+                }
+                actual => return Err(RlogError::UnknownCompactRecord { actual }),
             }
         }
+    }
+
+    fn read_compact_block(&mut self) -> Result<(), RlogError> {
+        let declared_events = read_u32(&mut self.input, "compact block event count")?;
+        let uncompressed_bytes = usize::try_from(read_u32(
+            &mut self.input,
+            "compact block uncompressed length",
+        )?)
+        .map_err(|_| RlogError::CompactLengthOverflow)?;
+        let compressed_bytes = usize::try_from(read_u32(
+            &mut self.input,
+            "compact block compressed length",
+        )?)
+        .map_err(|_| RlogError::CompactLengthOverflow)?;
+        if declared_events == 0 || declared_events > self.limits.maximum_block_events {
+            return Err(RlogError::CompactBlockEventLimitExceeded {
+                actual: declared_events,
+                maximum: self.limits.maximum_block_events,
+            });
+        }
+        if uncompressed_bytes == 0 || uncompressed_bytes > self.limits.maximum_block_bytes {
+            return Err(RlogError::CompactBlockSizeLimitExceeded {
+                kind: "uncompressed",
+                actual: uncompressed_bytes,
+                maximum: self.limits.maximum_block_bytes,
+            });
+        }
+        if compressed_bytes == 0 || compressed_bytes > self.limits.maximum_block_bytes {
+            return Err(RlogError::CompactBlockSizeLimitExceeded {
+                kind: "compressed",
+                actual: compressed_bytes,
+                maximum: self.limits.maximum_block_bytes,
+            });
+        }
+        if self.event_count.saturating_add(u64::from(declared_events)) > self.limits.maximum_events
+        {
+            return Err(RlogError::EventLimitExceeded {
+                maximum: self.limits.maximum_events,
+            });
+        }
+        let mut compressed = vec![0_u8; compressed_bytes];
+        self.input.read_exact(&mut compressed)?;
+        let decoder = zstd::stream::read::Decoder::new(Cursor::new(compressed))?;
+        let mut limited = decoder.take(
+            u64::try_from(uncompressed_bytes)
+                .unwrap_or(u64::MAX)
+                .saturating_add(1),
+        );
+        self.block.clear();
+        limited.read_to_end(&mut self.block)?;
+        if self.block.len() != uncompressed_bytes {
+            return Err(RlogError::CompactBlockLengthMismatch {
+                declared: uncompressed_bytes,
+                actual: self.block.len(),
+            });
+        }
+        let actual_events = self.block.iter().filter(|byte| **byte == b'\n').count();
+        if self.block.last() != Some(&b'\n')
+            || actual_events != usize::try_from(declared_events).unwrap_or(usize::MAX)
+        {
+            return Err(RlogError::CompactBlockEventCountMismatch);
+        }
+        self.block_offset = 0;
+        self.block_events_remaining = declared_events;
+        Ok(())
+    }
+
+    fn accept_event(
+        &mut self,
+        envelope: EventEnvelope,
+        next_hasher: Sha256,
+    ) -> Result<EventEnvelope, RlogError> {
+        if self.event_count >= self.limits.maximum_events {
+            return Err(RlogError::EventLimitExceeded {
+                maximum: self.limits.maximum_events,
+            });
+        }
+        validate_envelope(
+            &self.header,
+            &envelope,
+            self.previous_sequence,
+            self.previous_timeline_sequence,
+            self.previous_observed_micros,
+        )?;
+        // The seal covers the exact envelope JSON stored in the file. Hashing
+        // a deserialized envelope again would silently add fields introduced
+        // by a newer event schema and invalidate otherwise untouched legacy
+        // captures. Parsing and all canonical validation still happen above;
+        // only the integrity input stays byte-for-byte stable.
+        self.hasher = next_hasher;
+        self.event_count += 1;
+        self.previous_sequence = Some(envelope.sequence);
+        if let CanonicalEvent::Timeline(event) = &envelope.event {
+            self.previous_timeline_sequence = Some(event.sequence);
+        }
+        self.previous_observed_micros = Some(envelope.time.observed_micros);
+        self.first_observed_micros
+            .get_or_insert(envelope.time.observed_micros);
+        Ok(envelope)
+    }
+
+    fn finish_replay(
+        &mut self,
+        seal: RlogSeal,
+        ensure_end: impl FnOnce(&mut Self) -> Result<(), RlogError>,
+    ) -> Result<Option<EventEnvelope>, RlogError> {
+        if seal.event_count != self.event_count {
+            return Err(RlogError::SealEventCountMismatch {
+                expected: self.event_count,
+                actual: seal.event_count,
+            });
+        }
+        let actual_digest = digest_string(self.hasher.clone().finalize());
+        if seal.content_sha256 != actual_digest {
+            return Err(RlogError::SealDigestMismatch {
+                expected: seal.content_sha256,
+                actual: actual_digest,
+            });
+        }
+        ensure_end(self)?;
+        self.finished = true;
+        self.summary = Some(RlogReplaySummary {
+            event_count: self.event_count,
+            first_observed_micros: self.first_observed_micros,
+            last_observed_micros: self.previous_observed_micros,
+            content_sha256: actual_digest,
+        });
+        Ok(None)
     }
 
     pub fn summary(&self) -> Option<&RlogReplaySummary> {
@@ -385,10 +659,21 @@ fn validate_envelope(
     Ok(())
 }
 
-fn update_content_digest(hasher: &mut Sha256, envelope: &EventEnvelope) -> Result<(), RlogError> {
-    hasher.update(serde_json::to_vec(envelope)?);
-    hasher.update(b"\n");
-    Ok(())
+fn digest_after_encoded_event(hasher: &Sha256, encoded: &[u8]) -> Sha256 {
+    let mut next = hasher.clone();
+    next.update(encoded);
+    next.update(b"\n");
+    next
+}
+
+fn legacy_event_envelope_bytes<'a>(
+    line: &'a [u8],
+    line_number: u64,
+) -> Result<&'a [u8], RlogError> {
+    const PREFIX: &[u8] = br#"{"record":"event","envelope":"#;
+    line.strip_prefix(PREFIX)
+        .and_then(|encoded| encoded.strip_suffix(b"}"))
+        .ok_or(RlogError::LegacyEventEncoding { line: line_number })
 }
 
 fn digest_string(digest: impl std::fmt::LowerHex) -> String {
@@ -399,6 +684,127 @@ fn write_record(output: &mut impl Write, record: &RlogRecord) -> Result<(), Rlog
     serde_json::to_writer(&mut *output, record)?;
     output.write_all(b"\n")?;
     Ok(())
+}
+
+fn write_compact_header(output: &mut impl Write, header: &RlogHeader) -> Result<(), RlogError> {
+    output.write_all(RLOG_V2_MAGIC)?;
+    write_length_prefixed_json(output, header)
+}
+
+fn write_compact_event_block(
+    output: &mut impl Write,
+    event_count: u32,
+    uncompressed: &[u8],
+) -> Result<(), RlogError> {
+    let uncompressed_length =
+        u32::try_from(uncompressed.len()).map_err(|_| RlogError::CompactLengthOverflow)?;
+    let compressed = zstd::stream::encode_all(Cursor::new(uncompressed), ZSTD_COMPRESSION_LEVEL)?;
+    let compressed_length =
+        u32::try_from(compressed.len()).map_err(|_| RlogError::CompactLengthOverflow)?;
+    output.write_all(&[RLOG_V2_EVENT_BLOCK])?;
+    output.write_all(&event_count.to_le_bytes())?;
+    output.write_all(&uncompressed_length.to_le_bytes())?;
+    output.write_all(&compressed_length.to_le_bytes())?;
+    output.write_all(&compressed)?;
+    Ok(())
+}
+
+fn write_compact_seal(output: &mut impl Write, seal: &RlogSeal) -> Result<(), RlogError> {
+    output.write_all(&[RLOG_V2_SEAL])?;
+    write_length_prefixed_json(output, seal)
+}
+
+fn write_length_prefixed_json(
+    output: &mut impl Write,
+    value: &impl Serialize,
+) -> Result<(), RlogError> {
+    let encoded = serde_json::to_vec(value)?;
+    let length = u32::try_from(encoded.len()).map_err(|_| RlogError::CompactLengthOverflow)?;
+    output.write_all(&length.to_le_bytes())?;
+    output.write_all(&encoded)?;
+    Ok(())
+}
+
+fn read_u32(input: &mut impl Read, context: &'static str) -> Result<u32, RlogError> {
+    let mut bytes = [0_u8; 4];
+    input
+        .read_exact(&mut bytes)
+        .map_err(|source| RlogError::TruncatedCompactRecord { context, source })?;
+    Ok(u32::from_le_bytes(bytes))
+}
+
+fn read_length_prefixed_bytes(
+    input: &mut impl Read,
+    maximum: usize,
+    context: &'static str,
+) -> Result<Vec<u8>, RlogError> {
+    let length =
+        usize::try_from(read_u32(input, context)?).map_err(|_| RlogError::CompactLengthOverflow)?;
+    if length == 0 || length > maximum {
+        return Err(RlogError::CompactRecordSizeLimitExceeded {
+            context,
+            actual: length,
+            maximum,
+        });
+    }
+    let mut bytes = vec![0_u8; length];
+    input
+        .read_exact(&mut bytes)
+        .map_err(|source| RlogError::TruncatedCompactRecord { context, source })?;
+    Ok(bytes)
+}
+
+fn read_optional_byte(input: &mut impl Read) -> Result<Option<u8>, RlogError> {
+    let mut byte = [0_u8; 1];
+    match input.read(&mut byte)? {
+        0 => Ok(None),
+        1 => Ok(Some(byte[0])),
+        _ => unreachable!("a one-byte read cannot return more than one byte"),
+    }
+}
+
+fn ensure_binary_end_of_file(input: &mut impl Read) -> Result<(), RlogError> {
+    if read_optional_byte(input)?.is_some() {
+        return Err(RlogError::RecordAfterSeal);
+    }
+    Ok(())
+}
+
+/// Writes the event wrapper while serializing the envelope exactly once.
+///
+/// The canonical content digest covers the envelope JSON, not the surrounding
+/// rlog record. Hashing through this writer preserves that contract without
+/// allocating a second JSON buffer or cloning the full event.
+fn write_event_record(
+    output: &mut impl Write,
+    hasher: &mut Sha256,
+    envelope: &EventEnvelope,
+) -> Result<(), RlogError> {
+    output.write_all(br#"{"record":"event","envelope":"#)?;
+    {
+        let mut digesting_output = DigestingWriter { output, hasher };
+        serde_json::to_writer(&mut digesting_output, envelope)?;
+    }
+    output.write_all(b"}\n")?;
+    hasher.update(b"\n");
+    Ok(())
+}
+
+struct DigestingWriter<'a, W> {
+    output: &'a mut W,
+    hasher: &'a mut Sha256,
+}
+
+impl<W: Write> Write for DigestingWriter<'_, W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.output.write_all(bytes)?;
+        self.hasher.update(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.output.flush()
+    }
 }
 
 fn parse_record(line: &[u8], line_number: u64) -> Result<RlogRecord, RlogError> {
@@ -479,6 +885,56 @@ pub enum RlogError {
         source: serde_json::Error,
     },
 
+    #[error("legacy rlog event on line {line} does not use the canonical envelope wrapper")]
+    LegacyEventEncoding { line: u64 },
+
+    #[error("rlog compact container magic is invalid")]
+    InvalidCompactMagic,
+
+    #[error("rlog {encoding} encoding cannot carry schema version {actual}")]
+    EncodingSchemaMismatch { encoding: &'static str, actual: u16 },
+
+    #[error("rlog compact record {context} is truncated: {source}")]
+    TruncatedCompactRecord {
+        context: &'static str,
+        source: std::io::Error,
+    },
+
+    #[error("rlog compact length does not fit the container")]
+    CompactLengthOverflow,
+
+    #[error("rlog compact record {context} is {actual} bytes; maximum is {maximum}")]
+    CompactRecordSizeLimitExceeded {
+        context: &'static str,
+        actual: usize,
+        maximum: usize,
+    },
+
+    #[error("rlog compact event block contains {actual} events; maximum is {maximum}")]
+    CompactBlockEventLimitExceeded { actual: u32, maximum: u32 },
+
+    #[error("rlog compact {kind} block is {actual} bytes; maximum is {maximum}")]
+    CompactBlockSizeLimitExceeded {
+        kind: &'static str,
+        actual: usize,
+        maximum: usize,
+    },
+
+    #[error("rlog compact block declared {declared} bytes but decoded {actual}")]
+    CompactBlockLengthMismatch { declared: usize, actual: usize },
+
+    #[error("rlog compact block event count does not match its payload")]
+    CompactBlockEventCountMismatch,
+
+    #[error("rlog compact block is missing an event delimiter")]
+    CompactBlockMissingDelimiter,
+
+    #[error("rlog compact block contains an empty event")]
+    CompactBlockEmptyEvent,
+
+    #[error("rlog compact record tag {actual} is unknown")]
+    UnknownCompactRecord { actual: u8 },
+
     #[error("rlog schema version {actual} is unsupported")]
     UnsupportedSchema { actual: u16 },
 
@@ -520,6 +976,12 @@ pub enum RlogError {
 
     #[error("rlog event count space is exhausted")]
     EventCountOverflow,
+
+    #[error("rlog compact block event count space is exhausted")]
+    BlockEventCountOverflow,
+
+    #[error("canonical event is {actual} bytes; maximum is {maximum}")]
+    EventTooLarge { actual: usize, maximum: usize },
 
     #[error("rlog exceeds the {maximum}-event replay limit")]
     EventLimitExceeded { maximum: u64 },
@@ -638,9 +1100,19 @@ mod tests {
         writer.finish().unwrap()
     }
 
+    fn encoded_legacy_log() -> Vec<u8> {
+        let mut header = RlogHeader::new("session-1", region(), "unit-test");
+        header.schema_version = LEGACY_RLOG_SCHEMA_VERSION;
+        let mut writer = RlogWriter::new(Vec::new(), header).unwrap();
+        writer.push(&envelope(1, 10)).unwrap();
+        writer.push(&envelope(2, 20)).unwrap();
+        writer.finish().unwrap()
+    }
+
     #[test]
     fn sealed_log_streams_and_verifies() {
         let bytes = encoded_log();
+        assert!(bytes.starts_with(RLOG_V2_MAGIC));
         let reader =
             RlogReader::new(BufReader::new(Cursor::new(bytes)), RlogLimits::default()).unwrap();
         let mut sequences = Vec::new();
@@ -656,6 +1128,36 @@ mod tests {
         assert_eq!(summary.first_observed_micros, Some(10));
         assert_eq!(summary.last_observed_micros, Some(20));
         assert!(summary.content_sha256.starts_with("sha256:"));
+    }
+
+    #[test]
+    fn legacy_seal_uses_stored_envelope_bytes_across_schema_evolution() {
+        let text = String::from_utf8(encoded_legacy_log()).unwrap();
+        let mut lines = text.lines().map(str::to_owned).collect::<Vec<_>>();
+        lines[1] = lines[1].replacen(
+            r#"{"record":"event","envelope":{"#,
+            r#"{"record":"event","envelope":{"legacy_extension":true,"#,
+            1,
+        );
+
+        let mut hasher = Sha256::new();
+        for (index, line) in lines[1..=2].iter().enumerate() {
+            let encoded = legacy_event_envelope_bytes(line.as_bytes(), index as u64 + 2).unwrap();
+            hasher.update(encoded);
+            hasher.update(b"\n");
+        }
+        let seal = RlogSeal {
+            event_count: 2,
+            content_sha256: digest_string(hasher.finalize()),
+        };
+        lines[3] = serde_json::to_string(&RlogRecord::Seal { seal }).unwrap();
+        let encoded = format!("{}\n", lines.join("\n")).into_bytes();
+
+        let summary = RlogReader::new(BufReader::new(Cursor::new(encoded)), RlogLimits::default())
+            .unwrap()
+            .replay(|_| Ok(()))
+            .unwrap();
+        assert_eq!(summary.event_count, 2);
     }
 
     #[test]
@@ -675,7 +1177,7 @@ mod tests {
 
     #[test]
     fn tampered_event_is_rejected_by_the_seal() {
-        let bytes = encoded_log();
+        let bytes = encoded_legacy_log();
         let text = String::from_utf8(bytes).unwrap();
         let tampered = text.replace("\"observed_micros\":20", "\"observed_micros\":21");
         let reader = RlogReader::new(
@@ -698,6 +1200,7 @@ mod tests {
                 RlogLimits {
                     maximum_line_bytes: 8,
                     maximum_events: 10,
+                    ..RlogLimits::default()
                 }
             ),
             Err(RlogError::LineTooLong { .. })
@@ -766,5 +1269,44 @@ mod tests {
         let mut header = RlogHeader::new("session-1", region(), "unit-test");
         header.event_schema_version = 1;
         assert!(header.validate().is_ok());
+    }
+
+    #[test]
+    fn compact_encoding_preserves_every_event_and_canonical_digest() {
+        let mut compact_writer = RlogWriter::new(
+            Vec::new(),
+            RlogHeader::new("session-1", region(), "unit-test"),
+        )
+        .unwrap();
+        let mut legacy_header = RlogHeader::new("session-1", region(), "unit-test");
+        legacy_header.schema_version = LEGACY_RLOG_SCHEMA_VERSION;
+        let mut legacy_writer = RlogWriter::new(Vec::new(), legacy_header).unwrap();
+        let mut expected = Vec::new();
+        for sequence in 1..=600 {
+            let event = envelope(sequence, sequence * 10);
+            compact_writer.push(&event).unwrap();
+            legacy_writer.push(&event).unwrap();
+            expected.push(event);
+        }
+        let (compact, compact_seal) = compact_writer.finish_with_seal().unwrap();
+        let (legacy, legacy_seal) = legacy_writer.finish_with_seal().unwrap();
+        assert_eq!(compact_seal.event_count, 600);
+        assert_eq!(compact_seal, legacy_seal);
+        assert!(compact.len() < legacy.len() / 2);
+
+        for encoded in [compact, legacy] {
+            let mut actual = Vec::new();
+            let summary =
+                RlogReader::new(BufReader::new(Cursor::new(encoded)), RlogLimits::default())
+                    .unwrap()
+                    .replay(|event| {
+                        actual.push(event.clone());
+                        Ok(())
+                    })
+                    .unwrap();
+            assert_eq!(actual, expected);
+            assert_eq!(summary.event_count, 600);
+            assert_eq!(summary.content_sha256, compact_seal.content_sha256);
+        }
     }
 }

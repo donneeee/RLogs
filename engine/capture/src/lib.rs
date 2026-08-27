@@ -25,7 +25,11 @@ pub use recording::{
     OwnedCaptureRecordingError, OwnedCaptureRecordingResult, record_owned_capture_to_files,
 };
 #[cfg(windows)]
-pub use windows::{WindowsOwnedDumpcapCapture, WindowsProcessSocketOwner};
+pub use windows::{
+    WindowsCaptureAdapter, WindowsCaptureAdapterRecommendation,
+    WindowsCaptureAdapterRecommendationSource, WindowsOwnedDumpcapCapture,
+    WindowsProcessSocketOwner, recommend_windows_capture_adapter, windows_capture_adapters,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

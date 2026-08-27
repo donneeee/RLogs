@@ -1,0 +1,17 @@
+schema_version = 1
+id = "app.rlogs.log-uploader"
+name = "Log Uploader"
+version = "0.1.0"
+api_version = 1
+runtime = "browser_overlay"
+entrypoint = "ui/runtime.html"
+capabilities = ["ui_workspace_publish"]
+subscriptions = []
+allowed_network_domains = []
+
+[[settings_tab_contributions]]
+id = "submissions"
+label = "Log Uploader"
+entrypoint = "ui/settings.html"
+section = "submissions"
+default_order = 300

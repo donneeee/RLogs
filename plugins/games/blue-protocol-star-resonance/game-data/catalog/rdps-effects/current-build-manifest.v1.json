@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "generated_by": "tools/bpsr-catalog-identity-manifest.mjs",
+  "game_build": "24687926",
+  "deployment_id": "global",
+  "channel": "steam",
+  "catalog_root": "plugins/games/blue-protocol-star-resonance/game-data/catalog/rdps-effects",
+  "identity_manifest_relative_path": "current-build-manifest.v1.json",
+  "policy": {
+    "every_source_file_is_hashed": true,
+    "identity_manifest_is_the_only_snapshot_build_router": true,
+    "historical_entries_are_retained": true,
+    "historical_entries_have_runtime_authority": false,
+    "unversioned_entries_have_runtime_authority": false,
+    "current_build_entries_are_candidate_evidence_only": true,
+    "exact_numeric_ids_remain_authoritative": true,
+    "unresolved_entries_are_hidden": false,
+    "runtime_promotion_allowed": false
+  },
+  "summary": {
+    "indexed_files": 14,
+    "indexed_bytes": 132821,
+    "current_build_entry_count": 3,
+    "historical_build_entry_count": 10,
+    "mixed_build_entry_count": 0,
+    "unversioned_entry_count": 1,
+    "invalid_json_entry_count": 0,
+    "identity_state_counts": {
+      "current-build": 3,
+      "historical-build": 10,
+      "unversioned": 1
+    }
+  },
+  "source_tree_sha256": "d570de5fcaa5e05bf623a865776a78a2bb995ba4951a9e7c029896a2175534e6",
+  "entries": [
+    {
+      "path": "offensive-stat-boost/confirmed/2110140-mechanical-power.json",
+      "bytes": 18115,
+      "sha256": "d6d810aadbdf9eb09808f9ebcb05a7ab78dc579a7ae27e13676d1d47782f17bd",
+      "kind": "json",
+      "declared_builds": [
+        "24687926"
+      ],
+      "identity_state": "current-build"
+    },
+    {
+      "path": "offensive-stat-boost/confirmed/2110143-functional-amp.json",
+      "bytes": 1922,
+      "sha256": "596210161c6feaaf3773c5d3c2ff513b9367f4efc93eddb05d34e8916e276fbb",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "offensive-stat-boost/confirmed/2202041-inspiration.json",
+      "bytes": 5533,
+      "sha256": "1f2de6da24a41bcf96096218814f6d6167a0fa75a014a39af305049d0fd858fa",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "offensive-stat-boost/confirmed/3003052-harmony-grace.json",
+      "bytes": 12684,
+      "sha256": "90af51f95a65e23a15069525a2682d6b5c0455b2937a03fc3ce0a02b0d8302ee",
+      "kind": "json",
+      "declared_builds": [
+        "24687926"
+      ],
+      "identity_state": "current-build"
+    },
+    {
+      "path": "README.md",
+      "bytes": 86400,
+      "sha256": "e0f67830f0020adfd190251745170768e5582b0b4c49ed97a2e2dbe75b79753e",
+      "kind": "non-json",
+      "declared_builds": [],
+      "identity_state": "unversioned"
+    },
+    {
+      "path": "self-only/confirmed/2300621-dmg-stack.json",
+      "bytes": 1160,
+      "sha256": "34f1c3858516484df639874bed45e59a45cafcfead68fab4afe74bea95a366b6",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "target-vulnerability/candidate/55228-luminary-bolt-vulnerability.json",
+      "bytes": 2185,
+      "sha256": "bd9a48931ef8bd30583225ddceef629f25ae5c573968ea428d034d91653be6a0",
+      "kind": "json",
+      "declared_builds": [
+        "24687926"
+      ],
+      "identity_state": "current-build"
+    },
+    {
+      "path": "target-vulnerability/confirmed/2203031-wounding-curse.json",
+      "bytes": 809,
+      "sha256": "80b54dbb9e1e738ce0b8cac9810d1e64b9f1fc42e58fc57577be52b0b62efef1",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "target-vulnerability/confirmed/2205031-wounding-curse.json",
+      "bytes": 811,
+      "sha256": "b09419fb3eab8d7b00b8cf0d02a655ac2baeb9bb94873a9aa8cc02d7a7ef16f3",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "unclassified/unclassified/3056391-haste-chant.json",
+      "bytes": 655,
+      "sha256": "b0c31d534b2e353e1ebcb413c9b5fc6e78e13162eb3f1a74c3933b83cca33355",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "unclassified/unclassified/3057200-heroic-rhapsody-all-skill-damage.json",
+      "bytes": 669,
+      "sha256": "ca69581dd6a60b775443683f4d00df2d719250625cc5819234317de92ee5180c",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "unclassified/unclassified/702003-exaltation-anthem-5-percent.json",
+      "bytes": 626,
+      "sha256": "0a6dc87fcc20744a6bd5c3b042b70a5ca68814a0fb0c0a4e3ad34c885968ac17",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "unclassified/unclassified/702004-exaltation-anthem-10-percent.json",
+      "bytes": 629,
+      "sha256": "8ebdabffb16d6a9247567175e889901b18b339009f9a7cad6076bb17e87fd32c",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "unclassified/unclassified/702005-exaltation-anthem-20-percent.json",
+      "bytes": 623,
+      "sha256": "3cc03879876910d54fd667f47d7a93829923f2ead56fe6859159fa68d19d0b56",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    }
+  ],
+  "content_sha256": "394769d9ad0f899b436931b0ad4810aeae8675d8612f5031952ca7d5d107490f"
+}

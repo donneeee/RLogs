@@ -26,6 +26,8 @@ const SAMPLE_WORKSPACES: readonly WorkspaceDescriptor[] = [
         kind: "content",
         entrypoint: "development://combat-meter/live",
         contributorPluginId: "app.rlogs.combat-meter",
+        sectionId: "app.rlogs.combat-meter:main",
+        defaultOrder: 0,
       },
     ],
   },
@@ -45,6 +47,8 @@ const SAMPLE_WORKSPACES: readonly WorkspaceDescriptor[] = [
         kind: "content",
         entrypoint: "development://profile/profile",
         contributorPluginId: "app.rlogs.character-profiles",
+        sectionId: "app.rlogs.character-profiles:main",
+        defaultOrder: 0,
       },
       {
         id: "app.rlogs.character-profiles:sync",
@@ -52,6 +56,8 @@ const SAMPLE_WORKSPACES: readonly WorkspaceDescriptor[] = [
         kind: "content",
         entrypoint: "development://profile/sync",
         contributorPluginId: "app.rlogs.character-profiles",
+        sectionId: "app.rlogs.character-profiles:main",
+        defaultOrder: 1,
       },
       {
         id: "app.rlogs.module-optimizer:modules",
@@ -59,6 +65,8 @@ const SAMPLE_WORKSPACES: readonly WorkspaceDescriptor[] = [
         kind: "content",
         entrypoint: "development://profile/modules",
         contributorPluginId: "app.rlogs.module-optimizer",
+        sectionId: "app.rlogs.module-optimizer:modules",
+        defaultOrder: 200,
       },
       {
         id: "app.rlogs.character-profiles:options",
@@ -66,6 +74,8 @@ const SAMPLE_WORKSPACES: readonly WorkspaceDescriptor[] = [
         kind: "options",
         entrypoint: "development://profile/options",
         contributorPluginId: "app.rlogs.character-profiles",
+        sectionId: "app.rlogs.character-profiles:main",
+        defaultOrder: 2,
       },
     ],
   },
@@ -85,6 +95,8 @@ const SAMPLE_WORKSPACES: readonly WorkspaceDescriptor[] = [
         kind: "content",
         entrypoint: "development://logs/runs",
         contributorPluginId: "app.rlogs.log-library",
+        sectionId: "app.rlogs.log-library:main",
+        defaultOrder: 0,
       },
       {
         id: "app.rlogs.log-library:uploads",
@@ -92,15 +104,22 @@ const SAMPLE_WORKSPACES: readonly WorkspaceDescriptor[] = [
         kind: "content",
         entrypoint: "development://logs/uploads",
         contributorPluginId: "app.rlogs.log-library",
+        sectionId: "app.rlogs.log-library:main",
+        defaultOrder: 1,
       },
     ],
   },
 ];
 
 const DEFAULT_PREFERENCES: ShellPreferences = {
+  schemaVersion: 1,
   workspaceOrder: [],
   activeWorkspaceId: null,
   activeTabs: {},
+  tabOrders: {},
+  sectionOrders: {},
+  lockTabDragging: false,
+  lockSectionDragging: false,
 };
 
 export function createDevelopmentAdapter(): DesktopHostAdapter {
@@ -180,10 +199,33 @@ function readPreferences(): ShellPreferences {
           ),
         )
       : {};
-    return { workspaceOrder, activeWorkspaceId, activeTabs };
+    const tabOrders = readOrderMap(value.tabOrders);
+    const sectionOrders = readOrderMap(value.sectionOrders);
+    return {
+      schemaVersion: 1,
+      workspaceOrder,
+      activeWorkspaceId,
+      activeTabs,
+      tabOrders,
+      sectionOrders,
+      lockTabDragging: value.lockTabDragging === true,
+      lockSectionDragging: value.lockSectionDragging === true,
+    };
   } catch {
     return DEFAULT_PREFERENCES;
   }
+}
+
+function readOrderMap(value: unknown): Record<string, readonly string[]> {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, entries]) =>
+      Array.isArray(entries) &&
+      entries.every((entry): entry is string => typeof entry === "string")
+        ? [[key, entries]]
+        : [],
+    ),
+  );
 }
 
 function renderDevelopmentSurface(

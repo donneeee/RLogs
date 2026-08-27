@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "generated_by": "tools/bpsr-catalog-identity-manifest.mjs",
+  "game_build": "24687926",
+  "deployment_id": "global",
+  "channel": "steam",
+  "catalog_root": "plugins/games/blue-protocol-star-resonance/game-data/catalog/formulas",
+  "identity_manifest_relative_path": "current-build-manifest.v1.json",
+  "policy": {
+    "every_source_file_is_hashed": true,
+    "identity_manifest_is_the_only_snapshot_build_router": true,
+    "historical_entries_are_retained": true,
+    "historical_entries_have_runtime_authority": false,
+    "unversioned_entries_have_runtime_authority": false,
+    "current_build_entries_are_candidate_evidence_only": true,
+    "exact_numeric_ids_remain_authoritative": true,
+    "unresolved_entries_are_hidden": false,
+    "runtime_promotion_allowed": false
+  },
+  "summary": {
+    "indexed_files": 12,
+    "indexed_bytes": 491542,
+    "current_build_entry_count": 4,
+    "historical_build_entry_count": 6,
+    "mixed_build_entry_count": 0,
+    "unversioned_entry_count": 2,
+    "invalid_json_entry_count": 0,
+    "identity_state_counts": {
+      "current-build": 4,
+      "historical-build": 6,
+      "unversioned": 2
+    }
+  },
+  "source_tree_sha256": "51a747288699400f5b9744145440f5f2b8cdea030512b2747aef45c2b9b23e2f",
+  "entries": [
+    {
+      "path": "autoattack-2900840.current-build-24687926.candidate.v1.json",
+      "bytes": 6799,
+      "sha256": "7cc16779dcfb234db0bf75f2850841695eadd8422fca93692f68d78e55406f11",
+      "kind": "json",
+      "declared_builds": [
+        "24687926"
+      ],
+      "identity_state": "current-build"
+    },
+    {
+      "path": "autoattack-2900840.current-build-24687926.candidate.v2.json",
+      "bytes": 7257,
+      "sha256": "3b76bac22e6e31ec332623005573a0c3787b908d2f2fcf43e61cc7fb11b2dd5e",
+      "kind": "json",
+      "declared_builds": [
+        "24687926"
+      ],
+      "identity_state": "current-build"
+    },
+    {
+      "path": "autoattack-2900840.current-build-24687926.candidate.v3.json",
+      "bytes": 7345,
+      "sha256": "b92c98b66bdea2e4cf233701240711f3b7a85ed7b8382162a6373c277552c7b8",
+      "kind": "json",
+      "declared_builds": [
+        "24687926"
+      ],
+      "identity_state": "current-build"
+    },
+    {
+      "path": "autoattack-2900840.current-build-24687926.candidate.v4.json",
+      "bytes": 7373,
+      "sha256": "3fad17716a18f4e17977d6980b4fe94a0fb346aecd6dca28ecb58744a945b682",
+      "kind": "json",
+      "declared_builds": [
+        "24687926"
+      ],
+      "identity_state": "current-build"
+    },
+    {
+      "path": "damage-attr-field-layout.current-build.v1.json",
+      "bytes": 29687,
+      "sha256": "ad7e028ab9a1bbee6c4fb57b79b80c5119359019a29d29fdca6efd1ef598b2f5",
+      "kind": "json",
+      "declared_builds": [],
+      "identity_state": "unversioned"
+    },
+    {
+      "path": "damage-formula-stages.current-build.v1.json",
+      "bytes": 14045,
+      "sha256": "608f8bc08f7e3291835f059ee60b0be1127ea9eb0f1056fccb91aae0893d2f5d",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "fight-attribute-relations.current-build.v1.json",
+      "bytes": 1737,
+      "sha256": "f9e54e4c127f9fb0ae7680e970bea82564459e445482c275409ba0d3768763a4",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "fight-attribute-transform.current-build.v1.json",
+      "bytes": 25990,
+      "sha256": "03e657c886cf68b8138084e46f704ea61d967c37005fed0406c2c1399b09a622",
+      "kind": "json",
+      "declared_builds": [
+        "global-steam-24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "fight-attributes.current-build.v1.json",
+      "bytes": 65406,
+      "sha256": "18911c51afe50b148d6c9eab530ca03070e3f93e3a6b0f2601a54920dcad5d37",
+      "kind": "json",
+      "declared_builds": [
+        "24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "fight-probability-fix.current-build.v1.json",
+      "bytes": 306327,
+      "sha256": "18bec2edd3c1221de576547cee701b8f75cd142108ed6f3b0114a872af319b06",
+      "kind": "json",
+      "declared_builds": [],
+      "identity_state": "unversioned"
+    },
+    {
+      "path": "inspiration-packet-attribute-closure.global-steam-24252055.v1.json",
+      "bytes": 5625,
+      "sha256": "a29b83a4b1f253fcdca8ce75e7862a446a8e684626721ed8ad20760968a5f5b3",
+      "kind": "json",
+      "declared_builds": [
+        "global-steam-24252055"
+      ],
+      "identity_state": "historical-build"
+    },
+    {
+      "path": "rdps-offline-model-closure.current-build.v1.json",
+      "bytes": 13951,
+      "sha256": "91712e55fb876f3bf00ae2a27821fff38481699497bc6d50894fe47cb4d8887d",
+      "kind": "json",
+      "declared_builds": [
+        "24609362"
+      ],
+      "identity_state": "historical-build"
+    }
+  ],
+  "content_sha256": "a2164458ceba33339d60180e5761a76653711270ff0b7f3076f04fd58c8f966a"
+}

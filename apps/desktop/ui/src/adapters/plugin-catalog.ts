@@ -2,7 +2,9 @@ import type {
   InstalledPluginDescriptor,
   PluginCatalogSnapshot,
   PluginIssueDescriptor,
+  SettingsTabDescriptor,
   WorkspaceDescriptor,
+  WorkspaceTabDescriptor,
 } from "../shell/types";
 
 export interface LocalPluginCatalog extends PluginCatalogSnapshot {
@@ -10,14 +12,15 @@ export interface LocalPluginCatalog extends PluginCatalogSnapshot {
 }
 
 export function parsePluginCatalog(value: unknown): LocalPluginCatalog {
-  if (!isRecord(value) || value.schemaVersion !== 1) {
+  if (!isRecord(value) || value.schemaVersion !== 2) {
     throw new Error("The local host returned an unsupported plug-in catalog.");
   }
   if (
     typeof value.installedRoot !== "string" ||
     !Array.isArray(value.packages) ||
     !Array.isArray(value.issues) ||
-    !Array.isArray(value.workspaces)
+    !Array.isArray(value.workspaces) ||
+    !Array.isArray(value.settingsTabs)
   ) {
     throw new Error("The local host returned an incomplete plug-in catalog.");
   }
@@ -29,6 +32,9 @@ export function parsePluginCatalog(value: unknown): LocalPluginCatalog {
   }
   if (!value.workspaces.every(isWorkspace)) {
     throw new Error("The local host returned an invalid plug-in workspace.");
+  }
+  if (!value.settingsTabs.every(isSettingsTab)) {
+    throw new Error("The local host returned an invalid Settings contribution.");
   }
   return value as unknown as LocalPluginCatalog;
 }
@@ -84,6 +90,14 @@ function isPluginIssue(value: unknown): value is PluginIssueDescriptor {
   );
 }
 
+function isSettingsTab(value: unknown): value is SettingsTabDescriptor {
+  return (
+    isWorkspaceTab(value) &&
+    typeof value.defaultOrder === "number" &&
+    Number.isSafeInteger(value.defaultOrder)
+  );
+}
+
 function isWorkspace(value: unknown): value is WorkspaceDescriptor {
   return (
     isRecord(value) &&
@@ -96,15 +110,21 @@ function isWorkspace(value: unknown): value is WorkspaceDescriptor {
     typeof value.defaultOrder === "number" &&
     Array.isArray(value.tabs) &&
     value.tabs.length > 0 &&
-    value.tabs.every(
-      (tab) =>
-        isRecord(tab) &&
-        typeof tab.id === "string" &&
-        typeof tab.label === "string" &&
-        (tab.kind === "content" || tab.kind === "options") &&
-        typeof tab.entrypoint === "string" &&
-        typeof tab.contributorPluginId === "string",
-    )
+    value.tabs.every(isWorkspaceTab)
+  );
+}
+
+function isWorkspaceTab(value: unknown): value is WorkspaceTabDescriptor {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.label === "string" &&
+    (value.kind === "content" || value.kind === "options") &&
+    typeof value.entrypoint === "string" &&
+    typeof value.contributorPluginId === "string" &&
+    typeof value.sectionId === "string" &&
+    typeof value.defaultOrder === "number" &&
+    Number.isSafeInteger(value.defaultOrder)
   );
 }
 

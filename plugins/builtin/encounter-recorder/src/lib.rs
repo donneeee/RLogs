@@ -40,6 +40,45 @@ impl EncounterRecorderPlugin {
             reducer: None,
         }
     }
+
+    /// Starts an incremental projection for the live capture path.
+    pub fn begin_live(&mut self, header: &RlogHeader) {
+        self.header = Some(header.clone());
+        self.reducer = Some(RunSessionReducer::new(self.config.clone()));
+    }
+
+    /// Applies one canonical event without replaying a sealed archive.
+    pub fn observe_live(&mut self, envelope: &EventEnvelope) -> Result<(), PluginFailure> {
+        self.reducer
+            .as_mut()
+            .ok_or_else(|| PluginFailure::Message("encounter recorder was not started".into()))?
+            .on_event(envelope)
+            .map_err(|error| PluginFailure::Message(error.to_string()))
+    }
+
+    /// Freezes a history projection while leaving the live reducer available.
+    pub fn live_snapshot(&self) -> Result<RunProjectionSnapshot, PluginFailure> {
+        let header = self
+            .header
+            .as_ref()
+            .ok_or_else(|| PluginFailure::Message("encounter recorder has no log header".into()))?;
+        let runs = self
+            .reducer
+            .as_ref()
+            .ok_or_else(|| PluginFailure::Message("encounter recorder was not started".into()))?
+            .clone()
+            .finish();
+        Ok(RunProjectionSnapshot {
+            schema_version: RUN_PROJECTION_SCHEMA_VERSION,
+            session_id: header.session_id.clone(),
+            deployment_id: header.region.identity.deployment_id.clone(),
+            region_id: header.region.identity.region_id.clone(),
+            world_id: header.region.identity.world_id.clone(),
+            client_build: header.region.client_build.clone(),
+            protocol_pack_digest: header.region.protocol_pack_digest.clone(),
+            runs,
+        })
+    }
 }
 
 impl Default for EncounterRecorderPlugin {
@@ -59,6 +98,9 @@ impl ReplayPlugin for EncounterRecorderPlugin {
                 PluginCapability::EncountersRead,
             ]),
             subscriptions: BTreeSet::from([
+                EventTopic::World,
+                EventTopic::Actor,
+                EventTopic::Combat,
                 EventTopic::Encounter,
                 EventTopic::Dungeon,
                 EventTopic::DataQuality,
@@ -149,7 +191,7 @@ mod tests {
     fn sealed_projection_retains_pause_and_gap_evidence_across_filtered_events() {
         let region = region();
         let header = RlogHeader::new("run-fixture", region.clone(), "unit-test");
-        let mut writer = RlogWriter::new(Vec::new(), header).unwrap();
+        let mut writer = RlogWriter::new(Vec::new(), header.clone()).unwrap();
         let mut events = EventEnvelopeFactory::new("run-fixture", region);
         let drafts = [
             CanonicalEventDraft {
@@ -168,6 +210,7 @@ mod tests {
                     objective_id: None,
                     objective_value: None,
                     objective_complete: None,
+                    objective_catalog: None,
                     flow: None,
                 }),
             },
@@ -230,12 +273,16 @@ mod tests {
                     objective_id: None,
                     objective_value: None,
                     objective_complete: None,
+                    objective_catalog: None,
                     flow: None,
                 }),
             },
         ];
+        let mut emitted = Vec::new();
         for draft in drafts {
-            writer.push(&events.emit(draft).unwrap()).unwrap();
+            let envelope = events.emit(draft).unwrap();
+            writer.push(&envelope).unwrap();
+            emitted.push(envelope);
         }
         let bytes = writer.finish().unwrap();
 
@@ -251,11 +298,20 @@ mod tests {
         .unwrap();
 
         assert_eq!(report.metrics.events_seen, 5);
-        assert_eq!(report.metrics.events_delivered, 4);
+        assert_eq!(report.metrics.events_delivered, 5);
         let PluginOutput::Snapshot { payload, .. } = &report.outputs[0] else {
             panic!("expected run projection snapshot");
         };
         let snapshot: RunProjectionSnapshot = serde_json::from_value(payload.clone()).unwrap();
+        let mut live = EncounterRecorderPlugin::new(RunReducerConfig {
+            activity_kind: ActivityKind::Dungeon,
+            ..RunReducerConfig::default()
+        });
+        live.begin_live(&header);
+        for envelope in &emitted {
+            live.observe_live(envelope).unwrap();
+        }
+        assert_eq!(live.live_snapshot().unwrap(), snapshot);
         assert_eq!(snapshot.runs.len(), 1);
         let run = &snapshot.runs[0];
         assert_eq!(run.timing.manual_pause_micros, 2_000_000);

@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "app.rlogs.bpsr.global.steam-24252055.run-rules",
+  "ruleset_version": 2,
+  "target": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "client_build": "24252055"
+  },
+  "scenes": [
+    {
+      "scene_id": 12022,
+      "runtime_enabled": true,
+      "activity_kind": "dungeon",
+      "activity_id": "scene.12022",
+      "activity_family_id": "guild-hunt",
+      "activity_localization_key": "scene.12022.name",
+      "difficulty_family": "normal",
+      "difficulty_localization_key": null,
+      "difficulty_tier_range": null,
+      "route_id": null,
+      "raid_route_kind": null,
+      "partition": null,
+      "candidate_dungeon_ids": [
+        12022
+      ],
+      "mobbing_encounter_id": null,
+      "boss_encounter_id": "scene.12022.boss",
+      "boss_monster_ids": [
+        80015,
+        80016,
+        80017,
+        80018,
+        80019
+      ],
+      "objective_rules": {},
+      "evidence": [
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/dungeons/play-type-13/12022-guild-hunt-normal.json",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "official-current-build-localization",
+          "reference": "game-data/runtime/localization/en-US/scene-names.v1.json:scene-12022",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "capture-operator-domain-knowledge",
+          "reference": "scene-12022:guild-hunt-normal",
+          "confidence": "user_confirmed"
+        },
+        {
+          "source": "reviewed-capture",
+          "reference": "client-build-24687926:monitor-1786822657801.run-0001:scene-12022:participating-boss-entity-10682432:monster-variant-80016",
+          "confidence": "corroborated"
+        }
+      ]
+    },
+    {
+      "scene_id": 12023,
+      "runtime_enabled": true,
+      "activity_kind": "dungeon",
+      "activity_id": "scene.12023",
+      "activity_family_id": "guild-hunt",
+      "activity_localization_key": "scene.12023.name",
+      "difficulty_family": "hard",
+      "difficulty_localization_key": null,
+      "difficulty_tier_range": null,
+      "route_id": null,
+      "raid_route_kind": null,
+      "partition": null,
+      "candidate_dungeon_ids": [
+        12023
+      ],
+      "mobbing_encounter_id": null,
+      "boss_encounter_id": "scene.12023.boss",
+      "boss_monster_ids": [
+        80015,
+        80016,
+        80017,
+        80018,
+        80019
+      ],
+      "objective_rules": {},
+      "evidence": [
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/dungeons/play-type-13/12023-guild-hunt-hard.json",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "official-current-build-localization",
+          "reference": "game-data/runtime/localization/en-US/scene-names.v1.json:scene-12023",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "capture-operator-domain-knowledge",
+          "reference": "scene-12023:guild-hunt-hard",
+          "confidence": "user_confirmed"
+        },
+        {
+          "source": "reviewed-capture",
+          "reference": "client-build-24687926:monitor-1786812580727.run-0002:scene-12023:participating-boss-entities-1310784-and-1704000:monster-variants-80017-and-80018",
+          "confidence": "corroborated"
+        }
+      ]
+    }
+  ]
+}

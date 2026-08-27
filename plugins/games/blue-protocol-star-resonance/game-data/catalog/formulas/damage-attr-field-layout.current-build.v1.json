@@ -1,0 +1,1258 @@
+{
+  "schema_version": 1,
+  "generated_by": "rlogs-bpsr-damage-attr-field-layout-proof",
+  "policy": {
+    "runtime_formula_authority": false,
+    "current_build_values_are_runtime_authority": true,
+    "historical_reference_values_are_runtime_authority": false,
+    "historical_reference_role": "schema-layout witness only; changed values are expected and never copied into the current catalog",
+    "current_formula_text_role": "current client UI formula witness for the named PVE damage fields",
+    "unresolved_evidence_is_hidden": false
+  },
+  "current_build_source": {
+    "pools": [
+      {
+        "byte_length": 62886,
+        "type": 1
+      },
+      {
+        "byte_length": 0,
+        "type": 2
+      },
+      {
+        "byte_length": 2,
+        "type": 3
+      },
+      {
+        "byte_length": 0,
+        "type": 4
+      },
+      {
+        "byte_length": 0,
+        "type": 5
+      },
+      {
+        "byte_length": 35035,
+        "type": 6
+      },
+      {
+        "byte_length": 0,
+        "type": 7
+      },
+      {
+        "byte_length": 0,
+        "type": 8
+      },
+      {
+        "byte_length": 0,
+        "type": 9
+      },
+      {
+        "byte_length": 0,
+        "type": 10
+      }
+    ],
+    "row_count": 5601,
+    "row_size": 74,
+    "table": "DamageAttrTable.ctb",
+    "table_hash": 1708172942
+  },
+  "reference_source": {
+    "file_name": "DamageAttrTable.json",
+    "sha256": "sha256:cb0525ad2b96e0e61f8a397cb74c9b6b05ad25e2c4929d142585750c8c5f8539",
+    "rows": 3557
+  },
+  "current_formula_source": {
+    "file_name": "SkillEffectTable.json",
+    "sha256": "sha256:565fc4df8e1e58d06f7dcc9d5e4ca7c2b82ca8a16802c2c49a96b9c6f16a3743",
+    "damage_merge_occurrences": {
+      "PVEDamageRadio": 383,
+      "PVEFixedParameter": 384,
+      "PVEStunnedDamage": 215
+    }
+  },
+  "coverage": {
+    "current_rows": 5601,
+    "reference_rows": 3557,
+    "overlapping_row_ids": 3514,
+    "current_only_row_ids": 2087,
+    "reference_only_row_ids": 43
+  },
+  "fields": [
+    {
+      "field": "Id",
+      "current_row_offset": 0,
+      "encoding": "u64",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3514,
+      "changed_rows": 0,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 10000,
+      "changed_examples": [],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "Level",
+      "current_row_offset": 8,
+      "encoding": "i32",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3514,
+      "changed_rows": 0,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 10000,
+      "changed_examples": [],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "Name",
+      "current_row_offset": 12,
+      "encoding": "string_pool_6_reference",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3493,
+      "changed_rows": 21,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 9940,
+      "changed_examples": [
+        {
+          "damage_id": "110024990106",
+          "historical_reference_value": "姆克共鸣  ",
+          "current_build_value": "姆克共鸣"
+        },
+        {
+          "damage_id": "110086050101",
+          "historical_reference_value": "雷电食人魔-压团血",
+          "current_build_value": "新哥布林王-压团血"
+        },
+        {
+          "damage_id": "116050102",
+          "historical_reference_value": "塔塔EXATK_01",
+          "current_build_value": "塔塔SKILL_01"
+        },
+        {
+          "damage_id": "116060102",
+          "historical_reference_value": "塔塔EXATK_02",
+          "current_build_value": "塔塔特攻SKILL_02"
+        },
+        {
+          "damage_id": "116080101",
+          "historical_reference_value": "塔塔EXATK_04",
+          "current_build_value": "塔塔EXATK_01"
+        },
+        {
+          "damage_id": "116090101",
+          "historical_reference_value": "塔塔SKILL_01",
+          "current_build_value": "塔塔EXATK_02"
+        },
+        {
+          "damage_id": "116090102",
+          "historical_reference_value": "塔塔SKILL_01",
+          "current_build_value": "塔塔EXATK_02"
+        },
+        {
+          "damage_id": "116100101",
+          "historical_reference_value": "塔塔EXSKILL_01",
+          "current_build_value": "塔塔EXATK_03"
+        }
+      ],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "DamageType",
+      "current_row_offset": 16,
+      "encoding": "i32",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3514,
+      "changed_rows": 0,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 10000,
+      "changed_examples": [],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "TypeEnum",
+      "current_row_offset": 20,
+      "encoding": "i32",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3514,
+      "changed_rows": 0,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 10000,
+      "changed_examples": [],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "DamageScript",
+      "current_row_offset": 24,
+      "encoding": "string_pool_6_reference",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3393,
+      "changed_rows": 121,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 9655,
+      "changed_examples": [
+        {
+          "damage_id": "110028110101",
+          "historical_reference_value": "MstHuntAoeAttack",
+          "current_build_value": "AttackSimply"
+        },
+        {
+          "damage_id": "11005700101",
+          "historical_reference_value": "MAttack",
+          "current_build_value": "MstSpSkillMAttack"
+        },
+        {
+          "damage_id": "110086050101",
+          "historical_reference_value": "MstHuntAoeAttack",
+          "current_build_value": ""
+        },
+        {
+          "damage_id": "110086050103",
+          "historical_reference_value": "MstHuntAoeAttack",
+          "current_build_value": ""
+        },
+        {
+          "damage_id": "110097010102",
+          "historical_reference_value": "",
+          "current_build_value": "MAttack"
+        },
+        {
+          "damage_id": "110097050101",
+          "historical_reference_value": "Attack",
+          "current_build_value": "MAttack"
+        },
+        {
+          "damage_id": "110106010103",
+          "historical_reference_value": "",
+          "current_build_value": "MstSpSkillAttack"
+        },
+        {
+          "damage_id": "110107070101",
+          "historical_reference_value": "",
+          "current_build_value": "Attack"
+        }
+      ],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "PVEDamageRadio",
+      "current_row_offset": 28,
+      "encoding": "int_array_pool_1_reference",
+      "current_formula_text_occurrences": 383,
+      "compared_rows": 3514,
+      "exact_matches": 3207,
+      "changed_rows": 307,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 9126,
+      "changed_examples": [
+        {
+          "damage_id": "11003080102",
+          "historical_reference_value": [
+            1300
+          ],
+          "current_build_value": [
+            2900
+          ]
+        },
+        {
+          "damage_id": "11003080104",
+          "historical_reference_value": [
+            1300
+          ],
+          "current_build_value": [
+            2900
+          ]
+        },
+        {
+          "damage_id": "11003090103",
+          "historical_reference_value": [
+            2200
+          ],
+          "current_build_value": [
+            5100
+          ]
+        },
+        {
+          "damage_id": "11004020102",
+          "historical_reference_value": [
+            2600
+          ],
+          "current_build_value": [
+            3000
+          ]
+        },
+        {
+          "damage_id": "11004020104",
+          "historical_reference_value": [
+            2600
+          ],
+          "current_build_value": [
+            3000
+          ]
+        },
+        {
+          "damage_id": "11004170103",
+          "historical_reference_value": [
+            4800
+          ],
+          "current_build_value": [
+            10800
+          ]
+        },
+        {
+          "damage_id": "11004180102",
+          "historical_reference_value": [
+            3050
+          ],
+          "current_build_value": [
+            3150
+          ]
+        },
+        {
+          "damage_id": "11004180104",
+          "historical_reference_value": [
+            3050
+          ],
+          "current_build_value": [
+            3150
+          ]
+        }
+      ],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "PVEFixedParameter",
+      "current_row_offset": 32,
+      "encoding": "int_array_pool_1_reference",
+      "current_formula_text_occurrences": 384,
+      "compared_rows": 3514,
+      "exact_matches": 3388,
+      "changed_rows": 126,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 9641,
+      "changed_examples": [
+        {
+          "damage_id": "11005700101",
+          "historical_reference_value": [
+            3
+          ],
+          "current_build_value": [
+            500
+          ]
+        },
+        {
+          "damage_id": "110097020102",
+          "historical_reference_value": [
+            387
+          ],
+          "current_build_value": [
+            14
+          ]
+        },
+        {
+          "damage_id": "110106010103",
+          "historical_reference_value": [],
+          "current_build_value": [
+            1000
+          ]
+        },
+        {
+          "damage_id": "11106090101",
+          "historical_reference_value": [
+            625
+          ],
+          "current_build_value": [
+            750
+          ]
+        },
+        {
+          "damage_id": "11106110101",
+          "historical_reference_value": [
+            500
+          ],
+          "current_build_value": []
+        },
+        {
+          "damage_id": "11106110102",
+          "historical_reference_value": [
+            500
+          ],
+          "current_build_value": []
+        },
+        {
+          "damage_id": "11106110103",
+          "historical_reference_value": [
+            1000
+          ],
+          "current_build_value": []
+        },
+        {
+          "damage_id": "11107040101",
+          "historical_reference_value": [],
+          "current_build_value": [
+            500
+          ]
+        }
+      ],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "PVELoopTime",
+      "current_row_offset": 36,
+      "encoding": "i32",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3501,
+      "changed_rows": 13,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 9963,
+      "changed_examples": [
+        {
+          "damage_id": "110080990101",
+          "historical_reference_value": 1,
+          "current_build_value": 999
+        },
+        {
+          "damage_id": "110097010102",
+          "historical_reference_value": 1,
+          "current_build_value": 10
+        },
+        {
+          "damage_id": "112560102",
+          "historical_reference_value": 100,
+          "current_build_value": 999
+        },
+        {
+          "damage_id": "116060102",
+          "historical_reference_value": 3,
+          "current_build_value": 1
+        },
+        {
+          "damage_id": "116090102",
+          "historical_reference_value": 4,
+          "current_build_value": 1
+        },
+        {
+          "damage_id": "116100101",
+          "historical_reference_value": 1,
+          "current_build_value": 2
+        },
+        {
+          "damage_id": "116130103",
+          "historical_reference_value": 1,
+          "current_build_value": 2
+        },
+        {
+          "damage_id": "116160102",
+          "historical_reference_value": 1,
+          "current_build_value": 2
+        }
+      ],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "PVEStunnedDamage",
+      "current_row_offset": 40,
+      "encoding": "int_array_pool_1_reference",
+      "current_formula_text_occurrences": 215,
+      "compared_rows": 3514,
+      "exact_matches": 3481,
+      "changed_rows": 33,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 9906,
+      "changed_examples": [
+        {
+          "damage_id": "110097020102",
+          "historical_reference_value": [
+            96
+          ],
+          "current_build_value": [
+            13
+          ]
+        },
+        {
+          "damage_id": "114340102",
+          "historical_reference_value": [
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86,
+            86
+          ],
+          "current_build_value": [
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95,
+            95
+          ]
+        },
+        {
+          "damage_id": "114350101",
+          "historical_reference_value": [
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56,
+            56
+          ],
+          "current_build_value": [
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61,
+            61
+          ]
+        },
+        {
+          "damage_id": "116010101",
+          "historical_reference_value": [
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45,
+            45
+          ],
+          "current_build_value": [
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18
+          ]
+        },
+        {
+          "damage_id": "116020101",
+          "historical_reference_value": [
+            30,
+            30,
+            30,
+            30,
+            30
+          ],
+          "current_build_value": [
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12
+          ]
+        },
+        {
+          "damage_id": "116020102",
+          "historical_reference_value": [
+            30,
+            30,
+            30,
+            30,
+            30
+          ],
+          "current_build_value": [
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12
+          ]
+        },
+        {
+          "damage_id": "116030101",
+          "historical_reference_value": [
+            40,
+            40,
+            40,
+            40,
+            40
+          ],
+          "current_build_value": [
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18
+          ]
+        },
+        {
+          "damage_id": "116030102",
+          "historical_reference_value": [
+            25,
+            25,
+            25,
+            25,
+            25
+          ],
+          "current_build_value": [
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9,
+            9
+          ]
+        }
+      ],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "PVEExtinctionDamage",
+      "current_row_offset": 44,
+      "encoding": "i32",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3514,
+      "changed_rows": 0,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 10000,
+      "changed_examples": [],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "PartDamageRadio",
+      "current_row_offset": 48,
+      "encoding": "int_array_pool_1_reference",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3506,
+      "changed_rows": 8,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 9977,
+      "changed_examples": [
+        {
+          "damage_id": "116050102",
+          "historical_reference_value": [
+            40,
+            40,
+            40,
+            40,
+            40
+          ],
+          "current_build_value": []
+        },
+        {
+          "damage_id": "116060102",
+          "historical_reference_value": [
+            50,
+            50,
+            50,
+            50,
+            50
+          ],
+          "current_build_value": []
+        },
+        {
+          "damage_id": "116080101",
+          "historical_reference_value": [
+            110,
+            110,
+            110,
+            110,
+            110
+          ],
+          "current_build_value": [
+            40,
+            40,
+            40,
+            40,
+            40
+          ]
+        },
+        {
+          "damage_id": "116090101",
+          "historical_reference_value": [
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "current_build_value": [
+            50,
+            50,
+            50,
+            50,
+            50
+          ]
+        },
+        {
+          "damage_id": "116090102",
+          "historical_reference_value": [
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "current_build_value": [
+            50,
+            50,
+            50,
+            50,
+            50
+          ]
+        },
+        {
+          "damage_id": "116100101",
+          "historical_reference_value": [
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80,
+            80
+          ],
+          "current_build_value": [
+            85,
+            85,
+            85,
+            85,
+            85
+          ]
+        },
+        {
+          "damage_id": "116130103",
+          "historical_reference_value": [
+            150,
+            150,
+            150,
+            150,
+            150
+          ],
+          "current_build_value": [
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15,
+            15
+          ]
+        },
+        {
+          "damage_id": "116160102",
+          "historical_reference_value": [
+            50,
+            50,
+            50,
+            50,
+            50
+          ],
+          "current_build_value": [
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250,
+            250
+          ]
+        }
+      ],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "DamageProperty",
+      "current_row_offset": 56,
+      "encoding": "i32",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3512,
+      "changed_rows": 2,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 9994,
+      "changed_examples": [
+        {
+          "damage_id": "116050102",
+          "historical_reference_value": 1,
+          "current_build_value": 0
+        },
+        {
+          "damage_id": "116060102",
+          "historical_reference_value": 1,
+          "current_build_value": 0
+        }
+      ],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "PartDamageType",
+      "current_row_offset": 60,
+      "encoding": "i32",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3514,
+      "changed_rows": 0,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 10000,
+      "changed_examples": [],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "Tags",
+      "current_row_offset": 68,
+      "encoding": "int_array_pool_1_reference",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3217,
+      "changed_rows": 297,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 9154,
+      "changed_examples": [
+        {
+          "damage_id": "110097010102",
+          "historical_reference_value": [],
+          "current_build_value": [
+            67,
+            30
+          ]
+        },
+        {
+          "damage_id": "110097020102",
+          "historical_reference_value": [
+            8,
+            66,
+            9
+          ],
+          "current_build_value": [
+            8,
+            67,
+            9,
+            69
+          ]
+        },
+        {
+          "damage_id": "110097050101",
+          "historical_reference_value": [],
+          "current_build_value": [
+            67,
+            30
+          ]
+        },
+        {
+          "damage_id": "11011120101",
+          "historical_reference_value": [
+            66,
+            34,
+            46,
+            9,
+            69,
+            94
+          ],
+          "current_build_value": [
+            66,
+            34,
+            9,
+            69,
+            94,
+            46
+          ]
+        },
+        {
+          "damage_id": "110112010103",
+          "historical_reference_value": [],
+          "current_build_value": [
+            67,
+            30
+          ]
+        },
+        {
+          "damage_id": "110112010104",
+          "historical_reference_value": [],
+          "current_build_value": [
+            67,
+            30
+          ]
+        },
+        {
+          "damage_id": "110112040101",
+          "historical_reference_value": [],
+          "current_build_value": [
+            67,
+            30
+          ]
+        },
+        {
+          "damage_id": "11107030101",
+          "historical_reference_value": [
+            30
+          ],
+          "current_build_value": []
+        }
+      ],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    },
+    {
+      "field": "BehitLightIsOpen",
+      "current_row_offset": 72,
+      "encoding": "bool",
+      "current_formula_text_occurrences": null,
+      "compared_rows": 3514,
+      "exact_matches": 3512,
+      "changed_rows": 2,
+      "unreadable_current_rows": 0,
+      "exact_match_basis_points": 9994,
+      "changed_examples": [
+        {
+          "damage_id": "116050102",
+          "historical_reference_value": true,
+          "current_build_value": false
+        },
+        {
+          "damage_id": "116060102",
+          "historical_reference_value": true,
+          "current_build_value": false
+        }
+      ],
+      "conclusion": "offset mechanically verified; mismatches are retained as current-build content changes, not schema failures"
+    }
+  ],
+  "unsupported_nested_fields": [
+    {
+      "field": "AbnormalDamage",
+      "current_row_offset": 52,
+      "reason": "nested array pool encoding is not decoded by the current surface extractor; the stored value is a pool reference, not a scalar formula value"
+    },
+    {
+      "field": "DamageWeight",
+      "current_row_offset": 64,
+      "reason": "nested/structured array pool encoding is not decoded by the current surface extractor; the stored value is a pool reference, not a scalar formula value"
+    }
+  ],
+  "exact_layout_conclusion": {
+    "row_size_bytes": 74,
+    "schema_fields_bound_without_guessing": 16,
+    "nested_fields_intentionally_unbound": 2,
+    "statement": "The historical typed schema fixes the field order, unchanged overlapping rows mechanically verify each decoded offset, and current formula text independently names the three PVE formula arrays. Only current-build row values may feed later formula proof or runtime attribution."
+  }
+}

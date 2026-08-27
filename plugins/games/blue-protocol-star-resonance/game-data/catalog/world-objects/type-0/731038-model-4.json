@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "kind": "world_object",
+  "id": 731038,
+  "stable_key": "world-object.731038",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "world_object_id": 731038,
+    "name_id": 0,
+    "model_id": 4,
+    "attribute_id": 300001,
+    "exports_voxel": false,
+    "voxel_path": "",
+    "default_camp_id": 2,
+    "shows_health": false,
+    "body_duration_ms": 0,
+    "spawn_duration_ms": 0,
+    "hit_effect": "",
+    "climbable": false,
+    "scene_object_type": 0,
+    "end_state_id": 0,
+    "spawn_client_status_ids": [],
+    "death_client_status_ids": [],
+    "destination_layer": -1
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SceneObjectTable",
+    "reference": "client-build:global/steam/24252055@sha256:08c8344f6a420e8dbf309e73b45e22cadfdf119ec0204ab2f419707bcb19fde8",
+    "confidence": "corroborated"
+  }
+}

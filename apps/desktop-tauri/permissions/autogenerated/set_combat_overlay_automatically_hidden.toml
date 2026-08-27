@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-combat-overlay-automatically-hidden"
+description = "Enables the set_combat_overlay_automatically_hidden command without any pre-configured scope."
+commands.allow = ["set_combat_overlay_automatically_hidden"]
+
+[[permission]]
+identifier = "deny-set-combat-overlay-automatically-hidden"
+description = "Denies the set_combat_overlay_automatically_hidden command without any pre-configured scope."
+commands.deny = ["set_combat_overlay_automatically_hidden"]

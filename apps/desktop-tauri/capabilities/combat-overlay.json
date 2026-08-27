@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "combat-overlay-window",
+  "description": "Native controls used only by the rLogs live Combat Overlay window.",
+  "windows": ["combat-overlay"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*"]
+  },
+  "permissions": [
+    "allow-combat-overlay-ready",
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-set-size",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging"
+  ]
+}

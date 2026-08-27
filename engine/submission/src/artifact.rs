@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+use crate::validate_submission_envelope;
 use crate::{LogChunkDescriptor, Sha256Digest};
 
 pub const DEFAULT_UPLOAD_CHUNK_BYTES: usize = 4 * 1024 * 1024;
@@ -55,9 +56,30 @@ pub struct LocalLogArtifact {
 }
 
 pub fn build_sealed_log_artifact<R: Read + Seek>(
+    input: R,
+    artifact_limits: ArtifactBuildLimits,
+    rlog_limits: RlogLimits,
+) -> Result<LocalLogArtifact, ArtifactBuildError> {
+    build_log_artifact_with_validator(input, artifact_limits, rlog_limits, |_| Ok(()))
+}
+
+/// Builds upload metadata while enforcing the canonical submission privacy
+/// boundary during the artifact's existing integrity replay.
+pub fn build_privacy_verified_submission_artifact<R: Read + Seek>(
+    input: R,
+    artifact_limits: ArtifactBuildLimits,
+    rlog_limits: RlogLimits,
+) -> Result<LocalLogArtifact, ArtifactBuildError> {
+    build_log_artifact_with_validator(input, artifact_limits, rlog_limits, |envelope| {
+        validate_submission_envelope(envelope).map_err(|error| error.to_string())
+    })
+}
+
+fn build_log_artifact_with_validator<R: Read + Seek>(
     mut input: R,
     artifact_limits: ArtifactBuildLimits,
     rlog_limits: RlogLimits,
+    mut validate: impl FnMut(&rlogs_events::EventEnvelope) -> Result<(), String>,
 ) -> Result<LocalLogArtifact, ArtifactBuildError> {
     let artifact_limits = artifact_limits.validate()?;
     let declared_file_length = input.seek(SeekFrom::End(0))?;
@@ -76,7 +98,7 @@ pub fn build_sealed_log_artifact<R: Read + Seek>(
     let verification = (|| {
         let reader = RlogReader::new(BufReader::new(&mut tracked), rlog_limits)?;
         let header = reader.header().clone();
-        let rlog = reader.replay(|_| Ok(()))?;
+        let rlog = reader.replay(&mut validate)?;
         Ok::<_, RlogError>((header, rlog))
     })();
     if let Some(actual_at_least) = tracked.limit_exceeded_at {
@@ -104,6 +126,103 @@ pub fn build_sealed_log_artifact<R: Read + Seek>(
         file_sha256: tracked.file_sha256,
         chunks: tracked.chunks,
     })
+}
+
+/// Builds byte and chunk metadata after the same open log has already passed a
+/// complete `RlogReader` replay.
+///
+/// The caller must pass the header and summary produced by that successful
+/// replay and rewind the unchanged file before calling this function. This
+/// second pass hashes raw bytes only; it intentionally avoids parsing and
+/// canonicalizing every event a second time.
+pub fn build_preverified_log_artifact<R: Read + Seek>(
+    input: R,
+    header: RlogHeader,
+    rlog: RlogReplaySummary,
+    artifact_limits: ArtifactBuildLimits,
+) -> Result<LocalLogArtifact, ArtifactBuildError> {
+    let mut tracked = LogArtifactTrackingReader::new(input, artifact_limits)?;
+    let copy_result = std::io::copy(&mut tracked, &mut std::io::sink());
+    if let Some(actual_at_least) = tracked.inner.limit_exceeded_at {
+        return Err(ArtifactBuildError::FileTooLarge {
+            actual_at_least,
+            maximum: tracked.inner.maximum_file_bytes,
+        });
+    }
+    copy_result?;
+    tracked.finish(header, rlog)
+}
+
+/// Read adapter that hashes and chunks the exact bytes consumed by an
+/// integrity-validating `RlogReader`.
+///
+/// This lets plug-in replay and upload-artifact construction share one file
+/// pass without weakening either the canonical seal or raw-file hashes.
+pub struct LogArtifactTrackingReader<R> {
+    inner: ArtifactTrackingReader<R>,
+    declared_file_length: u64,
+}
+
+impl<R: Read + Seek> LogArtifactTrackingReader<R> {
+    pub fn new(
+        mut input: R,
+        artifact_limits: ArtifactBuildLimits,
+    ) -> Result<Self, ArtifactBuildError> {
+        let artifact_limits = artifact_limits.validate()?;
+        let declared_file_length = input.seek(SeekFrom::End(0))?;
+        if declared_file_length > artifact_limits.maximum_file_bytes {
+            return Err(ArtifactBuildError::FileTooLarge {
+                actual_at_least: declared_file_length,
+                maximum: artifact_limits.maximum_file_bytes,
+            });
+        }
+        input.seek(SeekFrom::Start(0))?;
+        Ok(Self {
+            inner: ArtifactTrackingReader::new(
+                input,
+                artifact_limits.chunk_bytes,
+                artifact_limits.maximum_file_bytes,
+            ),
+            declared_file_length,
+        })
+    }
+
+    pub fn finish(
+        self,
+        header: RlogHeader,
+        rlog: RlogReplaySummary,
+    ) -> Result<LocalLogArtifact, ArtifactBuildError> {
+        header.validate()?;
+        if let Some(actual_at_least) = self.inner.limit_exceeded_at {
+            return Err(ArtifactBuildError::FileTooLarge {
+                actual_at_least,
+                maximum: self.inner.maximum_file_bytes,
+            });
+        }
+        let tracked = self.inner.finish()?;
+        if tracked.chunks.is_empty() {
+            return Err(ArtifactBuildError::EmptyArtifact);
+        }
+        if tracked.file_byte_length != self.declared_file_length {
+            return Err(ArtifactBuildError::FileLengthChanged {
+                declared: self.declared_file_length,
+                observed: tracked.file_byte_length,
+            });
+        }
+        Ok(LocalLogArtifact {
+            header,
+            rlog,
+            file_byte_length: tracked.file_byte_length,
+            file_sha256: tracked.file_sha256,
+            chunks: tracked.chunks,
+        })
+    }
+}
+
+impl<R: Read> Read for LogArtifactTrackingReader<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        self.inner.read(buffer)
+    }
 }
 
 struct ArtifactTrackingReader<R> {
@@ -373,17 +492,37 @@ mod tests {
                 .sum::<u64>(),
             artifact.file_byte_length
         );
+
+        let preverified = build_preverified_log_artifact(
+            Cursor::new(bytes),
+            artifact.header.clone(),
+            artifact.rlog.clone(),
+            limits(64, 1024 * 1024),
+        )
+        .unwrap();
+        assert_eq!(preverified, artifact);
     }
 
     #[test]
     fn tampered_or_truncated_logs_fail_before_an_upload_manifest_exists() {
         let bytes = sealed_log();
         let mut tampered = bytes.clone();
-        let event_byte = tampered
-            .windows(b"combat_boundary".len())
-            .position(|window| window == b"combat_boundary")
-            .unwrap();
-        tampered[event_byte] = b'X';
+        // Compact rlog v2 event JSON is zstd-compressed, so searching the file
+        // for an event-kind string is both format-dependent and ineffective.
+        // Walk the public framing instead and corrupt the compressed payload.
+        assert_eq!(&tampered[..8], b"RLOG\x02\r\n\x1a");
+        let header_length = u32::from_le_bytes(tampered[8..12].try_into().unwrap()) as usize;
+        let event_block_offset = 12 + header_length;
+        assert_eq!(tampered[event_block_offset], 1);
+        let compressed_length = u32::from_le_bytes(
+            tampered[event_block_offset + 9..event_block_offset + 13]
+                .try_into()
+                .unwrap(),
+        ) as usize;
+        let compressed_offset = event_block_offset + 13;
+        assert!(compressed_length > 0);
+        let event_byte = compressed_offset + compressed_length / 2;
+        tampered[event_byte] ^= 0x80;
         assert!(matches!(
             build_sealed_log_artifact(
                 Cursor::new(tampered),

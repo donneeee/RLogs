@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "apps/desktop",
+    "apps/desktop-tauri",
     "apps/plugin-lab",
     "engine/capture",
     "engine/combat",
@@ -30,6 +31,7 @@ members = [
     "plugins/games/blue-protocol-star-resonance/tools/offline-recorder",
     "plugins/games/blue-protocol-star-resonance/tools/protocol-journal",
     "plugins/games/blue-protocol-star-resonance/tools/protocol-coverage",
+    "services/submissions",
 ]
 resolver = "3"
 
@@ -40,15 +42,25 @@ rust-version = "1.85"
 version = "0.1.0"
 
 [workspace.dependencies]
+aes = "0.8.4"
+axum = "0.8.9"
 bytes = { version = "1.12.1", features = ["serde"] }
+cbc = "0.1.2"
 etherparse = "0.21.0"
+hmac = "0.12.1"
+num-bigint = "0.4"
+num-integer = "0.1"
 pcap-parser = "0.17.0"
 prost = "0.14"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10"
 thiserror = "2"
+tokio = { version = "1.53.1", features = ["macros", "net", "rt-multi-thread", "signal"] }
 toml = "0.8"
+tower-http = { version = "0.7.0", features = ["cors", "trace"] }
+uuid = { version = "1.24.0", features = ["v4"] }
 walkdir = "2"
 windows-sys = "0.61"
 zstd = { version = "0.13.3", default-features = false }
@@ -58,3 +70,29 @@ zstd = { version = "0.13.3", default-features = false }
 # testing the website does not turn a 649-module search into a minute-long wait.
 [profile.dev.package.rlogs-bpsr-module-optimizer]
 opt-level = 3
+
+# Live-capture testing runs the real post-processing pipeline. Optimize its
+# data-heavy crates in development builds so stopping a capture does not spend
+# minutes parsing and hashing large canonical JSONL logs.
+[profile.dev.package.rlogs-game-bpsr]
+opt-level = 3
+
+[profile.dev.package.rlogs-log-format]
+opt-level = 3
+
+[profile.dev.package.rlogs-plugin-runtime]
+opt-level = 3
+
+[profile.dev.package.rlogs-plugin-combat-meter]
+opt-level = 3
+
+[profile.dev.package.rlogs-plugin-encounter-recorder]
+opt-level = 3
+
+[profile.dev.package.rlogs-submission]
+opt-level = 3
+
+# Serde JSON, SHA-256, and other third-party hot paths dominate large-log
+# finalization. Keep workspace crates debuggable while optimizing dependencies.
+[profile.dev.package."*"]
+opt-level = 2

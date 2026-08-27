@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "kind": "world_activity",
+  "id": 1005,
+  "stable_key": "world-activity.1005",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "world_activity_id": 1005,
+    "review_state": "identity_only",
+    "withheld_field_reason": "Current row identity is proven; remaining WorldActTable fields stay private until their present semantics are independently corroborated."
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.WorldActTable",
+    "reference": "client-build:global/steam/24252055@sha256:5faa6c78dfaca7c97cbc4bf1881ff3be05ade3c1712fcf20a10753ae0f40790e",
+    "confidence": "corroborated"
+  }
+}

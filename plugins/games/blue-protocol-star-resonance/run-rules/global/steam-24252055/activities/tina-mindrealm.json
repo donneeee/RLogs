@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "app.rlogs.bpsr.global.steam-24252055.run-rules",
+  "ruleset_version": 2,
+  "target": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "client_build": "24252055"
+  },
+  "scenes": [
+    {
+      "scene_id": 1631,
+      "runtime_enabled": true,
+      "activity_kind": "dungeon",
+      "activity_id": "scene.1631",
+      "activity_family_id": "tina-mindrealm",
+      "activity_localization_key": "scene.1631.name",
+      "difficulty_family": "normal",
+      "difficulty_localization_key": "dungeon.1631.type_name",
+      "difficulty_tier_range": null,
+      "route_id": null,
+      "raid_route_kind": null,
+      "partition": null,
+      "candidate_dungeon_ids": [
+        1031,
+        1631
+      ],
+      "mobbing_encounter_id": "scene.1631.mobbing",
+      "boss_encounter_id": "monster.33701",
+      "boss_monster_ids": [
+        33701
+      ],
+      "objective_rules": {
+        "100164": {
+          "role": "run_completion",
+          "on_complete": "final_objective"
+        },
+        "100176": {
+          "role": "boss_phase_gate",
+          "on_complete": "enter_boss_segment"
+        },
+        "100178": {
+          "role": "mobbing_completion",
+          "on_complete": "clear_mobbing"
+        }
+      },
+      "evidence": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/dungeon-no-wipe-001.json",
+          "confidence": "verified"
+        },
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/scenes/type-2/1631-chaotic-tina-s-mindrealm.json",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "reviewed-global-parser-reference",
+          "reference": "resonance-logs-global@77380cabdc8505267a8971022e38859b9400dd28:src/lib/scene-display.ts",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "capture-operator-label",
+          "reference": "dungeon-no-wipe-20260730-172151:normal",
+          "confidence": "user_confirmed"
+        }
+      ]
+    },
+    {
+      "scene_id": 1632,
+      "runtime_enabled": true,
+      "activity_kind": "dungeon",
+      "activity_id": "scene.1632",
+      "activity_family_id": "tina-mindrealm",
+      "activity_localization_key": "scene.1632.name",
+      "difficulty_family": "hard",
+      "difficulty_localization_key": "dungeon.1632.type_name",
+      "difficulty_tier_range": null,
+      "route_id": null,
+      "raid_route_kind": null,
+      "partition": null,
+      "candidate_dungeon_ids": [
+        1032,
+        1632
+      ],
+      "mobbing_encounter_id": "scene.1632.mobbing",
+      "boss_encounter_id": "monster.33701",
+      "boss_monster_ids": [
+        33701
+      ],
+      "objective_rules": {
+        "100164": {
+          "role": "run_completion",
+          "on_complete": "final_objective"
+        },
+        "100176": {
+          "role": "boss_phase_gate",
+          "on_complete": "enter_boss_segment"
+        },
+        "100179": {
+          "role": "mobbing_completion",
+          "on_complete": "clear_mobbing"
+        }
+      },
+      "evidence": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "monitor-1785483650597.run-0001:scene-1632-objectives-100179-100176-100164",
+          "confidence": "verified"
+        },
+        {
+          "source": "capture-operator-label",
+          "reference": "monitor-1785483650597.run-0001:tina-mindrealm-hard",
+          "confidence": "user_confirmed"
+        },
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/dungeons/play-type-9/1632-void-tina-s-mindrealm.json",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "reviewed-global-parser-reference",
+          "reference": "resonance-logs-global@77380cabdc8505267a8971022e38859b9400dd28:src/lib/scene-display.ts",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "historical-static-reference",
+          "reference": "BPSR-ZDPS-0.1.7.2:DungeonsTable.1632",
+          "confidence": "candidate"
+        }
+      ]
+    },
+    {
+      "scene_id": 1633,
+      "runtime_enabled": false,
+      "activity_kind": "dungeon",
+      "activity_id": "scene.1633",
+      "activity_family_id": "tina-mindrealm",
+      "activity_localization_key": "scene.1633.name",
+      "difficulty_family": "master",
+      "difficulty_localization_key": null,
+      "difficulty_tier_range": {
+        "minimum": 1,
+        "maximum": 20
+      },
+      "route_id": null,
+      "raid_route_kind": null,
+      "partition": null,
+      "candidate_dungeon_ids": [
+        1033,
+        1633
+      ],
+      "mobbing_encounter_id": "scene.1633.mobbing",
+      "boss_encounter_id": "monster.33701",
+      "boss_monster_ids": [
+        33701
+      ],
+      "objective_rules": {
+        "100164": {
+          "role": "run_completion",
+          "on_complete": "final_objective"
+        },
+        "100176": {
+          "role": "boss_phase_gate",
+          "on_complete": "enter_boss_segment"
+        },
+        "100180": {
+          "role": "mobbing_completion",
+          "on_complete": "clear_mobbing"
+        }
+      },
+      "evidence": [
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/dungeons/play-type-17/1633-void-tina-s-mindrealm.json",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "reviewed-global-parser-reference",
+          "reference": "resonance-logs-global@77380cabdc8505267a8971022e38859b9400dd28:src/lib/scene-display.ts",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "capture-operator-domain-knowledge",
+          "reference": "master-tier-range:1-20",
+          "confidence": "user_confirmed"
+        },
+        {
+          "source": "historical-static-reference",
+          "reference": "BPSR-ZDPS-0.1.7.2:DungeonsTable.1633",
+          "confidence": "candidate"
+        }
+      ]
+    }
+  ]
+}

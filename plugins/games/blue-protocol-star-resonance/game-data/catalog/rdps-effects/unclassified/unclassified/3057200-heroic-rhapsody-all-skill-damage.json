@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "game_build": "24252055",
+  "rule": {
+    "effect_id": 3057200,
+    "review_state": "candidate",
+    "contribution_kind": "direct_damage_amplification",
+    "source_scope": "unresolved",
+    "target_scope": "effect_target",
+    "magnitude_basis_points": null,
+    "stacking_rule": "unresolved",
+    "attribution_enabled": false
+  },
+  "evidence": [
+    "Current-build status-effect row 3057200 is mapped as a design-only effect.",
+    "Its current-build design label describes an all-skill damage increase while Heroic Rhapsody is active.",
+    "Provider ownership, recipient scope, magnitude, and stacking behavior remain unresolved."
+  ]
+}

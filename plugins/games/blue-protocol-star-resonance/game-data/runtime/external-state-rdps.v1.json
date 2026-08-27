@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [],
+  "candidate_rules": [
+    {
+      "proof_state": "historical-packet-formula-current-static-lineage-only",
+      "runtime_eligible": false,
+      "blocker": "build 24687926 has no observed runtime activation; provider-recipient replay and exact conservation are absent",
+      "rule": {
+        "effect_id": 2404261,
+        "source_config_id": 2404260,
+        "percentage_attribute_id": 11324,
+        "raw_percent_per_stack": 250,
+        "maximum_stacks": 4,
+        "enabled_provider_raw_percent_values": [500],
+        "final_attribute_id": 11320,
+        "base_attribute_id": 11322,
+        "intermediate_attribute_id": 11321,
+        "extra_percentage_attribute_id": 11325,
+        "ability_id": 2206290,
+        "state_multiplier": 3,
+        "constant_offset": -1
+      }
+    }
+  ]
+}

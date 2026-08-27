@@ -1,0 +1,326 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "actions": [
+    {
+      "ability_id": 3521,
+      "kind": "damage-source",
+      "localization_key": "recount_group.101.name",
+      "icon": "icons/combat/atlas/talent_passive_11/gongjian1152.png",
+      "relation": "RecountTable damage ID 2220352105 contains observed action 3521",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 21406,
+      "kind": "buff-proc",
+      "localization_key": "skill.1521.name",
+      "icon": "icons/combat/atlas/buff/buff_abnormal_green_icon.png",
+      "relation": "BuffTable effect 21406 declares exact parent skill 1521",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 101227,
+      "kind": "base-skill",
+      "localization_key": "recount_group.345.name",
+      "icon": null,
+      "relation": "RecountTable damage ID 11012270101 contains observed action 101227",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 300302,
+      "kind": "damage-source",
+      "localization_key": "recount_group.329.name",
+      "icon": "icons/combat/atlas/season_talent_icon/s2talent01_04.png",
+      "relation": "RecountTable group 329 contains two damage IDs rooted at observed action 300302",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2002441,
+      "kind": "base-skill",
+      "localization_key": "skill.2002441.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_014.png",
+      "relation": "SkillTable provides the exact observed action and official localization key",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2110302,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.345.name",
+      "icon": null,
+      "relation": "RecountTable damage ID 2211030203 contains observed effect action 2110302",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2203311,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.106.name",
+      "icon": "icons/combat/atlas/talent_passive_11/talent_passive_icon_general_dps_bowarrow.png",
+      "relation": "RecountTable damage ID 2220331101 contains observed effect action 2203311",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 3059080,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.333.name",
+      "icon": null,
+      "relation": "RecountTable damage ID 2305908003 contains observed effect action 3059080",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1551,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.186.name",
+      "icon": null,
+      "relation": "RecountTable damage ID 115510101 links observed action 1551 to Wild Seed",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1502,
+      "kind": "base-skill",
+      "localization_key": "recount_group.170.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 1502 belong to Vines' Embrace",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1503,
+      "kind": "base-skill",
+      "localization_key": "recount_group.170.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 1503 belong to Vines' Embrace",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1902,
+      "kind": "base-skill",
+      "localization_key": "recount_group.109.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr_skill_atk.png",
+      "relation": "Observed class-9 action 1902 uses the Halberd's Edge damage family in current captures",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1903,
+      "kind": "base-skill",
+      "localization_key": "recount_group.109.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr_skill_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 1903 belong to Halberd's Edge",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1904,
+      "kind": "base-skill",
+      "localization_key": "recount_group.109.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr_skill_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 1904 belong to Halberd's Edge",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2289,
+      "kind": "base-skill",
+      "localization_key": "recount_group.83.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_kx03.png",
+      "relation": "RecountTable damage ID 122890101 links observed action 2289 to Arrow Rain",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2302,
+      "kind": "base-skill",
+      "localization_key": "recount_group.200.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 2302 belong to Resonant Strings",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2303,
+      "kind": "base-skill",
+      "localization_key": "recount_group.200.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 2303 belong to Resonant Strings",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2304,
+      "kind": "base-skill",
+      "localization_key": "recount_group.200.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 2304 belong to Resonant Strings",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2330,
+      "kind": "base-skill",
+      "localization_key": "recount_group.220.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 2330 belong to Flame Pillar Blash",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2402,
+      "kind": "base-skill",
+      "localization_key": "recount_group.141.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 2402 belong to Blade of Justice",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2403,
+      "kind": "base-skill",
+      "localization_key": "recount_group.141.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 2403 belong to Blade of Justice",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2404,
+      "kind": "base-skill",
+      "localization_key": "recount_group.141.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_atk.png",
+      "relation": "RecountTable damage rows rooted at observed action 2404 belong to Blade of Justice",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 220203,
+      "kind": "base-skill",
+      "localization_key": "recount_group.78.name",
+      "icon": "icons/combat/atlas/debuff/debuff_icon_23.png",
+      "relation": "RecountTable damage ID 322020300 links observed action 220203 to Quadraflare",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 220301,
+      "kind": "base-skill",
+      "localization_key": "recount_group.79.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_ult.png",
+      "relation": "RecountTable damage ID 322030100 links observed action 220301 to Luminary Bolt",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 230401,
+      "kind": "base-skill",
+      "localization_key": "recount_group.215.name",
+      "icon": "icons/combat/atlas/buff/buff_icon13.png",
+      "relation": "RecountTable damage ID 323040100 links observed action 230401 to Encore",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 230501,
+      "kind": "base-skill",
+      "localization_key": "recount_group.215.name",
+      "icon": "icons/combat/atlas/buff/buff_icon13.png",
+      "relation": "RecountTable damage ID 323050100 links observed action 230501 to Encore",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1011011,
+      "kind": "base-skill",
+      "localization_key": "recount_group.299.name",
+      "icon": "icons/combat/atlas/buff/buff_icon155.png",
+      "relation": "RecountTable damage ID 110110110101 links observed action 1011011 to Stunt! Lightning Smite",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1121508,
+      "kind": "imagine",
+      "localization_key": "recount_group.315.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_079.png",
+      "relation": "RecountTable damage rows rooted at observed action 1121508 belong to Arcane! Swift Devour",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1700820,
+      "kind": "summon-skill",
+      "localization_key": "recount_group.90.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "RecountTable damage ID 117008200102 links observed action 1700820 to Wild Wolf - Coordinated Attack",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1700825,
+      "kind": "summon-skill",
+      "localization_key": "recount_group.92.name",
+      "icon": null,
+      "relation": "RecountTable damage ID 117008250102 links observed action 1700825 to Wild Wolf - Pounce",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1700826,
+      "kind": "summon-skill",
+      "localization_key": "recount_group.92.name",
+      "icon": null,
+      "relation": "RecountTable damage ID 117008260102 links observed action 1700826 to Wild Wolf - Pounce",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1700827,
+      "kind": "summon-skill",
+      "localization_key": "recount_group.89.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "RecountTable damage ID 117008270101 links observed action 1700827 to Wild Wolf - Basic Attack",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2002853,
+      "kind": "base-skill",
+      "localization_key": "recount_group.251.name",
+      "icon": null,
+      "relation": "RecountTable damage ID 120028530101 links observed action 2002853 to Stunt! Falling Star",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 1700103,
+      "kind": "monster-skill",
+      "localization_key": "combat_action.1700103.name",
+      "icon": null,
+      "relation": "Current-build SkillTable design identity 野猪王-踩地板 and DamageAttr row 117001030102 identify the packet action; captured source monster ID 80017 resolves to Ridge Fang",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 3524,
+      "kind": "master-special-skill",
+      "localization_key": "combat_action.3524.name",
+      "icon": null,
+      "relation": "DamageAttr row 3352400 gives observed action 3524 the exact technical identity MstSpSkillAttack",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 3525,
+      "kind": "master-special-skill",
+      "localization_key": "combat_action.3525.name",
+      "icon": null,
+      "relation": "DamageAttr row 3352500 gives observed action 3525 the exact technical identity MstSpSkillAttack",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2203291,
+      "kind": "passive-proc-family",
+      "localization_key": "combat_action.2203291.name",
+      "icon": "icons/combat/atlas/buff/buff_passive_icon_general_dps_lightenergycost.png",
+      "relation": "Observed action 2203291 is an exact wire family containing hit-event 7 Falcon Strike and hit-event 9 Falcon Lightning Strike",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 2203531,
+      "kind": "talent-proc",
+      "localization_key": "recount_group.96.name",
+      "icon": "icons/combat/atlas/talent_passive_11/gongjian1153.png",
+      "relation": "Buff 2203531 design identity Phantom Falcon AOE belongs to the localized Phantom Falcon talent family",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 3003213,
+      "kind": "seasonal-talent-proc",
+      "localization_key": "recount_group.330.name",
+      "icon": "icons/combat/atlas/season_talent/s2talent07_01.png",
+      "relation": "Buff 3003213 is the exact child damage action for the localized Shattered Illusion seasonal talent",
+      "review_state": "verified-current-build"
+    },
+    {
+      "ability_id": 3054440,
+      "kind": "reality-factor-proc",
+      "localization_key": "combat_action.3054440.name",
+      "icon": null,
+      "relation": "SeasonPhantomFactors links observed buff 3054440 and damage row 2305444006 to Shield Knight Reality Factor X5",
+      "review_state": "verified-current-build"
+    }
+  ]
+}

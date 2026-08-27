@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "game_build": "24252055",
+  "rule": {
+    "effect_id": 2110143,
+    "review_state": "confirmed",
+    "contribution_kind": "offensive_stat_boost",
+    "source_scope": "effect_source",
+    "target_scope": "party_members",
+    "magnitude_basis_points": null,
+    "stacking_rule": "refresh_only",
+    "attribution_enabled": false
+  },
+  "evidence": [
+    "Current-build packets identify effect 2110143 as the recipient-side Functional Amp status emitted by BuffTable source configuration 2110151; status events retain the external player provider and player recipient.",
+    "Across three seal-valid sessions, 900 status events yielded 55 windows, including 44 cross-actor windows, with 48 packet-origin observations and no missing-source windows.",
+    "Reversible packet equations prove +360 raw-percent units on physical Attack child 11334 and magical Attack child 11344, equivalent to 3.60 percentage points in the packet unit system.",
+    "The same reversible equations prove +360 units on Attack Speed family members 11720, 11721, and 11722 and +720 units on Cast Speed family members 11730, 11731, and 11732.",
+    "Attack, magical Attack, Attack Speed, and Cast Speed are distinct downstream stages. They must not be collapsed into one damage multiplier or credited more than once.",
+    "The live state projector now enables the exact reduced-rational Attack and MAttack coefficient-stage allocation separately from this generic fixed-magnitude reducer table: all 619 independently expected current-build standard-script events were emitted and party damage remained conserved across 951782 canonical events.",
+    "Three packet-observed AttackLucky events remain canonical and explicitly unattributed. Attack Speed and Cast Speed remain disabled until their separate action-opportunity counterfactual is proven; neither gap blocks the proven per-hit Attack and MAttack allocation."
+  ]
+}

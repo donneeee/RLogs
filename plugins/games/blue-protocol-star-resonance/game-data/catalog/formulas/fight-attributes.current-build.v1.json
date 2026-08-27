@@ -1,0 +1,2855 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "client_build": "24252055",
+  "source": {
+    "table": "FightAttrTable.ctb",
+    "table_hash": 2490336417,
+    "row_count": 161,
+    "row_size": 96,
+    "package": "container/m0.pkg"
+  },
+  "policy": {
+    "runtime_formula_authority": false,
+    "unresolved_formula_stages_are_hidden": false,
+    "localization_is_owned_by_locale_plugins": true
+  },
+  "family_suffixes": [
+    "current",
+    "total",
+    "add",
+    "extra_add",
+    "percent",
+    "extra_percent"
+  ],
+  "attributes": [
+    {
+      "id": 10000,
+      "internal_name": null,
+      "design_description_zh_cn": "生体源等级",
+      "storage_type": "int32",
+      "family_ids": [],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 0
+    },
+    {
+      "id": 10010,
+      "internal_name": "AttrGS",
+      "design_description_zh_cn": "（废弃）当前GS",
+      "storage_type": "int32",
+      "family_ids": [],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 1
+    },
+    {
+      "id": 10020,
+      "internal_name": "AttrLastMaxGS",
+      "design_description_zh_cn": "（废弃）历史最高GS",
+      "storage_type": "int32",
+      "family_ids": [],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 2
+    },
+    {
+      "id": 10030,
+      "internal_name": "AttrFightPoint",
+      "design_description_zh_cn": "战斗力",
+      "storage_type": "int64",
+      "family_ids": [
+        10030,
+        10031,
+        10032,
+        10033,
+        10034,
+        10035
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 3
+    },
+    {
+      "id": 10040,
+      "internal_name": "AttrFightCapability",
+      "design_description_zh_cn": "(未实装）输出战力",
+      "storage_type": "int64",
+      "family_ids": [
+        10040,
+        10041,
+        10042,
+        10043,
+        10044,
+        10045
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 4
+    },
+    {
+      "id": 10050,
+      "internal_name": "AttrSurvivalCapability",
+      "design_description_zh_cn": "(未实装）生存战力",
+      "storage_type": "int64",
+      "family_ids": [
+        10050,
+        10051,
+        10052,
+        10053,
+        10054,
+        10055
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 5
+    },
+    {
+      "id": 10060,
+      "internal_name": "AttrRankLevel",
+      "design_description_zh_cn": "头衔等级",
+      "storage_type": "int32",
+      "family_ids": [],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 6
+    },
+    {
+      "id": 10070,
+      "internal_name": "AttrSeasonLevel",
+      "design_description_zh_cn": "赛季等级",
+      "storage_type": "int32",
+      "family_ids": [],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 7
+    },
+    {
+      "id": 10200,
+      "internal_name": "AttrWalkVelocity",
+      "design_description_zh_cn": "走路速度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        10200,
+        10201,
+        10202,
+        10203,
+        10204,
+        10205
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 8
+    },
+    {
+      "id": 10210,
+      "internal_name": "AttrRunVelocity",
+      "design_description_zh_cn": "跑步速度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        10210,
+        10211,
+        10212,
+        10213,
+        10214,
+        10215
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 9
+    },
+    {
+      "id": 10220,
+      "internal_name": "AttrDashVelocity",
+      "design_description_zh_cn": "冲刺速度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        10220,
+        10221,
+        10222,
+        10223,
+        10224,
+        10225
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 10
+    },
+    {
+      "id": 10230,
+      "internal_name": "AttrReviveTimeConsumePCT",
+      "design_description_zh_cn": "复活倒计时时间缩减万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        10230,
+        10231,
+        10232,
+        10233,
+        10234,
+        10235
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 11
+    },
+    {
+      "id": 10240,
+      "internal_name": "AttrRideWalkVelocity",
+      "design_description_zh_cn": "载具走路速度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        10240,
+        10241,
+        10242,
+        10243,
+        10244,
+        10245
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 12
+    },
+    {
+      "id": 10250,
+      "internal_name": "AttrRideRunVelocity",
+      "design_description_zh_cn": "载具跑步速度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        10250,
+        10251,
+        10252,
+        10253,
+        10254,
+        10255
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 13
+    },
+    {
+      "id": 10260,
+      "internal_name": "AttrRideDashVelocity",
+      "design_description_zh_cn": "载具疾跑速度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        10260,
+        10261,
+        10262,
+        10263,
+        10264,
+        10265
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 14
+    },
+    {
+      "id": 10270,
+      "internal_name": "AttrReviveInteractionTimeConsumePCT",
+      "design_description_zh_cn": "复活交互读条速度加速万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        10270,
+        10271,
+        10272,
+        10273,
+        10274,
+        10275
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 15
+    },
+    {
+      "id": 11010,
+      "internal_name": "AttrStrength",
+      "design_description_zh_cn": "力量",
+      "storage_type": "int32",
+      "family_ids": [
+        11010,
+        11011,
+        11012,
+        11013,
+        11014,
+        11015
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 16
+    },
+    {
+      "id": 11020,
+      "internal_name": "AttrIntelligence",
+      "design_description_zh_cn": "智力",
+      "storage_type": "int32",
+      "family_ids": [
+        11020,
+        11021,
+        11022,
+        11023,
+        11024,
+        11025
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 17
+    },
+    {
+      "id": 11030,
+      "internal_name": "AttrDexterity",
+      "design_description_zh_cn": "敏捷",
+      "storage_type": "int32",
+      "family_ids": [
+        11030,
+        11031,
+        11032,
+        11033,
+        11034,
+        11035
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 18
+    },
+    {
+      "id": 11040,
+      "internal_name": "AttrVitality",
+      "design_description_zh_cn": "耐力",
+      "storage_type": "int32",
+      "family_ids": [
+        11040,
+        11041,
+        11042,
+        11043,
+        11044,
+        11045
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 19
+    },
+    {
+      "id": 11110,
+      "internal_name": "AttrCri",
+      "design_description_zh_cn": "暴击",
+      "storage_type": "int32",
+      "family_ids": [
+        11110,
+        11111,
+        11112,
+        11113,
+        11114,
+        11115
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 20
+    },
+    {
+      "id": 11120,
+      "internal_name": "AttrHaste",
+      "design_description_zh_cn": "急速",
+      "storage_type": "int32",
+      "family_ids": [
+        11120,
+        11121,
+        11122,
+        11123,
+        11124,
+        11125
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 21
+    },
+    {
+      "id": 11130,
+      "internal_name": "AttrLuck",
+      "design_description_zh_cn": "幸运",
+      "storage_type": "int32",
+      "family_ids": [
+        11130,
+        11131,
+        11132,
+        11133,
+        11134,
+        11135
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 22
+    },
+    {
+      "id": 11140,
+      "internal_name": "AttrMastery",
+      "design_description_zh_cn": "精通",
+      "storage_type": "int32",
+      "family_ids": [
+        11140,
+        11141,
+        11142,
+        11143,
+        11144,
+        11145
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 23
+    },
+    {
+      "id": 11150,
+      "internal_name": "AttrVersatility",
+      "design_description_zh_cn": "全能",
+      "storage_type": "int32",
+      "family_ids": [
+        11150,
+        11151,
+        11152,
+        11153,
+        11154,
+        11155
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 24
+    },
+    {
+      "id": 11160,
+      "internal_name": "AttrHit",
+      "design_description_zh_cn": "（废弃）精准",
+      "storage_type": "int32",
+      "family_ids": [
+        11160,
+        11161,
+        11162,
+        11163,
+        11164,
+        11165
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 25
+    },
+    {
+      "id": 11170,
+      "internal_name": "AttrBlock",
+      "design_description_zh_cn": "格挡",
+      "storage_type": "int32",
+      "family_ids": [
+        11170,
+        11171,
+        11172,
+        11173,
+        11174,
+        11175
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 26
+    },
+    {
+      "id": 11310,
+      "internal_name": "AttrHp",
+      "design_description_zh_cn": "当前生命",
+      "storage_type": "int64",
+      "family_ids": [],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 27
+    },
+    {
+      "id": 11320,
+      "internal_name": "AttrMaxHp",
+      "design_description_zh_cn": "生命上限",
+      "storage_type": "int64",
+      "family_ids": [
+        11320,
+        11321,
+        11322,
+        11323,
+        11324,
+        11325
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 28
+    },
+    {
+      "id": 11330,
+      "internal_name": "AttrAttack",
+      "design_description_zh_cn": "物理攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11330,
+        11331,
+        11332,
+        11333,
+        11334,
+        11335
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 29
+    },
+    {
+      "id": 11340,
+      "internal_name": "AttrMAttack",
+      "design_description_zh_cn": "魔法攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11340,
+        11341,
+        11342,
+        11343,
+        11344,
+        11345
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 30
+    },
+    {
+      "id": 11350,
+      "internal_name": "AttrDefense",
+      "design_description_zh_cn": "物理防御",
+      "storage_type": "int32",
+      "family_ids": [
+        11350,
+        11351,
+        11352,
+        11353,
+        11354,
+        11355
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 31
+    },
+    {
+      "id": 11360,
+      "internal_name": "AttrMDefense",
+      "design_description_zh_cn": "魔法防御",
+      "storage_type": "int32",
+      "family_ids": [
+        11360,
+        11361,
+        11362,
+        11363,
+        11364,
+        11365
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 32
+    },
+    {
+      "id": 11370,
+      "internal_name": "AttrIgnoreDefense",
+      "design_description_zh_cn": "忽视物理防御",
+      "storage_type": "int32",
+      "family_ids": [
+        11370,
+        11371,
+        11372,
+        11373,
+        11374,
+        11375
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 33
+    },
+    {
+      "id": 11380,
+      "internal_name": "AttrIgnoreMDefense",
+      "design_description_zh_cn": "忽视魔法防御",
+      "storage_type": "int32",
+      "family_ids": [
+        11380,
+        11381,
+        11382,
+        11383,
+        11384,
+        11385
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 34
+    },
+    {
+      "id": 11390,
+      "internal_name": "AttrIgnoreDefensePCT",
+      "design_description_zh_cn": "忽视物理防御万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11390,
+        11391,
+        11392,
+        11393,
+        11394,
+        11395
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 35
+    },
+    {
+      "id": 11400,
+      "internal_name": "AttrIgnoreMDefensePCT",
+      "design_description_zh_cn": "忽视魔法防御万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11400,
+        11401,
+        11402,
+        11403,
+        11404,
+        11405
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 36
+    },
+    {
+      "id": 11410,
+      "internal_name": "AttrRefineAttack",
+      "design_description_zh_cn": "精炼物攻",
+      "storage_type": "int32",
+      "family_ids": [
+        11410,
+        11411,
+        11412,
+        11413,
+        11414,
+        11415
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 37
+    },
+    {
+      "id": 11420,
+      "internal_name": "AttrRefineDefense",
+      "design_description_zh_cn": "精炼防御",
+      "storage_type": "int32",
+      "family_ids": [
+        11420,
+        11421,
+        11422,
+        11423,
+        11424,
+        11425
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 38
+    },
+    {
+      "id": 11430,
+      "internal_name": "AttrRefineMAttack",
+      "design_description_zh_cn": "精炼魔攻",
+      "storage_type": "int32",
+      "family_ids": [
+        11430,
+        11431,
+        11432,
+        11433,
+        11434,
+        11435
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 39
+    },
+    {
+      "id": 11440,
+      "internal_name": "AttrSeasonStrength",
+      "design_description_zh_cn": "赛季强度",
+      "storage_type": "int32",
+      "family_ids": [
+        11440,
+        11441,
+        11442,
+        11443,
+        11444,
+        11445
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 40
+    },
+    {
+      "id": 11450,
+      "internal_name": "AttrSeasonWeakness",
+      "design_description_zh_cn": "赛季治疗虚弱",
+      "storage_type": "int32",
+      "family_ids": [
+        11450,
+        11451,
+        11452,
+        11453,
+        11454,
+        11455
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 41
+    },
+    {
+      "id": 11500,
+      "internal_name": "AttrElementAtk",
+      "design_description_zh_cn": "全元素攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11500,
+        11501,
+        11502,
+        11503,
+        11504,
+        11505
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 42
+    },
+    {
+      "id": 11510,
+      "internal_name": "AttrFireAtk",
+      "design_description_zh_cn": "火元素攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11510,
+        11511,
+        11512,
+        11513,
+        11514,
+        11515
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 43
+    },
+    {
+      "id": 11520,
+      "internal_name": "AttrWaterAtk",
+      "design_description_zh_cn": "冰元素攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11520,
+        11521,
+        11522,
+        11523,
+        11524,
+        11525
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 44
+    },
+    {
+      "id": 11530,
+      "internal_name": "AttrWoodAtk",
+      "design_description_zh_cn": "森元素攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11530,
+        11531,
+        11532,
+        11533,
+        11534,
+        11535
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 45
+    },
+    {
+      "id": 11540,
+      "internal_name": "AttrElectricityAtk",
+      "design_description_zh_cn": "雷元素攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11540,
+        11541,
+        11542,
+        11543,
+        11544,
+        11545
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 46
+    },
+    {
+      "id": 11550,
+      "internal_name": "AttrWindAtk",
+      "design_description_zh_cn": "风元素攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11550,
+        11551,
+        11552,
+        11553,
+        11554,
+        11555
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 47
+    },
+    {
+      "id": 11560,
+      "internal_name": "AttrRockAtk",
+      "design_description_zh_cn": "岩元素攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11560,
+        11561,
+        11562,
+        11563,
+        11564,
+        11565
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 48
+    },
+    {
+      "id": 11570,
+      "internal_name": "AttrLightAtk",
+      "design_description_zh_cn": "光元素攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11570,
+        11571,
+        11572,
+        11573,
+        11574,
+        11575
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 49
+    },
+    {
+      "id": 11580,
+      "internal_name": "AttrDarkAtk",
+      "design_description_zh_cn": "暗元素攻击",
+      "storage_type": "int32",
+      "family_ids": [
+        11580,
+        11581,
+        11582,
+        11583,
+        11584,
+        11585
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 50
+    },
+    {
+      "id": 11710,
+      "internal_name": "AttrCrit",
+      "design_description_zh_cn": "暴击万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11710,
+        11711,
+        11712,
+        11713,
+        11714,
+        11715
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 51
+    },
+    {
+      "id": 11720,
+      "internal_name": "AttrAttackSpeedPCT",
+      "design_description_zh_cn": "攻击速度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11720,
+        11721,
+        11722,
+        11723,
+        11724,
+        11725
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 52
+    },
+    {
+      "id": 11730,
+      "internal_name": "AttrCastSpeedPCT",
+      "design_description_zh_cn": "施法速度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11730,
+        11731,
+        11732,
+        11733,
+        11734,
+        11735
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 53
+    },
+    {
+      "id": 11740,
+      "internal_name": "AttrChargeSpeedPCT",
+      "design_description_zh_cn": "蓄力速度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11740,
+        11741,
+        11742,
+        11743,
+        11744,
+        11745
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 54
+    },
+    {
+      "id": 11750,
+      "internal_name": "AttrSkillCD",
+      "design_description_zh_cn": "技能冷却缩减毫秒",
+      "storage_type": "int32",
+      "family_ids": [
+        11750,
+        11751,
+        11752,
+        11753,
+        11754,
+        11755
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 55
+    },
+    {
+      "id": 11760,
+      "internal_name": "AttrSkillCDPCT",
+      "design_description_zh_cn": "技能冷却缩减万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11760,
+        11761,
+        11762,
+        11763,
+        11764,
+        11765
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 56
+    },
+    {
+      "id": 11770,
+      "internal_name": "AttrDotTime",
+      "design_description_zh_cn": "DOT效率万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11770,
+        11771,
+        11772,
+        11773,
+        11774,
+        11775
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 57
+    },
+    {
+      "id": 11780,
+      "internal_name": "AttrLuckyStrikeProb",
+      "design_description_zh_cn": "幸运万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11780,
+        11781,
+        11782,
+        11783,
+        11784,
+        11785
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 58
+    },
+    {
+      "id": 11790,
+      "internal_name": "AttrHeal",
+      "design_description_zh_cn": "治疗强度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11790,
+        11791,
+        11792,
+        11793,
+        11794,
+        11795
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 59
+    },
+    {
+      "id": 11800,
+      "internal_name": "AttrHealed",
+      "design_description_zh_cn": "受治疗强度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11800,
+        11801,
+        11802,
+        11803,
+        11804,
+        11805
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 60
+    },
+    {
+      "id": 11810,
+      "internal_name": "AttrShieldAddPCT",
+      "design_description_zh_cn": "护盾强度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11810,
+        11811,
+        11812,
+        11813,
+        11814,
+        11815
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 61
+    },
+    {
+      "id": 11820,
+      "internal_name": "AttrShieldGainPCT",
+      "design_description_zh_cn": "受护盾强度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11820,
+        11821,
+        11822,
+        11823,
+        11824,
+        11825
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 62
+    },
+    {
+      "id": 11830,
+      "internal_name": "AttrStunnedDamagePCT",
+      "design_description_zh_cn": "破韧效率万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11830,
+        11831,
+        11832,
+        11833,
+        11834,
+        11835
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 63
+    },
+    {
+      "id": 11840,
+      "internal_name": "AttrExtDamInc",
+      "design_description_zh_cn": "全能加成万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11840,
+        11841,
+        11842,
+        11843,
+        11844,
+        11845
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 64
+    },
+    {
+      "id": 11850,
+      "internal_name": "AttrExtDamRes",
+      "design_description_zh_cn": "全能伤害减免万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11850,
+        11851,
+        11852,
+        11853,
+        11854,
+        11855
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 65
+    },
+    {
+      "id": 11860,
+      "internal_name": "AttrDpsOwnEffectStr",
+      "design_description_zh_cn": "（废弃）碎裂强度万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11860,
+        11861,
+        11862,
+        11863,
+        11864,
+        11865
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 66
+    },
+    {
+      "id": 11870,
+      "internal_name": "AttrRainbowDamage",
+      "design_description_zh_cn": "（废弃）碎裂增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11870,
+        11871,
+        11872,
+        11873,
+        11874,
+        11875
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 67
+    },
+    {
+      "id": 11880,
+      "internal_name": "AttrSuppressDamInc",
+      "design_description_zh_cn": "压制伤害万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11880,
+        11881,
+        11882,
+        11883,
+        11884,
+        11885
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 68
+    },
+    {
+      "id": 11890,
+      "internal_name": "AttrSuppressDamRes",
+      "design_description_zh_cn": "压制减伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11890,
+        11891,
+        11892,
+        11893,
+        11894,
+        11895
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 69
+    },
+    {
+      "id": 11900,
+      "internal_name": "AttrInspirePct",
+      "design_description_zh_cn": "（废弃）鼓舞比例万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11900,
+        11901,
+        11902,
+        11903,
+        11904,
+        11905
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 70
+    },
+    {
+      "id": 11910,
+      "internal_name": "AttrHateRatePTC",
+      "design_description_zh_cn": "愤怒加成",
+      "storage_type": "int32",
+      "family_ids": [
+        11910,
+        11911,
+        11912,
+        11913,
+        11914,
+        11915
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 71
+    },
+    {
+      "id": 11920,
+      "internal_name": "AttrVulnerabilityDamage",
+      "design_description_zh_cn": "（废弃）易伤增伤",
+      "storage_type": "int32",
+      "family_ids": [
+        11920,
+        11921,
+        11922,
+        11923,
+        11924,
+        11925
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 72
+    },
+    {
+      "id": 11930,
+      "internal_name": "AttrHastePct",
+      "design_description_zh_cn": "急速万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11930,
+        11931,
+        11932,
+        11933,
+        11934,
+        11935
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 73
+    },
+    {
+      "id": 11940,
+      "internal_name": "AttrMasteryPct",
+      "design_description_zh_cn": "精通万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11940,
+        11941,
+        11942,
+        11943,
+        11944,
+        11945
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 74
+    },
+    {
+      "id": 11950,
+      "internal_name": "AttrVersatilityPct",
+      "design_description_zh_cn": "全能万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11950,
+        11951,
+        11952,
+        11953,
+        11954,
+        11955
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 75
+    },
+    {
+      "id": 11960,
+      "internal_name": "AttrCdAcceleratePct",
+      "design_description_zh_cn": "冷却加速万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11960,
+        11961,
+        11962,
+        11963,
+        11964,
+        11965
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 76
+    },
+    {
+      "id": 11970,
+      "internal_name": "AttrBlockPct",
+      "design_description_zh_cn": "格挡万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11970,
+        11971,
+        11972,
+        11973,
+        11974,
+        11975
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 77
+    },
+    {
+      "id": 11980,
+      "internal_name": "AttrFightResCdSpeedPct",
+      "design_description_zh_cn": "独立计时战斗资源冷却加速万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11980,
+        11981,
+        11982,
+        11983,
+        11984,
+        11985
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 78
+    },
+    {
+      "id": 11990,
+      "internal_name": "AttrPetAttackSpeedPCT",
+      "design_description_zh_cn": "宠物攻速万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        11990,
+        11991,
+        11992,
+        11993,
+        11994,
+        11995
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 79
+    },
+    {
+      "id": 12510,
+      "internal_name": "AttrCritDamage",
+      "design_description_zh_cn": "暴击伤害万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12510,
+        12511,
+        12512,
+        12513,
+        12514,
+        12515
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 80
+    },
+    {
+      "id": 12520,
+      "internal_name": "AttrCritDamageRes",
+      "design_description_zh_cn": "暴击伤害抵抗万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12520,
+        12521,
+        12522,
+        12523,
+        12524,
+        12525
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 81
+    },
+    {
+      "id": 12530,
+      "internal_name": "AttrLuckDamInc",
+      "design_description_zh_cn": "幸运一击伤害倍率",
+      "storage_type": "int32",
+      "family_ids": [
+        12530,
+        12531,
+        12532,
+        12533,
+        12534,
+        12535
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 82
+    },
+    {
+      "id": 12540,
+      "internal_name": "AttrBlockDamRes",
+      "design_description_zh_cn": "格挡伤害减免万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12540,
+        12541,
+        12542,
+        12543,
+        12544,
+        12545
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 83
+    },
+    {
+      "id": 12550,
+      "internal_name": "AttrDamInc",
+      "design_description_zh_cn": "物理增效万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12550,
+        12551,
+        12552,
+        12553,
+        12554,
+        12555
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 84
+    },
+    {
+      "id": 12560,
+      "internal_name": "AttrDamRes",
+      "design_description_zh_cn": "物理削减万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12560,
+        12561,
+        12562,
+        12563,
+        12564,
+        12565
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 85
+    },
+    {
+      "id": 12570,
+      "internal_name": "AttrMdamInc",
+      "design_description_zh_cn": "魔法增效万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12570,
+        12571,
+        12572,
+        12573,
+        12574,
+        12575
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 86
+    },
+    {
+      "id": 12580,
+      "internal_name": "AttrMdamRes",
+      "design_description_zh_cn": "魔法削减万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12580,
+        12581,
+        12582,
+        12583,
+        12584,
+        12585
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 87
+    },
+    {
+      "id": 12590,
+      "internal_name": "AttrNearDamage",
+      "design_description_zh_cn": "（真实距离）近距离伤害加成万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12590,
+        12591,
+        12592,
+        12593,
+        12594,
+        12595
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 88
+    },
+    {
+      "id": 12600,
+      "internal_name": "AttrNearDamageReduction",
+      "design_description_zh_cn": "（真实距离）近距离伤害减免万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12600,
+        12601,
+        12602,
+        12603,
+        12604,
+        12605
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 89
+    },
+    {
+      "id": 12610,
+      "internal_name": "AttrFarDamage",
+      "design_description_zh_cn": "（真实距离）远距离伤害加成万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12610,
+        12611,
+        12612,
+        12613,
+        12614,
+        12615
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 90
+    },
+    {
+      "id": 12620,
+      "internal_name": "AttrFarDamageReduction",
+      "design_description_zh_cn": "（真实距离）远距离伤害减免万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12620,
+        12621,
+        12622,
+        12623,
+        12624,
+        12625
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 91
+    },
+    {
+      "id": 12630,
+      "internal_name": "AttrBossDamInc",
+      "design_description_zh_cn": "对首领增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12630,
+        12631,
+        12632,
+        12633,
+        12634,
+        12635
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 92
+    },
+    {
+      "id": 12640,
+      "internal_name": "AttrBossDamRes",
+      "design_description_zh_cn": "对首领抵抗万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12640,
+        12641,
+        12642,
+        12643,
+        12644,
+        12645
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 93
+    },
+    {
+      "id": 12650,
+      "internal_name": "AttrShieldDamagePCT",
+      "design_description_zh_cn": "对护盾伤害加成万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12650,
+        12651,
+        12652,
+        12653,
+        12654,
+        12655
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 94
+    },
+    {
+      "id": 12660,
+      "internal_name": "AttrShieldDamageReductionPCT",
+      "design_description_zh_cn": "护盾受到伤害减免万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12660,
+        12661,
+        12662,
+        12663,
+        12664,
+        12665
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 95
+    },
+    {
+      "id": 12670,
+      "internal_name": "AttrOtherDamInc",
+      "design_description_zh_cn": "通用增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12670,
+        12671,
+        12672,
+        12673,
+        12674,
+        12675
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 96
+    },
+    {
+      "id": 12680,
+      "internal_name": "AttrOtherDamRes",
+      "design_description_zh_cn": "通用减免万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12680,
+        12681,
+        12682,
+        12683,
+        12684,
+        12685
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 97
+    },
+    {
+      "id": 12690,
+      "internal_name": "AttrSeasonDamInc",
+      "design_description_zh_cn": "赛季增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12690,
+        12691,
+        12692,
+        12693,
+        12694,
+        12695
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 98
+    },
+    {
+      "id": 12700,
+      "internal_name": "AttrSeasonDamRes",
+      "design_description_zh_cn": "赛季减免万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12700,
+        12701,
+        12702,
+        12703,
+        12704,
+        12705
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 99
+    },
+    {
+      "id": 12710,
+      "internal_name": "AttrMultipliesDamPct",
+      "design_description_zh_cn": "累乘专用万分比属性",
+      "storage_type": "int32",
+      "family_ids": [
+        12710,
+        12711,
+        12712,
+        12713,
+        12714,
+        12715
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 100
+    },
+    {
+      "id": 12720,
+      "internal_name": "AttrLuckHealInc",
+      "design_description_zh_cn": "幸运一击治疗倍率",
+      "storage_type": "int32",
+      "family_ids": [
+        12720,
+        12721,
+        12722,
+        12723,
+        12724,
+        12725
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 101
+    },
+    {
+      "id": 12730,
+      "internal_name": "AttrPetDamInc",
+      "design_description_zh_cn": "宠物伤害加成万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12730,
+        12731,
+        12732,
+        12733,
+        12734,
+        12735
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 102
+    },
+    {
+      "id": 12740,
+      "internal_name": "AttrCritHeal",
+      "design_description_zh_cn": "暴击治疗万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        12740,
+        12741,
+        12742,
+        12743,
+        12744,
+        12745
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 103
+    },
+    {
+      "id": 12750,
+      "internal_name": "AttrSpDamInc",
+      "design_description_zh_cn": "关卡用增伤",
+      "storage_type": "int32",
+      "family_ids": [
+        12750,
+        12751,
+        12752,
+        12753,
+        12754,
+        12755
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 104
+    },
+    {
+      "id": 12760,
+      "internal_name": "AttrSpDamRes",
+      "design_description_zh_cn": "关卡用减伤",
+      "storage_type": "int32",
+      "family_ids": [
+        12760,
+        12761,
+        12762,
+        12763,
+        12764,
+        12765
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 105
+    },
+    {
+      "id": 12770,
+      "internal_name": "AttrHealBanPct",
+      "design_description_zh_cn": "（治疗者）禁疗专用属性",
+      "storage_type": "int32",
+      "family_ids": [
+        12770,
+        12771,
+        12772,
+        12773,
+        12774,
+        12775
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 106
+    },
+    {
+      "id": 12780,
+      "internal_name": "AttrHealedBanPct",
+      "design_description_zh_cn": "（被治疗者）重伤",
+      "storage_type": "int32",
+      "family_ids": [
+        12780,
+        12781,
+        12782,
+        12783,
+        12784,
+        12785
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 107
+    },
+    {
+      "id": 12790,
+      "internal_name": "AttrDamPower",
+      "design_description_zh_cn": "物理增效强度",
+      "storage_type": "int32",
+      "family_ids": [
+        12790,
+        12791,
+        12792,
+        12793,
+        12794,
+        12795
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 108
+    },
+    {
+      "id": 12800,
+      "internal_name": "AttrMDamPower",
+      "design_description_zh_cn": "魔法增效强度",
+      "storage_type": "int32",
+      "family_ids": [
+        12800,
+        12801,
+        12802,
+        12803,
+        12804,
+        12805
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 109
+    },
+    {
+      "id": 13000,
+      "internal_name": "AttrElementPower",
+      "design_description_zh_cn": "全元素强度",
+      "storage_type": "int32",
+      "family_ids": [
+        13000,
+        13001,
+        13002,
+        13003,
+        13004,
+        13005
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 110
+    },
+    {
+      "id": 13010,
+      "internal_name": "AttrFirePower",
+      "design_description_zh_cn": "火属性强度",
+      "storage_type": "int32",
+      "family_ids": [
+        13010,
+        13011,
+        13012,
+        13013,
+        13014,
+        13015
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 111
+    },
+    {
+      "id": 13020,
+      "internal_name": "AttrWaterPower",
+      "design_description_zh_cn": "水属性强度",
+      "storage_type": "int32",
+      "family_ids": [
+        13020,
+        13021,
+        13022,
+        13023,
+        13024,
+        13025
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 112
+    },
+    {
+      "id": 13030,
+      "internal_name": "AttrWoodPower",
+      "design_description_zh_cn": "森属性强度",
+      "storage_type": "int32",
+      "family_ids": [
+        13030,
+        13031,
+        13032,
+        13033,
+        13034,
+        13035
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 113
+    },
+    {
+      "id": 13040,
+      "internal_name": "AttrElectricityPower",
+      "design_description_zh_cn": "雷属性强度",
+      "storage_type": "int32",
+      "family_ids": [
+        13040,
+        13041,
+        13042,
+        13043,
+        13044,
+        13045
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 114
+    },
+    {
+      "id": 13050,
+      "internal_name": "AttrWindPower",
+      "design_description_zh_cn": "风元素强度",
+      "storage_type": "int32",
+      "family_ids": [
+        13050,
+        13051,
+        13052,
+        13053,
+        13054,
+        13055
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 115
+    },
+    {
+      "id": 13060,
+      "internal_name": "AttrRockPower",
+      "design_description_zh_cn": "岩属性强度",
+      "storage_type": "int32",
+      "family_ids": [
+        13060,
+        13061,
+        13062,
+        13063,
+        13064,
+        13065
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 116
+    },
+    {
+      "id": 13070,
+      "internal_name": "AttrLightPower",
+      "design_description_zh_cn": "光属性强度",
+      "storage_type": "int32",
+      "family_ids": [
+        13070,
+        13071,
+        13072,
+        13073,
+        13074,
+        13075
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 117
+    },
+    {
+      "id": 13080,
+      "internal_name": "AttrDarkPower",
+      "design_description_zh_cn": "暗属性强度",
+      "storage_type": "int32",
+      "family_ids": [
+        13080,
+        13081,
+        13082,
+        13083,
+        13084,
+        13085
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 118
+    },
+    {
+      "id": 13100,
+      "internal_name": "AttrElementDamage",
+      "design_description_zh_cn": "元素增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13100,
+        13101,
+        13102,
+        13103,
+        13104,
+        13105
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 119
+    },
+    {
+      "id": 13110,
+      "internal_name": "AttrFireDamage",
+      "design_description_zh_cn": "火属性增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13110,
+        13111,
+        13112,
+        13113,
+        13114,
+        13115
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 120
+    },
+    {
+      "id": 13120,
+      "internal_name": "AttrWaterDamage",
+      "design_description_zh_cn": "水属性增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13120,
+        13121,
+        13122,
+        13123,
+        13124,
+        13125
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 121
+    },
+    {
+      "id": 13130,
+      "internal_name": "AttrWoodDamage",
+      "design_description_zh_cn": "森属性增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13130,
+        13131,
+        13132,
+        13133,
+        13134,
+        13135
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 122
+    },
+    {
+      "id": 13140,
+      "internal_name": "AttrElectricityDamage",
+      "design_description_zh_cn": "雷属性增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13140,
+        13141,
+        13142,
+        13143,
+        13144,
+        13145
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 123
+    },
+    {
+      "id": 13150,
+      "internal_name": "AttrWindDamage",
+      "design_description_zh_cn": "风元素增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13150,
+        13151,
+        13152,
+        13153,
+        13154,
+        13155
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 124
+    },
+    {
+      "id": 13160,
+      "internal_name": "AttrRockDamage",
+      "design_description_zh_cn": "岩属性增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13160,
+        13161,
+        13162,
+        13163,
+        13164,
+        13165
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 125
+    },
+    {
+      "id": 13170,
+      "internal_name": "AttrLightDamage",
+      "design_description_zh_cn": "光属性增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13170,
+        13171,
+        13172,
+        13173,
+        13174,
+        13175
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 126
+    },
+    {
+      "id": 13180,
+      "internal_name": "AttrDarkDamage",
+      "design_description_zh_cn": "暗属性增伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13180,
+        13181,
+        13182,
+        13183,
+        13184,
+        13185
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 127
+    },
+    {
+      "id": 13200,
+      "internal_name": "AttrElementDefense",
+      "design_description_zh_cn": "全元素抗性",
+      "storage_type": "int32",
+      "family_ids": [
+        13200,
+        13201,
+        13202,
+        13203,
+        13204,
+        13205
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 128
+    },
+    {
+      "id": 13210,
+      "internal_name": "AttrFireDefense",
+      "design_description_zh_cn": "火元素抗性",
+      "storage_type": "int32",
+      "family_ids": [
+        13210,
+        13211,
+        13212,
+        13213,
+        13214,
+        13215
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 129
+    },
+    {
+      "id": 13220,
+      "internal_name": "AttrWaterDefense",
+      "design_description_zh_cn": "冰元素抗性",
+      "storage_type": "int32",
+      "family_ids": [
+        13220,
+        13221,
+        13222,
+        13223,
+        13224,
+        13225
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 130
+    },
+    {
+      "id": 13230,
+      "internal_name": "AttrWoodDefense",
+      "design_description_zh_cn": "森元素抗性",
+      "storage_type": "int32",
+      "family_ids": [
+        13230,
+        13231,
+        13232,
+        13233,
+        13234,
+        13235
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 131
+    },
+    {
+      "id": 13240,
+      "internal_name": "AttrElectricityDefense",
+      "design_description_zh_cn": "雷元素抗性",
+      "storage_type": "int32",
+      "family_ids": [
+        13240,
+        13241,
+        13242,
+        13243,
+        13244,
+        13245
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 132
+    },
+    {
+      "id": 13250,
+      "internal_name": "AttrWindDefense",
+      "design_description_zh_cn": "风元素抗性",
+      "storage_type": "int32",
+      "family_ids": [
+        13250,
+        13251,
+        13252,
+        13253,
+        13254,
+        13255
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 133
+    },
+    {
+      "id": 13260,
+      "internal_name": "AttrRockDefense",
+      "design_description_zh_cn": "岩元素抗性",
+      "storage_type": "int32",
+      "family_ids": [
+        13260,
+        13261,
+        13262,
+        13263,
+        13264,
+        13265
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 134
+    },
+    {
+      "id": 13270,
+      "internal_name": "AttrLightDefense",
+      "design_description_zh_cn": "光元素抗性",
+      "storage_type": "int32",
+      "family_ids": [
+        13270,
+        13271,
+        13272,
+        13273,
+        13274,
+        13275
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 135
+    },
+    {
+      "id": 13280,
+      "internal_name": "AttrDarkDefense",
+      "design_description_zh_cn": "暗元素抗性",
+      "storage_type": "int32",
+      "family_ids": [
+        13280,
+        13281,
+        13282,
+        13283,
+        13284,
+        13285
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 136
+    },
+    {
+      "id": 13310,
+      "internal_name": "AttrElementDamRes",
+      "design_description_zh_cn": "元素减伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13310,
+        13311,
+        13312,
+        13313,
+        13314,
+        13315
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 137
+    },
+    {
+      "id": 13320,
+      "internal_name": "AttrFireDamageReduction",
+      "design_description_zh_cn": "火属性减伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13320,
+        13321,
+        13322,
+        13323,
+        13324,
+        13325
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 138
+    },
+    {
+      "id": 13330,
+      "internal_name": "AttrWaterDamageReduction",
+      "design_description_zh_cn": "水属性减伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13330,
+        13331,
+        13332,
+        13333,
+        13334,
+        13335
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 139
+    },
+    {
+      "id": 13340,
+      "internal_name": "AttrWoodDamageReduction",
+      "design_description_zh_cn": "森属性减伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13340,
+        13341,
+        13342,
+        13343,
+        13344,
+        13345
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 140
+    },
+    {
+      "id": 13350,
+      "internal_name": "AttrElectricityDamageReduction",
+      "design_description_zh_cn": "雷属性减伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13350,
+        13351,
+        13352,
+        13353,
+        13354,
+        13355
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 141
+    },
+    {
+      "id": 13360,
+      "internal_name": "AttrWindDamageReduction",
+      "design_description_zh_cn": "风元素减伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13360,
+        13361,
+        13362,
+        13363,
+        13364,
+        13365
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 142
+    },
+    {
+      "id": 13370,
+      "internal_name": "AttrRockDamageReduction",
+      "design_description_zh_cn": "岩属性减伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13370,
+        13371,
+        13372,
+        13373,
+        13374,
+        13375
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 143
+    },
+    {
+      "id": 13380,
+      "internal_name": "AttrLightDamageReduction",
+      "design_description_zh_cn": "光属性减伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13380,
+        13381,
+        13382,
+        13383,
+        13384,
+        13385
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 144
+    },
+    {
+      "id": 13390,
+      "internal_name": "AttrDarkDamageReduction",
+      "design_description_zh_cn": "暗属性减伤万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        13390,
+        13391,
+        13392,
+        13393,
+        13394,
+        13395
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 145
+    },
+    {
+      "id": 13400,
+      "internal_name": "AttrPlayMaxHp",
+      "design_description_zh_cn": "玩法生命最大值限制",
+      "storage_type": "int64",
+      "family_ids": [],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 146
+    },
+    {
+      "id": 13410,
+      "internal_name": "AttrPlayDefense",
+      "design_description_zh_cn": "玩法防御",
+      "storage_type": "int32",
+      "family_ids": [],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 147
+    },
+    {
+      "id": 20010,
+      "internal_name": "AttrOriginEnergy",
+      "design_description_zh_cn": "当前共鸣能量",
+      "storage_type": "float",
+      "family_ids": [],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 148
+    },
+    {
+      "id": 20020,
+      "internal_name": "AttrMaxOriginEnergy",
+      "design_description_zh_cn": "共鸣能量上限",
+      "storage_type": "float",
+      "family_ids": [
+        20020,
+        20021,
+        20022,
+        20023,
+        20024,
+        20025
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 149
+    },
+    {
+      "id": 20030,
+      "internal_name": "AttrOriginEnergyConsumeRate",
+      "design_description_zh_cn": "共鸣能量额外消耗倍率万分比",
+      "storage_type": "int32",
+      "family_ids": [],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 150
+    },
+    {
+      "id": 20040,
+      "internal_name": "AttrParkourStandbyOriginEnergyRecovery",
+      "design_description_zh_cn": "非战斗跑酷待机状态下星元能量恢复速率",
+      "storage_type": "int32",
+      "family_ids": [
+        20040,
+        20041,
+        20042,
+        20043,
+        20044,
+        20045
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 151
+    },
+    {
+      "id": 20050,
+      "internal_name": "AttrParkourOriginEnergyRecovery",
+      "design_description_zh_cn": "非战斗跑酷状态下星元能量恢复速率",
+      "storage_type": "int32",
+      "family_ids": [
+        20050,
+        20051,
+        20052,
+        20053,
+        20054,
+        20055
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 152
+    },
+    {
+      "id": 20060,
+      "internal_name": "AttrParkourRunPhaseOneAcceleration",
+      "design_description_zh_cn": "阶段1奔跑加速度增加万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        20060,
+        20061,
+        20062,
+        20063,
+        20064,
+        20065
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 153
+    },
+    {
+      "id": 20070,
+      "internal_name": "AttrParkourRunPhaseOneSpeedLimit",
+      "design_description_zh_cn": "阶段1奔跑速度上限增加万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        20070,
+        20071,
+        20072,
+        20073,
+        20074,
+        20075
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 154
+    },
+    {
+      "id": 20080,
+      "internal_name": "AttrParkourRunPhaseTwoAcceleration",
+      "design_description_zh_cn": "阶段2奔跑加速度增加万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        20080,
+        20081,
+        20082,
+        20083,
+        20084,
+        20085
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 155
+    },
+    {
+      "id": 20090,
+      "internal_name": "AttrParkourRunPhaseTwoSpeedLimit",
+      "design_description_zh_cn": "阶段2奔跑速度上限增加万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        20090,
+        20091,
+        20092,
+        20093,
+        20094,
+        20095
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 156
+    },
+    {
+      "id": 20100,
+      "internal_name": "AttrParkourRunPhaseThreeAcceleration",
+      "design_description_zh_cn": "阶段3奔跑加速度增加万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        20100,
+        20101,
+        20102,
+        20103,
+        20104,
+        20105
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 157
+    },
+    {
+      "id": 20110,
+      "internal_name": "AttrParkourRunPhaseThreeSpeedLimit",
+      "design_description_zh_cn": "阶段3奔跑速度上限增加万分比",
+      "storage_type": "int32",
+      "family_ids": [
+        20110,
+        20111,
+        20112,
+        20113,
+        20114,
+        20115
+      ],
+      "table_unit_hint": "ten_thousandths",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 158
+    },
+    {
+      "id": 20120,
+      "internal_name": "AttrInBattleParkourStandbyOriginEnergyRecovery",
+      "design_description_zh_cn": "战斗跑酷待机状态下星元能量恢复速率",
+      "storage_type": "int32",
+      "family_ids": [
+        20120,
+        20121,
+        20122,
+        20123,
+        20124,
+        20125
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 159
+    },
+    {
+      "id": 20130,
+      "internal_name": "AttrInBattleParkourOriginEnergyRecovery",
+      "design_description_zh_cn": "战斗跑酷状态下星元能量恢复速率",
+      "storage_type": "int32",
+      "family_ids": [
+        20130,
+        20131,
+        20132,
+        20133,
+        20134,
+        20135
+      ],
+      "table_unit_hint": "unspecified",
+      "formula_stage": null,
+      "formula_proof": null,
+      "row_index": 160
+    }
+  ]
+}

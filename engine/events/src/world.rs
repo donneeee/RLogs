@@ -65,6 +65,29 @@ pub enum DungeonEventKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum DungeonObjectiveCatalogResolution {
+    ResolvedCurrentBuild,
+    UnresolvedCurrentBuild,
+    CatalogNotConfigured,
+    CatalogUnavailable,
+}
+
+/// Static game-data identity attached to one packet-derived objective.
+///
+/// The raw `objective_id` on [`DungeonEvent`] remains authoritative. These
+/// stable keys enrich it without adding localized display text to the sealed
+/// event stream.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DungeonObjectiveCatalogReference {
+    pub resolution: DungeonObjectiveCatalogResolution,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity_target_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scene_event_keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DungeonFlowPhase {
     Null,
     Active,
@@ -134,6 +157,8 @@ pub struct DungeonEvent {
     pub objective_value: Option<i64>,
     #[serde(default)]
     pub objective_complete: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objective_catalog: Option<DungeonObjectiveCatalogReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow: Option<DungeonFlowSnapshot>,
 }

@@ -208,6 +208,7 @@ mod tests {
                         critical: Some(true),
                         ..DamageFlags::default()
                     },
+                    packet: Default::default(),
                 }),
             ))
             .unwrap();

@@ -1,17 +1,23 @@
 use std::{
-    ffi::c_void,
+    collections::BTreeMap,
+    ffi::{CStr, c_void},
     mem::{size_of, size_of_val},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    ptr,
+    ptr, slice,
 };
 
 use windows_sys::Win32::{
-    Foundation::{ERROR_INSUFFICIENT_BUFFER, NO_ERROR},
-    NetworkManagement::IpHelper::{
-        GetExtendedTcpTable, MIB_TCP6ROW_OWNER_PID, MIB_TCP6TABLE_OWNER_PID, MIB_TCPROW_OWNER_PID,
-        MIB_TCPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL,
+    Foundation::{ERROR_BUFFER_OVERFLOW, ERROR_INSUFFICIENT_BUFFER, NO_ERROR},
+    NetworkManagement::{
+        IpHelper::{
+            GAA_FLAG_INCLUDE_GATEWAYS, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER,
+            GAA_FLAG_SKIP_MULTICAST, GetAdaptersAddresses, GetExtendedTcpTable,
+            IP_ADAPTER_ADDRESSES_LH, MIB_TCP6ROW_OWNER_PID, MIB_TCP6TABLE_OWNER_PID,
+            MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL,
+        },
+        Ndis::IfOperStatusUp,
     },
-    Networking::WinSock::{AF_INET, AF_INET6},
+    Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_IN, SOCKADDR_IN6},
 };
 
 use crate::dumpcap::DumpcapLiveCapture;
@@ -22,6 +28,159 @@ use crate::{
 };
 
 const MAX_TABLE_QUERY_ATTEMPTS: usize = 4;
+const MAX_ADAPTER_QUERY_ATTEMPTS: usize = 4;
+const MAX_ADAPTERS: usize = 512;
+const MAX_UNICAST_ADDRESSES_PER_ADAPTER: usize = 512;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsCaptureAdapter {
+    /// Windows adapter identifier used inside Npcap names such as
+    /// `\Device\NPF_{GUID}`.
+    pub adapter_name: String,
+    pub friendly_name: String,
+    pub description: String,
+    pub interface_index: u32,
+    pub interface_type: u32,
+    pub physical_address: Vec<u8>,
+    pub operational: bool,
+    pub has_gateway: bool,
+    pub ipv4_metric: u32,
+    pub unicast_addresses: Vec<IpAddr>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowsCaptureAdapterRecommendationSource {
+    GameTraffic,
+    SystemRoute,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsCaptureAdapterRecommendation {
+    pub adapter_name: String,
+    pub source: WindowsCaptureAdapterRecommendationSource,
+    pub matched_game_connections: usize,
+}
+
+/// Enumerates Windows adapters using the native IP Helper API.
+///
+/// This metadata is matched to Npcap/dumpcap interface identifiers by GUID, so
+/// callers do not need to guess from dumpcap's numeric ordering.
+pub fn windows_capture_adapters() -> Result<Vec<WindowsCaptureAdapter>, CaptureError> {
+    let mut required_bytes = 0_u32;
+    let flags = GAA_FLAG_INCLUDE_GATEWAYS
+        | GAA_FLAG_SKIP_ANYCAST
+        | GAA_FLAG_SKIP_MULTICAST
+        | GAA_FLAG_SKIP_DNS_SERVER;
+    // SAFETY: a null output buffer is the documented sizing call.
+    let status = unsafe {
+        GetAdaptersAddresses(
+            u32::from(AF_UNSPEC),
+            flags,
+            ptr::null(),
+            ptr::null_mut(),
+            &mut required_bytes,
+        )
+    };
+    if status != ERROR_BUFFER_OVERFLOW && status != NO_ERROR {
+        return Err(adapter_table_status(status));
+    }
+    if required_bytes == 0 {
+        return Err(adapter_table_error(
+            "Windows returned an empty adapter table",
+        ));
+    }
+
+    for _ in 0..MAX_ADAPTER_QUERY_ATTEMPTS {
+        let word_bytes = size_of::<usize>();
+        let word_count = (required_bytes as usize)
+            .checked_add(word_bytes - 1)
+            .ok_or_else(|| adapter_table_error("adapter table size overflowed"))?
+            / word_bytes;
+        let mut buffer = vec![0_usize; word_count];
+        let mut supplied_bytes = u32::try_from(size_of_val(buffer.as_slice()))
+            .map_err(|_| adapter_table_error("adapter table is too large"))?;
+        // SAFETY: the buffer is writable, pointer-aligned, and remains alive
+        // while Windows populates its linked adapter records.
+        let status = unsafe {
+            GetAdaptersAddresses(
+                u32::from(AF_UNSPEC),
+                flags,
+                ptr::null(),
+                buffer.as_mut_ptr().cast::<IP_ADAPTER_ADDRESSES_LH>(),
+                &mut supplied_bytes,
+            )
+        };
+        if status == NO_ERROR {
+            return parse_adapter_table(&buffer);
+        }
+        if status != ERROR_BUFFER_OVERFLOW {
+            return Err(adapter_table_status(status));
+        }
+        required_bytes = supplied_bytes;
+    }
+
+    Err(adapter_table_error(
+        "Windows adapter table kept changing during bounded retries",
+    ))
+}
+
+/// Chooses the Npcap adapter backed by the local address of a game's active
+/// TCP connections. If no game socket is currently available, the active
+/// routed Windows adapter is returned as a clearly weaker fallback.
+pub fn recommend_windows_capture_adapter(
+    adapters: &[WindowsCaptureAdapter],
+    process_ids: &[u32],
+) -> Option<WindowsCaptureAdapterRecommendation> {
+    let mut address_counts = BTreeMap::<IpAddr, usize>::new();
+    for process_id in process_ids.iter().copied().filter(|value| *value != 0) {
+        let Ok(mut owner) = WindowsProcessSocketOwner::new(process_id) else {
+            continue;
+        };
+        let Ok(connections) = owner.snapshot() else {
+            continue;
+        };
+        for connection in connections {
+            *address_counts.entry(connection.client.address).or_default() += 1;
+        }
+    }
+
+    let matched = adapters
+        .iter()
+        .map(|adapter| {
+            let count = adapter
+                .unicast_addresses
+                .iter()
+                .map(|address| address_counts.get(address).copied().unwrap_or_default())
+                .sum::<usize>();
+            (adapter, count)
+        })
+        .filter(|(_, count)| *count > 0)
+        .max_by_key(|(adapter, count)| {
+            (
+                *count,
+                usize::from(adapter.operational),
+                usize::from(adapter.has_gateway),
+                u32::MAX - adapter.ipv4_metric,
+            )
+        });
+    if let Some((adapter, matched_game_connections)) = matched {
+        return Some(WindowsCaptureAdapterRecommendation {
+            adapter_name: adapter.adapter_name.clone(),
+            source: WindowsCaptureAdapterRecommendationSource::GameTraffic,
+            matched_game_connections,
+        });
+    }
+
+    adapters
+        .iter()
+        .filter(|adapter| adapter.operational && adapter.has_gateway)
+        .min_by_key(|adapter| (adapter.ipv4_metric, adapter.interface_index))
+        .map(|adapter| WindowsCaptureAdapterRecommendation {
+            adapter_name: adapter.adapter_name.clone(),
+            source: WindowsCaptureAdapterRecommendationSource::SystemRoute,
+            matched_game_connections: 0,
+        })
+}
 
 #[derive(Debug, Clone)]
 pub struct WindowsProcessSocketOwner {
@@ -172,6 +331,160 @@ impl CaptureSource for WindowsOwnedDumpcapCapture {
     }
 }
 
+fn parse_adapter_table(buffer: &[usize]) -> Result<Vec<WindowsCaptureAdapter>, CaptureError> {
+    let buffer_start = buffer.as_ptr() as usize;
+    let buffer_end = buffer_start
+        .checked_add(size_of_val(buffer))
+        .ok_or_else(|| adapter_table_error("adapter table bounds overflowed"))?;
+    let mut current = buffer.as_ptr().cast::<IP_ADAPTER_ADDRESSES_LH>();
+    let mut adapters = Vec::new();
+
+    while !current.is_null() {
+        if adapters.len() >= MAX_ADAPTERS {
+            return Err(adapter_table_error(
+                "Windows adapter list exceeded the safety limit",
+            ));
+        }
+        ensure_record_in_buffer::<IP_ADAPTER_ADDRESSES_LH>(
+            current.cast(),
+            buffer_start,
+            buffer_end,
+        )?;
+        // SAFETY: the record address was checked against the live buffer and
+        // Windows guarantees its string and address pointers for the duration
+        // of this call.
+        let adapter = unsafe { &*current };
+        let mut unicast_addresses = Vec::new();
+        let mut address = adapter.FirstUnicastAddress;
+        while !address.is_null() {
+            if unicast_addresses.len() >= MAX_UNICAST_ADDRESSES_PER_ADAPTER {
+                return Err(adapter_table_error(
+                    "Windows adapter address list exceeded the safety limit",
+                ));
+            }
+            // SAFETY: nodes belong to the successful GetAdaptersAddresses
+            // result and remain valid while `buffer` is alive.
+            let node = unsafe { &*address };
+            if let Some(ip) = socket_address_to_ip(node.Address) {
+                unicast_addresses.push(ip);
+            }
+            address = node.Next;
+        }
+        unicast_addresses.sort_unstable();
+        unicast_addresses.dedup();
+        // SAFETY: fields point to NUL-terminated strings owned by the adapter
+        // result buffer.
+        let adapter_name = unsafe { narrow_string(adapter.AdapterName) };
+        // SAFETY: same lifetime guarantee as AdapterName.
+        let friendly_name = unsafe { wide_string(adapter.FriendlyName) };
+        // SAFETY: same lifetime guarantee as AdapterName.
+        let description = unsafe { wide_string(adapter.Description) };
+        // SAFETY: this union arm is the documented layout for
+        // IP_ADAPTER_ADDRESSES_LH.
+        let interface_index = unsafe { adapter.Anonymous1.Anonymous.IfIndex };
+        adapters.push(WindowsCaptureAdapter {
+            adapter_name,
+            friendly_name,
+            description,
+            interface_index,
+            interface_type: adapter.IfType,
+            physical_address: adapter.PhysicalAddress[..usize::try_from(
+                adapter.PhysicalAddressLength,
+            )
+            .unwrap_or_default()
+            .min(adapter.PhysicalAddress.len())]
+                .to_vec(),
+            operational: adapter.OperStatus == IfOperStatusUp,
+            has_gateway: !adapter.FirstGatewayAddress.is_null(),
+            ipv4_metric: adapter.Ipv4Metric,
+            unicast_addresses,
+        });
+        current = adapter.Next;
+    }
+
+    adapters.sort_by(|left, right| {
+        left.interface_index
+            .cmp(&right.interface_index)
+            .then_with(|| left.friendly_name.cmp(&right.friendly_name))
+    });
+    Ok(adapters)
+}
+
+fn ensure_record_in_buffer<T>(
+    record: *const c_void,
+    buffer_start: usize,
+    buffer_end: usize,
+) -> Result<(), CaptureError> {
+    let record_start = record as usize;
+    let record_end = record_start
+        .checked_add(size_of::<T>())
+        .ok_or_else(|| adapter_table_error("adapter record bounds overflowed"))?;
+    if record_start < buffer_start || record_end > buffer_end {
+        return Err(adapter_table_error(
+            "Windows returned an adapter record outside its buffer",
+        ));
+    }
+    Ok(())
+}
+
+fn socket_address_to_ip(
+    address: windows_sys::Win32::Networking::WinSock::SOCKET_ADDRESS,
+) -> Option<IpAddr> {
+    if address.lpSockaddr.is_null() {
+        return None;
+    }
+    // SAFETY: GetAdaptersAddresses owns this SOCKADDR and supplies its family.
+    let family = unsafe { (*address.lpSockaddr).sa_family };
+    match family {
+        AF_INET if address.iSockaddrLength as usize >= size_of::<SOCKADDR_IN>() => {
+            // SAFETY: the family and reported record length match SOCKADDR_IN.
+            let value = unsafe { &*address.lpSockaddr.cast::<SOCKADDR_IN>() };
+            // SAFETY: reading the byte representation of IN_ADDR is valid for
+            // an IPv4 sockaddr.
+            let octets = unsafe { value.sin_addr.S_un.S_un_b };
+            Some(IpAddr::V4(Ipv4Addr::new(
+                octets.s_b1,
+                octets.s_b2,
+                octets.s_b3,
+                octets.s_b4,
+            )))
+        }
+        AF_INET6 if address.iSockaddrLength as usize >= size_of::<SOCKADDR_IN6>() => {
+            // SAFETY: the family and reported record length match SOCKADDR_IN6.
+            let value = unsafe { &*address.lpSockaddr.cast::<SOCKADDR_IN6>() };
+            // SAFETY: the byte union member is the network-order IPv6 address.
+            let octets = unsafe { value.sin6_addr.u.Byte };
+            Some(IpAddr::V6(Ipv6Addr::from(octets)))
+        }
+        _ => None,
+    }
+}
+
+unsafe fn narrow_string(value: *const u8) -> String {
+    if value.is_null() {
+        return String::new();
+    }
+    // SAFETY: the pointer is a NUL-terminated ANSI string supplied by
+    // GetAdaptersAddresses for the lifetime of its output buffer.
+    unsafe { CStr::from_ptr(value.cast()).to_string_lossy().into_owned() }
+}
+
+unsafe fn wide_string(value: *const u16) -> String {
+    if value.is_null() {
+        return String::new();
+    }
+    let mut len = 0_usize;
+    const MAX_WIDE_STRING_UNITS: usize = 32 * 1024;
+    // SAFETY: the pointer is a NUL-terminated UTF-16 string supplied by
+    // GetAdaptersAddresses. The fixed upper bound prevents runaway scanning
+    // if Windows ever returns malformed metadata.
+    while len < MAX_WIDE_STRING_UNITS && unsafe { *value.add(len) } != 0 {
+        len += 1;
+    }
+    // SAFETY: the scan above established `len` initialized UTF-16 units.
+    String::from_utf16_lossy(unsafe { slice::from_raw_parts(value, len) })
+}
+
 fn query_tcp_table(address_family: u32) -> Result<Vec<usize>, CaptureError> {
     let mut required_bytes = 0_u32;
     // SAFETY: the first call deliberately supplies a null output pointer so
@@ -275,6 +588,19 @@ fn socket_table_status(status: u32) -> CaptureError {
 fn socket_table_error(message: impl Into<String>) -> CaptureError {
     CaptureError::Adapter {
         adapter: "windows-process-socket-owner".into(),
+        message: message.into(),
+    }
+}
+
+fn adapter_table_status(status: u32) -> CaptureError {
+    adapter_table_error(format!(
+        "GetAdaptersAddresses failed with Windows status {status}"
+    ))
+}
+
+fn adapter_table_error(message: impl Into<String>) -> CaptureError {
+    CaptureError::Adapter {
+        adapter: "windows-capture-adapter-discovery".into(),
         message: message.into(),
     }
 }

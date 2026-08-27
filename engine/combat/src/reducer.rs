@@ -1,17 +1,21 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use rlogs_events::{
-    BoundaryReason, CanonicalEvent, CombatState, DungeonEvent, DungeonEventKind, EncounterState,
-    EventEnvelope, RunState, TimelineEventKind,
+    ActorKind, ActorState, BoundaryReason, CanonicalEvent, CombatState, DungeonEvent,
+    DungeonEventKind, EncounterState, EventEnvelope, EventProvenance, EvidenceSource, RunState,
+    TimelineEventKind, WorldContext,
 };
 use thiserror::Error;
 
 use crate::{
-    ActivityKind, CombatWindowSummary, EncounterKind, EncounterSummary, EncounterTerminalState,
-    LeaderboardPartitionKey, ManualPauseSummary, RUN_ANALYSIS_SCHEMA_VERSION, RaidRouteKind,
-    RunAnalysis, RunEvidenceFinding, RunIdentity, RunSegmentKind, RunSegmentSummary,
-    RunSubmissionDisposition, RunTerminalState, RunTiming,
+    ActivityKind, CombatWindowSummary, CompletedObjectiveAction, EncounterKind, EncounterSummary,
+    EncounterTerminalState, LeaderboardPartitionKey, ManualPauseSummary,
+    RUN_ANALYSIS_SCHEMA_VERSION, RaidRouteKind, RunAnalysis, RunEvidenceFinding, RunIdentity,
+    RunSegmentKind, RunSegmentSummary, RunSubmissionDisposition, RunTerminalState, RunTiming,
+    SceneRunRule,
 };
+
+const MAXIMUM_RULE_ACTORS: usize = 65_536;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum RunEventSequencePolicy {
@@ -24,6 +28,8 @@ pub enum RunEventSequencePolicy {
 
 #[derive(Debug, Clone, Default)]
 pub struct RunReducerConfig {
+    pub encounter_ruleset_id: Option<String>,
+    pub encounter_ruleset_version: Option<u32>,
     pub activity_kind: ActivityKind,
     pub activity_id: Option<String>,
     pub route_id: Option<String>,
@@ -35,15 +41,20 @@ pub struct RunReducerConfig {
     /// Segment changes are explicit rules. Actor or monster spawns never
     /// change the current segment, which keeps boss adds inside the boss log.
     pub encounter_segments: BTreeMap<String, RunSegmentKind>,
+    /// Exact-build game rules keyed by observed scene ID. Only the active
+    /// scene's small rule is consulted; static game-data catalogs remain lazy.
+    pub scene_rules: BTreeMap<i32, SceneRunRule>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct RunSessionReducer {
     config: RunReducerConfig,
     source_session_id: Option<String>,
     previous_sequence: Option<u64>,
     previous_observed_micros: Option<u64>,
     pending_identity: RunIdentity,
+    active_scene_id: Option<i32>,
+    rule_actors: BTreeMap<i64, RuleActor>,
     current: Option<RunAccumulator>,
     runs: Vec<RunAnalysis>,
 }
@@ -67,21 +78,83 @@ impl RunSessionReducer {
     pub fn on_event(&mut self, envelope: &EventEnvelope) -> Result<(), RunReducerError> {
         self.validate_envelope(envelope)?;
         match &envelope.event {
+            CanonicalEvent::WorldChanged(world) => {
+                self.on_world_changed(envelope.time.observed_micros, world)
+            }
             CanonicalEvent::Dungeon(event) => self.on_dungeon_event(
                 &envelope.session_id,
                 envelope.sequence,
                 envelope.time.observed_micros,
+                &envelope.provenance,
                 event,
             )?,
             CanonicalEvent::Timeline(timeline) => self.on_timeline_event(
                 &envelope.session_id,
                 envelope.sequence,
                 envelope.time.observed_micros,
+                &envelope.provenance,
                 &timeline.kind,
             )?,
             _ => {}
         }
         Ok(())
+    }
+
+    fn on_world_changed(&mut self, observed_micros: u64, world: &WorldContext) {
+        let next_scene_id = world.scene_id.map(|scene| scene.0);
+        let departed_active_run = self
+            .current
+            .as_ref()
+            .and_then(|run| run.identity.scene_id)
+            .zip(next_scene_id)
+            .is_some_and(|(run_scene_id, next_scene_id)| run_scene_id != next_scene_id);
+        if departed_active_run {
+            // Some BPSR exits have no Dungeon::Exited companion packet. The
+            // authoritative world transition still closes local history, but
+            // it is not promoted to an authoritative dungeon completion.
+            self.close_run(RunTerminalState::Exited, Some(observed_micros), false);
+        }
+        if self.active_scene_id != next_scene_id {
+            self.rule_actors.clear();
+        }
+        self.active_scene_id = next_scene_id;
+        self.pending_identity.scene_id = next_scene_id;
+
+        let Some(rule) = next_scene_id.and_then(|scene_id| self.config.scene_rules.get(&scene_id))
+        else {
+            return;
+        };
+        self.pending_identity.activity_kind = rule.activity_kind;
+        self.pending_identity.activity_id = Some(rule.activity_id.clone());
+        self.pending_identity.activity_family_id = rule.activity_family_id.clone();
+        self.pending_identity.difficulty_family = rule.difficulty_family.clone();
+        self.pending_identity.route_id = rule.route_id.clone();
+        self.pending_identity.raid_route_kind = rule.raid_route_kind;
+        if let Some(encounter_id) = &rule.mobbing_encounter_id {
+            if let Some(kind) = rule.encounter_kind(encounter_id) {
+                self.config
+                    .encounter_kinds
+                    .insert(encounter_id.clone(), kind);
+            }
+            if let Some(segment) = rule.encounter_segment(encounter_id) {
+                self.config
+                    .encounter_segments
+                    .insert(encounter_id.clone(), segment);
+            }
+        }
+        if let Some(encounter_id) = &rule.boss_encounter_id {
+            if let Some(kind) = rule.encounter_kind(encounter_id) {
+                self.config
+                    .encounter_kinds
+                    .insert(encounter_id.clone(), kind);
+            }
+            if let Some(segment) = rule.encounter_segment(encounter_id) {
+                self.config
+                    .encounter_segments
+                    .insert(encounter_id.clone(), segment);
+            }
+        }
+        self.config.partition = rule.partition.clone();
     }
 
     /// Records host evidence for a user-requested recorder pause. The interval
@@ -178,14 +251,15 @@ impl RunSessionReducer {
         session_id: &str,
         sequence: u64,
         observed_micros: u64,
+        provenance: &EventProvenance,
         event: &DungeonEvent,
     ) -> Result<(), RunReducerError> {
         self.update_dungeon_identity(event);
         match event.kind {
             DungeonEventKind::Entered
             | DungeonEventKind::FlowUpdated
-            | DungeonEventKind::ObjectiveUpdated
             | DungeonEventKind::ObjectiveRemoved => {}
+            DungeonEventKind::ObjectiveUpdated => self.apply_objective_rule(observed_micros, event),
             DungeonEventKind::Started => {
                 self.start_run(session_id, sequence, observed_micros, true)?
             }
@@ -212,7 +286,56 @@ impl RunSessionReducer {
                 self.close_run(RunTerminalState::Exited, Some(observed_micros), true)
             }
         }
+        self.observe_relevant_connection(provenance);
         Ok(())
+    }
+
+    fn apply_objective_rule(&mut self, observed_micros: u64, event: &DungeonEvent) {
+        if event.objective_complete != Some(true) {
+            return;
+        }
+        let Some(objective_id) = event
+            .objective_id
+            .or_else(|| event.objective_map_key.map(i64::from))
+        else {
+            return;
+        };
+        let Some(action) = self
+            .active_scene_id
+            .and_then(|scene_id| self.config.scene_rules.get(&scene_id))
+            .and_then(|rule| rule.objective_rules.get(&objective_id))
+            .map(|rule| rule.on_complete)
+        else {
+            return;
+        };
+        let Some(run) = &mut self.current else {
+            return;
+        };
+        match action {
+            CompletedObjectiveAction::ClearMobbing => {
+                if run.active_segment_kind() == Some(RunSegmentKind::Mobbing) {
+                    run.end_encounter(EncounterTerminalState::Cleared, observed_micros, false);
+                    run.close_active_segment(observed_micros, false);
+                }
+                run.mobbing_cleared = true;
+                run.boss_phase_armed = false;
+            }
+            CompletedObjectiveAction::EnterBossSegment => {
+                // This gate ends the transition phase, but the leaderboard
+                // game clock resumes only when the boss is actually engaged.
+                // BossEngaged, an exact boss encounter, or reviewed boss
+                // damage opens the segment at that later timestamp.
+                if run.active_segment_kind() == Some(RunSegmentKind::Mobbing) {
+                    run.close_active_segment(observed_micros, false);
+                }
+                run.mobbing_cleared = true;
+                run.boss_phase_armed = true;
+            }
+            CompletedObjectiveAction::FinalObjective => {
+                run.end_encounter(EncounterTerminalState::Cleared, observed_micros, false)
+            }
+            CompletedObjectiveAction::None => {}
+        }
     }
 
     fn on_timeline_event(
@@ -220,6 +343,7 @@ impl RunSessionReducer {
         session_id: &str,
         sequence: u64,
         observed_micros: u64,
+        provenance: &EventProvenance,
         event: &TimelineEventKind,
     ) -> Result<(), RunReducerError> {
         match event {
@@ -233,7 +357,8 @@ impl RunSessionReducer {
                 match state {
                     RunState::Entered => {}
                     RunState::Started => {
-                        self.start_run(session_id, sequence, observed_micros, authoritative)?
+                        self.start_run(session_id, sequence, observed_micros, authoritative)?;
+                        self.observe_relevant_connection(provenance);
                     }
                     RunState::Completed => self.close_run(
                         RunTerminalState::Completed,
@@ -262,6 +387,7 @@ impl RunSessionReducer {
                 encounter_id,
                 reason,
             } => {
+                self.observe_relevant_connection(provenance);
                 let Some(run) = &mut self.current else {
                     return Ok(());
                 };
@@ -284,6 +410,7 @@ impl RunSessionReducer {
                 }
             }
             TimelineEventKind::CombatBoundary { state, reason } => {
+                self.observe_relevant_connection(provenance);
                 let Some(run) = &mut self.current else {
                     return Ok(());
                 };
@@ -295,9 +422,15 @@ impl RunSessionReducer {
                     CombatState::Ended => run.end_combat(observed_micros, false),
                 }
             }
-            TimelineEventKind::DataGap(_) => {
+            TimelineEventKind::DataGap(gap) => {
                 if let Some(run) = &mut self.current {
-                    run.data_gap_count = run.data_gap_count.saturating_add(1);
+                    let relevant = gap.connection_id.is_none()
+                        || gap
+                            .connection_id
+                            .is_some_and(|id| run.relevant_connection_ids.contains(&id));
+                    if relevant {
+                        run.data_gap_count = run.data_gap_count.saturating_add(1);
+                    }
                 }
             }
             TimelineEventKind::RecorderPause(pause) => {
@@ -315,15 +448,30 @@ impl RunSessionReducer {
                     )?;
                 }
             }
-            TimelineEventKind::Actor(_)
-            | TimelineEventKind::EntityAttributes(_)
+            TimelineEventKind::Actor(actor) => self.observe_rule_actor(actor),
+            TimelineEventKind::Damage(damage) => {
+                self.observe_relevant_connection(provenance);
+                self.infer_hostile_damage(
+                    observed_micros,
+                    damage.source.entity_uuid.0,
+                    damage.target.entity_uuid.0,
+                );
+            }
+            TimelineEventKind::Life { actor, state } => {
+                if *state == rlogs_events::LifeState::Died {
+                    self.infer_actor_death(observed_micros, actor.entity_uuid.0);
+                }
+            }
+            TimelineEventKind::EntityAttributes(_)
+            | TimelineEventKind::TemporaryAttributes(_)
             | TimelineEventKind::Cast(_)
             | TimelineEventKind::Cooldown(_)
-            | TimelineEventKind::Damage(_)
+            | TimelineEventKind::Resource(_)
             | TimelineEventKind::Healing(_)
             | TimelineEventKind::Shield(_)
-            | TimelineEventKind::Life { .. }
             | TimelineEventKind::Status(_)
+            | TimelineEventKind::UnresolvedStatus(_)
+            | TimelineEventKind::UnresolvedAction(_)
             | TimelineEventKind::Position(_) => {
                 // Combatants and boss adds never define segment boundaries.
             }
@@ -331,7 +479,112 @@ impl RunSessionReducer {
         Ok(())
     }
 
+    fn observe_rule_actor(&mut self, event: &rlogs_events::ActorEvent) {
+        let entity_uuid = event.actor.entity_uuid.0;
+        if event.state == ActorState::Despawned {
+            self.rule_actors.remove(&entity_uuid);
+            return;
+        }
+        if !self.rule_actors.contains_key(&entity_uuid)
+            && self.rule_actors.len() >= MAXIMUM_RULE_ACTORS
+        {
+            return;
+        }
+        let observed = self.rule_actors.entry(entity_uuid).or_insert(RuleActor {
+            kind: event.kind,
+            monster_id: None,
+        });
+        observed.kind = event.kind;
+        if let Some(monster_id) = event.monster_id {
+            observed.monster_id = Some(monster_id.0);
+        }
+    }
+
+    fn observe_relevant_connection(&mut self, provenance: &EventProvenance) {
+        let Some(run) = &mut self.current else {
+            return;
+        };
+        if let Some(connection_id) = wire_connection_id(provenance) {
+            run.relevant_connection_ids.insert(connection_id);
+        }
+    }
+
+    fn infer_hostile_damage(&mut self, observed_micros: u64, source_uuid: i64, target_uuid: i64) {
+        let Some(rule) = self.active_rule().cloned() else {
+            return;
+        };
+        let source = self.rule_actors.get(&source_uuid).copied();
+        let target = self.rule_actors.get(&target_uuid).copied();
+        let boss_involved = [source, target]
+            .into_iter()
+            .flatten()
+            .filter_map(|actor| actor.monster_id)
+            .any(|monster_id| rule.boss_monster_ids.contains(&monster_id));
+        let hostile_pair = [source, target]
+            .into_iter()
+            .flatten()
+            .any(|actor| actor.kind == ActorKind::Player)
+            && [source, target]
+                .into_iter()
+                .flatten()
+                .any(|actor| actor.kind == ActorKind::Monster);
+        if !boss_involved && !hostile_pair {
+            return;
+        }
+        let Some(run) = &mut self.current else {
+            return;
+        };
+        if boss_involved || run.boss_phase_armed {
+            run.switch_segment(RunSegmentKind::Boss, observed_micros, false);
+            run.ensure_encounter(
+                rule.boss_encounter_id.clone(),
+                observed_micros,
+                &self.config,
+            );
+        } else if run.active_segment_kind() == Some(RunSegmentKind::Boss) {
+            run.ensure_encounter(
+                rule.boss_encounter_id.clone(),
+                observed_micros,
+                &self.config,
+            );
+        } else if run.active_segment_kind() != Some(RunSegmentKind::Boss) {
+            run.ensure_encounter(
+                rule.mobbing_encounter_id.clone(),
+                observed_micros,
+                &self.config,
+            );
+        }
+        run.start_combat(observed_micros, &self.config);
+    }
+
+    fn infer_actor_death(&mut self, observed_micros: u64, entity_uuid: i64) {
+        let Some(monster_id) = self
+            .rule_actors
+            .get(&entity_uuid)
+            .and_then(|actor| actor.monster_id)
+        else {
+            return;
+        };
+        let boss_died = self
+            .active_rule()
+            .is_some_and(|rule| rule.boss_monster_ids.contains(&monster_id));
+        if boss_died
+            && let Some(run) = &mut self.current
+            && run.active_segment_kind() == Some(RunSegmentKind::Boss)
+        {
+            run.end_encounter(EncounterTerminalState::Cleared, observed_micros, false);
+        }
+    }
+
+    fn active_rule(&self) -> Option<&SceneRunRule> {
+        self.active_scene_id
+            .and_then(|scene_id| self.config.scene_rules.get(&scene_id))
+    }
+
     fn update_dungeon_identity(&mut self, event: &DungeonEvent) {
+        if self.pending_identity.activity_kind == ActivityKind::Unknown {
+            self.pending_identity.activity_kind = ActivityKind::Dungeon;
+        }
         if let Some(dungeon_id) = event.dungeon_id {
             self.pending_identity.observed_dungeon_id = Some(dungeon_id.0.to_string());
         }
@@ -340,6 +593,13 @@ impl RunSessionReducer {
         }
         if let Some(difficulty_id) = event.difficulty_id {
             self.pending_identity.difficulty_id = Some(difficulty_id.to_string());
+            self.pending_identity.difficulty_tier = self
+                .active_rule()
+                .and_then(|rule| rule.difficulty_tier_range)
+                .and_then(|range| {
+                    let tier = u32::try_from(difficulty_id).ok()?;
+                    (tier >= range.minimum && tier <= range.maximum).then_some(tier)
+                });
         }
         if let Some(run) = &mut self.current {
             run.identity = merge_identity(run.identity.clone(), &self.pending_identity);
@@ -376,6 +636,8 @@ impl RunSessionReducer {
             observed_micros,
             authoritative,
             self.pending_identity.clone(),
+            self.config.encounter_ruleset_id.clone(),
+            self.config.encounter_ruleset_version,
         )?);
         Ok(())
     }
@@ -393,20 +655,25 @@ impl RunSessionReducer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RunAccumulator {
     source_session_id: String,
     identity: RunIdentity,
     started_micros: u64,
     observed_until_micros: u64,
     authoritative_start: bool,
+    encounter_ruleset_id: Option<String>,
+    encounter_ruleset_version: Option<u32>,
     segments: Vec<RunSegmentAccumulator>,
     active_segment: Option<usize>,
     encounters: Vec<EncounterSummary>,
     active_encounter: Option<EncounterAccumulator>,
     manual_pauses: Vec<ManualPauseSummary>,
     data_gap_count: u64,
+    relevant_connection_ids: BTreeSet<u64>,
     manual_boundary: bool,
+    mobbing_cleared: bool,
+    boss_phase_armed: bool,
 }
 
 impl RunAccumulator {
@@ -416,6 +683,8 @@ impl RunAccumulator {
         started_micros: u64,
         authoritative_start: bool,
         identity: RunIdentity,
+        encounter_ruleset_id: Option<String>,
+        encounter_ruleset_version: Option<u32>,
     ) -> Result<Self, RunReducerError> {
         let initial_segment = match identity.activity_kind {
             ActivityKind::Dungeon => RunSegmentKind::Mobbing,
@@ -427,13 +696,18 @@ impl RunAccumulator {
             started_micros,
             observed_until_micros: started_micros,
             authoritative_start,
+            encounter_ruleset_id,
+            encounter_ruleset_version,
             segments: Vec::new(),
             active_segment: None,
             encounters: Vec::new(),
             active_encounter: None,
             manual_pauses: Vec::new(),
             data_gap_count: 0,
+            relevant_connection_ids: BTreeSet::new(),
             manual_boundary: false,
+            mobbing_cleared: false,
+            boss_phase_armed: false,
         };
         run.switch_segment(initial_segment, started_micros, false);
         Ok(run)
@@ -446,6 +720,21 @@ impl RunAccumulator {
         {
             return;
         }
+        self.close_active_segment(observed_micros, at_run_end);
+        let index = self.segments.len();
+        self.segments
+            .push(RunSegmentAccumulator::new(index, kind, observed_micros));
+        self.active_segment = Some(index);
+        if matches!(
+            kind,
+            RunSegmentKind::Boss | RunSegmentKind::RaidBoss | RunSegmentKind::Gauntlet
+        ) {
+            self.mobbing_cleared = false;
+            self.boss_phase_armed = false;
+        }
+    }
+
+    fn close_active_segment(&mut self, observed_micros: u64, at_run_end: bool) {
         if self.active_encounter.is_some() {
             self.end_encounter(EncounterTerminalState::Ended, observed_micros, at_run_end);
         }
@@ -453,10 +742,26 @@ impl RunAccumulator {
             self.segments[index].ended_micros = Some(observed_micros);
             self.segments[index].closed_at_run_end = at_run_end;
         }
-        let index = self.segments.len();
-        self.segments
-            .push(RunSegmentAccumulator::new(index, kind, observed_micros));
-        self.active_segment = Some(index);
+    }
+
+    fn active_segment_kind(&self) -> Option<RunSegmentKind> {
+        self.active_segment.map(|index| self.segments[index].kind)
+    }
+
+    fn ensure_encounter(
+        &mut self,
+        encounter_id: Option<String>,
+        observed_micros: u64,
+        config: &RunReducerConfig,
+    ) {
+        if self
+            .active_encounter
+            .as_ref()
+            .is_some_and(|encounter| encounter.encounter_id == encounter_id)
+        {
+            return;
+        }
+        self.start_encounter(encounter_id, observed_micros, config);
     }
 
     fn start_encounter(
@@ -465,14 +770,22 @@ impl RunAccumulator {
         observed_micros: u64,
         config: &RunReducerConfig,
     ) {
+        let configured_segment = encounter_id
+            .as_ref()
+            .and_then(|id| config.encounter_segments.get(id))
+            .copied();
+        if self.mobbing_cleared
+            && !matches!(
+                configured_segment,
+                Some(RunSegmentKind::Boss | RunSegmentKind::RaidBoss | RunSegmentKind::Gauntlet)
+            )
+        {
+            return;
+        }
         if self.active_encounter.is_some() {
             self.end_encounter(EncounterTerminalState::Ended, observed_micros, false);
         }
-        if let Some(segment) = encounter_id
-            .as_ref()
-            .and_then(|id| config.encounter_segments.get(id))
-            .copied()
-        {
+        if let Some(segment) = configured_segment {
             self.switch_segment(segment, observed_micros, false);
         }
         let segment_index = self.active_segment.unwrap_or_default() as u32;
@@ -504,6 +817,9 @@ impl RunAccumulator {
     }
 
     fn start_combat(&mut self, observed_micros: u64, config: &RunReducerConfig) {
+        if self.mobbing_cleared && self.active_encounter.is_none() {
+            return;
+        }
         if self.active_encounter.is_none() {
             self.start_encounter(None, observed_micros, config);
         }
@@ -596,6 +912,9 @@ impl RunAccumulator {
         if terminal_state == RunTerminalState::Completed && !authoritative_completion {
             findings.push(RunEvidenceFinding::CompletionNotAuthoritative);
         }
+        if config.partition.is_none() {
+            findings.push(RunEvidenceFinding::LeaderboardPartitionUnresolved);
+        }
         if had_open_combat {
             findings.push(RunEvidenceFinding::CombatClosedAtRunEnd);
         }
@@ -612,6 +931,8 @@ impl RunAccumulator {
         RunAnalysis {
             schema_version: RUN_ANALYSIS_SCHEMA_VERSION,
             source_session_id: self.source_session_id,
+            encounter_ruleset_id: self.encounter_ruleset_id,
+            encounter_ruleset_version: self.encounter_ruleset_version,
             identity: self.identity,
             partition: config.partition.clone(),
             terminal_state,
@@ -636,7 +957,7 @@ impl RunAccumulator {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RunSegmentAccumulator {
     index: usize,
     kind: RunSegmentKind,
@@ -731,7 +1052,7 @@ impl RunSegmentAccumulator {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct EncounterAccumulator {
     index: u32,
     encounter_id: Option<String>,
@@ -812,15 +1133,38 @@ impl EncounterAccumulator {
 fn merge_identity(mut current: RunIdentity, observed: &RunIdentity) -> RunIdentity {
     current.activity_kind = observed.activity_kind;
     current.activity_id = observed.activity_id.clone().or(current.activity_id);
+    current.activity_family_id = observed
+        .activity_family_id
+        .clone()
+        .or(current.activity_family_id);
+    current.scene_id = observed.scene_id.or(current.scene_id);
     current.observed_dungeon_id = observed
         .observed_dungeon_id
         .clone()
         .or(current.observed_dungeon_id);
     current.instance_id = observed.instance_id.clone().or(current.instance_id);
+    current.difficulty_family = observed
+        .difficulty_family
+        .clone()
+        .or(current.difficulty_family);
     current.difficulty_id = observed.difficulty_id.clone().or(current.difficulty_id);
+    current.difficulty_tier = observed.difficulty_tier.or(current.difficulty_tier);
     current.route_id = observed.route_id.clone().or(current.route_id);
     current.raid_route_kind = observed.raid_route_kind.or(current.raid_route_kind);
     current
+}
+
+fn wire_connection_id(provenance: &EventProvenance) -> Option<u64> {
+    match &provenance.source {
+        EvidenceSource::Wire { connection_id, .. } => Some(*connection_id),
+        EvidenceSource::Derived { .. } | EvidenceSource::Manual { .. } => None,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RuleActor {
+    kind: ActorKind,
+    monster_id: Option<i64>,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -860,8 +1204,9 @@ pub enum RunReducerError {
 mod tests {
     use rlogs_events::{
         ActorEvent, ActorId, ActorKind, ActorState, CanonicalEventDraft, CanonicalEventDraftKind,
-        DungeonId, EntityRef, EntityUuid, EventEnvelopeFactory, EventProvenance, EventSensitivity,
-        EventTime, RegionContext, RegionIdentity, TimelineEventKind,
+        DamageEvent, DamageFlags, DataGapEvent, DataGapKind, DungeonId, EntityRef, EntityUuid,
+        EventEnvelopeFactory, EventProvenance, EventSensitivity, EventTime, MonsterId,
+        RegionContext, RegionIdentity, SceneId, TimelineEventKind, WorldContext,
     };
 
     use super::*;
@@ -913,6 +1258,7 @@ mod tests {
             objective_id: None,
             objective_value: None,
             objective_complete: None,
+            objective_catalog: None,
             flow: None,
         })
     }
@@ -947,10 +1293,67 @@ mod tests {
             state: ActorState::Spawned,
             entity_type_id: 2,
             kind: ActorKind::Monster,
+            character_id: None,
             monster_id: None,
             display_name: None,
             class_id: None,
+            specialization_id: None,
             level: None,
+            ability_score: None,
+            weapon_item_id: None,
+            weapon_breakthrough_count: None,
+            seasonal_score: None,
+            primary_loadout: Vec::new(),
+            auxiliary_loadout: Vec::new(),
+            loadout_observation: Default::default(),
+        }))
+    }
+
+    fn actor(
+        actor_id: u64,
+        entity_uuid: i64,
+        kind: ActorKind,
+        monster_id: Option<i64>,
+    ) -> CanonicalEventDraftKind {
+        CanonicalEventDraftKind::Timeline(TimelineEventKind::Actor(ActorEvent {
+            actor: EntityRef {
+                actor_id: ActorId(actor_id),
+                entity_uuid: EntityUuid(entity_uuid),
+            },
+            state: ActorState::Spawned,
+            entity_type_id: 1,
+            kind,
+            character_id: None,
+            monster_id: monster_id.map(MonsterId),
+            display_name: None,
+            class_id: None,
+            specialization_id: None,
+            level: Some(60),
+            ability_score: None,
+            weapon_item_id: None,
+            weapon_breakthrough_count: None,
+            seasonal_score: None,
+            primary_loadout: Vec::new(),
+            auxiliary_loadout: Vec::new(),
+            loadout_observation: Default::default(),
+        }))
+    }
+
+    fn damage(source: EntityRef, target: EntityRef) -> CanonicalEventDraftKind {
+        CanonicalEventDraftKind::Timeline(TimelineEventKind::Damage(DamageEvent {
+            source,
+            direct_source: None,
+            target,
+            ability: None,
+            amount: 100,
+            actual_amount: None,
+            hp_loss: Some(100),
+            shield_loss: None,
+            hit_event_id: None,
+            damage_source: None,
+            damage_type: None,
+            flags: DamageFlags::default(),
+            packet: Default::default(),
         }))
     }
 
@@ -1068,6 +1471,273 @@ mod tests {
         assert_eq!(run.segments[0].encounter_indices, vec![0]);
         assert_eq!(run.segments[1].encounter_indices, vec![1]);
         assert_eq!(run.segments[1].attempt_count, 1);
+    }
+
+    #[test]
+    fn observed_dungeon_without_partition_is_completed_but_not_rankable() {
+        let mut reducer = RunSessionReducer::new(RunReducerConfig::default());
+        let mut events = factory();
+
+        emit(
+            &mut reducer,
+            &mut events,
+            1_000_000,
+            dungeon(DungeonEventKind::Started, "run-unmapped"),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            9_000_000,
+            dungeon(DungeonEventKind::Completed, "run-unmapped"),
+        );
+
+        let runs = reducer.finish();
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+        assert_eq!(run.identity.activity_kind, ActivityKind::Dungeon);
+        assert_eq!(run.segments[0].kind, RunSegmentKind::Mobbing);
+        assert_eq!(run.terminal_state, RunTerminalState::Completed);
+        assert_eq!(run.partition, None);
+        assert!(
+            run.findings
+                .contains(&RunEvidenceFinding::LeaderboardPartitionUnresolved)
+        );
+        assert_eq!(
+            run.submission_disposition,
+            RunSubmissionDisposition::CompletedNeedsReview
+        );
+    }
+
+    #[test]
+    fn world_departure_closes_an_open_run_as_exited() {
+        let mut reducer = RunSessionReducer::new(RunReducerConfig::default());
+        let mut events = factory();
+
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(6_525)),
+                map_id: Some(6_525),
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            1_000_000,
+            dungeon(DungeonEventKind::Started, "abandoned-run"),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            10_000_000,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(8)),
+                map_id: Some(8),
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        );
+
+        let runs = reducer.finish();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].identity.scene_id, Some(6_525));
+        assert_eq!(runs[0].terminal_state, RunTerminalState::Exited);
+        assert_eq!(runs[0].timing.ended_micros, Some(10_000_000));
+        assert!(!runs[0].authoritative_completion);
+        assert_ne!(
+            runs[0].submission_disposition,
+            RunSubmissionDisposition::RankCandidate
+        );
+    }
+
+    #[test]
+    fn exact_build_rules_derive_mobbing_and_boss_windows_without_actor_heuristics() {
+        let scene_rule = SceneRunRule {
+            scene_id: 1631,
+            runtime_enabled: true,
+            activity_kind: ActivityKind::Dungeon,
+            activity_id: "scene.1631".into(),
+            activity_family_id: Some("tina-mindrealm".into()),
+            activity_localization_key: Some("scene.1631.name".into()),
+            difficulty_family: Some("normal".into()),
+            difficulty_localization_key: None,
+            difficulty_tier_range: None,
+            route_id: None,
+            raid_route_kind: None,
+            partition: None,
+            candidate_dungeon_ids: [1_031, 1_631].into_iter().collect(),
+            mobbing_encounter_id: Some("scene.1631.mobbing".into()),
+            boss_encounter_id: Some("monster.33701".into()),
+            boss_monster_ids: [33_701].into_iter().collect(),
+            objective_rules: BTreeMap::from([
+                (
+                    100_178,
+                    crate::DungeonObjectiveRule {
+                        role: crate::DungeonObjectiveRole::MobbingCompletion,
+                        on_complete: CompletedObjectiveAction::ClearMobbing,
+                    },
+                ),
+                (
+                    100_176,
+                    crate::DungeonObjectiveRule {
+                        role: crate::DungeonObjectiveRole::BossPhaseGate,
+                        on_complete: CompletedObjectiveAction::EnterBossSegment,
+                    },
+                ),
+                (
+                    100_164,
+                    crate::DungeonObjectiveRule {
+                        role: crate::DungeonObjectiveRole::RunCompletion,
+                        on_complete: CompletedObjectiveAction::FinalObjective,
+                    },
+                ),
+            ]),
+            evidence: Vec::new(),
+        };
+        let mut reducer = RunSessionReducer::new(RunReducerConfig {
+            encounter_ruleset_id: Some("fixture-rules".into()),
+            encounter_ruleset_version: Some(1),
+            scene_rules: BTreeMap::from([(1631, scene_rule)]),
+            ..RunReducerConfig::default()
+        });
+        let mut events = factory();
+        let player = EntityRef {
+            actor_id: ActorId(1),
+            entity_uuid: EntityUuid(100),
+        };
+        let mob = EntityRef {
+            actor_id: ActorId(2),
+            entity_uuid: EntityUuid(200),
+        };
+        let boss = EntityRef {
+            actor_id: ActorId(3),
+            entity_uuid: EntityUuid(300),
+        };
+
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(1631)),
+                map_id: None,
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            actor(1, 100, ActorKind::Player, None),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            actor(2, 200, ActorKind::Monster, None),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            1_000_000,
+            dungeon(DungeonEventKind::Started, "rule-run"),
+        );
+        emit(&mut reducer, &mut events, 2_000_000, damage(mob, player));
+        let mut mobbing_complete = match dungeon(DungeonEventKind::ObjectiveUpdated, "rule-run") {
+            CanonicalEventDraftKind::Dungeon(event) => event,
+            _ => unreachable!(),
+        };
+        // Some current-build routes expose the stable objective only as the
+        // objective-map key while leaving the nested objective ID absent.
+        mobbing_complete.objective_map_key = Some(100_178);
+        mobbing_complete.objective_id = None;
+        mobbing_complete.objective_complete = Some(true);
+        emit(
+            &mut reducer,
+            &mut events,
+            4_000_000,
+            CanonicalEventDraftKind::Dungeon(mobbing_complete),
+        );
+        let mut boss_gate = match dungeon(DungeonEventKind::ObjectiveUpdated, "rule-run") {
+            CanonicalEventDraftKind::Dungeon(event) => event,
+            _ => unreachable!(),
+        };
+        boss_gate.objective_id = Some(100_176);
+        boss_gate.objective_complete = Some(true);
+        emit(
+            &mut reducer,
+            &mut events,
+            6_000_000,
+            CanonicalEventDraftKind::Dungeon(boss_gate),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            6_000_000,
+            actor(3, 300, ActorKind::Monster, None),
+        );
+        emit(&mut reducer, &mut events, 8_000_000, damage(player, boss));
+        let mut final_objective = match dungeon(DungeonEventKind::ObjectiveUpdated, "rule-run") {
+            CanonicalEventDraftKind::Dungeon(event) => event,
+            _ => unreachable!(),
+        };
+        final_objective.objective_id = Some(100_164);
+        final_objective.objective_complete = Some(true);
+        emit(
+            &mut reducer,
+            &mut events,
+            12_000_000,
+            CanonicalEventDraftKind::Dungeon(final_objective),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            13_000_000,
+            dungeon(DungeonEventKind::Completed, "rule-run"),
+        );
+
+        let run = &reducer.finish()[0];
+        assert_eq!(run.identity.scene_id, Some(1631));
+        assert_eq!(
+            run.identity.activity_family_id.as_deref(),
+            Some("tina-mindrealm")
+        );
+        assert_eq!(run.identity.difficulty_family.as_deref(), Some("normal"));
+        assert_eq!(run.encounter_ruleset_id.as_deref(), Some("fixture-rules"));
+        assert_eq!(run.segments.len(), 2);
+        assert_eq!(run.segments[0].kind, RunSegmentKind::Mobbing);
+        assert_eq!(run.segments[0].started_micros, 1_000_000);
+        assert_eq!(run.segments[0].ended_micros, 4_000_000);
+        assert_eq!(run.segments[1].kind, RunSegmentKind::Boss);
+        assert_eq!(run.segments[1].started_micros, 8_000_000);
+        assert_eq!(run.encounters.len(), 2);
+        assert_eq!(
+            run.encounters[0].encounter_id.as_deref(),
+            Some("scene.1631.mobbing")
+        );
+        assert_eq!(
+            run.encounters[0].terminal_state,
+            EncounterTerminalState::Cleared
+        );
+        assert_eq!(run.encounters[0].active_combat_micros, 2_000_000);
+        assert_eq!(
+            run.encounters[1].encounter_id.as_deref(),
+            Some("monster.33701")
+        );
+        assert_eq!(
+            run.encounters[1].terminal_state,
+            EncounterTerminalState::Cleared
+        );
+        assert_eq!(run.encounters[1].active_combat_micros, 4_000_000);
+        assert_eq!(run.timing.active_combat_micros, 6_000_000);
     }
 
     #[test]
@@ -1248,6 +1918,53 @@ mod tests {
         assert_eq!(
             run.submission_disposition,
             RunSubmissionDisposition::CompletedNeedsReview
+        );
+    }
+
+    #[test]
+    fn only_run_connection_or_global_data_gaps_affect_submission_evidence() {
+        let mut reducer = RunSessionReducer::new(dungeon_config());
+        let mut events = factory();
+        emit(
+            &mut reducer,
+            &mut events,
+            1_000_000,
+            dungeon(DungeonEventKind::Started, "run-1"),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            2_000_000,
+            CanonicalEventDraftKind::Timeline(TimelineEventKind::DataGap(DataGapEvent {
+                kind: DataGapKind::DecodeFailure,
+                connection_id: Some(2),
+                stream_id: Some(1),
+                detail: "unrelated idle stream".into(),
+            })),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            3_000_000,
+            CanonicalEventDraftKind::Timeline(TimelineEventKind::DataGap(DataGapEvent {
+                kind: DataGapKind::CaptureDrop,
+                connection_id: None,
+                stream_id: None,
+                detail: "global capture loss".into(),
+            })),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            4_000_000,
+            dungeon(DungeonEventKind::Completed, "run-1"),
+        );
+
+        let run = &reducer.finish()[0];
+        assert_eq!(run.data_gap_count, 1);
+        assert!(
+            run.findings
+                .contains(&RunEvidenceFinding::DataGaps { count: 1 })
         );
     }
 

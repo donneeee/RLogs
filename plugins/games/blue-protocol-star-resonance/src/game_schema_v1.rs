@@ -31,6 +31,18 @@ pub(crate) struct SyncServerTime {
     pub server_milliseconds: Option<i64>,
 }
 
+/// Gameplay-only subset of the server notification emitted when the local
+/// client uses a skill. The message contains no account or authentication
+/// fields: it identifies only the public target entity and exact skill-level
+/// row used by the client.
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct SyncClientUseSkill {
+    #[prost(int64, optional, tag = "1")]
+    pub skill_target_uuid: Option<i64>,
+    #[prost(int32, optional, tag = "2")]
+    pub skill_level_id: Option<i32>,
+}
+
 #[derive(Clone, Copy, PartialEq, Message)]
 pub(crate) struct SyncSeason {
     #[prost(int32, optional, tag = "1")]
@@ -47,6 +59,110 @@ pub(crate) struct NotifySocialData {
 pub(crate) struct NotifySocialDataRequest {
     #[prost(message, optional, tag = "1")]
     pub data: Option<SocialData>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct NoticeUpdateTeamMemberInfo {
+    #[prost(message, optional, tag = "1")]
+    pub request: Option<NoticeUpdateTeamMemberInfoRequest>,
+}
+
+/// Privacy-reviewed subset of the team-member update notification.
+///
+/// Fast-sync state (tag 5) and unrelated team state are intentionally omitted.
+/// Tag 6 contains the public character presentation snapshots needed to join
+/// player entities to names and gameplay progression in history.
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct NoticeUpdateTeamMemberInfoRequest {
+    #[prost(message, repeated, tag = "6")]
+    pub members: Vec<TeamMemberData>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct NotifyJoinTeam {
+    #[prost(message, optional, tag = "1")]
+    pub request: Option<NotifyJoinTeamRequest>,
+}
+
+/// Privacy-reviewed subset of the full party snapshot sent on joining a team.
+///
+/// Team metadata and map-sync state are deliberately undeclared. Tag 2 is the
+/// same public member-presentation message used by incremental team updates.
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct NotifyJoinTeamRequest {
+    #[prost(message, optional, tag = "1")]
+    pub base_info: Option<TeamBaseInfo>,
+    #[prost(message, repeated, tag = "2")]
+    pub members: Vec<TeamMemberData>,
+}
+
+/// Privacy-reviewed identity-only subset of the complete party header.
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct TeamBaseInfo {
+    #[prost(int64, optional, tag = "1")]
+    pub team_id: Option<i64>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct NotifyLeaveTeam {
+    #[prost(message, optional, tag = "1")]
+    pub request: Option<NotifyLeaveTeamRequest>,
+}
+
+/// Exact member identity and raw leave-reason integer. No enum meaning is
+/// assigned until it is proven for the active build.
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct NotifyLeaveTeamRequest {
+    #[prost(int64, optional, tag = "1")]
+    pub character_id: Option<i64>,
+    #[prost(int32, optional, tag = "2")]
+    pub leave_type: Option<i32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct NoticeTeamDissolve {
+    #[prost(message, optional, tag = "1")]
+    pub request: Option<NoticeTeamDissolveRequest>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct NoticeTeamDissolveRequest {}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct TeamMemberData {
+    // Build 24687926 native MergeFrom proof independently closes all nine
+    // TeamMemData tags. Only the privacy-reviewed roster/profile fields below
+    // cross the canonical boundary.
+    #[prost(int64, optional, tag = "1")]
+    pub character_id: Option<i64>,
+    #[prost(uint32, optional, tag = "2")]
+    pub enter_time: Option<u32>,
+    // Call and voice state are outside the roster-evidence slice.
+    #[prost(int32, optional, tag = "4")]
+    pub talent_id: Option<i32>,
+    #[prost(int32, optional, tag = "5")]
+    pub online_status: Option<i32>,
+    #[prost(int32, optional, tag = "6")]
+    pub scene_id: Option<i32>,
+    #[prost(int32, optional, tag = "8")]
+    pub group_id: Option<i32>,
+    #[prost(message, optional, tag = "9")]
+    pub social: Option<TeamMemberSocialData>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct TeamMemberSocialData {
+    #[prost(message, optional, tag = "1")]
+    pub basic: Option<SocialBasicData>,
+    // Avatar, face, fashion, and user-supplied image data remain undeclared.
+    #[prost(message, optional, tag = "4")]
+    pub profession: Option<SocialProfessionData>,
+    /// Public equipped item configuration IDs. Instance/private inventory data
+    /// is not present in this team presentation message.
+    #[prost(message, optional, tag = "5")]
+    pub equipment: Option<SocialEquipmentData>,
+    #[prost(message, optional, tag = "8")]
+    pub user_attributes: Option<SocialUserAttributes>,
 }
 
 /// Privacy-reviewed public subset of the owner/social character snapshot.
@@ -129,6 +245,82 @@ pub(crate) struct SocialEquipmentItem {
     pub slot_id: Option<i32>,
     #[prost(int32, optional, tag = "2")]
     pub item_id: Option<i32>,
+}
+
+/// Public equipment configuration attached to nearby player entities.
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct AttrEquipmentData {
+    #[prost(message, repeated, tag = "1")]
+    pub items: Vec<AttrEquipmentItem>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct AttrEquipmentItem {
+    #[prost(int32, optional, tag = "1")]
+    pub slot_id: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub item_id: Option<i32>,
+}
+
+/// Public active skill/remodel list attached to nearby player entities.
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct AttrSkillLevelList {
+    #[prost(message, repeated, tag = "1")]
+    pub skills: Vec<AttrSkillLevel>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct AttrSkillLevel {
+    #[prost(int32, optional, tag = "1")]
+    pub skill_id: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub current_level: Option<i32>,
+    #[prost(int32, optional, tag = "3")]
+    pub remodel_level: Option<i32>,
+}
+
+/// Public action-bar presentation attached to the local player entity.
+///
+/// The map key and the embedded slot ID are both retained because either may
+/// be absent in a partial attribute update. Fields unrelated to presentation
+/// (auto-battle and transient slot state) are intentionally undeclared.
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct AttrActionSlots {
+    #[prost(map = "int32, message", tag = "1")]
+    pub slots: std::collections::HashMap<i32, AttrActionSlot>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct AttrActionSlot {
+    #[prost(int32, optional, tag = "1")]
+    pub slot_id: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub skill_id: Option<i32>,
+}
+
+/// Current-build value carried by entity attribute 60050.
+///
+/// The attribute payload is a wrapper whose field 1 repeats these messages.
+/// Field presence is retained because an omitted value is not equivalent to a
+/// zero-valued shield when auditing state-dependent damage formulas.
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct AttrShieldInfo {
+    #[prost(int64, optional, tag = "1")]
+    pub uuid: Option<i64>,
+    #[prost(int32, optional, tag = "2")]
+    pub shield_type: Option<i32>,
+    #[prost(int64, optional, tag = "3")]
+    pub current_value: Option<i64>,
+    #[prost(int64, optional, tag = "4")]
+    pub initial_value: Option<i64>,
+    #[prost(int64, optional, tag = "5")]
+    pub max_value: Option<i64>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct AttrShieldList {
+    #[prost(message, repeated, tag = "1")]
+    pub shields: Vec<AttrShieldInfo>,
 }
 
 #[derive(Clone, Copy, PartialEq, Message)]
@@ -265,6 +457,134 @@ pub(crate) struct Entity {
     pub entity_type: Option<i32>,
     #[prost(message, optional, tag = "3")]
     pub attributes: Option<AttrCollection>,
+    #[prost(bytes = "vec", optional, tag = "4")]
+    pub raw_temp_attributes: Option<Vec<u8>>,
+    #[prost(message, optional, tag = "6")]
+    pub passive_skill_infos: Option<SeqPassiveSkillInfo>,
+    #[prost(message, optional, tag = "7")]
+    pub buff_infos: Option<BuffInfoSync>,
+    #[prost(message, optional, tag = "8")]
+    pub buff_effect: Option<BuffEffectSync>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct BuffInfoSync {
+    #[prost(int64, optional, tag = "1")]
+    pub uuid: Option<i64>,
+    #[prost(message, repeated, tag = "2")]
+    pub buff_infos: Vec<BuffInfo>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct BuffInfo {
+    #[prost(int32, optional, tag = "1")]
+    pub buff_uuid: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub base_id: Option<i32>,
+    #[prost(int32, optional, tag = "3")]
+    pub level: Option<i32>,
+    #[prost(int64, optional, tag = "4")]
+    pub host_uuid: Option<i64>,
+    #[prost(int32, optional, tag = "5")]
+    pub table_uuid: Option<i32>,
+    #[prost(int64, optional, tag = "6")]
+    pub create_time: Option<i64>,
+    #[prost(int64, optional, tag = "7")]
+    pub fire_uuid: Option<i64>,
+    #[prost(int32, optional, tag = "8")]
+    pub layer: Option<i32>,
+    #[prost(int32, optional, tag = "9")]
+    pub part_id: Option<i32>,
+    #[prost(int32, optional, tag = "10")]
+    pub count: Option<i32>,
+    #[prost(int32, optional, tag = "11")]
+    pub duration: Option<i32>,
+    #[prost(message, optional, tag = "12")]
+    pub fight_source_info: Option<FightSourceInfo>,
+    #[prost(message, repeated, tag = "13")]
+    pub logic_effects: Vec<BuffEffectLogicInfo>,
+    #[prost(int32, optional, tag = "14")]
+    pub skin_id: Option<i32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct FightSourceInfo {
+    #[prost(int32, optional, tag = "1")]
+    pub fight_source_type: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub source_config_id: Option<i32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct BuffChange {
+    #[prost(int32, optional, tag = "1")]
+    pub layer: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub duration: Option<i32>,
+    #[prost(int64, optional, tag = "3")]
+    pub create_time: Option<i64>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct BuffEffectLogicInfo {
+    #[prost(int32, optional, tag = "1")]
+    pub effect_type: Option<i32>,
+    #[prost(bytes = "vec", optional, tag = "2")]
+    pub raw_data: Option<Vec<u8>>,
+    #[prost(bool, optional, tag = "3")]
+    pub is_loop: Option<bool>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct BuffEffectSync {
+    #[prost(int64, optional, tag = "1")]
+    pub uuid: Option<i64>,
+    #[prost(message, repeated, tag = "2")]
+    pub buff_effects: Vec<BuffEffect>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct BuffEffect {
+    #[prost(int32, optional, tag = "1")]
+    pub event_type: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub buff_uuid: Option<i32>,
+    #[prost(int64, optional, tag = "3")]
+    pub host_uuid: Option<i64>,
+    #[prost(int64, optional, tag = "4")]
+    pub trigger_time: Option<i64>,
+    #[prost(message, repeated, tag = "5")]
+    pub logic_effects: Vec<BuffEffectLogicInfo>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct SeqPassiveSkillInfo {
+    #[prost(int64, optional, tag = "1")]
+    pub actor_uuid: Option<i64>,
+    #[prost(message, repeated, tag = "2")]
+    pub passive_infos: Vec<PassiveSkillInfo>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct PassiveSkillInfo {
+    #[prost(int32, optional, tag = "1")]
+    pub uuid: Option<i32>,
+    #[prost(int64, optional, tag = "2")]
+    pub target_uuid: Option<i64>,
+    #[prost(int64, optional, tag = "3")]
+    pub stage_begin_time: Option<i64>,
+    #[prost(int64, optional, tag = "4")]
+    pub begin_time: Option<i64>,
+    #[prost(int32, optional, tag = "5")]
+    pub stage_play_num: Option<i32>,
+    #[prost(int32, optional, tag = "6")]
+    pub skill_id: Option<i32>,
+    #[prost(int32, optional, tag = "7")]
+    pub skill_level: Option<i32>,
+    #[prost(int32, optional, tag = "8")]
+    pub skill_stage: Option<i32>,
+    #[prost(bytes = "vec", optional, tag = "9")]
+    pub target_position: Option<Vec<u8>>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -365,6 +685,8 @@ pub(crate) struct CharacterSerialize {
     pub item_package: Option<ItemPackage>,
     #[prost(message, optional, tag = "12")]
     pub equipment: Option<EquipmentList>,
+    #[prost(message, optional, tag = "16")]
+    pub fight_attributes: Option<UserFightAttr>,
     #[prost(message, optional, tag = "17")]
     pub fashion: Option<FashionManager>,
     #[prost(message, optional, tag = "18")]
@@ -415,6 +737,53 @@ pub(crate) struct CharacterSerialize {
     pub vanity_pets: Option<VanityPetManager>,
     #[prost(message, optional, tag = "121")]
     pub fantasy_atlas: Option<FantasyAtlasData>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct UserFightAttr {
+    #[prost(int64, optional, tag = "1")]
+    pub current_hp: Option<i64>,
+    #[prost(int64, optional, tag = "2")]
+    pub maximum_hp: Option<i64>,
+    #[prost(float, optional, tag = "3")]
+    pub origin_energy: Option<f32>,
+    #[prost(uint32, repeated, packed = "true", tag = "4")]
+    pub resource_ids: Vec<u32>,
+    #[prost(uint32, repeated, packed = "true", tag = "5")]
+    pub resources: Vec<u32>,
+    #[prost(int32, optional, tag = "6")]
+    pub is_dead: Option<i32>,
+    #[prost(int64, optional, tag = "7")]
+    pub dead_time: Option<i64>,
+    #[prost(int32, optional, tag = "8")]
+    pub revive_id: Option<i32>,
+    #[prost(message, repeated, tag = "9")]
+    pub cooldowns: Vec<SkillCooldownInfo>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct SkillCooldownInfo {
+    #[prost(int32, optional, tag = "1")]
+    pub skill_level_id: Option<i32>,
+    #[prost(int64, optional, tag = "2")]
+    pub skill_begin_time: Option<i64>,
+    #[prost(int32, optional, tag = "3")]
+    pub duration: Option<i32>,
+    #[prost(uint32, optional, tag = "4")]
+    pub cooldown_type: Option<u32>,
+    // Field 5 is absent in the current generated schema.
+    #[prost(int64, optional, tag = "6")]
+    pub profession_hold_begin_time: Option<i64>,
+    #[prost(int32, optional, tag = "7")]
+    pub charge_count: Option<i32>,
+    #[prost(int32, optional, tag = "8")]
+    pub valid_cooldown_time: Option<i32>,
+    #[prost(int32, optional, tag = "9")]
+    pub sub_cooldown_ratio: Option<i32>,
+    #[prost(int64, optional, tag = "10")]
+    pub sub_cooldown_fixed: Option<i64>,
+    #[prost(int32, optional, tag = "11")]
+    pub accelerate_cooldown_ratio: Option<i32>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -596,8 +965,25 @@ pub(crate) struct ModuleInfo {
 pub(crate) struct EquipmentList {
     #[prost(map = "int32, message", tag = "1")]
     pub equipped: std::collections::HashMap<i32, EquippedItem>,
+    #[prost(message, optional, tag = "2")]
+    pub aggregate_attributes: Option<EquipmentAttributes>,
+    #[prost(map = "uint64, message", tag = "4")]
+    pub recast_attributes: std::collections::HashMap<u64, EquipmentAttributes>,
     #[prost(map = "int64, message", tag = "5")]
     pub enchantments: std::collections::HashMap<i64, EquipmentEnchantment>,
+    #[prost(map = "int32, message", tag = "6")]
+    pub suit_entries: std::collections::HashMap<i32, EquipmentSuitInfo>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct EquipmentSuitInfo {
+    // Current native `Zproto.EquipSuitInfo` declares SuitAttr at field 3 and
+    // AttrType at field 4. Fields 1/2 belong to an older/unverified layout and
+    // decode current snapshots as empty set entries.
+    #[prost(map = "int32, int32", tag = "3")]
+    pub attributes: std::collections::HashMap<i32, i32>,
+    #[prost(int32, optional, tag = "4")]
+    pub attribute_type: Option<i32>,
 }
 
 #[derive(Clone, Copy, PartialEq, Message)]
@@ -1154,10 +1540,28 @@ pub(crate) struct SyncToMeDeltaInfo {
 pub(crate) struct AoiSyncToMeDelta {
     #[prost(message, optional, tag = "1")]
     pub base_delta: Option<AoiSyncDelta>,
+    #[prost(int64, repeated, packed = "true", tag = "2")]
+    pub hate_ids: Vec<i64>,
     #[prost(message, repeated, tag = "3")]
     pub cooldowns: Vec<SkillCooldown>,
+    #[prost(message, repeated, tag = "4")]
+    pub fight_resource_cooldowns: Vec<FightResourceCooldown>,
     #[prost(int64, optional, tag = "5")]
     pub uuid: Option<i64>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct FightResourceCooldown {
+    #[prost(int32, optional, tag = "1")]
+    pub resource_id: Option<i32>,
+    #[prost(int64, optional, tag = "2")]
+    pub begin_time: Option<i64>,
+    #[prost(int32, optional, tag = "3")]
+    pub duration: Option<i32>,
+    #[prost(int32, optional, tag = "4")]
+    pub valid_cooldown_time: Option<i32>,
+    #[prost(int32, optional, tag = "5")]
+    pub existence_time: Option<i32>,
 }
 
 #[derive(Clone, Copy, PartialEq, Message)]
@@ -1175,13 +1579,86 @@ pub(crate) struct SkillCooldown {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub(crate) struct TempAttrCollection {
+    #[prost(message, repeated, tag = "1")]
+    pub attributes: Vec<TempAttr>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct TempAttr {
+    #[prost(int32, optional, tag = "1")]
+    pub id: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub value: Option<i32>,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub(crate) struct AoiSyncDelta {
     #[prost(int64, optional, tag = "1")]
     pub uuid: Option<i64>,
     #[prost(message, optional, tag = "2")]
     pub attributes: Option<AttrCollection>,
+    #[prost(bytes = "vec", optional, tag = "3")]
+    pub raw_temp_attributes: Option<Vec<u8>>,
+    #[prost(bytes = "vec", optional, tag = "4")]
+    pub raw_event_data_list: Option<Vec<u8>>,
+    #[prost(bytes = "vec", optional, tag = "5")]
+    pub raw_bullet_event: Option<Vec<u8>>,
+    #[prost(bytes = "vec", optional, tag = "6")]
+    pub raw_body_part_infos: Option<Vec<u8>>,
     #[prost(message, optional, tag = "7")]
     pub skill_effects: Option<SkillEffect>,
+    #[prost(message, optional, tag = "8")]
+    pub passive_skill_infos: Option<SeqPassiveSkillInfo>,
+    #[prost(message, optional, tag = "9")]
+    pub passive_skill_end_infos: Option<SeqPassiveSkillEndInfo>,
+    #[prost(message, optional, tag = "10")]
+    pub buff_effect: Option<BuffEffectSync>,
+    #[prost(bytes = "vec", repeated, tag = "11")]
+    pub raw_fake_bullets: Vec<Vec<u8>>,
+    #[prost(bytes = "vec", repeated, tag = "12")]
+    pub raw_magnetic_ride_queue_changes: Vec<Vec<u8>>,
+    #[prost(bytes = "vec", repeated, tag = "13")]
+    pub raw_instrument_events: Vec<Vec<u8>>,
+}
+
+/// Exact current-build `Zproto.FakeBulletInfo` wire surface. The enclosing AOI
+/// entity relation is retained separately and must not be interpreted as
+/// provider ownership without exact-build behavioral proof.
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct FakeBulletInfo {
+    #[prost(int32, optional, tag = "1")]
+    pub uuid: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub bullet_id: Option<i32>,
+    #[prost(int64, optional, tag = "3")]
+    pub target_id: Option<i64>,
+    #[prost(int32, optional, tag = "4")]
+    pub part_id: Option<i32>,
+    #[prost(message, optional, tag = "5")]
+    pub offset: Option<FakeBulletVector3>,
+    #[prost(message, optional, tag = "6")]
+    pub rotate: Option<FakeBulletVector3>,
+    #[prost(int32, optional, tag = "7")]
+    pub skin_id: Option<i32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct FakeBulletVector3 {
+    #[prost(float, optional, tag = "1")]
+    pub x: Option<f32>,
+    #[prost(float, optional, tag = "2")]
+    pub y: Option<f32>,
+    #[prost(float, optional, tag = "3")]
+    pub z: Option<f32>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct SeqPassiveSkillEndInfo {
+    #[prost(int64, optional, tag = "1")]
+    pub actor_uuid: Option<i64>,
+    #[prost(int64, repeated, packed = "true", tag = "2")]
+    pub passive_uuids: Vec<i64>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -1194,7 +1671,7 @@ pub(crate) struct SkillEffect {
     pub total_damage: Option<i64>,
 }
 
-#[derive(Clone, Copy, PartialEq, Message)]
+#[derive(Clone, PartialEq, Message)]
 pub(crate) struct DamageInfo {
     #[prost(int32, optional, tag = "1")]
     pub damage_source: Option<i32>,
@@ -1220,12 +1697,60 @@ pub(crate) struct DamageInfo {
     pub attacker_uuid: Option<i64>,
     #[prost(int32, optional, tag = "12")]
     pub owner_id: Option<i32>,
+    #[prost(int32, optional, tag = "13")]
+    pub owner_level: Option<i32>,
+    #[prost(int32, optional, tag = "14")]
+    pub owner_stage: Option<i32>,
     #[prost(int32, optional, tag = "15")]
     pub hit_event_id: Option<i32>,
+    #[prost(bool, optional, tag = "16")]
+    pub normal: Option<bool>,
     #[prost(bool, optional, tag = "17")]
     pub dead: Option<bool>,
+    #[prost(int32, optional, tag = "18")]
+    pub property: Option<i32>,
+    #[prost(message, optional, tag = "19")]
+    pub damage_position: Option<DamageVector3>,
+    #[prost(message, repeated, tag = "20")]
+    pub hit_parts: Vec<DamageHitPartInfo>,
     #[prost(int64, optional, tag = "21")]
     pub top_summoner_uuid: Option<i64>,
+    #[prost(message, optional, tag = "22")]
+    pub damage_weight: Option<DamageVector2>,
+    #[prost(uint32, optional, tag = "23")]
+    pub passive_uuid: Option<u32>,
+    #[prost(bool, optional, tag = "24")]
+    pub rainbow: Option<bool>,
+    #[prost(int32, optional, tag = "25")]
+    pub damage_mode: Option<i32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct DamageVector3 {
+    #[prost(float, optional, tag = "1")]
+    pub x: Option<f32>,
+    #[prost(float, optional, tag = "2")]
+    pub y: Option<f32>,
+    #[prost(float, optional, tag = "3")]
+    pub z: Option<f32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct DamageVector2 {
+    #[prost(float, optional, tag = "1")]
+    pub x: Option<f32>,
+    #[prost(float, optional, tag = "2")]
+    pub y: Option<f32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct DamageHitPartInfo {
+    #[prost(int32, optional, tag = "1")]
+    pub part_id: Option<i32>,
+    #[prost(message, optional, tag = "2")]
+    pub damage_position: Option<DamageVector3>,
+    #[prost(int64, optional, tag = "3")]
+    pub damage_value: Option<i64>,
 }
 
 #[derive(Clone, Copy, PartialEq, Message)]

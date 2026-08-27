@@ -1,0 +1,26 @@
+schema_version = 1
+id = "app.rlogs.combat-meter"
+name = "Combat Meter"
+version = "0.1.0"
+api_version = 1
+runtime = "browser_overlay"
+entrypoint = "ui/runtime.html"
+capabilities = ["ui_workspace_publish"]
+subscriptions = []
+allowed_network_domains = []
+
+[workspace]
+default_order = -95
+
+[[workspace.tabs]]
+id = "history"
+label = "History"
+entrypoint = "ui/session.html"
+section = "meter"
+
+[[workspace.tabs]]
+id = "options"
+label = "Options"
+entrypoint = "ui/options.html"
+kind = "options"
+section = "meter"

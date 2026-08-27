@@ -1,0 +1,40 @@
+{
+  "schema_version": 2,
+  "kind": "world_area",
+  "id": 70007,
+  "stable_key": "world-area.70007",
+  "localization_key": "world-area.70007.name",
+  "icon": null,
+  "attributes": {
+    "area_id": 70007,
+    "scene_id": 7,
+    "scene_key": "overworld-scene.7",
+    "name_id": 179001905,
+    "name_position": [
+      0.375,
+      0.275000006
+    ],
+    "area_type": 0,
+    "background_music_event": "BGM_Fld001_Area_ValeCitadel",
+    "reverb_audio_event": "Reverb_Normal",
+    "ambient_audio_events": [
+      "Amb_2D_Fld001_BirdInsect_Loop",
+      "Amb_2D_Fld001_SetToLand"
+    ],
+    "environment_client_status_ids": [
+      7000001
+    ]
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SceneAreaTable",
+    "reference": "client-build:global/steam/24252055@sha256:95e13cdc266f82179d774954ca38a48dec5e22e4caad07e2c5f728b87e6ed095",
+    "confidence": "verified"
+  }
+}

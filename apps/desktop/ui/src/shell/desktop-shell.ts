@@ -3,16 +3,100 @@ import {
   moveWorkspace,
   moveWorkspaceByOffset,
 } from "./order";
+import {
+  moveSection,
+  moveTabInsideSection,
+  orderTabSections,
+  type OrderedTabSection,
+} from "./tab-order";
+import { wireNativeWindowChrome } from "./native-window";
 import type {
   DesktopHostAdapter,
+  EngineState,
   MountedSurface,
   PluginCatalogSnapshot,
+  SettingsTabDescriptor,
   ShellPreferences,
   WorkspaceDescriptor,
   WorkspaceTabDescriptor,
 } from "./types";
 
-type HostView = "plugins" | "settings";
+type HostView = "settings";
+
+const SETTINGS_WORKSPACE_ID = "host.rlogs.settings";
+const CORE_SETTINGS_TABS: readonly SettingsTabDescriptor[] = [
+  {
+    id: "host.rlogs.settings:general",
+    label: "General",
+    kind: "options",
+    entrypoint: "core://settings/general",
+    contributorPluginId: SETTINGS_WORKSPACE_ID,
+    sectionId: "host.rlogs.settings:core",
+    defaultOrder: -300,
+  },
+  {
+    id: "host.rlogs.settings:network",
+    label: "Network",
+    kind: "options",
+    entrypoint: "core://settings/network",
+    contributorPluginId: SETTINGS_WORKSPACE_ID,
+    sectionId: "host.rlogs.settings:core",
+    defaultOrder: -299,
+  },
+  {
+    id: "host.rlogs.settings:hotkeys",
+    label: "Hotkeys",
+    kind: "options",
+    entrypoint: "core://settings/hotkeys",
+    contributorPluginId: SETTINGS_WORKSPACE_ID,
+    sectionId: "host.rlogs.settings:core",
+    defaultOrder: -298,
+  },
+  {
+    id: "host.rlogs.settings:plugins",
+    label: "Plug-ins",
+    kind: "options",
+    entrypoint: "core://settings/plugins",
+    contributorPluginId: SETTINGS_WORKSPACE_ID,
+    sectionId: "host.rlogs.settings:core",
+    defaultOrder: -297,
+  },
+];
+
+type PointerDragState =
+  | {
+      kind: "workspace";
+      sourceId: string;
+      targetId: string | null;
+      pointerId: number;
+      startX: number;
+      startY: number;
+      moved: boolean;
+      sourceElement: HTMLElement;
+    }
+  | {
+      kind: "tab";
+      workspaceId: string;
+      sectionId: string;
+      sourceId: string;
+      targetId: string | null;
+      pointerId: number;
+      startX: number;
+      startY: number;
+      moved: boolean;
+      sourceElement: HTMLElement;
+    }
+  | {
+      kind: "section";
+      workspaceId: string;
+      sourceId: string;
+      targetId: string | null;
+      pointerId: number;
+      startX: number;
+      startY: number;
+      moved: boolean;
+      sourceElement: HTMLElement;
+    };
 
 export class DesktopShell {
   readonly #root: HTMLElement;
@@ -21,19 +105,56 @@ export class DesktopShell {
   #order: string[] = [];
   #activeWorkspaceId: string | null = null;
   #activeTabs: Record<string, string> = {};
+  #tabOrders: Record<string, string[]> = {};
+  #sectionOrders: Record<string, string[]> = {};
+  #lockTabDragging = false;
+  #lockSectionDragging = false;
+  #settingsWorkspace = settingsWorkspace([]);
   #activeHostView: HostView | null = null;
   #mountedSurface: MountedSurface | null = null;
   #mountSequence = 0;
   #draggedWorkspaceId: string | null = null;
+  #draggedTab:
+    | { workspaceId: string; sectionId: string; tabId: string }
+    | null = null;
+  #draggedSection:
+    | { workspaceId: string; sectionId: string }
+    | null = null;
+  #pointerDrag: PointerDragState | null = null;
+  #suppressedTabClick: string | null = null;
+  #suppressedWorkspaceClick: string | null = null;
   #pluginCatalog: PluginCatalogSnapshot | null = null;
+  #engineStateTimer: number | null = null;
+  #engineStateRefreshActive = false;
+  #engineState: EngineState = {
+    phase: "unavailable",
+    label: "Connecting core",
+    detail: "Waiting for the native runtime.",
+  };
 
   constructor(root: HTMLElement, adapter: DesktopHostAdapter) {
     this.#root = root;
     this.#adapter = adapter;
+    window.addEventListener("rlogs:layout-settings-changed", (event) => {
+      const preferences = (event as CustomEvent<ShellPreferences>).detail;
+      this.#order = mergeWorkspaceOrder(
+        [...this.#workspaces.values()],
+        preferences.workspaceOrder,
+      );
+      this.#activeTabs = { ...preferences.activeTabs };
+      this.#activeWorkspaceId =
+        preferences.activeWorkspaceId !== null &&
+        this.#workspaces.has(preferences.activeWorkspaceId)
+          ? preferences.activeWorkspaceId
+          : (this.#order[0] ?? null);
+      this.#applyLayoutPreferences(preferences);
+      this.#render();
+    });
   }
 
   async start(): Promise<void> {
     this.#renderFrame();
+    this.#startEngineStatePolling();
     this.#setMainNotice("Loading plug-in workspaces…", "loading");
 
     try {
@@ -43,6 +164,9 @@ export class DesktopShell {
         this.#adapter.loadPluginCatalog?.() ?? Promise.resolve(null),
       ]);
       this.#pluginCatalog = pluginCatalog;
+      this.#settingsWorkspace = settingsWorkspace(
+        pluginCatalog?.settingsTabs ?? [],
+      );
       this.#applySnapshot(workspaces, preferences);
       this.#render();
     } catch (error) {
@@ -60,6 +184,7 @@ export class DesktopShell {
     );
     this.#order = mergeWorkspaceOrder(workspaces, preferences.workspaceOrder);
     this.#activeTabs = { ...preferences.activeTabs };
+    this.#applyLayoutPreferences(preferences);
     this.#activeWorkspaceId =
       preferences.activeWorkspaceId !== null &&
       this.#workspaces.has(preferences.activeWorkspaceId)
@@ -68,11 +193,40 @@ export class DesktopShell {
     this.#activeHostView = null;
   }
 
+  #applyLayoutPreferences(preferences: ShellPreferences): void {
+    this.#tabOrders = Object.fromEntries(
+      Object.entries(preferences.tabOrders).map(([key, value]) => [
+        key,
+        [...value],
+      ]),
+    );
+    this.#sectionOrders = Object.fromEntries(
+      Object.entries(preferences.sectionOrders).map(([key, value]) => [
+        key,
+        [...value],
+      ]),
+    );
+    this.#lockTabDragging = preferences.lockTabDragging;
+    this.#lockSectionDragging = preferences.lockSectionDragging;
+  }
+
   #renderFrame(): void {
     this.#root.replaceChildren();
 
     const shell = element("div", "desktop-shell");
     shell.innerHTML = `
+      <header class="native-titlebar">
+        <div class="native-drag-region" data-tauri-drag-region>
+          <span class="native-titlebar-mark" aria-hidden="true">r/</span>
+          <strong data-tauri-drag-region>rLogs</strong>
+          <span data-tauri-drag-region>Modular parser host</span>
+        </div>
+        <div class="native-window-controls" aria-label="Window controls">
+          <button type="button" data-window-action="minimize" aria-label="Minimize">—</button>
+          <button type="button" data-window-action="maximize" aria-label="Maximize">□</button>
+          <button type="button" class="window-close" data-window-action="close" aria-label="Close">×</button>
+        </div>
+      </header>
       <aside class="workspace-rail" aria-label="rLogs navigation">
         <div class="brand-row">
           <div class="brand-mark" aria-hidden="true">rL</div>
@@ -91,39 +245,116 @@ export class DesktopShell {
         </nav>
         <div class="rail-spacer"></div>
         <div class="host-navigation" aria-label="Application tools"></div>
-        <div class="engine-state">
+        <div class="engine-state" tabindex="0" aria-describedby="engine-state-diagnostics">
           <span class="engine-state-dot" aria-hidden="true"></span>
-          <span>
-            <strong>Core idle</strong>
-            <small>No capture adapter attached</small>
+          <span class="engine-state-summary">
+            <strong>Connecting core</strong>
+            <small>Waiting for the native runtime.</small>
           </span>
+          <div class="engine-state-diagnostics" id="engine-state-diagnostics" role="tooltip">
+            <strong>Technical details</strong>
+            <p>Waiting for the native runtime.</p>
+          </div>
         </div>
       </aside>
       <main class="workspace-main">
-        <header class="shell-topbar">
-          <div class="topbar-copy">
-            <span class="topbar-kicker">Modular parser host</span>
-            <strong class="topbar-title">Workspace</strong>
-          </div>
-          <div class="topbar-actions"></div>
-        </header>
         <div class="workspace-content" aria-live="polite"></div>
       </main>
     `;
 
     const badge = requireElement(shell, ".development-badge");
     badge.textContent = this.#adapter.modeLabel;
+    badge.setAttribute(
+      "title",
+      "rLogs is connected to the app running on this computer.",
+    );
+    badge.setAttribute(
+      "aria-label",
+      `${this.#adapter.modeLabel}: rLogs is connected to the app running on this computer.`,
+    );
     this.#root.append(shell);
+    wireNativeWindowChrome(shell);
+    this.#renderEngineState();
+  }
+
+  #startEngineStatePolling(): void {
+    if (this.#engineStateTimer !== null) {
+      return;
+    }
+    void this.#refreshEngineState();
+    this.#engineStateTimer = window.setInterval(() => {
+      void this.#refreshEngineState();
+    }, 750);
+    window.addEventListener(
+      "pagehide",
+      () => {
+        if (this.#engineStateTimer !== null) {
+          window.clearInterval(this.#engineStateTimer);
+          this.#engineStateTimer = null;
+        }
+      },
+      { once: true },
+    );
+  }
+
+  async #refreshEngineState(): Promise<void> {
+    if (this.#engineStateRefreshActive) {
+      return;
+    }
+    this.#engineStateRefreshActive = true;
+    try {
+      this.#engineState =
+        (await this.#adapter.loadEngineState?.()) ?? {
+          phase: "idle",
+          label: "Shell prototype",
+          detail: "No native capture runtime is attached.",
+        };
+    } catch (error) {
+      this.#engineState = {
+        phase: "unavailable",
+        label: "Not connected",
+        detail: "rLogs cannot reach its background service.",
+        technicalDetail: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      this.#engineStateRefreshActive = false;
+      this.#renderEngineState();
+    }
+  }
+
+  #renderEngineState(): void {
+    const container = this.#root.querySelector<HTMLElement>(".engine-state");
+    const label = container?.querySelector<HTMLElement>(
+      ".engine-state-summary strong",
+    );
+    const detail = container?.querySelector<HTMLElement>(
+      ".engine-state-summary small",
+    );
+    const diagnostics = container?.querySelector<HTMLElement>(
+      ".engine-state-diagnostics p",
+    );
+    if (
+      container === null ||
+      label == null ||
+      detail == null ||
+      diagnostics == null
+    ) {
+      return;
+    }
+    container.dataset.phase = this.#engineState.phase;
+    label.textContent = this.#engineState.label;
+    detail.textContent = this.#engineState.detail;
+    // Freeze diagnostics while they are being read. Live packet counters update
+    // frequently and replacing tooltip text mid-hover makes native tooltips close.
+    if (!container.matches(":hover, :focus-within")) {
+      diagnostics.textContent =
+        this.#engineState.technicalDetail ?? this.#engineState.detail;
+    }
   }
 
   #render(): void {
     this.#renderNavigation();
-    this.#renderTopbarActions();
 
-    if (this.#activeHostView === "plugins") {
-      this.#renderPluginManager();
-      return;
-    }
     if (this.#activeHostView === "settings") {
       this.#renderSettings();
       return;
@@ -154,7 +385,7 @@ export class DesktopShell {
       const item = element("li", "workspace-item");
       const button = element("button", "workspace-button");
       button.type = "button";
-      button.draggable = true;
+      button.draggable = false;
       button.dataset.workspaceId = workspace.id;
       button.setAttribute(
         "aria-label",
@@ -172,8 +403,10 @@ export class DesktopShell {
       const icon = element("span", "workspace-icon");
       icon.setAttribute("aria-hidden", "true");
       if (workspace.iconUrl === null) {
+        icon.dataset.state = "fallback";
         icon.textContent = workspace.iconFallback;
       } else {
+        icon.dataset.state = "resolved";
         const image = document.createElement("img");
         image.alt = "";
         image.src = workspace.iconUrl;
@@ -196,7 +429,31 @@ export class DesktopShell {
       button.append(icon, copy, dragHandle);
 
       button.addEventListener("click", () => {
+        if (this.#suppressedWorkspaceClick === workspace.id) {
+          this.#suppressedWorkspaceClick = null;
+          return;
+        }
         this.#selectWorkspace(workspace.id);
+      });
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        this.#beginPointerDrag(
+          {
+            kind: "workspace",
+            sourceId: workspace.id,
+          },
+          button,
+          event,
+        );
+      });
+      button.addEventListener("pointermove", (event) => {
+        this.#updatePointerDrag(event);
+      });
+      button.addEventListener("pointerup", (event) => {
+        this.#finishPointerDrag(null, event);
+      });
+      button.addEventListener("pointercancel", () => {
+        this.#cancelPointerDrag();
       });
       button.addEventListener("keydown", (event) => {
         if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) {
@@ -270,7 +527,6 @@ export class DesktopShell {
       ".host-navigation",
     );
     hostNavigation.replaceChildren(
-      this.#hostNavigationButton("plugins", "Plug-in Manager", "＋"),
       this.#hostNavigationButton("settings", "Settings", "⚙"),
     );
   }
@@ -294,38 +550,6 @@ export class DesktopShell {
       this.#render();
     });
     return button;
-  }
-
-  #renderTopbarActions(): void {
-    const actions = requireElement(this.#root, ".topbar-actions");
-    actions.replaceChildren();
-    if (this.#adapter.setExampleWorkspacesEnabled === undefined) {
-      return;
-    }
-
-    const button = element("button", "quiet-button");
-    button.type = "button";
-    button.textContent =
-      this.#workspaces.size === 0
-        ? "Load sample plug-ins"
-        : "Preview blank shell";
-    button.addEventListener("click", async () => {
-      button.disabled = true;
-      try {
-        await this.#adapter.setExampleWorkspacesEnabled?.(
-          this.#workspaces.size === 0,
-        );
-        const [workspaces, preferences] = await Promise.all([
-          this.#adapter.loadWorkspaces(),
-          this.#adapter.loadPreferences(),
-        ]);
-        this.#applySnapshot(workspaces, preferences);
-        this.#render();
-      } finally {
-        button.disabled = false;
-      }
-    });
-    actions.append(button);
   }
 
   #selectWorkspace(workspaceId: string): void {
@@ -368,9 +592,12 @@ export class DesktopShell {
   }
 
   #resolveActiveTab(workspace: WorkspaceDescriptor): WorkspaceTabDescriptor {
+    const orderedTabs = this.#orderedSections(workspace).flatMap(
+      (section) => section.tabs,
+    );
     const savedId = this.#activeTabs[workspace.id];
-    const savedTab = workspace.tabs.find((tab) => tab.id === savedId);
-    const tab = savedTab ?? workspace.tabs[0];
+    const savedTab = orderedTabs.find((tab) => tab.id === savedId);
+    const tab = savedTab ?? orderedTabs[0];
     if (tab === undefined) {
       throw new Error(`Workspace ${workspace.id} has no validated tabs`);
     }
@@ -385,10 +612,131 @@ export class DesktopShell {
     const tabList = element("div", "workspace-tabs");
     tabList.setAttribute("role", "tablist");
     tabList.setAttribute("aria-label", `${workspace.name} sections`);
+    const sections = this.#orderedSections(workspace);
+    const orderedTabs = sections.flatMap((section) => section.tabs);
 
-    workspace.tabs.forEach((tab, index) => {
-      const button = element("button", "workspace-tab");
-      button.type = "button";
+    sections.forEach((section, sectionIndex) => {
+      if (sectionIndex > 0) {
+        const separator = element("span", "tab-section-separator");
+        separator.textContent = "|";
+        separator.setAttribute("aria-hidden", "true");
+        tabList.append(separator);
+      }
+
+      const sectionGroup = element("div", "tab-section");
+      sectionGroup.dataset.workspaceId = workspace.id;
+      sectionGroup.dataset.sectionId = section.id;
+      if (sections.length > 1) {
+        const sectionHandle = element("button", "section-drag-handle");
+        sectionHandle.type = "button";
+        sectionHandle.draggable = false;
+        sectionHandle.disabled = this.#lockSectionDragging;
+        sectionHandle.textContent = "⠿";
+        sectionHandle.title = this.#lockSectionDragging
+          ? "Section dragging is locked in Settings"
+          : "Drag this whole tab section";
+        sectionHandle.setAttribute(
+          "aria-label",
+          this.#lockSectionDragging
+            ? "Section dragging is locked"
+            : `Drag ${section.tabs.map((tab) => tab.label).join(", ")} as one section`,
+        );
+        sectionHandle.addEventListener("pointerdown", (event) => {
+          if (this.#lockSectionDragging || event.button !== 0) return;
+          this.#beginPointerDrag(
+            {
+              kind: "section",
+              workspaceId: workspace.id,
+              sourceId: section.id,
+            },
+            sectionHandle,
+            event,
+          );
+        });
+        sectionHandle.addEventListener("pointermove", (event) => {
+          this.#updatePointerDrag(event);
+        });
+        sectionHandle.addEventListener("pointerup", (event) => {
+          this.#finishPointerDrag(workspace, event);
+        });
+        sectionHandle.addEventListener("pointercancel", () => {
+          this.#cancelPointerDrag();
+        });
+        sectionHandle.addEventListener("dragstart", (event) => {
+          if (this.#lockSectionDragging) {
+            event.preventDefault();
+            return;
+          }
+          this.#draggedSection = {
+            workspaceId: workspace.id,
+            sectionId: section.id,
+          };
+          sectionGroup.classList.add("dragging-section");
+          event.dataTransfer?.setData(
+            "application/x-rlogs-section",
+            section.id,
+          );
+          if (event.dataTransfer !== null) {
+            event.dataTransfer.effectAllowed = "move";
+          }
+        });
+        sectionHandle.addEventListener("dragend", () => {
+          this.#draggedSection = null;
+          sectionGroup.classList.remove("dragging-section");
+          this.#clearDropTargets();
+        });
+        sectionGroup.append(sectionHandle);
+      }
+
+      sectionGroup.addEventListener("dragover", (event) => {
+        if (
+          this.#lockSectionDragging ||
+          this.#draggedSection === null ||
+          this.#draggedSection.workspaceId !== workspace.id ||
+          this.#draggedSection.sectionId === section.id
+        ) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        this.#clearDropTargets();
+        sectionGroup.classList.add("section-drop-target");
+        if (event.dataTransfer !== null) {
+          event.dataTransfer.dropEffect = "move";
+        }
+      });
+      sectionGroup.addEventListener("drop", (event) => {
+        if (
+          this.#lockSectionDragging ||
+          this.#draggedSection === null ||
+          this.#draggedSection.workspaceId !== workspace.id
+        ) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        this.#sectionOrders[workspace.id] = moveSection(
+          sections,
+          this.#draggedSection.sectionId,
+          section.id,
+        );
+        this.#draggedSection = null;
+        this.#clearDropTargets();
+        this.#renderWorkspace(workspace);
+        void this.#persistPreferences();
+      });
+
+      section.tabs.forEach((tab) => {
+        const button = element("button", "workspace-tab");
+        button.type = "button";
+        button.draggable = false;
+        button.dataset.workspaceId = workspace.id;
+        button.dataset.tabId = tab.id;
+        button.dataset.sectionId = section.id;
+        button.classList.toggle("drag-locked", this.#lockTabDragging);
+        button.title = this.#lockTabDragging
+          ? `${tab.label} · tab dragging is locked in Settings`
+          : `${tab.label} · drag left or right inside this section`;
       button.id = tabId(workspace.id, tab.id);
       button.setAttribute("role", "tab");
       button.setAttribute(
@@ -410,10 +758,37 @@ export class DesktopShell {
         button.append(extensionMark);
       }
       button.addEventListener("click", () => {
+        if (this.#suppressedTabClick === tab.id) {
+          this.#suppressedTabClick = null;
+          return;
+        }
         this.#selectTab(workspace, tab.id);
       });
+      button.addEventListener("pointerdown", (event) => {
+        if (this.#lockTabDragging || event.button !== 0) return;
+        this.#beginPointerDrag(
+          {
+            kind: "tab",
+            workspaceId: workspace.id,
+            sectionId: section.id,
+            sourceId: tab.id,
+          },
+          button,
+          event,
+        );
+      });
+      button.addEventListener("pointermove", (event) => {
+        this.#updatePointerDrag(event);
+      });
+      button.addEventListener("pointerup", (event) => {
+        this.#finishPointerDrag(workspace, event);
+      });
+      button.addEventListener("pointercancel", () => {
+        this.#cancelPointerDrag();
+      });
       button.addEventListener("keydown", (event) => {
-        const lastIndex = workspace.tabs.length - 1;
+        const index = orderedTabs.findIndex((candidate) => candidate.id === tab.id);
+        const lastIndex = orderedTabs.length - 1;
         let nextIndex: number | null = null;
         switch (event.key) {
           case "ArrowRight":
@@ -433,15 +808,297 @@ export class DesktopShell {
           return;
         }
         event.preventDefault();
-        const nextTab = workspace.tabs[nextIndex];
+        const nextTab = orderedTabs[nextIndex];
         if (nextTab === undefined) {
           return;
         }
         this.#selectTab(workspace, nextTab.id, true);
       });
-      tabList.append(button);
+      button.addEventListener("dragstart", (event) => {
+        if (this.#lockTabDragging) {
+          event.preventDefault();
+          return;
+        }
+        event.stopPropagation();
+        this.#draggedTab = {
+          workspaceId: workspace.id,
+          sectionId: section.id,
+          tabId: tab.id,
+        };
+        button.classList.add("dragging-tab");
+        event.dataTransfer?.setData("application/x-rlogs-tab", tab.id);
+        if (event.dataTransfer !== null) {
+          event.dataTransfer.effectAllowed = "move";
+        }
+      });
+      button.addEventListener("dragend", (event) => {
+        event.stopPropagation();
+        this.#draggedTab = null;
+        button.classList.remove("dragging-tab");
+        this.#clearDropTargets();
+      });
+      button.addEventListener("dragover", (event) => {
+        const dragged = this.#draggedTab;
+        if (
+          this.#lockTabDragging ||
+          dragged === null ||
+          dragged.workspaceId !== workspace.id ||
+          dragged.sectionId !== section.id ||
+          dragged.tabId === tab.id
+        ) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        this.#clearDropTargets();
+        button.classList.add("tab-drop-target");
+        if (event.dataTransfer !== null) {
+          event.dataTransfer.dropEffect = "move";
+        }
+      });
+      button.addEventListener("drop", (event) => {
+        const dragged = this.#draggedTab;
+        if (
+          this.#lockTabDragging ||
+          dragged === null ||
+          dragged.workspaceId !== workspace.id ||
+          dragged.sectionId !== section.id
+        ) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const nextOrder = moveTabInsideSection(
+          sections,
+          dragged.tabId,
+          tab.id,
+        );
+        if (nextOrder === null) {
+          return;
+        }
+        this.#tabOrders[workspace.id] = nextOrder;
+        this.#draggedTab = null;
+        this.#clearDropTargets();
+        this.#renderWorkspace(workspace);
+        void this.#persistPreferences();
+      });
+      sectionGroup.append(button);
+    });
+      tabList.append(sectionGroup);
     });
     return tabList;
+  }
+
+  #orderedSections(workspace: WorkspaceDescriptor): OrderedTabSection[] {
+    return orderTabSections(
+      workspace.tabs,
+      this.#tabOrders[workspace.id] ?? [],
+      this.#sectionOrders[workspace.id] ?? [],
+    );
+  }
+
+  #beginPointerDrag(
+    details:
+      | {
+          kind: "workspace";
+          sourceId: string;
+        }
+      | {
+          kind: "tab";
+          workspaceId: string;
+          sectionId: string;
+          sourceId: string;
+        }
+      | {
+          kind: "section";
+          workspaceId: string;
+          sourceId: string;
+        },
+    sourceElement: HTMLElement,
+    event: PointerEvent,
+  ): void {
+    this.#cancelPointerDrag();
+    const common = {
+      targetId: null,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+      sourceElement,
+    };
+    this.#pointerDrag =
+      details.kind === "workspace"
+        ? { ...details, ...common }
+        : details.kind === "tab"
+          ? { ...details, ...common }
+          : { ...details, ...common };
+    sourceElement.setPointerCapture(event.pointerId);
+  }
+
+  #updatePointerDrag(event: PointerEvent): void {
+    const drag = this.#pointerDrag;
+    if (drag === null || drag.pointerId !== event.pointerId) return;
+    if (
+      !drag.moved &&
+      Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 5
+    ) {
+      return;
+    }
+    drag.moved = true;
+    event.preventDefault();
+    this.#clearDropTargets();
+    drag.sourceElement.classList.remove("invalid-drop");
+    if (drag.kind === "workspace") {
+      drag.sourceElement.classList.add("dragging");
+      const target = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>(".workspace-button");
+      if (
+        target?.dataset.workspaceId !== undefined &&
+        target.dataset.workspaceId !== drag.sourceId
+      ) {
+        drag.targetId = target.dataset.workspaceId;
+        target.classList.add("drop-target");
+      } else {
+        drag.targetId = null;
+      }
+      return;
+    }
+    if (drag.kind === "tab") {
+      drag.sourceElement.classList.add("dragging-tab");
+      const pointedElement = document.elementFromPoint(
+        event.clientX,
+        event.clientY,
+      );
+      const target =
+        pointedElement?.closest<HTMLElement>(".workspace-tab") ?? null;
+      const pointedSection =
+        pointedElement?.closest<HTMLElement>(".tab-section") ?? null;
+      if (
+        target?.dataset.workspaceId === drag.workspaceId &&
+        target.dataset.sectionId === drag.sectionId &&
+        target.dataset.tabId !== undefined &&
+        target.dataset.tabId !== drag.sourceId
+      ) {
+        drag.targetId = target.dataset.tabId;
+        target.classList.add("tab-drop-target");
+      } else {
+        drag.targetId = null;
+        if (
+          pointedSection?.dataset.workspaceId === drag.workspaceId &&
+          pointedSection.dataset.sectionId !== drag.sectionId
+        ) {
+          drag.sourceElement.classList.add("invalid-drop");
+          pointedSection.classList.add("invalid-tab-drop");
+        }
+      }
+      return;
+    }
+
+    drag.sourceElement
+      .closest<HTMLElement>(".tab-section")
+      ?.classList.add("dragging-section");
+    const target = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>(".tab-section");
+    if (
+      target?.dataset.workspaceId === drag.workspaceId &&
+      target.dataset.sectionId !== undefined &&
+      target.dataset.sectionId !== drag.sourceId
+    ) {
+      drag.targetId = target.dataset.sectionId;
+      target.classList.add("section-drop-target");
+    } else {
+      drag.targetId = null;
+    }
+  }
+
+  #finishPointerDrag(
+    workspace: WorkspaceDescriptor | null,
+    event: PointerEvent,
+  ): void {
+    const drag = this.#pointerDrag;
+    if (drag === null || drag.pointerId !== event.pointerId) return;
+    let changed = false;
+    let workspaceOrderChanged = false;
+    if (drag.moved && drag.kind === "workspace") {
+      this.#suppressedWorkspaceClick = drag.sourceId;
+      window.setTimeout(() => {
+        if (this.#suppressedWorkspaceClick === drag.sourceId) {
+          this.#suppressedWorkspaceClick = null;
+        }
+      }, 0);
+      if (drag.targetId !== null) {
+        this.#order = moveWorkspace(
+          this.#order,
+          drag.sourceId,
+          drag.targetId,
+        );
+        workspaceOrderChanged = true;
+      }
+    } else if (
+      drag.moved &&
+      drag.kind === "tab" &&
+      workspace !== null
+    ) {
+      this.#suppressedTabClick = drag.sourceId;
+      window.setTimeout(() => {
+        if (this.#suppressedTabClick === drag.sourceId) {
+          this.#suppressedTabClick = null;
+        }
+      }, 0);
+      if (drag.targetId !== null) {
+        const nextOrder = moveTabInsideSection(
+          this.#orderedSections(workspace),
+          drag.sourceId,
+          drag.targetId,
+        );
+        if (nextOrder !== null) {
+          this.#tabOrders[workspace.id] = nextOrder;
+          changed = true;
+        }
+      }
+    } else if (
+      drag.moved &&
+      drag.kind === "section" &&
+      drag.targetId !== null &&
+      workspace !== null
+    ) {
+      this.#sectionOrders[workspace.id] = moveSection(
+        this.#orderedSections(workspace),
+        drag.sourceId,
+        drag.targetId,
+      );
+      changed = true;
+    }
+    this.#cancelPointerDrag();
+    if (workspaceOrderChanged) {
+      this.#renderNavigation();
+      void this.#persistPreferences();
+    } else if (changed && workspace !== null) {
+      this.#renderWorkspace(workspace);
+      void this.#persistPreferences();
+    }
+  }
+
+  #cancelPointerDrag(): void {
+    const drag = this.#pointerDrag;
+    if (
+      drag !== null &&
+      drag.sourceElement.hasPointerCapture(drag.pointerId)
+    ) {
+      drag.sourceElement.releasePointerCapture(drag.pointerId);
+    }
+    drag?.sourceElement.classList.remove(
+      "dragging",
+      "dragging-tab",
+      "invalid-drop",
+    );
+    drag?.sourceElement
+      .closest<HTMLElement>(".tab-section")
+      ?.classList.remove("dragging-section");
+    this.#pointerDrag = null;
+    this.#clearDropTargets();
   }
 
   #selectTab(
@@ -471,7 +1128,10 @@ export class DesktopShell {
     const sequence = ++this.#mountSequence;
     panel.append(this.#surfaceLoadingState());
     try {
-      const mounted = await this.#adapter.mountSurface(workspace, tab, panel);
+      const mounted =
+        tab.entrypoint === "core://settings/plugins"
+          ? this.#mountPluginManagerSurface(panel)
+          : await this.#adapter.mountSurface(workspace, tab, panel);
       if (sequence !== this.#mountSequence) {
         mounted.dispose();
         return;
@@ -522,24 +1182,21 @@ export class DesktopShell {
     action.type = "button";
     action.textContent = "Open Plug-in Manager";
     action.addEventListener("click", () => {
-      this.#activeHostView = "plugins";
+      this.#activeHostView = "settings";
+      this.#activeTabs[SETTINGS_WORKSPACE_ID] =
+        "host.rlogs.settings:plugins";
       this.#render();
     });
     card.append(action);
     content.append(card);
   }
 
-  #renderPluginManager(): void {
-    this.#disposeSurface();
+  #mountPluginManagerSurface(container: HTMLElement): MountedSurface {
     const catalog = this.#pluginCatalog;
     const activeCount =
       catalog?.packages.filter((plugin) => plugin.active).length ?? 0;
     const packageCount = catalog?.packages.length ?? 0;
-    const content = this.#prepareMain(
-      "Plug-in Manager",
-      "Discover, enable, and inspect folder-installed features.",
-      catalog === null ? "Prototype" : `${activeCount}/${packageCount} active`,
-    );
+    const root = element("div", "plugin-surface plugin-manager-surface");
     const panel = element("section", "host-panel");
     const toolbar = element("div", "manager-toolbar");
     const toolbarCopy = element("div", "manager-toolbar-copy");
@@ -554,7 +1211,7 @@ export class DesktopShell {
     body.textContent =
       catalog === null
         ? "Run the UI through the local Rust host to inspect installed packages."
-        : `Folder: ${catalog.installedRoot}`;
+        : `${activeCount}/${packageCount} active · Folder: ${catalog.installedRoot}`;
     toolbarCopy.append(heading, body);
     toolbar.append(toolbarCopy);
     if (this.#adapter.refreshPlugins !== undefined) {
@@ -648,7 +1305,7 @@ export class DesktopShell {
         ),
       );
     }
-    content.append(panel);
+    root.append(panel);
 
     if (catalog !== null && catalog.issues.length > 0) {
       const diagnostics = element("section", "host-panel diagnostic-panel");
@@ -669,8 +1326,14 @@ export class DesktopShell {
         list.append(item);
       }
       diagnostics.append(diagnosticHeading, diagnosticIntro, list);
-      content.append(diagnostics);
+      root.append(diagnostics);
     }
+    container.replaceChildren(root);
+    return {
+      dispose() {
+        root.remove();
+      },
+    };
   }
 
   async #reloadPluginCatalog(
@@ -688,55 +1351,26 @@ export class DesktopShell {
       throw new Error("The local plug-in manager is unavailable.");
     }
     this.#pluginCatalog = catalog;
+    this.#settingsWorkspace = settingsWorkspace(catalog.settingsTabs);
     const [workspaces, preferences] = await Promise.all([
       this.#adapter.loadWorkspaces(),
       this.#adapter.loadPreferences(),
     ]);
     this.#applySnapshot(workspaces, preferences);
-    this.#activeHostView = "plugins";
+    this.#settingsWorkspace = settingsWorkspace(catalog.settingsTabs);
+    this.#activeHostView = "settings";
+    this.#activeTabs[SETTINGS_WORKSPACE_ID] =
+      "host.rlogs.settings:plugins";
     this.#render();
   }
 
   #renderSettings(): void {
-    this.#disposeSurface();
-    const content = this.#prepareMain(
-      "Settings",
-      "Host behavior that applies across every plug-in.",
-      "Core",
-    );
-    const panel = element("section", "host-panel settings-panel");
-    const heading = document.createElement("h2");
-    heading.textContent = "Desktop shell";
-    const body = document.createElement("p");
-    body.textContent =
-      "Capture devices, storage limits, appearance, and global permissions will live here. Feature-specific settings belong in each plug-in's Options tab.";
-    const rule = element("div", "settings-rule");
-    const ruleCopy = element("span", "settings-rule-copy");
-    const title = document.createElement("strong");
-    title.textContent = "Workspace ordering";
-    const detail = document.createElement("small");
-    detail.textContent =
-      "Drag items in the left rail, or focus one and press Alt + Up/Down Arrow.";
-    ruleCopy.append(title, detail);
-    const reset = element("button", "quiet-button");
-    reset.type = "button";
-    reset.textContent = "Reset order";
-    reset.disabled = this.#workspaces.size < 2;
-    reset.addEventListener("click", () => {
-      this.#order = mergeWorkspaceOrder([...this.#workspaces.values()], []);
-      this.#renderNavigation();
-      void this.#persistPreferences();
-    });
-    rule.append(ruleCopy, reset);
-    panel.append(heading, body, rule);
-    content.append(panel);
+    this.#renderWorkspace(this.#settingsWorkspace);
   }
 
   #prepareMain(title: string, description: string, meta: string): HTMLElement {
     const content = requireElement(this.#root, ".workspace-content");
     content.replaceChildren();
-    const titleElement = requireElement(this.#root, ".topbar-title");
-    titleElement.textContent = title;
 
     const heading = element("section", "workspace-heading");
     const copy = element("div", "workspace-heading-copy");
@@ -783,15 +1417,29 @@ export class DesktopShell {
 
   #clearDropTargets(): void {
     this.#root
-      .querySelectorAll(".workspace-button.drop-target")
-      .forEach((target) => target.classList.remove("drop-target"));
+      .querySelectorAll(
+        ".workspace-button.drop-target, .workspace-tab.tab-drop-target, .tab-section.section-drop-target, .tab-section.invalid-tab-drop",
+      )
+      .forEach((target) =>
+        target.classList.remove(
+          "drop-target",
+          "tab-drop-target",
+          "section-drop-target",
+          "invalid-tab-drop",
+        ),
+      );
   }
 
   async #persistPreferences(): Promise<void> {
     await this.#adapter.savePreferences({
+      schemaVersion: 1,
       workspaceOrder: this.#order,
       activeWorkspaceId: this.#activeWorkspaceId,
       activeTabs: this.#activeTabs,
+      tabOrders: this.#tabOrders,
+      sectionOrders: this.#sectionOrders,
+      lockTabDragging: this.#lockTabDragging,
+      lockSectionDragging: this.#lockSectionDragging,
     });
   }
 }
@@ -844,4 +1492,20 @@ function tabId(workspaceId: string, tabIdValue: string): string {
 
 function panelId(workspaceId: string, tabIdValue: string): string {
   return `panel-${safeDomId(workspaceId)}-${safeDomId(tabIdValue)}`;
+}
+
+function settingsWorkspace(
+  pluginTabs: readonly SettingsTabDescriptor[],
+): WorkspaceDescriptor {
+  return {
+    id: SETTINGS_WORKSPACE_ID,
+    name: "Settings",
+    description:
+      "Core controls and plug-in settings, grouped by the feature that owns them.",
+    version: "Core",
+    iconUrl: null,
+    iconFallback: "⚙",
+    defaultOrder: Number.MAX_SAFE_INTEGER,
+    tabs: [...CORE_SETTINGS_TABS, ...pluginTabs],
+  };
 }

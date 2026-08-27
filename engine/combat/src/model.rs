@@ -101,9 +101,17 @@ pub struct LeaderboardPartitionKey {
 pub struct RunIdentity {
     pub activity_kind: ActivityKind,
     pub activity_id: Option<String>,
+    #[serde(default)]
+    pub activity_family_id: Option<String>,
+    #[serde(default)]
+    pub scene_id: Option<i32>,
     pub observed_dungeon_id: Option<String>,
     pub instance_id: Option<String>,
+    #[serde(default)]
+    pub difficulty_family: Option<String>,
     pub difficulty_id: Option<String>,
+    #[serde(default)]
+    pub difficulty_tier: Option<u32>,
     pub route_id: Option<String>,
     pub raid_route_kind: Option<RaidRouteKind>,
 }
@@ -197,6 +205,7 @@ pub enum RunEvidenceFinding {
     ManualBoundary,
     StartNotAuthoritative,
     CompletionNotAuthoritative,
+    LeaderboardPartitionUnresolved,
     CombatClosedAtRunEnd,
     EncounterClosedAtRunEnd,
 }
@@ -205,6 +214,10 @@ pub enum RunEvidenceFinding {
 pub struct RunAnalysis {
     pub schema_version: u16,
     pub source_session_id: String,
+    #[serde(default)]
+    pub encounter_ruleset_id: Option<String>,
+    #[serde(default)]
+    pub encounter_ruleset_version: Option<u32>,
     pub identity: RunIdentity,
     pub partition: Option<LeaderboardPartitionKey>,
     pub terminal_state: RunTerminalState,

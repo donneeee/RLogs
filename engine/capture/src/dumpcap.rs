@@ -1,3 +1,5 @@
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::{
     fmt,
     path::{Path, PathBuf},
@@ -12,6 +14,9 @@ use crate::{
     CaptureError, CaptureSource, CaptureSourceKind, CaptureSourceMetadata, CapturedFrame,
     OfflineCapture,
 };
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DumpcapLiveConfig {
@@ -39,9 +44,9 @@ impl DumpcapLiveConfig {
         if self.interface.trim().is_empty() {
             return Err(adapter_error("capture interface must not be empty"));
         }
-        if self.duration_seconds == 0 || self.duration_seconds > 3_600 {
+        if self.duration_seconds > 3_600 {
             return Err(adapter_error(
-                "capture duration must be between 1 and 3600 seconds",
+                "capture duration must be 0 (continuous) or at most 3600 seconds",
             ));
         }
         if !Path::new(&self.dumpcap_path).is_file() {
@@ -127,9 +132,12 @@ impl fmt::Debug for DumpcapLiveCapture {
 impl DumpcapLiveCapture {
     pub(crate) fn spawn(config: DumpcapLiveConfig) -> Result<Self, CaptureError> {
         config.validate()?;
-        let mut child = Command::new(&config.dumpcap_path)
+        let mut command = Command::new(&config.dumpcap_path);
+        command
             .args([
                 "-q",
+                "--update-interval",
+                "10",
                 "-i",
                 config.interface.as_str(),
                 "-p",
@@ -137,14 +145,25 @@ impl DumpcapLiveCapture {
                 "0",
                 "-f",
                 "tcp",
-                "-a",
-                format!("duration:{}", config.duration_seconds).as_str(),
-                "-w",
-                "-",
             ])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            // dumpcap's status text belongs to the host's diagnostics, not a
+            // user-facing console window. Exit status is still validated.
+            .stderr(Stdio::null());
+        if config.duration_seconds > 0 {
+            command.args([
+                "-a",
+                format!("duration:{}", config.duration_seconds).as_str(),
+            ]);
+        }
+        command.args(["-w", "-"]);
+        // `dumpcap.exe` is a console-subsystem binary. A GUI parent still gets
+        // a visible child console unless Windows is explicitly told not to
+        // create one; stream redirection alone is insufficient.
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
+        let mut child = command
             .spawn()
             .map_err(|error| adapter_error(format!("could not start dumpcap: {error}")))?;
         let stdout = child

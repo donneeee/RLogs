@@ -1,0 +1,374 @@
+use std::{
+    collections::BTreeSet,
+    fs::File,
+    io::{Read, Seek, SeekFrom},
+    path::Path,
+    time::Duration,
+};
+
+use reqwest::{
+    Url,
+    blocking::{Client, RequestBuilder},
+};
+use rlogs_submission::{
+    LogChunkDescriptor, QueuedSubmission, ServerReportReceipt, Sha256Digest, SubmissionState,
+    VerificationTier,
+};
+use serde::{Deserialize, Serialize};
+
+const ENDPOINT_ENVIRONMENT_VARIABLE: &str = "RLOGS_SUBMISSION_API_URL";
+const TOKEN_ENVIRONMENT_VARIABLE: &str = "RLOGS_SUBMISSION_DEVICE_TOKEN";
+const MAXIMUM_UPLOAD_CHUNK_BYTES: usize = 16 * 1024 * 1024;
+
+#[derive(Clone)]
+pub struct SubmissionTransport {
+    endpoint: Url,
+    device_token: Option<String>,
+    client: Client,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SubmissionTransportResult {
+    pub schema_version: u16,
+    pub queue_id: String,
+    pub capture_session_id: String,
+    pub report_id: String,
+    pub share_url: String,
+    pub final_state: SubmissionState,
+    pub verification_tier: VerificationTier,
+    pub chunk_count: usize,
+    pub uploaded_chunk_count: usize,
+    pub uploaded_bytes: u64,
+    pub resumed: bool,
+    pub duplicate: bool,
+}
+
+impl SubmissionTransport {
+    pub fn from_environment() -> Result<Option<Self>, String> {
+        let endpoint = match std::env::var(ENDPOINT_ENVIRONMENT_VARIABLE) {
+            Ok(value) if !value.trim().is_empty() => value,
+            Ok(_) | Err(std::env::VarError::NotPresent) => return Ok(None),
+            Err(error) => {
+                return Err(format!(
+                    "could not read {ENDPOINT_ENVIRONMENT_VARIABLE}: {error}"
+                ));
+            }
+        };
+        let device_token = match std::env::var(TOKEN_ENVIRONMENT_VARIABLE) {
+            Ok(value) if !value.trim().is_empty() => Some(value.trim().to_owned()),
+            Ok(_) | Err(std::env::VarError::NotPresent) => None,
+            Err(error) => {
+                return Err(format!(
+                    "could not read {TOKEN_ENVIRONMENT_VARIABLE}: {error}"
+                ));
+            }
+        };
+        Self::new(&endpoint, device_token.as_deref()).map(Some)
+    }
+
+    pub fn new(endpoint: &str, device_token: Option<&str>) -> Result<Self, String> {
+        let mut endpoint = Url::parse(endpoint.trim()).map_err(|error| {
+            format!("{ENDPOINT_ENVIRONMENT_VARIABLE} is not a valid URL: {error}")
+        })?;
+        if endpoint.query().is_some() || endpoint.fragment().is_some() {
+            return Err(format!(
+                "{ENDPOINT_ENVIRONMENT_VARIABLE} cannot contain a query or fragment"
+            ));
+        }
+        let secure = endpoint.scheme() == "https";
+        let loopback = endpoint.scheme() == "http"
+            && endpoint
+                .host_str()
+                .is_some_and(|host| matches!(host, "127.0.0.1" | "localhost" | "::1"));
+        if !secure && !loopback {
+            return Err(format!(
+                "{ENDPOINT_ENVIRONMENT_VARIABLE} must use HTTPS (plain HTTP is allowed only for a loopback receiver)"
+            ));
+        }
+        if !endpoint.path().ends_with('/') {
+            endpoint.set_path(&format!("{}/", endpoint.path()));
+        }
+        let device_token = device_token
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        let client = Client::builder()
+            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(30 * 60))
+            .user_agent(concat!("rLogs/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .map_err(|error| format!("could not initialize submission transport: {error}"))?;
+        Ok(Self {
+            endpoint,
+            device_token,
+            client,
+        })
+    }
+
+    pub fn endpoint_url(&self) -> String {
+        self.endpoint.as_str().trim_end_matches('/').to_owned()
+    }
+
+    pub fn upload(
+        &self,
+        entry: &QueuedSubmission,
+        artifact_path: &Path,
+    ) -> Result<SubmissionTransportResult, String> {
+        entry
+            .validate()
+            .map_err(|error| format!("submission draft is invalid: {error}"))?;
+        let begin: BeginUploadResponse = self
+            .authorized(
+                self.client
+                    .post(self.url("v1/uploads")?)
+                    .json(&entry.session.manifest()),
+            )
+            .send()
+            .map_err(|error| format!("submission receiver could not begin the upload: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("submission receiver rejected the manifest: {error}"))?
+            .json()
+            .map_err(|error| {
+                format!("submission receiver returned an invalid manifest response: {error}")
+            })?;
+        if begin.schema_version != 1 {
+            return Err(format!(
+                "submission receiver uses unsupported response schema {}",
+                begin.schema_version
+            ));
+        }
+        if let (Some(report_id), Some(share_url)) = (begin.existing_report_id, begin.share_url) {
+            return Ok(self.result(
+                entry,
+                report_id,
+                share_url,
+                VerificationTier::Replayed,
+                0,
+                0,
+                true,
+                true,
+            ));
+        }
+        let upload_id = begin
+            .upload_id
+            .ok_or_else(|| "submission receiver omitted the upload ID".to_owned())?;
+        validate_identifier(&upload_id, "upload ID")?;
+        let missing = begin.missing_chunks.into_iter().collect::<BTreeSet<_>>();
+        if missing.iter().any(|sequence| {
+            !entry
+                .session
+                .chunks()
+                .iter()
+                .any(|chunk| chunk.sequence == *sequence)
+        }) {
+            return Err("submission receiver requested an unknown chunk".into());
+        }
+        let resumed = missing.len() < entry.session.chunks().len();
+        let mut file = File::open(artifact_path)
+            .map_err(|error| format!("could not reopen verified artifact: {error}"))?;
+        let mut uploaded_chunk_count = 0_usize;
+        let mut uploaded_bytes = 0_u64;
+        for chunk in entry
+            .session
+            .chunks()
+            .iter()
+            .filter(|chunk| missing.contains(&chunk.sequence))
+        {
+            let bytes = read_chunk(&mut file, chunk)?;
+            let response: ChunkUploadResponse = self
+                .authorized(
+                    self.client
+                        .put(
+                            self.url(&format!("v1/uploads/{upload_id}/chunks/{}", chunk.sequence))?,
+                        )
+                        .body(bytes),
+                )
+                .send()
+                .map_err(|error| format!("chunk {} upload failed: {error}", chunk.sequence))?
+                .error_for_status()
+                .map_err(|error| format!("chunk {} was rejected: {error}", chunk.sequence))?
+                .json()
+                .map_err(|error| {
+                    format!(
+                        "chunk {} acknowledgement was invalid: {error}",
+                        chunk.sequence
+                    )
+                })?;
+            if response.schema_version != 1
+                || response.sequence != chunk.sequence
+                || response.sha256 != chunk.sha256
+            {
+                return Err(format!(
+                    "chunk {} acknowledgement did not match the sealed manifest",
+                    chunk.sequence
+                ));
+            }
+            uploaded_chunk_count += 1;
+            uploaded_bytes = uploaded_bytes.saturating_add(chunk.byte_length);
+        }
+        let finalized: FinalizeUploadResponse = self
+            .authorized(
+                self.client
+                    .post(self.url(&format!("v1/uploads/{upload_id}/finalize"))?),
+            )
+            .send()
+            .map_err(|error| format!("submission receiver could not finalize the upload: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("submission receiver rejected finalization: {error}"))?
+            .json()
+            .map_err(|error| format!("submission receiver returned an invalid receipt: {error}"))?;
+        if finalized.schema_version != 1 || finalized.accepted_log_digest != entry.queue_id {
+            return Err("submission receipt did not match the sealed artifact".into());
+        }
+        let receipt = ServerReportReceipt {
+            report_id: finalized.report_id.clone(),
+            accepted_log_digest: finalized.accepted_log_digest,
+            verification_tier: finalized.verification_tier,
+        };
+        let mut session = entry.session.clone();
+        session
+            .start_upload()
+            .map_err(|error| format!("submission state could not start: {error}"))?;
+        for chunk in session.chunks().to_vec() {
+            session
+                .acknowledge_chunk(chunk.sequence, &chunk.sha256)
+                .map_err(|error| format!("submission acknowledgement failed: {error}"))?;
+        }
+        session
+            .begin_finalization()
+            .map_err(|error| format!("submission state could not finalize: {error}"))?;
+        session
+            .complete(receipt)
+            .map_err(|error| format!("submission receipt was rejected: {error}"))?;
+        Ok(self.result(
+            entry,
+            finalized.report_id,
+            finalized.share_url,
+            finalized.verification_tier,
+            uploaded_chunk_count,
+            uploaded_bytes,
+            resumed,
+            finalized.duplicate,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn result(
+        &self,
+        entry: &QueuedSubmission,
+        report_id: String,
+        share_url: String,
+        verification_tier: VerificationTier,
+        uploaded_chunk_count: usize,
+        uploaded_bytes: u64,
+        resumed: bool,
+        duplicate: bool,
+    ) -> SubmissionTransportResult {
+        SubmissionTransportResult {
+            schema_version: 1,
+            queue_id: entry.queue_id.to_string(),
+            capture_session_id: entry.capture_session_id().to_owned(),
+            report_id,
+            share_url,
+            final_state: SubmissionState::Submitted,
+            verification_tier,
+            chunk_count: entry.session.chunks().len(),
+            uploaded_chunk_count,
+            uploaded_bytes,
+            resumed,
+            duplicate,
+        }
+    }
+
+    fn url(&self, relative: &str) -> Result<Url, String> {
+        self.endpoint
+            .join(relative)
+            .map_err(|error| format!("could not build submission URL: {error}"))
+    }
+
+    fn authorized(&self, request: RequestBuilder) -> RequestBuilder {
+        match &self.device_token {
+            Some(token) => request.bearer_auth(token),
+            None => request,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct BeginUploadResponse {
+    schema_version: u16,
+    upload_id: Option<String>,
+    missing_chunks: Vec<u64>,
+    existing_report_id: Option<String>,
+    share_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChunkUploadResponse {
+    schema_version: u16,
+    sequence: u64,
+    sha256: Sha256Digest,
+}
+
+#[derive(Debug, Deserialize)]
+struct FinalizeUploadResponse {
+    schema_version: u16,
+    report_id: String,
+    accepted_log_digest: Sha256Digest,
+    verification_tier: VerificationTier,
+    share_url: String,
+    duplicate: bool,
+}
+
+fn read_chunk(file: &mut File, chunk: &LogChunkDescriptor) -> Result<Vec<u8>, String> {
+    let byte_length = usize::try_from(chunk.byte_length)
+        .map_err(|_| format!("chunk {} is too large for this platform", chunk.sequence))?;
+    if byte_length == 0 || byte_length > MAXIMUM_UPLOAD_CHUNK_BYTES {
+        return Err(format!(
+            "chunk {} exceeds the {}-byte upload limit",
+            chunk.sequence, MAXIMUM_UPLOAD_CHUNK_BYTES
+        ));
+    }
+    file.seek(SeekFrom::Start(chunk.file_offset))
+        .map_err(|error| format!("could not seek to chunk {}: {error}", chunk.sequence))?;
+    let mut bytes = vec![0_u8; byte_length];
+    file.read_exact(&mut bytes)
+        .map_err(|error| format!("could not read chunk {}: {error}", chunk.sequence))?;
+    Ok(bytes)
+}
+
+fn validate_identifier(value: &str, label: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        Err(format!("submission receiver returned an invalid {label}"))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identifiers_reject_paths_and_empty_values() {
+        assert!(validate_identifier("upload_0123-ab", "upload ID").is_ok());
+        assert!(validate_identifier("", "upload ID").is_err());
+        assert!(validate_identifier("../artifact", "upload ID").is_err());
+    }
+
+    #[test]
+    fn endpoints_require_https_except_for_loopback_development() {
+        assert!(SubmissionTransport::new("https://receiver.example.com", Some("token")).is_ok());
+        assert!(SubmissionTransport::new("http://127.0.0.1:8787", Some("token")).is_ok());
+        assert!(SubmissionTransport::new("http://localhost:8787", Some("token")).is_ok());
+        assert!(SubmissionTransport::new("http://receiver.example.com", Some("token")).is_err());
+        assert!(
+            SubmissionTransport::new("https://receiver.example.com?a=b", Some("token")).is_err()
+        );
+    }
+}

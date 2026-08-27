@@ -30,8 +30,106 @@ pub(crate) struct DirtyCharacterUpdate {
     pub avatar_id: Option<i32>,
     pub business_card_style_id: Option<i32>,
     pub avatar_frame_id: Option<i32>,
+    pub lucky_value_mgr: Option<DirtyLuckyValueUpdate>,
+    /// Exact IEEE-754 payload of `UserFightAttr.origin_energy`.
+    pub origin_energy_raw_bits: Option<u32>,
+    /// Exact local combat-resource arrays. They remain parallel so a protocol
+    /// change cannot be hidden by truncating a mismatched pair.
+    pub resource_ids: Vec<u32>,
+    pub resource_values: Vec<u32>,
+    pub cooldowns: Vec<DirtySkillCooldownUpdate>,
+    /// Exact dirty update for `CharSerialize.slots.slots`.
+    ///
+    /// Slot IDs are retained as packet evidence. Classification into primary
+    /// Imagine slots (7/8) and auxiliary actions (21-24) happens in the shared
+    /// loadout projection, never in this wire decoder.
+    pub action_slots: Option<DirtyActionSlotUpdate>,
+    /// Exact dirty update for `ProfessionList.AoyiSkillInfoMap`.
+    ///
+    /// These records carry the runtime remodel level used as the equipped
+    /// Battle Imagine tier. They are kept separate from the action-slot map so
+    /// an in-place tier or skin change can update the shared profile without
+    /// fabricating a slot assignment.
+    pub battle_imagine_skills: Option<DirtyBattleImagineSkillUpdate>,
     pub world: DirtyWorldUpdate,
     pub root_fields: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DirtyActionSlotUpdate {
+    pub replace: bool,
+    pub upserts: Vec<DirtyActionSlotEntry>,
+    pub removals: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct DirtyActionSlotEntry {
+    pub map_key: i32,
+    pub slot_id: Option<i32>,
+    pub skill_id: Option<i32>,
+    pub auto_battle_disabled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DirtyBattleImagineSkillUpdate {
+    pub replace: bool,
+    pub upserts: Vec<DirtyBattleImagineSkillEntry>,
+    pub removals: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DirtyBattleImagineSkillEntry {
+    pub map_key: i32,
+    pub skill_id: Option<i32>,
+    pub level: Option<i32>,
+    pub replacement_skill_ids: Option<Vec<i32>>,
+    pub remodel_level: Option<i32>,
+    pub current_skin_id: Option<i32>,
+    pub unlocked_skin_ids: Option<DirtyEnabledIdUpdate>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DirtyEnabledIdUpdate {
+    pub replace: bool,
+    pub upserts: Vec<(i32, bool)>,
+    pub removals: Vec<i32>,
+}
+
+/// Exact gameplay-only fields from `UserFightAttr.CdInfo` in a dirty
+/// character-container update. Reduction and acceleration values deliberately
+/// remain raw until packet-observed transitions prove their units.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct DirtySkillCooldownUpdate {
+    pub skill_level_id: Option<i32>,
+    pub skill_begin_time: Option<i64>,
+    pub duration: Option<i32>,
+    pub cooldown_type: Option<u32>,
+    pub profession_hold_begin_time: Option<i64>,
+    pub charge_count: Option<i32>,
+    pub valid_cooldown_time: Option<i32>,
+    pub sub_cooldown_ratio: Option<i32>,
+    pub sub_cooldown_fixed: Option<i64>,
+    pub accelerate_cooldown_ratio: Option<i32>,
+}
+
+/// Gameplay-only dirty update for the character-container LuckyValueMgr.
+///
+/// The names are inherited from the current protobuf schema. They do not by
+/// themselves prove that this state drives combat Critical or Lucky outcomes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DirtyLuckyValueUpdate {
+    pub replace: bool,
+    pub init_value: Option<bool>,
+    pub upserts: Vec<DirtyLuckyValueEntry>,
+    pub removals: Vec<i32>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DirtyLuckyValueEntry {
+    pub map_key: i32,
+    pub luck_id: Option<i32>,
+    pub luck_value: Option<i32>,
+    pub next_time: Option<i64>,
 }
 
 impl DirtyCharacterUpdate {
@@ -49,6 +147,10 @@ impl DirtyCharacterUpdate {
             || self.avatar_id.is_some()
             || self.business_card_style_id.is_some()
             || self.avatar_frame_id.is_some()
+    }
+
+    pub(crate) fn has_loadout_fields(&self) -> bool {
+        self.action_slots.is_some() || self.battle_imagine_skills.is_some()
     }
 }
 
@@ -74,7 +176,7 @@ impl DirtyWorldUpdate {
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
-pub(crate) enum DirtyBlobError {
+pub enum DirtyBlobError {
     #[error("dirty-container stream type {0} is unsupported")]
     UnsupportedStreamType(i32),
 
@@ -120,9 +222,12 @@ pub(crate) fn decode_character_update(
             1 => update.character_id = Some(i64::from(reader.read_i32()?)),
             2 => parse_character_base(&mut reader, &mut update)?,
             3 => parse_scene(&mut reader, &mut update.world)?,
-            8 | 16 | 49 | 102 | 116 => reader.skip_object()?,
+            8 | 49 | 102 | 116 => reader.skip_object()?,
+            16 => parse_user_fight_attr(&mut reader, &mut update)?,
             22 => parse_role_level(&mut reader, &mut update)?,
+            55 => update.action_slots = Some(parse_action_slots(&mut reader)?),
             61 => parse_profession_list(&mut reader, &mut update)?,
+            88 => update.lucky_value_mgr = Some(parse_lucky_value_mgr(&mut reader)?),
             96 => parse_fight_point(&mut reader, &mut update)?,
             // Internal persistence serial. Consume it but never retain it.
             104 => {
@@ -138,6 +243,170 @@ pub(crate) fn decode_character_update(
         return Err(DirtyBlobError::TrailingBytes);
     }
     Ok(update)
+}
+
+fn parse_action_slots(
+    reader: &mut BlobReader<'_>,
+) -> Result<DirtyActionSlotUpdate, DirtyBlobError> {
+    let end = reader.begin_object()?;
+    let mut update = DirtyActionSlotUpdate::default();
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            1 => {
+                let counts = reader.read_map_counts()?;
+                update.replace = counts.replace;
+                for _ in 0..counts.add {
+                    let map_key = reader.read_i32()?;
+                    update.upserts.push(parse_action_slot(reader, map_key)?);
+                }
+                for _ in 0..counts.remove {
+                    update.removals.push(reader.read_i32()?);
+                }
+                for _ in 0..counts.update {
+                    let map_key = reader.read_i32()?;
+                    update.upserts.push(parse_action_slot(reader, map_key)?);
+                }
+            }
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)?;
+    Ok(update)
+}
+
+fn parse_action_slot(
+    reader: &mut BlobReader<'_>,
+    map_key: i32,
+) -> Result<DirtyActionSlotEntry, DirtyBlobError> {
+    let end = reader.begin_object()?;
+    let mut entry = DirtyActionSlotEntry {
+        map_key,
+        ..DirtyActionSlotEntry::default()
+    };
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            1 => entry.slot_id = Some(reader.read_i32()?),
+            2 => entry.skill_id = Some(reader.read_i32()?),
+            3 => entry.auto_battle_disabled = Some(reader.read_u8()? != 0),
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)?;
+    Ok(entry)
+}
+
+fn parse_user_fight_attr(
+    reader: &mut BlobReader<'_>,
+    update: &mut DirtyCharacterUpdate,
+) -> Result<(), DirtyBlobError> {
+    let end = reader.begin_object()?;
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            1 | 2 | 7 => {
+                reader.read_i64()?;
+            }
+            3 => update.origin_energy_raw_bits = Some(reader.read_f32()?.to_bits()),
+            4 => update.resource_ids = reader.read_u32_list()?,
+            5 => update.resource_values = reader.read_u32_list()?,
+            6 | 8 => {
+                reader.read_i32()?;
+            }
+            // Dirty repeated-message updates encode the changed element as a
+            // nested object at the repeated field, rather than as a protobuf
+            // collection. Retain every occurrence in wire order.
+            9 => update.cooldowns.push(parse_skill_cooldown_info(reader)?),
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)
+}
+
+fn parse_skill_cooldown_info(
+    reader: &mut BlobReader<'_>,
+) -> Result<DirtySkillCooldownUpdate, DirtyBlobError> {
+    let end = reader.begin_object()?;
+    let mut update = DirtySkillCooldownUpdate::default();
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            1 => update.skill_level_id = Some(reader.read_i32()?),
+            2 => update.skill_begin_time = Some(reader.read_i64()?),
+            3 => update.duration = Some(reader.read_i32()?),
+            4 => update.cooldown_type = Some(reader.read_u32()?),
+            6 => update.profession_hold_begin_time = Some(reader.read_i64()?),
+            7 => update.charge_count = Some(reader.read_i32()?),
+            8 => update.valid_cooldown_time = Some(reader.read_i32()?),
+            9 => update.sub_cooldown_ratio = Some(reader.read_i32()?),
+            10 => update.sub_cooldown_fixed = Some(reader.read_i64()?),
+            11 => update.accelerate_cooldown_ratio = Some(reader.read_i32()?),
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)?;
+    Ok(update)
+}
+
+pub fn decode_lucky_value_update(
+    bytes: &[u8],
+    stream_type: i32,
+) -> Result<Option<DirtyLuckyValueUpdate>, DirtyBlobError> {
+    decode_character_update(bytes, stream_type).map(|update| update.lucky_value_mgr)
+}
+
+fn parse_lucky_value_mgr(
+    reader: &mut BlobReader<'_>,
+) -> Result<DirtyLuckyValueUpdate, DirtyBlobError> {
+    let end = reader.begin_object()?;
+    let mut update = DirtyLuckyValueUpdate::default();
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            1 => {
+                let counts = reader.read_map_counts()?;
+                update.replace = counts.replace;
+                for _ in 0..counts.add {
+                    let map_key = reader.read_i32()?;
+                    update
+                        .upserts
+                        .push(parse_lucky_value_info(reader, map_key)?);
+                }
+                for _ in 0..counts.remove {
+                    update.removals.push(reader.read_i32()?);
+                }
+                for _ in 0..counts.update {
+                    let map_key = reader.read_i32()?;
+                    update
+                        .upserts
+                        .push(parse_lucky_value_info(reader, map_key)?);
+                }
+            }
+            2 => update.init_value = Some(reader.read_u8()? != 0),
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)?;
+    update.upserts.sort_unstable_by_key(|entry| entry.map_key);
+    update.removals.sort_unstable();
+    Ok(update)
+}
+
+fn parse_lucky_value_info(
+    reader: &mut BlobReader<'_>,
+    map_key: i32,
+) -> Result<DirtyLuckyValueEntry, DirtyBlobError> {
+    let end = reader.begin_object()?;
+    let mut entry = DirtyLuckyValueEntry {
+        map_key,
+        ..DirtyLuckyValueEntry::default()
+    };
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            1 => entry.luck_id = Some(reader.read_i32()?),
+            2 => entry.luck_value = Some(reader.read_i32()?),
+            3 => entry.next_time = Some(reader.read_i64()?),
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)?;
+    Ok(entry)
 }
 
 fn parse_character_base(
@@ -298,12 +567,63 @@ fn parse_profession_list(
         match field {
             1 => update.class_id = Some(reader.read_i32()?),
             3 => reader.skip_i32_list()?,
-            // Later fields contain nested maps/lists and are not needed to
-            // establish the current public class.
+            7 => update.battle_imagine_skills = Some(parse_battle_imagine_skill_map(reader)?),
+            // Other later fields contain profession/talent state. They remain
+            // outside this bounded loadout slice.
             _ => reader.skip_object_body(end),
         }
     }
     reader.finish_object(end)
+}
+
+fn parse_battle_imagine_skill_map(
+    reader: &mut BlobReader<'_>,
+) -> Result<DirtyBattleImagineSkillUpdate, DirtyBlobError> {
+    let counts = reader.read_map_counts()?;
+    let mut update = DirtyBattleImagineSkillUpdate {
+        replace: counts.replace,
+        ..DirtyBattleImagineSkillUpdate::default()
+    };
+    for _ in 0..counts.add {
+        let map_key = reader.read_i32()?;
+        update
+            .upserts
+            .push(parse_battle_imagine_skill(reader, map_key)?);
+    }
+    for _ in 0..counts.remove {
+        update.removals.push(reader.read_i32()?);
+    }
+    for _ in 0..counts.update {
+        let map_key = reader.read_i32()?;
+        update
+            .upserts
+            .push(parse_battle_imagine_skill(reader, map_key)?);
+    }
+    Ok(update)
+}
+
+fn parse_battle_imagine_skill(
+    reader: &mut BlobReader<'_>,
+    map_key: i32,
+) -> Result<DirtyBattleImagineSkillEntry, DirtyBlobError> {
+    let end = reader.begin_object()?;
+    let mut entry = DirtyBattleImagineSkillEntry {
+        map_key,
+        ..DirtyBattleImagineSkillEntry::default()
+    };
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            1 => entry.skill_id = Some(reader.read_i32()?),
+            2 => entry.level = Some(reader.read_i32()?),
+            3 => entry.replacement_skill_ids = Some(reader.read_i32_list()?),
+            4 => entry.remodel_level = Some(reader.read_i32()?),
+            5 => entry.current_skin_id = Some(reader.read_i32()?),
+            6 => entry.unlocked_skin_ids = Some(reader.read_i32_bool_map()?),
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)?;
+    Ok(entry)
 }
 
 fn parse_fight_point(
@@ -493,11 +813,25 @@ impl<'a> BlobReader<'a> {
     }
 
     fn skip_i32_list(&mut self) -> Result<(), DirtyBlobError> {
+        self.read_i32_list().map(drop)
+    }
+
+    fn read_i32_list(&mut self) -> Result<Vec<i32>, DirtyBlobError> {
         let count = self.read_collection_count()?;
+        let mut values = Vec::with_capacity(count);
         for _ in 0..count {
-            self.read_i32()?;
+            values.push(self.read_i32()?);
         }
-        Ok(())
+        Ok(values)
+    }
+
+    fn read_u32_list(&mut self) -> Result<Vec<u32>, DirtyBlobError> {
+        let count = self.read_collection_count()?;
+        let mut values = Vec::with_capacity(count);
+        for _ in 0..count {
+            values.push(self.read_u32()?);
+        }
+        Ok(values)
     }
 
     fn skip_u32_map(&mut self) -> Result<(), DirtyBlobError> {
@@ -517,19 +851,29 @@ impl<'a> BlobReader<'a> {
     }
 
     fn skip_i32_bool_map(&mut self) -> Result<(), DirtyBlobError> {
+        self.read_i32_bool_map().map(drop)
+    }
+
+    fn read_i32_bool_map(&mut self) -> Result<DirtyEnabledIdUpdate, DirtyBlobError> {
         let counts = self.read_map_counts()?;
+        let mut update = DirtyEnabledIdUpdate {
+            replace: counts.replace,
+            ..DirtyEnabledIdUpdate::default()
+        };
         for _ in 0..counts.add {
-            self.read_i32()?;
-            self.read_u8()?;
+            update
+                .upserts
+                .push((self.read_i32()?, self.read_u8()? != 0));
         }
         for _ in 0..counts.remove {
-            self.read_i32()?;
+            update.removals.push(self.read_i32()?);
         }
         for _ in 0..counts.update {
-            self.read_i32()?;
-            self.read_u8()?;
+            update
+                .upserts
+                .push((self.read_i32()?, self.read_u8()? != 0));
         }
-        Ok(())
+        Ok(update)
     }
 
     fn skip_i32_i64_map(&mut self) -> Result<(), DirtyBlobError> {
@@ -561,12 +905,14 @@ impl<'a> BlobReader<'a> {
         if first == EMPTY_COLLECTION {
             return Ok(MapCounts::default());
         }
-        let (add, remove, update) = if first == REPLACE_COLLECTION {
+        let replace = first == REPLACE_COLLECTION;
+        let (add, remove, update) = if replace {
             (self.read_i32()?, 0, 0)
         } else {
             (first, self.read_i32()?, self.read_i32()?)
         };
         let counts = MapCounts {
+            replace,
             add: checked_collection_count(add)?,
             remove: checked_collection_count(remove)?,
             update: checked_collection_count(update)?,
@@ -585,6 +931,7 @@ impl<'a> BlobReader<'a> {
 
 #[derive(Default)]
 pub(crate) struct MapCounts {
+    pub(crate) replace: bool,
     pub(crate) add: usize,
     pub(crate) remove: usize,
     pub(crate) update: usize,
@@ -616,6 +963,10 @@ mod tests {
 
     fn u64_value(value: u64) -> Vec<u8> {
         value.to_le_bytes().to_vec()
+    }
+
+    fn u8_value(value: u8) -> Vec<u8> {
+        vec![value]
     }
 
     fn string_value(value: &str) -> Vec<u8> {
@@ -668,6 +1019,242 @@ mod tests {
 
         assert_eq!(update.root_fields, vec![8, 116]);
         assert!(!update.has_public_profile_fields());
+    }
+
+    #[test]
+    fn lucky_value_manager_replace_state_is_preserved_without_interpretation() {
+        let entry = object(vec![
+            (1, i32_value(101)),
+            (2, i32_value(-48_106)),
+            (3, i64_value(123_456)),
+        ]);
+        let mut values = i32_value(REPLACE_COLLECTION);
+        values.extend(i32_value(1));
+        values.extend(i32_value(101));
+        values.extend(entry);
+        let manager = object(vec![(1, values), (2, u8_value(1))]);
+
+        let update = decode_character_update(&object(vec![(88, manager)]), 1).unwrap();
+        assert_eq!(update.root_fields, vec![88]);
+        assert_eq!(
+            update.lucky_value_mgr,
+            Some(DirtyLuckyValueUpdate {
+                replace: true,
+                init_value: Some(true),
+                upserts: vec![DirtyLuckyValueEntry {
+                    map_key: 101,
+                    luck_id: Some(101),
+                    luck_value: Some(-48_106),
+                    next_time: Some(123_456),
+                }],
+                removals: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn action_slot_replace_preserves_exact_primary_and_auxiliary_bindings() {
+        let slot_7 = object(vec![
+            (1, i32_value(7)),
+            (2, i32_value(3_948)),
+            (3, u8_value(1)),
+        ]);
+        let slot_8 = object(vec![(1, i32_value(8)), (2, i32_value(3_982))]);
+        let mut values = i32_value(REPLACE_COLLECTION);
+        values.extend(i32_value(2));
+        values.extend(i32_value(7));
+        values.extend(slot_7);
+        values.extend(i32_value(8));
+        values.extend(slot_8);
+        let slots = object(vec![(1, values)]);
+
+        let update = decode_character_update(&object(vec![(55, slots)]), 1).unwrap();
+
+        assert!(update.has_loadout_fields());
+        assert_eq!(
+            update.action_slots,
+            Some(DirtyActionSlotUpdate {
+                replace: true,
+                upserts: vec![
+                    DirtyActionSlotEntry {
+                        map_key: 7,
+                        slot_id: Some(7),
+                        skill_id: Some(3_948),
+                        auto_battle_disabled: Some(true),
+                    },
+                    DirtyActionSlotEntry {
+                        map_key: 8,
+                        slot_id: Some(8),
+                        skill_id: Some(3_982),
+                        auto_battle_disabled: None,
+                    },
+                ],
+                removals: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn action_slot_delta_preserves_removals_and_partial_upserts() {
+        let changed_slot = object(vec![(2, i32_value(3_982))]);
+        let mut values = i32_value(0); // additions
+        values.extend(i32_value(1)); // removals
+        values.extend(i32_value(1)); // updates
+        values.extend(i32_value(21));
+        values.extend(i32_value(8));
+        values.extend(changed_slot);
+        let slots = object(vec![(1, values)]);
+
+        let update = decode_character_update(&object(vec![(55, slots)]), 1).unwrap();
+
+        assert_eq!(
+            update.action_slots,
+            Some(DirtyActionSlotUpdate {
+                replace: false,
+                upserts: vec![DirtyActionSlotEntry {
+                    map_key: 8,
+                    slot_id: None,
+                    skill_id: Some(3_982),
+                    auto_battle_disabled: None,
+                }],
+                removals: vec![21],
+            })
+        );
+    }
+
+    #[test]
+    fn battle_imagine_skill_replace_preserves_runtime_tier_and_presentation_fields() {
+        let mut replacements = i32_value(2);
+        replacements.extend(i32_value(4_001));
+        replacements.extend(i32_value(4_002));
+        let mut unlocked = i32_value(REPLACE_COLLECTION);
+        unlocked.extend(i32_value(2));
+        unlocked.extend(i32_value(71));
+        unlocked.extend(u8_value(1));
+        unlocked.extend(i32_value(72));
+        unlocked.extend(u8_value(0));
+        let lucy = object(vec![
+            (1, i32_value(3_982)),
+            (2, i32_value(60)),
+            (3, replacements),
+            (4, i32_value(4)),
+            (5, i32_value(71)),
+            (6, unlocked),
+        ]);
+        let mut skills = i32_value(REPLACE_COLLECTION);
+        skills.extend(i32_value(1));
+        skills.extend(i32_value(3_982));
+        skills.extend(lucy);
+        let professions = object(vec![(1, i32_value(11)), (7, skills)]);
+
+        let update = decode_character_update(&object(vec![(61, professions)]), 1).unwrap();
+
+        assert!(update.has_loadout_fields());
+        assert_eq!(
+            update.battle_imagine_skills,
+            Some(DirtyBattleImagineSkillUpdate {
+                replace: true,
+                upserts: vec![DirtyBattleImagineSkillEntry {
+                    map_key: 3_982,
+                    skill_id: Some(3_982),
+                    level: Some(60),
+                    replacement_skill_ids: Some(vec![4_001, 4_002]),
+                    remodel_level: Some(4),
+                    current_skin_id: Some(71),
+                    unlocked_skin_ids: Some(DirtyEnabledIdUpdate {
+                        replace: true,
+                        upserts: vec![(71, true), (72, false)],
+                        removals: Vec::new(),
+                    }),
+                }],
+                removals: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn battle_imagine_skill_delta_preserves_partial_tier_update_and_removal() {
+        let lucy_tier = object(vec![(4, i32_value(5))]);
+        let mut skills = i32_value(0); // additions
+        skills.extend(i32_value(1)); // removals
+        skills.extend(i32_value(1)); // updates
+        skills.extend(i32_value(3_969));
+        skills.extend(i32_value(3_982));
+        skills.extend(lucy_tier);
+        let professions = object(vec![(7, skills)]);
+
+        let update = decode_character_update(&object(vec![(61, professions)]), 1).unwrap();
+
+        assert_eq!(
+            update.battle_imagine_skills,
+            Some(DirtyBattleImagineSkillUpdate {
+                replace: false,
+                upserts: vec![DirtyBattleImagineSkillEntry {
+                    map_key: 3_982,
+                    remodel_level: Some(5),
+                    ..DirtyBattleImagineSkillEntry::default()
+                }],
+                removals: vec![3_969],
+            })
+        );
+    }
+
+    #[test]
+    fn user_fight_attr_preserves_every_exact_cooldown_field() {
+        let cooldown = object(vec![
+            (1, i32_value(3921)),
+            (2, i64_value(1_234_567)),
+            (3, i32_value(60_000)),
+            (4, u32_value(2)),
+            (6, i64_value(1_230_000)),
+            (7, i32_value(3)),
+            (8, i32_value(58_000)),
+            (9, i32_value(5_000)),
+            (10, i64_value(2_000)),
+            (11, i32_value(750)),
+        ]);
+        let fight_attributes = object(vec![(9, cooldown)]);
+        let update = decode_character_update(&object(vec![(16, fight_attributes)]), 1).unwrap();
+
+        assert_eq!(update.root_fields, vec![16]);
+        assert_eq!(
+            update.cooldowns,
+            vec![DirtySkillCooldownUpdate {
+                skill_level_id: Some(3921),
+                skill_begin_time: Some(1_234_567),
+                duration: Some(60_000),
+                cooldown_type: Some(2),
+                profession_hold_begin_time: Some(1_230_000),
+                charge_count: Some(3),
+                valid_cooldown_time: Some(58_000),
+                sub_cooldown_ratio: Some(5_000),
+                sub_cooldown_fixed: Some(2_000),
+                accelerate_cooldown_ratio: Some(750),
+            }]
+        );
+        assert!(!update.has_public_profile_fields());
+    }
+
+    #[test]
+    fn user_fight_attr_preserves_energy_and_parallel_resource_arrays() {
+        let mut resource_ids = i32_value(3);
+        resource_ids.extend(u32_value(11));
+        resource_ids.extend(u32_value(22));
+        resource_ids.extend(u32_value(u32::MAX));
+        let mut resource_values = i32_value(2);
+        resource_values.extend(u32_value(101));
+        resource_values.extend(u32_value(202));
+        let fight_attributes = object(vec![
+            (3, 12.5_f32.to_le_bytes().to_vec()),
+            (4, resource_ids),
+            (5, resource_values),
+        ]);
+
+        let update = decode_character_update(&object(vec![(16, fight_attributes)]), 1).unwrap();
+
+        assert_eq!(update.origin_energy_raw_bits, Some(12.5_f32.to_bits()));
+        assert_eq!(update.resource_ids, vec![11, 22, u32::MAX]);
+        assert_eq!(update.resource_values, vec![101, 202]);
     }
 
     #[test]

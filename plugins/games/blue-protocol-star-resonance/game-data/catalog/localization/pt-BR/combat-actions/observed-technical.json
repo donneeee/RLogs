@@ -1,0 +1,662 @@
+[
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3522.name",
+    "text": "Observador Abissal · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3523.name",
+    "text": "Soldado Reptiliano · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3900.name",
+    "text": "Tornado de Fogo · Special Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.100111.name",
+    "text": "Uppercut"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.100112.name",
+    "text": "Smash"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.100206.name",
+    "text": "Three-hit Combo"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.100330.name",
+    "text": "Leaping Slash"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.100440.name",
+    "text": "Thrust"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.100865.name",
+    "text": "Great Axe Sweep"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.100866.name",
+    "text": "Whirlwind Slash"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.100867.name",
+    "text": "Wide Sweep"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.111155.name",
+    "text": "Electromagnetic Inner Ring"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300000.name",
+    "text": "Red-light Combo: Sweep and Slam"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300001.name",
+    "text": "Right Sweep"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300005.name",
+    "text": "Triple Slash"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300006.name",
+    "text": "Thrust"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300008.name",
+    "text": "Backstep Thrust"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300026.name",
+    "text": "Fan-shaped Blade Shockwave"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300028.name",
+    "text": "Targeted Stack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300033.name",
+    "text": "Void Corruption Pressure"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300038.name",
+    "text": "Cursed Cabinet"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300086.name",
+    "text": "Gunblade Frenzy: Void Corruption Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300089.name",
+    "text": "Gunblade Frenzy: Rapid Void Corruption Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300090.name",
+    "text": "Void Corruption Entanglement"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.300303.name",
+    "text": "Atirador de Byrnhald · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.702017.name",
+    "text": "Training dummy special attack #702017"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.883701.name",
+    "text": "Reptiliano Convocador de Marés · Healing"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.883707.name",
+    "text": "Training dummy healing #883707"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.883709.name",
+    "text": "Training dummy healing #883709"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.883718.name",
+    "text": "Matriz Misteriosa · Healing"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.990103.name",
+    "text": "Chefe: Presa da Cordilheira · Action"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.990110.name",
+    "text": "Chefe: Presa da Cordilheira · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1000011.name",
+    "text": "Chefe: Rei Rebelde · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1000013.name",
+    "text": "Chefe: Rei Rebelde · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1000014.name",
+    "text": "Chefe: Aracnoguejo Predador · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1000018.name",
+    "text": "Chefe: Aracnoguejo Predador · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1000019.name",
+    "text": "Chefe: Rei Rebelde · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1002113.name",
+    "text": "Basic Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1007810.name",
+    "text": "Whirlwind Slash"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1008220.name",
+    "text": "Tail Sweep"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1008222.name",
+    "text": "Large Water Projectile"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1008223.name",
+    "text": "Medium Water Projectile"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1008224.name",
+    "text": "Small Water Projectile"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1009701.name",
+    "text": "Basic Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1009705.name",
+    "text": "Instant AOE"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1009751.name",
+    "text": "Parallel Lasers"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1009804.name",
+    "text": "Gazer Detonation"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1009805.name",
+    "text": "Floating Cannon Beam"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010004.name",
+    "text": "Basic Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010408.name",
+    "text": "Basic Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010409.name",
+    "text": "Spinning Cone"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010508.name",
+    "text": "Tidecaller Strike"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010509.name",
+    "text": "Tank-targeted Beam"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010602.name",
+    "text": "Artilheiro da Legião da Pedra Negra · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010616.name",
+    "text": "Close-range Kick"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010707.name",
+    "text": "Divine Punishment: Inner Up, Outer Down"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010708.name",
+    "text": "Divine Punishment: Inner Down, Outer Up"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010715.name",
+    "text": "Slash"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010820.name",
+    "text": "Forward Slash"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010821.name",
+    "text": "Triple Thrust"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010822.name",
+    "text": "Leaping Slash"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010915.name",
+    "text": "Charged Thrust"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010916.name",
+    "text": "Double Strike"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1010917.name",
+    "text": "Charged Ground Slam"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1120302.name",
+    "text": "Arachnocrab AOE 2"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1120303.name",
+    "text": "Chefe: Aracnoguejo Predador · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1120308.name",
+    "text": "Party-wide Damage"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1120309.name",
+    "text": "Arachnocrab Beam"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1120311.name",
+    "text": "Chefe: Aracnoguejo Predador · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1121501.name",
+    "text": "Chefe: Bola de Pelo Sanguinária · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1121502.name",
+    "text": "Chefe: Bola de Pelo Sanguinária · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1121503.name",
+    "text": "Chefe: Bola de Pelo Sanguinária · Special Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1121506.name",
+    "text": "Chefe: Bola de Pelo Sanguinária · Special Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1700103.name",
+    "text": "Chefe: Presa da Cordilheira · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1700105.name",
+    "text": "Chefe: Presa da Cordilheira · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1700106.name",
+    "text": "Chefe: Presa da Cordilheira · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1700110.name",
+    "text": "Chefe: Presa da Cordilheira · Action"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1700121.name",
+    "text": "Chefe: Presa da Cordilheira · Action"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1700354.name",
+    "text": "Left Claw Strike"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1700355.name",
+    "text": "Contaminated Area"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1701032.name",
+    "text": "Cloud-steamed Marsh"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1701035.name",
+    "text": "Ground Wave AOE"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1701036.name",
+    "text": "Ground Wave AOE 2"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1701038.name",
+    "text": "Iron Cavalry Charge"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.1701050.name",
+    "text": "Ground Wave Flame"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.2000206.name",
+    "text": "Caçador de Kanamia · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.2000208.name",
+    "text": "Alto Caçador de Kanamia · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.2000211.name",
+    "text": "Alto Caçador de Kanamia · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.2000213.name",
+    "text": "Caçador de Kanamia · Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.2001501.name",
+    "text": "Forward Slash"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.2001507.name",
+    "text": "Kanamia Voodoo Warrior Enrage"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.2001510.name",
+    "text": "Kanamia Voodoo Warrior Shockwave"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.2001610.name",
+    "text": "Tracking Arrow Rain"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.2001614.name",
+    "text": "Ranged Ground Fire"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.2002910.name",
+    "text": "Energy Burst"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340205.name",
+    "text": "Basic Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340206.name",
+    "text": "Headbutt"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340207.name",
+    "text": "Party-wide Damage"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340209.name",
+    "text": "Lethal Attack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340210.name",
+    "text": "Dual-element AOE: First Cast"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340211.name",
+    "text": "Ice Sphere: Phase 1"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340212.name",
+    "text": "Water Sphere: Phase 1"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340213.name",
+    "text": "Ice Stack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340214.name",
+    "text": "Water Stack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340219.name",
+    "text": "Great Ice Wave"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340220.name",
+    "text": "Great Tsunami"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340225.name",
+    "text": "Destroy Speakers"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340227.name",
+    "text": "Ice Ground Circle"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340228.name",
+    "text": "Water Ground Circle"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340233.name",
+    "text": "Orange Clone Cast"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340235.name",
+    "text": "Orange Cone"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340239.name",
+    "text": "Cleave"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3340241.name",
+    "text": "Remove Vulnerability"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350017.name",
+    "text": "Leap Combo"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350051.name",
+    "text": "Targeted Explosion: Radius 3"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350052.name",
+    "text": "Tracking Mark: Radius 3"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350053.name",
+    "text": "Steam Level 1"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350054.name",
+    "text": "Steam Level 2"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350055.name",
+    "text": "Steam Level 3"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350056.name",
+    "text": "Fire Tornado"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350058.name",
+    "text": "Party-wipe Check AOE"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350059.name",
+    "text": "Move-away AOE"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350063.name",
+    "text": "Combo Stack"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350064.name",
+    "text": "Combo Spread"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350070.name",
+    "text": "Crystal Explosion"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350073.name",
+    "text": "Turret Spawn Cover AOE"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350074.name",
+    "text": "Door-opening Circular Steam"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350079.name",
+    "text": "Fire Tornado Inner Ring"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350080.name",
+    "text": "Fire Tornado Middle Ring"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3350081.name",
+    "text": "Fire Tornado Outer Ring"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.3370399.name",
+    "text": "Ground Cross-wave Entity"
+  },
+  {
+    "locale": "pt-BR",
+    "key": "combat_action.10100101.name",
+    "text": "Chefe: Presa da Cordilheira · Attack"
+  }
+]

@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "kind": "dungeon_objective",
+  "id": 100164,
+  "stable_key": "dungeon_objective.100164",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "objective_id": 100164,
+    "observed_scene_ids": [
+      1631
+    ],
+    "observed_map_keys": [
+      100164
+    ],
+    "observed_completion_value": 1,
+    "observed_role": "run_completion",
+    "role_confidence": "corroborated",
+    "successful_result_ids": [
+      1
+    ]
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "controlled-current-build-observation",
+    "reference": "protocol-packs/global/steam-24252055/observations/dungeon-no-wipe-001.json",
+    "confidence": "corroborated"
+  }
+}

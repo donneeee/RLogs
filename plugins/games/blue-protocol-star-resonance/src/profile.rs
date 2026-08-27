@@ -27,11 +27,24 @@ pub struct CharacterProfilePatch {
     pub season: Option<SeasonProfile>,
     pub appearance: Option<CharacterAppearance>,
     pub equipment: Option<Vec<EquipmentItem>>,
+    /// Exact entries from `CharSerialize.equip.suit_info_dict`.
+    ///
+    /// The map key is retained without assigning an unproven set-family meaning.
+    /// The BPSR plug-in resolves it against exact-build/runtime evidence separately.
+    #[serde(default)]
+    pub equipment_suit_entries: Option<Vec<EquipmentSuitEntryProfile>>,
     #[serde(default)]
     pub modules: Option<ModuleProfile>,
     pub owned_imagines: Option<Vec<ImagineOwnership>>,
     #[serde(default)]
     pub battle_imagine_skills: Option<Vec<BattleImagineSkill>>,
+    /// Exact equipped action-bar bindings published by the current game snapshot.
+    ///
+    /// The game plug-in owns all packet decoding and later classifies these
+    /// bindings into primary and auxiliary loadout slots. Consumers such as
+    /// Combat History only receive the normalized result.
+    #[serde(default)]
+    pub equipped_action_slots: Option<Vec<EquippedActionSlot>>,
     pub active_skills: Option<Vec<SkillLevel>>,
     pub talents: Option<Vec<TalentLevel>>,
     #[serde(default)]
@@ -175,6 +188,13 @@ pub struct EquipmentEnchantmentProfile {
     pub enchantment_type: Option<i32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EquipmentSuitEntryProfile {
+    pub map_key: i32,
+    pub attribute_type: Option<i32>,
+    pub attributes: BTreeMap<i32, i32>,
+}
+
 /// Module inventory and equipped-slot state needed by profile displays and
 /// deterministic optimizers.
 ///
@@ -288,6 +308,13 @@ pub struct BattleImagineSkill {
     pub replacement_skill_ids: Vec<i64>,
     pub unlocked_skin_ids: Vec<i64>,
     pub equipped_slot: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EquippedActionSlot {
+    pub slot_id: i32,
+    pub skill_id: i64,
+    pub auto_battle_disabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -505,9 +532,11 @@ mod tests {
             season: None,
             appearance: None,
             equipment: None,
+            equipment_suit_entries: None,
             modules: None,
             owned_imagines: None,
             battle_imagine_skills: None,
+            equipped_action_slots: None,
             active_skills: None,
             talents: None,
             talent_progress: None,

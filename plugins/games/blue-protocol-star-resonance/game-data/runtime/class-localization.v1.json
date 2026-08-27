@@ -1,0 +1,253 @@
+{
+    "schema_version":  1,
+    "default_locale":  "en-US",
+    "classes":  [
+                    {
+                        "class_id":  1,
+                        "icon":  "icons/classes/stormblade/horizontal.png",
+                        "weapon_icon":  "icons/weapons/classes/stormblade.png",
+                        "localization_key":  "class.1.name",
+                        "names":  {
+                                      "de-DE":  "Sturmklinge",
+                                      "en-US":  "Stormblade",
+                                      "es-ES":  "Filo tormentoso",
+                                      "fr-FR":  "Lame-tempête",
+                                      "id-ID":  "Stormblade",
+                                      "ja-JP":  "ストームブレイド",
+                                      "ko-KR":  "스톰 블레이드",
+                                      "pt-BR":  "Lâmina Tempestuosa",
+                                      "th-TH":  "Stormblade",
+                                      "zh-CN":  "雷影剑士",
+                                      "zh-TW":  "雷影劍士"
+                                  }
+                    },
+                    {
+                        "class_id":  2,
+                        "icon":  "icons/classes/frost-mage/horizontal.png",
+                        "weapon_icon":  "icons/weapons/classes/frost-mage.png",
+                        "localization_key":  "class.2.name",
+                        "names":  {
+                                      "de-DE":  "Frostmagier",
+                                      "en-US":  "Frost Mage",
+                                      "es-ES":  "Mago gélido",
+                                      "fr-FR":  "Mage de givre",
+                                      "id-ID":  "Frost Mage",
+                                      "ja-JP":  "フロストメイジ",
+                                      "ko-KR":  "프로스트 메이지",
+                                      "pt-BR":  "Mago do Gelo",
+                                      "th-TH":  "Frost Mage",
+                                      "zh-CN":  "冰魔导师",
+                                      "zh-TW":  "冰魔導師"
+                                  }
+                    },
+                    {
+                        "class_id":  3,
+                        "icon":  "icons/classes/twin-striker/horizontal.png",
+                        "weapon_icon":  "icons/weapons/classes/twin-striker.png",
+                        "localization_key":  "class.3.name",
+                        "names":  {
+                                      "de-DE":  "Zwillingsstürmer",
+                                      "en-US":  "Twin Striker",
+                                      "es-ES":  "Golpeador doble",
+                                      "fr-FR":  "Frappe jumelle",
+                                      "id-ID":  "Redflame Berserker",
+                                      "ja-JP":  "ツインストライカー",
+                                      "ko-KR":  "트윈 스트라이커",
+                                      "pt-BR":  "Atacante Duplo",
+                                      "th-TH":  "Twin Striker",
+                                      "zh-CN":  "赤炎狂战士",
+                                      "zh-TW":  "赤炎狂戰士"
+                                  }
+                    },
+                    {
+                        "class_id":  4,
+                        "icon":  "icons/classes/wind-knight/horizontal.png",
+                        "weapon_icon":  "icons/weapons/classes/wind-knight.png",
+                        "localization_key":  "class.4.name",
+                        "names":  {
+                                      "de-DE":  "Windritter",
+                                      "en-US":  "Wind Knight",
+                                      "es-ES":  "Caballero del viento",
+                                      "fr-FR":  "Chevalier du vent",
+                                      "id-ID":  "Gale Lancer",
+                                      "ja-JP":  "ゲイルランサー",
+                                      "ko-KR":  "윈드 나이트",
+                                      "pt-BR":  "Cavaleiro do Vento",
+                                      "th-TH":  "Wind Knight",
+                                      "zh-CN":  "青岚骑士",
+                                      "zh-TW":  "青嵐騎士"
+                                  }
+                    },
+                    {
+                        "class_id":  5,
+                        "icon":  "icons/classes/verdant-oracle/horizontal.png",
+                        "weapon_icon":  "icons/weapons/classes/verdant-oracle.png",
+                        "localization_key":  "class.5.name",
+                        "names":  {
+                                      "de-DE":  "Grünes Orakel",
+                                      "en-US":  "Verdant Oracle",
+                                      "es-ES":  "Oráculo frondoso",
+                                      "fr-FR":  "Oracle verdoyant",
+                                      "id-ID":  "Verdant Oracle",
+                                      "ja-JP":  "ヴァーダントオラクル",
+                                      "ko-KR":  "실반 오라클",
+                                      "pt-BR":  "Oráculo Verdejante",
+                                      "th-TH":  "Verdant Oracle",
+                                      "zh-CN":  "森语者",
+                                      "zh-TW":  "森語者"
+                                  }
+                    },
+                    {
+                        "class_id":  8,
+                        "icon":  "icons/classes/thunder-flash-hand-cannon/horizontal.png",
+                        "weapon_icon":  null,
+                        "localization_key":  "class.8.name",
+                        "names":  {
+                                      "de-DE":  "Donnerblitz – Handkanone",
+                                      "en-US":  "Thunder Flash - Hand Cannon",
+                                      "es-ES":  "Destello del trueno: Cañón de mano",
+                                      "fr-FR":  "Éclair tonitruant - Canon à main",
+                                      "id-ID":  "Thunder Strike - Hand Cannon",
+                                      "ja-JP":  "サンダーフラッシュ・ハンドキャノン",
+                                      "ko-KR":  "번개 섬광・핸드 캐논",
+                                      "pt-BR":  "Raio e Trovão – Canhão de Mão",
+                                      "th-TH":  "Thunder Flash - Hand Cannon",
+                                      "zh-CN":  "雷霆一闪·手炮",
+                                      "zh-TW":  "雷霆一閃·手炮"
+                                  }
+                    },
+                    {
+                        "class_id":  9,
+                        "icon":  "icons/classes/heavy-guardian/horizontal.png",
+                        "weapon_icon":  "icons/weapons/classes/heavy-guardian.png",
+                        "localization_key":  "class.9.name",
+                        "names":  {
+                                      "de-DE":  "Schwerer Wächter",
+                                      "en-US":  "Heavy Guardian",
+                                      "es-ES":  "Guardián pesado",
+                                      "fr-FR":  "Gardien imposant",
+                                      "id-ID":  "Heavy Guardian",
+                                      "ja-JP":  "ヘヴィガーディアン",
+                                      "ko-KR":  "헤비 가디언",
+                                      "pt-BR":  "Guardião Pesado",
+                                      "th-TH":  "Heavy Guardian",
+                                      "zh-CN":  "巨刃守护者",
+                                      "zh-TW":  "巨刃守護者"
+                                  }
+                    },
+                    {
+                        "class_id":  10,
+                        "icon":  "icons/classes/ritual-dance-of-shadowspirits-ceremonial-blade-staff/horizontal.png",
+                        "weapon_icon":  null,
+                        "localization_key":  "class.10.name",
+                        "names":  {
+                                      "de-DE":  "Ritualtanz der Schattengeister: Zeremonienklinge/Stab",
+                                      "en-US":  "Ritual Dance of Shadowspirits: Ceremonial Blade / Staff",
+                                      "es-ES":  "Danza ritual de espíritus sombríos: filo ceremonial/bastón",
+                                      "fr-FR":  "Danse rituelle des Esprits de l\u0027ombre : Bâton/Lame cérémonielle",
+                                      "id-ID":  "Darkspirit Prayer - Ritual Blade/Ritual Staff",
+                                      "ja-JP":  "ソウルダンス・儀刀/儀仗",
+                                      "ko-KR":  "어둠 정령의 춤・의식검/의식용 지팡이",
+                                      "pt-BR":  "Dança Ritual dos Espíritos das Sombras: Lâmina Cerimonial / Cajado",
+                                      "th-TH":  "ระบำภาวนาวิญญาณมืด - ดาบพิธี/ไม้เท้าพิธี",
+                                      "zh-CN":  "暗灵祈舞·仪刀/仪仗",
+                                      "zh-TW":  "暗靈祈舞·儀刀/儀仗"
+                                  }
+                    },
+                    {
+                        "class_id":  11,
+                        "icon":  "icons/classes/marksman/horizontal.png",
+                        "weapon_icon":  "icons/weapons/classes/marksman.png",
+                        "localization_key":  "class.11.name",
+                        "names":  {
+                                      "de-DE":  "Scharf­schütze",
+                                      "en-US":  "Marksman",
+                                      "es-ES":  "Tirador",
+                                      "fr-FR":  "Tireur d\u0027élite",
+                                      "id-ID":  "Divine Archer",
+                                      "ja-JP":  "ディバインアーチャー",
+                                      "ko-KR":  "디바인 아처",
+                                      "pt-BR":  "Atirador de Elite",
+                                      "th-TH":  "Marksman",
+                                      "zh-CN":  "神射手",
+                                      "zh-TW":  "神射手"
+                                  }
+                    },
+                    {
+                        "class_id":  12,
+                        "icon":  "icons/classes/shield-knight/horizontal.png",
+                        "weapon_icon":  "icons/weapons/classes/shield-knight.png",
+                        "localization_key":  "class.12.name",
+                        "names":  {
+                                      "de-DE":  "Schildritter",
+                                      "en-US":  "Shield Knight",
+                                      "es-ES":  "Caballero escudado",
+                                      "fr-FR":  "Chevalier au bouclier",
+                                      "id-ID":  "Shield Fighter",
+                                      "ja-JP":  "シールドファイター",
+                                      "ko-KR":  "실드 나이트",
+                                      "pt-BR":  "Cavaleiro do Escudo",
+                                      "th-TH":  "Shield Knight",
+                                      "zh-CN":  "神盾骑士",
+                                      "zh-TW":  "神盾騎士"
+                                  }
+                    },
+                    {
+                        "class_id":  13,
+                        "icon":  "icons/classes/beat-performer/horizontal.png",
+                        "weapon_icon":  "icons/weapons/classes/beat-performer.png",
+                        "localization_key":  "class.13.name",
+                        "names":  {
+                                      "de-DE":  "Beat-Performer",
+                                      "en-US":  "Beat Performer",
+                                      "es-ES":  "Artista del ritmo",
+                                      "fr-FR":  "Virtuose du rythme",
+                                      "id-ID":  "Beat Performer",
+                                      "ja-JP":  "ビートパフォーマー",
+                                      "ko-KR":  "비트 퍼포머",
+                                      "pt-BR":  "Artista do Ritmo",
+                                      "th-TH":  "Beat Performer",
+                                      "zh-CN":  "灵魂乐手",
+                                      "zh-TW":  "靈魂樂手"
+                                  }
+                    },
+                    {
+                        "class_id":  14,
+                        "icon":  "icons/classes/lucy/horizontal.png",
+                        "weapon_icon":  null,
+                        "localization_key":  "class.14.name",
+                        "names":  {
+                                      "de-DE":  "Lucy",
+                                      "en-US":  "Lucy",
+                                      "es-ES":  "Lucy",
+                                      "fr-FR":  "Lucy",
+                                      "id-ID":  "Lucy",
+                                      "ja-JP":  "ルーシィ",
+                                      "ko-KR":  "루시",
+                                      "pt-BR":  "Lucy",
+                                      "th-TH":  "Lucy",
+                                      "zh-CN":  "露西",
+                                      "zh-TW":  "露西"
+                                  }
+                    },
+                    {
+                        "class_id":  15,
+                        "icon":  "icons/classes/natsu/horizontal.png",
+                        "weapon_icon":  null,
+                        "localization_key":  "class.15.name",
+                        "names":  {
+                                      "de-DE":  "Natsu",
+                                      "en-US":  "Natsu",
+                                      "es-ES":  "Natsu",
+                                      "fr-FR":  "Natsu",
+                                      "id-ID":  "Natsu",
+                                      "ja-JP":  "ナツ",
+                                      "ko-KR":  "나츠",
+                                      "pt-BR":  "Natsu",
+                                      "th-TH":  "Natsu",
+                                      "zh-CN":  "纳兹",
+                                      "zh-TW":  "納茲"
+                                  }
+                    }
+                ]
+}

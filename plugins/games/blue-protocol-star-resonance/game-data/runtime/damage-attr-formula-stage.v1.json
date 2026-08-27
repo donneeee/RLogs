@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "generated_by": "tools/bpsr-damage-attr-formula-runtime.mjs",
+  "promotion_state": "current-build-field-identities-exact-final-integer-formula-blocked",
+  "policy": {
+    "runtime_formula_authority": false,
+    "provider_rdps_credit_allowed": false,
+    "canonical_damage_is_preserved": true,
+    "exact_integer_conservation_required_for_promotion": true,
+    "historical_values_are_runtime_authority": false
+  },
+  "current_build_evidence": {
+    "field_layout": {
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/catalog/formulas/damage-attr-field-layout.current-build.v1.json",
+      "bytes": 29687,
+      "sha256": "ad7e028ab9a1bbee6c4fb57b79b80c5119359019a29d29fdca6efd1ef598b2f5"
+    },
+    "damage_stage_catalog": {
+      "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/damage-stage-rdps.v1.json",
+      "bytes": 1097488,
+      "sha256": "ae0f4d5e53b87d2436f73be274451205445077e4aa3718479839099729f917ff"
+    }
+  },
+  "source": {
+    "table": "ctb.DamageAttrTable",
+    "table_hash": 1708172942,
+    "decoded_surface_rows": 5700,
+    "exact_layout_rows": 5601,
+    "row_size": 74,
+    "field_layout_proof": "../catalog/formulas/damage-attr-field-layout.current-build.v1.json"
+  },
+  "coefficient_scale": 10000,
+  "selection_key": [
+    "linked_source_id",
+    "hit_event_suffix"
+  ],
+  "field_semantics": {
+    "pve_damage_ratio": {
+      "row_offset": 28,
+      "unit": "basis_points",
+      "state": "current_build_field_identity_exact"
+    },
+    "pve_fixed_parameter": {
+      "row_offset": 32,
+      "unit": "whole_damage_units",
+      "state": "current_build_field_identity_exact_selection_and_integer_order_unresolved"
+    },
+    "pve_stunned_damage": {
+      "row_offset": 40,
+      "unit": "whole_stagger_or_break_units",
+      "state": "current_build_field_identity_exact_not_hp_damage"
+    }
+  },
+  "calculation_modes": {
+    "standard_attack": {
+      "state": "named_components_exact_full_integer_order_unresolved",
+      "client_ui_expression": "physical_or_magical_attack * PVEDamageRadio + PVEFixedParameter",
+      "runtime_formula_authority": false,
+      "reason": "the current client names both inputs, but packet replay has not yet distinguished fixed-term placement, row-array selection, defense, season, outgoing buckets, and every floor boundary"
+    },
+    "master_special_skill_attack": {
+      "state": "blocked_pending_special_mode_formula",
+      "reason": "current Phantom Falcon row stores 30000 while current localized total is 400 percent"
+    }
+  },
+  "verified_rows": [
+    {
+      "damage_id": 123520101,
+      "linked_source_id": 2352,
+      "hit_event_suffix": 1,
+      "damage_input": "Attack",
+      "calculation_mode": "standard_attack",
+      "pve_damage_ratio": [
+        50000
+      ],
+      "localized_total_basis_points": 50000,
+      "state": "enabled_for_named_component_research_only"
+    },
+    {
+      "damage_id": 123520103,
+      "linked_source_id": 2352,
+      "hit_event_suffix": 3,
+      "damage_input": "Attack",
+      "calculation_mode": "standard_attack",
+      "pve_damage_ratio": [
+        8000
+      ],
+      "localized_total_basis_points": 8000,
+      "state": "enabled_for_named_component_research_only"
+    },
+    {
+      "damage_id": 2220329107,
+      "linked_source_id": 2203291,
+      "hit_event_suffix": 7,
+      "damage_input": "Attack",
+      "calculation_mode": "standard_attack",
+      "pve_damage_ratio": [
+        15000,
+        15600,
+        16200,
+        18000,
+        18600,
+        19200,
+        21000
+      ],
+      "pve_fixed_parameter_count": 30,
+      "observed_owner_level": 30,
+      "selected_pve_fixed_parameter_candidate": 600,
+      "state": "packet_row_and_level_candidate_exact_full_formula_unresolved",
+      "pve_fixed_parameter_by_level": [
+        15,
+        35,
+        55,
+        75,
+        95,
+        115,
+        136,
+        156,
+        176,
+        196,
+        216,
+        236,
+        257,
+        277,
+        297,
+        317,
+        337,
+        357,
+        378,
+        398,
+        418,
+        438,
+        458,
+        478,
+        499,
+        519,
+        539,
+        559,
+        579,
+        600
+      ]
+    },
+    {
+      "damage_id": 2220353101,
+      "linked_source_id": 2203531,
+      "hit_event_suffix": 1,
+      "damage_input": "Attack",
+      "calculation_mode": "master_special_skill_attack",
+      "pve_damage_ratio": [
+        30000
+      ],
+      "localized_total_basis_points": 40000,
+      "state": "blocked_pending_special_mode_formula",
+      "pve_fixed_parameter_by_level": [
+        40
+      ]
+    }
+  ]
+}

@@ -4,7 +4,8 @@ use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use rlogs_submission::{
-    QUEUED_SUBMISSION_SCHEMA_VERSION, QueuedSubmission, ReportVisibility, SubmissionState,
+    QUEUED_SUBMISSION_SCHEMA_VERSION, QueuedSubmission, ReportVisibility, ServerReportReceipt,
+    SubmissionState,
 };
 use serde::Serialize;
 
@@ -182,6 +183,39 @@ impl LocalSubmissionQueue {
         self.entries.get(queue_id).cloned()
     }
 
+    pub fn mark_submitted(
+        &mut self,
+        queue_id: &str,
+        receipt: ServerReportReceipt,
+    ) -> Result<(), String> {
+        let entry = self
+            .entries
+            .get_mut(queue_id)
+            .ok_or_else(|| format!("submission draft {queue_id} was not found"))?;
+        if entry.state() == SubmissionState::Submitted {
+            return Ok(());
+        }
+        entry
+            .session
+            .start_upload()
+            .map_err(|error| format!("submission state could not start: {error}"))?;
+        for chunk in entry.session.chunks().to_vec() {
+            entry
+                .session
+                .acknowledge_chunk(chunk.sequence, &chunk.sha256)
+                .map_err(|error| format!("submission acknowledgement failed: {error}"))?;
+        }
+        entry
+            .session
+            .begin_finalization()
+            .map_err(|error| format!("submission state could not finalize: {error}"))?;
+        entry
+            .session
+            .complete(receipt)
+            .map_err(|error| format!("submission receipt was rejected: {error}"))?;
+        persist_replacement(&self.directory, entry)
+    }
+
     pub fn snapshot(&self) -> SubmissionQueueView {
         let mut entries = self
             .entries
@@ -202,6 +236,13 @@ impl LocalSubmissionQueue {
             entries,
             issues: self.issues.clone(),
         }
+    }
+
+    pub fn artifact_directory(&self) -> PathBuf {
+        self.directory
+            .parent()
+            .unwrap_or(&self.directory)
+            .join("artifacts")
     }
 }
 
@@ -321,6 +362,82 @@ fn load_entry(path: &Path, file_name: &str) -> Result<QueuedSubmission, String> 
 
 fn queue_file_name(queue_id: &str) -> String {
     format!("{queue_id}{QUEUE_FILE_SUFFIX}")
+}
+
+fn persist_replacement(directory: &Path, entry: &QueuedSubmission) -> Result<(), String> {
+    entry
+        .validate()
+        .map_err(|error| format!("submitted queue entry is invalid: {error}"))?;
+    let queue_id = entry.queue_id.as_str();
+    let final_path = directory.join(queue_file_name(queue_id));
+    let partial_path = directory.join(format!(".{queue_id}.submission-state.partial"));
+    match std::fs::remove_file(&partial_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("remove stale submission state partial: {error}")),
+    }
+    let mut encoded = serde_json::to_vec_pretty(entry)
+        .map_err(|error| format!("encode submitted queue entry: {error}"))?;
+    encoded.push(b'\n');
+    if encoded.len() as u64 > MAXIMUM_QUEUE_ENTRY_BYTES {
+        return Err("submitted queue entry exceeds its bounded file limit".into());
+    }
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&partial_path)
+        .map_err(|error| format!("create submission state partial: {error}"))?;
+    let write_result = (|| {
+        let mut writer = BufWriter::new(file);
+        writer.write_all(&encoded)?;
+        writer.flush()?;
+        writer.get_ref().sync_all()
+    })();
+    if let Err(error) = write_result {
+        let _ = std::fs::remove_file(&partial_path);
+        return Err(format!("write submission state partial: {error}"));
+    }
+    replace_file(&partial_path, &final_path).map_err(|error| {
+        let _ = std::fs::remove_file(&partial_path);
+        format!("publish submitted queue state: {error}")
+    })?;
+    sync_queue_directory(directory)
+}
+
+#[cfg(windows)]
+fn replace_file(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    };
+
+    let source = source
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let destination = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    if unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            destination.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } == 0
+    {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn replace_file(source: &Path, destination: &Path) -> Result<(), std::io::Error> {
+    std::fs::rename(source, destination)
 }
 
 #[cfg(unix)]
@@ -467,6 +584,40 @@ mod tests {
         assert_eq!(queue.snapshot().entry_count, 0);
         assert_eq!(queue.snapshot().issues.len(), 2);
 
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn accepted_receipt_advances_and_persists_the_queue_state() {
+        let root = temporary_directory();
+        let artifact_path = root.join("capture-1.rlog");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&artifact_path, vec![0_u8; 12]).unwrap();
+        let entry = queued_submission(&artifact_path);
+        let queue_id = entry.queue_id.to_string();
+        let mut queue = LocalSubmissionQueue::open(root.join("queue")).unwrap();
+        queue.enqueue(entry).unwrap();
+
+        queue
+            .mark_submitted(
+                &queue_id,
+                ServerReportReceipt {
+                    report_id: "report-1".into(),
+                    accepted_log_digest: digest("c"),
+                    verification_tier: rlogs_submission::VerificationTier::Replayed,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            queue.snapshot().entries[0].state,
+            SubmissionState::Submitted
+        );
+
+        let restored = LocalSubmissionQueue::open(root.join("queue")).unwrap();
+        assert_eq!(
+            restored.snapshot().entries[0].state,
+            SubmissionState::Submitted
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

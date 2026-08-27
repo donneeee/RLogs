@@ -31,6 +31,12 @@ export interface EventViewerIdentifiers {
   target: EventViewerEntity | null;
   ability: string | null;
   status: string | null;
+  statusInstance: string | null;
+  statusOriginType: string | null;
+  statusOriginConfig: string | null;
+  statusState: string | null;
+  statusStacks: string | null;
+  statusDurationMillis: string | null;
   monster: string | null;
   scene: string | null;
   map: string | null;
@@ -84,6 +90,40 @@ export interface EventViewerPage {
   events: readonly EventViewerEvent[];
 }
 
+export interface LiveEventLine {
+  revision: number;
+  sequence: number;
+  observedMicros: number;
+  topic: EventViewerTopic;
+  kind: string;
+  rawIds: string;
+}
+
+export interface LiveEventBatch {
+  schemaVersion: 1;
+  sessionId: string | null;
+  revision: number;
+  droppedBefore: number;
+  hasMore: boolean;
+  events: readonly LiveEventLine[];
+}
+
+export function parseLiveEventBatch(value: unknown): LiveEventBatch {
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    !isOptionalString(value.sessionId) ||
+    !isSafeCounter(value.revision) ||
+    !isSafeCounter(value.droppedBefore) ||
+    typeof value.hasMore !== "boolean" ||
+    !Array.isArray(value.events) ||
+    !value.events.every(isLiveEvent)
+  ) {
+    throw new Error("The native host returned an invalid live Event Viewer batch.");
+  }
+  return value as unknown as LiveEventBatch;
+}
+
 export function parseEventViewerPage(value: unknown): EventViewerPage {
   if (!isRecord(value) || value.schemaVersion !== 1) {
     throw new Error("The local host returned an unsupported Event Viewer page.");
@@ -106,6 +146,18 @@ export function parseEventViewerPage(value: unknown): EventViewerPage {
     throw new Error("The local host returned an invalid Event Viewer page.");
   }
   return value as unknown as EventViewerPage;
+}
+
+function isLiveEvent(value: unknown): value is LiveEventLine {
+  return (
+    isRecord(value) &&
+    isSafeCounter(value.revision) &&
+    isSafeCounter(value.sequence) &&
+    isSafeCounter(value.observedMicros) &&
+    isTopic(value.topic) &&
+    typeof value.kind === "string" &&
+    typeof value.rawIds === "string"
+  );
 }
 
 function isEvent(value: unknown): value is EventViewerEvent {
@@ -136,6 +188,12 @@ function isIdentifiers(value: unknown): value is EventViewerIdentifiers {
     isOptionalEntity(value.target) &&
     isOptionalString(value.ability) &&
     isOptionalString(value.status) &&
+    isOptionalString(value.statusInstance) &&
+    isOptionalString(value.statusOriginType) &&
+    isOptionalString(value.statusOriginConfig) &&
+    isOptionalString(value.statusState) &&
+    isOptionalString(value.statusStacks) &&
+    isOptionalString(value.statusDurationMillis) &&
     isOptionalString(value.monster) &&
     isOptionalString(value.scene) &&
     isOptionalString(value.map) &&

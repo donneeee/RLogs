@@ -543,9 +543,12 @@ mod tests {
                 })
                 .filter(|route| {
                     !((route.route.service_id == 1_664_308_034
-                        && [3, 4, 6, 21, 22, 23, 27, 43, 45, 46].contains(&route.route.method_id))
+                        && [3, 4, 6, 21, 22, 23, 24, 27, 43, 45, 46, 67]
+                            .contains(&route.route.method_id))
                         || (route.route.service_id == 78_136_601 && route.route.method_id == 3)
-                        || (route.route.service_id == 625_772_963 && route.route.method_id == 1))
+                        || (route.route.service_id == 625_772_963 && route.route.method_id == 1)
+                        || (route.route.service_id == 966_773_353
+                            && [2, 3].contains(&route.route.method_id)))
                 })
                 .all(|route| route.disposition == ProtocolPackRouteDisposition::Opaque)
         );
@@ -685,10 +688,13 @@ mod tests {
             .find(|route| route.route.service_id == 1_664_308_034 && route.route.method_id == 24)
             .expect("current-build dungeon dirty route");
         assert_eq!(dungeon_dirty.method_name, "SyncDungeonDirtyData");
-        assert_eq!(dungeon_dirty.confidence, MappingConfidence::Candidate);
+        assert_eq!(dungeon_dirty.confidence, MappingConfidence::Verified);
         assert_eq!(
             dungeon_dirty.disposition,
-            ProtocolPackRouteDisposition::Opaque
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::Encounter,
+                decoder: DecoderKind::SyncDungeonDirtyDataV1
+            }
         );
         let season = pack
             .definition()
@@ -718,6 +724,36 @@ mod tests {
             ProtocolPackRouteDisposition::Allowed {
                 domain: AllowedDataDomain::CharacterProfile,
                 decoder: DecoderKind::NotifySocialDataV1
+            }
+        );
+        let team_members = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 966_773_353 && route.route.method_id == 2)
+            .expect("current-build team-member profile route");
+        assert_eq!(team_members.method_name, "NoticeUpdateTeamMemberInfo");
+        assert_eq!(team_members.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            team_members.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::CharacterProfile,
+                decoder: DecoderKind::NotifyTeamMemberInfoV1
+            }
+        );
+        let team_join = pack
+            .definition()
+            .routes
+            .iter()
+            .find(|route| route.route.service_id == 966_773_353 && route.route.method_id == 3)
+            .expect("current-build team-join profile route");
+        assert_eq!(team_join.method_name, "NotifyJoinTeam");
+        assert_eq!(team_join.confidence, MappingConfidence::Candidate);
+        assert_eq!(
+            team_join.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::CharacterProfile,
+                decoder: DecoderKind::NotifyJoinTeamV1
             }
         );
         let world_entry = pack
@@ -792,9 +828,12 @@ mod tests {
                 .iter()
                 .filter(|route| {
                     !((route.route.service_id == 1_664_308_034
-                        && [3, 4, 6, 21, 22, 23, 27, 43, 45, 46].contains(&route.route.method_id))
+                        && [3, 4, 6, 21, 22, 23, 24, 27, 43, 45, 46]
+                            .contains(&route.route.method_id))
                         || (route.route.service_id == 78_136_601 && route.route.method_id == 3)
                         || (route.route.service_id == 625_772_963 && route.route.method_id == 1)
+                        || (route.route.service_id == 966_773_353
+                            && [2, 3].contains(&route.route.method_id))
                         || (route.route.service_id == 504_281_929 && route.route.method_id == 15)
                         || (route.route.service_id == 1_664_308_034 && route.route.method_id == 79))
                 })

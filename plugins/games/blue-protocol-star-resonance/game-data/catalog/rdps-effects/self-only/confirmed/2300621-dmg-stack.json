@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "game_build": "24252055",
+  "rule": {
+    "effect_id": 2300621,
+    "review_state": "non_contributing",
+    "contribution_kind": "self_only",
+    "source_scope": "effect_source",
+    "target_scope": "enemy",
+    "magnitude_basis_points": 275,
+    "stacking_rule": "stack_scaled",
+    "attribution_enabled": false
+  },
+  "evidence": [
+    "The authoritative current-build module profile snapshot identifies module effect 2104 at level 6 with packet values [2000, 275].",
+    "Current-build packet effect 2300621 is scoped by both damage target and effect source; another attacker's instance never modifies this attacker's stack state.",
+    "Capture wire 27742 contains one unchanged full damage identity for ability 220111 at exact stacks 0, 1, and 2 with amounts 33395, 34230, and 35065.",
+    "The exact integer model is round-half-up(base 30359 * (10000 + 1000 + stacks * 275) / 10000), proving 275 raw fixed-point units per stack for this level-6 profile.",
+    "The effect only increases damage dealt by its own source to the marked target. It is retained for personal damage reconstruction and transfers no rDPS credit."
+  ]
+}

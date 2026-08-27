@@ -4,6 +4,7 @@ import {
   editableSubmissionPolicy,
   parseMockSubmissionResult,
   parseSubmissionPolicy,
+  parseSubmissionTransportResult,
 } from "./submission-policy";
 
 function policy() {
@@ -11,6 +12,7 @@ function policy() {
     schema_version: 1,
     settings_path: "C:/rLogs/runtime-data/settings/submission-policy.v1.json",
     transport_mode: "disconnected",
+    endpoint_url: null,
     log_uploader: {
       enabled: false,
       automatic_combat_logs: true,
@@ -85,5 +87,27 @@ describe("submission policy", () => {
         artifact,
       }),
     ).toThrow("invalid mock submission");
+  });
+
+  it("accepts verified receiver receipts without exposing credentials", () => {
+    const result = parseSubmissionTransportResult({
+      schema_version: 1,
+      queue_id: "a".repeat(64),
+      capture_session_id: "capture-1",
+      report_id: "rpt_0123456789abcdef0123456789abcdef",
+      share_url:
+        "https://donneeee.github.io/rlogs-website/?parse=rpt_0123456789abcdef0123456789abcdef&run=0#parse",
+      final_state: "submitted",
+      verification_tier: "replayed",
+      chunk_count: 4,
+      uploaded_chunk_count: 2,
+      uploaded_bytes: 2048,
+      resumed: true,
+      duplicate: false,
+    });
+
+    expect(result.uploaded_chunk_count).toBe(2);
+    expect(result.resumed).toBe(true);
+    expect(result).not.toHaveProperty("api_key");
   });
 });

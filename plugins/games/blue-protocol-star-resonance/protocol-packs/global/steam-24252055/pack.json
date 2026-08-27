@@ -289,9 +289,17 @@
       "service_name": "WorldNtf",
       "method_name": "SyncDungeonDirtyData",
       "message_name": "SyncDungeonDirtyData",
-      "confidence": "candidate",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/dungeon-no-wipe-001.json"
+        }
+      ],
       "features": ["dungeon", "dungeon_objective"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "encounter",
+      "decoder": "sync_dungeon_dirty_data_v1"
     },
     {
       "route": {
@@ -319,7 +327,9 @@
       "message_name": "SyncClientUseSkill",
       "confidence": "candidate",
       "features": ["skill"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "combat",
+      "decoder": "sync_client_use_skill_v1"
     },
     {
       "route": {
@@ -389,9 +399,39 @@
       "service_name": "GrpcTeamNtf",
       "method_name": "NoticeUpdateTeamMemberInfo",
       "message_name": "NoticeUpdateTeamMemberInfo",
-      "confidence": "candidate",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "protocol-packs/global/steam-24252055/observations/team-member-profile-001.json"
+        }
+      ],
       "features": ["party", "character_profile"],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "notify_team_member_info_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 966773353,
+        "method_id": 3
+      },
+      "service_name": "GrpcTeamNtf",
+      "method_name": "NotifyJoinTeam",
+      "message_name": "NotifyJoinTeam",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "reference-implementation-comparison",
+          "reference": "resonance-logs-global GrpcTeamNtf method 3; requires current-build live corroboration"
+        }
+      ],
+      "features": ["party", "character_profile", "equipment"],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "notify_join_team_v1"
     },
     {
       "route": {

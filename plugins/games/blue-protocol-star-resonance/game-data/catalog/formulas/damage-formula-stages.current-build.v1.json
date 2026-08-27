@@ -1,0 +1,300 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "client_build": "24252055",
+  "purpose": "UID-first proof ledger for exact, reversible rDPS counterfactuals",
+  "policy": {
+    "runtime_formula_authority": false,
+    "promotion_requires_exact_integer_conservation": true,
+    "packet_occurrence_and_provider_are_authoritative": true,
+    "game_table_rows_are_identity_and_coefficient_evidence_not_runtime_occurrence_evidence": true,
+    "unresolved_evidence_is_hidden": false,
+    "missing_packet_attribute_is_zero": false,
+    "derived_attributes_are_independent_multipliers": false
+  },
+  "proven_stages": [
+    {
+      "stage_id": "damage_attr_named_pve_inputs",
+      "scope": {
+        "table": "ctb.DamageAttrTable",
+        "current_rows": 5601,
+        "packet_damage_events": 166236,
+        "packet_events_with_ability_and_hit": 160678,
+        "unique_row_matches": 159688,
+        "unique_match_basis_points": 9938
+      },
+      "fields": {
+        "PVEDamageRadio": {
+          "row_offset": 28,
+          "unit": "basis_points",
+          "client_formula_occurrences": 383
+        },
+        "PVEFixedParameter": {
+          "row_offset": 32,
+          "unit": "whole_damage_units",
+          "client_formula_occurrences": 384
+        },
+        "PVEStunnedDamage": {
+          "row_offset": 40,
+          "unit": "whole_stagger_or_break_units",
+          "client_formula_occurrences": 215,
+          "is_hp_damage": false
+        }
+      },
+      "client_ui_expression": "physical_or_magical_attack * PVEDamageRadio + PVEFixedParameter",
+      "proof_state": "field_identity_and_units_proven_full_integer_formula_unresolved",
+      "generic_runtime_rule": false,
+      "unresolved_nested_fields": ["AbnormalDamage", "DamageWeight"],
+      "evidence": [
+        "game-data/catalog/formulas/damage-attr-field-layout.current-build.v1.json",
+        "protocol-packs/global/steam-24252055/observations/damage-attr-base-inputs-001.json"
+      ]
+    },
+    {
+      "stage_id": "action_hit_coefficient_2203291_7",
+      "scope": {
+        "ability_id": 2203291,
+        "hit_event_id": 7,
+        "damage_attr_row_id": 2220329107,
+        "critical": true,
+        "lucky": false
+      },
+      "inactive_coefficient": 15600,
+      "active_coefficient": 16600,
+      "external_effect_id": 55228,
+      "coefficient_delta": 1000,
+      "integer_formula": "observed_active = floor(latent_base * active_coefficient / 10000)",
+      "proof_state": "packet_proven_single_action_scope",
+      "generic_runtime_rule": false,
+      "evidence": "protocol-packs/global/steam-24252055/observations/target-vulnerability-55228-formula-001.json"
+    },
+    {
+      "stage_id": "versatility_to_ext_damage_alias",
+      "input_attribute_id": 11950,
+      "output_attribute_id": 11840,
+      "integer_formula": "output = floor(input * 35 / 100)",
+      "proof_state": "packet_proven",
+      "independent_axes": false,
+      "must_not_multiply_together": true,
+      "evidence": "game-data/catalog/formulas/fight-attribute-relations.current-build.v1.json"
+    },
+    {
+      "stage_id": "mastery_to_light_damage_derived_contribution",
+      "input_attribute_id": 11940,
+      "output_attribute_id": 13170,
+      "transition_formula": "delta(output) = floor(delta(input) * 60 / 100)",
+      "proof_scope": "isolated delayed transitions for entity 216009015936",
+      "delayed_exact_matches": 143,
+      "delayed_mismatches": 0,
+      "independent_axes": false,
+      "must_not_multiply_together": true,
+      "absolute_output_formula_proven": false,
+      "generic_runtime_rule": false,
+      "evidence": "protocol-packs/global/steam-24252055/observations/mastery-light-derived-relation-001.json"
+    },
+    {
+      "stage_id": "functional_amp_external_attribute_vector",
+      "external_effect_id": 2110143,
+      "source_configuration_id": 2110151,
+      "recipient_attribute_deltas": {
+        "physical_attack_percent": { "attribute_id": 11334, "delta_units": 360 },
+        "magical_attack_percent": { "attribute_id": 11344, "delta_units": 360 },
+        "attack_speed_family": { "attribute_ids": [11720, 11721, 11722], "delta_units": 360 },
+        "cast_speed_family": { "attribute_ids": [11730, 11731, 11732], "delta_units": 720 }
+      },
+      "unit": "ten_thousandths",
+      "proof_state": "packet_proven_reversible_static_coefficients",
+      "generic_runtime_rule": false,
+      "attribute_family_formula": "total=floor(add*(10000+percent)/10000); current=total+extra_add",
+      "strict_pair_current_attack_marginal": 167,
+      "accounting": "The percentage input and its derived current Attack are one counterfactual axis. Direct Attack and temporal action-opportunity stages remain separate and must not be double counted.",
+      "evidence": "protocol-packs/global/steam-24252055/observations/functional-amp-2110143-attribute-proof-001.json"
+    },
+    {
+      "stage_id": "critical_outcome_modifier",
+      "attribute_id": 12510,
+      "applies_when_packet_critical": true,
+      "proof_state": "packet_proven_for_team_luck_non_combined_outcomes",
+      "generic_stage_order_proven": false
+    },
+    {
+      "stage_id": "lucky_outcome_modifier",
+      "attribute_id": 12530,
+      "applies_when_packet_lucky": true,
+      "proof_state": "packet_proven_for_team_luck_non_combined_outcomes",
+      "generic_stage_order_proven": false
+    },
+    {
+      "stage_id": "inspiration_critical_chance_dynamic_add",
+      "external_effect_id": 2202041,
+      "source_configuration_id": 2202040,
+      "final_attribute_id": 11710,
+      "raw_add_attribute_id": 11712,
+      "integer_formula": "delta(final_attribute) = delta(raw_add_attribute)",
+      "packet_observed_deltas": [250, 300, 360],
+      "unit": "ten_thousandths",
+      "proof_state": "packet_proven_reversible_dynamic_magnitude",
+      "generic_runtime_rule": false,
+      "evidence": "protocol-packs/global/steam-24252055/observations/inspiration-chance-stage-001.json"
+    },
+    {
+      "stage_id": "inspiration_lucky_chance_dynamic_add",
+      "external_effect_id": 2202041,
+      "source_configuration_id": 2202040,
+      "final_attribute_id": 11780,
+      "raw_add_attribute_id": 11782,
+      "integer_formula": "delta(final_attribute) = delta(raw_add_attribute)",
+      "packet_observed_deltas": [300, 360],
+      "unit": "ten_thousandths",
+      "proof_state": "packet_proven_reversible_dynamic_magnitude",
+      "generic_runtime_rule": false,
+      "evidence": "protocol-packs/global/steam-24252055/observations/inspiration-chance-stage-001.json"
+    },
+    {
+      "stage_id": "inspiration_combined_critical_lucky_occurrence",
+      "external_effect_id": 2202041,
+      "source_configuration_id": 2202040,
+      "packet_component": {
+        "normal_value": null,
+        "value_source": "lucky_value",
+        "critical_type_flag": 1,
+        "hit_event_id": 3,
+        "damage_source": 2
+      },
+      "integer_formula": "D*(dl*C*(10000+cd)+cd*dc*(L-dl))/(L*C*(10000+cd))",
+      "accounting": "One joint rational owns the provider-caused Lucky occurrences plus the provider-caused critical bonus on the remaining Lucky occurrences; their intersection is assigned exactly once.",
+      "packet_candidates": 428,
+      "exact_external_window_candidates": 20,
+      "exact_joint_contributions": 20,
+      "unattributed_candidates_retained": 408,
+      "arithmetic_overflows": 0,
+      "proof_state": "packet_proven_component_identity_and_exact_joint_counterfactual",
+      "generic_runtime_rule": false,
+      "evidence": "protocol-packs/global/steam-24252055/observations/inspiration-combined-chance-stage-001.json"
+    },
+    {
+      "stage_id": "inspiration_provider_full_bloom_potency_snapshot",
+      "external_effect_id": 2202041,
+      "source_configuration_id": 2202040,
+      "provider_mode_effect_id": 2404271,
+      "provider_mode_source_configuration_id": 2404270,
+      "snapshot_boundary": "latest exact Inspiration apply or refresh for the same effect instance",
+      "normal_raw_add_deltas": {
+        "primary_stats": 540,
+        "critical_chance": 300,
+        "lucky_chance": 300,
+        "mastery": 300,
+        "versatility": 300
+      },
+      "full_bloom_raw_add_deltas": {
+        "primary_stats": 648,
+        "critical_chance": 360,
+        "lucky_chance": 360,
+        "mastery": 360,
+        "versatility": 360
+      },
+      "potency_ratio": "6/5",
+      "exact_isolated_transitions": 12,
+      "contradictions": 0,
+      "recipient_full_bloom_is_sufficient": false,
+      "proof_state": "packet_proven_provider_snapshot_mode_switch",
+      "generic_runtime_rule": false,
+      "evidence": "protocol-packs/global/steam-24252055/observations/inspiration-full-bloom-provider-snapshot-001.json"
+    },
+    {
+      "stage_id": "inspiration_physical_attack_family_vector",
+      "external_effect_id": 2202041,
+      "base_add_attribute_id": 11332,
+      "intermediate_attribute_id": 11331,
+      "final_attribute_id": 11330,
+      "raw_percent_attribute_id": 11334,
+      "integer_formula": "intermediate=floor(base_add*(10000+raw_percent)/10000)",
+      "exact_wire_input_transitions": 86,
+      "exact_intermediate_delta_matches": 86,
+      "mismatches": 0,
+      "standard_damage_attr_replay": {
+        "filtered_recipient_entity_uuid": 216009015936,
+        "packet_proven_base_add_delta": 360,
+        "external_damage_events": 31362,
+        "exact_family_reversals": 31267,
+        "unique_standard_damage_attr_rows": 30159,
+        "exact_conserved_share_events": 30159,
+        "exact_conserved_share_observed_damage": 3326630368,
+        "exact_denominator_buckets": 594,
+        "conservation_failures": 0
+      },
+      "independent_axes": false,
+      "must_not_credit_raw_and_derived_values_separately": true,
+      "proof_state": "packet_proven_dynamic_attribute_family_and_exact_conserved_standard_damage_attr_attack_stage",
+      "generic_runtime_rule": false,
+      "evidence": [
+        "protocol-packs/global/steam-24252055/observations/inspiration-full-bloom-provider-snapshot-001.json",
+        "protocol-packs/global/steam-24252055/observations/inspiration-attack-stage-001.json"
+      ]
+    }
+  ],
+  "unresolved_stages": [
+    {
+      "stage_id": "attack_power_and_defense",
+      "source_attribute_ids": [11330, 11340, 11410, 11430, 11500, 12790, 12800],
+      "target_attribute_ids": [11350, 11360, 11370, 11380, 11390, 11400, 13200, 13210, 13220, 13230, 13240, 13250, 13260, 13270, 13280],
+      "proof_state": "damage_attr_inputs_named_and_packet_rows_correlated_but_full_integer_stage_unresolved",
+      "known_boundary": "PVEFixedParameter is a whole-number term and must never be interpreted as a percentage; exact placement relative to PVEDamageRadio, refined or elemental attack, defense, season, and outgoing buckets remains under proof",
+      "evidence": "protocol-packs/global/steam-24252055/observations/damage-attr-base-inputs-001.json"
+    },
+    {
+      "stage_id": "season_strength_and_weakness",
+      "source_attribute_ids": [11440, 11450],
+      "target_attribute_ids": [11440],
+      "proof_state": "source_11450_exactly_mirrors_target_11440_when_both_are_packet_observed; numeric stage unresolved",
+      "current_build_identity": "Across 151014 comparable current-build damage events, source attribute 11450 equaled the current target's 11440 with zero mismatches. The static FightAttrTable label does not override that packet behavior.",
+      "runtime_policy": "Use 11450 only as the packet-observed target-season input. Do not enable a season counterfactual until the transform, row selection, caps, and integer rounding order replay exactly.",
+      "evidence": "protocol-packs/global/steam-24252055/observations/season-target-input-001.json"
+    },
+    {
+      "stage_id": "mastery",
+      "source_attribute_ids": [11940, 13170],
+      "proof_state": "derived_light_transition_exact_but_authoritative_damage_stage_and_snapshot_boundary_unresolved",
+      "runtime_policy": "never multiply Mastery and its derived Light Damage contribution as independent stages"
+    },
+    {
+      "stage_id": "outgoing_damage_buckets",
+      "source_attribute_ids": [11830, 11840, 11860, 11870, 11880, 11900, 12550, 12570, 12590, 12610, 12630, 12650, 12670, 12690, 12710, 12730, 12750, 13100, 13110, 13120, 13130, 13140, 13150, 13160, 13170, 13180],
+      "proof_state": "packet_observed_bucket_membership_and_stage_order_unresolved"
+    },
+    {
+      "stage_id": "target_damage_reduction_buckets",
+      "target_attribute_ids": [11850, 11890, 12520, 12540, 12560, 12580, 12600, 12620, 12640, 12660, 12680, 12700, 12760, 13310, 13320, 13330, 13340, 13350, 13360, 13370, 13380, 13390],
+      "proof_state": "packet_observed_bucket_membership_and_stage_order_unresolved"
+    },
+    {
+      "stage_id": "combined_critical_and_lucky_outcomes",
+      "source_attribute_ids": [12510, 12530],
+      "proof_state": "ordering_and_rounding_unresolved"
+    },
+    {
+      "stage_id": "complete_inspiration_effect",
+      "effect_id": 2202041,
+      "source_attribute_ids": [11012, 11022, 11032, 11042, 11712, 11782, 11930, 11942, 11952],
+      "proof_state": "provider_potency_snapshot_raw_attribute_vector_standard_attack_damage_and_chance_counterfactuals_exact_but_external_damage_mastery_and_haste_complete_formula_counterfactuals_unresolved",
+      "focused_formula_replay": {
+        "ability_id": 2031109,
+        "samples": 833,
+        "samples_with_complete_source_formula_state": 335,
+        "strict_single_axis_controlled_groups": 0
+      },
+      "runtime_policy": "do_not_emit_partial_effect_total",
+      "evidence": "protocol-packs/global/steam-24252055/observations/inspiration-formula-isolation-gap-001.json"
+    },
+    {
+      "stage_id": "cast_snapshot_boundary",
+      "route": {
+        "service_id": 1664308034,
+        "method_id": 67,
+        "direction": "server_to_client"
+      },
+      "proof_state": "route_absent_from_current_control_capture",
+      "runtime_fallback": "retain packet damage and attribute snapshots without inventing a cast timestamp"
+    }
+  ]
+}

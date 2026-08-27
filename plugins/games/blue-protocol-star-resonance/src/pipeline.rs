@@ -1,13 +1,14 @@
 use rlogs_capture::CapturedFrame;
 use rlogs_core::{
-    GameConnectionFilter, TransportDirection, TransportGap, TransportOutput, TransportPipeline,
+    ConnectionFilterError, GameConnection, GameConnectionFilter, TransportDirection, TransportGap,
+    TransportOutput, TransportPipeline,
 };
 use rlogs_network::IpEndpoint;
 
 use crate::{
-    BpsrFramerSet, BpsrFramingEvent, BpsrFramingIssueReason, CaptureGap, CaptureGapKind,
-    CaptureRecordDraft, CaptureRecordKind, NetworkEndpoint, PacketDirection, PacketEnvelope,
-    PacketPayload,
+    BpsrFramerSet, BpsrFramerSetConfig, BpsrFramerSetConfigError, BpsrFramingEvent,
+    BpsrFramingIssueReason, CaptureGap, CaptureGapKind, CaptureRecordDraft, CaptureRecordKind,
+    NetworkEndpoint, PacketDirection, PacketEnvelope, PacketPayload,
 };
 
 /// BPSR's framing layer over Core's game-neutral reconstructed TCP streams.
@@ -22,13 +23,25 @@ pub struct ResearchPipeline {
 
 impl ResearchPipeline {
     pub fn new(connections: GameConnectionFilter) -> Self {
-        Self {
+        Self::try_with_framing_config(connections, BpsrFramerSetConfig::default())
+            .expect("the built-in BPSR framing configuration is valid")
+    }
+
+    /// Constructs a research pipeline with an explicit framing variant.
+    /// Production callers should use the exact-build protocol-pack choice;
+    /// offline acquisition tools may opt into a candidate variant while
+    /// retaining its non-authoritative provenance.
+    pub fn try_with_framing_config(
+        connections: GameConnectionFilter,
+        framing: BpsrFramerSetConfig,
+    ) -> Result<Self, BpsrFramerSetConfigError> {
+        Ok(Self {
             transport: TransportPipeline::new(connections.clone()),
             connections,
-            framing: BpsrFramerSet::new(),
+            framing: BpsrFramerSet::try_with_config(framing)?,
             capture_start_unix_micros: None,
             last_observed_micros: 0,
-        }
+        })
     }
 
     pub fn process_frame(
@@ -52,6 +65,20 @@ impl ResearchPipeline {
                 &mut emit,
             );
         });
+    }
+
+    /// Extends a live process-owned pipeline when the game opens another TCP
+    /// socket. Existing stream and framing state remains intact.
+    pub fn try_add_connection(
+        &mut self,
+        connection: GameConnection,
+    ) -> Result<bool, ConnectionFilterError> {
+        let added = self.connections.try_add_connection(connection)?;
+        if added {
+            let transport_added = self.transport.try_add_connection(connection)?;
+            debug_assert!(transport_added);
+        }
+        Ok(added)
     }
 
     pub fn finish(&mut self, mut emit: impl FnMut(CaptureRecordDraft)) {

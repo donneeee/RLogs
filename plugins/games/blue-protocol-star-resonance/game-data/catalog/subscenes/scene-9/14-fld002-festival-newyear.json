@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "kind": "sub_scene",
+  "id": 14,
+  "stable_key": "subscene.14",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "subscene_id": 14,
+    "subscene_type_id": 2,
+    "resource_path": "scenes/fld002_festival_newyear",
+    "owner_scene_ids": [
+      9
+    ],
+    "owner_scene_keys": [
+      "scene.9"
+    ],
+    "resource_scene_ids": [
+      9,
+      8001,
+      8005,
+      8006,
+      8020,
+      8021
+    ],
+    "resource_scene_keys": [
+      "scene.9",
+      "scene.8001",
+      "scene.8005",
+      "scene.8006",
+      "scene.8020",
+      "scene.8021"
+    ],
+    "activation_conditions": [
+      [
+        9,
+        40047
+      ]
+    ]
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SubSceneTable+SceneTable",
+    "reference": "client-build:global/steam/24252055@sha256:4291adf495848b5277daa4a49b5ba2a0a3a8156028bec2bd2f5ecbcfd51c4552",
+    "confidence": "verified"
+  }
+}

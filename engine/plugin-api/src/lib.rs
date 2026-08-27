@@ -65,6 +65,10 @@ pub struct PluginWorkspaceTab {
     pub entrypoint: String,
     #[serde(default)]
     pub kind: PluginWorkspaceTabKind,
+    /// Stable section slug. Tabs in the same section stay adjacent and can be
+    /// moved as one block. Omitted tabs belong to the owner's `main` section.
+    #[serde(default)]
+    pub section: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,8 +94,29 @@ pub struct PluginWorkspaceTabContribution {
     pub entrypoint: String,
     #[serde(default)]
     pub kind: PluginWorkspaceTabKind,
+    /// Stable section slug within the contributing plug-in. Contributions
+    /// default to that plug-in's `main` section.
+    #[serde(default)]
+    pub section: Option<String>,
     /// Owner tabs occupy their declared order starting at zero. Contributions
     /// default after them but can request a deliberate relative position.
+    #[serde(default = "default_workspace_tab_contribution_order")]
+    pub default_order: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginSettingsTabContribution {
+    /// Stable only within the contributing plug-in. The host namespaces it by
+    /// contributor ID so independent packages cannot collide.
+    pub id: String,
+    pub label: String,
+    /// Browser surface relative to the contributing plug-in's package root.
+    pub entrypoint: String,
+    /// Stable section slug within the contributing plug-in.
+    #[serde(default)]
+    pub section: Option<String>,
+    /// Settings is the only host-owned UI target. Plug-ins choose their own
+    /// placement within it instead of being named by Core.
     #[serde(default = "default_workspace_tab_contribution_order")]
     pub default_order: i32,
 }
@@ -225,6 +250,11 @@ pub struct PluginManifest {
     /// must also be declared as a dependency.
     #[serde(default)]
     pub workspace_tab_contributions: Vec<PluginWorkspaceTabContribution>,
+    /// Tabs contributed to the host-owned Settings destination. Core knows the
+    /// destination exists, but does not know which feature plug-ins will appear
+    /// there.
+    #[serde(default)]
+    pub settings_tab_contributions: Vec<PluginSettingsTabContribution>,
 }
 
 impl PluginManifest {
@@ -329,6 +359,9 @@ impl PluginManifest {
                     });
                 }
                 validate_relative_path("workspace tab entrypoint", &tab.entrypoint)?;
+                if let Some(section) = &tab.section {
+                    validate_slug("workspace tab section", section)?;
+                }
                 if tab.kind == PluginWorkspaceTabKind::Options {
                     if has_options {
                         return Err(ManifestError::DuplicateOptionsTab);
@@ -339,6 +372,17 @@ impl PluginManifest {
         }
 
         if !self.workspace_tab_contributions.is_empty() {
+            if !self
+                .capabilities
+                .contains(&PluginCapability::UiWorkspacePublish)
+            {
+                return Err(ManifestError::WorkspaceWithoutCapability);
+            }
+            if self.runtime == PluginRuntime::DataOnly {
+                return Err(ManifestError::DataOnlyWorkspace);
+            }
+        }
+        if !self.settings_tab_contributions.is_empty() {
             if !self
                 .capabilities
                 .contains(&PluginCapability::UiWorkspacePublish)
@@ -371,12 +415,42 @@ impl PluginManifest {
                 "workspace tab contribution entrypoint",
                 &contribution.entrypoint,
             )?;
+            if let Some(section) = &contribution.section {
+                validate_slug("workspace tab contribution section", section)?;
+            }
             if !contributed_tabs.insert((
                 contribution.target_plugin_id.as_str(),
                 contribution.id.as_str(),
             )) {
                 return Err(ManifestError::DuplicateWorkspaceTabContribution {
                     target_plugin_id: contribution.target_plugin_id.clone(),
+                    tab: contribution.id.clone(),
+                });
+            }
+        }
+        let mut contributed_settings_tabs = BTreeSet::new();
+        for contribution in &self.settings_tab_contributions {
+            validate_slug("settings tab contribution id", &contribution.id)?;
+            let label = contribution.label.trim();
+            if label.is_empty() {
+                return Err(ManifestError::EmptyWorkspaceTabLabel {
+                    tab: contribution.id.clone(),
+                });
+            }
+            if label.chars().count() > 48 {
+                return Err(ManifestError::WorkspaceTabLabelTooLong {
+                    tab: contribution.id.clone(),
+                });
+            }
+            validate_relative_path(
+                "settings tab contribution entrypoint",
+                &contribution.entrypoint,
+            )?;
+            if let Some(section) = &contribution.section {
+                validate_slug("settings tab contribution section", section)?;
+            }
+            if !contributed_settings_tabs.insert(contribution.id.as_str()) {
+                return Err(ManifestError::DuplicateSettingsTabContribution {
                     tab: contribution.id.clone(),
                 });
             }
@@ -628,6 +702,9 @@ pub enum ManifestError {
         tab: String,
     },
 
+    #[error("duplicate Settings tab contribution {tab}")]
+    DuplicateSettingsTabContribution { tab: String },
+
     #[error("a tab contribution to {target_plugin_id} requires a declared dependency")]
     WorkspaceTabContributionWithoutDependency { target_plugin_id: String },
 
@@ -726,6 +803,7 @@ mod tests {
             hooks: Vec::new(),
             workspace: None,
             workspace_tab_contributions: Vec::new(),
+            settings_tab_contributions: Vec::new(),
         }
     }
 
@@ -873,12 +951,14 @@ resource = "aliases"
                     label: "Profile".into(),
                     entrypoint: "ui/profile.html".into(),
                     kind: PluginWorkspaceTabKind::Content,
+                    section: None,
                 },
                 PluginWorkspaceTab {
                     id: "options".into(),
                     label: "Options".into(),
                     entrypoint: "ui/options.html".into(),
                     kind: PluginWorkspaceTabKind::Options,
+                    section: None,
                 },
             ],
         });
@@ -897,6 +977,7 @@ resource = "aliases"
                 label: "Live".into(),
                 entrypoint: "web/live.html".into(),
                 kind: PluginWorkspaceTabKind::Content,
+                section: None,
             }],
         });
 
@@ -921,12 +1002,14 @@ resource = "aliases"
                     label: "Live".into(),
                     entrypoint: "web/live.html".into(),
                     kind: PluginWorkspaceTabKind::Content,
+                    section: None,
                 },
                 PluginWorkspaceTab {
                     id: "live".into(),
                     label: "Options".into(),
                     entrypoint: "../options.html".into(),
                     kind: PluginWorkspaceTabKind::Options,
+                    section: None,
                 },
             ],
         });
@@ -965,6 +1048,7 @@ resource = "aliases"
                 label: "Modules".into(),
                 entrypoint: "ui/profile-modules.html".into(),
                 kind: PluginWorkspaceTabKind::Content,
+                section: None,
                 default_order: 200,
             });
 
@@ -985,6 +1069,7 @@ resource = "aliases"
                 label: "Extra".into(),
                 entrypoint: "web/extra.html".into(),
                 kind: PluginWorkspaceTabKind::Content,
+                section: None,
                 default_order: 1_000,
             });
 
@@ -993,6 +1078,35 @@ resource = "aliases"
             Err(ManifestError::WorkspaceTabContributionWithoutDependency {
                 target_plugin_id: "app.rlogs.character-profiles".into(),
             },)
+        );
+    }
+
+    #[test]
+    fn a_settings_tab_is_owned_and_ordered_by_its_plugin_manifest() {
+        let mut plugin = manifest(PluginRuntime::BrowserOverlay);
+        plugin.id = "app.rlogs.themes".into();
+        plugin
+            .capabilities
+            .insert(PluginCapability::UiWorkspacePublish);
+        plugin
+            .settings_tab_contributions
+            .push(PluginSettingsTabContribution {
+                id: "appearance".into(),
+                label: "Appearance".into(),
+                entrypoint: "ui/settings.html".into(),
+                section: Some("theme".into()),
+                default_order: 200,
+            });
+
+        assert_eq!(plugin.validate(), Ok(()));
+        plugin
+            .settings_tab_contributions
+            .push(plugin.settings_tab_contributions[0].clone());
+        assert_eq!(
+            plugin.validate(),
+            Err(ManifestError::DuplicateSettingsTabContribution {
+                tab: "appearance".into(),
+            })
         );
     }
 }

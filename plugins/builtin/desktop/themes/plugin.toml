@@ -1,0 +1,17 @@
+schema_version = 1
+id = "app.rlogs.themes"
+name = "Themes"
+version = "0.1.0"
+api_version = 1
+runtime = "browser_overlay"
+entrypoint = "ui/runtime.html"
+capabilities = ["ui_workspace_publish"]
+subscriptions = []
+allowed_network_domains = []
+
+[[settings_tab_contributions]]
+id = "appearance"
+label = "Appearance"
+entrypoint = "ui/settings.html"
+section = "appearance"
+default_order = 200

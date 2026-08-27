@@ -1,0 +1,579 @@
+{
+  "schema_version": 2,
+  "game_build": "24687926",
+  "source_game_build": "24252055",
+  "runtime_rules_enabled": false,
+  "current_build_identity_state": "static-inventory-present-historical-candidates-only",
+  "current_build_inventory": {
+    "path": "../catalog/psychoscope-factors/current-build-static-inventory.candidate.v1.json",
+    "bytes": 1867,
+    "sha256": "3d6a82102e7d21324d7289c6225dd1809bbcc1b86281fa99ddadfe8a38b740f4",
+    "source_count": 7,
+    "row_count": 9293,
+    "active_factor_rules": 0
+  },
+  "season_id": 3,
+  "default_policy": "retain_raw_actions_disable_rdps_until_formula_review",
+  "recount_parents": [
+    {
+      "recount_group_id": 84,
+      "name": "Powerdraw",
+      "activation_ability_ids": [2233],
+      "observed_child_action_ids": [],
+      "damage_ids": [122330103]
+    },
+    {
+      "recount_group_id": 85,
+      "name": "Radiance Barrage",
+      "activation_ability_ids": [2234],
+      "observed_child_action_ids": [55240],
+      "damage_ids": [25524003, 25524004]
+    },
+    {
+      "recount_group_id": 87,
+      "name": "Blast Shot",
+      "activation_ability_ids": [2238],
+      "observed_child_action_ids": [55231, 220110],
+      "damage_ids": [25523102, 322011000]
+    },
+    {
+      "recount_group_id": 88,
+      "name": "Deter Shot",
+      "activation_ability_ids": [2235],
+      "observed_child_action_ids": [220109],
+      "damage_ids": [322010900]
+    },
+    {
+      "recount_group_id": 94,
+      "name": "Falcon Strike",
+      "activation_ability_ids": [],
+      "observed_child_action_ids": [],
+      "damage_ids": [2220329107]
+    },
+    {
+      "recount_group_id": 95,
+      "name": "Falcon Lightning Strike",
+      "activation_ability_ids": [],
+      "observed_child_action_ids": [],
+      "damage_ids": [2220329109]
+    },
+    {
+      "recount_group_id": 96,
+      "name": "Phantom Falcon",
+      "activation_ability_ids": [1153],
+      "observed_child_action_ids": [2296, 220113],
+      "damage_ids": [122960102, 322011300]
+    },
+    {
+      "recount_group_id": 97,
+      "name": "Celestial Eagle",
+      "activation_ability_ids": [1160, 2241],
+      "observed_child_action_ids": [2352],
+      "damage_ids": [123520101, 123520103]
+    },
+    {
+      "recount_group_id": 106,
+      "name": "Explosive Arrow",
+      "activation_ability_ids": [1131],
+      "observed_child_action_ids": [220108],
+      "damage_ids": [2220331101, 322010800]
+    }
+  ],
+  "factors": [
+    {
+      "item_id": 20020397,
+      "family_id": 202140,
+      "grade": 7,
+      "category": "inspiration",
+      "class_id": 11,
+      "primary_buff_id": 3053070,
+      "evidence": "current_build_localized_description_recount_bridge",
+      "stat_modifiers": [],
+      "energy_relations": [
+        {
+          "resource": "illusion_energy",
+          "direction": "generate",
+          "amount": 51,
+          "threshold": null,
+          "trigger_recount_group_id": 95,
+          "requires_damage_event": true,
+          "once_per_action": false
+        }
+      ],
+      "action_relations": [
+        {
+          "kind": "damage_amplification",
+          "condition": "always",
+          "damage_domain": "illusion_breaking",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": 95,
+          "value": 2376,
+          "unit": "basis_points",
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        }
+      ],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20020420,
+      "family_id": 202142,
+      "grade": 10,
+      "category": "inspiration",
+      "class_id": 11,
+      "primary_buff_id": 3053090,
+      "evidence": "current_build_localized_description_recount_bridge",
+      "stat_modifiers": [],
+      "energy_relations": [
+        {
+          "resource": "illusion_energy",
+          "direction": "generate",
+          "amount": 30,
+          "threshold": null,
+          "trigger_recount_group_id": 85,
+          "requires_damage_event": true,
+          "once_per_action": true
+        }
+      ],
+      "action_relations": [
+        {
+          "kind": "damage_amplification",
+          "condition": "always",
+          "damage_domain": "illusion_breaking",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": 85,
+          "value": 2060,
+          "unit": "basis_points",
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        },
+        {
+          "kind": "hit_count_per_haste",
+          "condition": "always",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": 85,
+          "value": 400,
+          "unit": "haste_basis_points_per_hit",
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        }
+      ],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20020425,
+      "family_id": 202143,
+      "grade": 5,
+      "category": "inspiration",
+      "class_id": 11,
+      "primary_buff_id": 3053100,
+      "evidence": "current_build_localized_description_recount_bridge",
+      "stat_modifiers": [],
+      "energy_relations": [
+        {
+          "resource": "illusion_energy",
+          "direction": "generate",
+          "amount": 92,
+          "threshold": null,
+          "trigger_recount_group_id": 106,
+          "requires_damage_event": false,
+          "once_per_action": true
+        }
+      ],
+      "action_relations": [
+        {
+          "kind": "damage_amplification",
+          "condition": "after_trigger",
+          "damage_domain": "illusion_breaking",
+          "trigger_recount_group_id": 87,
+          "target_recount_group_id": 94,
+          "value": 744,
+          "unit": "basis_points",
+          "duration_ms": 10000,
+          "internal_cooldown_ms": null
+        },
+        {
+          "kind": "damage_amplification",
+          "condition": "after_trigger",
+          "damage_domain": "illusion_breaking",
+          "trigger_recount_group_id": 87,
+          "target_recount_group_id": 95,
+          "value": 744,
+          "unit": "basis_points",
+          "duration_ms": 10000,
+          "internal_cooldown_ms": null
+        },
+        {
+          "kind": "damage_amplification",
+          "condition": "after_trigger",
+          "damage_domain": "illusion_breaking",
+          "trigger_recount_group_id": 87,
+          "target_recount_group_id": 96,
+          "value": 744,
+          "unit": "basis_points",
+          "duration_ms": 10000,
+          "internal_cooldown_ms": null
+        }
+      ],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20020427,
+      "family_id": 202143,
+      "grade": 7,
+      "category": "inspiration",
+      "class_id": 11,
+      "primary_buff_id": 3053100,
+      "evidence": "current_build_localized_description_recount_bridge",
+      "stat_modifiers": [],
+      "energy_relations": [
+        {
+          "resource": "illusion_energy",
+          "direction": "generate",
+          "amount": 92,
+          "threshold": null,
+          "trigger_recount_group_id": 106,
+          "requires_damage_event": false,
+          "once_per_action": true
+        }
+      ],
+      "action_relations": [
+        {
+          "kind": "damage_amplification",
+          "condition": "after_trigger",
+          "damage_domain": "illusion_breaking",
+          "trigger_recount_group_id": 87,
+          "target_recount_group_id": 94,
+          "value": 1006,
+          "unit": "basis_points",
+          "duration_ms": 10000,
+          "internal_cooldown_ms": null
+        },
+        {
+          "kind": "damage_amplification",
+          "condition": "after_trigger",
+          "damage_domain": "illusion_breaking",
+          "trigger_recount_group_id": 87,
+          "target_recount_group_id": 95,
+          "value": 1006,
+          "unit": "basis_points",
+          "duration_ms": 10000,
+          "internal_cooldown_ms": null
+        },
+        {
+          "kind": "damage_amplification",
+          "condition": "after_trigger",
+          "damage_domain": "illusion_breaking",
+          "trigger_recount_group_id": 87,
+          "target_recount_group_id": 96,
+          "value": 1006,
+          "unit": "basis_points",
+          "duration_ms": 10000,
+          "internal_cooldown_ms": null
+        }
+      ],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20020887,
+      "family_id": 202189,
+      "grade": 7,
+      "category": "polarity",
+      "class_id": null,
+      "primary_buff_id": null,
+      "evidence": "exact_current_build_direct_attribute",
+      "stat_modifiers": [
+        {
+          "stat": "elemental_power",
+          "attribute_id": 13002,
+          "value": 268,
+          "unit": "flat",
+          "trigger_recount_group_id": null,
+          "formula_input_role": "outgoing_elemental_power",
+          "credit_policy": "owner_only_no_rdps"
+        }
+      ],
+      "energy_relations": [],
+      "action_relations": [],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20020927,
+      "family_id": 202193,
+      "grade": 7,
+      "category": "polarity",
+      "class_id": null,
+      "primary_buff_id": 3058050,
+      "evidence": "exact_current_build_description",
+      "stat_modifiers": [
+        {
+          "stat": "critical_gain",
+          "attribute_id": null,
+          "value": 783,
+          "unit": "basis_points",
+          "trigger_recount_group_id": null,
+          "formula_input_role": "critical_gain",
+          "credit_policy": "owner_only_no_rdps"
+        },
+        {
+          "stat": "mastery_gain",
+          "attribute_id": null,
+          "value": -470,
+          "unit": "basis_points",
+          "trigger_recount_group_id": null,
+          "formula_input_role": "mastery_gain",
+          "credit_policy": "owner_only_no_rdps"
+        }
+      ],
+      "energy_relations": [],
+      "action_relations": [],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20021025,
+      "family_id": 202203,
+      "grade": 5,
+      "category": "stasis",
+      "class_id": null,
+      "primary_buff_id": null,
+      "evidence": "exact_current_build_direct_attribute",
+      "stat_modifiers": [
+        {
+          "stat": "max_health",
+          "attribute_id": 11322,
+          "value": 4200,
+          "unit": "flat",
+          "trigger_recount_group_id": null,
+          "formula_input_role": "maximum_health_surface",
+          "credit_policy": "owner_only_no_rdps"
+        },
+        {
+          "stat": "max_health",
+          "attribute_id": 11324,
+          "value": 94,
+          "unit": "basis_points",
+          "trigger_recount_group_id": null,
+          "formula_input_role": "maximum_health_surface",
+          "credit_policy": "owner_only_no_rdps"
+        }
+      ],
+      "energy_relations": [],
+      "action_relations": [],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20021035,
+      "family_id": 202204,
+      "grade": 5,
+      "category": "stasis",
+      "class_id": null,
+      "primary_buff_id": 3059050,
+      "evidence": "exact_current_build_description",
+      "stat_modifiers": [
+        {
+          "stat": "max_health",
+          "attribute_id": null,
+          "value": 1400,
+          "unit": "flat",
+          "trigger_recount_group_id": null,
+          "formula_input_role": "maximum_health_surface",
+          "credit_policy": "owner_only_no_rdps"
+        }
+      ],
+      "energy_relations": [],
+      "action_relations": [
+        {
+          "kind": "lethal_damage_reduction",
+          "condition": "on_lethal_incoming_damage",
+          "damage_domain": "incoming_any",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": null,
+          "value": 2388,
+          "unit": "basis_points",
+          "duration_ms": null,
+          "internal_cooldown_ms": 30000
+        }
+      ],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20021155,
+      "family_id": 202216,
+      "grade": 5,
+      "category": "stasis",
+      "class_id": 11,
+      "primary_buff_id": 3059170,
+      "evidence": "current_build_localized_description_recount_bridge",
+      "stat_modifiers": [
+        {
+          "stat": "magic_damage_resistance",
+          "attribute_id": null,
+          "value": 1555,
+          "unit": "basis_points",
+          "trigger_recount_group_id": 88,
+          "formula_input_role": "incoming_magic_resistance",
+          "credit_policy": "owner_only_no_rdps"
+        }
+      ],
+      "energy_relations": [],
+      "action_relations": [
+        {
+          "kind": "cooldown_reduction",
+          "condition": "always",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": 88,
+          "value": 1800,
+          "unit": "milliseconds",
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        }
+      ],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20021394,
+      "family_id": 202240,
+      "grade": 4,
+      "category": "rhapsody",
+      "class_id": 11,
+      "primary_buff_id": 3053150,
+      "evidence": "current_build_localized_description_recount_bridge",
+      "stat_modifiers": [],
+      "energy_relations": [],
+      "action_relations": [
+        {
+          "kind": "trigger_action",
+          "condition": "after_trigger",
+          "trigger_recount_group_id": 84,
+          "target_recount_group_id": 85,
+          "value": null,
+          "unit": null,
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        },
+        {
+          "kind": "trigger_action",
+          "condition": "after_trigger",
+          "trigger_recount_group_id": 85,
+          "target_recount_group_id": 84,
+          "value": null,
+          "unit": null,
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        },
+        {
+          "kind": "damage_amplification",
+          "condition": "always",
+          "damage_domain": "illusion_breaking",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": 84,
+          "value": 2500,
+          "unit": "basis_points",
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        },
+        {
+          "kind": "damage_amplification",
+          "condition": "always",
+          "damage_domain": "illusion_breaking",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": 85,
+          "value": 2500,
+          "unit": "basis_points",
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        }
+      ],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20021947,
+      "family_id": 202295,
+      "grade": 7,
+      "category": "reality",
+      "class_id": 11,
+      "primary_buff_id": 3053430,
+      "evidence": "current_build_localized_description_recount_bridge",
+      "stat_modifiers": [],
+      "energy_relations": [
+        {
+          "resource": "illusion_energy",
+          "direction": "consume_at_threshold",
+          "amount": 100,
+          "threshold": 100,
+          "trigger_recount_group_id": null,
+          "requires_damage_event": false,
+          "once_per_action": true
+        }
+      ],
+      "action_relations": [
+        {
+          "kind": "trigger_action",
+          "condition": "at_energy_threshold",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": 84,
+          "value": null,
+          "unit": null,
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        },
+        {
+          "kind": "cooldown_reduction",
+          "condition": "while_on_cooldown_at_energy_threshold",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": 84,
+          "value": 4666,
+          "unit": "milliseconds",
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        }
+      ],
+      "attribution_enabled": false
+    },
+    {
+      "item_id": 20021967,
+      "family_id": 202297,
+      "grade": 7,
+      "category": "reality",
+      "class_id": 11,
+      "primary_buff_id": 3053450,
+      "evidence": "current_build_localized_description_recount_bridge",
+      "stat_modifiers": [],
+      "energy_relations": [
+        {
+          "resource": "illusion_energy",
+          "direction": "consume_at_threshold",
+          "amount": 360,
+          "threshold": 360,
+          "trigger_recount_group_id": null,
+          "requires_damage_event": true,
+          "once_per_action": true
+        }
+      ],
+      "action_relations": [
+        {
+          "kind": "trigger_action",
+          "condition": "on_damage_at_energy_threshold",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": 97,
+          "value": null,
+          "unit": null,
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        },
+        {
+          "kind": "damage_amplification",
+          "condition": "triggered_instance_only",
+          "damage_domain": "illusion",
+          "trigger_recount_group_id": null,
+          "target_recount_group_id": 97,
+          "value": 3600,
+          "unit": "basis_points",
+          "duration_ms": null,
+          "internal_cooldown_ms": null
+        }
+      ],
+      "attribution_enabled": false
+    }
+  ]
+}

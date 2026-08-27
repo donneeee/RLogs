@@ -19,14 +19,17 @@ rlogs-plugin-host = { path = "../../engine/plugin-host" }
 rlogs-plugin-runtime = { path = "../../engine/plugin-runtime" }
 rlogs-profiles = { path = "../../engine/profiles" }
 rlogs-submission = { path = "../../engine/submission" }
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_Security_Credentials",
     "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Threading",
 ] }
 
 [dev-dependencies]

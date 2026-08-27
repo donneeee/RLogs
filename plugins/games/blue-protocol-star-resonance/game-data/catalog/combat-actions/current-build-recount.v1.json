@@ -1,0 +1,3743 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "generation_scope": "all-unambiguous-current-build-recount-actions",
+  "actions": [
+    {
+      "ability_id": 1203,
+      "kind": "base-skill",
+      "localization_key": "recount_group.26.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1203 belongs to RecountTable group 26: 112030101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1216,
+      "kind": "base-skill",
+      "localization_key": "recount_group.31.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 1216 belongs to RecountTable group 31: 112160101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1240,
+      "kind": "base-skill",
+      "localization_key": "recount_group.34.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_kx08.png",
+      "relation": "Every current-build damage row linked to action 1240 belongs to RecountTable group 34: 112400101, 112400102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1241,
+      "kind": "base-skill",
+      "localization_key": "recount_group.28.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_tg01.png",
+      "relation": "Every current-build damage row linked to action 1241 belongs to RecountTable group 28: 112410104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1245,
+      "kind": "base-skill",
+      "localization_key": "recount_group.37.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_kx02.png",
+      "relation": "Every current-build damage row linked to action 1245 belongs to RecountTable group 37: 112450105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1248,
+      "kind": "base-skill",
+      "localization_key": "recount_group.29.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_ult.png",
+      "relation": "Every current-build damage row linked to action 1248 belongs to RecountTable group 29: 112480102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1250,
+      "kind": "base-skill",
+      "localization_key": "recount_group.33.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1250 belongs to RecountTable group 33: 112500101, 112500104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1256,
+      "kind": "base-skill",
+      "localization_key": "recount_group.36.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1256 belongs to RecountTable group 36: 112560101, 112560102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1257,
+      "kind": "base-skill",
+      "localization_key": "recount_group.32.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 1257 belongs to RecountTable group 32: 112570101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1258,
+      "kind": "base-skill",
+      "localization_key": "recount_group.38.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1258 belongs to RecountTable group 38: 112580101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1259,
+      "kind": "base-skill",
+      "localization_key": "recount_group.39.name",
+      "icon": "icons/combat/atlas/talent_passive_2/talent_passive_icon_general_dps_icecomet.png",
+      "relation": "Every current-build damage row linked to action 1259 belongs to RecountTable group 39: 112590101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1260,
+      "kind": "base-skill",
+      "localization_key": "recount_group.30.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_kx07.png",
+      "relation": "Every current-build damage row linked to action 1260 belongs to RecountTable group 30: 112600101, 112600102, 112600103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1261,
+      "kind": "base-skill",
+      "localization_key": "recount_group.32.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 1261 belongs to RecountTable group 32: 112610101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1262,
+      "kind": "base-skill",
+      "localization_key": "recount_group.30.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_kx07.png",
+      "relation": "Every current-build damage row linked to action 1262 belongs to RecountTable group 30: 112620101, 112620103, 112620104, 112620105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1263,
+      "kind": "base-skill",
+      "localization_key": "recount_group.29.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_ult.png",
+      "relation": "Every current-build damage row linked to action 1263 belongs to RecountTable group 29: 112630101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1294,
+      "kind": "base-skill",
+      "localization_key": "recount_group.24.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1294 belongs to RecountTable group 24: 112940102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1401,
+      "kind": "base-skill",
+      "localization_key": "recount_group.3.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1401 belongs to RecountTable group 3: 114010101, 114010104, 114010105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1402,
+      "kind": "base-skill",
+      "localization_key": "recount_group.3.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1402 belongs to RecountTable group 3: 114020101, 114020103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1403,
+      "kind": "base-skill",
+      "localization_key": "recount_group.3.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1403 belongs to RecountTable group 3: 114030101, 114030102, 114030103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1404,
+      "kind": "base-skill",
+      "localization_key": "recount_group.3.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1404 belongs to RecountTable group 3: 114040101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1409,
+      "kind": "base-skill",
+      "localization_key": "recount_group.6.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_ult_01.png",
+      "relation": "Every current-build damage row linked to action 1409 belongs to RecountTable group 6: 114090104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1411,
+      "kind": "base-skill",
+      "localization_key": "recount_group.18.name",
+      "icon": "icons/combat/atlas/talent_passive_4/talent_passive_icon_general_dps_backhitpro.png",
+      "relation": "Every current-build damage row linked to action 1411 belongs to RecountTable group 18: 114110101, 114110102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1417,
+      "kind": "base-skill",
+      "localization_key": "recount_group.1.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1417 belongs to RecountTable group 1: 114170102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1418,
+      "kind": "base-skill",
+      "localization_key": "recount_group.4.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_tg01.png",
+      "relation": "Every current-build damage row linked to action 1418 belongs to RecountTable group 4: 114180101, 114180102, 114180103, 114180106, 114180107, 114180108, 114180109",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1419,
+      "kind": "base-skill",
+      "localization_key": "recount_group.5.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_tg02.png",
+      "relation": "Every current-build damage row linked to action 1419 belongs to RecountTable group 5: 114190102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1420,
+      "kind": "base-skill",
+      "localization_key": "recount_group.7.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx01.png",
+      "relation": "Every current-build damage row linked to action 1420 belongs to RecountTable group 7: 114200103, 114200106",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1421,
+      "kind": "base-skill",
+      "localization_key": "recount_group.8.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx02.png",
+      "relation": "Every current-build damage row linked to action 1421 belongs to RecountTable group 8: 114210102, 114210103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1422,
+      "kind": "base-skill",
+      "localization_key": "recount_group.9.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 1422 belongs to RecountTable group 9: 114220103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1423,
+      "kind": "base-skill",
+      "localization_key": "recount_group.14.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx04.png",
+      "relation": "Every current-build damage row linked to action 1423 belongs to RecountTable group 14: 114230101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1424,
+      "kind": "base-skill",
+      "localization_key": "recount_group.11.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 1424 belongs to RecountTable group 11: 114240101, 114240102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1425,
+      "kind": "base-skill",
+      "localization_key": "recount_group.10.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 1425 belongs to RecountTable group 10: 114250107",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1426,
+      "kind": "base-skill",
+      "localization_key": "recount_group.6.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_ult_01.png",
+      "relation": "Every current-build damage row linked to action 1426 belongs to RecountTable group 6: 114260104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1427,
+      "kind": "base-skill",
+      "localization_key": "recount_group.9.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 1427 belongs to RecountTable group 9: 114270104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1431,
+      "kind": "base-skill",
+      "localization_key": "recount_group.13.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx08.png",
+      "relation": "Every current-build damage row linked to action 1431 belongs to RecountTable group 13: 114310106, 114310108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1432,
+      "kind": "base-skill",
+      "localization_key": "recount_group.12.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx07.png",
+      "relation": "Every current-build damage row linked to action 1432 belongs to RecountTable group 12: 114320101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1433,
+      "kind": "base-skill",
+      "localization_key": "recount_group.17.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_tf01.png",
+      "relation": "Every current-build damage row linked to action 1433 belongs to RecountTable group 17: 114330107",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1434,
+      "kind": "base-skill",
+      "localization_key": "recount_group.16.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_tf02.png",
+      "relation": "Every current-build damage row linked to action 1434 belongs to RecountTable group 16: 114340102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1435,
+      "kind": "base-skill",
+      "localization_key": "recount_group.15.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_tf03.png",
+      "relation": "Every current-build damage row linked to action 1435 belongs to RecountTable group 15: 114350101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1437,
+      "kind": "base-skill",
+      "localization_key": "recount_group.14.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx04.png",
+      "relation": "Every current-build damage row linked to action 1437 belongs to RecountTable group 14: 114370101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1501,
+      "kind": "base-skill",
+      "localization_key": "recount_group.170.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1501 belongs to RecountTable group 170: 115010102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1504,
+      "kind": "base-skill",
+      "localization_key": "recount_group.170.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1504 belongs to RecountTable group 170: 115040102, 115040104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1509,
+      "kind": "base-skill",
+      "localization_key": "recount_group.173.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh-01_ult.png",
+      "relation": "Every current-build damage row linked to action 1509 belongs to RecountTable group 173: 115090101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1517,
+      "kind": "base-skill",
+      "localization_key": "recount_group.168.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1517 belongs to RecountTable group 168: 115170102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1518,
+      "kind": "base-skill",
+      "localization_key": "recount_group.171.name",
+      "icon": "icons/combat/atlas/buff/buff_abnormal_green_icon.png",
+      "relation": "Every current-build damage row linked to action 1518 belongs to RecountTable group 171: 115180102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1527,
+      "kind": "base-skill",
+      "localization_key": "recount_group.174.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh-01_ult02.png",
+      "relation": "Every current-build damage row linked to action 1527 belongs to RecountTable group 174: 115270106, 115270108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1529,
+      "kind": "base-skill",
+      "localization_key": "recount_group.183.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh-01_kx07.png",
+      "relation": "Every current-build damage row linked to action 1529 belongs to RecountTable group 183: 115290101, 115290102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1530,
+      "kind": "base-skill",
+      "localization_key": "recount_group.171.name",
+      "icon": "icons/combat/atlas/buff/buff_abnormal_green_icon.png",
+      "relation": "Every current-build damage row linked to action 1530 belongs to RecountTable group 171: 115300102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1541,
+      "kind": "base-skill",
+      "localization_key": "recount_group.171.name",
+      "icon": "icons/combat/atlas/buff/buff_abnormal_green_icon.png",
+      "relation": "Every current-build damage row linked to action 1541 belongs to RecountTable group 171: 115410102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1550,
+      "kind": "base-skill",
+      "localization_key": "recount_group.176.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh-01_kx09.png",
+      "relation": "Every current-build damage row linked to action 1550 belongs to RecountTable group 176: 115500101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1556,
+      "kind": "base-skill",
+      "localization_key": "recount_group.174.name",
+      "icon": "icons/combat/atlas/talent_passive_5/talent_passive_icon_general_sup_aoyiguide.png",
+      "relation": "Every current-build damage row linked to action 1556 belongs to RecountTable group 174: 115560101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1560,
+      "kind": "base-skill",
+      "localization_key": "recount_group.178.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 1560 belongs to RecountTable group 178: 115600101, 115600102, 115600103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1561,
+      "kind": "base-skill",
+      "localization_key": "recount_group.178.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 1561 belongs to RecountTable group 178: 115610101, 115610102, 115610103, 115610105, 115610106, 115610107, 115610108, 115610109, 115610110, 115610111, 115610112, 115610113",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1601,
+      "kind": "base-skill",
+      "localization_key": "recount_group.228.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_atk.png",
+      "relation": "Every current-build damage row linked to action 1601 belongs to RecountTable group 228: 116010101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1602,
+      "kind": "base-skill",
+      "localization_key": "recount_group.228.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_atk.png",
+      "relation": "Every current-build damage row linked to action 1602 belongs to RecountTable group 228: 116020101, 116020102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1603,
+      "kind": "base-skill",
+      "localization_key": "recount_group.228.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_atk.png",
+      "relation": "Every current-build damage row linked to action 1603 belongs to RecountTable group 228: 116030101, 116030102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1604,
+      "kind": "base-skill",
+      "localization_key": "recount_group.228.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_atk.png",
+      "relation": "Every current-build damage row linked to action 1604 belongs to RecountTable group 228: 116040101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1605,
+      "kind": "base-skill",
+      "localization_key": "recount_group.229.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_tg01_1.png",
+      "relation": "Every current-build damage row linked to action 1605 belongs to RecountTable group 229: 116050102, 116050103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1606,
+      "kind": "base-skill",
+      "localization_key": "recount_group.231.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_tg02.png",
+      "relation": "Every current-build damage row linked to action 1606 belongs to RecountTable group 231: 116060102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1607,
+      "kind": "base-skill",
+      "localization_key": "recount_group.234.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_kx01.png",
+      "relation": "Every current-build damage row linked to action 1607 belongs to RecountTable group 234: 116070102, 116070103, 116070105, 116070106",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1608,
+      "kind": "base-skill",
+      "localization_key": "recount_group.235.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_kx02_1.png",
+      "relation": "Every current-build damage row linked to action 1608 belongs to RecountTable group 235: 116080101, 116080102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1609,
+      "kind": "base-skill",
+      "localization_key": "recount_group.235.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_kx02_2.png",
+      "relation": "Every current-build damage row linked to action 1609 belongs to RecountTable group 235: 116090101, 116090102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1610,
+      "kind": "base-skill",
+      "localization_key": "recount_group.235.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_kx02_3.png",
+      "relation": "Every current-build damage row linked to action 1610 belongs to RecountTable group 235: 116100101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1611,
+      "kind": "base-skill",
+      "localization_key": "recount_group.235.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_kx02_4.png",
+      "relation": "Every current-build damage row linked to action 1611 belongs to RecountTable group 235: 116110101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1612,
+      "kind": "base-skill",
+      "localization_key": "recount_group.236.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 1612 belongs to RecountTable group 236: 116120101, 116120102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1618,
+      "kind": "base-skill",
+      "localization_key": "recount_group.233.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_ult_01.png",
+      "relation": "Every current-build damage row linked to action 1618 belongs to RecountTable group 233: 116180104, 116180105, 116180106, 116180107",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1619,
+      "kind": "base-skill",
+      "localization_key": "recount_group.229.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_tg01_1.png",
+      "relation": "Every current-build damage row linked to action 1619 belongs to RecountTable group 229: 116190102, 116190103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1620,
+      "kind": "base-skill",
+      "localization_key": "recount_group.230.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_tg01_2.png",
+      "relation": "Every current-build damage row linked to action 1620 belongs to RecountTable group 230: 116200103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1621,
+      "kind": "base-skill",
+      "localization_key": "recount_group.244.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_atk.png",
+      "relation": "Every current-build damage row linked to action 1621 belongs to RecountTable group 244: 116210103, 116210105, 116210106, 116210107",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1622,
+      "kind": "base-skill",
+      "localization_key": "recount_group.243.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_kx04.png",
+      "relation": "Every current-build damage row linked to action 1622 belongs to RecountTable group 243: 116220101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1623,
+      "kind": "base-skill",
+      "localization_key": "recount_group.248.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1623 belongs to RecountTable group 248: 116230101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1624,
+      "kind": "base-skill",
+      "localization_key": "recount_group.226.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_atk.png",
+      "relation": "Every current-build damage row linked to action 1624 belongs to RecountTable group 226: 116240101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1702,
+      "kind": "base-skill",
+      "localization_key": "recount_group.48.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1702 belongs to RecountTable group 48: 117020101, 117020103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1703,
+      "kind": "base-skill",
+      "localization_key": "recount_group.48.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1703 belongs to RecountTable group 48: 117030101, 117030103, 117030104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1704,
+      "kind": "base-skill",
+      "localization_key": "recount_group.48.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1704 belongs to RecountTable group 48: 117040102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1705,
+      "kind": "base-skill",
+      "localization_key": "recount_group.52.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx01_01.png",
+      "relation": "Every current-build damage row linked to action 1705 belongs to RecountTable group 52: 117050101, 117050103, 117050104, 117050105, 117050106, 117050108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1713,
+      "kind": "base-skill",
+      "localization_key": "recount_group.51.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_ult.png",
+      "relation": "Every current-build damage row linked to action 1713 belongs to RecountTable group 51: 117130102, 117130108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1714,
+      "kind": "base-skill",
+      "localization_key": "recount_group.49.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_tg01.png",
+      "relation": "Every current-build damage row linked to action 1714 belongs to RecountTable group 49: 117140101, 117140102, 117140111",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1715,
+      "kind": "base-skill",
+      "localization_key": "recount_group.50.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_tg02.png",
+      "relation": "Every current-build damage row linked to action 1715 belongs to RecountTable group 50: 117150102, 117150103, 117150105, 117150107, 117150109, 117150110, 117150112, 117150115",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1717,
+      "kind": "base-skill",
+      "localization_key": "recount_group.53.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx02.png",
+      "relation": "Every current-build damage row linked to action 1717 belongs to RecountTable group 53: 117170101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1718,
+      "kind": "base-skill",
+      "localization_key": "recount_group.54.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 1718 belongs to RecountTable group 54: 117180102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1719,
+      "kind": "base-skill",
+      "localization_key": "recount_group.55.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx04.png",
+      "relation": "Every current-build damage row linked to action 1719 belongs to RecountTable group 55: 117190104, 117190105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1720,
+      "kind": "base-skill",
+      "localization_key": "recount_group.61.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 1720 belongs to RecountTable group 61: 117200103, 117200105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1724,
+      "kind": "base-skill",
+      "localization_key": "recount_group.58.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 1724 belongs to RecountTable group 58: 117240103, 117240104, 117240106, 117240107, 117240108, 117240120, 117240121, 117240126, 117240127, 117240128, 117240129, 117240130, 117240131, 117240132, 117240133, 117240134, 117240135, 117240136, 117240137, 117240138, 117240139, 117240140, 117240141, 117240142, 117240143",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1728,
+      "kind": "base-skill",
+      "localization_key": "recount_group.51.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_ult.png",
+      "relation": "Every current-build damage row linked to action 1728 belongs to RecountTable group 51: 117280102, 117280108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1732,
+      "kind": "base-skill",
+      "localization_key": "recount_group.60.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx08.png",
+      "relation": "Every current-build damage row linked to action 1732 belongs to RecountTable group 60: 117320101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1733,
+      "kind": "base-skill",
+      "localization_key": "recount_group.66.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 1733 belongs to RecountTable group 66: 117330104, 117330106",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1735,
+      "kind": "base-skill",
+      "localization_key": "recount_group.63.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_tf03.png",
+      "relation": "Every current-build damage row linked to action 1735 belongs to RecountTable group 63: 117350103, 117350105, 117350106",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1736,
+      "kind": "base-skill",
+      "localization_key": "recount_group.64.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_tf04.png",
+      "relation": "Every current-build damage row linked to action 1736 belongs to RecountTable group 64: 117360102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1737,
+      "kind": "base-skill",
+      "localization_key": "recount_group.65.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_tf01.png",
+      "relation": "Every current-build damage row linked to action 1737 belongs to RecountTable group 65: 117370101, 117370106, 117370112",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1738,
+      "kind": "base-skill",
+      "localization_key": "recount_group.68.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_tf02.png",
+      "relation": "Every current-build damage row linked to action 1738 belongs to RecountTable group 68: 117380101, 117380105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1739,
+      "kind": "base-skill",
+      "localization_key": "recount_group.69.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 1739 belongs to RecountTable group 69: 117390101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1740,
+      "kind": "base-skill",
+      "localization_key": "recount_group.66.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 1740 belongs to RecountTable group 66: 117400101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1741,
+      "kind": "base-skill",
+      "localization_key": "recount_group.66.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 1741 belongs to RecountTable group 66: 117410101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1742,
+      "kind": "base-skill",
+      "localization_key": "recount_group.67.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 1742 belongs to RecountTable group 67: 117420101, 117420102, 117420103, 117420108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1744,
+      "kind": "base-skill",
+      "localization_key": "recount_group.61.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 1744 belongs to RecountTable group 61: 117440103, 117440105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1795,
+      "kind": "base-skill",
+      "localization_key": "recount_group.46.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1795 belongs to RecountTable group 46: 117950102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1850,
+      "kind": "base-skill",
+      "localization_key": "recount_group.291.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_053.png",
+      "relation": "Every current-build damage row linked to action 1850 belongs to RecountTable group 291: 118500101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1851,
+      "kind": "base-skill",
+      "localization_key": "recount_group.291.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_053.png",
+      "relation": "Every current-build damage row linked to action 1851 belongs to RecountTable group 291: 118510101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1907,
+      "kind": "base-skill",
+      "localization_key": "recount_group.113.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr-01_ult.png",
+      "relation": "Every current-build damage row linked to action 1907 belongs to RecountTable group 113: 119070103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1909,
+      "kind": "base-skill",
+      "localization_key": "recount_group.136.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_general_tank_unrelent.png",
+      "relation": "Every current-build damage row linked to action 1909 belongs to RecountTable group 136: 119090102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1912,
+      "kind": "base-skill",
+      "localization_key": "recount_group.107.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1912 belongs to RecountTable group 107: 119120102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1922,
+      "kind": "base-skill",
+      "localization_key": "recount_group.110.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr-01_tg02.png",
+      "relation": "Every current-build damage row linked to action 1922 belongs to RecountTable group 110: 119220102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1923,
+      "kind": "base-skill",
+      "localization_key": "recount_group.121.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 1923 belongs to RecountTable group 121: 119230112, 119230113",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1924,
+      "kind": "base-skill",
+      "localization_key": "recount_group.114.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr-01_kx01.png",
+      "relation": "Every current-build damage row linked to action 1924 belongs to RecountTable group 114: 119240102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1925,
+      "kind": "base-skill",
+      "localization_key": "recount_group.119.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 1925 belongs to RecountTable group 119: 119250101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1927,
+      "kind": "base-skill",
+      "localization_key": "recount_group.115.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr-01_kx02.png",
+      "relation": "Every current-build damage row linked to action 1927 belongs to RecountTable group 115: 119270102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1930,
+      "kind": "base-skill",
+      "localization_key": "recount_group.112.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr-01_tg01_01.png",
+      "relation": "Every current-build damage row linked to action 1930 belongs to RecountTable group 112: 119300101, 119300104, 119300107, 119300108, 119300109, 119300110",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1932,
+      "kind": "base-skill",
+      "localization_key": "recount_group.111.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_sup_meleeconversion.png",
+      "relation": "Every current-build damage row linked to action 1932 belongs to RecountTable group 111: 119320102, 119320103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1933,
+      "kind": "base-skill",
+      "localization_key": "recount_group.109.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1933 belongs to RecountTable group 109: 119330102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1935,
+      "kind": "base-skill",
+      "localization_key": "recount_group.122.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1935 belongs to RecountTable group 122: 119350101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1937,
+      "kind": "base-skill",
+      "localization_key": "recount_group.118.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1937 belongs to RecountTable group 118: 119370102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1939,
+      "kind": "base-skill",
+      "localization_key": "recount_group.118.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1939 belongs to RecountTable group 118: 119390102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1940,
+      "kind": "base-skill",
+      "localization_key": "recount_group.119.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 1940 belongs to RecountTable group 119: 119400101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1941,
+      "kind": "base-skill",
+      "localization_key": "recount_group.123.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr-01_kx01_01.png",
+      "relation": "Every current-build damage row linked to action 1941 belongs to RecountTable group 123: 119410102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1942,
+      "kind": "base-skill",
+      "localization_key": "recount_group.124.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 1942 belongs to RecountTable group 124: 119420102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2211,
+      "kind": "base-skill",
+      "localization_key": "recount_group.73.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 2211 belongs to RecountTable group 73: 122110102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2240,
+      "kind": "base-skill",
+      "localization_key": "recount_group.82.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_kx01_01.png",
+      "relation": "Every current-build damage row linked to action 2240 belongs to RecountTable group 82: 122400103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2291,
+      "kind": "base-skill",
+      "localization_key": "recount_group.80.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2291 belongs to RecountTable group 80: 122910101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2292,
+      "kind": "base-skill",
+      "localization_key": "recount_group.98.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2292 belongs to RecountTable group 98: 122920102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2294,
+      "kind": "base-skill",
+      "localization_key": "recount_group.78.name",
+      "icon": "icons/combat/atlas/debuff/debuff_icon_23.png",
+      "relation": "Every current-build damage row linked to action 2294 belongs to RecountTable group 78: 122940101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2295,
+      "kind": "base-skill",
+      "localization_key": "recount_group.79.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_ult.png",
+      "relation": "Every current-build damage row linked to action 2295 belongs to RecountTable group 79: 122950102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2296,
+      "kind": "base-skill",
+      "localization_key": "recount_group.96.name",
+      "icon": "icons/combat/atlas/talent_passive_11/gongjian1153.png",
+      "relation": "Every current-build damage row linked to action 2296 belongs to RecountTable group 96: 122960102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2301,
+      "kind": "base-skill",
+      "localization_key": "recount_group.200.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 2301 belongs to RecountTable group 200: 123010102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2306,
+      "kind": "base-skill",
+      "localization_key": "recount_group.201.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_tg01.png",
+      "relation": "Every current-build damage row linked to action 2306 belongs to RecountTable group 201: 123060101, 123060103, 123060104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2312,
+      "kind": "base-skill",
+      "localization_key": "recount_group.212.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 2312 belongs to RecountTable group 212: 123120123, 123120124, 123120125, 123120126, 123120127",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2313,
+      "kind": "base-skill",
+      "localization_key": "recount_group.213.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 2313 belongs to RecountTable group 213: 123130106, 123130107, 123130108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2314,
+      "kind": "base-skill",
+      "localization_key": "recount_group.203.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_ult.png",
+      "relation": "Every current-build damage row linked to action 2314 belongs to RecountTable group 203: 123140106, 123140107, 123140108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2317,
+      "kind": "base-skill",
+      "localization_key": "recount_group.210.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx03_01.png",
+      "relation": "Every current-build damage row linked to action 2317 belongs to RecountTable group 210: 123170104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2320,
+      "kind": "base-skill",
+      "localization_key": "recount_group.223.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2320 belongs to RecountTable group 223: 123200101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2321,
+      "kind": "base-skill",
+      "localization_key": "recount_group.199.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 2321 belongs to RecountTable group 199: 123210102, 123210103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2322,
+      "kind": "base-skill",
+      "localization_key": "recount_group.199.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 2322 belongs to RecountTable group 199: 123220102, 123220103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2323,
+      "kind": "base-skill",
+      "localization_key": "recount_group.199.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 2323 belongs to RecountTable group 199: 123230102, 123230103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2324,
+      "kind": "base-skill",
+      "localization_key": "recount_group.199.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 2324 belongs to RecountTable group 199: 123240102, 123240103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2329,
+      "kind": "base-skill",
+      "localization_key": "recount_group.220.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 2329 belongs to RecountTable group 220: 123290101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2331,
+      "kind": "base-skill",
+      "localization_key": "recount_group.221.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 2331 belongs to RecountTable group 221: 123310102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2335,
+      "kind": "base-skill",
+      "localization_key": "recount_group.203.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_ult01.png",
+      "relation": "Every current-build damage row linked to action 2335 belongs to RecountTable group 203: 123350102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2336,
+      "kind": "base-skill",
+      "localization_key": "recount_group.204.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_ult02.png",
+      "relation": "Every current-build damage row linked to action 2336 belongs to RecountTable group 204: 123360101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2337,
+      "kind": "base-skill",
+      "localization_key": "recount_group.197.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 2337 belongs to RecountTable group 197: 123370101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2352,
+      "kind": "base-skill",
+      "localization_key": "recount_group.97.name",
+      "icon": "icons/combat/atlas/talent_passive_11/gongjian1160.png",
+      "relation": "Every current-build damage row linked to action 2352 belongs to RecountTable group 97: 123520101, 123520103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2362,
+      "kind": "base-skill",
+      "localization_key": "recount_group.212.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 2362 belongs to RecountTable group 212: 123620111, 123620112, 123620113, 123620114, 123620115",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2364,
+      "kind": "base-skill",
+      "localization_key": "recount_group.203.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_ult.png",
+      "relation": "Every current-build damage row linked to action 2364 belongs to RecountTable group 203: 123640104, 123640105, 123640106",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2365,
+      "kind": "base-skill",
+      "localization_key": "recount_group.203.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_ult.png",
+      "relation": "Every current-build damage row linked to action 2365 belongs to RecountTable group 203: 123650102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2366,
+      "kind": "base-skill",
+      "localization_key": "recount_group.204.name",
+      "icon": "icons/combat/atlas/talent_passive_13/gita1330.png",
+      "relation": "Every current-build damage row linked to action 2366 belongs to RecountTable group 204: 123660102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2401,
+      "kind": "base-skill",
+      "localization_key": "recount_group.141.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_atk.png",
+      "relation": "Every current-build damage row linked to action 2401 belongs to RecountTable group 141: 124010102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2405,
+      "kind": "base-skill",
+      "localization_key": "recount_group.142.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_tg01.png",
+      "relation": "Every current-build damage row linked to action 2405 belongs to RecountTable group 142: 124050104, 124050107, 124050108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2407,
+      "kind": "base-skill",
+      "localization_key": "recount_group.145.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_ult_01.png",
+      "relation": "Every current-build damage row linked to action 2407 belongs to RecountTable group 145: 124070103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2410,
+      "kind": "base-skill",
+      "localization_key": "recount_group.146.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 2410 belongs to RecountTable group 146: 124100101, 124100104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2412,
+      "kind": "base-skill",
+      "localization_key": "recount_group.149.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_kx04.png",
+      "relation": "Every current-build damage row linked to action 2412 belongs to RecountTable group 149: 124120102, 124120103, 124120104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2413,
+      "kind": "base-skill",
+      "localization_key": "recount_group.158.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_kx04_ex.png",
+      "relation": "Every current-build damage row linked to action 2413 belongs to RecountTable group 158: 124130102, 124130103, 124130104, 124130105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2416,
+      "kind": "base-skill",
+      "localization_key": "recount_group.156.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1201.png",
+      "relation": "Every current-build damage row linked to action 2416 belongs to RecountTable group 156: 124160102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2417,
+      "kind": "base-skill",
+      "localization_key": "recount_group.157.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_atk_ex.png",
+      "relation": "Every current-build damage row linked to action 2417 belongs to RecountTable group 157: 124170102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2421,
+      "kind": "base-skill",
+      "localization_key": "recount_group.151.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_kx09.png",
+      "relation": "Every current-build damage row linked to action 2421 belongs to RecountTable group 151: 124210101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2424,
+      "kind": "base-skill",
+      "localization_key": "recount_group.139.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_atk.png",
+      "relation": "Every current-build damage row linked to action 2424 belongs to RecountTable group 139: 124240102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2450,
+      "kind": "base-skill",
+      "localization_key": "recount_group.159.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_tg01.png",
+      "relation": "Every current-build damage row linked to action 2450 belongs to RecountTable group 159: 124500101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2451,
+      "kind": "base-skill",
+      "localization_key": "recount_group.148.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2451 belongs to RecountTable group 148: 124510101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2452,
+      "kind": "base-skill",
+      "localization_key": "recount_group.147.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2452 belongs to RecountTable group 147: 124520101, 124520102, 124520103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2501,
+      "kind": "base-skill",
+      "localization_key": "recount_group.337.name",
+      "icon": "icons/combat/textures/skill_ip004x02/ip004x02_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 2501 belongs to RecountTable group 337: 125010101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2502,
+      "kind": "base-skill",
+      "localization_key": "recount_group.337.name",
+      "icon": "icons/combat/textures/skill_ip004x02/ip004x02_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 2502 belongs to RecountTable group 337: 125020101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2503,
+      "kind": "base-skill",
+      "localization_key": "recount_group.337.name",
+      "icon": "icons/combat/textures/skill_ip004x02/ip004x02_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 2503 belongs to RecountTable group 337: 125030101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2504,
+      "kind": "base-skill",
+      "localization_key": "recount_group.338.name",
+      "icon": "icons/combat/textures/skill_ip004x02/ip004x02_skill_01.png",
+      "relation": "Every current-build damage row linked to action 2504 belongs to RecountTable group 338: 125040102, 125040103, 125040104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2601,
+      "kind": "base-skill",
+      "localization_key": "recount_group.340.name",
+      "icon": "icons/combat/textures/skill_ip004x01/ip004x01_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 2601 belongs to RecountTable group 340: 126010102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2602,
+      "kind": "base-skill",
+      "localization_key": "recount_group.340.name",
+      "icon": "icons/combat/textures/skill_ip004x01/ip004x01_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 2602 belongs to RecountTable group 340: 126020102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2603,
+      "kind": "base-skill",
+      "localization_key": "recount_group.340.name",
+      "icon": "icons/combat/textures/skill_ip004x01/ip004x01_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 2603 belongs to RecountTable group 340: 126030102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2604,
+      "kind": "base-skill",
+      "localization_key": "recount_group.341.name",
+      "icon": "icons/combat/textures/skill_ip004x01/ip004x01_skill_01.png",
+      "relation": "Every current-build damage row linked to action 2604 belongs to RecountTable group 341: 126040101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2605,
+      "kind": "base-skill",
+      "localization_key": "recount_group.342.name",
+      "icon": "icons/combat/textures/skill_ip004x01/ip004x01_skill_02.png",
+      "relation": "Every current-build damage row linked to action 2605 belongs to RecountTable group 342: 126050102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2606,
+      "kind": "base-skill",
+      "localization_key": "recount_group.343.name",
+      "icon": "icons/combat/textures/skill_ip004x01/ip004x01_skill_03.png",
+      "relation": "Every current-build damage row linked to action 2606 belongs to RecountTable group 343: 126060102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210,
+      "kind": "recount-child",
+      "localization_key": "recount_group.309.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_073.png",
+      "relation": "Every current-build damage row linked to action 3210 belongs to RecountTable group 309: 3321000",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3698,
+      "kind": "base-skill",
+      "localization_key": "recount_group.260.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_029.png",
+      "relation": "Every current-build damage row linked to action 3698 belongs to RecountTable group 260: 136980101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3699,
+      "kind": "base-skill",
+      "localization_key": "recount_group.260.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_029.png",
+      "relation": "Every current-build damage row linked to action 3699 belongs to RecountTable group 260: 136990101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3914,
+      "kind": "base-skill",
+      "localization_key": "recount_group.270.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_019.png",
+      "relation": "Every current-build damage row linked to action 3914 belongs to RecountTable group 270: 139140102, 139140103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3925,
+      "kind": "base-skill",
+      "localization_key": "recount_group.279.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_028.png",
+      "relation": "Every current-build damage row linked to action 3925 belongs to RecountTable group 279: 139250102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 7997,
+      "kind": "base-skill",
+      "localization_key": "recount_group.332.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 7997 belongs to RecountTable group 332: 179970101, 179970102, 179970103, 179970104, 179970105, 179970106, 179970107, 179970108, 179970109, 179970110",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 7998,
+      "kind": "base-skill",
+      "localization_key": "recount_group.336.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 7998 belongs to RecountTable group 336: 179980101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 10002,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.264.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_043.png",
+      "relation": "Every current-build damage row linked to action 10002 belongs to RecountTable group 264: 31000200, 31000201",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 20301,
+      "kind": "passive-proc",
+      "localization_key": "recount_group.172.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 20301 belongs to RecountTable group 172: 22030104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21101,
+      "kind": "passive-proc",
+      "localization_key": "recount_group.172.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 21101 belongs to RecountTable group 172: 22110101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21402,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.171.name",
+      "icon": "icons/combat/atlas/buff/buff_abnormal_green_icon.png",
+      "relation": "Every current-build damage row linked to action 21402 belongs to RecountTable group 171: 22140201, 22140203",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21414,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.173.name",
+      "icon": "icons/combat/atlas/buff/buff_talent_skill_370101.png",
+      "relation": "Every current-build damage row linked to action 21414 belongs to RecountTable group 173: 22141404, 22141405",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21418,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.185.name",
+      "icon": "icons/combat/atlas/talent_passive_5/talent_passive_icon_general_sup_grassdeer.png",
+      "relation": "Every current-build damage row linked to action 21418 belongs to RecountTable group 185: 22141804",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21423,
+      "kind": "active-skill",
+      "localization_key": "recount_group.187.name",
+      "icon": "icons/combat/atlas/buff/buff_passive_icon_tank_violent01.png",
+      "relation": "Every current-build damage row linked to action 21423 belongs to RecountTable group 187: 22142303",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21424,
+      "kind": "lucky-strike",
+      "localization_key": "recount_group.195.name",
+      "icon": "icons/combat/atlas/talent_passive_5/talent_passive_icon_dps_lucky04.png",
+      "relation": "Every current-build damage row linked to action 21424 belongs to RecountTable group 195: 22142403",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21425,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.178.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_cd.png",
+      "relation": "Every current-build damage row linked to action 21425 belongs to RecountTable group 178: 22142501",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21427,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.225.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_cd.png",
+      "relation": "Every current-build damage row linked to action 21427 belongs to RecountTable group 225: 22142701",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21428,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.225.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_cd.png",
+      "relation": "Every current-build damage row linked to action 21428 belongs to RecountTable group 225: 22142801",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21429,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.225.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_cd.png",
+      "relation": "Every current-build damage row linked to action 21429 belongs to RecountTable group 225: 22142901",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 21430,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.225.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_cd.png",
+      "relation": "Every current-build damage row linked to action 21430 belongs to RecountTable group 225: 22143001",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 27009,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.37.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_cd.png",
+      "relation": "Every current-build damage row linked to action 27009 belongs to RecountTable group 37: 22700903",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 35104,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.232.name",
+      "icon": "icons/combat/atlas/buff/buff_icon141.png",
+      "relation": "Every current-build damage row linked to action 35104 belongs to RecountTable group 232: 23510401",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 35105,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.241.name",
+      "icon": "icons/combat/atlas/buff/buff_icon141.png",
+      "relation": "Every current-build damage row linked to action 35105 belongs to RecountTable group 241: 23510503",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 35107,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.249.name",
+      "icon": "icons/combat/atlas/buff/buff_icon141.png",
+      "relation": "Every current-build damage row linked to action 35107 belongs to RecountTable group 249: 23510703",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 35108,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.249.name",
+      "icon": "icons/combat/atlas/buff/buff_icon141.png",
+      "relation": "Every current-build damage row linked to action 35108 belongs to RecountTable group 249: 23510803",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 35109,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.249.name",
+      "icon": "icons/combat/atlas/buff/buff_icon141.png",
+      "relation": "Every current-build damage row linked to action 35109 belongs to RecountTable group 249: 23510903",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 44601,
+      "kind": "recount-child",
+      "localization_key": "recount_group.56.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 44601 belongs to RecountTable group 56: 24460103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 44701,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.56.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 44701 belongs to RecountTable group 56: 24470103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 45300,
+      "kind": "imagine",
+      "localization_key": "recount_group.291.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_053.png",
+      "relation": "Every current-build damage row linked to action 45300 belongs to RecountTable group 291: 24530001, 24530005",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 50033,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.117.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 50033 belongs to RecountTable group 117: 25003301",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 50036,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.127.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_tank_ridicule03.png",
+      "relation": "Every current-build damage row linked to action 50036 belongs to RecountTable group 127: 25003601",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 50037,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.129.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_general_sup_guide.png",
+      "relation": "Every current-build damage row linked to action 50037 belongs to RecountTable group 129: 25003703",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 50049,
+      "kind": "active-skill",
+      "localization_key": "recount_group.115.name",
+      "icon": "icons/combat/atlas/buff/talent_passive_icon_general_sup_grassarea.png",
+      "relation": "Every current-build damage row linked to action 50049 belongs to RecountTable group 115: 25004904",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 50067,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.129.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_general_sup_guide.png",
+      "relation": "Every current-build damage row linked to action 50067 belongs to RecountTable group 129: 25006703, 25006704",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 50068,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.129.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_general_sup_guide.png",
+      "relation": "Every current-build damage row linked to action 50068 belongs to RecountTable group 129: 25006803, 25006804, 25006805",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55231,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.87.name",
+      "icon": "icons/combat/atlas/debuff/debuff_icon_23.png",
+      "relation": "Every current-build damage row linked to action 55231 belongs to RecountTable group 87: 25523102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55235,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.78.name",
+      "icon": "icons/combat/atlas/debuff/debuff_icon_23.png",
+      "relation": "Every current-build damage row linked to action 55235 belongs to RecountTable group 78: 25523501",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55240,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.85.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_kx04.png",
+      "relation": "Every current-build damage row linked to action 55240 belongs to RecountTable group 85: 25524003, 25524004",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55301,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.206.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx02.png",
+      "relation": "Every current-build damage row linked to action 55301 belongs to RecountTable group 206: 25530101, 25530103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55302,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.202.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_tg02.png",
+      "relation": "Every current-build damage row linked to action 55302 belongs to RecountTable group 202: 25530201, 25530204",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55304,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.212.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 55304 belongs to RecountTable group 212: 25530401, 25530403",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55311,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.217.name",
+      "icon": "icons/combat/atlas/buff/buff_icon13.png",
+      "relation": "Every current-build damage row linked to action 55311 belongs to RecountTable group 217: 25531105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55314,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.215.name",
+      "icon": "icons/combat/atlas/buff/buff_icon13.png",
+      "relation": "Every current-build damage row linked to action 55314 belongs to RecountTable group 215: 25531401, 25531403",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55339,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.204.name",
+      "icon": "icons/combat/atlas/talent_passive_13/gita1330.png",
+      "relation": "Every current-build damage row linked to action 55339 belongs to RecountTable group 204: 25533901",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55341,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.209.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 55341 belongs to RecountTable group 209: 25534101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55342,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.211.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx04.png",
+      "relation": "Every current-build damage row linked to action 55342 belongs to RecountTable group 211: 25534201",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55344,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.203.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_ult.png",
+      "relation": "Every current-build damage row linked to action 55344 belongs to RecountTable group 203: 25534401",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55346,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.203.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_ult.png",
+      "relation": "Every current-build damage row linked to action 55346 belongs to RecountTable group 203: 25534601",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55355,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.196.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 55355 belongs to RecountTable group 196: 25535501",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55356,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.196.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 55356 belongs to RecountTable group 196: 25535601",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55357,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.196.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 55357 belongs to RecountTable group 196: 25535701",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55404,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.155.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_def.png",
+      "relation": "Every current-build damage row linked to action 55404 belongs to RecountTable group 155: 25540403, 25540404",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55405,
+      "kind": "active-skill",
+      "localization_key": "recount_group.153.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_def.png",
+      "relation": "Every current-build damage row linked to action 55405 belongs to RecountTable group 153: 25540502, 25540504",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55412,
+      "kind": "active-skill",
+      "localization_key": "recount_group.154.name",
+      "icon": "icons/combat/atlas/buff/buff_icon70.png",
+      "relation": "Every current-build damage row linked to action 55412 belongs to RecountTable group 154: 25541203, 25541205, 25541209",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55417,
+      "kind": "active-skill",
+      "localization_key": "recount_group.154.name",
+      "icon": "icons/combat/atlas/buff/buff_icon70.png",
+      "relation": "Every current-build damage row linked to action 55417 belongs to RecountTable group 154: 25541703, 25541705, 25541709",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55421,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.146.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_def.png",
+      "relation": "Every current-build damage row linked to action 55421 belongs to RecountTable group 146: 25542103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55431,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.154.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_kx07.png",
+      "relation": "Every current-build damage row linked to action 55431 belongs to RecountTable group 154: 25543101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 55432,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.154.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_kx07.png",
+      "relation": "Every current-build damage row linked to action 55432 belongs to RecountTable group 154: 25543201",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 100730,
+      "kind": "base-skill",
+      "localization_key": "recount_group.257.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_020.png",
+      "relation": "Every current-build damage row linked to action 100730 belongs to RecountTable group 257: 11007300102, 11007300104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 101112,
+      "kind": "base-skill",
+      "localization_key": "recount_group.93.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 101112 belongs to RecountTable group 93: 11011120101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 102640,
+      "kind": "base-skill",
+      "localization_key": "recount_group.267.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_001.png",
+      "relation": "Every current-build damage row linked to action 102640 belongs to RecountTable group 267: 11026400101, 11026400108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 102664,
+      "kind": "base-skill",
+      "localization_key": "recount_group.317.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_081.png",
+      "relation": "Every current-build damage row linked to action 102664 belongs to RecountTable group 317: 11026640101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 111069,
+      "kind": "base-skill",
+      "localization_key": "recount_group.310.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_074.png",
+      "relation": "Every current-build damage row linked to action 111069 belongs to RecountTable group 310: 11110690101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 120201,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.26.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 120201 belongs to RecountTable group 26: 312020100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 120301,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.26.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 120301 belongs to RecountTable group 26: 312030100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 120401,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.26.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 120401 belongs to RecountTable group 26: 312040100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 120501,
+      "kind": "recount-child",
+      "localization_key": "recount_group.26.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 120501 belongs to RecountTable group 26: 312050100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 120901,
+      "kind": "base-skill",
+      "localization_key": "recount_group.44.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 120901 belongs to RecountTable group 44: 312090100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 121301,
+      "kind": "base-skill",
+      "localization_key": "recount_group.43.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_ult.png",
+      "relation": "Every current-build damage row linked to action 121301 belongs to RecountTable group 43: 312130100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 121302,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.43.name",
+      "icon": "icons/combat/textures/skill_weapon_mz/weapon_mz-01_ult.png",
+      "relation": "Every current-build damage row linked to action 121302 belongs to RecountTable group 43: 312130200",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 140145,
+      "kind": "base-skill",
+      "localization_key": "recount_group.308.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_072.png",
+      "relation": "Every current-build damage row linked to action 140145 belongs to RecountTable group 308: 11401450102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 140301,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.16.name",
+      "icon": "icons/combat/atlas/talent_passive_4/talent_passive_icon_general_dps_windspiral.png",
+      "relation": "Every current-build damage row linked to action 140301 belongs to RecountTable group 16: 314030100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 140401,
+      "kind": "base-skill",
+      "localization_key": "recount_group.15.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 140401 belongs to RecountTable group 15: 314040100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 140501,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.20.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq_skill_01.png",
+      "relation": "Every current-build damage row linked to action 140501 belongs to RecountTable group 20: 314050100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 141104,
+      "kind": "base-skill",
+      "localization_key": "recount_group.280.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 141104 belongs to RecountTable group 280: 11411040101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 149901,
+      "kind": "base-skill",
+      "localization_key": "recount_group.21.name",
+      "icon": "icons/combat/atlas/talent_passive_4/changqiang440.png",
+      "relation": "Every current-build damage row linked to action 149901 belongs to RecountTable group 21: 11499010101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 149902,
+      "kind": "base-skill",
+      "localization_key": "recount_group.19.name",
+      "icon": "icons/combat/atlas/talent_passive_4/talent_passive_icon_general_dps_spearrush.png",
+      "relation": "Every current-build damage row linked to action 149902 belongs to RecountTable group 19: 11499020101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 149903,
+      "kind": "base-skill",
+      "localization_key": "recount_group.20.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq_skill_01.png",
+      "relation": "Every current-build damage row linked to action 149903 belongs to RecountTable group 20: 11499030102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 149904,
+      "kind": "base-skill",
+      "localization_key": "recount_group.11.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx05.png",
+      "relation": "Every current-build damage row linked to action 149904 belongs to RecountTable group 11: 11499040101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 149905,
+      "kind": "base-skill",
+      "localization_key": "recount_group.10.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 149905 belongs to RecountTable group 10: 11499050101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 149906,
+      "kind": "base-skill",
+      "localization_key": "recount_group.17.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx06.png",
+      "relation": "Every current-build damage row linked to action 149906 belongs to RecountTable group 17: 11499060101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 149907,
+      "kind": "base-skill",
+      "localization_key": "recount_group.13.name",
+      "icon": "icons/combat/textures/skill_weapon_cq/weapon_cq-01_kx08.png",
+      "relation": "Every current-build damage row linked to action 149907 belongs to RecountTable group 13: 11499070101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 150102,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.193.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 150102 belongs to RecountTable group 193: 315010200, 315010201",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 150103,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.176.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 150103 belongs to RecountTable group 176: 315010300",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 150104,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.176.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 150104 belongs to RecountTable group 176: 315010400",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 150105,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.179.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 150105 belongs to RecountTable group 179: 315010500",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 150106,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.179.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 150106 belongs to RecountTable group 179: 315010600",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 150107,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.179.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 150107 belongs to RecountTable group 179: 315010700",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 150110,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.179.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 150110 belongs to RecountTable group 179: 315011000",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 150112,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.178.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 150112 belongs to RecountTable group 178: 315011200",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 155101,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.62.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 155101 belongs to RecountTable group 62: 315510100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 155102,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.62.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 155102 belongs to RecountTable group 62: 315510200",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 160101,
+      "kind": "base-skill",
+      "localization_key": "recount_group.238.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_atk.png",
+      "relation": "Every current-build damage row linked to action 160101 belongs to RecountTable group 238: 11601010101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 160102,
+      "kind": "base-skill",
+      "localization_key": "recount_group.245.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_atk.png",
+      "relation": "Every current-build damage row linked to action 160102 belongs to RecountTable group 245: 11601020101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 160103,
+      "kind": "base-skill",
+      "localization_key": "recount_group.244.name",
+      "icon": "icons/combat/textures/skill_weapon_sf/weapon_sf-01_atk.png",
+      "relation": "Every current-build damage row linked to action 160103 belongs to RecountTable group 244: 11601030101, 11601030102, 11601030103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 170112,
+      "kind": "base-skill",
+      "localization_key": "recount_group.307.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_071.png",
+      "relation": "Every current-build damage row linked to action 170112 belongs to RecountTable group 307: 11701120104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 179902,
+      "kind": "talent",
+      "localization_key": "recount_group.69.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 179902 belongs to RecountTable group 69: 11799020101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 179904,
+      "kind": "talent",
+      "localization_key": "recount_group.64.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 179904 belongs to RecountTable group 64: 11799040101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 179906,
+      "kind": "talent",
+      "localization_key": "recount_group.57.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 179906 belongs to RecountTable group 57: 11799060101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 179907,
+      "kind": "talent",
+      "localization_key": "recount_group.70.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 179907 belongs to RecountTable group 70: 11799070101, 11799070102, 11799070103, 11799070104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 179908,
+      "kind": "talent",
+      "localization_key": "recount_group.71.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 179908 belongs to RecountTable group 71: 11799080101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 179910,
+      "kind": "talent",
+      "localization_key": "recount_group.72.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 179910 belongs to RecountTable group 72: 11799100101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 179911,
+      "kind": "talent",
+      "localization_key": "recount_group.65.name",
+      "icon": "icons/combat/textures/skill_weapon_tdl/weapon_tdl-01_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 179911 belongs to RecountTable group 65: 11799110101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 180101,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.291.name",
+      "icon": "icons/combat/textures/skill_weapon_cannongun/weapon_cannongun_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 180101 belongs to RecountTable group 291: 318010100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 180301,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.291.name",
+      "icon": "icons/combat/textures/skill_weapon_cannongun/weapon_cannongun_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 180301 belongs to RecountTable group 291: 318030100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 180501,
+      "kind": "talent",
+      "localization_key": "recount_group.291.name",
+      "icon": "icons/combat/textures/skill_weapon_cannongun/weapon_cannongun_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 180501 belongs to RecountTable group 291: 318050100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 180601,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.291.name",
+      "icon": "icons/combat/textures/skill_weapon_cannongun/weapon_cannongun_skill_01.png",
+      "relation": "Every current-build damage row linked to action 180601 belongs to RecountTable group 291: 318060100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 199902,
+      "kind": "talent",
+      "localization_key": "recount_group.125.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 199902 belongs to RecountTable group 125: 11999020101, 11999020102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 199903,
+      "kind": "talent",
+      "localization_key": "recount_group.126.name",
+      "icon": "icons/combat/textures/skill_weapon_wr/weapon_wr_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 199903 belongs to RecountTable group 126: 11999030101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220101,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.75.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220101 belongs to RecountTable group 75: 322010100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220102,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.81.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220102 belongs to RecountTable group 81: 322010200",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220103,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.75.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220103 belongs to RecountTable group 75: 322010300",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220104,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.76.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220104 belongs to RecountTable group 76: 322010400",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220105,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.103.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220105 belongs to RecountTable group 103: 322010500",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220106,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.77.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220106 belongs to RecountTable group 77: 322010600",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220107,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.105.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220107 belongs to RecountTable group 105: 322010700",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220108,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.106.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220108 belongs to RecountTable group 106: 322010800, 2220331101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220109,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.88.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220109 belongs to RecountTable group 88: 322010900",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220110,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.87.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220110 belongs to RecountTable group 87: 322011000",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220111,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.78.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220111 belongs to RecountTable group 78: 322011100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220112,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.104.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220112 belongs to RecountTable group 104: 322011200",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220113,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.96.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 220113 belongs to RecountTable group 96: 322011300",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 220302,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.79.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_ult.png",
+      "relation": "Every current-build damage row linked to action 220302 belongs to RecountTable group 79: 322030200",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 230101,
+      "kind": "base-skill",
+      "localization_key": "recount_group.205.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 230101 belongs to RecountTable group 205: 323010100, 12301010101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 230102,
+      "kind": "base-skill",
+      "localization_key": "recount_group.205.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 230102 belongs to RecountTable group 205: 12301020101, 12301020102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 230103,
+      "kind": "base-skill",
+      "localization_key": "recount_group.205.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 230103 belongs to RecountTable group 205: 12301030101, 12301030102, 12301030103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 230104,
+      "kind": "base-skill",
+      "localization_key": "recount_group.205.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 230104 belongs to RecountTable group 205: 12301040101, 12301040102, 12301040103, 12301040104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 230105,
+      "kind": "base-skill",
+      "localization_key": "recount_group.207.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 230105 belongs to RecountTable group 207: 12301050101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 230106,
+      "kind": "base-skill",
+      "localization_key": "recount_group.208.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_atk.png",
+      "relation": "Every current-build damage row linked to action 230106 belongs to RecountTable group 208: 12301060101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 230801,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.206.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx01.png",
+      "relation": "Every current-build damage row linked to action 230801 belongs to RecountTable group 206: 323080100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 230901,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.206.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx02.png",
+      "relation": "Every current-build damage row linked to action 230901 belongs to RecountTable group 206: 323090100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 231001,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.206.name",
+      "icon": "icons/combat/textures/skill_weapon_jt/weapon_jt-01_kx03.png",
+      "relation": "Every current-build damage row linked to action 231001 belongs to RecountTable group 206: 323100100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 240101,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.150.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_atk.png",
+      "relation": "Every current-build damage row linked to action 240101 belongs to RecountTable group 150: 324010100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 240102,
+      "kind": "skill-fight",
+      "localization_key": "recount_group.152.name",
+      "icon": "icons/combat/textures/skill_weapon_jd/weapon_jd-01_atk.png",
+      "relation": "Every current-build damage row linked to action 240102 belongs to RecountTable group 152: 324010200",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 250101,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.339.name",
+      "icon": "icons/combat/textures/skill_ip004x02/ip004x02_skill_atk.png",
+      "relation": "Every current-build damage row linked to action 250101 belongs to RecountTable group 339: 325010100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391001,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.269.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_009.png",
+      "relation": "Every current-build damage row linked to action 391001 belongs to RecountTable group 269: 339100100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391002,
+      "kind": "recount-child",
+      "localization_key": "recount_group.269.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_atk.png",
+      "relation": "Every current-build damage row linked to action 391002 belongs to RecountTable group 269: 339100200",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391003,
+      "kind": "recount-child",
+      "localization_key": "recount_group.269.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_atk.png",
+      "relation": "Every current-build damage row linked to action 391003 belongs to RecountTable group 269: 339100300",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391004,
+      "kind": "recount-child",
+      "localization_key": "recount_group.269.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_atk.png",
+      "relation": "Every current-build damage row linked to action 391004 belongs to RecountTable group 269: 339100400",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391005,
+      "kind": "recount-child",
+      "localization_key": "recount_group.269.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_atk.png",
+      "relation": "Every current-build damage row linked to action 391005 belongs to RecountTable group 269: 339100500",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391006,
+      "kind": "recount-child",
+      "localization_key": "recount_group.269.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_atk.png",
+      "relation": "Every current-build damage row linked to action 391006 belongs to RecountTable group 269: 339100600",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391007,
+      "kind": "recount-child",
+      "localization_key": "recount_group.257.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_020.png",
+      "relation": "Every current-build damage row linked to action 391007 belongs to RecountTable group 257: 339100700",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391008,
+      "kind": "recount-child",
+      "localization_key": "recount_group.280.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_045.png",
+      "relation": "Every current-build damage row linked to action 391008 belongs to RecountTable group 280: 339100800",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391009,
+      "kind": "recount-child",
+      "localization_key": "recount_group.291.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_053.png",
+      "relation": "Every current-build damage row linked to action 391009 belongs to RecountTable group 291: 339100900",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391010,
+      "kind": "recount-child",
+      "localization_key": "recount_group.291.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_053.png",
+      "relation": "Every current-build damage row linked to action 391010 belongs to RecountTable group 291: 339101000",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391301,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.268.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_010.png",
+      "relation": "Every current-build damage row linked to action 391301 belongs to RecountTable group 268: 339130100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 391401,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.324.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_019.png",
+      "relation": "Every current-build damage row linked to action 391401 belongs to RecountTable group 324: 339140100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 701001,
+      "kind": "base-skill",
+      "localization_key": "recount_group.323.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 701001 belongs to RecountTable group 323: 17010010101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 701002,
+      "kind": "base-skill",
+      "localization_key": "recount_group.325.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_general_tank_grind.png",
+      "relation": "Every current-build damage row linked to action 701002 belongs to RecountTable group 325: 17010020101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1002440,
+      "kind": "base-skill",
+      "localization_key": "recount_group.256.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_026.png",
+      "relation": "Every current-build damage row linked to action 1002440 belongs to RecountTable group 256: 110024400103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1002830,
+      "kind": "base-skill",
+      "localization_key": "recount_group.282.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_015.png",
+      "relation": "Every current-build damage row linked to action 1002830 belongs to RecountTable group 282: 110028300103, 110028300104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1005240,
+      "kind": "base-skill",
+      "localization_key": "recount_group.253.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_031.png",
+      "relation": "Every current-build damage row linked to action 1005240 belongs to RecountTable group 253: 110052400101, 110052400102, 110052400105, 110052400106",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1005940,
+      "kind": "base-skill",
+      "localization_key": "recount_group.266.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_051.png",
+      "relation": "Every current-build damage row linked to action 1005940 belongs to RecountTable group 266: 110059400101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1006940,
+      "kind": "base-skill",
+      "localization_key": "recount_group.262.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_041.png",
+      "relation": "Every current-build damage row linked to action 1006940 belongs to RecountTable group 262: 110069400101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1007601,
+      "kind": "base-skill",
+      "localization_key": "recount_group.280.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_045.png",
+      "relation": "Every current-build damage row linked to action 1007601 belongs to RecountTable group 280: 3100760100",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1007602,
+      "kind": "base-skill",
+      "localization_key": "recount_group.280.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_045.png",
+      "relation": "Every current-build damage row linked to action 1007602 belongs to RecountTable group 280: 110076020101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1007741,
+      "kind": "base-skill",
+      "localization_key": "recount_group.255.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_046.png",
+      "relation": "Every current-build damage row linked to action 1007741 belongs to RecountTable group 255: 110077410101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1008140,
+      "kind": "base-skill",
+      "localization_key": "recount_group.276.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_047.png",
+      "relation": "Every current-build damage row linked to action 1008140 belongs to RecountTable group 276: 110081400101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1008141,
+      "kind": "base-skill",
+      "localization_key": "recount_group.347.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_047.png",
+      "relation": "Every current-build damage row linked to action 1008141 belongs to RecountTable group 347: 110081410101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1008440,
+      "kind": "base-skill",
+      "localization_key": "recount_group.261.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_048.png",
+      "relation": "Every current-build damage row linked to action 1008440 belongs to RecountTable group 261: 110084400101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1008540,
+      "kind": "base-skill",
+      "localization_key": "recount_group.281.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_049.png",
+      "relation": "Every current-build damage row linked to action 1008540 belongs to RecountTable group 281: 110085400101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1008541,
+      "kind": "base-skill",
+      "localization_key": "recount_group.348.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_049.png",
+      "relation": "Every current-build damage row linked to action 1008541 belongs to RecountTable group 348: 110085410101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1008641,
+      "kind": "base-skill",
+      "localization_key": "recount_group.265.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_044.png",
+      "relation": "Every current-build damage row linked to action 1008641 belongs to RecountTable group 265: 110086410103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1009703,
+      "kind": "base-skill",
+      "localization_key": "recount_group.313.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_077.png",
+      "relation": "Every current-build damage row linked to action 1009703 belongs to RecountTable group 313: 3100970300",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1010440,
+      "kind": "base-skill",
+      "localization_key": "recount_group.258.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_040.png",
+      "relation": "Every current-build damage row linked to action 1010440 belongs to RecountTable group 258: 110104400101, 110104400102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1011215,
+      "kind": "base-skill",
+      "localization_key": "recount_group.305.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1011215 belongs to RecountTable group 305: 110112150101, 110112150102, 110112150103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1011216,
+      "kind": "base-skill",
+      "localization_key": "recount_group.305.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1011216 belongs to RecountTable group 305: 110112160101, 110112160102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1011217,
+      "kind": "base-skill",
+      "localization_key": "recount_group.305.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 1011217 belongs to RecountTable group 305: 110112170102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1011312,
+      "kind": "base-skill",
+      "localization_key": "recount_group.304.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_064.png",
+      "relation": "Every current-build damage row linked to action 1011312 belongs to RecountTable group 304: 110113120103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1011806,
+      "kind": "base-skill",
+      "localization_key": "recount_group.295.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_066.png",
+      "relation": "Every current-build damage row linked to action 1011806 belongs to RecountTable group 295: 110118060101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1011906,
+      "kind": "base-skill",
+      "localization_key": "recount_group.292.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_058.png",
+      "relation": "Every current-build damage row linked to action 1011906 belongs to RecountTable group 292: 110119060102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1100504,
+      "kind": "base-skill",
+      "localization_key": "recount_group.298.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_056.png",
+      "relation": "Every current-build damage row linked to action 1100504 belongs to RecountTable group 298: 111005040101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1100740,
+      "kind": "base-skill",
+      "localization_key": "recount_group.297.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_057.png",
+      "relation": "Every current-build damage row linked to action 1100740 belongs to RecountTable group 297: 111007400108",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1101204,
+      "kind": "base-skill",
+      "localization_key": "recount_group.302.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_061.png",
+      "relation": "Every current-build damage row linked to action 1101204 belongs to RecountTable group 302: 111012040101, 111012040102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1101304,
+      "kind": "base-skill",
+      "localization_key": "recount_group.301.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_062.png",
+      "relation": "Every current-build damage row linked to action 1101304 belongs to RecountTable group 301: 111013040101, 111013040102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1101440,
+      "kind": "base-skill",
+      "localization_key": "recount_group.293.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_063.png",
+      "relation": "Every current-build damage row linked to action 1101440 belongs to RecountTable group 293: 111014400101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1102205,
+      "kind": "base-skill",
+      "localization_key": "recount_group.306.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_069.png",
+      "relation": "Every current-build damage row linked to action 1102205 belongs to RecountTable group 306: 111022050102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1102306,
+      "kind": "base-skill",
+      "localization_key": "recount_group.296.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_070.png",
+      "relation": "Every current-build damage row linked to action 1102306 belongs to RecountTable group 296: 111023060101, 111023060102, 111023060103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1120220,
+      "kind": "base-skill",
+      "localization_key": "recount_group.316.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_080.png",
+      "relation": "Every current-build damage row linked to action 1120220 belongs to RecountTable group 316: 111202200103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1120310,
+      "kind": "base-skill",
+      "localization_key": "recount_group.311.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_075.png",
+      "relation": "Every current-build damage row linked to action 1120310 belongs to RecountTable group 311: 111203100101, 111203100103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1120610,
+      "kind": "base-skill",
+      "localization_key": "recount_group.319.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_083.png",
+      "relation": "Every current-build damage row linked to action 1120610 belongs to RecountTable group 319: 111206100101, 111206100102, 111206100103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1121105,
+      "kind": "base-skill",
+      "localization_key": "recount_group.314.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_078.png",
+      "relation": "Every current-build damage row linked to action 1121105 belongs to RecountTable group 314: 111211050102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1121406,
+      "kind": "base-skill",
+      "localization_key": "recount_group.318.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_082.png",
+      "relation": "Every current-build damage row linked to action 1121406 belongs to RecountTable group 318: 111214060102, 111214060103, 111214060104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1121810,
+      "kind": "base-skill",
+      "localization_key": "recount_group.320.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_084.png",
+      "relation": "Every current-build damage row linked to action 1121810 belongs to RecountTable group 320: 111218100101, 111218100102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1700440,
+      "kind": "base-skill",
+      "localization_key": "recount_group.259.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_005.png",
+      "relation": "Every current-build damage row linked to action 1700440 belongs to RecountTable group 259: 117004400103, 117004400105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1700718,
+      "kind": "base-skill",
+      "localization_key": "recount_group.303.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_067.png",
+      "relation": "Every current-build damage row linked to action 1700718 belongs to RecountTable group 303: 117007180101, 117007180102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1700824,
+      "kind": "base-skill",
+      "localization_key": "recount_group.91.name",
+      "icon": "icons/combat/textures/skill_weapon_gj/weapon_gj-01_atk.png",
+      "relation": "Every current-build damage row linked to action 1700824 belongs to RecountTable group 91: 117008240102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1700829,
+      "kind": "base-skill",
+      "localization_key": "recount_group.294.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_068.png",
+      "relation": "Every current-build damage row linked to action 1700829 belongs to RecountTable group 294: 117008290102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 1701040,
+      "kind": "base-skill",
+      "localization_key": "recount_group.312.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_076.png",
+      "relation": "Every current-build damage row linked to action 1701040 belongs to RecountTable group 312: 117010400102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2001740,
+      "kind": "base-skill",
+      "localization_key": "recount_group.252.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_037.png",
+      "relation": "Every current-build damage row linked to action 2001740 belongs to RecountTable group 252: 120017400103, 120017400104, 120017400105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2002440,
+      "kind": "base-skill",
+      "localization_key": "recount_group.275.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_014.png",
+      "relation": "Every current-build damage row linked to action 2002440 belongs to RecountTable group 275: 120024400102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2031101,
+      "kind": "lucky-strike",
+      "localization_key": "recount_group.47.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2031101 belongs to RecountTable group 47: 2203110103, 2203110104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2031102,
+      "kind": "lucky-strike",
+      "localization_key": "recount_group.25.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2031102 belongs to RecountTable group 25: 2203110203, 2203110204",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2031103,
+      "kind": "lucky-strike",
+      "localization_key": "recount_group.227.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2031103 belongs to RecountTable group 227: 2203110303, 2203110304",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2031104,
+      "kind": "lucky-strike",
+      "localization_key": "recount_group.2.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2031104 belongs to RecountTable group 2: 2203110403, 2203110404",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2031105,
+      "kind": "lucky-strike",
+      "localization_key": "recount_group.169.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2031105 belongs to RecountTable group 169: 2203110503, 2203110504",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2031107,
+      "kind": "lucky-strike",
+      "localization_key": "recount_group.108.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2031107 belongs to RecountTable group 108: 2203110703, 2203110704",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2031109,
+      "kind": "lucky-strike",
+      "localization_key": "recount_group.74.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2031109 belongs to RecountTable group 74: 2203110903, 2203110904",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2031110,
+      "kind": "lucky-strike",
+      "localization_key": "recount_group.140.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2031110 belongs to RecountTable group 140: 2203111003, 2203111004",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2031111,
+      "kind": "lucky-strike",
+      "localization_key": "recount_group.198.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2031111 belongs to RecountTable group 198: 2203111103, 2203111104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110012,
+      "kind": "imagine",
+      "localization_key": "recount_group.274.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_012.png",
+      "relation": "Every current-build damage row linked to action 2110012 belongs to RecountTable group 274: 2211001203",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110062,
+      "kind": "imagine",
+      "localization_key": "recount_group.250.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_atk.png",
+      "relation": "Every current-build damage row linked to action 2110062 belongs to RecountTable group 250: 2211006203",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110066,
+      "kind": "imagine",
+      "localization_key": "recount_group.272.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_movespeed.png",
+      "relation": "Every current-build damage row linked to action 2110066 belongs to RecountTable group 272: 2211006603",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110083,
+      "kind": "imagine",
+      "localization_key": "recount_group.277.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_def.png",
+      "relation": "Every current-build damage row linked to action 2110083 belongs to RecountTable group 277: 2211008304",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110085,
+      "kind": "imagine",
+      "localization_key": "recount_group.283.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_def.png",
+      "relation": "Every current-build damage row linked to action 2110085 belongs to RecountTable group 283: 2211008503",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110090,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.269.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_atk.png",
+      "relation": "Every current-build damage row linked to action 2110090 belongs to RecountTable group 269: 2211009003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110091,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.269.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_atk.png",
+      "relation": "Every current-build damage row linked to action 2110091 belongs to RecountTable group 269: 2211009103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110099,
+      "kind": "imagine",
+      "localization_key": "recount_group.255.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_atk.png",
+      "relation": "Every current-build damage row linked to action 2110099 belongs to RecountTable group 255: 2211009903",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110111,
+      "kind": "imagine",
+      "localization_key": "recount_group.288.name",
+      "icon": "icons/combat/atlas/hud/debuff/buff_red_def.png",
+      "relation": "Every current-build damage row linked to action 2110111 belongs to RecountTable group 288: 2211011104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110118,
+      "kind": "imagine",
+      "localization_key": "recount_group.290.name",
+      "icon": "icons/combat/atlas/buff/buff_passive_icon_general_sup_inspireex.png",
+      "relation": "Every current-build damage row linked to action 2110118 belongs to RecountTable group 290: 2211011803",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110130,
+      "kind": "imagine",
+      "localization_key": "recount_group.299.name",
+      "icon": "icons/combat/atlas/buff/buff_icon155.png",
+      "relation": "Every current-build damage row linked to action 2110130 belongs to RecountTable group 299: 2211013003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110131,
+      "kind": "imagine",
+      "localization_key": "recount_group.301.name",
+      "icon": "icons/combat/atlas/buff/buff_icon155.png",
+      "relation": "Every current-build damage row linked to action 2110131 belongs to RecountTable group 301: 2211013103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110133,
+      "kind": "imagine",
+      "localization_key": "recount_group.296.name",
+      "icon": "icons/combat/atlas/buff/buff_icon155.png",
+      "relation": "Every current-build damage row linked to action 2110133 belongs to RecountTable group 296: 2211013301",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2110304,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.346.name",
+      "icon": "icons/combat/atlas/debuff/buff_abnormal_icon_01.png",
+      "relation": "Every current-build damage row linked to action 2110304 belongs to RecountTable group 346: 2211030403",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201080,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.128.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_general_sup_starfield.png",
+      "relation": "Every current-build damage row linked to action 2201080 belongs to RecountTable group 128: 2220108003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201172,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.136.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_general_tank_unrelent.png",
+      "relation": "Every current-build damage row linked to action 2201172 belongs to RecountTable group 136: 2220117203",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201240,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.130.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_tank_ridicule02.png",
+      "relation": "Every current-build damage row linked to action 2201240 belongs to RecountTable group 130: 2220124003, 2220124005",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201350,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.120.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_general_tank_luckblockcd.png",
+      "relation": "Every current-build damage row linked to action 2201350 belongs to RecountTable group 120: 2220135003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201362,
+      "kind": "passive-proc",
+      "localization_key": "recount_group.134.name",
+      "icon": "icons/combat/atlas/buff/buff_passive_icon_general_tank_grind.png",
+      "relation": "Every current-build damage row linked to action 2201362 belongs to RecountTable group 134: 2220136203",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201410,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.131.name",
+      "icon": "icons/combat/atlas/talent_passive_9/weiren939.png",
+      "relation": "Every current-build damage row linked to action 2201410 belongs to RecountTable group 131: 2220141005",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201491,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.132.name",
+      "icon": "icons/combat/atlas/talent_passive_9/weiren947.png",
+      "relation": "Every current-build damage row linked to action 2201491 belongs to RecountTable group 132: 2220149103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201493,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.164.name",
+      "icon": "icons/combat/atlas/talent_passive_9/weiren947.png",
+      "relation": "Every current-build damage row linked to action 2201493 belongs to RecountTable group 164: 2220149303",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201540,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.137.name",
+      "icon": "icons/combat/atlas/talent_passive_9/weiren952.png",
+      "relation": "Every current-build damage row linked to action 2201540 belongs to RecountTable group 137: 2220154005",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201570,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.125.name",
+      "icon": "icons/combat/atlas/talent_passive_9/weiren955.png",
+      "relation": "Every current-build damage row linked to action 2201570 belongs to RecountTable group 125: 2220157003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201640,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.138.name",
+      "icon": "icons/combat/atlas/talent_passive_9/talent_passive_icon_general_tank_pierce.png",
+      "relation": "Every current-build damage row linked to action 2201640 belongs to RecountTable group 138: 2220164005",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2201641,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.133.name",
+      "icon": "icons/combat/atlas/talent_passive_9/weiren962.png",
+      "relation": "Every current-build damage row linked to action 2201641 belongs to RecountTable group 133: 2220164103, 2220164104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2202091,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.190.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2202091 belongs to RecountTable group 190: 2220209101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2202120,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.189.name",
+      "icon": "icons/combat/atlas/talent_passive_5/talent_passive_icon_general_sup_healshield.png",
+      "relation": "Every current-build damage row linked to action 2202120 belongs to RecountTable group 189: 2220212004",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2202262,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.191.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2202262 belongs to RecountTable group 191: 2220226203",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2202271,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.192.name",
+      "icon": "icons/combat/atlas/talent_passive_5/talent_passive_icon_sup_melee03.png",
+      "relation": "Every current-build damage row linked to action 2202271 belongs to RecountTable group 192: 2220227101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2202291,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.194.name",
+      "icon": "icons/combat/atlas/talent_passive_5/talent_passive_icon_general_sup_aid.png",
+      "relation": "Every current-build damage row linked to action 2202291 belongs to RecountTable group 194: 2220229101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2202311,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.188.name",
+      "icon": "icons/combat/atlas/talent_passive_5/talent_passive_icon_general_sup_seedtrriger.png",
+      "relation": "Every current-build damage row linked to action 2202311 belongs to RecountTable group 188: 2220231103, 2220231104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2202581,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.183.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh-01_kx07.png",
+      "relation": "Every current-build damage row linked to action 2202581 belongs to RecountTable group 183: 2220258103, 2220258104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2202582,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.183.name",
+      "icon": "icons/combat/textures/skill_weapon_fh/weapon_fh-01_kx07.png",
+      "relation": "Every current-build damage row linked to action 2202582 belongs to RecountTable group 183: 2220258203, 2220258204",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2203091,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.99.name",
+      "icon": "icons/combat/atlas/talent_passive_11/talent_passive_icon_general_dps_extralightarrow.png",
+      "relation": "Every current-build damage row linked to action 2203091 belongs to RecountTable group 99: 2220309102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2203101,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.99.name",
+      "icon": "icons/combat/atlas/talent_passive_11/talent_passive_icon_general_dps_extralightarrow.png",
+      "relation": "Every current-build damage row linked to action 2203101 belongs to RecountTable group 99: 2220310102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2203102,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.99.name",
+      "icon": "icons/combat/atlas/talent_passive_11/talent_passive_icon_general_dps_extralightarrow.png",
+      "relation": "Every current-build damage row linked to action 2203102 belongs to RecountTable group 99: 2220310202",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2203141,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.99.name",
+      "icon": "icons/combat/atlas/talent_passive_11/talent_passive_icon_general_dps_extralightarrow.png",
+      "relation": "Every current-build damage row linked to action 2203141 belongs to RecountTable group 99: 2220314102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2203302,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.99.name",
+      "icon": "icons/combat/atlas/talent_passive_11/talent_passive_icon_general_dps_extralightarrow.png",
+      "relation": "Every current-build damage row linked to action 2203302 belongs to RecountTable group 99: 2220330202",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2203512,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.100.name",
+      "icon": "icons/combat/atlas/talent_passive_11/gongjian1151.png",
+      "relation": "Every current-build damage row linked to action 2203512 belongs to RecountTable group 100: 2220351201",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2203521,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.101.name",
+      "icon": "icons/combat/atlas/talent_passive_11/gongjian1152.png",
+      "relation": "Every current-build damage row linked to action 2203521 belongs to RecountTable group 101: 2220352105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2203621,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.102.name",
+      "icon": "icons/combat/atlas/talent_passive_11/gongjian1162.png",
+      "relation": "Every current-build damage row linked to action 2203621 belongs to RecountTable group 102: 2220362101, 2220362105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2203622,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.102.name",
+      "icon": "icons/combat/atlas/talent_passive_11/gongjian1162.png",
+      "relation": "Every current-build damage row linked to action 2203622 belongs to RecountTable group 102: 2220362204, 2220362207",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2204081,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.40.name",
+      "icon": "icons/combat/atlas/talent_passive_2/talent_passive_icon_general_dps_icearrowaoe.png",
+      "relation": "Every current-build damage row linked to action 2204081 belongs to RecountTable group 40: 2220408101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2204241,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.41.name",
+      "icon": "icons/combat/atlas/talent_passive_2/talent_passive_icon_general_dps_icecharge.png",
+      "relation": "Every current-build damage row linked to action 2204241 belongs to RecountTable group 41: 2220424101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2204320,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.42.name",
+      "icon": "icons/combat/atlas/talent_passive_2/talent_passive_icon_general_dps_icepulse.png",
+      "relation": "Every current-build damage row linked to action 2204320 belongs to RecountTable group 42: 2220432004",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2205060,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.23.name",
+      "icon": "icons/combat/atlas/talent_passive_4/talent_passive_icon_general_dps_teardelay.png",
+      "relation": "Every current-build damage row linked to action 2205060 belongs to RecountTable group 23: 2220506003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2205071,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.22.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2205071 belongs to RecountTable group 22: 2220507103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2205450,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.12.name",
+      "icon": "icons/combat/atlas/talent_passive_4/changqiang447.png",
+      "relation": "Every current-build damage row linked to action 2205450 belongs to RecountTable group 12: 2220545004",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206240,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.165.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1223.png",
+      "relation": "Every current-build damage row linked to action 2206240 belongs to RecountTable group 165: 2220624004",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206241,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.160.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1223.png",
+      "relation": "Every current-build damage row linked to action 2206241 belongs to RecountTable group 160: 2220624103, 2220624105",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206243,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.160.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1223.png",
+      "relation": "Every current-build damage row linked to action 2206243 belongs to RecountTable group 160: 2220624301",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206250,
+      "kind": "recount-child",
+      "localization_key": "recount_group.160.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1223.png",
+      "relation": "Every current-build damage row linked to action 2206250 belongs to RecountTable group 160: 2220625006",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206290,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.166.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1228.png",
+      "relation": "Every current-build damage row linked to action 2206290 belongs to RecountTable group 166: 2220629005",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206401,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.161.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1239.png",
+      "relation": "Every current-build damage row linked to action 2206401 belongs to RecountTable group 161: 2220640103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206460,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.162.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1245.png",
+      "relation": "Every current-build damage row linked to action 2206460 belongs to RecountTable group 162: 2220646003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206541,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.144.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1253.png",
+      "relation": "Every current-build damage row linked to action 2206541 belongs to RecountTable group 144: 2220654103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206552,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.163.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1254.png",
+      "relation": "Every current-build damage row linked to action 2206552 belongs to RecountTable group 163: 2220655203, 2220655204",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206561,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.144.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1255.png",
+      "relation": "Every current-build damage row linked to action 2206561 belongs to RecountTable group 144: 2220656103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2206680,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.167.name",
+      "icon": "icons/combat/atlas/talent_passive_12/jiandun1228.png",
+      "relation": "Every current-build damage row linked to action 2206680 belongs to RecountTable group 167: 2220668005",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2207141,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.222.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2207141 belongs to RecountTable group 222: 2220714102, 2220714103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2207151,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.219.name",
+      "icon": "icons/combat/atlas/talent_passive_13/gita1314.png",
+      "relation": "Every current-build damage row linked to action 2207151 belongs to RecountTable group 219: 2220715103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2207411,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.222.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 2207411 belongs to RecountTable group 222: 2220741101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2207431,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.207.name",
+      "icon": "icons/combat/atlas/talent_passive_13/gita1342.png",
+      "relation": "Every current-build damage row linked to action 2207431 belongs to RecountTable group 207: 2220743103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2207620,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.218.name",
+      "icon": "icons/combat/atlas/talent_passive_13/gita1361.png",
+      "relation": "Every current-build damage row linked to action 2207620 belongs to RecountTable group 218: 2220762007, 2220762008",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2207681,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.224.name",
+      "icon": "icons/combat/atlas/talent_passive_13/gita1367.png",
+      "relation": "Every current-build damage row linked to action 2207681 belongs to RecountTable group 224: 2220768103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2208172,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.246.name",
+      "icon": "icons/combat/atlas/talent_passive_3/shuangfu316.png",
+      "relation": "Every current-build damage row linked to action 2208172 belongs to RecountTable group 246: 2220817203, 2220817204",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2208181,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.247.name",
+      "icon": "icons/combat/atlas/talent_passive_3/shuangfu317.png",
+      "relation": "Every current-build damage row linked to action 2208181 belongs to RecountTable group 247: 2220818103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2300080,
+      "kind": "active-skill",
+      "localization_key": "recount_group.322.name",
+      "icon": "icons/combat/atlas/mod_effect/mod_effect_icon_035.png",
+      "relation": "Every current-build damage row linked to action 2300080 belongs to RecountTable group 322: 2230008003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2302321,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.321.name",
+      "icon": "icons/combat/atlas/mod_effect/mod_effect_icon_024.png",
+      "relation": "Every current-build damage row linked to action 2302321 belongs to RecountTable group 321: 2230232103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2900441,
+      "kind": "talent",
+      "localization_key": "recount_group.291.name",
+      "icon": "icons/combat/textures/skill_weapon_cannongun/weapon_cannongun_skill_passive.png",
+      "relation": "Every current-build damage row linked to action 2900441 belongs to RecountTable group 291: 129004410109, 129004410110, 129004410111",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2900540,
+      "kind": "base-skill",
+      "localization_key": "recount_group.283.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_025.png",
+      "relation": "Every current-build damage row linked to action 2900540 belongs to RecountTable group 283: 129005400101, 129005400103, 129005400104, 129005400105, 129005400106",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2900740,
+      "kind": "base-skill",
+      "localization_key": "recount_group.289.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_055.png",
+      "relation": "Every current-build damage row linked to action 2900740 belongs to RecountTable group 289: 129007400101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 2900840,
+      "kind": "base-skill",
+      "localization_key": "recount_group.288.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_052.png",
+      "relation": "Every current-build damage row linked to action 2900840 belongs to RecountTable group 288: 129008400103, 129008400105, 129008400107, 129008400108, 129008400109",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3001031,
+      "kind": "active-skill",
+      "localization_key": "recount_group.326.name",
+      "icon": "icons/combat/atlas/hud/buff/buff_blue_heal.png",
+      "relation": "Every current-build damage row linked to action 3001031 belongs to RecountTable group 326: 2300103103, 2300103104",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3002215,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.327.name",
+      "icon": "icons/combat/atlas/season_talent/s2talent02_01.png",
+      "relation": "Every current-build damage row linked to action 3002215 belongs to RecountTable group 327: 2300221501, 2300221503",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3002671,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.328.name",
+      "icon": "icons/combat/atlas/season_talent_icon/s2talent01_04.png",
+      "relation": "Every current-build damage row linked to action 3002671 belongs to RecountTable group 328: 2300267103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3003023,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.329.name",
+      "icon": "icons/combat/atlas/season_talent_icon/s2talent01_04.png",
+      "relation": "Every current-build damage row linked to action 3003023 belongs to RecountTable group 329: 2300302301",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3003025,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.329.name",
+      "icon": "icons/combat/atlas/season_talent_icon/s2talent01_04.png",
+      "relation": "Every current-build damage row linked to action 3003025 belongs to RecountTable group 329: 2300302501",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3003250,
+      "kind": "talent-skill",
+      "localization_key": "recount_group.330.name",
+      "icon": "icons/combat/atlas/season_talent_icon/s2talent01_04.png",
+      "relation": "Every current-build damage row linked to action 3003250 belongs to RecountTable group 330: 2300325003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3052112,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.45.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 3052112 belongs to RecountTable group 45: 2305211201",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3059101,
+      "kind": "buff-proc",
+      "localization_key": "recount_group.334.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 3059101 belongs to RecountTable group 334: 2305910103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3059210,
+      "kind": "recount-child",
+      "localization_key": "recount_group.335.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 3059210 belongs to RecountTable group 335: 2305921003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3081023,
+      "kind": "base-skill",
+      "localization_key": "recount_group.278.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_022.png",
+      "relation": "Every current-build damage row linked to action 3081023 belongs to RecountTable group 278: 130810230101, 130810230102, 130810230103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3200034,
+      "kind": "passive-proc",
+      "localization_key": "recount_group.301.name",
+      "icon": "icons/combat/atlas/buff/buff_icon155.png",
+      "relation": "Every current-build damage row linked to action 3200034 belongs to RecountTable group 301: 2320003403",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210021,
+      "kind": "imagine",
+      "localization_key": "recount_group.260.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_029.png",
+      "relation": "Every current-build damage row linked to action 3210021 belongs to RecountTable group 260: 2321002103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210022,
+      "kind": "imagine",
+      "localization_key": "recount_group.260.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_029.png",
+      "relation": "Every current-build damage row linked to action 3210022 belongs to RecountTable group 260: 2321002203",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210031,
+      "kind": "imagine",
+      "localization_key": "recount_group.275.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_014.png",
+      "relation": "Every current-build damage row linked to action 3210031 belongs to RecountTable group 275: 2321003101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210051,
+      "kind": "imagine",
+      "localization_key": "recount_group.254.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_018.png",
+      "relation": "Every current-build damage row linked to action 3210051 belongs to RecountTable group 254: 2321005102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210061,
+      "kind": "passive-proc",
+      "localization_key": "recount_group.256.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_026.png",
+      "relation": "Every current-build damage row linked to action 3210061 belongs to RecountTable group 256: 2321006101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210081,
+      "kind": "passive-proc",
+      "localization_key": "recount_group.258.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_040.png",
+      "relation": "Every current-build damage row linked to action 3210081 belongs to RecountTable group 258: 2321008101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210161,
+      "kind": "passive-proc",
+      "localization_key": "recount_group.302.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_061.png",
+      "relation": "Every current-build damage row linked to action 3210161 belongs to RecountTable group 302: 2321016101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210171,
+      "kind": "passive-proc",
+      "localization_key": "recount_group.305.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 3210171 belongs to RecountTable group 305: 2321017103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210210,
+      "kind": "imagine",
+      "localization_key": "recount_group.313.name",
+      "icon": "icons/combat/atlas/buff/buff_icon03.png",
+      "relation": "Every current-build damage row linked to action 3210210 belongs to RecountTable group 313: 2321021003",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3210231,
+      "kind": "imagine",
+      "localization_key": "recount_group.315.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_079.png",
+      "relation": "Every current-build damage row linked to action 3210231 belongs to RecountTable group 315: 2321023101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3340115,
+      "kind": "base-skill",
+      "localization_key": "recount_group.309.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_073.png",
+      "relation": "Every current-build damage row linked to action 3340115 belongs to RecountTable group 309: 133401150101, 133401150102, 133401150103, 133401150106",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3340116,
+      "kind": "base-skill",
+      "localization_key": "recount_group.309.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_073.png",
+      "relation": "Every current-build damage row linked to action 3340116 belongs to RecountTable group 309: 133401160101, 133401160102, 133401160103",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3340190,
+      "kind": "base-skill",
+      "localization_key": "recount_group.309.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_073.png",
+      "relation": "Every current-build damage row linked to action 3340190 belongs to RecountTable group 309: 133401900101, 133401900102",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 3936001,
+      "kind": "base-skill",
+      "localization_key": "recount_group.263.name",
+      "icon": null,
+      "relation": "Every current-build damage row linked to action 3936001 belongs to RecountTable group 263: 139360010101",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 10040102,
+      "kind": "recount-child",
+      "localization_key": "recount_group.270.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_019.png",
+      "relation": "Every current-build damage row linked to action 10040102 belongs to RecountTable group 270: 31004010200",
+      "review_state": "verified-current-build-recount"
+    },
+    {
+      "ability_id": 10070801,
+      "kind": "skill-effect",
+      "localization_key": "recount_group.257.name",
+      "icon": "icons/combat/textures/skill_aoyi/skill_aoyi_skill_icon_020.png",
+      "relation": "Every current-build damage row linked to action 10070801 belongs to RecountTable group 257: 31007080100",
+      "review_state": "verified-current-build-recount"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+schema_version = 1
+id = "app.rlogs.combat-overlay"
+name = "Combat Overlay"
+version = "0.1.0"
+api_version = 1
+runtime = "browser_overlay"
+entrypoint = "ui/runtime.html"
+capabilities = ["ui_workspace_publish"]
+subscriptions = []
+allowed_network_domains = []
+
+[[dependencies]]
+plugin_id = "app.rlogs.combat-meter"
+optional = false
+
+[[workspace_tab_contributions]]
+target_plugin_id = "app.rlogs.combat-meter"
+id = "overlay"
+label = "Overlay"
+entrypoint = "ui/overlay.html"
+section = "overlay"
+default_order = 200
+
+[[workspace_tab_contributions]]
+target_plugin_id = "app.rlogs.combat-meter"
+id = "options"
+label = "Options"
+entrypoint = "ui/options.html"
+kind = "options"
+section = "overlay"
+default_order = 201

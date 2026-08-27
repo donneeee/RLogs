@@ -1,0 +1,1688 @@
+{
+  "schema_version": 1,
+  "pack_id": "global-steam-24687926-static-candidate-v3",
+  "target": {
+    "deployment_id": "global",
+    "region_id": null,
+    "channel": "steam",
+    "build_id": "24687926",
+    "executable_version": null
+  },
+  "provenance": [
+    {
+      "source": "exact-current-build-rpc-surface",
+      "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+    },
+    {
+      "source": "exact-current-build-native-dispatch-proof",
+      "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+    },
+    {
+      "source": "decoder-contract-migration-candidate",
+      "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+    }
+  ],
+  "routes": [
+    {
+      "route": {
+        "direction": "client_to_server",
+        "fragment": {
+          "kind": "call"
+        },
+        "service_id": 103198054,
+        "method_id": 249858
+      },
+      "service_name": "World",
+      "method_name": "UseSlot",
+      "message_name": "Zproto.World.Types.UseSlot",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-use-slot-static-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/use-skill-attribute-envelope.v3.json"
+        }
+      ],
+      "features": [
+        "skill"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 1
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncSubSceneAttrs",
+      "message_name": "SyncSubSceneAttrs",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "scene",
+        "entity_attributes"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 2
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyTimerList",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 3
+      },
+      "service_name": "WorldNtf",
+      "method_name": "EnterScene",
+      "message_name": "EnterScene",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "scene",
+        "map",
+        "entity_lifecycle",
+        "character_identity"
+      ],
+      "disposition": "allowed",
+      "domain": "world_state",
+      "decoder": "enter_scene_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 4
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyLoadSceneEnd",
+      "message_name": "NotifyLoadSceneEnd",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "scene",
+        "map",
+        "world_state"
+      ],
+      "disposition": "allowed",
+      "domain": "world_state",
+      "decoder": "notify_load_scene_end_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 6
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncNearEntities",
+      "message_name": "SyncNearEntities",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "entity_lifecycle",
+        "entity_attributes",
+        "character_identity",
+        "monster_identity",
+        "position"
+      ],
+      "disposition": "allowed",
+      "domain": "actor_state",
+      "decoder": "sync_near_entities_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 7
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncSceneAttrs",
+      "message_name": "SyncSceneAttrs",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "scene",
+        "map",
+        "entity_attributes"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 8
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncSceneEvents",
+      "message_name": "SyncSceneEvents",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "scene",
+        "map",
+        "dungeon_objective",
+        "world_state"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 9
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncFieldOfView",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 10
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncSceneAttrs",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 11
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncLog",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 12
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncNearDeltaInfo",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 13
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncPersonalObject",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 15
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncServerSkillEnd",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 16
+      },
+      "service_name": "WorldNtf",
+      "method_name": "LineDrawing",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 17
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyBuffChange",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 20
+      },
+      "service_name": "WorldNtf",
+      "method_name": "EnterGame",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "world_state",
+        "character_identity"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 21
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncContainerData",
+      "message_name": "SyncContainerData",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "character_profile",
+        "scene",
+        "map",
+        "equipment",
+        "profession",
+        "talent"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "sync_container_data_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 22
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncContainerDirtyData",
+      "message_name": "SyncContainerDirtyData",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "character_profile",
+        "equipment",
+        "profession",
+        "talent",
+        "unknown_research"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "sync_container_dirty_data_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 23
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncDungeonData",
+      "message_name": "SyncDungeonData",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "dungeon",
+        "dungeon_objective"
+      ],
+      "disposition": "allowed",
+      "domain": "encounter",
+      "decoder": "sync_dungeon_data_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 24
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncDungeonDirtyData",
+      "message_name": "SyncDungeonDirtyData",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "dungeon",
+        "dungeon_objective"
+      ],
+      "disposition": "allowed",
+      "domain": "encounter",
+      "decoder": "sync_dungeon_dirty_data_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 27
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncSeason",
+      "message_name": "SyncSeason",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "character_profile",
+        "world_state"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "sync_season_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 34
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncPlayCameraAnimation",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 35
+      },
+      "service_name": "WorldNtf",
+      "method_name": "ServerStateObjectUpdate",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 39
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyReviveUser",
+      "message_name": "NotifyReviveUser",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "revive"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 43
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncServerTime",
+      "message_name": "SyncServerTime",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "world_state"
+      ],
+      "disposition": "allowed",
+      "domain": "world_state",
+      "decoder": "sync_server_time_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 45
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncNearDeltaInfo",
+      "message_name": "SyncNearDeltaInfo",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "entity_attributes",
+        "position",
+        "skill",
+        "damage",
+        "healing",
+        "shield",
+        "death",
+        "status_effect"
+      ],
+      "disposition": "allowed",
+      "domain": "combat",
+      "decoder": "sync_near_delta_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 46
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncToMeDeltaInfo",
+      "message_name": "SyncToMeDeltaInfo",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "entity_attributes",
+        "position",
+        "skill",
+        "cooldown",
+        "damage",
+        "healing",
+        "shield",
+        "death",
+        "status_effect"
+      ],
+      "disposition": "allowed",
+      "domain": "combat",
+      "decoder": "sync_to_me_delta_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 49
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyClientKickOff",
+      "message_name": "NotifyClientKickOff",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "world_state"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 60
+      },
+      "service_name": "WorldNtf",
+      "method_name": "PersonalObjectUpdate",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 62
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyUserCloseFunction",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "world_state"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 63
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyServerCloseFunction",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "world_state"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 64
+      },
+      "service_name": "WorldNtf",
+      "method_name": "BuffInfoSync",
+      "message_name": "BuffInfoSync",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "status_effect"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 66
+      },
+      "service_name": "WorldNtf",
+      "method_name": "EnterGame",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 67
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncClientUseSkill",
+      "message_name": "SyncClientUseSkill",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "skill"
+      ],
+      "disposition": "allowed",
+      "domain": "combat",
+      "decoder": "sync_client_use_skill_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 68
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncClientUseSkill",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 72
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyTimerList",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "world_state"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 73
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyTimerUpdate",
+      "message_name": "NotifyTimerUpdate",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "world_state"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 74
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyUserAllSourcePriviledgeEffectData",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "character_profile",
+        "unknown_research"
+      ],
+      "disposition": "prohibited",
+      "class": "private_account_data"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 79
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyUserAllValidBattlePassData",
+      "message_name": "NotifyUserAllValidBattlePassData",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "character_profile",
+        "progression",
+        "battle_pass"
+      ],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 81
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyReviveUser",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 82
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncToMeDeltaInfo",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 12290
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncContainerData",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 12291
+      },
+      "service_name": "WorldNtf",
+      "method_name": "NotifyClientKickOff",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 12292
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncServerTime",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 12293
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncServerSkillSingingTimeSub",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 12294
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SyncServerSkillStageEnd",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [],
+      "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 1664308034,
+        "method_id": 385025
+      },
+      "service_name": "WorldNtf",
+      "method_name": "SignRewardNotify",
+      "message_name": null,
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-rpc-surface",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/rpc-message-surface.v2.json"
+        },
+        {
+          "source": "exact-current-build-native-dispatch-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/world-ntf-route-proof.v2.json"
+        },
+        {
+          "source": "decoder-contract-migration-candidate",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        },
+        {
+          "source": "wire-compatible-baseline-route-carry-forward",
+          "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
+        }
+      ],
+      "features": [
+        "world_state"
+      ],
+      "disposition": "opaque"
+    }
+  ]
+}

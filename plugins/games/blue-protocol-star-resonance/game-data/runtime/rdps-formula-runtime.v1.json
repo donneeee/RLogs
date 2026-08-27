@@ -1,0 +1,344 @@
+{
+  "schema_version": 10,
+  "deployment_id": "global",
+  "game_build": "24687926",
+  "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+  "promotion_state": "blocked-current-build-proof-gates-open",
+  "promotion_blockers": [
+    "canonical-replay-conservation",
+    "critical-damage-factor-interpretation-authority",
+    "party-support-formula-frontier"
+  ],
+  "policy": {
+    "canonical_events_retained": true,
+    "unresolved_events_hidden": false,
+    "candidate_rules_enabled": false,
+    "critical_damage_factor_interpretation_authority": false,
+    "party_support_formula_frontier_complete": false,
+    "promotion_requires_exact_conservation": true,
+    "game_files_are_identity_and_coefficient_evidence_not_packet_occurrence_evidence": true,
+    "runtime_promotion_allowed": false,
+    "same_deployment_build_mismatch": "exact-build-only",
+    "warn_on_build_mismatch": true
+  },
+  "attack_families": {
+    "physical": {
+      "final_attribute_id": 11330,
+      "intermediate_attribute_id": 11331,
+      "base_add_attribute_id": 11332,
+      "extra_add_attribute_id": 11333,
+      "raw_percent_attribute_id": 11334
+    },
+    "magical": {
+      "final_attribute_id": 11340,
+      "intermediate_attribute_id": 11341,
+      "base_add_attribute_id": 11342,
+      "extra_add_attribute_id": 11343,
+      "raw_percent_attribute_id": 11344
+    }
+  },
+  "damage_stage_catalog": {
+    "authored_game_build": "24687926",
+    "source_table": "DamageAttrTable.ctb",
+    "source_table_hash": 1708172942,
+    "source_row_count": 5700,
+    "unique_lookup_keys": 5678,
+    "ambiguous_lookup_keys": 22,
+    "standard_attack_rules": 3110,
+    "standard_magic_attack_rules": 397,
+    "standard_rules": 3507
+  },
+  "critical_damage_factor_interpretation": "unresolved",
+  "team_luck": {
+    "effect_id": 2302121,
+    "critical_damage_attribute_id": 12510,
+    "lucky_damage_attribute_id": 12530,
+    "critical_raw_delta": 520,
+    "lucky_raw_delta": 340,
+    "combined_critical_lucky_enabled": false
+  },
+  "functional_amp": {
+    "effect_id": 2110143,
+    "source_config_id": 2110151,
+    "self_multiplier_effect_id": 2110153,
+    "passive_damage_effect_id": 3210210,
+    "passive_stack_effect_id": 3210211,
+    "attack_percent_raw_delta": 360,
+    "damage_scripts": ["Attack", "MAttack"],
+    "attack_magic_historical_formula_authority": true,
+    "attack_magic_target_build_lifecycle_schema_authority": true,
+    "attack_magic_target_build_formula_authority": true,
+    "attack_magic_target_build_effect_occurrence_observed": false,
+    "attack_magic_target_build_damage_replay_observed": false,
+    "formula_authority_basis": "historical-replay-plus-target-static-and-protocol-schema-migration",
+    "dormant_activation_requires_observed_lifecycle": true,
+    "server_integer_counterfactual_authority": false,
+    "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
+    "unresolved_overlap_fails_closed": true,
+    "attack_magic_runtime_transfer_enabled": false,
+    "speed_runtime_transfer_enabled": false
+  },
+  "mechanical_power": {
+    "effect_id": 2110140,
+    "source_config_id": 3971,
+    "source_config_must_be_absent": true,
+    "duration_millis": 15000,
+    "haste_attribute_id": 11930,
+    "recipient_rules": [
+      {
+        "recipient_class_id": 11,
+        "attack_lane": "physical_attack",
+        "primary_attribute_family": {
+          "final_attribute_id": 11030,
+          "intermediate_attribute_id": 11031,
+          "base_add_attribute_id": 11032,
+          "extra_add_attribute_id": 11033,
+          "raw_percent_attribute_id": 11034
+        },
+        "primary_percent_raw_delta": 1500,
+        "primary_to_attack_numerator": 58,
+        "primary_to_attack_denominator": 100,
+        "damage_scripts": ["Attack"]
+      }
+    ],
+    "requires_recipient_packet_transition": true,
+    "haste_is_action_opportunity": true,
+    "universal_tier_formula_enabled": false,
+    "damage_stage_operation_order_authority": false,
+    "damage_stage_integer_rounding_authority": false,
+    "class_11_tier_0_current_pack_lifecycle_authority": true,
+    "class_11_tier_0_exact_rational_attribution_authority": false,
+    "server_integer_counterfactual_authority": false,
+    "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
+    "unresolved_overlap_fails_closed": true,
+    "runtime_transfer_enabled": false,
+    "runtime_recipient_class_ids": [],
+    "runtime_primary_percent_raw_deltas": []
+  },
+  "harmony_grace": {
+    "effect_id": 3003052,
+    "source_terminal_effect_id": 3003050,
+    "source_config_must_be_absent": false,
+    "source_type_id": 1,
+    "source_config_id": 3003053,
+    "primary_family_rounding": "nearest_non_tie",
+    "class_11_current_pack_lifecycle_authority": true,
+    "class_11_exact_rational_attribution_authority": false,
+    "server_integer_counterfactual_authority": false,
+    "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
+    "unresolved_overlap_fails_closed": true,
+    "recipient_rules": [
+      {
+        "recipient_class_id": 1,
+        "attack_lane": "physical_attack",
+        "primary_attribute_family": {
+          "final_attribute_id": 11030,
+          "intermediate_attribute_id": 11031,
+          "base_add_attribute_id": 11032,
+          "extra_add_attribute_id": 11033,
+          "raw_percent_attribute_id": 11034
+        },
+        "primary_percent_raw_delta": 200,
+        "primary_to_attack_numerator": 1,
+        "primary_to_attack_denominator": 8,
+        "damage_scripts": ["Attack"]
+      },
+      {
+        "recipient_class_id": 2,
+        "attack_lane": "magical_attack",
+        "primary_attribute_family": {
+          "final_attribute_id": 11020,
+          "intermediate_attribute_id": 11021,
+          "base_add_attribute_id": 11022,
+          "extra_add_attribute_id": 11023,
+          "raw_percent_attribute_id": 11024
+        },
+        "primary_percent_raw_delta": 200,
+        "primary_to_attack_numerator": 1,
+        "primary_to_attack_denominator": 10,
+        "damage_scripts": ["MAttack"]
+      },
+      {
+        "recipient_class_id": 3,
+        "attack_lane": "physical_attack",
+        "primary_attribute_family": {
+          "final_attribute_id": 11010,
+          "intermediate_attribute_id": 11011,
+          "base_add_attribute_id": 11012,
+          "extra_add_attribute_id": 11013,
+          "raw_percent_attribute_id": 11014
+        },
+        "primary_percent_raw_delta": 200,
+        "primary_to_attack_numerator": 1,
+        "primary_to_attack_denominator": 8,
+        "damage_scripts": ["Attack"]
+      },
+      {
+        "recipient_class_id": 4,
+        "attack_lane": "physical_attack",
+        "primary_attribute_family": {
+          "final_attribute_id": 11010,
+          "intermediate_attribute_id": 11011,
+          "base_add_attribute_id": 11012,
+          "extra_add_attribute_id": 11013,
+          "raw_percent_attribute_id": 11014
+        },
+        "primary_percent_raw_delta": 200,
+        "primary_to_attack_numerator": 1,
+        "primary_to_attack_denominator": 8,
+        "damage_scripts": ["Attack"]
+      },
+      {
+        "recipient_class_id": 5,
+        "attack_lane": "magical_attack",
+        "primary_attribute_family": {
+          "final_attribute_id": 11020,
+          "intermediate_attribute_id": 11021,
+          "base_add_attribute_id": 11022,
+          "extra_add_attribute_id": 11023,
+          "raw_percent_attribute_id": 11024
+        },
+        "primary_percent_raw_delta": 200,
+        "primary_to_attack_numerator": 1,
+        "primary_to_attack_denominator": 10,
+        "damage_scripts": ["MAttack"]
+      },
+      {
+        "recipient_class_id": 9,
+        "attack_lane": "physical_attack",
+        "primary_attribute_family": {
+          "final_attribute_id": 11010,
+          "intermediate_attribute_id": 11011,
+          "base_add_attribute_id": 11012,
+          "extra_add_attribute_id": 11013,
+          "raw_percent_attribute_id": 11014
+        },
+        "primary_percent_raw_delta": 200,
+        "primary_to_attack_numerator": 1,
+        "primary_to_attack_denominator": 8,
+        "damage_scripts": ["Attack"]
+      },
+      {
+        "recipient_class_id": 11,
+        "attack_lane": "physical_attack",
+        "primary_attribute_family": {
+          "final_attribute_id": 11030,
+          "intermediate_attribute_id": 11031,
+          "base_add_attribute_id": 11032,
+          "extra_add_attribute_id": 11033,
+          "raw_percent_attribute_id": 11034
+        },
+        "primary_percent_raw_delta": 200,
+        "primary_to_attack_numerator": 58,
+        "primary_to_attack_denominator": 100,
+        "damage_scripts": ["Attack"]
+      },
+      {
+        "recipient_class_id": 12,
+        "attack_lane": "physical_attack",
+        "primary_attribute_family": {
+          "final_attribute_id": 11010,
+          "intermediate_attribute_id": 11011,
+          "base_add_attribute_id": 11012,
+          "extra_add_attribute_id": 11013,
+          "raw_percent_attribute_id": 11014
+        },
+        "primary_percent_raw_delta": 200,
+        "primary_to_attack_numerator": 1,
+        "primary_to_attack_denominator": 8,
+        "damage_scripts": ["Attack"]
+      },
+      {
+        "recipient_class_id": 13,
+        "attack_lane": "magical_attack",
+        "primary_attribute_family": {
+          "final_attribute_id": 11020,
+          "intermediate_attribute_id": 11021,
+          "base_add_attribute_id": 11022,
+          "extra_add_attribute_id": 11023,
+          "raw_percent_attribute_id": 11024
+        },
+        "primary_percent_raw_delta": 200,
+        "primary_to_attack_numerator": 1,
+        "primary_to_attack_denominator": 10,
+        "damage_scripts": ["MAttack"]
+      }
+    ],
+    "runtime_transfer_enabled": false,
+    "runtime_recipient_class_ids": []
+  },
+  "thunderwind": {
+    "effect_id": 2110138,
+    "child_effect_id": 2110154,
+    "child_source_config_id": 2110138,
+    "summon_entity_type_id": 1,
+    "summon_config_attribute_id": 100,
+    "summon_config_id": 140145,
+    "summon_owner_attribute_ids": [90, 91],
+    "critical_chance_attribute_id": 11710,
+    "critical_damage_attribute_id": 12510,
+    "packet_proven_vectors": [
+      {
+        "source_level": 1,
+        "critical_chance_raw_delta": 1852,
+        "critical_damage_raw_delta": 566
+      }
+    ]
+  },
+  "inspiration": {
+    "effect_id": 2202041,
+    "source_config_id": 2202040,
+    "full_bloom_effect_id": 2404271,
+    "full_bloom_source_config_id": 2404270,
+    "primary_raw_add_attribute_ids": [11012, 11022, 11032, 11042],
+    "critical_chance_attribute_id": 11710,
+    "critical_chance_raw_add_attribute_id": 11712,
+    "lucky_chance_attribute_id": 11780,
+    "lucky_chance_raw_add_attribute_id": 11782,
+    "mastery_attribute_id": 11940,
+    "mastery_raw_add_attribute_id": 11942,
+    "versatility_attribute_id": 11950,
+    "versatility_raw_add_attribute_id": 11952,
+    "external_damage_attribute_id": 11840,
+    "property_damage_attribute_id": 13170,
+    "property_damage_property": 7,
+    "haste_attribute_id": 11930,
+    "packet_proven_vectors": [
+      {
+        "primary_raw_add_delta": 540,
+        "secondary_raw_add_delta": 300,
+        "external_damage_delta": 105,
+        "property_damage_raw_delta": 180,
+        "provider_full_bloom": false
+      },
+      {
+        "primary_raw_add_delta": 648,
+        "secondary_raw_add_delta": 360,
+        "external_damage_delta": 126,
+        "property_damage_raw_delta": 216,
+        "provider_full_bloom": true
+      }
+    ],
+    "damage_scripts": ["Attack", "MAttack"],
+    "runtime_transfer_enabled": false
+  },
+  "highland_blood": {
+    "effect_id": 2110125,
+    "provider_marker_effect_id": 2110124,
+    "companion_lockout_effect_id": 2110050,
+    "all_element_family": {
+      "current_attribute_id": 13100,
+      "total_attribute_id": 13101,
+      "add_attribute_id": 13102,
+      "extra_add_attribute_id": 13103,
+      "percent_attribute_id": 13104,
+      "extra_percent_attribute_id": 13105
+    },
+    "duration_millis": 10000,
+    "lockout_duration_millis": 60000,
+    "packet_proven_raw_deltas": [600, 700, 800, 900, 1000],
+    "excluded_provider_owned_damage_ids": [111007400108],
+    "requires_recipient_packet_transition": true,
+    "runtime_transfer_enabled": false
+  }
+}

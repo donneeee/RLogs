@@ -1,0 +1,71 @@
+{
+  "schema_version": 10,
+  "deployment_id": "global",
+  "builds": [
+    {
+      "game_build": "24252055",
+      "patch": {
+        "game_build": "24252055",
+        "protocol_pack_digest": "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+        "promotion_blockers": [
+          "historical-build-runtime-promotion-not-reviewed",
+          "critical-damage-factor-interpretation-authority",
+          "party-support-formula-frontier"
+        ],
+        "functional_amp": {
+          "attack_magic_target_build_lifecycle_schema_authority": true,
+          "attack_magic_target_build_formula_authority": true,
+          "attack_magic_target_build_effect_occurrence_observed": true,
+          "attack_magic_target_build_damage_replay_observed": true,
+          "formula_authority_basis": "target-build-direct-packet-replay",
+          "dormant_activation_requires_observed_lifecycle": true,
+          "server_integer_counterfactual_authority": false,
+          "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
+          "unresolved_overlap_fails_closed": true,
+          "attack_magic_runtime_transfer_enabled": false,
+          "speed_runtime_transfer_enabled": false
+        },
+        "mechanical_power": {
+          "class_11_tier_0_current_pack_lifecycle_authority": false,
+          "class_11_tier_0_exact_rational_attribution_authority": false,
+          "server_integer_counterfactual_authority": false,
+          "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
+          "unresolved_overlap_fails_closed": true,
+          "runtime_transfer_enabled": false,
+          "runtime_recipient_class_ids": [],
+          "runtime_primary_percent_raw_deltas": []
+        },
+        "harmony_grace": {
+          "source_config_must_be_absent": true,
+          "source_type_id": null,
+          "source_config_id": null,
+          "primary_family_rounding": "floor",
+          "class_11_current_pack_lifecycle_authority": false,
+          "class_11_exact_rational_attribution_authority": false,
+          "server_integer_counterfactual_authority": false,
+          "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
+          "unresolved_overlap_fails_closed": true,
+          "recipient_rules": [
+            {
+              "recipient_class_id": 11,
+              "attack_lane": "physical_attack",
+              "primary_attribute_family": {
+                "final_attribute_id": 11030,
+                "intermediate_attribute_id": 11031,
+                "base_add_attribute_id": 11032,
+                "extra_add_attribute_id": 11033,
+                "raw_percent_attribute_id": 11034
+              },
+              "primary_percent_raw_delta": 200,
+              "primary_to_attack_numerator": 58,
+              "primary_to_attack_denominator": 100,
+              "damage_scripts": ["Attack"]
+            }
+          ],
+          "runtime_transfer_enabled": false,
+          "runtime_recipient_class_ids": []
+        }
+      }
+    }
+  ]
+}

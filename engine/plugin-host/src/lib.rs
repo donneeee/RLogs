@@ -57,6 +57,7 @@ pub struct ResolvedWorkspaceTab {
     pub contributor_plugin_id: String,
     pub label: String,
     pub kind: PluginWorkspaceTabKind,
+    pub section_id: String,
     pub entrypoint: PathBuf,
     pub default_order: i32,
 }
@@ -68,6 +69,18 @@ pub struct ResolvedPluginWorkspace {
     pub icon: Option<PathBuf>,
     pub default_order: i32,
     pub tabs: Vec<ResolvedWorkspaceTab>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSettingsTab {
+    /// Globally stable ID namespaced by the package that owns the surface.
+    pub id: String,
+    pub local_id: String,
+    pub contributor_plugin_id: String,
+    pub label: String,
+    pub section_id: String,
+    pub entrypoint: PathBuf,
+    pub default_order: i32,
 }
 
 #[derive(Debug)]
@@ -238,6 +251,9 @@ fn load_package(
     for contribution in &manifest.workspace_tab_contributions {
         resolve_existing_package_path(&root, &contribution.entrypoint)?;
     }
+    for contribution in &manifest.settings_tab_contributions {
+        resolve_existing_package_path(&root, &contribution.entrypoint)?;
+    }
     for resource in &manifest.resource_exports {
         resolve_existing_export_path(&root, &asset_root, &shared_asset_root, resource)?;
     }
@@ -360,6 +376,7 @@ pub fn resolve_plugin_workspaces(
                 contributor_plugin_id: package.manifest.id.clone(),
                 label: tab.label.clone(),
                 kind: tab.kind,
+                section_id: namespaced_section_id(&package.manifest.id, tab.section.as_deref()),
                 entrypoint: package.root.join(&tab.entrypoint),
                 default_order: i32::try_from(index).unwrap_or(i32::MAX),
             })
@@ -404,6 +421,10 @@ pub fn resolve_plugin_workspaces(
                 contributor_plugin_id: package.manifest.id.clone(),
                 label: contribution.label.clone(),
                 kind: contribution.kind,
+                section_id: namespaced_section_id(
+                    &package.manifest.id,
+                    contribution.section.as_deref(),
+                ),
                 entrypoint: package.root.join(&contribution.entrypoint),
                 default_order: contribution.default_order,
             });
@@ -412,9 +433,8 @@ pub fn resolve_plugin_workspaces(
 
     for workspace in workspaces.values_mut() {
         workspace.tabs.sort_by(|left, right| {
-            (left.kind == PluginWorkspaceTabKind::Options)
-                .cmp(&(right.kind == PluginWorkspaceTabKind::Options))
-                .then_with(|| left.default_order.cmp(&right.default_order))
+            left.default_order
+                .cmp(&right.default_order)
                 .then_with(|| left.contributor_plugin_id.cmp(&right.contributor_plugin_id))
                 .then_with(|| left.local_id.cmp(&right.local_id))
         });
@@ -429,8 +449,49 @@ pub fn resolve_plugin_workspaces(
     Ok(resolved)
 }
 
+/// Aggregates enabled plug-in tabs targeting the one host-owned Settings
+/// destination. Feature names, labels, positions, and surfaces all come from
+/// the contributing package.
+pub fn resolve_plugin_settings_tabs(packages: &[PluginPackage]) -> Vec<ResolvedSettingsTab> {
+    let mut tabs = packages
+        .iter()
+        .flat_map(|package| {
+            package
+                .manifest
+                .settings_tab_contributions
+                .iter()
+                .map(|contribution| ResolvedSettingsTab {
+                    id: namespaced_tab_id(&package.manifest.id, &contribution.id),
+                    local_id: contribution.id.clone(),
+                    contributor_plugin_id: package.manifest.id.clone(),
+                    label: contribution.label.clone(),
+                    section_id: namespaced_section_id(
+                        &package.manifest.id,
+                        contribution.section.as_deref(),
+                    ),
+                    entrypoint: package.root.join(&contribution.entrypoint),
+                    default_order: contribution.default_order,
+                })
+        })
+        .collect::<Vec<_>>();
+    tabs.sort_by(|left, right| {
+        left.default_order
+            .cmp(&right.default_order)
+            .then_with(|| left.contributor_plugin_id.cmp(&right.contributor_plugin_id))
+            .then_with(|| left.local_id.cmp(&right.local_id))
+    });
+    tabs
+}
+
 fn namespaced_tab_id(contributor_plugin_id: &str, local_tab_id: &str) -> String {
     format!("{contributor_plugin_id}:{local_tab_id}")
+}
+
+fn namespaced_section_id(contributor_plugin_id: &str, local_section_id: Option<&str>) -> String {
+    format!(
+        "{contributor_plugin_id}:{}",
+        local_section_id.unwrap_or("main")
+    )
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -1091,17 +1152,25 @@ default_order = 200
                     "app.rlogs.character-profiles",
                 ),
                 (
-                    "app.rlogs.module-optimizer:modules",
-                    "app.rlogs.module-optimizer",
-                ),
-                (
                     "app.rlogs.character-profiles:options",
                     "app.rlogs.character-profiles",
                 ),
+                (
+                    "app.rlogs.module-optimizer:modules",
+                    "app.rlogs.module-optimizer",
+                ),
             ]
         );
+        assert_eq!(
+            workspaces[0].tabs[0].section_id,
+            workspaces[0].tabs[1].section_id
+        );
+        assert_ne!(
+            workspaces[0].tabs[1].section_id,
+            workspaces[0].tabs[2].section_id
+        );
         assert!(
-            workspaces[0].tabs[1]
+            workspaces[0].tabs[2]
                 .entrypoint
                 .starts_with(fs::canonicalize(&optimizer_root).unwrap())
         );

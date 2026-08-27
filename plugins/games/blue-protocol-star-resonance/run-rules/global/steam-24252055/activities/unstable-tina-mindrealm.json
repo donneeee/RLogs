@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "app.rlogs.bpsr.global.steam-24252055.run-rules",
+  "ruleset_version": 2,
+  "target": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "client_build": "24252055"
+  },
+  "scenes": [
+    {
+      "scene_id": 1621,
+      "runtime_enabled": true,
+      "activity_kind": "dungeon",
+      "activity_id": "scene.1621",
+      "activity_family_id": "tina-mindrealm",
+      "activity_localization_key": "scene.1621.name",
+      "difficulty_family": "unstable",
+      "difficulty_localization_key": null,
+      "difficulty_tier_range": null,
+      "route_id": null,
+      "raid_route_kind": null,
+      "partition": null,
+      "candidate_dungeon_ids": [
+        1621
+      ],
+      "mobbing_encounter_id": null,
+      "boss_encounter_id": null,
+      "boss_monster_ids": [],
+      "objective_rules": {},
+      "evidence": [
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/dungeons/play-type-8/1621-unstable-space-void-tina-s-mindrealm.json",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "official-current-build-localization",
+          "reference": "game-data/runtime/localization/en-US/scene-names.v1.json:scene-1621",
+          "confidence": "corroborated"
+        }
+      ]
+    }
+  ]
+}

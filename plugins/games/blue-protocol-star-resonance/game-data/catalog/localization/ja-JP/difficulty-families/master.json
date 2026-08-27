@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ja-JP",
+    "key": "difficulty.master.label_format",
+    "text": "マスター難易度{tier}",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "reviewed-game-localization-template",
+      "reference": "client-build:global/steam/24252055#master-tier-label-template",
+      "confidence": "verified"
+    }
+  }
+]

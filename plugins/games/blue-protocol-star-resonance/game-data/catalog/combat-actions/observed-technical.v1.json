@@ -1,0 +1,2377 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "generation_scope": "saved-history-observed-actions",
+  "actions": [
+    {
+      "ability_id": 3522,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.3522.name",
+      "icon": null,
+      "relation": "Observed action 3522: DamageAttr row 3352200; observed source monster ID 4634",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4634
+      ],
+      "observed_damage": 1394466,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3523,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.3523.name",
+      "icon": null,
+      "relation": "Observed action 3523: DamageAttr row 3352300; observed source monster ID 4636",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4636
+      ],
+      "observed_damage": 287351,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3900,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.3900.name",
+      "icon": null,
+      "relation": "Observed action 3900: DamageAttr row 3390000; observed source monster ID 33502",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33502
+      ],
+      "observed_damage": 2006501,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 100111,
+      "kind": "base-skill",
+      "localization_key": "combat_action.100111.name",
+      "icon": null,
+      "relation": "Observed action 100111: SkillTable design identity \"处理所怪物上撩-英雄本S3\"; DamageAttr row 11001110102; observed source monster ID 33523",
+      "review_state": "verified-current-build-design",
+      "design_name": "处理所怪物上撩-英雄本S3",
+      "english_gloss": "Uppercut",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33523
+      ],
+      "observed_damage": 380625,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 100112,
+      "kind": "base-skill",
+      "localization_key": "combat_action.100112.name",
+      "icon": null,
+      "relation": "Observed action 100112: SkillTable design identity \"处理所怪物砸-英雄本S3\"; DamageAttr row 11001120102; observed source monster ID 33511",
+      "review_state": "verified-current-build-design",
+      "design_name": "处理所怪物砸-英雄本S3",
+      "english_gloss": "Smash",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33511
+      ],
+      "observed_damage": 478428,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 100206,
+      "kind": "base-skill",
+      "localization_key": "combat_action.100206.name",
+      "icon": null,
+      "relation": "Observed action 100206: SkillTable design identity \"处理所怪物三连击-英雄本S3\"; DamageAttr rows 11002060101, 11002060102, 11002060104; observed source monster IDs 33510, 33523",
+      "review_state": "verified-current-build-design",
+      "design_name": "处理所怪物三连击-英雄本S3",
+      "english_gloss": "Three-hit Combo",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33510,
+        33523
+      ],
+      "observed_damage": 5402691,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 100330,
+      "kind": "base-skill",
+      "localization_key": "combat_action.100330.name",
+      "icon": null,
+      "relation": "Observed action 100330: SkillTable design identity \"处理所副本怪物跳劈-英雄本S3\"; DamageAttr row 11003300102; observed source monster IDs 33521, 33522",
+      "review_state": "verified-current-build-design",
+      "design_name": "处理所副本怪物跳劈-英雄本S3",
+      "english_gloss": "Leaping Slash",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33521,
+        33522
+      ],
+      "observed_damage": 124334,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 100440,
+      "kind": "base-skill",
+      "localization_key": "combat_action.100440.name",
+      "icon": null,
+      "relation": "Observed action 100440: SkillTable design identity \"处理所副本怪物戳刺-英雄本S3\"; DamageAttr row 11004400103; observed source monster IDs 33510, 33521, 33522, 33523",
+      "review_state": "verified-current-build-design",
+      "design_name": "处理所副本怪物戳刺-英雄本S3",
+      "english_gloss": "Thrust",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33510,
+        33521,
+        33522,
+        33523
+      ],
+      "observed_damage": 20673549,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 100865,
+      "kind": "base-skill",
+      "localization_key": "combat_action.100865.name",
+      "icon": null,
+      "relation": "Observed action 100865: SkillTable design identity \"处理所巨斧横扫-英雄本S3\"; DamageAttr row 11008650102; observed source monster ID 33512",
+      "review_state": "verified-current-build-design",
+      "design_name": "处理所巨斧横扫-英雄本S3",
+      "english_gloss": "Great Axe Sweep",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33512
+      ],
+      "observed_damage": 3446839,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 100866,
+      "kind": "base-skill",
+      "localization_key": "combat_action.100866.name",
+      "icon": null,
+      "relation": "Observed action 100866: SkillTable design identity \"处理所回旋斩-英雄本S3\"; DamageAttr row 11008660102; observed source monster ID 33512",
+      "review_state": "verified-current-build-design",
+      "design_name": "处理所回旋斩-英雄本S3",
+      "english_gloss": "Whirlwind Slash",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33512
+      ],
+      "observed_damage": 1038278,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 100867,
+      "kind": "base-skill",
+      "localization_key": "combat_action.100867.name",
+      "icon": null,
+      "relation": "Observed action 100867: SkillTable design identity \"处理所大范围横扫-英雄本S3\"; DamageAttr row 11008670102; observed source monster ID 33512",
+      "review_state": "verified-current-build-design",
+      "design_name": "处理所大范围横扫-英雄本S3",
+      "english_gloss": "Wide Sweep",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33512
+      ],
+      "observed_damage": 821481,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 111155,
+      "kind": "base-skill",
+      "localization_key": "combat_action.111155.name",
+      "icon": null,
+      "relation": "Observed action 111155: SkillTable design identity \"电磁内环\"; DamageAttr row 11111550101; observed source monster ID 80019",
+      "review_state": "verified-current-build-design",
+      "design_name": "电磁内环",
+      "english_gloss": "Electromagnetic Inner Ring",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80019
+      ],
+      "observed_damage": 338463,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300000,
+      "kind": "base-skill",
+      "localization_key": "combat_action.300000.name",
+      "icon": null,
+      "relation": "Observed action 300000: SkillTable design identity \"二段红光技-横扫下砸\"; DamageAttr rows 13000000102, 13000000104; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "二段红光技-横扫下砸",
+      "english_gloss": "Red-light Combo: Sweep and Slam",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 103161,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300001,
+      "kind": "talent",
+      "localization_key": "combat_action.300001.name",
+      "icon": "icons/combat/textures/talent_passive/talent_skill_300001.png",
+      "relation": "Observed action 300001: SkillTable design identity \"横扫_右\"; DamageAttr rows 330000100, 13000010102; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "横扫_右",
+      "english_gloss": "Right Sweep",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 255858,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300005,
+      "kind": "talent",
+      "localization_key": "combat_action.300005.name",
+      "icon": "icons/combat/textures/talent_passive/talent_skill_300001.png",
+      "relation": "Observed action 300005: SkillTable design identity \"三连斩\"; DamageAttr rows 13000050101, 13000050102, 13000050104; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "三连斩",
+      "english_gloss": "Triple Slash",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 108824,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300006,
+      "kind": "talent",
+      "localization_key": "combat_action.300006.name",
+      "icon": "icons/combat/textures/talent_passive/talent_skill_300001.png",
+      "relation": "Observed action 300006: SkillTable design identity \"突刺\"; DamageAttr row 13000060101; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "突刺",
+      "english_gloss": "Thrust",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 505682,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300008,
+      "kind": "talent",
+      "localization_key": "combat_action.300008.name",
+      "icon": "icons/combat/textures/talent_passive/talent_skill_300001.png",
+      "relation": "Observed action 300008: SkillTable design identity \"后跳前刺\"; DamageAttr row 13000080102; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "后跳前刺",
+      "english_gloss": "Backstep Thrust",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 154546,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300026,
+      "kind": "base-skill",
+      "localization_key": "combat_action.300026.name",
+      "icon": null,
+      "relation": "Observed action 300026: SkillTable design identity \"扇形刀刃冲击\"; DamageAttr row 13000260101; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "扇形刀刃冲击",
+      "english_gloss": "Fan-shaped Blade Shockwave",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 328324,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300028,
+      "kind": "base-skill",
+      "localization_key": "combat_action.300028.name",
+      "icon": null,
+      "relation": "Observed action 300028: SkillTable design identity \"锁定点名分摊\"; DamageAttr row 13000280106; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "锁定点名分摊",
+      "english_gloss": "Targeted Stack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 370924,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300033,
+      "kind": "base-skill",
+      "localization_key": "combat_action.300033.name",
+      "icon": null,
+      "relation": "Observed action 300033: SkillTable design identity \"虚蚀威压\"; DamageAttr row 13000330101; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "虚蚀威压",
+      "english_gloss": "Void Corruption Pressure",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 1380023,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300038,
+      "kind": "base-skill",
+      "localization_key": "combat_action.300038.name",
+      "icon": null,
+      "relation": "Observed action 300038: SkillTable design identity \"S3蒂娜-诅咒柜子\"; DamageAttr row 13000380102; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "S3蒂娜-诅咒柜子",
+      "english_gloss": "Cursed Cabinet",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 391761,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300086,
+      "kind": "base-skill",
+      "localization_key": "combat_action.300086.name",
+      "icon": null,
+      "relation": "Observed action 300086: SkillTable design identity \"枪刃狂袭虚蚀攻击\"; DamageAttr row 13000860101; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "枪刃狂袭虚蚀攻击",
+      "english_gloss": "Gunblade Frenzy: Void Corruption Attack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 619254,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300089,
+      "kind": "base-skill",
+      "localization_key": "combat_action.300089.name",
+      "icon": null,
+      "relation": "Observed action 300089: SkillTable design identity \"枪刃狂袭-快速虚蚀攻击\"; DamageAttr row 13000890101; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "枪刃狂袭-快速虚蚀攻击",
+      "english_gloss": "Gunblade Frenzy: Rapid Void Corruption Attack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 3012960,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300090,
+      "kind": "base-skill",
+      "localization_key": "combat_action.300090.name",
+      "icon": null,
+      "relation": "Observed action 300090: SkillTable design identity \"虚蚀缠绕虚拟体\"; DamageAttr row 13000900101; observed source monster ID 33701",
+      "review_state": "verified-current-build-design",
+      "design_name": "虚蚀缠绕虚拟体",
+      "english_gloss": "Void Corruption Entanglement",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33701
+      ],
+      "observed_damage": 427065,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 300303,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.300303.name",
+      "icon": null,
+      "relation": "Observed action 300303: DamageAttr row 330030300; observed source monster ID 33703",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33703
+      ],
+      "observed_damage": 15758,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 702017,
+      "kind": "training-dummy-action",
+      "localization_key": "combat_action.702017.name",
+      "icon": "icons/combat/atlas/buff/buff_icon72.png",
+      "relation": "Observed action 702017: DamageAttr row 270201703; observed source monster ID 700017",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "training_dummy"
+      ],
+      "observed_monster_ids": [
+        700017
+      ],
+      "observed_damage": 915243,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 883701,
+      "kind": "monster-healing",
+      "localization_key": "combat_action.883701.name",
+      "icon": null,
+      "relation": "Observed action 883701: observed source monster ID 4631",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4631
+      ],
+      "observed_damage": 0,
+      "observed_healing": 527674641
+    },
+    {
+      "ability_id": 883707,
+      "kind": "monster-healing",
+      "localization_key": "combat_action.883707.name",
+      "icon": "icons/combat/atlas/debuff/buff_icon_ray.png",
+      "relation": "Observed action 883707: DamageAttr rows 288370705, 288370707; observed source monster ID 3340245",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "training_dummy"
+      ],
+      "observed_monster_ids": [
+        3340245
+      ],
+      "observed_damage": 0,
+      "observed_healing": 9999999
+    },
+    {
+      "ability_id": 883709,
+      "kind": "monster-healing",
+      "localization_key": "combat_action.883709.name",
+      "icon": "icons/combat/atlas/debuff/buff_icon_ray.png",
+      "relation": "Observed action 883709: DamageAttr row 288370907; observed source monster ID 3340245",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "training_dummy"
+      ],
+      "observed_monster_ids": [
+        3340245
+      ],
+      "observed_damage": 0,
+      "observed_healing": 9999999
+    },
+    {
+      "ability_id": 883718,
+      "kind": "monster-healing",
+      "localization_key": "combat_action.883718.name",
+      "icon": null,
+      "relation": "Observed action 883718: observed source monster ID 4639",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4639
+      ],
+      "observed_damage": 0,
+      "observed_healing": 19999998
+    },
+    {
+      "ability_id": 990103,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.990103.name",
+      "icon": "icons/combat/atlas/debuff/debuff_icon_17.png",
+      "relation": "Observed action 990103: DamageAttr row 299010303; observed source monster ID 80017",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80017
+      ],
+      "observed_damage": 36625,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 990110,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.990110.name",
+      "icon": null,
+      "relation": "Observed action 990110: DamageAttr row 299011003; observed source monster ID 80017",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80017
+      ],
+      "observed_damage": 153561,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1000011,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.1000011.name",
+      "icon": null,
+      "relation": "Observed action 1000011: DamageAttr row 3100001100; observed source monster ID 80016",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80016
+      ],
+      "observed_damage": 85586,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1000013,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.1000013.name",
+      "icon": null,
+      "relation": "Observed action 1000013: DamageAttr row 3100001300; observed source monster ID 80016",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80016
+      ],
+      "observed_damage": 108105,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1000014,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.1000014.name",
+      "icon": null,
+      "relation": "Observed action 1000014: DamageAttr row 3100001400; observed source monster ID 80015",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80015
+      ],
+      "observed_damage": 30559,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1000018,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.1000018.name",
+      "icon": null,
+      "relation": "Observed action 1000018: DamageAttr row 3100001800; observed source monster ID 80015",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80015
+      ],
+      "observed_damage": 620365,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1000019,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.1000019.name",
+      "icon": null,
+      "relation": "Observed action 1000019: DamageAttr row 3100001900; observed source monster ID 80016",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80016
+      ],
+      "observed_damage": 43737,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1002113,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1002113.name",
+      "icon": null,
+      "relation": "Observed action 1002113: SkillTable design identity \"处理所副本怪物普攻-英雄本S3\"; DamageAttr row 110021130101; observed source monster ID 33511",
+      "review_state": "verified-current-build-design",
+      "design_name": "处理所副本怪物普攻-英雄本S3",
+      "english_gloss": "Basic Attack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33511
+      ],
+      "observed_damage": 853085,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1007810,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1007810.name",
+      "icon": null,
+      "relation": "Observed action 1007810: SkillTable design identity \"处理所怪物回旋斩-英雄本S3\"; DamageAttr row 110078100102; observed source monster ID 33511",
+      "review_state": "verified-current-build-design",
+      "design_name": "处理所怪物回旋斩-英雄本S3",
+      "english_gloss": "Whirlwind Slash",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33511
+      ],
+      "observed_damage": 3716397,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1008220,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1008220.name",
+      "icon": null,
+      "relation": "Observed action 1008220: SkillTable design identity \"普攻甩尾-英雄本S3\"; DamageAttr row 110082200101; observed source monster ID 4633",
+      "review_state": "verified-current-build-design",
+      "design_name": "普攻甩尾-英雄本S3",
+      "english_gloss": "Tail Sweep",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4633
+      ],
+      "observed_damage": 2042483,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1008222,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1008222.name",
+      "icon": null,
+      "relation": "Observed action 1008222: SkillTable design identity \"大水弹-英雄本S3\"; DamageAttr row 110082220101; observed source monster ID 4633",
+      "review_state": "verified-current-build-design",
+      "design_name": "大水弹-英雄本S3",
+      "english_gloss": "Large Water Projectile",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4633
+      ],
+      "observed_damage": 477820,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1008223,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1008223.name",
+      "icon": null,
+      "relation": "Observed action 1008223: SkillTable design identity \"中水弹-英雄本S3\"; DamageAttr row 110082230101; observed source monster ID 4633",
+      "review_state": "verified-current-build-design",
+      "design_name": "中水弹-英雄本S3",
+      "english_gloss": "Medium Water Projectile",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4633
+      ],
+      "observed_damage": 19157,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1008224,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1008224.name",
+      "icon": null,
+      "relation": "Observed action 1008224: SkillTable design identity \"小水弹-英雄本S3\"; DamageAttr row 110082240101; observed source monster IDs 4633, 4635",
+      "review_state": "verified-current-build-design",
+      "design_name": "小水弹-英雄本S3",
+      "english_gloss": "Small Water Projectile",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4633,
+        4635
+      ],
+      "observed_damage": 229699,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1009701,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1009701.name",
+      "icon": null,
+      "relation": "Observed action 1009701: SkillTable design identity \"普攻\"; DamageAttr rows 3100970100, 110097010102; observed source monster ID 80019",
+      "review_state": "verified-current-build-design",
+      "design_name": "普攻",
+      "english_gloss": "Basic Attack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80019
+      ],
+      "observed_damage": 3237514,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1009705,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1009705.name",
+      "icon": null,
+      "relation": "Observed action 1009705: SkillTable design identity \"纳尼？无动作释放AOE！\"; DamageAttr row 110097050101; observed source monster ID 80019",
+      "review_state": "verified-current-build-design",
+      "design_name": "纳尼？无动作释放AOE！",
+      "english_gloss": "Instant AOE",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80019
+      ],
+      "observed_damage": 142824,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1009751,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1009751.name",
+      "icon": null,
+      "relation": "Observed action 1009751: SkillTable design identity \"并排激光\"; DamageAttr rows 110097510101, 110097510102, 110097510103, 110097510104, 110097510105, 110097510106, 110097510107, 110097510108, 110097510109; observed source monster ID 80019",
+      "review_state": "verified-current-build-design",
+      "design_name": "并排激光",
+      "english_gloss": "Parallel Lasers",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80019
+      ],
+      "observed_damage": 89540,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1009804,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1009804.name",
+      "icon": null,
+      "relation": "Observed action 1009804: SkillTable design identity \"眼球颤爆（环海石礁）\"; DamageAttr row 110098040101; observed source monster IDs 4634, 4639",
+      "review_state": "verified-current-build-design",
+      "design_name": "眼球颤爆（环海石礁）",
+      "english_gloss": "Gazer Detonation",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4634,
+        4639
+      ],
+      "observed_damage": 3374364,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1009805,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1009805.name",
+      "icon": null,
+      "relation": "Observed action 1009805: SkillTable design identity \"浮游炮激光直线（环海石礁小游戏）\"; DamageAttr row 110098050102; observed source monster ID 4639",
+      "review_state": "verified-current-build-design",
+      "design_name": "浮游炮激光直线（环海石礁小游戏）",
+      "english_gloss": "Floating Cannon Beam",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4639
+      ],
+      "observed_damage": 461507,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010004,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010004.name",
+      "icon": null,
+      "relation": "Observed action 1010004: SkillTable design identity \"鱼人普攻（环海石礁）\"; DamageAttr row 110100040101; observed source monster ID 4636",
+      "review_state": "verified-current-build-design",
+      "design_name": "鱼人普攻（环海石礁）",
+      "english_gloss": "Basic Attack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4636
+      ],
+      "observed_damage": 2010791,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010408,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010408.name",
+      "icon": null,
+      "relation": "Observed action 1010408: SkillTable design identity \"鱼人战士普攻-英雄本S3\"; DamageAttr rows 110104080101, 110104080102; observed source monster ID 4632",
+      "review_state": "verified-current-build-design",
+      "design_name": "鱼人战士普攻-英雄本S3",
+      "english_gloss": "Basic Attack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4632
+      ],
+      "observed_damage": 6714585,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010409,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010409.name",
+      "icon": null,
+      "relation": "Observed action 1010409: SkillTable design identity \"鱼人战士旋转扇形-英雄本S3\"; DamageAttr rows 110104090101, 110104090102, 110104090103; observed source monster ID 4632",
+      "review_state": "verified-current-build-design",
+      "design_name": "鱼人战士旋转扇形-英雄本S3",
+      "english_gloss": "Spinning Cone",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4632
+      ],
+      "observed_damage": 1613890,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010508,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010508.name",
+      "icon": null,
+      "relation": "Observed action 1010508: SkillTable design identity \"蜥蜴人唤潮者敲人-英雄本S3\"; DamageAttr rows 110105080102, 110105080103; observed source monster IDs 4631, 4635",
+      "review_state": "verified-current-build-design",
+      "design_name": "蜥蜴人唤潮者敲人-英雄本S3",
+      "english_gloss": "Tidecaller Strike",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4631,
+        4635
+      ],
+      "observed_damage": 121292,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010509,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010509.name",
+      "icon": null,
+      "relation": "Observed action 1010509: SkillTable design identity \"蜥蜴人唤潮者锁T激光-英雄本S3\"; DamageAttr row 110105090102; observed source monster ID 4631",
+      "review_state": "verified-current-build-design",
+      "design_name": "蜥蜴人唤潮者锁T激光-英雄本S3",
+      "english_gloss": "Tank-targeted Beam",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4631
+      ],
+      "observed_damage": 6425075,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010602,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.1010602.name",
+      "icon": null,
+      "relation": "Observed action 1010602: DamageAttr row 3101060200; observed source monster ID 33527",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33527
+      ],
+      "observed_damage": 10503736,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010616,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010616.name",
+      "icon": null,
+      "relation": "Observed action 1010616: SkillTable design identity \"枪兵近战踢人-英雄本S3\"; DamageAttr row 110106160101; observed source monster ID 33527",
+      "review_state": "verified-current-build-design",
+      "design_name": "枪兵近战踢人-英雄本S3",
+      "english_gloss": "Close-range Kick",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33527
+      ],
+      "observed_damage": 6974344,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010707,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010707.name",
+      "icon": null,
+      "relation": "Observed action 1010707: SkillTable design identity \"神罚内上外下\"; DamageAttr rows 110107070101, 110107070102; observed source monster ID 33531",
+      "review_state": "verified-current-build-design",
+      "design_name": "神罚内上外下",
+      "english_gloss": "Divine Punishment: Inner Up, Outer Down",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33531
+      ],
+      "observed_damage": 2096822,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010708,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010708.name",
+      "icon": null,
+      "relation": "Observed action 1010708: SkillTable design identity \"神罚内下外上\"; DamageAttr row 110107080101; observed source monster ID 33531",
+      "review_state": "verified-current-build-design",
+      "design_name": "神罚内下外上",
+      "english_gloss": "Divine Punishment: Inner Down, Outer Up",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33531
+      ],
+      "observed_damage": 529158,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010715,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010715.name",
+      "icon": null,
+      "relation": "Observed action 1010715: SkillTable design identity \"盾兵-劈砍-英雄本S3\"; DamageAttr row 110107150102; observed source monster ID 33528",
+      "review_state": "verified-current-build-design",
+      "design_name": "盾兵-劈砍-英雄本S3",
+      "english_gloss": "Slash",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33528
+      ],
+      "observed_damage": 27962660,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010820,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010820.name",
+      "icon": null,
+      "relation": "Observed action 1010820: SkillTable design identity \"前砍-英雄本S3\"; DamageAttr row 110108200102; observed source monster ID 33529",
+      "review_state": "verified-current-build-design",
+      "design_name": "前砍-英雄本S3",
+      "english_gloss": "Forward Slash",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33529
+      ],
+      "observed_damage": 4216964,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010821,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010821.name",
+      "icon": null,
+      "relation": "Observed action 1010821: SkillTable design identity \"三连突刺-英雄本S3\"; DamageAttr rows 110108210101, 110108210103, 110108210104; observed source monster ID 33529",
+      "review_state": "verified-current-build-design",
+      "design_name": "三连突刺-英雄本S3",
+      "english_gloss": "Triple Thrust",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33529
+      ],
+      "observed_damage": 15485446,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010822,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010822.name",
+      "icon": null,
+      "relation": "Observed action 1010822: SkillTable design identity \"跳劈-英雄本S3\"; DamageAttr rows 110108220102, 110108220105; observed source monster ID 33529",
+      "review_state": "verified-current-build-design",
+      "design_name": "跳劈-英雄本S3",
+      "english_gloss": "Leaping Slash",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33529
+      ],
+      "observed_damage": 1132235,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010915,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010915.name",
+      "icon": null,
+      "relation": "Observed action 1010915: SkillTable design identity \"蓄力突刺-英雄本S3\"; DamageAttr rows 110109150103, 110109150106; observed source monster ID 33530",
+      "review_state": "verified-current-build-design",
+      "design_name": "蓄力突刺-英雄本S3",
+      "english_gloss": "Charged Thrust",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33530
+      ],
+      "observed_damage": 1253888,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010916,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010916.name",
+      "icon": null,
+      "relation": "Observed action 1010916: SkillTable design identity \"平击二连-英雄本S3\"; DamageAttr rows 110109160102, 110109160103; observed source monster ID 33530",
+      "review_state": "verified-current-build-design",
+      "design_name": "平击二连-英雄本S3",
+      "english_gloss": "Double Strike",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33530
+      ],
+      "observed_damage": 1645325,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1010917,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1010917.name",
+      "icon": null,
+      "relation": "Observed action 1010917: SkillTable design identity \"蓄力砸地-英雄本S3\"; DamageAttr row 110109170101; observed source monster ID 33530",
+      "review_state": "verified-current-build-design",
+      "design_name": "蓄力砸地-英雄本S3",
+      "english_gloss": "Charged Ground Slam",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33530
+      ],
+      "observed_damage": 2283465,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1120302,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1120302.name",
+      "icon": null,
+      "relation": "Observed action 1120302: SkillTable design identity \"掠食蟹蛛aoe2\"; DamageAttr row 111203020103; observed source monster ID 80015",
+      "review_state": "verified-current-build-design",
+      "design_name": "掠食蟹蛛aoe2",
+      "english_gloss": "Arachnocrab AOE 2",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80015
+      ],
+      "observed_damage": 359355,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1120303,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1120303.name",
+      "icon": null,
+      "relation": "Observed action 1120303: SkillTable design identity \"掠食蟹蛛冲锋\"; DamageAttr rows 111203030101, 111203030103; observed source monster ID 80015",
+      "review_state": "verified-current-build-design",
+      "design_name": "掠食蟹蛛冲锋",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80015
+      ],
+      "observed_damage": 154645,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1120308,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1120308.name",
+      "icon": null,
+      "relation": "Observed action 1120308: SkillTable design identity \"掠食蟹蛛压团血\"; DamageAttr row 111203080101; observed source monster ID 80015",
+      "review_state": "verified-current-build-design",
+      "design_name": "掠食蟹蛛压团血",
+      "english_gloss": "Party-wide Damage",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80015
+      ],
+      "observed_damage": 108226,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1120309,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1120309.name",
+      "icon": null,
+      "relation": "Observed action 1120309: SkillTable design identity \"掠食蜘蛛射线\"; DamageAttr row 111203090103; observed source monster ID 80015",
+      "review_state": "verified-current-build-design",
+      "design_name": "掠食蜘蛛射线",
+      "english_gloss": "Arachnocrab Beam",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80015
+      ],
+      "observed_damage": 65579,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1120311,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1120311.name",
+      "icon": null,
+      "relation": "Observed action 1120311: SkillTable design identity \"掠食蟹蛛虚拟体1\"; DamageAttr row 111203110102; observed source monster ID 80015",
+      "review_state": "verified-current-build-design",
+      "design_name": "掠食蟹蛛虚拟体1",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80015
+      ],
+      "observed_damage": 451202,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1121501,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1121501.name",
+      "icon": null,
+      "relation": "Observed action 1121501: SkillTable design identity \"嗜血连喰\"; DamageAttr rows 3112150100, 111215010107, 111215010108, 111215010109, 111215010110; observed source monster ID 80018",
+      "review_state": "verified-current-build-design",
+      "design_name": "嗜血连喰",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80018
+      ],
+      "observed_damage": 100997,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1121502,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1121502.name",
+      "icon": null,
+      "relation": "Observed action 1121502: SkillTable design identity \"突刺咬合\"; DamageAttr row 111215020102; observed source monster ID 80018",
+      "review_state": "verified-current-build-design",
+      "design_name": "突刺咬合",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80018
+      ],
+      "observed_damage": 2,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1121503,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1121503.name",
+      "icon": null,
+      "relation": "Observed action 1121503: SkillTable design identity \"巨口吐息\"; DamageAttr row 111215030102; observed source monster ID 80018",
+      "review_state": "verified-current-build-design",
+      "design_name": "巨口吐息",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80018
+      ],
+      "observed_damage": 14,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1121506,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1121506.name",
+      "icon": null,
+      "relation": "Observed action 1121506: SkillTable design identity \"压团血\"; DamageAttr rows 111215060104, 111215060105, 111215060106; observed source monster ID 80018",
+      "review_state": "verified-current-build-design",
+      "design_name": "压团血",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80018
+      ],
+      "observed_damage": 830861,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1700105,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1700105.name",
+      "icon": null,
+      "relation": "Observed action 1700105: SkillTable design identity \"野猪王-普攻2右侧攻击\"; DamageAttr row 117001050102; observed source monster ID 80017",
+      "review_state": "verified-current-build-design",
+      "design_name": "野猪王-普攻2右侧攻击",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80017
+      ],
+      "observed_damage": 11178,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1700106,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1700106.name",
+      "icon": null,
+      "relation": "Observed action 1700106: SkillTable design identity \"野猪王-普攻3左侧攻击\"; DamageAttr rows 117001060102, 117001060103; observed source monster ID 80017",
+      "review_state": "verified-current-build-design",
+      "design_name": "野猪王-普攻3左侧攻击",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80017
+      ],
+      "observed_damage": 1,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1700110,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1700110.name",
+      "icon": null,
+      "relation": "Observed action 1700110: SkillTable design identity \"野猪王-压团血\"; DamageAttr row 117001100102; observed source monster ID 80017",
+      "review_state": "verified-current-build-design",
+      "design_name": "野猪王-压团血",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80017
+      ],
+      "observed_damage": 174528,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1700121,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1700121.name",
+      "icon": null,
+      "relation": "Observed action 1700121: SkillTable design identity \"远程AOE地面伤害\"; DamageAttr row 117001210101; observed source monster ID 80017",
+      "review_state": "verified-current-build-design",
+      "design_name": "远程AOE地面伤害",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80017
+      ],
+      "observed_damage": 36624,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1700354,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1700354.name",
+      "icon": null,
+      "relation": "Observed action 1700354: SkillTable design identity \"蜘蛛左爪击（环海石礁）\"; DamageAttr row 117003540101; observed source monster ID 4637",
+      "review_state": "verified-current-build-design",
+      "design_name": "蜘蛛左爪击（环海石礁）",
+      "english_gloss": "Left Claw Strike",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4637
+      ],
+      "observed_damage": 3208222,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1700355,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1700355.name",
+      "icon": null,
+      "relation": "Observed action 1700355: SkillTable design identity \"污染区域（环海石礁）\"; DamageAttr row 117003550101; observed source monster ID 4637",
+      "review_state": "verified-current-build-design",
+      "design_name": "污染区域（环海石礁）",
+      "english_gloss": "Contaminated Area",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4637
+      ],
+      "observed_damage": 772867,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1701032,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1701032.name",
+      "icon": null,
+      "relation": "Observed action 1701032: SkillTable design identity \"多戈尔曼云蒸大泽\"; DamageAttr rows 117010320101, 117010320104; observed source monster ID 80016",
+      "review_state": "verified-current-build-design",
+      "design_name": "多戈尔曼云蒸大泽",
+      "english_gloss": "Cloud-steamed Marsh",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80016
+      ],
+      "observed_damage": 1881351,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1701035,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1701035.name",
+      "icon": null,
+      "relation": "Observed action 1701035: SkillTable design identity \"多戈尔曼地波aoe\"; DamageAttr rows 117010350101, 117010350102, 117010350103, 117010350104; observed source monster ID 80016",
+      "review_state": "verified-current-build-design",
+      "design_name": "多戈尔曼地波aoe",
+      "english_gloss": "Ground Wave AOE",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80016
+      ],
+      "observed_damage": 69246,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1701036,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1701036.name",
+      "icon": null,
+      "relation": "Observed action 1701036: SkillTable design identity \"多戈尔曼地波aoe2\"; DamageAttr rows 117010360107, 117010360108, 117010360109, 117010360111, 117010360112, 117010360113; observed source monster ID 80016",
+      "review_state": "verified-current-build-design",
+      "design_name": "多戈尔曼地波aoe2",
+      "english_gloss": "Ground Wave AOE 2",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80016
+      ],
+      "observed_damage": 436957,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1701038,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1701038.name",
+      "icon": null,
+      "relation": "Observed action 1701038: SkillTable design identity \"多戈尔曼铁骑凿阵\"; DamageAttr row 117010380101; observed source monster ID 80016",
+      "review_state": "verified-current-build-design",
+      "design_name": "多戈尔曼铁骑凿阵",
+      "english_gloss": "Iron Cavalry Charge",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80016
+      ],
+      "observed_damage": 116719,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 1701050,
+      "kind": "base-skill",
+      "localization_key": "combat_action.1701050.name",
+      "icon": null,
+      "relation": "Observed action 1701050: SkillTable design identity \"多戈尔曼地波火焰\"; DamageAttr row 117010500101; observed source monster ID 80016",
+      "review_state": "verified-current-build-design",
+      "design_name": "多戈尔曼地波火焰",
+      "english_gloss": "Ground Wave Flame",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80016
+      ],
+      "observed_damage": 291036,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 2000206,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.2000206.name",
+      "icon": null,
+      "relation": "Observed action 2000206: DamageAttr row 3200020600; observed source monster ID 101242",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        101242
+      ],
+      "observed_damage": 877042,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 2000208,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.2000208.name",
+      "icon": null,
+      "relation": "Observed action 2000208: DamageAttr row 3200020800; observed source monster ID 101246",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        101246
+      ],
+      "observed_damage": 5706,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 2000211,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.2000211.name",
+      "icon": null,
+      "relation": "Observed action 2000211: DamageAttr row 3200021100; observed source monster ID 101246",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        101246
+      ],
+      "observed_damage": 19047,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 2000213,
+      "kind": "monster-damage-source",
+      "localization_key": "combat_action.2000213.name",
+      "icon": null,
+      "relation": "Observed action 2000213: DamageAttr row 3200021300; observed source monster ID 101242",
+      "review_state": "verified-current-build-technical",
+      "design_name": null,
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        101242
+      ],
+      "observed_damage": 29640,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 2001501,
+      "kind": "base-skill",
+      "localization_key": "combat_action.2001501.name",
+      "icon": null,
+      "relation": "Observed action 2001501: SkillTable design identity \"前砍\"; DamageAttr row 120015010102; observed source monster IDs 101237, 101240",
+      "review_state": "verified-current-build-design",
+      "design_name": "前砍",
+      "english_gloss": "Forward Slash",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        101237,
+        101240
+      ],
+      "observed_damage": 1817981,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 2001507,
+      "kind": "base-skill",
+      "localization_key": "combat_action.2001507.name",
+      "icon": null,
+      "relation": "Observed action 2001507: SkillTable design identity \"卡尼曼巫毒战士狂暴\"; DamageAttr row 120015070103; observed source monster ID 101237",
+      "review_state": "verified-current-build-design",
+      "design_name": "卡尼曼巫毒战士狂暴",
+      "english_gloss": "Kanamia Voodoo Warrior Enrage",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        101237
+      ],
+      "observed_damage": 165237,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 2001510,
+      "kind": "base-skill",
+      "localization_key": "combat_action.2001510.name",
+      "icon": null,
+      "relation": "Observed action 2001510: SkillTable design identity \"卡尼曼巫毒战士震荡波\"; DamageAttr rows 120015100101, 120015100104; observed source monster ID 101237",
+      "review_state": "verified-current-build-design",
+      "design_name": "卡尼曼巫毒战士震荡波",
+      "english_gloss": "Kanamia Voodoo Warrior Shockwave",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        101237
+      ],
+      "observed_damage": 662859,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 2001610,
+      "kind": "base-skill",
+      "localization_key": "combat_action.2001610.name",
+      "icon": null,
+      "relation": "Observed action 2001610: SkillTable design identity \"山贼射手跟踪箭雨\"; DamageAttr row 120016100101; observed source monster ID 101246",
+      "review_state": "verified-current-build-design",
+      "design_name": "山贼射手跟踪箭雨",
+      "english_gloss": "Tracking Arrow Rain",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        101246
+      ],
+      "observed_damage": 52230,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 2001614,
+      "kind": "base-skill",
+      "localization_key": "combat_action.2001614.name",
+      "icon": null,
+      "relation": "Observed action 2001614: SkillTable design identity \"亡灵远程普攻地火\"; DamageAttr row 120016140101; observed source monster ID 101243",
+      "review_state": "verified-current-build-design",
+      "design_name": "亡灵远程普攻地火",
+      "english_gloss": "Ranged Ground Fire",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        101243
+      ],
+      "observed_damage": 41172,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 2002910,
+      "kind": "base-skill",
+      "localization_key": "combat_action.2002910.name",
+      "icon": null,
+      "relation": "Observed action 2002910: SkillTable design identity \"能量爆发\"; DamageAttr row 120029100108; observed source monster ID 101237",
+      "review_state": "verified-current-build-design",
+      "design_name": "能量爆发",
+      "english_gloss": "Energy Burst",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        101237
+      ],
+      "observed_damage": 1231020,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340205,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340205.name",
+      "icon": null,
+      "relation": "Observed action 3340205: SkillTable design identity \"潜水娜宝普攻\"; DamageAttr rows 133402050101, 133402050102, 133402050103; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "潜水娜宝普攻",
+      "english_gloss": "Basic Attack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 1209410,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340206,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340206.name",
+      "icon": null,
+      "relation": "Observed action 3340206: SkillTable design identity \"潜水娜宝普攻头槌\"; DamageAttr row 133402060103; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "潜水娜宝普攻头槌",
+      "english_gloss": "Headbutt",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 3045807,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340207,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340207.name",
+      "icon": null,
+      "relation": "Observed action 3340207: SkillTable design identity \"潜水娜宝压团血\"; DamageAttr row 133402070103; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "潜水娜宝压团血",
+      "english_gloss": "Party-wide Damage",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 430955,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340209,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340209.name",
+      "icon": null,
+      "relation": "Observed action 3340209: SkillTable design identity \"潜水娜宝致死\"; DamageAttr row 133402090102; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "潜水娜宝致死",
+      "english_gloss": "Lethal Attack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 1291068,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340210,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340210.name",
+      "icon": null,
+      "relation": "Observed action 3340210: SkillTable design identity \"潜水娜宝双元素AOE（首次释放）\"; DamageAttr rows 133402100101, 133402100103; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "潜水娜宝双元素AOE（首次释放）",
+      "english_gloss": "Dual-element AOE: First Cast",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 381489,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340211,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340211.name",
+      "icon": null,
+      "relation": "Observed action 3340211: SkillTable design identity \"冰球虚拟体（P1）\"; DamageAttr row 133402110101; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "冰球虚拟体（P1）",
+      "english_gloss": "Ice Sphere: Phase 1",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 477900,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340212,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340212.name",
+      "icon": null,
+      "relation": "Observed action 3340212: SkillTable design identity \"水球虚拟体（P1）\"; DamageAttr row 133402120101; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "水球虚拟体（P1）",
+      "english_gloss": "Water Sphere: Phase 1",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 1182910,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340213,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340213.name",
+      "icon": null,
+      "relation": "Observed action 3340213: SkillTable design identity \"冰分摊圈\"; DamageAttr rows 133402130101, 133402130103; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "冰分摊圈",
+      "english_gloss": "Ice Stack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 505024,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340214,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340214.name",
+      "icon": null,
+      "relation": "Observed action 3340214: SkillTable design identity \"水分摊圈\"; DamageAttr rows 133402140101, 133402140103; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "水分摊圈",
+      "english_gloss": "Water Stack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 449643,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340219,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340219.name",
+      "icon": null,
+      "relation": "Observed action 3340219: SkillTable design identity \"大冰浪\"; DamageAttr rows 133402190102, 133402190103; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "大冰浪",
+      "english_gloss": "Great Ice Wave",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 469454,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340220,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340220.name",
+      "icon": null,
+      "relation": "Observed action 3340220: SkillTable design identity \"大海啸\"; DamageAttr rows 133402200102, 133402200103; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "大海啸",
+      "english_gloss": "Great Tsunami",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 1494630,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340225,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340225.name",
+      "icon": null,
+      "relation": "Observed action 3340225: SkillTable design identity \"潜水娜宝摧毁音响\"; DamageAttr row 133402250103; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "潜水娜宝摧毁音响",
+      "english_gloss": "Destroy Speakers",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 372130,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340227,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340227.name",
+      "icon": null,
+      "relation": "Observed action 3340227: SkillTable design identity \"冰圆形地板\"; DamageAttr row 133402270101; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "冰圆形地板",
+      "english_gloss": "Ice Ground Circle",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 196761,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340228,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340228.name",
+      "icon": null,
+      "relation": "Observed action 3340228: SkillTable design identity \"水圆形地板\"; DamageAttr row 133402280101; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "水圆形地板",
+      "english_gloss": "Water Ground Circle",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 713058,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340233,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340233.name",
+      "icon": null,
+      "relation": "Observed action 3340233: SkillTable design identity \"分身娜宝读条（橙色）\"; DamageAttr row 133402330102; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "分身娜宝读条（橙色）",
+      "english_gloss": "Orange Clone Cast",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 947479,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340235,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340235.name",
+      "icon": null,
+      "relation": "Observed action 3340235: SkillTable design identity \"橙色披萨\"; DamageAttr row 133402350101; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "橙色披萨",
+      "english_gloss": "Orange Cone",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 783057,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340239,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340239.name",
+      "icon": null,
+      "relation": "Observed action 3340239: SkillTable design identity \"潜水娜宝顺劈\"; DamageAttr row 133402390103; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "潜水娜宝顺劈",
+      "english_gloss": "Cleave",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 367981,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3340241,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3340241.name",
+      "icon": null,
+      "relation": "Observed action 3340241: SkillTable design identity \"潜水娜宝解除虚弱\"; DamageAttr row 133402410102; observed source monster ID 4601",
+      "review_state": "verified-current-build-design",
+      "design_name": "潜水娜宝解除虚弱",
+      "english_gloss": "Remove Vulnerability",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        4601
+      ],
+      "observed_damage": 257049,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350017,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350017.name",
+      "icon": null,
+      "relation": "Observed action 3350017: SkillTable design identity \"跳跃组合技\"; DamageAttr rows 133500170106, 133500170109; observed source monster ID 33500",
+      "review_state": "verified-current-build-design",
+      "design_name": "跳跃组合技",
+      "english_gloss": "Leap Combo",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33500
+      ],
+      "observed_damage": 6661237,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350051,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350051.name",
+      "icon": null,
+      "relation": "Observed action 3350051: SkillTable design identity \"点名爆炸-r=3\"; DamageAttr row 133500510101; observed source monster ID 33500",
+      "review_state": "verified-current-build-design",
+      "design_name": "点名爆炸-r=3",
+      "english_gloss": "Targeted Explosion: Radius 3",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33500
+      ],
+      "observed_damage": 6379360,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350052,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350052.name",
+      "icon": null,
+      "relation": "Observed action 3350052: SkillTable design identity \"跟踪点名-r=3\"; DamageAttr row 133500520101; observed source monster ID 33500",
+      "review_state": "verified-current-build-design",
+      "design_name": "跟踪点名-r=3",
+      "english_gloss": "Tracking Mark: Radius 3",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33500
+      ],
+      "observed_damage": 10138519,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350053,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350053.name",
+      "icon": null,
+      "relation": "Observed action 3350053: SkillTable design identity \"1级蒸汽\"; DamageAttr row 133500530101; observed source monster ID 33501",
+      "review_state": "verified-current-build-design",
+      "design_name": "1级蒸汽",
+      "english_gloss": "Steam Level 1",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33501
+      ],
+      "observed_damage": 57677,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350054,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350054.name",
+      "icon": null,
+      "relation": "Observed action 3350054: SkillTable design identity \"2级蒸汽\"; DamageAttr row 133500540101; observed source monster ID 33501",
+      "review_state": "verified-current-build-design",
+      "design_name": "2级蒸汽",
+      "english_gloss": "Steam Level 2",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33501
+      ],
+      "observed_damage": 96523,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350055,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350055.name",
+      "icon": null,
+      "relation": "Observed action 3350055: SkillTable design identity \"3级蒸汽\"; DamageAttr row 133500550101; observed source monster ID 33501",
+      "review_state": "verified-current-build-design",
+      "design_name": "3级蒸汽",
+      "english_gloss": "Steam Level 3",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33501
+      ],
+      "observed_damage": 54052,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350056,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350056.name",
+      "icon": null,
+      "relation": "Observed action 3350056: SkillTable design identity \"火龙卷\"; DamageAttr row 133500560103; observed source monster ID 33502",
+      "review_state": "verified-current-build-design",
+      "design_name": "火龙卷",
+      "english_gloss": "Fire Tornado",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33502
+      ],
+      "observed_damage": 0,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350058,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350058.name",
+      "icon": null,
+      "relation": "Observed action 3350058: SkillTable design identity \"检测炸团aoe\"; DamageAttr row 133500580101; observed source monster IDs 33501, 33502",
+      "review_state": "verified-current-build-design",
+      "design_name": "检测炸团aoe",
+      "english_gloss": "Party-wipe Check AOE",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33501,
+        33502
+      ],
+      "observed_damage": 2584086,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350059,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350059.name",
+      "icon": null,
+      "relation": "Observed action 3350059: SkillTable design identity \"远离aoe\"; DamageAttr row 133500590101; observed source monster ID 33500",
+      "review_state": "verified-current-build-design",
+      "design_name": "远离aoe",
+      "english_gloss": "Move-away AOE",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33500
+      ],
+      "observed_damage": 1830777,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350063,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350063.name",
+      "icon": null,
+      "relation": "Observed action 3350063: SkillTable design identity \"组合技分摊\"; DamageAttr row 133500630101; observed source monster ID 33500",
+      "review_state": "verified-current-build-design",
+      "design_name": "组合技分摊",
+      "english_gloss": "Combo Stack",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33500
+      ],
+      "observed_damage": 3540258,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350064,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350064.name",
+      "icon": null,
+      "relation": "Observed action 3350064: SkillTable design identity \"组合技分散\"; DamageAttr row 133500640101; observed source monster ID 33500",
+      "review_state": "verified-current-build-design",
+      "design_name": "组合技分散",
+      "english_gloss": "Combo Spread",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33500
+      ],
+      "observed_damage": 1625172,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350070,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350070.name",
+      "icon": null,
+      "relation": "Observed action 3350070: SkillTable design identity \"水晶爆炸\"; DamageAttr row 133500700101; observed source monster IDs 33502, 3350218",
+      "review_state": "verified-current-build-design",
+      "design_name": "水晶爆炸",
+      "english_gloss": "Crystal Explosion",
+      "observed_actor_kinds": [
+        "monster",
+        "training_dummy"
+      ],
+      "observed_monster_ids": [
+        33502,
+        3350218
+      ],
+      "observed_damage": 2119565,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350073,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350073.name",
+      "icon": null,
+      "relation": "Observed action 3350073: SkillTable design identity \"炮台出现遮掩aoe\"; DamageAttr row 133500730101; observed source monster ID 33538",
+      "review_state": "verified-current-build-design",
+      "design_name": "炮台出现遮掩aoe",
+      "english_gloss": "Turret Spawn Cover AOE",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33538
+      ],
+      "observed_damage": 359547,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350074,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350074.name",
+      "icon": null,
+      "relation": "Observed action 3350074: SkillTable design identity \"开门圆形蒸汽\"; DamageAttr rows 133500740101, 133500740102, 133500740103, 133500740104; observed source monster ID 33539",
+      "review_state": "verified-current-build-design",
+      "design_name": "开门圆形蒸汽",
+      "english_gloss": "Door-opening Circular Steam",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33539
+      ],
+      "observed_damage": 36902758,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350079,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350079.name",
+      "icon": null,
+      "relation": "Observed action 3350079: SkillTable design identity \"火龙卷内环\"; DamageAttr row 133500790101; observed source monster ID 33502",
+      "review_state": "verified-current-build-design",
+      "design_name": "火龙卷内环",
+      "english_gloss": "Fire Tornado Inner Ring",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33502
+      ],
+      "observed_damage": 1318801,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350080,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350080.name",
+      "icon": null,
+      "relation": "Observed action 3350080: SkillTable design identity \"火龙卷中环\"; DamageAttr row 133500800101; observed source monster ID 33502",
+      "review_state": "verified-current-build-design",
+      "design_name": "火龙卷中环",
+      "english_gloss": "Fire Tornado Middle Ring",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33502
+      ],
+      "observed_damage": 0,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3350081,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3350081.name",
+      "icon": null,
+      "relation": "Observed action 3350081: SkillTable design identity \"火龙卷外环\"; DamageAttr row 133500810101; observed source monster ID 33502",
+      "review_state": "verified-current-build-design",
+      "design_name": "火龙卷外环",
+      "english_gloss": "Fire Tornado Outer Ring",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33502
+      ],
+      "observed_damage": 387326,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 3370399,
+      "kind": "base-skill",
+      "localization_key": "combat_action.3370399.name",
+      "icon": null,
+      "relation": "Observed action 3370399: SkillTable design identity \"地面十字波虚拟体\"; DamageAttr rows 133703990101, 133703990102; observed source monster ID 33703",
+      "review_state": "verified-current-build-design",
+      "design_name": "地面十字波虚拟体",
+      "english_gloss": "Ground Cross-wave Entity",
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        33703
+      ],
+      "observed_damage": 1817827,
+      "observed_healing": 0
+    },
+    {
+      "ability_id": 10100101,
+      "kind": "skill-effect",
+      "localization_key": "combat_action.10100101.name",
+      "icon": null,
+      "relation": "Observed action 10100101: SkillTable design identity \"牛羊冲锋\"; DamageAttr row 31010010100; observed source monster ID 80017",
+      "review_state": "verified-current-build-design",
+      "design_name": "牛羊冲锋",
+      "english_gloss": null,
+      "observed_actor_kinds": [
+        "monster"
+      ],
+      "observed_monster_ids": [
+        80017
+      ],
+      "observed_damage": 80823,
+      "observed_healing": 0
+    }
+  ]
+}

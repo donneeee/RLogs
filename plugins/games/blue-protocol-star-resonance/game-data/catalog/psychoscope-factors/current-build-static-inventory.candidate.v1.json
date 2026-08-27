@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "generated_by": "tools/bpsr-psychoscope-current-build-static-receipt.mjs",
+  "game_build": "24687926",
+  "deployment_id": "global",
+  "channel": "steam",
+  "promotion_state": "current-build-static-inventory-only",
+  "policy": {
+    "exact_numeric_ids_and_build_are_authoritative": true,
+    "localization_is_supporting_evidence_only": true,
+    "static_rows_are_not_runtime_activation_proof": true,
+    "packet_replay_required_for_runtime_rules": true,
+    "unresolved_rows_are_retained": true,
+    "active_factor_rules": 0,
+    "provider_rdps_credit_allowed": false,
+    "runtime_promotion_allowed": false,
+    "ui_rdps_display_allowed": false
+  },
+  "source": {
+    "path": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/seasonal-domains/psychoscope-factors.v1.json",
+    "bytes": 910905,
+    "sha256": "cd4ba7a218a973209c23e68606ab579b7f591de8506dedbe4a676d157b8e8f82",
+    "generated_by": "tools/bpsr-seasonal-domain-scan.mjs",
+    "source_count": 7,
+    "row_count": 9293,
+    "aggregate_sha256": "a820a2947bad596c0684b438f56a01064cc2f5cc71196b5a2a4df62356ab516b"
+  },
+  "proof_suites": [
+    "factor-event-correlation",
+    "origin-graph-diff",
+    "provider-recipient-replay",
+    "canonical-replay-conservation"
+  ],
+  "open_proof_obligations": [
+    "factor-event-correlation",
+    "origin-graph-diff",
+    "provider-recipient-replay",
+    "canonical-replay-conservation"
+  ],
+  "conclusion": {
+    "exact_current_build_static_inventory_present": true,
+    "semantic_factor_rules_proven_for_current_build": false,
+    "matching_build_runtime_activation_proven": false,
+    "provider_rdps_credit_allowed": false,
+    "runtime_promotion_allowed": false,
+    "ui_rdps_display_allowed": false
+  },
+  "content_sha256": "015891343204510baf36ec70c8b1bfde0a3d937cd09feaff351d5d37cd215040"
+}

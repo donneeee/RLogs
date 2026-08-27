@@ -1,0 +1,3116 @@
+{
+  "schema_version": 2,
+  "kind": "overworld_scene",
+  "id": 94,
+  "stable_key": "overworld-scene.94",
+  "localization_key": "scene.94.name",
+  "icon": null,
+  "attributes": {
+    "scene_id": 94,
+    "scene_key": "scene.94",
+    "map_key": "map.94",
+    "scene_resource_id": 94,
+    "resource_path": "scenes/fld001_06_mistyforest",
+    "area_ids": [],
+    "transitions": [
+      {
+        "target_scene_id": 9,
+        "target_scene_key": "scene.9",
+        "target_resolution": "current_scene",
+        "portal_id": 3,
+        "entrance_scene_id": 0
+      }
+    ],
+    "world_points": [
+      {
+        "point_id": 940000001,
+        "position": [
+          -186.309998,
+          116.010002,
+          -87.4899979
+        ],
+        "pathfinding_point": 0
+      },
+      {
+        "point_id": 940000007,
+        "position": [
+          -148.070007,
+          131,
+          -59.8100014
+        ],
+        "pathfinding_point": 0
+      },
+      {
+        "point_id": 940000008,
+        "position": [
+          -428.970001,
+          134.012497,
+          -45.5400009
+        ],
+        "pathfinding_point": 0
+      },
+      {
+        "point_id": 940000010,
+        "position": [
+          -287.540009,
+          92,
+          48.9399986
+        ],
+        "pathfinding_point": 0
+      },
+      {
+        "point_id": 940000012,
+        "position": [
+          -290.51001,
+          92,
+          -158.050003
+        ],
+        "pathfinding_point": 0
+      },
+      {
+        "point_id": 940000014,
+        "position": [
+          45.2400017,
+          101,
+          -75.5699997
+        ],
+        "pathfinding_point": 0
+      },
+      {
+        "point_id": 940000016,
+        "position": [
+          148.970001,
+          122,
+          14.4799995
+        ],
+        "pathfinding_point": 0
+      },
+      {
+        "point_id": 940000018,
+        "position": [
+          10.6700001,
+          101,
+          117.449997
+        ],
+        "pathfinding_point": 0
+      }
+    ],
+    "placements": {
+      "monsters": [
+        {
+          "entity_definition_id": 940000035,
+          "monster_id": 11023,
+          "monster_key": "monster.11023",
+          "position": [
+            -427.109985,
+            134,
+            -73.8199997
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000036,
+          "monster_id": 11022,
+          "monster_key": "monster.11022",
+          "position": [
+            -44.6300011,
+            101,
+            -58.9399986
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000037,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -49.7999992,
+            101,
+            -68.8399963
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000038,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -40.5900002,
+            101,
+            -49.9700012
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000039,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -39.1199989,
+            101,
+            -68.0400009
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000040,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -51.0400009,
+            101,
+            -52.2999992
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000041,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            11.3699999,
+            101,
+            -77.2799988
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000042,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            8.44999981,
+            101,
+            -88.6800003
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000043,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -2.17000008,
+            101,
+            -80.9599991
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000044,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -26.8600006,
+            101,
+            -2.46000004
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000045,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -14.7299995,
+            101,
+            -11.3599997
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000046,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -23.8500004,
+            101,
+            -16.5300007
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000047,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -377.600006,
+            116,
+            -150.509995
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000048,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -397.459991,
+            116,
+            -124.239998
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000049,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -392.579987,
+            116,
+            -133.910004
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000050,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -378.980011,
+            116,
+            -135.199997
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000051,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -390.160004,
+            116,
+            -147.210007
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000052,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -406.290009,
+            116,
+            -124.839996
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000053,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -371.720001,
+            116,
+            -6.38999987
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000054,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -409.589996,
+            116,
+            13.4300003
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000055,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -404.049988,
+            116,
+            -8.06999969
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000056,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -398.940002,
+            116,
+            2.78999996
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000057,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -381.929993,
+            116,
+            -10.5
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000058,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -283,
+            116,
+            -106.480003
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000059,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -251.779999,
+            116,
+            -71.4599991
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000060,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -286.269989,
+            116,
+            -43.0499992
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000061,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -322.940002,
+            116,
+            -27.8299999
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000062,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -331.160004,
+            116,
+            -64.7300034
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000063,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -311.76001,
+            116,
+            -58.3499985
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000064,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -287.279999,
+            116,
+            -63.6100006
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000065,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -294.779999,
+            92,
+            20.6399994
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000066,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -285.179993,
+            92,
+            8.98999977
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000067,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -218.850006,
+            116,
+            -73.6699982
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000068,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -233.679993,
+            116,
+            -104.650002
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000069,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -219.449997,
+            116,
+            -111.389999
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000070,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -215.660004,
+            116,
+            -136.229996
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000071,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            -217.759995,
+            116,
+            -45.7999992
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000072,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -216.940002,
+            116,
+            -29.6000004
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000073,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            49.1599998,
+            101,
+            -18.5599995
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000074,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            55.5699997,
+            101,
+            -5.61000013
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000075,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            66.0199966,
+            101,
+            -3.8599999
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000076,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            59.1599998,
+            101,
+            -15.3699999
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000077,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            128.919998,
+            101,
+            96
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000078,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            123.160004,
+            101,
+            88.7900009
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000079,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            116.43,
+            101,
+            82.9800034
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000080,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            102.480003,
+            101,
+            100.110001
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000081,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            117.82,
+            101,
+            96.6399994
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000082,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            102.360001,
+            101,
+            89.1100006
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000083,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            88.75,
+            100.959999,
+            123.809998
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000084,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            67.5699997,
+            101.07,
+            130.580002
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000085,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            42.1699982,
+            101.080002,
+            130.690002
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000086,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            -13.3900003,
+            101,
+            108.080002
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000087,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            3.11999989,
+            101,
+            84.1500015
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000088,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            36.1199989,
+            101,
+            83.2099991
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000089,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            40.8800011,
+            101,
+            54.5099983
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000090,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            54.3699989,
+            101,
+            78.4800034
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000091,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            47.2200012,
+            101,
+            80.6299973
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000092,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            49.5999985,
+            101,
+            66.5
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000093,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            51.1500015,
+            101,
+            54.2999992
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000094,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            4.28999996,
+            101.029999,
+            51.3499985
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000095,
+          "monster_id": 11020,
+          "monster_key": "monster.11020",
+          "position": [
+            87.75,
+            105.790001,
+            -3.57999992
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000096,
+          "monster_id": 11021,
+          "monster_key": "monster.11021",
+          "position": [
+            45.7999992,
+            101.209999,
+            -37.9099998
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000187,
+          "monster_id": 11093,
+          "monster_key": "monster.11093",
+          "position": [
+            -398.640015,
+            116,
+            -126.629997
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000188,
+          "monster_id": 11091,
+          "monster_key": "monster.11091",
+          "position": [
+            -383.089996,
+            116,
+            -124.660004
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000189,
+          "monster_id": 11092,
+          "monster_key": "monster.11092",
+          "position": [
+            -380.970001,
+            116,
+            -133.339996
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000190,
+          "monster_id": 11093,
+          "monster_key": "monster.11093",
+          "position": [
+            -367.339996,
+            116,
+            -146.419998
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000191,
+          "monster_id": 11091,
+          "monster_key": "monster.11091",
+          "position": [
+            -396.980011,
+            116,
+            -139.399994
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000192,
+          "monster_id": 11091,
+          "monster_key": "monster.11091",
+          "position": [
+            -374.649994,
+            116,
+            -151.75
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000193,
+          "monster_id": 11091,
+          "monster_key": "monster.11091",
+          "position": [
+            -369.049988,
+            116,
+            -136.949997
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000194,
+          "monster_id": 11091,
+          "monster_key": "monster.11091",
+          "position": [
+            -356.799988,
+            116.040001,
+            -137.279999
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000195,
+          "monster_id": 11092,
+          "monster_key": "monster.11092",
+          "position": [
+            -403.029999,
+            116,
+            -133.470001
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000196,
+          "monster_id": 11092,
+          "monster_key": "monster.11092",
+          "position": [
+            -388.339996,
+            116,
+            -149.039993
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000197,
+          "monster_id": 11092,
+          "monster_key": "monster.11092",
+          "position": [
+            -388.869995,
+            116,
+            -133.880005
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000198,
+          "monster_id": 11092,
+          "monster_key": "monster.11092",
+          "position": [
+            -392.839996,
+            116,
+            -122.599998
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000199,
+          "monster_id": 11096,
+          "monster_key": "monster.11096",
+          "position": [
+            -399.809998,
+            116,
+            2.75
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000200,
+          "monster_id": 11094,
+          "monster_key": "monster.11094",
+          "position": [
+            -401.640015,
+            116,
+            -14.54
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000201,
+          "monster_id": 11095,
+          "monster_key": "monster.11095",
+          "position": [
+            -367.459991,
+            116,
+            -14.6700001
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000202,
+          "monster_id": 11096,
+          "monster_key": "monster.11096",
+          "position": [
+            -376.089996,
+            116,
+            -13.7600002
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000203,
+          "monster_id": 11094,
+          "monster_key": "monster.11094",
+          "position": [
+            -387.959991,
+            116,
+            -15.6899996
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000204,
+          "monster_id": 11094,
+          "monster_key": "monster.11094",
+          "position": [
+            -376.48999,
+            116,
+            -6.94000006
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000205,
+          "monster_id": 11094,
+          "monster_key": "monster.11094",
+          "position": [
+            -378.859985,
+            116,
+            1.46000004
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000206,
+          "monster_id": 11094,
+          "monster_key": "monster.11094",
+          "position": [
+            -366.579987,
+            116,
+            -3.46000004
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000207,
+          "monster_id": 11095,
+          "monster_key": "monster.11095",
+          "position": [
+            -379.429993,
+            116,
+            -3.96000004
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000208,
+          "monster_id": 11095,
+          "monster_key": "monster.11095",
+          "position": [
+            -403.23999,
+            116,
+            -2.76999998
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000209,
+          "monster_id": 11095,
+          "monster_key": "monster.11095",
+          "position": [
+            -394.320007,
+            116,
+            -13.2299995
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000210,
+          "monster_id": 11095,
+          "monster_key": "monster.11095",
+          "position": [
+            -382.390015,
+            116,
+            -10.2200003
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000263,
+          "monster_id": 8644,
+          "monster_key": "monster.8644",
+          "position": [
+            -194.869995,
+            123.099998,
+            -167.110001
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000264,
+          "monster_id": 8644,
+          "monster_key": "monster.8644",
+          "position": [
+            -196.149994,
+            122.550003,
+            -161.190002
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000281,
+          "monster_id": 8645,
+          "monster_key": "monster.8645",
+          "position": [
+            -294.339996,
+            92,
+            -139.199997
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000282,
+          "monster_id": 8646,
+          "monster_key": "monster.8646",
+          "position": [
+            -295.579987,
+            92,
+            -139.300003
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000290,
+          "monster_id": 8647,
+          "monster_key": "monster.8647",
+          "position": [
+            -319.690002,
+            104.050003,
+            -137.139999
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000336,
+          "monster_id": 661501,
+          "monster_key": "monster.661501",
+          "position": [
+            -437.309998,
+            134,
+            -72.0800018
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000355,
+          "monster_id": 661502,
+          "monster_key": "monster.661502",
+          "position": [
+            -430.5,
+            134.009995,
+            -68.9400024
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000356,
+          "monster_id": 661503,
+          "monster_key": "monster.661503",
+          "position": [
+            -425.589996,
+            134.009995,
+            -72.5999985
+          ],
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000357,
+          "monster_id": 661504,
+          "monster_key": "monster.661504",
+          "position": [
+            -430.309998,
+            134.009995,
+            -75.6100006
+          ],
+          "pathfinding_point": 0
+        }
+      ],
+      "npcs": [
+        {
+          "entity_definition_id": 940000019,
+          "npc_id": 1940001,
+          "npc_key": "npc.1940001",
+          "position": [
+            -117.82,
+            131,
+            -61.8300018
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000021,
+          "npc_id": 1940003,
+          "npc_key": "npc.1940003",
+          "position": [
+            -140.899994,
+            131,
+            -71.7099991
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000022,
+          "npc_id": 1940004,
+          "npc_key": "npc.1940004",
+          "position": [
+            -142.339996,
+            131,
+            -71.75
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000023,
+          "npc_id": 1940005,
+          "npc_key": "npc.1940005",
+          "position": [
+            -157.889999,
+            131,
+            -53.3800011
+          ],
+          "source_type": 2,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000024,
+          "npc_id": 1940006,
+          "npc_key": "npc.1940006",
+          "position": [
+            -157.119995,
+            131,
+            -51.8499985
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000025,
+          "npc_id": 1940007,
+          "npc_key": "npc.1940007",
+          "position": [
+            -132.779999,
+            154.520004,
+            -29.0100002
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000026,
+          "npc_id": 23062601,
+          "npc_key": "npc.23062601",
+          "position": [
+            -117.82,
+            131,
+            -61.8300018
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000031,
+          "npc_id": 23062602,
+          "npc_key": "npc.23062602",
+          "position": [
+            -117.970001,
+            132.339996,
+            -60.6599998
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000211,
+          "npc_id": 1940101,
+          "npc_key": "npc.1940101",
+          "position": [
+            -131.800003,
+            131.020004,
+            -68.8199997
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000212,
+          "npc_id": 1940102,
+          "npc_key": "npc.1940102",
+          "position": [
+            -136.520004,
+            131.020004,
+            -66.7799988
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000213,
+          "npc_id": 1940103,
+          "npc_key": "npc.1940103",
+          "position": [
+            -178.320007,
+            119,
+            -36.0400009
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000214,
+          "npc_id": 1940104,
+          "npc_key": "npc.1940104",
+          "position": [
+            -180.119995,
+            119.010002,
+            -37.6199989
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000215,
+          "npc_id": 1940105,
+          "npc_key": "npc.1940105",
+          "position": [
+            -95.1699982,
+            112.989998,
+            14.1099997
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000216,
+          "npc_id": 1940201,
+          "npc_key": "npc.1940201",
+          "position": [
+            -137.039993,
+            131.009995,
+            -56.8699989
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000217,
+          "npc_id": 1940202,
+          "npc_key": "npc.1940202",
+          "position": [
+            -134.110001,
+            131,
+            -54.1199989
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000218,
+          "npc_id": 1940203,
+          "npc_key": "npc.1940203",
+          "position": [
+            -130.139999,
+            131.029999,
+            -58.3400002
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000219,
+          "npc_id": 1940301,
+          "npc_key": "npc.1940301",
+          "position": [
+            -44.1300011,
+            106.169998,
+            85.4700012
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000220,
+          "npc_id": 1940401,
+          "npc_key": "npc.1940401",
+          "position": [
+            122,
+            106.779999,
+            111.489998
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000221,
+          "npc_id": 1940402,
+          "npc_key": "npc.1940402",
+          "position": [
+            121.209999,
+            106.849998,
+            110.809998
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000222,
+          "npc_id": 1940501,
+          "npc_key": "npc.1940501",
+          "position": [
+            -1.54999995,
+            107.019997,
+            -128.25
+          ],
+          "source_type": 2,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000223,
+          "npc_id": 1940601,
+          "npc_key": "npc.1940601",
+          "position": [
+            -302.51001,
+            116.010002,
+            -93
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000224,
+          "npc_id": 1940602,
+          "npc_key": "npc.1940602",
+          "position": [
+            -301.839996,
+            116.010002,
+            -91.0400009
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000225,
+          "npc_id": 1940701,
+          "npc_key": "npc.1940701",
+          "position": [
+            -379.619995,
+            124.389999,
+            -187.479996
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000226,
+          "npc_id": 1940702,
+          "npc_key": "npc.1940702",
+          "position": [
+            -385.589996,
+            124.830002,
+            -183.020004
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000227,
+          "npc_id": 1940703,
+          "npc_key": "npc.1940703",
+          "position": [
+            -397.140015,
+            124.580002,
+            -183.050003
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000236,
+          "npc_id": 1940501,
+          "npc_key": "npc.1940501",
+          "position": [
+            -23.9400005,
+            101.339996,
+            -78.6900024
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000240,
+          "npc_id": 22002401,
+          "npc_key": "npc.22002401",
+          "position": [
+            3.82999992,
+            101.139999,
+            -85.4400024
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000244,
+          "npc_id": 22002401,
+          "npc_key": "npc.22002401",
+          "position": [
+            -3.99000001,
+            105.110001,
+            -115.629997
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000250,
+          "npc_id": 23080601,
+          "npc_key": "npc.23080601",
+          "position": [
+            -368.200012,
+            124.279999,
+            -170.820007
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000252,
+          "npc_id": 23080601,
+          "npc_key": "npc.23080601",
+          "position": [
+            -99.1299973,
+            119.129997,
+            -20.5100002
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000255,
+          "npc_id": 23080601,
+          "npc_key": "npc.23080601",
+          "position": [
+            -117.910004,
+            131.009995,
+            -59.1199989
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000257,
+          "npc_id": 23064203,
+          "npc_key": "npc.23064203",
+          "position": [
+            -180.559998,
+            121.010002,
+            -157.699997
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000259,
+          "npc_id": 23064203,
+          "npc_key": "npc.23064203",
+          "position": [
+            -197.610001,
+            122.690002,
+            -164.419998
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000260,
+          "npc_id": 23064202,
+          "npc_key": "npc.23064202",
+          "position": [
+            -187.630005,
+            121.019997,
+            -158.360001
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000267,
+          "npc_id": 23064202,
+          "npc_key": "npc.23064202",
+          "position": [
+            -185.070007,
+            121.260002,
+            -162.119995
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000269,
+          "npc_id": 23064203,
+          "npc_key": "npc.23064203",
+          "position": [
+            -197.610001,
+            122.690002,
+            -164.419998
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000270,
+          "npc_id": 23064202,
+          "npc_key": "npc.23064202",
+          "position": [
+            -295.859985,
+            92.0100021,
+            -138.919998
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000271,
+          "npc_id": 23064301,
+          "npc_key": "npc.23064301",
+          "position": [
+            -297.070007,
+            92.0124969,
+            -139.580002
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000272,
+          "npc_id": 23064302,
+          "npc_key": "npc.23064302",
+          "position": [
+            -295.01001,
+            92.0124969,
+            -139.850006
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000273,
+          "npc_id": 23064303,
+          "npc_key": "npc.23064303",
+          "position": [
+            -296,
+            92.0124969,
+            -140.630005
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000277,
+          "npc_id": 23064203,
+          "npc_key": "npc.23064203",
+          "position": [
+            -287.040009,
+            92,
+            -138.869995
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000283,
+          "npc_id": 23064301,
+          "npc_key": "npc.23064301",
+          "position": [
+            -295.450012,
+            92,
+            -140.839996
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000284,
+          "npc_id": 23064202,
+          "npc_key": "npc.23064202",
+          "position": [
+            -297.179993,
+            92,
+            -136.270004
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000285,
+          "npc_id": 23064203,
+          "npc_key": "npc.23064203",
+          "position": [
+            -287.040009,
+            92,
+            -138.869995
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000288,
+          "npc_id": 23064203,
+          "npc_key": "npc.23064203",
+          "position": [
+            -319.25,
+            104.099998,
+            -136.710007
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000289,
+          "npc_id": 23064202,
+          "npc_key": "npc.23064202",
+          "position": [
+            -321.890015,
+            104.199997,
+            -139.240005
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000291,
+          "npc_id": 23064202,
+          "npc_key": "npc.23064202",
+          "position": [
+            -313.359985,
+            104,
+            -135.610001
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000298,
+          "npc_id": 23064202,
+          "npc_key": "npc.23064202",
+          "position": [
+            -185.070007,
+            121.260002,
+            -162.119995
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000299,
+          "npc_id": 23064202,
+          "npc_key": "npc.23064202",
+          "position": [
+            -288.190002,
+            92,
+            -139
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000301,
+          "npc_id": 24050102,
+          "npc_key": "npc.24050102",
+          "position": [
+            -145.279999,
+            131.009995,
+            -52.2299995
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000302,
+          "npc_id": 1940402,
+          "npc_key": "npc.1940402",
+          "position": [
+            -126.870003,
+            131,
+            -70.2300034
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000305,
+          "npc_id": 24050102,
+          "npc_key": "npc.24050102",
+          "position": [
+            -379.100006,
+            124.610001,
+            -173.149994
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000307,
+          "npc_id": 23001201,
+          "npc_key": "npc.23001201",
+          "position": [
+            -333.549988,
+            116.18,
+            -29.1299992
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000313,
+          "npc_id": 23001201,
+          "npc_key": "npc.23001201",
+          "position": [
+            -363.320007,
+            122,
+            -76.9100037
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000317,
+          "npc_id": 23001201,
+          "npc_key": "npc.23001201",
+          "position": [
+            -333.619995,
+            116,
+            -77.8600006
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000318,
+          "npc_id": 23001201,
+          "npc_key": "npc.23001201",
+          "position": [
+            -330.980011,
+            116,
+            -56.0699997
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000321,
+          "npc_id": 23081801,
+          "npc_key": "npc.23081801",
+          "position": [
+            -134.770004,
+            131.029999,
+            -60.6300011
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000322,
+          "npc_id": 23081802,
+          "npc_key": "npc.23081802",
+          "position": [
+            -137.100006,
+            131.028,
+            -61.5999985
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000323,
+          "npc_id": 23081803,
+          "npc_key": "npc.23081803",
+          "position": [
+            -134.839996,
+            131.031296,
+            -62.8300018
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000324,
+          "npc_id": 23081804,
+          "npc_key": "npc.23081804",
+          "position": [
+            -136.059998,
+            131.027893,
+            -63.4099998
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000325,
+          "npc_id": 23081805,
+          "npc_key": "npc.23081805",
+          "position": [
+            -135.800003,
+            131.029999,
+            -59.5699997
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000326,
+          "npc_id": 23081807,
+          "npc_key": "npc.23081807",
+          "position": [
+            -137.539993,
+            131.024597,
+            -63.0499992
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000327,
+          "npc_id": 23081807,
+          "npc_key": "npc.23081807",
+          "position": [
+            -138.119995,
+            131.025894,
+            -60.8800011
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000328,
+          "npc_id": 23081801,
+          "npc_key": "npc.23081801",
+          "position": [
+            -134.770004,
+            131.029999,
+            -60.6300011
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000329,
+          "npc_id": 23081803,
+          "npc_key": "npc.23081803",
+          "position": [
+            -134.839996,
+            131.029999,
+            -62.8300018
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000330,
+          "npc_id": 23081804,
+          "npc_key": "npc.23081804",
+          "position": [
+            -136.059998,
+            131.029999,
+            -63.4099998
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000331,
+          "npc_id": 23081805,
+          "npc_key": "npc.23081805",
+          "position": [
+            -135.800003,
+            131.029999,
+            -59.5699997
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000332,
+          "npc_id": 23081804,
+          "npc_key": "npc.23081804",
+          "position": [
+            -426.100006,
+            134,
+            -75.1399994
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000333,
+          "npc_id": 23081805,
+          "npc_key": "npc.23081805",
+          "position": [
+            -427.149994,
+            134,
+            -72.1100006
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000334,
+          "npc_id": 23081803,
+          "npc_key": "npc.23081803",
+          "position": [
+            -425.049988,
+            134.009995,
+            -72.5199966
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000335,
+          "npc_id": 23081806,
+          "npc_key": "npc.23081806",
+          "position": [
+            -426.980011,
+            134,
+            -73.3799973
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000337,
+          "npc_id": 23081803,
+          "npc_key": "npc.23081803",
+          "position": [
+            3.21000004,
+            101.010002,
+            126.809998
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000338,
+          "npc_id": 23081804,
+          "npc_key": "npc.23081804",
+          "position": [
+            1.74000001,
+            101.010002,
+            128.190002
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000339,
+          "npc_id": 23081805,
+          "npc_key": "npc.23081805",
+          "position": [
+            3.33999991,
+            101.010002,
+            128.25
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000340,
+          "npc_id": 23081803,
+          "npc_key": "npc.23081803",
+          "position": [
+            32.4199982,
+            101.040001,
+            -58.9799995
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000341,
+          "npc_id": 23081804,
+          "npc_key": "npc.23081804",
+          "position": [
+            33.3800011,
+            101.07,
+            -60.5999985
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000342,
+          "npc_id": 23081805,
+          "npc_key": "npc.23081805",
+          "position": [
+            34.4300003,
+            101.029999,
+            -59.1699982
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000343,
+          "npc_id": 23081803,
+          "npc_key": "npc.23081803",
+          "position": [
+            -127.089996,
+            131.020004,
+            -54.0800018
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000351,
+          "npc_id": 23081804,
+          "npc_key": "npc.23081804",
+          "position": [
+            -128.460007,
+            131.020004,
+            -54.3899994
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000352,
+          "npc_id": 23081805,
+          "npc_key": "npc.23081805",
+          "position": [
+            -126.860001,
+            131.020096,
+            -55.4099998
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000361,
+          "npc_id": 23003701,
+          "npc_key": "npc.23003701",
+          "position": [
+            -116.559998,
+            131.460007,
+            -61.8800011
+          ],
+          "source_type": 2,
+          "pathfinding_point": 0
+        }
+      ],
+      "world_objects": [
+        {
+          "entity_definition_id": 940000005,
+          "world_object_id": 50019,
+          "world_object_key": "world-object.50019",
+          "position": [
+            -153.449997,
+            131,
+            -59.5600014
+          ],
+          "source_type": 2,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000006,
+          "world_object_id": 50941,
+          "world_object_key": "world-object.50941",
+          "position": [
+            -428.970001,
+            134.012497,
+            -45.5400009
+          ],
+          "source_type": 2,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000009,
+          "world_object_id": 50942,
+          "world_object_key": "world-object.50942",
+          "position": [
+            -287.540009,
+            92,
+            48.9399986
+          ],
+          "source_type": 2,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000011,
+          "world_object_id": 50943,
+          "world_object_key": "world-object.50943",
+          "position": [
+            -290.51001,
+            92,
+            -158.050003
+          ],
+          "source_type": 2,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000013,
+          "world_object_id": 50944,
+          "world_object_key": "world-object.50944",
+          "position": [
+            45.2400017,
+            101,
+            -75.5699997
+          ],
+          "source_type": 2,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000015,
+          "world_object_id": 52001,
+          "world_object_key": "world-object.52001",
+          "position": [
+            148.970001,
+            122,
+            14.4799995
+          ],
+          "source_type": 2,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000017,
+          "world_object_id": 50946,
+          "world_object_key": "world-object.50946",
+          "position": [
+            10.6700001,
+            101,
+            117.449997
+          ],
+          "source_type": 2,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000020,
+          "world_object_id": 1940002,
+          "world_object_key": "world-object.1940002",
+          "position": [
+            -117.589996,
+            131.990005,
+            -59.7599983
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000179,
+          "world_object_id": 55010,
+          "world_object_key": "world-object.55010",
+          "position": [
+            -385.940002,
+            116,
+            -141.25
+          ],
+          "source_type": 0,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000184,
+          "world_object_id": 55011,
+          "world_object_key": "world-object.55011",
+          "position": [
+            -385.940002,
+            116,
+            -141.25
+          ],
+          "source_type": 0,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000185,
+          "world_object_id": 55011,
+          "world_object_key": "world-object.55011",
+          "position": [
+            -391,
+            116,
+            -6.9000001
+          ],
+          "source_type": 0,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000186,
+          "world_object_id": 55010,
+          "world_object_key": "world-object.55010",
+          "position": [
+            -391,
+            116,
+            -6.9000001
+          ],
+          "source_type": 0,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000228,
+          "world_object_id": 902,
+          "world_object_key": "world-object.902",
+          "position": [
+            -313.450012,
+            116,
+            -89.1500015
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000229,
+          "world_object_id": 901,
+          "world_object_key": "world-object.901",
+          "position": [
+            -301.829987,
+            116,
+            -91.1500015
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000235,
+          "world_object_id": 902,
+          "world_object_key": "world-object.902",
+          "position": [
+            -156.679993,
+            140.990005,
+            -25.9200001
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000237,
+          "world_object_id": 902,
+          "world_object_key": "world-object.902",
+          "position": [
+            -196.899994,
+            116.370003,
+            -131.600006
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000238,
+          "world_object_id": 902,
+          "world_object_key": "world-object.902",
+          "position": [
+            -106.379997,
+            118.830002,
+            -95.4000015
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000239,
+          "world_object_id": 902,
+          "world_object_key": "world-object.902",
+          "position": [
+            -60.0200005,
+            116.110001,
+            -136.649994
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000241,
+          "world_object_id": 902,
+          "world_object_key": "world-object.902",
+          "position": [
+            -4.86999989,
+            107.260002,
+            -133.160004
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000246,
+          "world_object_id": 1940002,
+          "world_object_key": "world-object.1940002",
+          "position": [
+            -176.610001,
+            120.82,
+            -39.2200012
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000247,
+          "world_object_id": 904,
+          "world_object_key": "world-object.904",
+          "position": [
+            -176.610001,
+            120.82,
+            -39.2200012
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000249,
+          "world_object_id": 904,
+          "world_object_key": "world-object.904",
+          "position": [
+            -176.610001,
+            120.82,
+            -39.2200012
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000278,
+          "world_object_id": 90342,
+          "world_object_key": "world-object.90342",
+          "position": [
+            -269.350006,
+            114.150002,
+            -143.929993
+          ],
+          "source_type": 2,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000279,
+          "world_object_id": 90342,
+          "world_object_key": "world-object.90342",
+          "position": [
+            -233.759995,
+            116.010002,
+            -141.25
+          ],
+          "source_type": 2,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000280,
+          "world_object_id": 90342,
+          "world_object_key": "world-object.90342",
+          "position": [
+            -246.619995,
+            104.360001,
+            -133.130005
+          ],
+          "source_type": 2,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000311,
+          "world_object_id": 902,
+          "world_object_key": "world-object.902",
+          "position": [
+            -334.940002,
+            116.360001,
+            -24.6599998
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000312,
+          "world_object_id": 902,
+          "world_object_key": "world-object.902",
+          "position": [
+            -369.100006,
+            122,
+            -77.6299973
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000319,
+          "world_object_id": 902,
+          "world_object_key": "world-object.902",
+          "position": [
+            -363.98999,
+            124.230003,
+            -171.809998
+          ],
+          "source_type": 1,
+          "option_data": "",
+          "pathfinding_point": 0
+        }
+      ],
+      "zones": [
+        {
+          "entity_definition_id": 940000003,
+          "position": [
+            -185.419998,
+            116,
+            -99.6900024
+          ],
+          "rotation": 0,
+          "option_data": "{IconId=\"608\"}",
+          "shape_parameters": [
+            15,
+            15,
+            10
+          ],
+          "source_type": 0,
+          "pathfinding_point": 1017
+        },
+        {
+          "entity_definition_id": 940000032,
+          "position": [
+            -122.949997,
+            131.009995,
+            -60.5299988
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            26,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000034,
+          "position": [
+            -175.529999,
+            80,
+            -2.43000007
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            900,
+            600,
+            100
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000230,
+          "position": [
+            -389.320007,
+            134.009995,
+            -77.0800018
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            8,
+            1,
+            3
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000231,
+          "position": [
+            -282.23999,
+            116,
+            -106.410004
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            20,
+            1,
+            2
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000232,
+          "position": [
+            -287.040009,
+            116.010002,
+            -64.1399994
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            20,
+            1,
+            2
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000233,
+          "position": [
+            5.0999999,
+            101.150002,
+            -82.1500015
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            30,
+            1,
+            3
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000242,
+          "position": [
+            6.32000017,
+            101.153,
+            -83.5899963
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            60,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000243,
+          "position": [
+            4.53000021,
+            101.129997,
+            -79.8700027
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            30,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000245,
+          "position": [
+            -131.039993,
+            131,
+            -68.6200027
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            10,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000251,
+          "position": [
+            -390.369995,
+            116.010002,
+            -136.479996
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            40,
+            1,
+            3
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000253,
+          "position": [
+            -113.82,
+            119.010002,
+            -22.1499996
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            8,
+            1,
+            2
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000254,
+          "position": [
+            -134.589996,
+            131.029999,
+            -60.6800003
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            15,
+            1,
+            2
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000256,
+          "position": [
+            -167.75,
+            116.010002,
+            -138.320007
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            3,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000261,
+          "position": [
+            -178.820007,
+            120.07,
+            -148.600006
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            3,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000262,
+          "position": [
+            -187.020004,
+            120.970001,
+            -157.800003
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            3,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000266,
+          "position": [
+            -185.179993,
+            121.090302,
+            -159.520004
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            1,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000268,
+          "position": [
+            -197.419998,
+            122.650002,
+            -163.919998
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            14,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000274,
+          "position": [
+            -295.670013,
+            92.0100021,
+            -139.979996
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            8,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000275,
+          "position": [
+            -297.410004,
+            92.0100021,
+            -135.139999
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            2,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000276,
+          "position": [
+            -294.880005,
+            92.0999985,
+            -134.619995
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            2,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000286,
+          "position": [
+            -296.299988,
+            92,
+            -138.580002
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            12,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000292,
+          "position": [
+            -318.790009,
+            104.075699,
+            -136.639999
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            12,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000293,
+          "position": [
+            -325.709991,
+            104.209999,
+            -139.360001
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            2,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000294,
+          "position": [
+            -326.399994,
+            104,
+            -137.410004
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            2,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000295,
+          "position": [
+            -293.820007,
+            92,
+            -178.449997
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            50,
+            1,
+            4
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000297,
+          "position": [
+            -318.970001,
+            104.080002,
+            -136.830002
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            12,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000303,
+          "position": [
+            -353.850006,
+            116.010002,
+            -137.070007
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            10,
+            1,
+            2
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000304,
+          "position": [
+            -388.380005,
+            116.010002,
+            -137.850006
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            40,
+            1,
+            2
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000306,
+          "position": [
+            -332.579987,
+            116,
+            -27.5799999
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            5,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000310,
+          "position": [
+            -369.130005,
+            122,
+            -77.3799973
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            5,
+            1,
+            1
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000320,
+          "position": [
+            -135.960007,
+            131.029999,
+            -61.5400009
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            10,
+            1,
+            2
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000344,
+          "position": [
+            -424.709991,
+            134.009995,
+            -72.8499985
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            80,
+            1,
+            3
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000345,
+          "position": [
+            -148.070007,
+            131.012497,
+            -59.8100014
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            10,
+            1,
+            3
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000346,
+          "position": [
+            -424.709991,
+            134.009995,
+            -72.8499985
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            80,
+            1,
+            3
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        },
+        {
+          "entity_definition_id": 940000350,
+          "position": [
+            -432.920013,
+            134,
+            -72.1500015
+          ],
+          "rotation": 0,
+          "option_data": "",
+          "shape_parameters": [
+            30,
+            1,
+            2
+          ],
+          "source_type": 1,
+          "pathfinding_point": 0
+        }
+      ]
+    },
+    "placement_identity": "placement domain + entity_definition_id; current tables reuse some IDs across domains",
+    "identity_boundary": "entity_definition_id is static game data, not a live packet UUID"
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.OverworldPlacementTables",
+    "reference": "client-build:global/steam/24252055@sha256:0b0448d935695fca70b040ca36217aba64b38f206ce7c18a2fbf27bcaf5ed8e6",
+    "confidence": "verified"
+  }
+}

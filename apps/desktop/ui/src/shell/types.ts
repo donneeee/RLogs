@@ -8,6 +8,8 @@ export interface WorkspaceTabDescriptor {
   /// Package that owns the surface. This can differ from the workspace owner
   /// when an add-on contributes a namespaced tab.
   contributorPluginId: string;
+  sectionId: string;
+  defaultOrder: number;
 }
 
 export interface WorkspaceDescriptor {
@@ -20,6 +22,8 @@ export interface WorkspaceDescriptor {
   defaultOrder: number;
   tabs: readonly WorkspaceTabDescriptor[];
 }
+
+export type SettingsTabDescriptor = WorkspaceTabDescriptor;
 
 export type PluginRuntimeKind =
   | "data_only"
@@ -61,16 +65,37 @@ export interface PluginCatalogSnapshot {
   installedRoot: string;
   packages: readonly InstalledPluginDescriptor[];
   issues: readonly PluginIssueDescriptor[];
+  settingsTabs: readonly SettingsTabDescriptor[];
 }
 
 export interface ShellPreferences {
+  schemaVersion: 1;
   workspaceOrder: readonly string[];
   activeWorkspaceId: string | null;
   activeTabs: Readonly<Record<string, string>>;
+  tabOrders: Readonly<Record<string, readonly string[]>>;
+  sectionOrders: Readonly<Record<string, readonly string[]>>;
+  lockTabDragging: boolean;
+  lockSectionDragging: boolean;
 }
 
 export interface MountedSurface {
   dispose(): void;
+}
+
+export interface EngineState {
+  phase:
+    | "idle"
+    | "capturing"
+    | "processing"
+    | "complete"
+    | "failed"
+    | "unavailable";
+  label: string;
+  /** Short, plain-language status shown in the navigation rail. */
+  detail: string;
+  /** Full diagnostic status retained for the hover tooltip. */
+  technicalDetail?: string;
 }
 
 export interface DesktopHostAdapter {
@@ -78,6 +103,7 @@ export interface DesktopHostAdapter {
   loadWorkspaces(): Promise<readonly WorkspaceDescriptor[]>;
   loadPreferences(): Promise<ShellPreferences>;
   savePreferences(preferences: ShellPreferences): Promise<void>;
+  loadEngineState?(): Promise<EngineState>;
   mountSurface(
     workspace: WorkspaceDescriptor,
     tab: WorkspaceTabDescriptor,

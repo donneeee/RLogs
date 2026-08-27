@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "ruleset_id": "app.rlogs.bpsr.global.steam-24252055.run-rules",
+  "ruleset_version": 2,
+  "target": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "client_build": "24252055"
+  },
+  "scenes": [
+    {
+      "scene_id": 6565,
+      "runtime_enabled": true,
+      "activity_kind": "dungeon",
+      "activity_id": "scene.6565",
+      "activity_family_id": "sea-ringed-reef",
+      "activity_localization_key": "scene.6565.name",
+      "difficulty_family": "master",
+      "difficulty_localization_key": null,
+      "difficulty_tier_range": {
+        "minimum": 1,
+        "maximum": 20
+      },
+      "route_id": null,
+      "raid_route_kind": null,
+      "partition": null,
+      "candidate_dungeon_ids": [
+        6565
+      ],
+      "mobbing_encounter_id": "scene.6565.mobbing",
+      "boss_encounter_id": "monster.4601",
+      "boss_monster_ids": [
+        4601
+      ],
+      "objective_rules": {
+        "6561003": {
+          "role": "mobbing_completion",
+          "on_complete": "clear_mobbing"
+        },
+        "6561011": {
+          "role": "boss_phase_gate",
+          "on_complete": "enter_boss_segment"
+        },
+        "6561012": {
+          "role": "run_completion",
+          "on_complete": "final_objective"
+        }
+      },
+      "evidence": [
+        {
+          "source": "controlled-current-build-observation",
+          "reference": "monitor-1785565023081.run-0001:scene-6565-difficulty-5-objectives-6561003-6561011-6561012",
+          "confidence": "verified"
+        },
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/dungeons/play-type-17/6565-sea-ringed-reef.json",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/dungeon-seasons/season-3.json:dungeon-6565",
+          "confidence": "verified"
+        },
+        {
+          "source": "current-build-game-data",
+          "reference": "game-data/catalog/activity-targets/scene-6565/6561003-complete-spatial-investigation-within-9-minutes-to-unlock-the-boss-battle.json",
+          "confidence": "corroborated"
+        },
+        {
+          "source": "official-current-build-localization",
+          "reference": "game-data/runtime/localization/en-US/scene-names.v1.json:scene-6565",
+          "confidence": "corroborated"
+        }
+      ]
+    }
+  ]
+}

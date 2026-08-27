@@ -1,0 +1,20 @@
+[
+  {
+    "schema_version": 2,
+    "locale": "ko-KR",
+    "key": "difficulty.master.label_format",
+    "text": "마스터 난이도{tier}",
+    "availability": [
+      {
+        "deployment_id": "global",
+        "channel": "steam",
+        "client_build": "24252055"
+      }
+    ],
+    "provenance": {
+      "source": "reviewed-game-localization-template",
+      "reference": "client-build:global/steam/24252055#master-tier-label-template",
+      "confidence": "verified"
+    }
+  }
+]

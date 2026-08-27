@@ -1,0 +1,17 @@
+schema_version = 1
+id = "app.rlogs.bpsr.profile-sync"
+name = "BPSR Profile Sync"
+version = "0.1.0"
+api_version = 1
+runtime = "browser_overlay"
+entrypoint = "ui/runtime.html"
+capabilities = ["ui_workspace_publish"]
+subscriptions = []
+allowed_network_domains = []
+
+[[settings_tab_contributions]]
+id = "profile-sync"
+label = "BPSR Profile Sync"
+entrypoint = "ui/settings.html"
+section = "profile-sync"
+default_order = 400

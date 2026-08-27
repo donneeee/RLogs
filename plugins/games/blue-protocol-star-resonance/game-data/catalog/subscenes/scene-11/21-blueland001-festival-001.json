@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "kind": "sub_scene",
+  "id": 21,
+  "stable_key": "subscene.21",
+  "localization_key": null,
+  "icon": null,
+  "attributes": {
+    "subscene_id": 21,
+    "subscene_type_id": 2,
+    "resource_path": "scenes/blueland001_festival_001",
+    "owner_scene_ids": [
+      11
+    ],
+    "owner_scene_keys": [
+      "scene.11"
+    ],
+    "resource_scene_ids": [
+      11
+    ],
+    "resource_scene_keys": [
+      "scene.11"
+    ],
+    "activation_conditions": [
+      [
+        9,
+        900007
+      ]
+    ]
+  },
+  "availability": [
+    {
+      "deployment_id": "global",
+      "channel": "steam",
+      "client_build": "24252055"
+    }
+  ],
+  "provenance": {
+    "source": "ctb.SubSceneTable+SceneTable",
+    "reference": "client-build:global/steam/24252055@sha256:4291adf495848b5277daa4a49b5ba2a0a3a8156028bec2bd2f5ecbcfd51c4552",
+    "confidence": "verified"
+  }
+}
