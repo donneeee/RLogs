@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 10;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 11;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -405,6 +405,17 @@ pub(crate) struct HighlandBloodRuntimeConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct TargetVulnerabilityRuntimeConfig {
+    current_build_lifecycle_authority: bool,
+    current_build_formula_authority: bool,
+    server_integer_counterfactual_authority: bool,
+    formula_specific_conservation_authority: bool,
+    unresolved_overlap_fails_closed: bool,
+    runtime_transfer_effect_ids: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct RdpsRuntimeConfig {
     schema_version: u16,
     pub deployment_id: String,
@@ -418,6 +429,10 @@ pub(crate) struct RdpsRuntimeConfig {
     pub attack_families: AttackFamiliesRuntimeConfig,
     pub damage_stage_catalog: DamageStageCatalogRuntimeConfig,
     pub critical_damage_factor_interpretation: CriticalDamageFactorInterpretation,
+    /// Independently reviewed target-vulnerability authority. This remains
+    /// component-scoped so one exact effect/action can ship without granting
+    /// authority to unrelated rDPS candidates.
+    target_vulnerability: TargetVulnerabilityRuntimeConfig,
     pub team_luck: TeamLuckRuntimeConfig,
     pub functional_amp: FunctionalAmpRuntimeConfig,
     pub mechanical_power: MechanicalPowerRuntimeConfig,
@@ -437,6 +452,10 @@ impl RdpsRuntimeConfig {
     /// independently closed effects ship one at a time.
     pub(crate) fn has_any_runtime_transfer_enabled(&self) -> bool {
         self.runtime_promotion_allowed()
+            || !self
+                .target_vulnerability
+                .runtime_transfer_effect_ids
+                .is_empty()
             || self.functional_amp.attack_magic_runtime_transfer_enabled
             || self.mechanical_power.runtime_transfer_enabled
             || self.harmony_grace.runtime_transfer_enabled
@@ -446,12 +465,20 @@ impl RdpsRuntimeConfig {
     /// canonical event or ordinary damage; it only blocks provider transfer.
     pub(crate) fn effect_runtime_transfer_enabled(&self, effect_id: i64) -> bool {
         self.runtime_promotion_allowed()
+            || self
+                .target_vulnerability
+                .runtime_transfer_effect_ids
+                .contains(&effect_id)
             || (effect_id == self.functional_amp.effect_id
                 && self.functional_amp.attack_magic_runtime_transfer_enabled)
             || (effect_id == self.mechanical_power.effect_id
                 && self.mechanical_power.runtime_transfer_enabled)
             || (effect_id == self.harmony_grace.effect_id
                 && self.harmony_grace.runtime_transfer_enabled)
+    }
+
+    pub(crate) fn target_vulnerability_runtime_transfer_effect_ids(&self) -> &[i64] {
+        &self.target_vulnerability.runtime_transfer_effect_ids
     }
 
     fn requires_exact_build(&self) -> bool {
@@ -502,6 +529,26 @@ impl RdpsRuntimeConfig {
                         .promotion_blockers
                         .iter()
                         .any(|blocker| blocker == "party-support-formula-frontier"));
+        let target_vulnerability_runtime_effects_are_valid = self
+            .target_vulnerability
+            .runtime_transfer_effect_ids
+            .iter()
+            .enumerate()
+            .all(|(index, effect_id)| {
+                *effect_id > 0
+                    && !self.target_vulnerability.runtime_transfer_effect_ids[..index]
+                        .contains(effect_id)
+            });
+        let target_vulnerability_runtime_authority =
+            self.target_vulnerability.current_build_lifecycle_authority
+                && self.target_vulnerability.current_build_formula_authority
+                && self
+                    .target_vulnerability
+                    .server_integer_counterfactual_authority
+                && self
+                    .target_vulnerability
+                    .formula_specific_conservation_authority
+                && self.target_vulnerability.unresolved_overlap_fails_closed;
         if self.schema_version != RDPS_RUNTIME_SCHEMA_VERSION
             || self.deployment_id != "global"
             || self.game_build.is_empty()
@@ -521,6 +568,12 @@ impl RdpsRuntimeConfig {
                 .game_files_are_identity_and_coefficient_evidence_not_packet_occurrence_evidence
             || !self.requires_exact_build()
             || !self.warns_on_build_mismatch()
+            || !target_vulnerability_runtime_effects_are_valid
+            || (!self
+                .target_vulnerability
+                .runtime_transfer_effect_ids
+                .is_empty()
+                && !target_vulnerability_runtime_authority)
         {
             return Err("bundled BPSR rDPS formula policy is not approved and fail closed".into());
         }
@@ -1098,6 +1151,44 @@ mod tests {
         let mut wrong_length = bundled_runtime_value();
         wrong_length["protocol_pack_digest"] = serde_json::Value::String("sha256:abcd".into());
         assert!(runtime_from_value(wrong_length).validate().is_err());
+    }
+
+    #[test]
+    fn target_vulnerability_component_gate_requires_its_own_complete_authority() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert!(
+            current
+                .target_vulnerability_runtime_transfer_effect_ids()
+                .is_empty()
+        );
+        assert!(!current.effect_runtime_transfer_enabled(55_228));
+
+        let mut premature = base.clone();
+        premature["target_vulnerability"]["runtime_transfer_effect_ids"] =
+            serde_json::json!([55_228]);
+        assert!(
+            runtime_from_value(premature).validate().is_err(),
+            "an effect ID alone cannot grant target-vulnerability production authority",
+        );
+
+        let mut independently_proven = base;
+        for field in [
+            "current_build_formula_authority",
+            "server_integer_counterfactual_authority",
+            "formula_specific_conservation_authority",
+        ] {
+            independently_proven["target_vulnerability"][field] = serde_json::Value::Bool(true);
+        }
+        independently_proven["target_vulnerability"]["runtime_transfer_effect_ids"] =
+            serde_json::json!([55_228]);
+        let independently_proven = runtime_from_value(independently_proven);
+        assert!(independently_proven.validate().is_ok());
+        assert!(!independently_proven.runtime_promotion_allowed());
+        assert!(independently_proven.has_any_runtime_transfer_enabled());
+        assert!(independently_proven.effect_runtime_transfer_enabled(55_228));
+        assert!(!independently_proven.effect_runtime_transfer_enabled(55_229));
     }
 
     #[test]

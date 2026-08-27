@@ -1,5 +1,5 @@
 {
-  "schema_version": 10,
+  "schema_version": 11,
   "deployment_id": "global",
   "game_build": "24687926",
   "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
@@ -49,6 +49,14 @@
     "standard_rules": 3507
   },
   "critical_damage_factor_interpretation": "unresolved",
+  "target_vulnerability": {
+    "current_build_lifecycle_authority": true,
+    "current_build_formula_authority": false,
+    "server_integer_counterfactual_authority": false,
+    "formula_specific_conservation_authority": false,
+    "unresolved_overlap_fails_closed": true,
+    "runtime_transfer_effect_ids": []
+  },
   "team_luck": {
     "effect_id": 2302121,
     "critical_damage_attribute_id": 12510,

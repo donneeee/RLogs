@@ -161,6 +161,7 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
                 .map(|rule| rule.effect_id),
         );
     }
+    effect_ids.extend_from_slice(runtime.target_vulnerability_runtime_transfer_effect_ids());
     if runtime.effect_runtime_transfer_enabled(runtime.functional_amp.effect_id) {
         effect_ids.push(runtime.functional_amp.effect_id);
     }
@@ -387,6 +388,16 @@ fn target_vulnerability_rdps_catalog() -> Result<&'static TargetVulnerabilityRdp
                     .or_default()
                     .push(index);
                 catalog.effect_ids.insert(rule.effect_id);
+            }
+            if runtime
+                .target_vulnerability_runtime_transfer_effect_ids()
+                .iter()
+                .any(|effect_id| !catalog.effect_ids.contains(effect_id))
+            {
+                return Err(
+                    "bundled BPSR target-vulnerability runtime authority references an unknown rule"
+                        .into(),
+                );
             }
             Ok(catalog)
         })
