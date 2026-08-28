@@ -53,7 +53,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v12";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v14";
 
 static STATE_RDPS_FORMULA_IDENTITY: OnceLock<String> = OnceLock::new();
 
@@ -1036,9 +1036,10 @@ pub struct BpsrStateDamageContributionProjector {
     team_luck_lucky_ever_observed: HashSet<u64>,
     team_luck_critical_cleared_by_snapshot: HashSet<u64>,
     team_luck_lucky_cleared_by_snapshot: HashSet<u64>,
+    incomplete_rdps_actor_ids: HashSet<u64>,
     effect_windows: HashMap<EffectWindowKey, EffectWindow>,
     team_luck_windows: HashSet<TeamLuckWindowKey>,
-    team_luck_transition_wire: Option<WireKey>,
+    team_luck_transition_wires: HashMap<u64, WireKey>,
     functional_amp_windows: HashSet<FunctionalAmpWindowKey>,
     functional_amp_transition_wires: HashMap<u64, WireKey>,
     mechanical_power_windows: HashSet<EffectWindowKey>,
@@ -1117,9 +1118,10 @@ impl Default for BpsrStateDamageContributionProjector {
             team_luck_lucky_ever_observed: HashSet::new(),
             team_luck_critical_cleared_by_snapshot: HashSet::new(),
             team_luck_lucky_cleared_by_snapshot: HashSet::new(),
+            incomplete_rdps_actor_ids: HashSet::new(),
             effect_windows: HashMap::new(),
             team_luck_windows: HashSet::new(),
-            team_luck_transition_wire: None,
+            team_luck_transition_wires: HashMap::new(),
             functional_amp_windows: HashSet::new(),
             functional_amp_transition_wires: HashMap::new(),
             mechanical_power_windows: HashSet::new(),
@@ -1636,7 +1638,7 @@ impl BpsrStateDamageContributionProjector {
             self.reconcile_thunderwind_staged_states();
             self.reconcile_fatal_spiral_staged_states();
             self.states.extend(self.staged_states.drain());
-            self.team_luck_transition_wire = None;
+            self.team_luck_transition_wires.clear();
             self.functional_amp_transition_wires.clear();
             self.mechanical_power_transition_wires.clear();
             self.harmony_grace_transition_wires.clear();
@@ -2032,7 +2034,10 @@ impl BpsrStateDamageContributionProjector {
         // following wire. Exclude every selected-effect wire, including a
         // refresh whose membership is unchanged, so damage can never combine
         // the new status payload with the previous attribute state.
-        self.team_luck_transition_wire = self.current_wire;
+        if let Some(wire) = self.current_wire {
+            self.team_luck_transition_wires
+                .insert(status.target.actor_id.0, wire);
+        }
     }
 
     fn observe_functional_amp_status(&mut self, status: &rlogs_events::StatusEvent) {
@@ -3577,12 +3582,50 @@ impl BpsrStateDamageContributionProjector {
     }
 
     fn team_luck_contribution(
-        &self,
+        &mut self,
         envelope: &EventEnvelope,
         damage: &rlogs_events::DamageEvent,
     ) -> Option<ExactRationalDamageContributionEvent> {
-        self.team_luck_decision(envelope.time.observed_micros, damage)
-            .ok()
+        match self.team_luck_decision(envelope.time.observed_micros, damage) {
+            Ok(contribution) => Some(contribution),
+            Err(gate)
+                if matches!(
+                    gate,
+                    "recipient_state_never_observed"
+                        | "critical_damage_state_never_observed"
+                        | "lucky_damage_state_never_observed"
+                        | "critical_damage_state_cleared_by_snapshot"
+                        | "lucky_damage_state_cleared_by_snapshot"
+                        | "critical_damage_state_previously_observed_missing"
+                        | "lucky_damage_state_previously_observed_missing"
+                ) =>
+            {
+                self.mark_team_luck_incomplete(damage);
+                None
+            }
+            Err(_) => None,
+        }
+    }
+
+    fn mark_team_luck_incomplete(&mut self, damage: &rlogs_events::DamageEvent) {
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        if !self.active_players.contains(&recipient_actor_id) {
+            return;
+        }
+        let providers = self
+            .team_luck_windows
+            .iter()
+            .filter(|key| key.target_entity_uuid == recipient_entity_uuid)
+            .filter(|key| key.provider_entity_uuid != recipient_entity_uuid)
+            .filter(|key| self.active_players.contains(&key.provider_actor_id))
+            .map(|key| key.provider_actor_id)
+            .collect::<HashSet<_>>();
+        if providers.len() != 1 {
+            return;
+        }
+        self.incomplete_rdps_actor_ids.insert(recipient_actor_id);
+        self.incomplete_rdps_actor_ids.extend(providers);
     }
 
     pub fn team_luck_audit_gate(&self, damage: &rlogs_events::DamageEvent) -> &'static str {
@@ -3629,11 +3672,16 @@ impl BpsrStateDamageContributionProjector {
         if damage.amount <= 0 {
             return Err("non_positive_damage");
         }
-        if self.team_luck_transition_wire == self.current_wire {
-            return Err("same_wire_transition");
-        }
         let recipient_actor_id = damage.source.actor_id.0;
         let recipient_entity_uuid = damage.source.entity_uuid.0;
+        if self
+            .team_luck_transition_wires
+            .get(&recipient_actor_id)
+            .copied()
+            == self.current_wire
+        {
+            return Err("same_wire_transition");
+        }
         let mut providers = self
             .team_luck_windows
             .iter()
@@ -5798,6 +5846,7 @@ impl BpsrStateDamageContributionProjector {
         self.team_luck_critical_cleared_by_snapshot
             .remove(&actor_id);
         self.team_luck_lucky_cleared_by_snapshot.remove(&actor_id);
+        self.incomplete_rdps_actor_ids.remove(&actor_id);
         if let Some(entity_uuid) = self.attribute_state_entity_uuid_by_actor.remove(&actor_id) {
             if self.attribute_state_actor_by_entity_uuid.get(&entity_uuid) == Some(&actor_id) {
                 self.attribute_state_actor_by_entity_uuid
@@ -5808,6 +5857,7 @@ impl BpsrStateDamageContributionProjector {
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.team_luck_windows
             .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.team_luck_transition_wires.remove(&actor_id);
         self.functional_amp_windows
             .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.functional_amp_transition_wires.remove(&actor_id);
@@ -5861,9 +5911,10 @@ impl BpsrStateDamageContributionProjector {
         self.team_luck_lucky_ever_observed.clear();
         self.team_luck_critical_cleared_by_snapshot.clear();
         self.team_luck_lucky_cleared_by_snapshot.clear();
+        self.incomplete_rdps_actor_ids.clear();
         self.effect_windows.clear();
         self.team_luck_windows.clear();
-        self.team_luck_transition_wire = None;
+        self.team_luck_transition_wires.clear();
         self.functional_amp_windows.clear();
         self.functional_amp_transition_wires.clear();
         self.mechanical_power_windows.clear();
@@ -6168,6 +6219,16 @@ impl ExactDamageContributionProjector for BpsrStateDamageContributionProjector {
 
     fn formula_identity(&self) -> Option<&str> {
         Some(state_damage_contribution_formula_identity())
+    }
+
+    fn incomplete_rdps_actor_ids(&self) -> Vec<u64> {
+        let mut actor_ids = self
+            .incomplete_rdps_actor_ids
+            .iter()
+            .copied()
+            .collect::<Vec<_>>();
+        actor_ids.sort_unstable();
+        actor_ids
     }
 
     fn status(&self) -> String {
@@ -7483,6 +7544,13 @@ mod tests {
             Err("critical_damage_state_never_observed"),
             "remote or otherwise absent recipient critical state must not receive invented credit"
         );
+        let envelope = target_vulnerability_test_envelope(damage.clone());
+        assert_eq!(projector.team_luck_contribution(&envelope, &damage), None);
+        assert_eq!(
+            projector.incomplete_rdps_actor_ids(),
+            vec![2, 4],
+            "both the exact provider total and unresolved recipient total must be marked incomplete"
+        );
         projector
             .states
             .get_mut(&4)
@@ -7517,6 +7585,61 @@ mod tests {
         });
         projector.observe_status(&status, 123);
         assert!(projector.team_luck_windows.is_empty());
+    }
+
+    #[test]
+    fn team_luck_same_wire_transition_only_blocks_the_transitioning_recipient() {
+        let wire = WireKey {
+            connection_id: 1,
+            stream_id: 2,
+            capture_sequence: 3,
+        };
+        let mut projector = BpsrStateDamageContributionProjector {
+            current_wire: Some(wire),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    lucky_damage_raw: Some(4_540),
+                    ..ActorHpState::default()
+                },
+            )]),
+            active_players: HashSet::from([2, 4, 5]),
+            team_luck_windows: HashSet::from([TeamLuckWindowKey {
+                target_actor_id: 4,
+                target_entity_uuid: 40,
+                provider_actor_id: 2,
+                provider_entity_uuid: 20,
+                instance_id: Some(11),
+            }]),
+            team_luck_transition_wires: HashMap::from([(5, wire)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let damage = rlogs_events::DamageEvent {
+            source: test_entity(4, 40),
+            direct_source: None,
+            target: test_entity(17, 170),
+            ability: Some(rlogs_events::AbilityId(2_031_101)),
+            amount: 273_931,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(3),
+            damage_source: None,
+            damage_type: Some(2),
+            flags: rlogs_events::DamageFlags {
+                critical: Some(false),
+                lucky: Some(true),
+                ..rlogs_events::DamageFlags::default()
+            },
+            packet: rlogs_events::DamagePacketDetail::default(),
+        };
+
+        assert!(projector.team_luck_decision(123, &damage).is_ok());
+        projector.team_luck_transition_wires.insert(4, wire);
+        assert_eq!(
+            projector.team_luck_decision(123, &damage),
+            Err("same_wire_transition")
+        );
     }
 
     #[test]

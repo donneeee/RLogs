@@ -123,9 +123,30 @@ interface ActorGraphSeries {
 }
 
 export type CombatHistoryChangeSubscriber = (
-  onChange: () => void,
+  onChange: (update?: CombatHistoryChangeUpdate) => void,
   onError: (error: unknown) => void,
 ) => () => void;
+
+export type HistoryRdpsRefreshStage =
+  | "queued"
+  | "waiting_for_live_capture"
+  | "replaying"
+  | "validating_and_saving"
+  | "failed";
+
+export interface HistoryRdpsRefreshProgress {
+  session_id: string;
+  stage: HistoryRdpsRefreshStage;
+  processed_events: number;
+  processed_bytes: number;
+  total_bytes: number;
+  detail?: string;
+}
+
+export interface CombatHistoryChangeUpdate {
+  catalog_changed: boolean;
+  rdps_refreshes: HistoryRdpsRefreshProgress[];
+}
 
 export interface CombatHistoryActions {
   setFavorite(
@@ -148,6 +169,37 @@ export interface IncomingDamageSourceGroup {
   total: number;
   abilities: IncomingDamageAbilityRow[];
   unattributed: number;
+}
+
+export interface RdpsReceivedSourceSummary {
+  providerActorId: string;
+  providerEntityUuid: string;
+  effectId: string;
+  attributionComponent: string | null;
+  attributedRdps: string | null;
+  damageEventCount: number;
+  unresolvedRelationshipCount: number;
+}
+
+export interface RdpsReceivedSkillSummary {
+  abilityId: string | null;
+  attributedRdps: string | null;
+  damageEventCount: number;
+  unresolvedRelationshipCount: number;
+  sources: RdpsReceivedSourceSummary[];
+}
+
+export interface RdpsGrantedEffectSummary {
+  effectId: string;
+  attributionComponent: string | null;
+  attributedRdps: string | null;
+  damageEventCount: number;
+  unresolvedRelationshipCount: number;
+}
+
+export interface ActorRdpsBreakdown {
+  receivedSkills: RdpsReceivedSkillSummary[];
+  grantedEffects: RdpsGrantedEffectSummary[];
 }
 
 export function incomingDamageSourceGroups(
@@ -243,6 +295,138 @@ export function historyDamageInfluenceMatchesQuery(
   return terms.every((term) => searchable.includes(term));
 }
 
+export function actorRdpsBreakdown(
+  view: CombatHistoryView,
+  actorId: string,
+  targetActorId: string | null = null,
+): ActorRdpsBreakdown {
+  type ExactAccumulator = {
+    exactTotal: bigint;
+    hasExact: boolean;
+    damageEventCount: number;
+    unresolvedRelationshipCount: number;
+  };
+  type ReceivedSkillAccumulator = ExactAccumulator & {
+    abilityId: string | null;
+    sources: Map<string, RdpsReceivedSourceSummary & { exactTotal: bigint; hasExact: boolean }>;
+  };
+  type GrantedEffectAccumulator = ExactAccumulator & {
+    effectId: string;
+    attributionComponent: string | null;
+  };
+
+  const received = new Map<string, ReceivedSkillAccumulator>();
+  const granted = new Map<string, GrantedEffectAccumulator>();
+  const addExact = (accumulator: ExactAccumulator, influence: HistoryDamageInfluenceSummary) => {
+    accumulator.damageEventCount += influence.damage_event_count;
+    if (influence.attributed_rdps === null) {
+      accumulator.unresolvedRelationshipCount += 1;
+      return;
+    }
+    accumulator.exactTotal += BigInt(influence.attributed_rdps);
+    accumulator.hasExact = true;
+  };
+
+  for (const influence of view.damage_influences ?? []) {
+    if (targetActorId !== null && influence.target_actor_id !== targetActorId) continue;
+    if (influence.recipient_actor_id === actorId) {
+      const abilityKey = influence.affected_ability_id ?? "\u0000";
+      let skill = received.get(abilityKey);
+      if (!skill) {
+        skill = {
+          abilityId: influence.affected_ability_id,
+          exactTotal: 0n,
+          hasExact: false,
+          damageEventCount: 0,
+          unresolvedRelationshipCount: 0,
+          sources: new Map(),
+        };
+        received.set(abilityKey, skill);
+      }
+      addExact(skill, influence);
+      const sourceKey = [
+        influence.provider_actor_id,
+        influence.provider_entity_uuid,
+        influence.effect_id,
+        influence.attribution_component ?? "",
+      ].join("\u001f");
+      let source = skill.sources.get(sourceKey);
+      if (!source) {
+        source = {
+          providerActorId: influence.provider_actor_id,
+          providerEntityUuid: influence.provider_entity_uuid,
+          effectId: influence.effect_id,
+          attributionComponent: influence.attribution_component ?? null,
+          attributedRdps: null,
+          exactTotal: 0n,
+          hasExact: false,
+          damageEventCount: 0,
+          unresolvedRelationshipCount: 0,
+        };
+        skill.sources.set(sourceKey, source);
+      }
+      addExact(source, influence);
+    }
+    if (influence.provider_actor_id === actorId) {
+      const component = influence.attribution_component ?? null;
+      const effectKey = `${influence.effect_id}\u001f${component ?? ""}`;
+      let effect = granted.get(effectKey);
+      if (!effect) {
+        effect = {
+          effectId: influence.effect_id,
+          attributionComponent: component,
+          exactTotal: 0n,
+          hasExact: false,
+          damageEventCount: 0,
+          unresolvedRelationshipCount: 0,
+        };
+        granted.set(effectKey, effect);
+      }
+      addExact(effect, influence);
+    }
+  }
+
+  const exactValue = (entry: ExactAccumulator): string | null =>
+    entry.hasExact ? entry.exactTotal.toString() : null;
+  const compareExact = (left: ExactAccumulator, right: ExactAccumulator): number => {
+    if (left.hasExact !== right.hasExact) return left.hasExact ? -1 : 1;
+    if (left.exactTotal === right.exactTotal) return 0;
+    return left.exactTotal > right.exactTotal ? -1 : 1;
+  };
+  const receivedSkills = [...received.values()]
+    .sort((left, right) => compareExact(left, right) ||
+      (left.abilityId ?? "").localeCompare(right.abilityId ?? "", undefined, { numeric: true }))
+    .map((skill): RdpsReceivedSkillSummary => ({
+      abilityId: skill.abilityId,
+      attributedRdps: exactValue(skill),
+      damageEventCount: skill.damageEventCount,
+      unresolvedRelationshipCount: skill.unresolvedRelationshipCount,
+      sources: [...skill.sources.values()]
+        .sort((left, right) => compareExact(left, right) ||
+          left.providerActorId.localeCompare(right.providerActorId, undefined, { numeric: true }))
+        .map((source) => ({
+          providerActorId: source.providerActorId,
+          providerEntityUuid: source.providerEntityUuid,
+          effectId: source.effectId,
+          attributionComponent: source.attributionComponent,
+          attributedRdps: exactValue(source),
+          damageEventCount: source.damageEventCount,
+          unresolvedRelationshipCount: source.unresolvedRelationshipCount,
+        })),
+    }));
+  const grantedEffects = [...granted.values()]
+    .sort((left, right) => compareExact(left, right) ||
+      left.effectId.localeCompare(right.effectId, undefined, { numeric: true }))
+    .map((effect): RdpsGrantedEffectSummary => ({
+      effectId: effect.effectId,
+      attributionComponent: effect.attributionComponent,
+      attributedRdps: exactValue(effect),
+      damageEventCount: effect.damageEventCount,
+      unresolvedRelationshipCount: effect.unresolvedRelationshipCount,
+    }));
+  return { receivedSkills, grantedEffects };
+}
+
 export function mountCombatHistorySurface(
   container: HTMLElement,
   loadCatalog: () => Promise<CombatHistoryCatalog>,
@@ -279,6 +463,8 @@ export function mountCombatHistorySurface(
   let collapsedRecountGroups = new Set<string>();
   let loadInFlight: Promise<void> | null = null;
   let reloadAfterCurrent = false;
+  let reloadDetailAfterCurrent = false;
+  let rdpsRefreshes = new Map<string, HistoryRdpsRefreshProgress>();
   let unsubscribeCatalogChanges = () => {};
 
   const root = element("div", "plugin-surface combat-history-surface");
@@ -290,9 +476,13 @@ export function mountCombatHistorySurface(
   root.append(status, content);
   container.append(root);
 
-  const load = (includeSettings = false): Promise<void> => {
+  const load = (
+    includeSettings = false,
+    reloadSelectedDetail = false,
+  ): Promise<void> => {
     if (loadInFlight) {
       reloadAfterCurrent = true;
+      reloadDetailAfterCurrent ||= reloadSelectedDetail;
       return loadInFlight;
     }
     loadInFlight = (async () => {
@@ -324,6 +514,10 @@ export function mountCombatHistorySurface(
           detailActorId = null;
         } else if (retained) {
           selectedEntry = retained;
+          if (reloadSelectedDetail) {
+            detail = await loadDetail(retained.session_id);
+            if (!alive) return;
+          }
         } else {
           selectedEntry = null;
           detail = null;
@@ -344,8 +538,10 @@ export function mountCombatHistorySurface(
       } finally {
         loadInFlight = null;
         if (reloadAfterCurrent && alive) {
+          const reloadDetail = reloadDetailAfterCurrent;
           reloadAfterCurrent = false;
-          void load();
+          reloadDetailAfterCurrent = false;
+          void load(false, reloadDetail);
         }
       }
     })();
@@ -959,6 +1155,10 @@ export function mountCombatHistorySurface(
     pane.append(
       renderStickyHistoryContext(navigation, renderHistoryFilters(run, view)),
     );
+    const rdpsRefresh = rdpsRefreshes.get(selectedEntry.session_id);
+    if (rdpsRefresh || run.rdps_status.startsWith("formula_refresh_queued:")) {
+      pane.append(renderHistoryRdpsProgress(rdpsRefresh));
+    }
 
     const participants = participantRows(view);
     if (
@@ -1170,13 +1370,13 @@ export function mountCombatHistorySurface(
             row.append(numeric(metrics.tps));
             break;
           case "rdps":
-            row.append(numeric(targetActorId ? null : actor.rdps));
+            row.append(rdpsNumeric(actor.rdps, false, targetActorId === null));
             break;
           case "rdpsGiven":
-            row.append(numeric(targetActorId ? null : actor.rdps_contribution_given, true));
+            row.append(rdpsNumeric(actor.rdps_contribution_given, true, targetActorId === null));
             break;
           case "rdpsReceived":
-            row.append(numeric(targetActorId ? null : actor.rdps_contribution_received, true));
+            row.append(rdpsNumeric(actor.rdps_contribution_received, true, targetActorId === null));
             break;
           case "apm":
             row.append(numeric(targetActorId ? null : actor.apm));
@@ -1457,9 +1657,10 @@ export function mountCombatHistorySurface(
     const detailMode = partyView.detailMode;
     if (detailMode === "defense") {
       const defenseCard = renderIncomingDamageCard(view, actor);
+      const rdpsBreakdown = renderRdpsBreakdown(view, actor);
       const influences = renderDamageInfluences(view, actor);
       const effects = renderEffects(actor);
-      dialog.append(dialogHeader, overview, defenseCard, influences, effects);
+      dialog.append(dialogHeader, overview, defenseCard, rdpsBreakdown, influences, effects);
       return presentation === "layer"
         ? dialog
         : playerDetailBackdrop(dialog);
@@ -1605,9 +1806,10 @@ export function mountCombatHistorySurface(
     scroller.append(table);
     card.append(scroller);
 
+    const rdpsBreakdown = renderRdpsBreakdown(view, actor);
     const influences = renderDamageInfluences(view, actor);
     const effects = renderEffects(actor);
-    dialog.append(dialogHeader, overview, card, influences, effects);
+    dialog.append(dialogHeader, overview, card, rdpsBreakdown, influences, effects);
     const pendingFeatures: string[] = [];
     const rdpsStatus = describeRdpsStatus(run.rdps_status);
     if (rdpsStatus.historyMessage !== null) {
@@ -1728,6 +1930,188 @@ export function mountCombatHistorySurface(
       );
     }
     card.append(list);
+    return card;
+  };
+
+  const renderRdpsBreakdown = (
+    view: CombatHistoryView,
+    actor: HistoryActorSummary,
+  ): HTMLElement => {
+    const card = element("section", "content-card combat-history-rdps-breakdown-card");
+    const breakdown = actorRdpsBreakdown(view, actor.actor_id, targetActorId);
+    const relationshipCount = breakdown.receivedSkills.reduce(
+      (sum, skill) => sum + skill.sources.length,
+      0,
+    ) + breakdown.grantedEffects.length;
+    card.append(
+      element(
+        "div",
+        "card-heading",
+        element("h2", "", "rDPS breakdown"),
+        element(
+          "span",
+          "",
+          targetActorId === null
+            ? `${relationshipCount} summarized relationship${relationshipCount === 1 ? "" : "s"}`
+            : "Target-filtered",
+        ),
+      ),
+    );
+
+    if (breakdown.receivedSkills.length === 0 && breakdown.grantedEffects.length === 0) {
+      card.append(
+        element(
+          "p",
+          "runtime-empty-result",
+          "No conserved rDPS relationship has been calculated for this player in this view. This is not proof that no party support affected them.",
+        ),
+      );
+      return card;
+    }
+
+    if (breakdown.receivedSkills.length > 0) {
+      const section = element("section", "combat-history-rdps-summary-section");
+      section.append(
+        element("h3", "", "Received by damage skill"),
+        element(
+          "p",
+          "card-copy",
+          "Each row is rDPS removed from this player's total and credited to the listed support source. Ordinary damage is unchanged.",
+        ),
+      );
+      const scroller = element("div", "meter-table-scroll");
+      const table = document.createElement("table");
+      table.className = "meter-table combat-history-rdps-summary-table";
+      const head = document.createElement("thead");
+      const heading = document.createElement("tr");
+      for (const label of ["Damage skill", "rDPS received", "Events", "Sources"]) {
+        const cell = document.createElement("th");
+        if (["rDPS received", "Events"].includes(label)) cell.className = "meter-number";
+        cell.textContent = label;
+        heading.append(cell);
+      }
+      head.append(heading);
+      const body = document.createElement("tbody");
+      for (const skill of breakdown.receivedSkills) {
+        const ability = actor.abilities.find(
+          (candidate) => candidate.ability_id === skill.abilityId,
+        );
+        const row = document.createElement("tr");
+        const abilityCell = document.createElement("td");
+        if (skill.abilityId !== null) {
+          abilityCell.append(
+            combatPresentationIdentity(
+              skill.abilityId,
+              ability?.presentation_name ?? null,
+              ability?.presentation_kind ?? null,
+              ability?.presentation_resolution ?? null,
+              ability?.icon_asset_path ?? null,
+              "ability",
+            ),
+          );
+        } else {
+          abilityCell.textContent = "Damage skill unresolved";
+          abilityCell.dataset.contextComplete = "false";
+        }
+        const sourceCell = document.createElement("td");
+        sourceCell.className = "combat-history-rdps-sources";
+        for (const source of skill.sources) {
+          const provider = view.actors.find(
+            (candidate) => candidate.actor_id === source.providerActorId,
+          );
+          const effect = view.actors
+            .flatMap((candidate) => candidate.effects)
+            .find((candidate) => candidate.effect_id === source.effectId);
+          const providerName = provider ? actorLabel(provider) : `Actor ${source.providerActorId}`;
+          const providerUid = provider?.character_id ? ` · UID ${provider.character_id}` : "";
+          const effectName = effect?.presentation_name?.trim() || `Effect ${source.effectId}`;
+          const component = source.attributionComponent
+            ? ` · ${attributionComponentLabel(source.attributionComponent)}`
+            : "";
+          const amount = source.attributedRdps === null
+            ? "Unresolved"
+            : formatExactInteger(source.attributedRdps);
+          const unresolved = source.unresolvedRelationshipCount > 0
+            ? ` · ${source.unresolvedRelationshipCount} unresolved relationship${source.unresolvedRelationshipCount === 1 ? "" : "s"}`
+            : "";
+          sourceCell.append(
+            element(
+              "div",
+              "combat-history-rdps-source",
+              `${providerName}${providerUid} · ${effectName} (${source.effectId})${component}: ${amount}${unresolved}`,
+            ),
+          );
+        }
+        row.append(
+          abilityCell,
+          rdpsSummaryExactCell(skill.attributedRdps, skill.unresolvedRelationshipCount),
+          numeric(skill.damageEventCount, true),
+          sourceCell,
+        );
+        body.append(row);
+      }
+      table.append(head, body);
+      scroller.append(table);
+      section.append(scroller);
+      card.append(section);
+    }
+
+    if (breakdown.grantedEffects.length > 0) {
+      const section = element("section", "combat-history-rdps-summary-section");
+      section.append(
+        element("h3", "", "Granted by support effect"),
+        element(
+          "p",
+          "card-copy",
+          "Outgoing rDPS is grouped by the support effect that earned the credit.",
+        ),
+      );
+      const scroller = element("div", "meter-table-scroll");
+      const table = document.createElement("table");
+      table.className = "meter-table combat-history-rdps-summary-table";
+      const head = document.createElement("thead");
+      const heading = document.createElement("tr");
+      for (const label of ["Support effect", "Component", "rDPS granted", "Events"]) {
+        const cell = document.createElement("th");
+        if (["rDPS granted", "Events"].includes(label)) cell.className = "meter-number";
+        cell.textContent = label;
+        heading.append(cell);
+      }
+      head.append(heading);
+      const body = document.createElement("tbody");
+      for (const granted of breakdown.grantedEffects) {
+        const effect = view.actors
+          .flatMap((candidate) => candidate.effects)
+          .find((candidate) => candidate.effect_id === granted.effectId);
+        const row = document.createElement("tr");
+        const effectCell = document.createElement("td");
+        effectCell.append(
+          combatPresentationIdentity(
+            granted.effectId,
+            effect?.presentation_name ?? null,
+            effect?.presentation_kind ?? null,
+            effect?.presentation_resolution ?? null,
+            effect?.icon_asset_path ?? null,
+            "effect",
+          ),
+        );
+        row.append(
+          effectCell,
+          textTableCell(
+            granted.attributionComponent
+              ? attributionComponentLabel(granted.attributionComponent)
+              : "Complete effect",
+          ),
+          rdpsSummaryExactCell(granted.attributedRdps, granted.unresolvedRelationshipCount),
+          numeric(granted.damageEventCount, true),
+        );
+        body.append(row);
+      }
+      table.append(head, body);
+      scroller.append(table);
+      section.append(scroller);
+      card.append(section);
+    }
     return card;
   };
 
@@ -1878,7 +2262,11 @@ export function mountCombatHistorySurface(
         ),
         numeric(influence.damage_event_count, true),
         exactIntegerCell(influence.observed_damage),
-        exactInfluenceCell(influence.exact_integer_delta, influence.exact_rational_deltas),
+        exactInfluenceCell(
+          influence.attributed_rdps,
+          influence.exact_integer_delta,
+          influence.exact_rational_deltas,
+        ),
       );
       body.append(row);
     }
@@ -1909,7 +2297,23 @@ export function mountCombatHistorySurface(
   void load(true).then(() => {
     if (!alive || !subscribeCatalogChanges) return;
     unsubscribeCatalogChanges = subscribeCatalogChanges(
-      () => void load(),
+      (update) => {
+        if (update === undefined) {
+          void load(false, true);
+          return;
+        }
+        const selectedSessionId = selectedEntry?.session_id ?? null;
+        const previouslyRefreshing = selectedSessionId !== null && rdpsRefreshes.has(selectedSessionId);
+        rdpsRefreshes = new Map(
+          update.rdps_refreshes.map((progress) => [progress.session_id, progress]),
+        );
+        const currentlyRefreshing = selectedSessionId !== null && rdpsRefreshes.has(selectedSessionId);
+        if (update.catalog_changed || (previouslyRefreshing && !currentlyRefreshing)) {
+          void load(false, true);
+        } else {
+          render();
+        }
+      },
       (error) => {
         if (alive) status.textContent = `Automatic history refresh is reconnecting: ${errorMessage(error)}`;
       },
@@ -3290,10 +3694,104 @@ function metricGrid(items: Array<[string, string]>): HTMLElement {
   return grid;
 }
 
+function renderHistoryRdpsProgress(
+  progress: HistoryRdpsRefreshProgress | undefined,
+): HTMLElement {
+  const presentation = historyRdpsProgressPresentation(progress);
+  const { stageLabel, percent, details } = presentation;
+  const stage = progress?.stage ?? "queued";
+  const card = element(
+    "section",
+    "content-card combat-history-rdps-progress",
+    element(
+      "div",
+      "card-heading",
+      element(
+        "div",
+        "",
+        element("span", "run-report-kicker", "One-time saved rDPS update"),
+        element("h2", "", stageLabel),
+      ),
+      element(
+        "span",
+        "state-pill",
+        percent === null ? stageLabel : `${Math.floor(percent)}%`,
+      ),
+    ),
+  );
+  const meter = document.createElement("progress");
+  meter.className = "combat-history-rdps-progress-meter";
+  meter.max = 100;
+  if (percent !== null && stage !== "waiting_for_live_capture") meter.value = percent;
+  meter.setAttribute("aria-label", "Archived rDPS calculation progress");
+  card.append(meter, element("p", "card-copy", details));
+  return card;
+}
+
+export function historyRdpsProgressPresentation(
+  progress: HistoryRdpsRefreshProgress | undefined,
+): { stageLabel: string; percent: number | null; details: string } {
+  const stage = progress?.stage ?? "queued";
+  const stageLabel = (() => {
+    switch (stage) {
+      case "queued": return "Queued for this run";
+      case "waiting_for_live_capture": return "Paused while live capture is active";
+      case "replaying": return "Replaying sealed combat events";
+      case "validating_and_saving": return "Validating conservation and saving";
+      case "failed": return "Could not refresh this run";
+    }
+  })();
+  const totalBytes = progress?.total_bytes ?? 0;
+  const processedBytes = Math.min(progress?.processed_bytes ?? 0, totalBytes);
+  const percent = totalBytes > 0
+    ? Math.min(100, Math.max(0, (processedBytes / totalBytes) * 100))
+    : null;
+  const details: string[] = [];
+  if ((progress?.processed_events ?? 0) > 0) {
+    details.push(`${INTEGER.format(progress!.processed_events)} canonical events processed`);
+  }
+  if (totalBytes > 0) {
+    details.push(`${formatByteCount(processedBytes)} of ${formatByteCount(totalBytes)} read`);
+  }
+  if (stage === "waiting_for_live_capture") {
+    details.push("This saved-log calculation will resume after capture stops");
+  } else if (stage === "failed") {
+    details.push(progress?.detail ?? "The sealed log could not be replayed and validated");
+  } else {
+    details.push("The result is written back once and later opens use the saved projection");
+  }
+  return { stageLabel, percent, details: details.join(" · ") };
+}
+
+function formatByteCount(value: number): string {
+  if (value < 1_024) return `${INTEGER.format(value)} B`;
+  if (value < 1_048_576) return `${NUMBER.format(value / 1_024)} KiB`;
+  if (value < 1_073_741_824) return `${NUMBER.format(value / 1_048_576)} MiB`;
+  return `${NUMBER.format(value / 1_073_741_824)} GiB`;
+}
+
 function numeric(value: number | null, integer = false): HTMLTableCellElement {
   const cell = document.createElement("td");
   cell.className = "meter-number";
   cell.textContent = value === null ? "—" : integer ? INTEGER.format(value) : NUMBER.format(value);
+  return cell;
+}
+
+function rdpsNumeric(
+  value: number | null,
+  integer = false,
+  applicable = true,
+): HTMLTableCellElement {
+  const cell = document.createElement("td");
+  cell.className = "meter-number";
+  if (!applicable) {
+    cell.textContent = "—";
+  } else if (value === null) {
+    cell.textContent = "Unresolved";
+    cell.title = "The exact rDPS total is incomplete; ordinary damage remains available.";
+  } else {
+    cell.textContent = integer ? INTEGER.format(value) : NUMBER.format(value);
+  }
   return cell;
 }
 
@@ -3318,6 +3816,24 @@ function exactIntegerCell(value: string): HTMLTableCellElement {
   return cell;
 }
 
+function rdpsSummaryExactCell(
+  value: string | null,
+  unresolvedRelationshipCount: number,
+): HTMLTableCellElement {
+  const cell = document.createElement("td");
+  cell.className = "meter-number combat-history-exact-number";
+  cell.textContent = value === null ? "Unresolved" : formatExactInteger(value);
+  cell.title = [
+    value === null
+      ? "No conserved integer attribution is available"
+      : `conserved integer attribution ${value}`,
+    unresolvedRelationshipCount > 0
+      ? `${unresolvedRelationshipCount} unresolved relationship${unresolvedRelationshipCount === 1 ? "" : "s"} excluded from this total`
+      : null,
+  ].filter((part): part is string => part !== null).join("; ");
+  return cell;
+}
+
 function attributionComponentLabel(value: string): string {
   return value
     .split("-")
@@ -3329,6 +3845,7 @@ function attributionComponentLabel(value: string): string {
 }
 
 function exactInfluenceCell(
+  attributedRdps: string | null,
   integerDelta: string,
   rationalDeltas: CombatHistoryView["damage_influences"][number]["exact_rational_deltas"],
 ): HTMLTableCellElement {
@@ -3342,12 +3859,18 @@ function exactInfluenceCell(
   }
   const cell = document.createElement("td");
   cell.className = "meter-number combat-history-exact-number";
-  cell.textContent = terms.length > 0 ? terms.join(" + ").replaceAll("+ -", "- ") : "0";
+  cell.textContent = attributedRdps === null
+    ? "Unresolved"
+    : formatExactInteger(attributedRdps);
   cell.title = [
+    attributedRdps === null
+      ? "No conserved integer allocation is available for this row"
+      : `conserved integer attribution ${attributedRdps}`,
     integerDelta !== "0" ? `integer ${integerDelta}` : null,
     ...rationalDeltas.map((term) =>
       `rational ${term.numerator}/${term.denominator} across ${term.contribution_count} event${term.contribution_count === 1 ? "" : "s"}`
     ),
+    terms.length > 0 ? `exact source terms ${terms.join(" + ").replaceAll("+ -", "- ")}` : null,
   ].filter((term): term is string => term !== null).join("; ");
   return cell;
 }

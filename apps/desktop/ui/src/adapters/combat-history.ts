@@ -156,6 +156,7 @@ export interface HistoryDamageInfluenceSummary {
   observed_damage: string;
   exact_integer_delta: string;
   exact_rational_deltas: HistoryRationalDamageDelta[];
+  attributed_rdps: string | null;
   damage_context_complete: boolean;
 }
 
@@ -630,6 +631,10 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
           counter(parsedInfluence.damage_event_count, "influence damage event count");
           text(parsedInfluence.observed_damage, "influence observed damage");
           text(parsedInfluence.exact_integer_delta, "influence exact integer delta");
+          if (parsedInfluence.attributed_rdps === undefined) {
+            parsedInfluence.attributed_rdps = null;
+          }
+          optionalText(parsedInfluence.attributed_rdps, "influence attributed rDPS");
           boolean(parsedInfluence.damage_context_complete, "influence damage context state");
           array(
             parsedInfluence.exact_rational_deltas,

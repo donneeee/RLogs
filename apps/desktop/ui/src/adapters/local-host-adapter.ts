@@ -10,6 +10,8 @@ import {
   parseCombatHistorySnapshot,
 } from "./combat-history";
 import {
+  type CombatHistoryChangeUpdate,
+  type HistoryRdpsRefreshProgress,
   compactSpecializationName,
   mountCombatHistorySurface,
 } from "./combat-history-surface";
@@ -229,24 +231,69 @@ function subscribeLiveEvents(
 }
 
 interface CombatHistoryRevisionUpdate {
-  schema_version: 1;
+  schema_version: 1 | 2;
   revision: number;
+  catalog_changed?: boolean;
+  rdps_refreshes?: HistoryRdpsRefreshProgress[];
 }
 
-function parseCombatHistoryRevisionUpdate(value: unknown): CombatHistoryRevisionUpdate {
+function parseCombatHistoryRevisionUpdate(value: unknown): CombatHistoryRevisionUpdate & CombatHistoryChangeUpdate {
   if (
     !isRecord(value) ||
-    value.schema_version !== 1 ||
+    (value.schema_version !== 1 && value.schema_version !== 2) ||
     !Number.isSafeInteger(value.revision) ||
     (value.revision as number) < 0
   ) {
     throw new Error("The native host returned an invalid combat-history revision.");
   }
-  return value as unknown as CombatHistoryRevisionUpdate;
+  const refreshes = value.rdps_refreshes === undefined
+    ? []
+    : parseHistoryRdpsRefreshes(value.rdps_refreshes);
+  if (value.catalog_changed !== undefined && typeof value.catalog_changed !== "boolean") {
+    throw new Error("The native host returned an invalid combat-history change kind.");
+  }
+  return {
+    schema_version: value.schema_version,
+    revision: value.revision as number,
+    catalog_changed: value.catalog_changed === undefined
+      ? true
+      : value.catalog_changed,
+    rdps_refreshes: refreshes,
+  };
+}
+
+function parseHistoryRdpsRefreshes(value: unknown): HistoryRdpsRefreshProgress[] {
+  if (!Array.isArray(value) || value.length > 10_000) {
+    throw new Error("The native host returned invalid archived-rDPS progress.");
+  }
+  return value.map((entry) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.session_id !== "string" ||
+      ![
+        "queued",
+        "waiting_for_live_capture",
+        "replaying",
+        "validating_and_saving",
+        "failed",
+      ].includes(String(entry.stage)) ||
+      !isNonnegativeSafeInteger(entry.processed_events) ||
+      !isNonnegativeSafeInteger(entry.processed_bytes) ||
+      !isNonnegativeSafeInteger(entry.total_bytes) ||
+      (entry.detail !== undefined && typeof entry.detail !== "string")
+    ) {
+      throw new Error("The native host returned an invalid archived-rDPS progress row.");
+    }
+    return entry as unknown as HistoryRdpsRefreshProgress;
+  });
+}
+
+function isNonnegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
 }
 
 function subscribeCombatHistoryChanges(
-  onChange: () => void,
+  onChange: (update: CombatHistoryChangeUpdate) => void,
   onError: (error: unknown) => void,
 ): () => void {
   let active = true;
@@ -272,7 +319,7 @@ function subscribeCombatHistoryChanges(
         if (!active) return;
         if (update.revision > revision) {
           revision = update.revision;
-          onChange();
+          onChange(update);
         }
       } catch (error) {
         if (!active || abort.signal.aborted) return;

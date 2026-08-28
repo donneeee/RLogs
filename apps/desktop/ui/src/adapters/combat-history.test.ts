@@ -178,6 +178,7 @@ describe("combat history contracts", () => {
                   damage_event_count: 2,
                   observed_damage: "9007199254740993",
                   exact_integer_delta: "12345678901234567",
+                  attributed_rdps: "12345678901234569",
                   exact_rational_deltas: [
                     {
                       numerator: "7",
@@ -208,6 +209,9 @@ describe("combat history contracts", () => {
     expect(snapshot.runs[0]?.views[0]?.targets[1]?.monster_id).toBe("10100101");
     expect(snapshot.runs[0]?.views[0]?.damage_influences[0]?.observed_damage).toBe(
       "9007199254740993",
+    );
+    expect(snapshot.runs[0]?.views[0]?.damage_influences[0]?.attributed_rdps).toBe(
+      "12345678901234569",
     );
     expect(
       snapshot.runs[0]?.views[0]?.damage_influences[0]?.exact_rational_deltas[0]

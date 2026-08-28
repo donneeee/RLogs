@@ -3560,6 +3560,26 @@ body {
   white-space: nowrap;
 }
 
+.combat-history-rdps-progress {
+  display: grid;
+  gap: 10px;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+}
+
+.combat-history-rdps-progress .card-heading {
+  align-items: center;
+}
+
+.combat-history-rdps-progress-meter {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent);
+}
+
+.combat-history-rdps-progress .card-copy {
+  margin: 0;
+}
+
 .combat-history-run-browser {
   min-width: 0;
   overflow: hidden;
@@ -5111,6 +5131,43 @@ body {
 
 .combat-history-influence-table {
   min-width: 1180px;
+}
+
+.combat-history-rdps-breakdown-card {
+  display: grid;
+  gap: 16px;
+}
+
+.combat-history-rdps-summary-section {
+  display: grid;
+  gap: 7px;
+}
+
+.combat-history-rdps-summary-section h3,
+.combat-history-rdps-summary-section .card-copy {
+  margin: 0;
+}
+
+.combat-history-rdps-summary-table {
+  min-width: 820px;
+}
+
+.combat-history-rdps-summary-table th,
+.combat-history-rdps-summary-table td {
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+
+.combat-history-rdps-summary-table .combat-history-combat-presentation {
+  min-width: 210px;
+}
+
+.combat-history-rdps-sources {
+  min-width: 360px;
+}
+
+.combat-history-rdps-source + .combat-history-rdps-source {
+  margin-top: 5px;
 }
 
 .combat-history-influence-toolbar {

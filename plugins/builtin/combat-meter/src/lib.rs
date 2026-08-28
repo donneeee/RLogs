@@ -2,11 +2,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use num_bigint::BigInt;
+use num_integer::Integer;
 use rlogs_combat::{
     ActorAncestryResolver, ActorOwnershipEvidence, ContributionDamageEvent,
     ContributionStatusEvent, ContributionStatusState, DamageContributionReducer,
-    DamageContributionRule, DamageContributionScope, EncounterTerminalState,
-    ExactDamageContributionEvent, ExactDamageContributionProjector,
+    DamageContributionRule, DamageContributionScope, EffectDamageContribution,
+    EncounterTerminalState, ExactDamageContributionEvent, ExactDamageContributionProjector,
     ExactRationalDamageContributionEvent, RunAnalysis, RunSegmentKind, RunSegmentSummary,
     RunTerminalState,
 };
@@ -157,6 +159,11 @@ pub struct HistoryDamageInfluenceSummary {
     /// Exact rational counterfactual deltas grouped by denominator.
     #[serde(default)]
     pub exact_rational_deltas: Vec<HistoryRationalDamageDelta>,
+    /// Integer amount actually applied to actor rDPS after the reducer sums
+    /// all exact fractions for this effect/provider/recipient and rounds once.
+    /// Missing means a legacy row or a fail-closed allocation mismatch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attributed_rdps: Option<String>,
     /// False only for legacy/custom projectors that emitted a contribution
     /// outside the damage event they were describing. Such evidence remains
     /// visible but must not be joined to a damage ID or target.
@@ -2108,12 +2115,19 @@ impl CombatTimelinePlugin {
         };
         let contribution_summary = self.live_attribution.summary();
         let rdps_enabled = self.rdps_enabled();
+        let incomplete_rdps_actor_ids = self
+            .exact_contribution_projector
+            .as_ref()
+            .map_or_else(Vec::new, |projector| projector.incomplete_rdps_actor_ids())
+            .into_iter()
+            .collect::<BTreeSet<_>>();
         let actors = self
             .actors
             .iter()
             .filter(|(_, actor)| !active_actors_only || has_live_meter_activity(actor))
             .map(|(actor_id, actor)| {
                 let contribution = contribution_summary.actors.get(actor_id);
+                let rdps_complete = !incomplete_rdps_actor_ids.contains(actor_id);
                 ActorCombatSummary {
                     actor_id: actor_id.to_string(),
                     entity_uuid: actor.entity_uuid.to_string(),
@@ -2153,10 +2167,10 @@ impl CombatTimelinePlugin {
                     } else {
                         actor.damage_taken as f64 * 1_000_000.0 / rate_duration as f64
                     },
-                    rdps_damage: rdps_enabled.then(|| {
+                    rdps_damage: (rdps_enabled && rdps_complete).then(|| {
                         contribution.map_or(actor.reported_damage, |actor| actor.rdps_damage)
                     }),
-                    rdps: rdps_enabled.then(|| {
+                    rdps: (rdps_enabled && rdps_complete).then(|| {
                         if rate_duration == 0 {
                             0.0
                         } else {
@@ -2166,9 +2180,9 @@ impl CombatTimelinePlugin {
                                 / rate_duration as f64
                         }
                     }),
-                    rdps_contribution_given: rdps_enabled
+                    rdps_contribution_given: (rdps_enabled && rdps_complete)
                         .then(|| contribution.map_or(0, |actor| actor.contribution_given)),
-                    rdps_contribution_received: rdps_enabled
+                    rdps_contribution_received: (rdps_enabled && rdps_complete)
                         .then(|| contribution.map_or(0, |actor| actor.contribution_received)),
                     reported_healing: actor.reported_healing,
                     effective_healing: actor.effective_healing,
@@ -2948,16 +2962,31 @@ impl CombatTimelinePlugin {
             }
         }
 
-        if self.rdps_enabled() {
+        let damage_influences = if self.rdps_enabled() {
             let contribution = attribution.summary();
             debug_assert!(contribution.is_conserved());
-            for (actor_id, actor) in contribution.actors {
-                let value = values.entry(actor_id).or_default();
+            for (actor_id, actor) in &contribution.actors {
+                let value = values.entry(*actor_id).or_default();
                 value.rdps_damage = Some(actor.rdps_damage);
                 value.rdps_contribution_given = Some(actor.contribution_given);
                 value.rdps_contribution_received = Some(actor.contribution_received);
             }
-        }
+            if let Some(projector) = self.exact_contribution_projector.as_ref() {
+                for actor_id in projector.incomplete_rdps_actor_ids() {
+                    if let Some(value) = values.get_mut(&actor_id) {
+                        value.rdps_damage = None;
+                        value.rdps_contribution_given = None;
+                        value.rdps_contribution_received = None;
+                    }
+                }
+            }
+            finish_history_damage_influences(
+                damage_influences,
+                &contribution.rational_effect_projections,
+            )
+        } else {
+            finish_history_damage_influences(damage_influences, &[])
+        };
 
         let elapsed_seconds = seconds(spec.elapsed_micros);
         let active_seconds = seconds(spec.active_combat_micros);
@@ -3023,7 +3052,7 @@ impl CombatTimelinePlugin {
             active_combat_micros: spec.active_combat_micros,
             actors,
             targets,
-            damage_influences: finish_history_damage_influences(damage_influences),
+            damage_influences,
         }
     }
 
@@ -3315,40 +3344,176 @@ fn observe_history_damage_influence(
 
 fn finish_history_damage_influences(
     influences: BTreeMap<HistoryDamageInfluenceKey, HistoryDamageInfluenceAccumulator>,
+    rational_effect_projections: &[EffectDamageContribution],
 ) -> Vec<HistoryDamageInfluenceSummary> {
+    let influences = influences.into_iter().collect::<Vec<_>>();
+    let mut attributed_rdps = influences
+        .iter()
+        .map(|(_, accumulator)| Some(accumulator.exact_integer_delta))
+        .collect::<Vec<_>>();
+    let mut rational_rows = BTreeMap::<(i64, u64, u64), Vec<usize>>::new();
+    for (index, (key, accumulator)) in influences.iter().enumerate() {
+        if !accumulator.rational_by_denominator.is_empty() {
+            rational_rows
+                .entry((key.effect_id, key.provider_actor_id, key.recipient_actor_id))
+                .or_default()
+                .push(index);
+        }
+    }
+    let projected_totals = rational_effect_projections
+        .iter()
+        .map(|projection| {
+            (
+                (
+                    projection.effect_id,
+                    projection.provider_actor_id,
+                    projection.recipient_actor_id,
+                ),
+                projection.amount,
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    for (group, row_indices) in rational_rows {
+        let target = projected_totals.get(&group).copied().unwrap_or_default();
+        let Some(allocations) = allocate_history_rational_rows(&influences, &row_indices, target)
+        else {
+            for row_index in row_indices {
+                attributed_rdps[row_index] = None;
+            }
+            continue;
+        };
+        for (row_index, rational_amount) in allocations {
+            attributed_rdps[row_index] = attributed_rdps[row_index]
+                .and_then(|integer_amount| integer_amount.checked_add(rational_amount));
+        }
+    }
+
     influences
         .into_iter()
-        .map(|(key, accumulator)| HistoryDamageInfluenceSummary {
-            effect_id: key.effect_id.to_string(),
-            attribution_component: key.scope.component_key().map(str::to_owned),
-            complete_effect: key.scope.is_complete_effect(),
-            provider_actor_id: key.provider_actor_id.to_string(),
-            provider_entity_uuid: key.provider_entity_uuid.to_string(),
-            recipient_actor_id: key.recipient_actor_id.to_string(),
-            recipient_entity_uuid: key.recipient_entity_uuid.to_string(),
-            affected_ability_id: key.affected_ability_id.map(|value| value.to_string()),
-            target_actor_id: key.target_actor_id.map(|value| value.to_string()),
-            target_entity_uuid: key.target_entity_uuid.map(|value| value.to_string()),
-            first_observed_micros: accumulator.first_observed_micros.unwrap_or_default(),
-            last_observed_micros: accumulator.last_observed_micros,
-            damage_event_count: accumulator.damage_event_count,
-            observed_damage: accumulator.observed_damage.to_string(),
-            exact_integer_delta: accumulator.exact_integer_delta.to_string(),
-            exact_rational_deltas: accumulator
-                .rational_by_denominator
-                .into_iter()
-                .map(|(denominator, (numerator, contribution_count))| {
-                    let divisor = greatest_common_divisor_i128(numerator, denominator);
-                    HistoryRationalDamageDelta {
-                        numerator: (numerator / divisor).to_string(),
-                        denominator: (denominator / divisor).to_string(),
-                        contribution_count,
-                    }
-                })
-                .collect(),
-            damage_context_complete: accumulator.damage_context_complete,
-        })
+        .enumerate()
+        .map(
+            |(index, (key, accumulator))| HistoryDamageInfluenceSummary {
+                effect_id: key.effect_id.to_string(),
+                attribution_component: key.scope.component_key().map(str::to_owned),
+                complete_effect: key.scope.is_complete_effect(),
+                provider_actor_id: key.provider_actor_id.to_string(),
+                provider_entity_uuid: key.provider_entity_uuid.to_string(),
+                recipient_actor_id: key.recipient_actor_id.to_string(),
+                recipient_entity_uuid: key.recipient_entity_uuid.to_string(),
+                affected_ability_id: key.affected_ability_id.map(|value| value.to_string()),
+                target_actor_id: key.target_actor_id.map(|value| value.to_string()),
+                target_entity_uuid: key.target_entity_uuid.map(|value| value.to_string()),
+                first_observed_micros: accumulator.first_observed_micros.unwrap_or_default(),
+                last_observed_micros: accumulator.last_observed_micros,
+                damage_event_count: accumulator.damage_event_count,
+                observed_damage: accumulator.observed_damage.to_string(),
+                exact_integer_delta: accumulator.exact_integer_delta.to_string(),
+                exact_rational_deltas: accumulator
+                    .rational_by_denominator
+                    .into_iter()
+                    .map(|(denominator, (numerator, contribution_count))| {
+                        let divisor = greatest_common_divisor_i128(numerator, denominator);
+                        HistoryRationalDamageDelta {
+                            numerator: (numerator / divisor).to_string(),
+                            denominator: (denominator / divisor).to_string(),
+                            contribution_count,
+                        }
+                    })
+                    .collect(),
+                attributed_rdps: attributed_rdps[index].map(|amount| amount.to_string()),
+                damage_context_complete: accumulator.damage_context_complete,
+            },
+        )
         .collect()
+}
+
+#[derive(Debug, Clone)]
+struct HistoryExactRational {
+    numerator: BigInt,
+    denominator: BigInt,
+}
+
+impl Default for HistoryExactRational {
+    fn default() -> Self {
+        Self {
+            numerator: BigInt::from(0),
+            denominator: BigInt::from(1),
+        }
+    }
+}
+
+impl HistoryExactRational {
+    fn add(&mut self, numerator: i128, denominator: i128) -> Option<()> {
+        if numerator < 0 || denominator <= 0 {
+            return None;
+        }
+        let numerator = BigInt::from(numerator);
+        let denominator = BigInt::from(denominator);
+        let shared = self.denominator.gcd(&denominator);
+        let left_factor = &denominator / &shared;
+        let right_factor = &self.denominator / &shared;
+        let next_numerator = &self.numerator * &left_factor + numerator * right_factor;
+        let next_denominator = &self.denominator * left_factor;
+        let divisor = next_numerator.gcd(&next_denominator);
+        self.numerator = next_numerator / &divisor;
+        self.denominator = next_denominator / divisor;
+        Some(())
+    }
+}
+
+fn allocate_history_rational_rows(
+    influences: &[(HistoryDamageInfluenceKey, HistoryDamageInfluenceAccumulator)],
+    row_indices: &[usize],
+    target: i64,
+) -> Option<Vec<(usize, i64)>> {
+    if target < 0 {
+        return None;
+    }
+    let mut rows = Vec::with_capacity(row_indices.len());
+    let mut base_total = BigInt::from(0);
+    let mut exact_total = HistoryExactRational::default();
+    for row_index in row_indices {
+        let accumulator = &influences.get(*row_index)?.1;
+        let mut exact = HistoryExactRational::default();
+        for (denominator, (numerator, _)) in &accumulator.rational_by_denominator {
+            exact.add(*numerator, *denominator)?;
+            exact_total.add(*numerator, *denominator)?;
+        }
+        let floor = &exact.numerator / &exact.denominator;
+        let remainder = &exact.numerator % &exact.denominator;
+        base_total += &floor;
+        rows.push((*row_index, floor, remainder, exact.denominator));
+    }
+    let (rounded_total, remainder) = exact_total.numerator.div_rem(&exact_total.denominator);
+    let rounded_total = if remainder * BigInt::from(2) >= exact_total.denominator {
+        rounded_total + 1
+    } else {
+        rounded_total
+    };
+    if rounded_total != BigInt::from(target) {
+        return None;
+    }
+    let remaining = BigInt::from(target) - base_total;
+    let remaining = usize::try_from(remaining).ok()?;
+    if remaining > rows.len() {
+        return None;
+    }
+    rows.sort_by(|left, right| {
+        let left_fraction = &left.2 * &right.3;
+        let right_fraction = &right.2 * &left.3;
+        right_fraction
+            .cmp(&left_fraction)
+            .then_with(|| left.0.cmp(&right.0))
+    });
+    let mut allocations = Vec::with_capacity(rows.len());
+    for (rank, (row_index, floor, _, _)) in rows.into_iter().enumerate() {
+        let mut amount = i64::try_from(floor).ok()?;
+        if rank < remaining {
+            amount = amount.checked_add(1)?;
+        }
+        allocations.push((row_index, amount));
+    }
+    Some(allocations)
 }
 
 fn greatest_common_divisor_i128(mut left: i128, mut right: i128) -> i128 {
@@ -3756,7 +3921,15 @@ mod tests {
             },
         );
 
-        let rows = finish_history_damage_influences(influences);
+        let rows = finish_history_damage_influences(
+            influences,
+            &[EffectDamageContribution {
+                effect_id: 55_228,
+                provider_actor_id: 1,
+                recipient_actor_id: 2,
+                amount: 1,
+            }],
+        );
         assert_eq!(rows.len(), 1);
         let row = &rows[0];
         assert_eq!(row.effect_id, "55228");
@@ -3772,7 +3945,75 @@ mod tests {
         assert_eq!(row.exact_rational_deltas.len(), 1);
         assert_eq!(row.exact_rational_deltas[0].numerator, "1");
         assert_eq!(row.exact_rational_deltas[0].denominator, "2");
+        assert_eq!(row.attributed_rdps.as_deref(), Some("11001"));
         assert!(row.damage_context_complete);
+    }
+
+    #[test]
+    fn rational_influence_rows_use_stable_conserved_largest_remainders() {
+        let mut influences = BTreeMap::new();
+        let base = HistoryDamageInfluenceObservation {
+            observed_micros: 1_000,
+            effect_id: 55_228,
+            scope: DamageContributionScope::Component("target-vulnerability"),
+            provider_actor_id: 1,
+            provider_entity_uuid: 101,
+            recipient_actor_id: 2,
+            recipient_entity_uuid: 102,
+            damage_event_sequence: Some(10),
+            affected_ability_id: Some(5_001),
+            affected_target: Some((3, 103)),
+            observed_damage: 100,
+            exact_integer_delta: Some(2),
+            exact_rational_delta: Some((1, 3)),
+        };
+        observe_history_damage_influence(&mut influences, base);
+        observe_history_damage_influence(
+            &mut influences,
+            HistoryDamageInfluenceObservation {
+                damage_event_sequence: Some(11),
+                affected_ability_id: Some(5_002),
+                exact_integer_delta: Some(3),
+                ..base
+            },
+        );
+
+        let rows = finish_history_damage_influences(
+            influences.clone(),
+            &[EffectDamageContribution {
+                effect_id: 55_228,
+                provider_actor_id: 1,
+                recipient_actor_id: 2,
+                amount: 1,
+            }],
+        );
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].affected_ability_id.as_deref(), Some("5001"));
+        assert_eq!(rows[0].attributed_rdps.as_deref(), Some("3"));
+        assert_eq!(rows[1].affected_ability_id.as_deref(), Some("5002"));
+        assert_eq!(rows[1].attributed_rdps.as_deref(), Some("3"));
+        assert_eq!(
+            rows.iter()
+                .map(|row| row
+                    .attributed_rdps
+                    .as_deref()
+                    .unwrap()
+                    .parse::<i64>()
+                    .unwrap())
+                .sum::<i64>(),
+            6
+        );
+
+        let mismatched = finish_history_damage_influences(
+            influences,
+            &[EffectDamageContribution {
+                effect_id: 55_228,
+                provider_actor_id: 1,
+                recipient_actor_id: 2,
+                amount: 0,
+            }],
+        );
+        assert!(mismatched.iter().all(|row| row.attributed_rdps.is_none()));
     }
 
     #[test]
@@ -3863,6 +4104,95 @@ mod tests {
         assert_eq!(actor.rdps_damage, Some(2_737_001));
         assert_eq!(actor.rdps_contribution_given, Some(0));
         assert_eq!(actor.rdps_contribution_received, Some(0));
+    }
+
+    #[test]
+    fn unresolved_external_formula_marks_rdps_incomplete_without_hiding_damage() {
+        #[derive(Debug)]
+        struct IncompleteProjector;
+
+        impl ExactDamageContributionProjector for IncompleteProjector {
+            fn enabled(&self) -> bool {
+                true
+            }
+
+            fn incomplete_rdps_actor_ids(&self) -> Vec<u64> {
+                vec![1]
+            }
+
+            fn reset(&mut self) {}
+
+            fn observe(
+                &mut self,
+                _envelope: &EventEnvelope,
+                _output: &mut Vec<ExactDamageContributionEvent>,
+                _rational_output: &mut Vec<ExactRationalDamageContributionEvent>,
+            ) {
+            }
+        }
+
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/replay/reference-combat.rlog");
+        let reader = RlogReader::new(
+            BufReader::new(File::open(fixture).unwrap()),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let mut header = reader.header().clone();
+        header.session_id = "incomplete-external-formula".into();
+        let mut plugin = CombatTimelinePlugin::with_damage_contribution_projection(
+            Vec::new(),
+            Some(Box::new(IncompleteProjector)),
+        )
+        .unwrap();
+        plugin.begin_live(&header);
+
+        let mut factory =
+            EventEnvelopeFactory::new(header.session_id.clone(), header.region.clone());
+        let envelope = factory
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: 1_000_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(1_000_000, 1, 1),
+                sensitivity: EventSensitivity::PublicGameplay,
+                kind: CanonicalEventDraftKind::Timeline(TimelineEventKind::Damage(DamageEvent {
+                    source: EntityRef {
+                        actor_id: ActorId(1),
+                        entity_uuid: EntityUuid(101),
+                    },
+                    direct_source: None,
+                    target: EntityRef {
+                        actor_id: ActorId(2),
+                        entity_uuid: EntityUuid(102),
+                    },
+                    ability: Some(AbilityId(2_206_290)),
+                    amount: 2_737_001,
+                    actual_amount: Some(2_737_001),
+                    hp_loss: Some(2_737_001),
+                    shield_loss: None,
+                    hit_event_id: None,
+                    damage_source: None,
+                    damage_type: None,
+                    flags: DamageFlags::default(),
+                    packet: Default::default(),
+                })),
+            })
+            .unwrap();
+        plugin.observe_live(&envelope);
+
+        let snapshot = plugin.live_snapshot().unwrap();
+        let actor = snapshot
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(actor.reported_damage, 2_737_001);
+        assert_eq!(actor.rdps_damage, None);
+        assert_eq!(actor.rdps, None);
+        assert_eq!(actor.rdps_contribution_given, None);
+        assert_eq!(actor.rdps_contribution_received, None);
     }
 
     #[test]

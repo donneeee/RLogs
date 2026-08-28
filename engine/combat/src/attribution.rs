@@ -156,6 +156,14 @@ pub trait ExactDamageContributionProjector: std::fmt::Debug + Send {
             "pending_reviewed_effect_rules".into()
         }
     }
+    /// Actors whose displayed rDPS total is known to be incomplete because a
+    /// packet-proven external relationship reached an unresolved formula
+    /// input. Proven contribution rows remain available for audit, but callers
+    /// must not present the actor's partial total as a proven zero or complete
+    /// value.
+    fn incomplete_rdps_actor_ids(&self) -> Vec<u64> {
+        Vec::new()
+    }
     fn reset(&mut self);
     fn observe(
         &mut self,
@@ -201,6 +209,12 @@ pub struct DamageContributionSummary {
     /// provider, and recipient; these terms remain the authoritative audit
     /// representation.
     pub rational_effects: Vec<RationalEffectDamageContribution>,
+    /// The authoritative once-rounded integer projection of each exact
+    /// rational effect/provider/recipient total. Consumers that apportion a
+    /// transfer across abilities must use these amounts so their rows sum to
+    /// the same value applied to actor rDPS.
+    #[serde(default)]
+    pub rational_effect_projections: Vec<EffectDamageContribution>,
     /// Backward-compatible diagnostic for exact rational buckets that could
     /// not be projected. The current accumulator uses unbounded integers, so a
     /// valid retained bucket does not overflow while summing denominators.
@@ -703,6 +717,7 @@ impl DamageContributionReducer {
             .collect::<Vec<_>>();
         let mut rational_total = 0_i64;
         let rational_projection_overflow_count = 0_u64;
+        let mut rational_effect_projections = Vec::new();
         for ((effect_id, provider_actor_id, recipient_actor_id), total) in rational_totals {
             let (numerator, denominator) = total.exact();
             let amount = i64::try_from(round_half_up_big_ratio(&numerator, &denominator))
@@ -711,6 +726,12 @@ impl DamageContributionReducer {
                 continue;
             }
             rational_total = rational_total.saturating_add(amount);
+            rational_effect_projections.push(EffectDamageContribution {
+                effect_id,
+                provider_actor_id,
+                recipient_actor_id,
+                amount,
+            });
             let recipient = actors.entry(recipient_actor_id).or_default();
             recipient.contribution_received =
                 recipient.contribution_received.saturating_add(amount);
@@ -739,6 +760,7 @@ impl DamageContributionReducer {
                 )
                 .collect(),
             rational_effects,
+            rational_effect_projections,
             rational_projection_overflow_count,
             damage_event_count: self.damage_event_count,
             attributed_damage_event_count: self.attributed_damage_event_count,
@@ -1215,6 +1237,15 @@ mod tests {
         assert_eq!(summary.rational_effects.len(), 1);
         assert_eq!(summary.rational_effects[0].numerator, "1");
         assert_eq!(summary.rational_effects[0].denominator, "1");
+        assert_eq!(
+            summary.rational_effect_projections,
+            vec![EffectDamageContribution {
+                effect_id: 2_302_121,
+                provider_actor_id: 2,
+                recipient_actor_id: 4,
+                amount: 1,
+            }]
+        );
         assert_eq!(summary.attributed_damage_event_count, 2);
         assert_eq!(summary.attributed_bonus_damage, 1);
         assert_eq!(summary.actors[&2].contribution_given, 1);
@@ -1249,6 +1280,7 @@ mod tests {
         // exact sum is still below 0.5 and therefore transfers no integer.
         let summary = reducer.summary();
         assert_eq!(summary.rational_effects.len(), 2);
+        assert!(summary.rational_effect_projections.is_empty());
         assert_eq!(summary.rational_projection_overflow_count, 0);
         assert_eq!(summary.attributed_bonus_damage, 0);
         assert!(!summary.actors.contains_key(&2));

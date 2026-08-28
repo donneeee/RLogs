@@ -6,6 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+num-bigint.workspace = true
+num-integer.workspace = true
 rlogs-combat = { path = "../../../engine/combat" }
 rlogs-events = { path = "../../../engine/events" }
 rlogs-log-format = { path = "../../../engine/log-format" }

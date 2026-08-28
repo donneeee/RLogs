@@ -8,6 +8,7 @@ import type {
 } from "./combat-history";
 import {
   activityLabel,
+  actorRdpsBreakdown,
   abilitySortMaximum,
   buildActorGraphSeries,
   catalogParticipantLabel,
@@ -18,6 +19,7 @@ import {
   graphScaleMaximum,
   groupDisplayedAbilities,
   historyDamageInfluenceMatchesQuery,
+  historyRdpsProgressPresentation,
   historyActorColor,
   historyTargetLabel,
   incomingDamageSourceGroups,
@@ -27,6 +29,36 @@ import {
   supplementalDifficultyLabel,
   terminalPresentationLabel,
 } from "./combat-history-surface";
+
+describe("Combat History archived rDPS progress", () => {
+  it("reports measurable replay progress and the saved-result contract", () => {
+    const presentation = historyRdpsProgressPresentation({
+      session_id: "session-1",
+      stage: "replaying",
+      processed_events: 12_345,
+      processed_bytes: 25,
+      total_bytes: 100,
+    });
+
+    expect(presentation.stageLabel).toBe("Replaying sealed combat events");
+    expect(presentation.percent).toBe(25);
+    expect(presentation.details).toContain("12,345 canonical events processed");
+    expect(presentation.details).toContain("later opens use the saved projection");
+  });
+
+  it("shows that live capture pauses rather than competes with history replay", () => {
+    const presentation = historyRdpsProgressPresentation({
+      session_id: "session-1",
+      stage: "waiting_for_live_capture",
+      processed_events: 0,
+      processed_bytes: 0,
+      total_bytes: 1_000,
+    });
+
+    expect(presentation.stageLabel).toContain("Paused");
+    expect(presentation.details).toContain("resume after capture stops");
+  });
+});
 
 describe("Combat History rDPS influence filtering", () => {
   const provider = {
@@ -91,6 +123,95 @@ describe("Combat History rDPS influence filtering", () => {
   it("matches participant and target presentation without broad false positives", () => {
     expect(historyDamageInfluenceMatchesQuery(view, influence, "MarieRose Training Dummy")).toBe(true);
     expect(historyDamageInfluenceMatchesQuery(view, influence, "unrelated-player")).toBe(false);
+  });
+});
+
+describe("Combat History rDPS breakdown", () => {
+  const influence = (
+    providerActorId: string,
+    recipientActorId: string,
+    abilityId: string,
+    component: string,
+    attributedRdps: string | null,
+  ) => ({
+    effect_id: "2302121",
+    attribution_component: component,
+    provider_actor_id: providerActorId,
+    provider_entity_uuid: `${providerActorId}-entity`,
+    recipient_actor_id: recipientActorId,
+    recipient_entity_uuid: `${recipientActorId}-entity`,
+    affected_ability_id: abilityId,
+    target_actor_id: "boss",
+    target_entity_uuid: "boss-entity",
+    first_observed_micros: 1,
+    last_observed_micros: 2,
+    damage_event_count: 3,
+    observed_damage: "1000",
+    exact_integer_delta: "0",
+    exact_rational_deltas: [],
+    attributed_rdps: attributedRdps,
+    damage_context_complete: true,
+  }) as CombatHistoryView["damage_influences"][number];
+
+  it("groups received rDPS by damage skill and preserves each provider source", () => {
+    const view = {
+      damage_influences: [
+        influence("provider-a", "recipient", "skill-1", "critical-damage", "9007199254740993"),
+        influence("provider-a", "recipient", "skill-1", "critical-damage", "7"),
+        influence("provider-b", "recipient", "skill-1", "lucky-damage", "25"),
+        influence("provider-b", "recipient", "skill-2", "lucky-damage", null),
+      ],
+    } as CombatHistoryView;
+
+    const breakdown = actorRdpsBreakdown(view, "recipient");
+
+    expect(breakdown.receivedSkills).toHaveLength(2);
+    expect(breakdown.receivedSkills[0]).toMatchObject({
+      abilityId: "skill-1",
+      attributedRdps: "9007199254741025",
+      damageEventCount: 9,
+      unresolvedRelationshipCount: 0,
+    });
+    expect(breakdown.receivedSkills[0]?.sources).toEqual([
+      expect.objectContaining({
+        providerActorId: "provider-a",
+        attributedRdps: "9007199254741000",
+      }),
+      expect.objectContaining({
+        providerActorId: "provider-b",
+        attributedRdps: "25",
+      }),
+    ]);
+    expect(breakdown.receivedSkills[1]).toMatchObject({
+      abilityId: "skill-2",
+      attributedRdps: null,
+      unresolvedRelationshipCount: 1,
+    });
+  });
+
+  it("groups outgoing rDPS by support effect and component", () => {
+    const view = {
+      damage_influences: [
+        influence("provider-a", "recipient-a", "skill-1", "critical-damage", "100"),
+        influence("provider-a", "recipient-b", "skill-2", "critical-damage", "50"),
+        influence("provider-a", "recipient-b", "skill-2", "lucky-damage", "25"),
+      ],
+    } as CombatHistoryView;
+
+    expect(actorRdpsBreakdown(view, "provider-a").grantedEffects).toEqual([
+      expect.objectContaining({
+        effectId: "2302121",
+        attributionComponent: "critical-damage",
+        attributedRdps: "150",
+        damageEventCount: 6,
+      }),
+      expect.objectContaining({
+        effectId: "2302121",
+        attributionComponent: "lucky-damage",
+        attributedRdps: "25",
+        damageEventCount: 3,
+      }),
+    ]);
   });
 });
 

@@ -4,7 +4,8 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use rlogs_plugin_combat_meter::{
-    COMBAT_HISTORY_SCHEMA_VERSION, CombatHistorySnapshot, HistoryLoadoutSlot,
+    COMBAT_HISTORY_SCHEMA_VERSION, CombatHistorySnapshot, CombatHistoryView, HistoryAbilitySummary,
+    HistoryAbilityTargetSummary, HistoryActorSummary, HistoryLoadoutSlot,
 };
 use serde::{Deserialize, Serialize};
 
@@ -605,13 +606,25 @@ pub(crate) fn merge_rdps_projection(
             })?;
             if view.kind != projected_view.kind
                 || view.segment_indices != projected_view.segment_indices
-                || view.elapsed_micros != projected_view.elapsed_micros
             {
                 return Err(format!(
-                    "replayed combat history run {} view {} does not match the saved boundary",
-                    run.run_index, view.id
+                    "replayed combat history run {} view {} does not match the saved boundary: saved kind={} segments={:?} elapsed={} projected kind={} segments={:?} elapsed={}",
+                    run.run_index,
+                    view.id,
+                    view.kind,
+                    view.segment_indices,
+                    view.elapsed_micros,
+                    projected_view.kind,
+                    projected_view.segment_indices,
+                    projected_view.elapsed_micros,
                 ));
             }
+            validate_ordinary_view_matches(view, projected_view).map_err(|error| {
+                format!(
+                    "replayed combat history run {} view {} changed the saved ordinary combat cube: {error}",
+                    run.run_index, view.id
+                )
+            })?;
             validate_rdps_conservation(projected_view).map_err(|error| {
                 format!(
                     "replayed combat history run {} view {} is invalid: {error}",
@@ -656,10 +669,16 @@ pub(crate) fn merge_rdps_projection(
                         run.run_index, view.id, actor.actor_id
                     ));
                 }
-                actor.rdps = projected_actor.rdps;
                 actor.rdps_damage = projected_actor.rdps_damage;
                 actor.rdps_contribution_given = projected_actor.rdps_contribution_given;
                 actor.rdps_contribution_received = projected_actor.rdps_contribution_received;
+                actor.rdps = actor.rdps_damage.map(|damage| {
+                    if view.elapsed_micros == 0 {
+                        0.0
+                    } else {
+                        damage as f64 * 1_000_000.0 / view.elapsed_micros as f64
+                    }
+                });
             }
             if let Some(actor) = projected_view.actors.iter().find(|actor| {
                 !existing_actor_keys.contains(&(actor.actor_id.clone(), actor.entity_uuid.clone()))
@@ -679,6 +698,151 @@ pub(crate) fn merge_rdps_projection(
     Ok(refreshed)
 }
 
+fn validate_ordinary_view_matches(
+    saved: &CombatHistoryView,
+    projected: &CombatHistoryView,
+) -> Result<(), String> {
+    let saved_actors = saved
+        .actors
+        .iter()
+        .filter(|actor| ordinary_actor_has_activity(actor))
+        .map(|actor| ((actor.actor_id.as_str(), actor.entity_uuid.as_str()), actor))
+        .collect::<HashMap<_, _>>();
+    let projected_actors = projected
+        .actors
+        .iter()
+        .filter(|actor| ordinary_actor_has_activity(actor))
+        .map(|actor| ((actor.actor_id.as_str(), actor.entity_uuid.as_str()), actor))
+        .collect::<HashMap<_, _>>();
+    for (key, saved_actor) in &saved_actors {
+        let projected_actor = projected_actors.get(key).ok_or_else(|| {
+            format!(
+                "active actor {} is missing from replay",
+                saved_actor.actor_id
+            )
+        })?;
+        let differences = ordinary_actor_differences(saved_actor, projected_actor);
+        if !differences.is_empty() {
+            return Err(format!(
+                "actor {} changed fields: {}",
+                saved_actor.actor_id,
+                differences.join(", ")
+            ));
+        }
+    }
+    if let Some((_, actor)) = projected_actors
+        .iter()
+        .find(|(key, _)| !saved_actors.contains_key(*key))
+    {
+        return Err(format!("replay introduced active actor {}", actor.actor_id));
+    }
+    Ok(())
+}
+
+fn ordinary_actor_has_activity(actor: &HistoryActorSummary) -> bool {
+    actor.damage != 0 || actor.effective_damage != 0 || actor.hits != 0 || actor.critical_hits != 0
+}
+
+fn ordinary_actor_differences(
+    saved: &HistoryActorSummary,
+    projected: &HistoryActorSummary,
+) -> Vec<&'static str> {
+    let mut differences = Vec::new();
+    for (matches, label) in [
+        (saved.damage == projected.damage, "damage"),
+        (
+            saved.effective_damage == projected.effective_damage,
+            "effective_damage",
+        ),
+        (saved.hits == projected.hits, "hits"),
+        (
+            saved.critical_hits == projected.critical_hits,
+            "critical_hits",
+        ),
+        (
+            ordinary_abilities_match(&saved.abilities, &projected.abilities),
+            "abilities",
+        ),
+    ] {
+        if !matches {
+            differences.push(label);
+        }
+    }
+    differences
+}
+
+fn ordinary_abilities_match(
+    saved: &[HistoryAbilitySummary],
+    projected: &[HistoryAbilitySummary],
+) -> bool {
+    let projected = projected
+        .iter()
+        .filter(|ability| ordinary_ability_has_damage(ability))
+        .map(|ability| (ability.ability_id.as_str(), ability))
+        .collect::<HashMap<_, _>>();
+    let saved = saved
+        .iter()
+        .filter(|ability| ordinary_ability_has_damage(ability))
+        .collect::<Vec<_>>();
+    saved.len() == projected.len()
+        && saved.into_iter().all(|ability| {
+            projected
+                .get(ability.ability_id.as_str())
+                .is_some_and(|candidate| {
+                    ability.hits == candidate.hits
+                        && ability.critical_hits == candidate.critical_hits
+                        && ability.damage == candidate.damage
+                        && ability.effective_damage == candidate.effective_damage
+                        && ordinary_ability_targets_match(&ability.targets, &candidate.targets)
+                })
+        })
+}
+
+fn ordinary_ability_has_damage(ability: &HistoryAbilitySummary) -> bool {
+    ability.damage != 0
+        || ability.effective_damage != 0
+        || ability.hits != 0
+        || ability.critical_hits != 0
+}
+
+fn ordinary_ability_targets_match(
+    saved: &[HistoryAbilityTargetSummary],
+    projected: &[HistoryAbilityTargetSummary],
+) -> bool {
+    let projected = projected
+        .iter()
+        .filter(|target| ordinary_ability_target_has_damage(target))
+        .map(|target| {
+            (
+                (target.actor_id.as_str(), target.entity_uuid.as_str()),
+                target,
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let saved = saved
+        .iter()
+        .filter(|target| ordinary_ability_target_has_damage(target))
+        .collect::<Vec<_>>();
+    saved.len() == projected.len()
+        && saved.into_iter().all(|target| {
+            projected
+                .get(&(target.actor_id.as_str(), target.entity_uuid.as_str()))
+                .is_some_and(|candidate| {
+                    target.damage == candidate.damage
+                        && target.effective_damage == candidate.effective_damage
+                        && target.hits == candidate.hits
+                        && target.critical_hits == candidate.critical_hits
+                })
+        })
+}
+
+fn ordinary_ability_target_has_damage(target: &HistoryAbilityTargetSummary) -> bool {
+    target.damage != 0
+        || target.effective_damage != 0
+        || target.hits != 0
+        || target.critical_hits != 0
+}
+
 fn validate_rdps_conservation(
     view: &rlogs_plugin_combat_meter::CombatHistoryView,
 ) -> Result<(), String> {
@@ -686,6 +850,7 @@ fn validate_rdps_conservation(
     let mut rdps_damage = 0_i128;
     let mut contribution_given = 0_i128;
     let mut contribution_received = 0_i128;
+    let mut has_unresolved_actor = false;
     for actor in &view.actors {
         let (adjusted, given, received) = match (
             actor.rdps_damage,
@@ -693,7 +858,10 @@ fn validate_rdps_conservation(
             actor.rdps_contribution_received,
         ) {
             (Some(adjusted), Some(given), Some(received)) => (adjusted, given, received),
-            (None, None, None) if actor.damage == 0 => (0, 0, 0),
+            (None, None, None) => {
+                has_unresolved_actor = true;
+                continue;
+            }
             _ => {
                 return Err(format!(
                     "actor {} has an incomplete exact rDPS tuple",
@@ -730,7 +898,9 @@ fn validate_rdps_conservation(
             .checked_add(i128::from(received))
             .ok_or_else(|| "contribution-received sum overflowed".to_string())?;
     }
-    if contribution_given != contribution_received || ordinary_damage != rdps_damage {
+    if !has_unresolved_actor
+        && (contribution_given != contribution_received || ordinary_damage != rdps_damage)
+    {
         return Err("rDPS transfer does not conserve the view's ordinary damage".into());
     }
     Ok(())
@@ -893,6 +1063,46 @@ mod tests {
         .unwrap()
     }
 
+    fn fixture_damage_ability(
+        ability_id: &str,
+        target_actor_id: &str,
+        target_entity_uuid: &str,
+        damage: i64,
+    ) -> HistoryAbilitySummary {
+        serde_json::from_value(serde_json::json!({
+            "ability_id": ability_id,
+            "presentation_name": null,
+            "presentation_kind": null,
+            "presentation_resolution": null,
+            "icon_asset_path": null,
+            "presentation_recount_group_id": null,
+            "presentation_recount_group_name": null,
+            "casts": 1,
+            "hits": 1,
+            "critical_hits": 0,
+            "damage": damage,
+            "effective_damage": damage,
+            "healing": 0,
+            "effective_healing": 0,
+            "shielding": 0,
+            "dps": damage as f64,
+            "encounter_dps": damage as f64,
+            "hps": 0.0,
+            "targets": [{
+                "actor_id": target_actor_id,
+                "entity_uuid": target_entity_uuid,
+                "damage": damage,
+                "effective_damage": damage,
+                "healing": 0,
+                "effective_healing": 0,
+                "shielding": 0,
+                "hits": 1,
+                "critical_hits": 0
+            }]
+        }))
+        .unwrap()
+    }
+
     fn fixture_snapshot(session_id: &str, run_indices: &[u32]) -> CombatHistorySnapshot {
         CombatHistorySnapshot {
             schema_version: COMBAT_HISTORY_SCHEMA_VERSION,
@@ -1019,6 +1229,71 @@ mod tests {
         projection.runs[0].views[0].actors[1].rdps_contribution_received = Some(10);
         projection.runs[0].views[0].actors[1].damage = 61;
         projection.runs[0].views[0].actors[1].rdps_damage = Some(51);
+        assert!(merge_rdps_projection(&saved, &projection).is_err());
+    }
+
+    #[test]
+    fn rdps_conservation_accepts_explicitly_unresolved_complete_tuples() {
+        let mut snapshot = fixture_snapshot("monitor.formula-unresolved", &[0]);
+        snapshot.runs[0].views[0].actors =
+            vec![fixture_actor("1", "101", 40), fixture_actor("2", "102", 60)];
+        let view = &mut snapshot.runs[0].views[0];
+        view.actors[0].rdps = None;
+        view.actors[0].rdps_damage = None;
+        view.actors[0].rdps_contribution_given = None;
+        view.actors[0].rdps_contribution_received = None;
+
+        assert_eq!(validate_rdps_conservation(view), Ok(()));
+
+        view.actors[0].rdps_damage = Some(40);
+        assert!(validate_rdps_conservation(view).is_err());
+    }
+
+    #[test]
+    fn rdps_refresh_accepts_elapsed_boundary_drift_when_damage_cube_matches() {
+        let mut saved = fixture_snapshot("monitor.formula-boundary-drift", &[0]);
+        saved.runs[0].views[0].elapsed_micros = 80;
+        saved.runs[0].views[0].actors =
+            vec![fixture_actor("1", "101", 40), fixture_actor("2", "102", 60)];
+        saved.runs[0].views[0].actors[0].abilities =
+            vec![fixture_damage_ability("5001", "9", "109", 40)];
+        saved.runs[0].views[0].actors[1].abilities =
+            vec![fixture_damage_ability("5002", "9", "109", 60)];
+
+        let mut projection = saved.clone();
+        projection.rdps_formula_identity = Some("sha256:new".into());
+        projection.runs[0].views[0].elapsed_micros = 100;
+        projection.runs[0].views[0].actors[0].rdps = Some(500_000.0);
+        projection.runs[0].views[0].actors[0].rdps_damage = Some(50);
+        projection.runs[0].views[0].actors[0].rdps_contribution_given = Some(10);
+        projection.runs[0].views[0].actors[1].rdps = Some(500_000.0);
+        projection.runs[0].views[0].actors[1].rdps_damage = Some(50);
+        projection.runs[0].views[0].actors[1].rdps_contribution_received = Some(10);
+
+        let refreshed = merge_rdps_projection(&saved, &projection).unwrap();
+        assert_eq!(refreshed.runs[0].views[0].elapsed_micros, 80);
+        assert_eq!(refreshed.runs[0].views[0].actors[0].rdps, Some(625_000.0));
+        assert_eq!(refreshed.runs[0].views[0].actors[1].rdps, Some(625_000.0));
+    }
+
+    #[test]
+    fn rdps_refresh_rejects_changed_ability_or_target_damage_cube() {
+        let mut saved = fixture_snapshot("monitor.formula-cube-reject", &[0]);
+        saved.runs[0].views[0].actors =
+            vec![fixture_actor("1", "101", 40), fixture_actor("2", "102", 60)];
+        saved.runs[0].views[0].actors[0].abilities =
+            vec![fixture_damage_ability("5001", "9", "109", 40)];
+        saved.runs[0].views[0].actors[1].abilities =
+            vec![fixture_damage_ability("5002", "9", "109", 60)];
+
+        let mut projection = saved.clone();
+        projection.rdps_formula_identity = Some("sha256:new".into());
+        projection.runs[0].views[0].actors[0].abilities[0].ability_id = "5003".into();
+        assert!(merge_rdps_projection(&saved, &projection).is_err());
+
+        projection = saved.clone();
+        projection.rdps_formula_identity = Some("sha256:new".into());
+        projection.runs[0].views[0].actors[0].abilities[0].targets[0].actor_id = "10".into();
         assert!(merge_rdps_projection(&saved, &projection).is_err());
     }
 

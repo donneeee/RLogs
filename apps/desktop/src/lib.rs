@@ -15,10 +15,10 @@ mod submission_transport;
 mod theme_settings;
 
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
@@ -157,6 +157,7 @@ pub fn run_browser_host_from_env() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind(bind)?;
     let controller = Arc::new(RuntimeController::new(install_root)?);
     controller.start_automatic_monitor(None)?;
+    controller.start_history_rdps_backfill_worker(None)?;
     controller.start_automatic_submission_uploader(None)?;
     let address = listener.local_addr()?;
     println!("rLogs local controls: http://{address}");
@@ -327,6 +328,7 @@ pub fn start_embedded_local_host(
     let managed_controller = Arc::clone(&controller);
     let shutdown = Arc::new(AtomicBool::new(false));
     controller.start_automatic_monitor(Some(Arc::clone(&shutdown)))?;
+    controller.start_history_rdps_backfill_worker(Some(Arc::clone(&shutdown)))?;
     controller.start_automatic_submission_uploader(Some(Arc::clone(&shutdown)))?;
     let worker_shutdown = Arc::clone(&shutdown);
     let worker = thread::Builder::new()
@@ -519,7 +521,7 @@ impl Default for RuntimeSnapshot {
 const LIVE_COMBAT_FEED_SCHEMA_VERSION: u16 = 1;
 const DEFAULT_LIVE_COMBAT_WAIT_MILLIS: u64 = 1_000;
 const MAXIMUM_LIVE_COMBAT_WAIT_MILLIS: u64 = 5_000;
-const COMBAT_HISTORY_FEED_SCHEMA_VERSION: u16 = 1;
+const COMBAT_HISTORY_FEED_SCHEMA_VERSION: u16 = 2;
 const DEFAULT_COMBAT_HISTORY_WAIT_MILLIS: u64 = 5_000;
 const MAXIMUM_COMBAT_HISTORY_WAIT_MILLIS: u64 = 30_000;
 
@@ -1029,44 +1031,209 @@ struct LiveCombatWaitRequest {
 struct CombatHistoryRevisionUpdate {
     schema_version: u16,
     revision: u64,
+    catalog_changed: bool,
+    rdps_refreshes: Vec<HistoryRdpsRefreshProgress>,
 }
 
 #[derive(Debug, Default)]
 struct CombatHistoryRevisionFeed {
-    revision: Mutex<u64>,
+    state: Mutex<CombatHistoryRevisionState>,
     changed: Condvar,
+}
+
+#[derive(Debug, Default)]
+struct CombatHistoryRevisionState {
+    revision: u64,
+    last_catalog_revision: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum HistoryRdpsRefreshStage {
+    Queued,
+    WaitingForLiveCapture,
+    Replaying,
+    ValidatingAndSaving,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct HistoryRdpsRefreshProgress {
+    session_id: String,
+    stage: HistoryRdpsRefreshStage,
+    processed_events: u64,
+    processed_bytes: u64,
+    total_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
+}
+
+impl HistoryRdpsRefreshProgress {
+    fn queued(session_id: String) -> Self {
+        Self {
+            session_id,
+            stage: HistoryRdpsRefreshStage::Queued,
+            processed_events: 0,
+            processed_bytes: 0,
+            total_bytes: 0,
+            detail: None,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct HistoryRdpsBackfillQueue {
+    state: Mutex<HistoryRdpsBackfillState>,
+    changed: Condvar,
+}
+
+#[derive(Debug, Default)]
+struct HistoryRdpsBackfillState {
+    pending: BTreeSet<String>,
+    active: Option<String>,
+    progress: BTreeMap<String, HistoryRdpsRefreshProgress>,
+}
+
+impl HistoryRdpsBackfillQueue {
+    fn enqueue(&self, session_id: String) -> bool {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.active.as_deref() == Some(session_id.as_str())
+            || state.pending.contains(&session_id)
+        {
+            return false;
+        }
+        state.progress.insert(
+            session_id.clone(),
+            HistoryRdpsRefreshProgress::queued(session_id.clone()),
+        );
+        state.pending.insert(session_id);
+        self.changed.notify_one();
+        true
+    }
+
+    fn next(&self, shutdown: Option<&AtomicBool>) -> Option<String> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loop {
+            if shutdown.is_some_and(|shutdown| shutdown.load(Ordering::Acquire)) {
+                return None;
+            }
+            if let Some(session_id) = state.pending.pop_first() {
+                state.active = Some(session_id.clone());
+                return Some(session_id);
+            }
+            state = match self.changed.wait_timeout(state, Duration::from_millis(500)) {
+                Ok((state, _)) => state,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
+        }
+    }
+
+    fn update_progress(&self, progress: HistoryRdpsRefreshProgress) {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .progress
+            .insert(progress.session_id.clone(), progress);
+    }
+
+    fn requeue(&self, session_id: String) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.active.as_deref() == Some(session_id.as_str()) {
+            state.active = None;
+        }
+        state.pending.insert(session_id);
+        self.changed.notify_one();
+    }
+
+    fn finish(&self, session_id: &str) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.active.as_deref() == Some(session_id) {
+            state.active = None;
+        }
+        state.progress.remove(session_id);
+    }
+
+    fn fail(&self, session_id: &str, detail: String) {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.active.as_deref() == Some(session_id) {
+            state.active = None;
+        }
+        state.progress.insert(
+            session_id.to_owned(),
+            HistoryRdpsRefreshProgress {
+                session_id: session_id.to_owned(),
+                stage: HistoryRdpsRefreshStage::Failed,
+                processed_events: 0,
+                processed_bytes: 0,
+                total_bytes: 0,
+                detail: Some(detail),
+            },
+        );
+    }
+
+    fn progress_snapshot(&self) -> Vec<HistoryRdpsRefreshProgress> {
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .progress
+            .values()
+            .cloned()
+            .collect()
+    }
 }
 
 impl CombatHistoryRevisionFeed {
     fn publish(&self) {
-        let mut revision = self
-            .revision
+        let mut state = self
+            .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *revision = revision.saturating_add(1);
+        state.revision = state.revision.saturating_add(1);
+        state.last_catalog_revision = state.revision;
         self.changed.notify_all();
     }
 
-    fn wait_after(&self, after_revision: u64, timeout: Duration) -> CombatHistoryRevisionUpdate {
-        let deadline = Instant::now() + timeout;
-        let mut revision = self
-            .revision
+    fn publish_progress(&self) {
+        let mut state = self
+            .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        while *revision <= after_revision {
+        state.revision = state.revision.saturating_add(1);
+        self.changed.notify_all();
+    }
+
+    fn wait_after(&self, after_revision: u64, timeout: Duration) -> (u64, bool) {
+        let deadline = Instant::now() + timeout;
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while state.revision <= after_revision {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 break;
             }
-            revision = match self.changed.wait_timeout(revision, remaining) {
-                Ok((revision, _)) => revision,
+            state = match self.changed.wait_timeout(state, remaining) {
+                Ok((state, _)) => state,
                 Err(poisoned) => poisoned.into_inner().0,
             };
         }
-        CombatHistoryRevisionUpdate {
-            schema_version: COMBAT_HISTORY_FEED_SCHEMA_VERSION,
-            revision: *revision,
-        }
+        (state.revision, state.last_catalog_revision > after_revision)
     }
 }
 
@@ -2925,6 +3092,7 @@ struct RuntimeController {
     live_combat_feed: Arc<LiveCombatFeed>,
     live_event_feed: Arc<LiveEventFeed>,
     combat_history_feed: Arc<CombatHistoryRevisionFeed>,
+    history_rdps_backfill: Arc<HistoryRdpsBackfillQueue>,
     #[cfg(windows)]
     live_stop: Arc<Mutex<Option<LiveCaptureStopHandle>>>,
     #[cfg(windows)]
@@ -3001,6 +3169,7 @@ impl RuntimeController {
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
             live_event_feed: Arc::new(LiveEventFeed::default()),
             combat_history_feed: Arc::new(CombatHistoryRevisionFeed::default()),
+            history_rdps_backfill: Arc::new(HistoryRdpsBackfillQueue::default()),
             #[cfg(windows)]
             live_stop: Arc::new(Mutex::new(None)),
             #[cfg(windows)]
@@ -3077,6 +3246,181 @@ impl RuntimeController {
             })
             .map(|_| ())
             .map_err(|error| format!("could not start automatic submission uploader: {error}"))
+    }
+
+    fn start_history_rdps_backfill_worker(
+        self: &Arc<Self>,
+        shutdown: Option<Arc<AtomicBool>>,
+    ) -> Result<(), String> {
+        // Do not scan or replay archived sessions at startup. A stale session
+        // is queued only when the user explicitly opens it; the refreshed
+        // projection is then persisted into that history artifact.
+        let controller = Arc::clone(self);
+        thread::Builder::new()
+            .name("rlogs-history-rdps".into())
+            .spawn(move || {
+                while let Some(session_id) =
+                    controller.history_rdps_backfill.next(shutdown.as_deref())
+                {
+                    if controller.snapshot().phase == RuntimePhase::Processing {
+                        controller.history_rdps_backfill.update_progress(
+                            HistoryRdpsRefreshProgress {
+                                session_id: session_id.clone(),
+                                stage: HistoryRdpsRefreshStage::WaitingForLiveCapture,
+                                processed_events: 0,
+                                processed_bytes: 0,
+                                total_bytes: 0,
+                                detail: None,
+                            },
+                        );
+                        controller.combat_history_feed.publish_progress();
+                        controller.history_rdps_backfill.requeue(session_id);
+                        thread::sleep(Duration::from_millis(250));
+                        continue;
+                    }
+                    match controller.refresh_history_rdps(&session_id, shutdown.as_deref()) {
+                        Ok(HistoryRdpsRefresh::Current) => {
+                            controller.history_rdps_backfill.finish(&session_id);
+                            controller.combat_history_feed.publish_progress();
+                        }
+                        Ok(HistoryRdpsRefresh::Refreshed) => {
+                            controller.history_rdps_backfill.finish(&session_id);
+                            controller.combat_history_feed.publish();
+                        }
+                        Ok(HistoryRdpsRefresh::Deferred) => {
+                            controller.history_rdps_backfill.update_progress(
+                                HistoryRdpsRefreshProgress {
+                                    session_id: session_id.clone(),
+                                    stage: HistoryRdpsRefreshStage::WaitingForLiveCapture,
+                                    processed_events: 0,
+                                    processed_bytes: 0,
+                                    total_bytes: 0,
+                                    detail: None,
+                                },
+                            );
+                            controller.combat_history_feed.publish_progress();
+                            controller.history_rdps_backfill.requeue(session_id);
+                            thread::sleep(Duration::from_millis(250));
+                        }
+                        Err(error) => {
+                            controller
+                                .history_rdps_backfill
+                                .fail(&session_id, bounded_history_rdps_failure_detail(&error));
+                            controller.combat_history_feed.publish_progress();
+                            eprintln!(
+                                "could not refresh derived rDPS for history {session_id}: {error}"
+                            );
+                        }
+                    }
+                }
+            })
+            .map(|_| ())
+            .map_err(|error| format!("could not start history rDPS worker: {error}"))
+    }
+
+    fn refresh_history_rdps(
+        &self,
+        session_id: &str,
+        shutdown: Option<&AtomicBool>,
+    ) -> Result<HistoryRdpsRefresh, String> {
+        let snapshot = self
+            .combat_history
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .detail(session_id)?;
+        if !state_damage_contribution_target_matches(
+            &snapshot.deployment_id,
+            &snapshot.client_build,
+            &snapshot.protocol_pack_digest,
+        )? || snapshot.rdps_formula_identity.as_deref()
+            == Some(state_damage_contribution_formula_identity())
+        {
+            return Ok(HistoryRdpsRefresh::Current);
+        }
+
+        let raw_log = self
+            .install_root
+            .join("runtime-data/logs")
+            .join(format!("{session_id}.rlog"));
+        let total_bytes = raw_log
+            .metadata()
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        self.history_rdps_backfill
+            .update_progress(HistoryRdpsRefreshProgress {
+                session_id: session_id.to_owned(),
+                stage: HistoryRdpsRefreshStage::Replaying,
+                processed_events: 0,
+                processed_bytes: 0,
+                total_bytes,
+                detail: None,
+            });
+        self.combat_history_feed.publish_progress();
+        let state = Arc::clone(&self.state);
+        let mut last_progress_publish = Instant::now();
+        let mut last_percent = 0_u64;
+        let mut final_processed_events = 0_u64;
+        let mut final_processed_bytes = 0_u64;
+        let projection = replay_bpsr_combat_history_interruptible(
+            &raw_log,
+            || {
+                shutdown.is_some_and(|shutdown| shutdown.load(Ordering::Acquire))
+                    || state
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .phase
+                        == RuntimePhase::Processing
+            },
+            |processed_events, processed_bytes, total_bytes| {
+                final_processed_events = processed_events;
+                final_processed_bytes = processed_bytes;
+                let percent = if total_bytes == 0 {
+                    0
+                } else {
+                    processed_bytes.saturating_mul(100) / total_bytes
+                };
+                if percent <= last_percent
+                    && last_progress_publish.elapsed() < Duration::from_millis(250)
+                {
+                    return;
+                }
+                last_percent = percent;
+                last_progress_publish = Instant::now();
+                self.history_rdps_backfill
+                    .update_progress(HistoryRdpsRefreshProgress {
+                        session_id: session_id.to_owned(),
+                        stage: HistoryRdpsRefreshStage::Replaying,
+                        processed_events,
+                        processed_bytes,
+                        total_bytes,
+                        detail: None,
+                    });
+                self.combat_history_feed.publish_progress();
+            },
+        )?;
+        let Some(projection) = projection else {
+            return Ok(HistoryRdpsRefresh::Deferred);
+        };
+        if shutdown.is_some_and(|shutdown| shutdown.load(Ordering::Acquire))
+            || self.snapshot().phase == RuntimePhase::Processing
+        {
+            return Ok(HistoryRdpsRefresh::Deferred);
+        }
+        self.history_rdps_backfill
+            .update_progress(HistoryRdpsRefreshProgress {
+                session_id: session_id.to_owned(),
+                stage: HistoryRdpsRefreshStage::ValidatingAndSaving,
+                processed_events: final_processed_events,
+                processed_bytes: final_processed_bytes,
+                total_bytes,
+                detail: None,
+            });
+        self.combat_history_feed.publish_progress();
+        self.combat_history
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .refresh_rdps_projection(&projection)?;
+        Ok(HistoryRdpsRefresh::Refreshed)
     }
 
     #[cfg(windows)]
@@ -3220,8 +3564,15 @@ impl RuntimeController {
                 .timeout_millis
                 .clamp(1, MAXIMUM_COMBAT_HISTORY_WAIT_MILLIS),
         );
-        self.combat_history_feed
-            .wait_after(request.after_revision, timeout)
+        let (revision, catalog_changed) = self
+            .combat_history_feed
+            .wait_after(request.after_revision, timeout);
+        CombatHistoryRevisionUpdate {
+            schema_version: COMBAT_HISTORY_FEED_SCHEMA_VERSION,
+            revision,
+            catalog_changed,
+            rdps_refreshes: self.history_rdps_backfill.progress_snapshot(),
+        }
     }
 
     fn combat_history_detail(
@@ -3245,28 +3596,16 @@ impl RuntimeController {
                 "formula_runtime_blocked: exact-build promotion proof gates are incomplete",
             );
         } else if snapshot.rdps_formula_identity.as_deref() != Some(formula_identity) {
-            let raw_log = self
-                .install_root
-                .join("runtime-data/logs")
-                .join(format!("{}.rlog", snapshot.session_id));
-            match replay_bpsr_combat_history(&raw_log).and_then(|projection| {
-                self.combat_history
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .refresh_rdps_projection(&projection)
-            }) {
-                Ok(refreshed) => snapshot = refreshed,
-                Err(error) => {
-                    eprintln!(
-                        "could not refresh derived rDPS for history {}: {error}",
-                        snapshot.session_id
-                    );
-                    clear_history_rdps_projection(
-                        &mut snapshot,
-                        "formula_replay_unavailable: exact sealed-log replay failed",
-                    );
-                }
+            if self
+                .history_rdps_backfill
+                .enqueue(snapshot.session_id.clone())
+            {
+                self.combat_history_feed.publish_progress();
             }
+            clear_history_rdps_projection(
+                &mut snapshot,
+                "formula_refresh_queued: recalculating archived rDPS in the background",
+            );
         }
         // A public character name may be learned before or after the saved
         // run. Resolve that label by exact UID, but never borrow the current
@@ -6215,14 +6554,70 @@ fn bpsr_combat_timeline_plugin() -> Result<CombatTimelinePlugin, String> {
     }))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HistoryRdpsRefresh {
+    Current,
+    Refreshed,
+    Deferred,
+}
+
+#[cfg(test)]
 fn replay_bpsr_combat_history(path: &Path) -> Result<CombatHistorySnapshot, String> {
+    replay_bpsr_combat_history_interruptible(path, || false, |_, _, _| {})?.ok_or_else(|| {
+        "sealed combat history replay was unexpectedly deferred without live capture".into()
+    })
+}
+
+struct ProgressTrackingBufRead<R> {
+    inner: R,
+    consumed: Arc<AtomicU64>,
+}
+
+impl<R> ProgressTrackingBufRead<R> {
+    fn new(inner: R, consumed: Arc<AtomicU64>) -> Self {
+        Self { inner, consumed }
+    }
+}
+
+impl<R: Read> Read for ProgressTrackingBufRead<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        self.consumed
+            .fetch_add(u64::try_from(read).unwrap_or(u64::MAX), Ordering::Relaxed);
+        Ok(read)
+    }
+}
+
+impl<R: BufRead> BufRead for ProgressTrackingBufRead<R> {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        self.inner.fill_buf()
+    }
+
+    fn consume(&mut self, amount: usize) {
+        self.inner.consume(amount);
+        self.consumed
+            .fetch_add(u64::try_from(amount).unwrap_or(u64::MAX), Ordering::Relaxed);
+    }
+}
+
+fn replay_bpsr_combat_history_interruptible(
+    path: &Path,
+    should_defer: impl Fn() -> bool,
+    mut on_progress: impl FnMut(u64, u64, u64),
+) -> Result<Option<CombatHistorySnapshot>, String> {
+    if should_defer() {
+        return Ok(None);
+    }
+    let total_bytes = path.metadata().map(|metadata| metadata.len()).unwrap_or(0);
     let file = File::open(path).map_err(|error| {
         format!(
             "could not open sealed combat log {}: {error}",
             path.display()
         )
     })?;
-    let mut reader = RlogReader::new(BufReader::new(file), RlogLimits::default())
+    let consumed = Arc::new(AtomicU64::new(0));
+    let tracked = ProgressTrackingBufRead::new(BufReader::new(file), Arc::clone(&consumed));
+    let mut reader = RlogReader::new(tracked, RlogLimits::default())
         .map_err(|error| format!("could not validate combat log header: {error}"))?;
     let header = reader.header().clone();
     let mut meter = bpsr_combat_timeline_plugin()?;
@@ -6232,6 +6627,7 @@ fn replay_bpsr_combat_history(path: &Path) -> Result<CombatHistorySnapshot, Stri
             .map_err(|error| format!("could not load BPSR run rules: {error}"))?,
     );
     encounter.begin_live(&header);
+    let mut event_count = 0_u64;
     while let Some(event) = reader
         .next_event()
         .map_err(|error| format!("sealed combat log replay failed: {error}"))?
@@ -6240,16 +6636,49 @@ fn replay_bpsr_combat_history(path: &Path) -> Result<CombatHistorySnapshot, Stri
         encounter
             .observe_live(&event)
             .map_err(|error| format!("encounter replay failed: {error}"))?;
+        event_count = event_count.saturating_add(1);
+        if event_count % 4_096 == 0 {
+            on_progress(
+                event_count,
+                consumed.load(Ordering::Relaxed).min(total_bytes),
+                total_bytes,
+            );
+            if should_defer() {
+                return Ok(None);
+            }
+        }
     }
+    on_progress(
+        event_count,
+        consumed.load(Ordering::Relaxed).min(total_bytes),
+        total_bytes,
+    );
     if reader.summary().is_none() {
         return Err("sealed combat log has no validated integrity summary".into());
+    }
+    if should_defer() {
+        return Ok(None);
     }
     let run_projection = encounter
         .live_snapshot()
         .map_err(|error| format!("could not project replayed runs: {error}"))?;
     meter
         .history_snapshot(&run_projection.runs)
+        .map(Some)
         .map_err(|error| format!("could not project replayed combat history: {error}"))
+}
+
+fn bounded_history_rdps_failure_detail(error: &str) -> String {
+    const MAXIMUM_DETAIL_CHARS: usize = 600;
+    let normalized = error.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= MAXIMUM_DETAIL_CHARS {
+        return normalized;
+    }
+    normalized
+        .chars()
+        .take(MAXIMUM_DETAIL_CHARS.saturating_sub(1))
+        .chain(std::iter::once('…'))
+        .collect()
 }
 
 fn clear_history_rdps_projection(snapshot: &mut CombatHistorySnapshot, status: &str) {
@@ -8232,7 +8661,8 @@ mod tests {
     };
     use rlogs_game_bpsr::{
         CharacterProfilePatch, DungeonSegmentBoundary, DungeonSegmentEndReason,
-        DungeonSegmentStartReason, FragmentKind,
+        DungeonSegmentStartReason, FragmentKind, state_damage_contribution_game_build,
+        state_damage_contribution_protocol_pack_digest,
     };
     use rlogs_log_format::{RlogSeal, RlogWriter};
     use rlogs_network::IpEndpoint;
@@ -9065,6 +9495,70 @@ mod tests {
     }
 
     #[test]
+    fn stale_history_returns_immediately_and_queues_background_rdps_without_raw_log() {
+        let root = temporary_root();
+        let controller = RuntimeController::new(root.clone()).unwrap();
+        let mut snapshot = captured_marksman_history();
+        snapshot.session_id = "history-background-rdps".into();
+        snapshot.client_build = state_damage_contribution_game_build().unwrap().into();
+        snapshot.protocol_pack_digest = state_damage_contribution_protocol_pack_digest()
+            .unwrap()
+            .into();
+        snapshot.rdps_formula_identity = Some("sha256:stale".into());
+        snapshot.runs[0].rdps_status = "partial_packet_proven_rules".into();
+        let ordinary_damage = snapshot.runs[0].views[0].actors[0].damage;
+        controller
+            .combat_history
+            .lock()
+            .unwrap()
+            .record(&snapshot, 1)
+            .unwrap();
+
+        // No .rlog exists. The detail request must still succeed because raw
+        // replay belongs exclusively to the serialized background worker.
+        let returned = controller
+            .combat_history_detail(CombatHistoryDetailRequest {
+                session_id: snapshot.session_id.clone(),
+            })
+            .unwrap();
+
+        assert_eq!(returned.runs[0].views[0].actors[0].damage, ordinary_damage);
+        assert_eq!(returned.rdps_formula_identity, None);
+        assert_eq!(
+            returned.runs[0].rdps_status,
+            "formula_refresh_queued: recalculating archived rDPS in the background"
+        );
+        assert_eq!(returned.runs[0].views[0].actors[0].rdps, None);
+        let progress = controller.history_rdps_backfill.progress_snapshot();
+        assert_eq!(progress.len(), 1);
+        assert_eq!(progress[0].session_id, snapshot.session_id);
+        assert_eq!(progress[0].stage, HistoryRdpsRefreshStage::Queued);
+        assert_eq!(
+            controller.history_rdps_backfill.next(None).as_deref(),
+            Some(snapshot.session_id.as_str())
+        );
+        assert!(
+            !controller
+                .history_rdps_backfill
+                .enqueue(snapshot.session_id.clone())
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn interruptible_history_replay_defers_before_touching_the_log() {
+        let result = replay_bpsr_combat_history_interruptible(
+            Path::new("this-history-log-does-not-exist.rlog"),
+            || true,
+            |_, _, _| {},
+        )
+        .unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
     #[ignore = "set RLOGS_EXTERNAL_RLOG and RLOGS_EXTERNAL_HISTORY_DETAIL to reviewed artifacts"]
     fn external_history_rdps_refresh_preview_is_conserved() {
         let rlog = std::env::var_os("RLOGS_EXTERNAL_RLOG")
@@ -9095,19 +9589,43 @@ mod tests {
                         .map(|actor| actor.damage)
                         .sum::<i64>()
                 );
-                let given = view
-                    .actors
+                let mut given = 0_i128;
+                let mut received = 0_i128;
+                let mut unresolved = 0_usize;
+                for actor in &view.actors {
+                    match (
+                        actor.rdps_damage,
+                        actor.rdps_contribution_given,
+                        actor.rdps_contribution_received,
+                    ) {
+                        (Some(_), Some(actor_given), Some(actor_received)) => {
+                            given += i128::from(actor_given);
+                            received += i128::from(actor_received);
+                        }
+                        (None, None, None) => unresolved += 1,
+                        _ => panic!("actor {} has a partial rDPS tuple", actor.actor_id),
+                    }
+                }
+                if unresolved == 0 {
+                    assert_eq!(given, received);
+                }
+                let attributed = view
+                    .damage_influences
                     .iter()
-                    .map(|actor| actor.rdps_contribution_given.unwrap_or_default())
-                    .sum::<i64>();
-                let received = view
-                    .actors
-                    .iter()
-                    .map(|actor| actor.rdps_contribution_received.unwrap_or_default())
-                    .sum::<i64>();
-                assert_eq!(given, received);
+                    .try_fold(0_i128, |total, influence| {
+                        let amount = influence
+                            .attributed_rdps
+                            .as_deref()
+                            .unwrap_or("0")
+                            .parse::<i128>()
+                            .map_err(|_| "invalid exact influence amount".to_string())?;
+                        total
+                            .checked_add(amount)
+                            .ok_or_else(|| "exact influence sum overflowed".to_string())
+                    })
+                    .expect("exact influence amounts should be valid and bounded");
                 eprintln!(
-                    "run={} view={} actors={} contribution={given}",
+                    "run={} view={} actors={} resolved_given={given} resolved_received={received} unresolved_actors={unresolved} attributed_rows={attributed}",
                     run.run_index,
                     view.id,
                     view.actors.len()
@@ -9449,21 +9967,26 @@ mod tests {
     }
 
     #[test]
-    fn combat_history_feed_wakes_only_after_a_recorded_change() {
+    fn combat_history_feed_distinguishes_progress_from_saved_catalog_changes() {
         let feed = Arc::new(CombatHistoryRevisionFeed::default());
         let publisher = Arc::clone(&feed);
         let worker = thread::spawn(move || {
             thread::sleep(Duration::from_millis(10));
-            publisher.publish();
+            publisher.publish_progress();
         });
 
-        let update = feed.wait_after(0, Duration::from_secs(1));
+        let (revision, catalog_changed) = feed.wait_after(0, Duration::from_secs(1));
         worker.join().unwrap();
-        assert_eq!(update.schema_version, COMBAT_HISTORY_FEED_SCHEMA_VERSION);
-        assert_eq!(update.revision, 1);
+        assert_eq!(revision, 1);
+        assert!(!catalog_changed);
 
-        let unchanged = feed.wait_after(update.revision, Duration::from_millis(1));
-        assert_eq!(unchanged.revision, update.revision);
+        feed.publish();
+        let (saved_revision, catalog_changed) = feed.wait_after(revision, Duration::from_millis(1));
+        assert_eq!(saved_revision, 2);
+        assert!(catalog_changed);
+
+        let unchanged = feed.wait_after(saved_revision, Duration::from_millis(1));
+        assert_eq!(unchanged, (saved_revision, false));
     }
 
     #[test]
