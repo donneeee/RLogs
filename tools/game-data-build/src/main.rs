@@ -588,7 +588,10 @@ fn normalized_path(path: &Path) -> String {
 mod tests {
     use super::*;
     use rlogs_game_data::{CachePolicy, GameDataBuild, GameDataStore};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static NEXT_TEMPORARY_OUTPUT: AtomicU64 = AtomicU64::new(0);
 
     fn fixture_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -600,7 +603,11 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("rlogs-game-data-{}-{suffix}", std::process::id()))
+        let sequence = NEXT_TEMPORARY_OUTPUT.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "rlogs-game-data-{}-{suffix}-{sequence}",
+            std::process::id()
+        ))
     }
 
     #[test]
