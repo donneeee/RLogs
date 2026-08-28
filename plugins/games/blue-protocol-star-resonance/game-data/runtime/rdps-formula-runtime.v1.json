@@ -430,10 +430,48 @@
         "exact_removal_instances": 5
       }
     ],
+    "recipient_dependency": {
+      "effect_id": 2203220,
+      "talent_id": 1122,
+      "recipient_class_id": 11,
+      "required_status_level": 1,
+      "critical_chance_to_critical_damage_numerator": 1,
+      "critical_chance_to_critical_damage_denominator": 2,
+      "exact_build_status_lifecycle_authority": true,
+      "exact_build_formula_authority": true,
+      "proof_content_sha256": "bfb1b112ccf848aa6b8dbc98980c1d937522dbe07b909abfd5a1e457de4d6dff",
+      "proof_exact_build_rlogs": 26,
+      "exact_isolated_transition_count": 4,
+      "magnitudes": [
+        {
+          "critical_chance_raw_delta": 150,
+          "critical_damage_raw_delta": 75,
+          "exact_isolated_transition_count": 3
+        },
+        {
+          "critical_chance_raw_delta": 300,
+          "critical_damage_raw_delta": 150,
+          "exact_isolated_transition_count": 1
+        }
+      ],
+      "replay": {
+        "content_sha256": "b90669032e38b323cfc961a4b630c3d2bb0cbf4d2de5f695a741344054c2fe1e",
+        "content_bytes": 134021194,
+        "exact_build_rlogs": 26,
+        "total_canonical_events": 6411565,
+        "emitted_contribution_events": 13618,
+        "sessions_with_emissions": 6,
+        "dependency_affected_sessions": 6,
+        "projected_credit": 40569478,
+        "dependency_increment": 7546368,
+        "all_runtime_target_match": true,
+        "all_conserved": true
+      }
+    },
     "critical_chance_runtime_transfer_enabled": true,
     "lucky_chance_runtime_transfer_enabled": true,
     "combined_critical_lucky_runtime_transfer_enabled": false,
-    "recipient_dependency_runtime_transfer_enabled": false,
+    "recipient_dependency_runtime_transfer_enabled": true,
     "runtime_transfer_enabled": false
   },
   "highland_blood": {

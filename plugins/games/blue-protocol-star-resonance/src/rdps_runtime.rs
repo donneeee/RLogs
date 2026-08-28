@@ -509,6 +509,98 @@ pub(crate) struct InspirationChanceMagnitudeRuntimeConfig {
     pub exact_removal_instances: u32,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InspirationRecipientDependencyMagnitudeRuntimeConfig {
+    pub critical_chance_raw_delta: i64,
+    pub critical_damage_raw_delta: i64,
+    pub exact_isolated_transition_count: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InspirationRecipientDependencyReplayRuntimeConfig {
+    pub content_sha256: String,
+    pub content_bytes: u64,
+    pub exact_build_rlogs: u32,
+    pub total_canonical_events: u64,
+    pub emitted_contribution_events: u64,
+    pub sessions_with_emissions: u32,
+    pub dependency_affected_sessions: u32,
+    pub projected_credit: u64,
+    pub dependency_increment: u64,
+    pub all_runtime_target_match: bool,
+    pub all_conserved: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InspirationRecipientDependencyRuntimeConfig {
+    pub effect_id: i64,
+    pub talent_id: i64,
+    pub recipient_class_id: i32,
+    pub required_status_level: i32,
+    pub critical_chance_to_critical_damage_numerator: i64,
+    pub critical_chance_to_critical_damage_denominator: i64,
+    pub exact_build_status_lifecycle_authority: bool,
+    pub exact_build_formula_authority: bool,
+    pub proof_content_sha256: String,
+    pub proof_exact_build_rlogs: u32,
+    pub exact_isolated_transition_count: u32,
+    pub magnitudes: Vec<InspirationRecipientDependencyMagnitudeRuntimeConfig>,
+    pub replay: InspirationRecipientDependencyReplayRuntimeConfig,
+}
+
+impl InspirationRecipientDependencyRuntimeConfig {
+    fn is_current_authority(&self) -> bool {
+        self.effect_id == 2_203_220
+            && self.talent_id == 1_122
+            && self.recipient_class_id == 11
+            && self.required_status_level == 1
+            && self.critical_chance_to_critical_damage_numerator == 1
+            && self.critical_chance_to_critical_damage_denominator == 2
+            && self.exact_build_status_lifecycle_authority
+            && self.exact_build_formula_authority
+            && self.proof_content_sha256
+                == "bfb1b112ccf848aa6b8dbc98980c1d937522dbe07b909abfd5a1e457de4d6dff"
+            && self.proof_exact_build_rlogs == 26
+            && self.exact_isolated_transition_count == 4
+            && self.magnitudes
+                == [
+                    InspirationRecipientDependencyMagnitudeRuntimeConfig {
+                        critical_chance_raw_delta: 150,
+                        critical_damage_raw_delta: 75,
+                        exact_isolated_transition_count: 3,
+                    },
+                    InspirationRecipientDependencyMagnitudeRuntimeConfig {
+                        critical_chance_raw_delta: 300,
+                        critical_damage_raw_delta: 150,
+                        exact_isolated_transition_count: 1,
+                    },
+                ]
+            && self.replay.content_sha256
+                == "b90669032e38b323cfc961a4b630c3d2bb0cbf4d2de5f695a741344054c2fe1e"
+            && self.replay.content_bytes == 134_021_194
+            && self.replay.exact_build_rlogs == 26
+            && self.replay.total_canonical_events == 6_411_565
+            && self.replay.emitted_contribution_events == 13_618
+            && self.replay.sessions_with_emissions == 6
+            && self.replay.dependency_affected_sessions == 6
+            && self.replay.projected_credit == 40_569_478
+            && self.replay.dependency_increment == 7_546_368
+            && self.replay.all_runtime_target_match
+            && self.replay.all_conserved
+    }
+
+    pub(crate) fn critical_damage_raw_delta(&self, critical_chance_raw_delta: i64) -> Option<i64> {
+        let numerator = critical_chance_raw_delta
+            .checked_mul(self.critical_chance_to_critical_damage_numerator)?;
+        (numerator % self.critical_chance_to_critical_damage_denominator == 0)
+            .then(|| numerator / self.critical_chance_to_critical_damage_denominator)
+            .filter(|delta| *delta > 0)
+    }
+}
+
 impl InspirationChanceProofRuntimeConfig {
     fn is_current_authority(&self) -> bool {
         self.content_sha256 == "924f8945ca37963e0726358d7385d7e1ffe19e8caeba15b40d5ba644885aba26"
@@ -572,6 +664,7 @@ pub(crate) struct InspirationRuntimeConfig {
     pub chance_proof: InspirationChanceProofRuntimeConfig,
     pub chance_replay: InspirationChanceReplayRuntimeConfig,
     pub chance_magnitudes: Vec<InspirationChanceMagnitudeRuntimeConfig>,
+    pub recipient_dependency: InspirationRecipientDependencyRuntimeConfig,
     pub critical_chance_runtime_transfer_enabled: bool,
     pub lucky_chance_runtime_transfer_enabled: bool,
     pub combined_critical_lucky_runtime_transfer_enabled: bool,
@@ -1190,8 +1283,10 @@ impl RdpsRuntimeConfig {
             || inspiration.damage_scripts != ["Attack", "MAttack"]
             || inspiration.property_damage_property != 7
             || inspiration.combined_critical_lucky_runtime_transfer_enabled
-            || inspiration.recipient_dependency_runtime_transfer_enabled
             || inspiration.runtime_transfer_enabled
+            || (inspiration.recipient_dependency_runtime_transfer_enabled
+                && (!inspiration_critical_runtime_authority
+                    || !inspiration.recipient_dependency.is_current_authority()))
             || (inspiration.critical_chance_runtime_transfer_enabled
                 && (!inspiration_critical_runtime_authority
                     || !inspiration_chance_magnitudes_are_current_authority))
@@ -1725,7 +1820,7 @@ mod tests {
     }
 
     #[test]
-    fn inspiration_promotes_only_single_outcome_chance_components() {
+    fn inspiration_promotes_single_outcome_chance_and_exact_recipient_dependency() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
@@ -1737,9 +1832,15 @@ mod tests {
                 .combined_critical_lucky_runtime_transfer_enabled
         );
         assert!(
-            !current
+            current
                 .inspiration
                 .recipient_dependency_runtime_transfer_enabled
+        );
+        assert!(
+            current
+                .inspiration
+                .recipient_dependency
+                .is_current_authority()
         );
         assert!(!current.inspiration.runtime_transfer_enabled);
         assert!(current.inspiration.chance_proof.is_current_authority());
@@ -1774,9 +1875,18 @@ mod tests {
         assert!(runtime_from_value(guessed_combined).validate().is_err());
 
         let mut guessed_dependency = base;
-        guessed_dependency["inspiration"]["recipient_dependency_runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
+        guessed_dependency["inspiration"]["recipient_dependency"]["proof_content_sha256"] =
+            serde_json::Value::String("unreviewed".into());
         assert!(runtime_from_value(guessed_dependency).validate().is_err());
+
+        let mut altered_dependency_replay = bundled_runtime_value();
+        altered_dependency_replay["inspiration"]["recipient_dependency"]["replay"]["dependency_increment"] =
+            serde_json::json!(7_546_367);
+        assert!(
+            runtime_from_value(altered_dependency_replay)
+                .validate()
+                .is_err()
+        );
     }
 
     #[test]
@@ -2116,14 +2226,28 @@ mod tests {
     fn inspiration_recipient_dependencies_require_independent_runtime_authority() {
         let current = rdps_runtime_config().unwrap();
         assert!(
-            !current
+            current
                 .inspiration
                 .recipient_dependency_runtime_transfer_enabled
         );
+        assert_eq!(
+            current
+                .inspiration
+                .recipient_dependency
+                .critical_damage_raw_delta(150),
+            Some(75)
+        );
+        assert_eq!(
+            current
+                .inspiration
+                .recipient_dependency
+                .critical_damage_raw_delta(300),
+            Some(150)
+        );
 
         let mut unproven = bundled_runtime_value();
-        unproven["inspiration"]["recipient_dependency_runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
+        unproven["inspiration"]["recipient_dependency"]["exact_build_formula_authority"] =
+            serde_json::Value::Bool(false);
         assert!(runtime_from_value(unproven).validate().is_err());
     }
 }

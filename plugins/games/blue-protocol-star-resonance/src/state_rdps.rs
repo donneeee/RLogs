@@ -1053,6 +1053,10 @@ pub struct BpsrStateDamageContributionProjector {
     thunderwind_transition_wires: HashMap<u64, WireKey>,
     full_bloom_targets: HashSet<u64>,
     inspiration_windows: HashMap<EffectWindowKey, InspirationWindow>,
+    /// Exact self-sourced recipient passive status that converts externally
+    /// supplied Crit into Crit DMG. Entity UUID survives actor-id rotation and
+    /// is cleared only by its own terminal lifecycle or a run boundary.
+    inspiration_recipient_dependency_entities: HashSet<i64>,
     inspiration_transition_wires: HashMap<u64, WireKey>,
     inspiration_snapshot_targets: HashSet<u64>,
     fatal_spiral_windows: HashSet<FatalSpiralWindowKey>,
@@ -1128,6 +1132,7 @@ impl Default for BpsrStateDamageContributionProjector {
             thunderwind_transition_wires: HashMap::new(),
             full_bloom_targets: HashSet::new(),
             inspiration_windows: HashMap::new(),
+            inspiration_recipient_dependency_entities: HashSet::new(),
             inspiration_transition_wires: HashMap::new(),
             inspiration_snapshot_targets: HashSet::new(),
             fatal_spiral_windows: HashSet::new(),
@@ -1687,6 +1692,9 @@ impl BpsrStateDamageContributionProjector {
                 == Some(self.runtime.inspiration.source_config_id)
         {
             self.observe_inspiration_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.inspiration.recipient_dependency.effect_id {
+            self.observe_inspiration_recipient_dependency_status(status);
         }
         if status.effect.0 == self.runtime.team_luck.effect_id
             && status
@@ -2380,6 +2388,37 @@ impl BpsrStateDamageContributionProjector {
             self.clear_thunderwind_provider_state(target_actor_id);
         }
         self.mark_thunderwind_transition(target_actor_id);
+    }
+
+    fn observe_inspiration_recipient_dependency_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+    ) {
+        let target_entity_uuid = status.target.entity_uuid.0;
+        if target_entity_uuid == 0 {
+            return;
+        }
+        let active = matches!(
+            status.state,
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+        ) || (status.state == StatusState::Consumed
+            && status.stacks.unwrap_or_default() > 0);
+        let exact_self_status = status.source == Some(status.target)
+            && status.level
+                == Some(
+                    self.runtime
+                        .inspiration
+                        .recipient_dependency
+                        .required_status_level,
+                )
+            && status.stacks == Some(1);
+        if active && exact_self_status {
+            self.inspiration_recipient_dependency_entities
+                .insert(target_entity_uuid);
+        } else {
+            self.inspiration_recipient_dependency_entities
+                .remove(&target_entity_uuid);
+        }
     }
 
     fn observe_thunderwind_child_status(&mut self, status: &rlogs_events::StatusEvent) {
@@ -3197,6 +3236,7 @@ impl BpsrStateDamageContributionProjector {
                 next,
                 &desired,
                 &self.runtime.inspiration.packet_proven_vectors,
+                self.inspiration_candidate_audit_enabled,
             );
         }
     }
@@ -4859,7 +4899,7 @@ impl BpsrStateDamageContributionProjector {
         let (
             provider_actor_id,
             provider_chance_raw_delta,
-            provider_critical_damage_raw_delta,
+            mut provider_critical_damage_raw_delta,
             provider_lucky_damage_raw_delta,
         ) = if self.inspiration_candidate_audit_enabled {
             if state.inspiration_providers.len() != 1 {
@@ -4886,17 +4926,29 @@ impl BpsrStateDamageContributionProjector {
                 .actor_ancestry
                 .actor_for_entity(window.provider_entity_uuid)
                 .unwrap_or(key.provider_actor_id);
-            let provider_state = state
-                .inspiration_providers
-                .get(&key.provider_actor_id)
-                .or_else(|| state.inspiration_providers.get(&provider_actor_id));
-            (
-                provider_actor_id,
-                chance_raw_delta,
-                provider_state.and_then(|provider| provider.critical_damage_raw_delta),
-                provider_state.and_then(|provider| provider.lucky_damage_raw_delta),
-            )
+            (provider_actor_id, chance_raw_delta, None, None)
         };
+        if !self.inspiration_candidate_audit_enabled
+            && critical
+            && self
+                .inspiration_recipient_dependency_entities
+                .contains(&recipient_entity_uuid)
+            && self.class_id_by_actor.get(&recipient_actor_id).copied()
+                == Some(
+                    self.runtime
+                        .inspiration
+                        .recipient_dependency
+                        .recipient_class_id,
+                )
+        {
+            provider_critical_damage_raw_delta = Some(
+                self.runtime
+                    .inspiration
+                    .recipient_dependency
+                    .critical_damage_raw_delta(provider_chance_raw_delta)
+                    .ok_or("recipient_dependency_delta_unproven")?,
+            );
+        }
         if provider_actor_id == recipient_actor_id
             || self.actor_ancestry.entity_for_actor(provider_actor_id)
                 == Some(damage.source.entity_uuid.0)
@@ -4937,13 +4989,18 @@ impl BpsrStateDamageContributionProjector {
             effect_id: self.runtime.inspiration.effect_id,
             provider_actor_id,
             recipient_actor_id,
-            scope: match (critical, lucky) {
-                (true, false) => DamageContributionScope::Component("inspiration-critical-chance"),
-                (false, true) => DamageContributionScope::Component("inspiration-lucky-chance"),
-                (true, true) => {
+            scope: match (critical, lucky, provider_critical_damage_raw_delta) {
+                (true, false, Some(_)) => DamageContributionScope::Component(
+                    "inspiration-critical-chance-and-recipient-conversion",
+                ),
+                (true, false, None) => {
+                    DamageContributionScope::Component("inspiration-critical-chance")
+                }
+                (false, true, _) => DamageContributionScope::Component("inspiration-lucky-chance"),
+                (true, true, _) => {
                     DamageContributionScope::Component("inspiration-critical-lucky-chance")
                 }
-                (false, false) => unreachable!("an Inspiration occurrence is required"),
+                (false, false, _) => unreachable!("an Inspiration occurrence is required"),
             },
             numerator,
             denominator,
@@ -5725,6 +5782,10 @@ impl BpsrStateDamageContributionProjector {
         self.full_bloom_targets.remove(&actor_id);
         self.inspiration_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        if let Some(entity_uuid) = self.actor_ancestry.entity_for_actor(actor_id) {
+            self.inspiration_recipient_dependency_entities
+                .remove(&entity_uuid);
+        }
         self.inspiration_transition_wires.remove(&actor_id);
         self.inspiration_snapshot_targets.remove(&actor_id);
         self.fatal_spiral_windows
@@ -5770,6 +5831,7 @@ impl BpsrStateDamageContributionProjector {
         self.thunderwind_transition_wires.clear();
         self.full_bloom_targets.clear();
         self.inspiration_windows.clear();
+        self.inspiration_recipient_dependency_entities.clear();
         self.inspiration_transition_wires.clear();
         self.inspiration_snapshot_targets.clear();
         self.fatal_spiral_windows.clear();
@@ -6465,6 +6527,7 @@ fn reconcile_inspiration_state(
     next: &mut ActorHpState,
     desired: &BTreeMap<u64, bool>,
     vectors: &[InspirationVectorRuntimeConfig],
+    capture_candidate_recipient_dependency_deltas: bool,
 ) {
     let Some(previous) = previous else {
         next.inspiration_providers.clear();
@@ -6544,7 +6607,14 @@ fn reconcile_inspiration_state(
             let (&provider_actor_id, &provider_full_bloom) =
                 desired.first_key_value().expect("one desired provider");
             vector_for_mode(vectors, provider_full_bloom).and_then(|vector| {
-                inspiration_vector_transition(previous, next, vector, 1).map(|mut state| {
+                inspiration_vector_transition(
+                    previous,
+                    next,
+                    vector,
+                    1,
+                    capture_candidate_recipient_dependency_deltas,
+                )
+                .map(|mut state| {
                     state.provider_full_bloom = provider_full_bloom;
                     (Some(provider_actor_id), state)
                 })
@@ -6566,7 +6636,14 @@ fn reconcile_inspiration_state(
                 .get(&provider_actor_id)
                 .expect("same desired provider");
             vector_for_mode(vectors, provider_full_bloom).and_then(|vector| {
-                inspiration_mode_transition(previous, next, *old_state, vector).map(|mut state| {
+                inspiration_mode_transition(
+                    previous,
+                    next,
+                    *old_state,
+                    vector,
+                    capture_candidate_recipient_dependency_deltas,
+                )
+                .map(|mut state| {
                     state.provider_full_bloom = provider_full_bloom;
                     (Some(provider_actor_id), state)
                 })
@@ -6602,6 +6679,7 @@ fn inspiration_vector_transition(
     next: &ActorHpState,
     vector: InspirationVectorRuntimeConfig,
     direction: i64,
+    capture_candidate_recipient_dependency_deltas: bool,
 ) -> Option<InspirationProviderState> {
     let primary_delta = vector.primary_raw_add_delta.checked_mul(direction)?;
     let secondary_delta = vector.secondary_raw_add_delta.checked_mul(direction)?;
@@ -6654,13 +6732,24 @@ fn inspiration_vector_transition(
         direction,
     )
     .filter(|delta| *delta == vector.property_damage_raw_delta);
-    let critical_damage_raw_delta = positive_directional_delta(
-        previous.critical_damage_raw,
-        next.critical_damage_raw,
-        direction,
-    );
-    let lucky_damage_raw_delta =
-        positive_directional_delta(previous.lucky_damage_raw, next.lucky_damage_raw, direction);
+    // Crit/Luck damage can move in the same serialized attribute packet because
+    // of recipient-owned passives, talents, Imagines, or delayed recalculation.
+    // Preserve those observations for offline proof closure, but never attach
+    // them to the provider's production state without an exact dependency rule.
+    let critical_damage_raw_delta = capture_candidate_recipient_dependency_deltas
+        .then(|| {
+            positive_directional_delta(
+                previous.critical_damage_raw,
+                next.critical_damage_raw,
+                direction,
+            )
+        })
+        .flatten();
+    let lucky_damage_raw_delta = capture_candidate_recipient_dependency_deltas
+        .then(|| {
+            positive_directional_delta(previous.lucky_damage_raw, next.lucky_damage_raw, direction)
+        })
+        .flatten();
     Some(InspirationProviderState {
         provider_full_bloom: vector.provider_full_bloom,
         primary_raw_add_delta: vector.primary_raw_add_delta,
@@ -6744,6 +6833,7 @@ fn inspiration_mode_transition(
     next: &ActorHpState,
     old: InspirationProviderState,
     new_vector: InspirationVectorRuntimeConfig,
+    capture_candidate_recipient_dependency_deltas: bool,
 ) -> Option<InspirationProviderState> {
     let primary_change = new_vector
         .primary_raw_add_delta
@@ -6809,14 +6899,22 @@ fn inspiration_mode_transition(
                 next.haste_percent_basis_points,
             ),
         ),
-        critical_damage_raw_delta: adjusted_positive_component(
-            old.critical_damage_raw_delta,
-            option_delta(previous.critical_damage_raw, next.critical_damage_raw),
-        ),
-        lucky_damage_raw_delta: adjusted_positive_component(
-            old.lucky_damage_raw_delta,
-            option_delta(previous.lucky_damage_raw, next.lucky_damage_raw),
-        ),
+        critical_damage_raw_delta: capture_candidate_recipient_dependency_deltas
+            .then(|| {
+                adjusted_positive_component(
+                    old.critical_damage_raw_delta,
+                    option_delta(previous.critical_damage_raw, next.critical_damage_raw),
+                )
+            })
+            .flatten(),
+        lucky_damage_raw_delta: capture_candidate_recipient_dependency_deltas
+            .then(|| {
+                adjusted_positive_component(
+                    old.lucky_damage_raw_delta,
+                    option_delta(previous.lucky_damage_raw, next.lucky_damage_raw),
+                )
+            })
+            .flatten(),
     })
 }
 
@@ -9642,7 +9740,7 @@ mod tests {
     }
 
     #[test]
-    fn inspiration_live_projection_emits_single_outcomes_and_blocks_combined_and_dependencies() {
+    fn inspiration_live_projection_composes_only_the_exact_recipient_dependency() {
         let provider = InspirationProviderState {
             provider_full_bloom: false,
             primary_raw_add_delta: 540,
@@ -9716,6 +9814,32 @@ mod tests {
             Err("combined_critical_lucky_runtime_transfer_disabled")
         );
 
+        projector.class_id_by_actor.insert(4, 11);
+        projector
+            .inspiration_recipient_dependency_entities
+            .insert(40);
+        let dependent = projector
+            .inspiration_occurrence_decision(126, &critical)
+            .expect("the exact recipient conversion is live");
+        assert_eq!(
+            (dependent.numerator, dependent.denominator),
+            exact_external_critical_chance_and_damage_fraction(
+                critical.amount,
+                7_416,
+                150,
+                15_000,
+                75,
+                CriticalDamageFactorInterpretation::AdditiveBonus,
+            )
+            .unwrap()
+        );
+        assert_eq!(
+            dependent.scope,
+            DamageContributionScope::Component(
+                "inspiration-critical-chance-and-recipient-conversion"
+            )
+        );
+
         projector
             .states
             .get_mut(&4)
@@ -9725,8 +9849,57 @@ mod tests {
             .unwrap()
             .critical_damage_raw_delta = Some(600);
         assert_eq!(
-            projector.inspiration_occurrence_decision(126, &critical),
-            Err("recipient_dependency_runtime_transfer_disabled")
+            projector
+                .inspiration_occurrence_decision(126, &critical)
+                .unwrap(),
+            dependent,
+            "an unrelated same-packet Crit-DMG delta cannot replace the exact dependency formula",
+        );
+    }
+
+    #[test]
+    fn inspiration_recipient_dependency_requires_exact_self_status_lifecycle() {
+        let recipient = test_entity(4, 40);
+        let config = &runtime().inspiration.recipient_dependency;
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        let mut status = rlogs_events::StatusEvent {
+            source: Some(recipient),
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(77)),
+            origin: None,
+            state: StatusState::Applied,
+            stacks: Some(1),
+            duration_millis: None,
+            level: Some(config.required_status_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+        };
+
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .contains(&40)
+        );
+
+        status.source = Some(test_entity(2, 20));
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        assert!(
+            !projector
+                .inspiration_recipient_dependency_entities
+                .contains(&40),
+            "a non-self status cannot select the recipient-owned talent"
+        );
+
+        status.source = Some(recipient);
+        status.state = StatusState::Removed;
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        assert!(
+            !projector
+                .inspiration_recipient_dependency_entities
+                .contains(&40)
         );
     }
 
@@ -9777,6 +9950,7 @@ mod tests {
             &mut next,
             &BTreeMap::from([(2, false)]),
             &runtime().inspiration.packet_proven_vectors,
+            true,
         );
         assert_eq!(
             next.inspiration_providers,
@@ -9796,6 +9970,23 @@ mod tests {
                 }
             )])
         );
+
+        let mut production = next.clone();
+        production.inspiration_providers.clear();
+        reconcile_inspiration_state(
+            Some(&previous),
+            &mut production,
+            &BTreeMap::from([(2, false)]),
+            &runtime().inspiration.packet_proven_vectors,
+            false,
+        );
+        let production_state = production
+            .inspiration_providers
+            .get(&2)
+            .expect("the exact proven Inspiration vector remains live");
+        assert_eq!(production_state.physical_attack_base_add_delta, Some(360));
+        assert_eq!(production_state.critical_damage_raw_delta, None);
+        assert_eq!(production_state.lucky_damage_raw_delta, None);
     }
 
     #[test]
@@ -9824,6 +10015,7 @@ mod tests {
             &mut next,
             &BTreeMap::from([(2, false)]),
             &runtime().inspiration.packet_proven_vectors,
+            false,
         );
         assert_eq!(
             next.inspiration_providers
@@ -9840,6 +10032,7 @@ mod tests {
             &mut unexplained,
             &BTreeMap::from([(2, false)]),
             &runtime().inspiration.packet_proven_vectors,
+            false,
         );
         assert_eq!(
             unexplained
@@ -9898,6 +10091,7 @@ mod tests {
             &mut before_attribute_removal,
             &BTreeMap::new(),
             &runtime().inspiration.packet_proven_vectors,
+            false,
         );
         assert!(before_attribute_removal.inspiration_providers.is_empty());
 
@@ -9929,6 +10123,7 @@ mod tests {
             &mut reversed,
             &BTreeMap::new(),
             &runtime().inspiration.packet_proven_vectors,
+            false,
         );
         assert!(reversed.inspiration_providers.is_empty());
     }
