@@ -141,6 +141,8 @@ export interface HistoryRationalDamageDelta {
 
 export interface HistoryDamageInfluenceSummary {
   effect_id: string;
+  attribution_component?: string | null;
+  complete_effect?: boolean;
   provider_actor_id: string;
   provider_entity_uuid: string;
   recipient_actor_id: string;
@@ -605,6 +607,17 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
             `run ${runIndex} view ${viewIndex} damage influence ${influenceIndex}`,
           );
           text(parsedInfluence.effect_id, "influence effect ID");
+          if (parsedInfluence.attribution_component === undefined) {
+            parsedInfluence.attribution_component = null;
+          }
+          if (parsedInfluence.complete_effect === undefined) {
+            parsedInfluence.complete_effect = true;
+          }
+          optionalText(
+            parsedInfluence.attribution_component,
+            "influence attribution component",
+          );
+          boolean(parsedInfluence.complete_effect, "influence complete effect state");
           text(parsedInfluence.provider_actor_id, "influence provider actor ID");
           text(parsedInfluence.provider_entity_uuid, "influence provider entity UUID");
           text(parsedInfluence.recipient_actor_id, "influence recipient actor ID");

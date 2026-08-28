@@ -11,8 +11,9 @@ use std::{
 };
 
 use rlogs_combat::{
-    ActorAncestryResolver, ActorOwnershipEvidence, ExactDamageContributionEvent,
-    ExactDamageContributionProjector, ExactRationalDamageContributionEvent,
+    ActorAncestryResolver, ActorOwnershipEvidence, DamageContributionScope,
+    ExactDamageContributionEvent, ExactDamageContributionProjector,
+    ExactRationalDamageContributionEvent,
 };
 use rlogs_events::{
     ActorKind, ActorState, CanonicalEvent, EncounterState, EntityAttribute,
@@ -51,7 +52,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v10";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v11";
 
 static STATE_RDPS_FORMULA_IDENTITY: OnceLock<String> = OnceLock::new();
 
@@ -175,6 +176,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.harmony_grace.effect_id) {
         effect_ids.push(runtime.harmony_grace.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.inspiration.effect_id) {
+        effect_ids.push(runtime.inspiration.effect_id);
     }
     effect_ids.sort_unstable();
     effect_ids.dedup();
@@ -745,6 +749,12 @@ struct InspirationProviderState {
 #[derive(Debug, Clone, Copy)]
 struct InspirationWindow {
     provider_full_bloom: bool,
+    target_entity_uuid: i64,
+    provider_entity_uuid: i64,
+    source_level: Option<i32>,
+    origin_source_type_id: Option<i32>,
+    origin_source_config_id: Option<i64>,
+    expires_at_observed_micros: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -1363,6 +1373,9 @@ impl BpsrStateDamageContributionProjector {
                                     effect_id: rule.effect_id,
                                     provider_actor_id,
                                     recipient_actor_id,
+                                    scope: DamageContributionScope::Component(
+                                        "state-scaled-damage",
+                                    ),
                                     amount,
                                     observed_damage,
                                     included: true,
@@ -1380,12 +1393,7 @@ impl BpsrStateDamageContributionProjector {
                 let mut inspiration_contribution =
                     self.inspiration_contribution(envelope.time.observed_micros, damage);
                 let inspiration_occurrence_contribution =
-                    inspiration_contribution.as_ref().and_then(|_| {
-                        self.inspiration_occurrence_contribution(
-                            envelope.time.observed_micros,
-                            damage,
-                        )
-                    });
+                    self.inspiration_occurrence_contribution(envelope.time.observed_micros, damage);
                 if inspiration_contribution.is_some()
                     && (damage.flags.critical == Some(true) || damage.flags.lucky == Some(true))
                     && inspiration_occurrence_contribution.is_none()
@@ -1678,7 +1686,7 @@ impl BpsrStateDamageContributionProjector {
             && status.origin.map(|origin| origin.source_config_id)
                 == Some(self.runtime.inspiration.source_config_id)
         {
-            self.observe_inspiration_status(status);
+            self.observe_inspiration_status(status, observed_micros);
         }
         if status.effect.0 == self.runtime.team_luck.effect_id
             && status
@@ -1873,7 +1881,11 @@ impl BpsrStateDamageContributionProjector {
         }
     }
 
-    fn observe_inspiration_status(&mut self, status: &rlogs_events::StatusEvent) {
+    fn observe_inspiration_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
         let target_actor_id = status.target.actor_id.0;
         let instance_id = status.instance_id.map(|instance| instance.0);
         let provider_actor_id = status.source.map(|source| source.actor_id.0);
@@ -1898,6 +1910,20 @@ impl BpsrStateDamageContributionProjector {
                 },
                 InspirationWindow {
                     provider_full_bloom: self.full_bloom_targets.contains(&provider_actor_id),
+                    target_entity_uuid: status.target.entity_uuid.0,
+                    provider_entity_uuid: status
+                        .source
+                        .expect("an active Inspiration window has a provider")
+                        .entity_uuid
+                        .0,
+                    source_level: status.level,
+                    origin_source_type_id: status.origin.map(|origin| origin.source_type_id),
+                    origin_source_config_id: status.origin.map(|origin| origin.source_config_id),
+                    expires_at_observed_micros: status.duration_millis.and_then(|duration| {
+                        duration
+                            .checked_mul(1_000)
+                            .and_then(|duration| observed_micros.checked_add(duration))
+                    }),
                 },
             );
         } else {
@@ -3132,6 +3158,12 @@ impl BpsrStateDamageContributionProjector {
             if key.target_actor_id != target_actor_id {
                 continue;
             }
+            if window
+                .expires_at_observed_micros
+                .is_none_or(|expires_at| self.latest_observed_micros > expires_at)
+            {
+                continue;
+            }
             if let Some(existing) =
                 desired.insert(key.provider_actor_id, window.provider_full_bloom)
                 && existing != window.provider_full_bloom
@@ -3643,6 +3675,11 @@ impl BpsrStateDamageContributionProjector {
             effect_id: self.runtime.team_luck.effect_id,
             provider_actor_id,
             recipient_actor_id,
+            scope: DamageContributionScope::Component(if critical {
+                "team-luck-critical-damage"
+            } else {
+                "team-luck-lucky-damage"
+            }),
             numerator,
             denominator,
             observed_damage: damage.amount,
@@ -3829,6 +3866,7 @@ impl BpsrStateDamageContributionProjector {
             effect_id: self.runtime.thunderwind.effect_id,
             provider_actor_id,
             recipient_actor_id,
+            scope: DamageContributionScope::Component("thunderwind-critical-chance-and-damage"),
             numerator,
             denominator,
             observed_damage: damage.amount,
@@ -3924,6 +3962,7 @@ impl BpsrStateDamageContributionProjector {
         exact_attack_family_stage_contribution(
             observed_micros,
             self.runtime.functional_amp.effect_id,
+            DamageContributionScope::Component("functional-amp-attack-magic"),
             provider_actor_id,
             recipient_actor_id,
             damage.amount,
@@ -4371,6 +4410,7 @@ impl BpsrStateDamageContributionProjector {
         exact_attack_family_stage_contribution(
             observed_micros,
             self.runtime.harmony_grace.effect_id,
+            DamageContributionScope::Component("harmony-grace-primary-attack"),
             provider_actor_id,
             recipient_actor_id,
             damage.amount,
@@ -4522,6 +4562,7 @@ impl BpsrStateDamageContributionProjector {
             effect_id: self.runtime.mechanical_power.effect_id,
             provider_actor_id,
             recipient_actor_id,
+            scope: DamageContributionScope::Component("mechanical-power-primary-attack"),
             numerator,
             denominator,
             observed_damage: damage.amount,
@@ -4669,6 +4710,7 @@ impl BpsrStateDamageContributionProjector {
             effect_id: self.runtime.inspiration.effect_id,
             provider_actor_id,
             recipient_actor_id,
+            scope: DamageContributionScope::Component("inspiration-attack-and-factors"),
             numerator,
             denominator,
             observed_damage: damage.amount,
@@ -4700,11 +4742,6 @@ impl BpsrStateDamageContributionProjector {
         observed_micros: u64,
         damage: &rlogs_events::DamageEvent,
     ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
-        if !self.runtime.inspiration.runtime_transfer_enabled
-            && !self.inspiration_candidate_audit_enabled
-        {
-            return Err("runtime_transfer_disabled");
-        }
         if damage.amount <= 0 {
             return Err("non_positive_damage");
         }
@@ -4720,23 +4757,150 @@ impl BpsrStateDamageContributionProjector {
         if !critical && !lucky {
             return Err("occurrence_missing");
         }
-        let recipient_actor_id = damage.source.actor_id.0;
-        let state = self
-            .states
-            .get(&recipient_actor_id)
-            .ok_or("recipient_state_missing")?;
-        if state.inspiration_providers.len() != 1 {
-            return Err(if state.inspiration_providers.is_empty() {
-                "provider_window_missing"
-            } else {
-                "provider_window_ambiguous"
-            });
+        if !self.inspiration_candidate_audit_enabled {
+            match (critical, lucky) {
+                (true, false)
+                    if !self
+                        .runtime
+                        .inspiration
+                        .critical_chance_runtime_transfer_enabled =>
+                {
+                    return Err("critical_chance_runtime_transfer_disabled");
+                }
+                (false, true)
+                    if !self
+                        .runtime
+                        .inspiration
+                        .lucky_chance_runtime_transfer_enabled =>
+                {
+                    return Err("lucky_chance_runtime_transfer_disabled");
+                }
+                (true, true)
+                    if !self
+                        .runtime
+                        .inspiration
+                        .combined_critical_lucky_runtime_transfer_enabled =>
+                {
+                    return Err("combined_critical_lucky_runtime_transfer_disabled");
+                }
+                _ => {}
+            }
         }
-        let (&provider_actor_id, provider) = state
-            .inspiration_providers
-            .first_key_value()
-            .ok_or("provider_window_missing")?;
-        if provider_actor_id == recipient_actor_id {
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let exact_production_window = if self.inspiration_candidate_audit_enabled {
+            None
+        } else {
+            let exact_windows = self
+                .inspiration_windows
+                .iter()
+                .filter(|(key, window)| {
+                    (key.target_actor_id == recipient_actor_id
+                        || (recipient_entity_uuid != 0
+                            && window.target_entity_uuid == recipient_entity_uuid))
+                        && window.origin_source_type_id == Some(1)
+                        && window.origin_source_config_id
+                            == Some(self.runtime.inspiration.source_config_id)
+                        && window
+                            .expires_at_observed_micros
+                            .is_some_and(|expires_at| observed_micros <= expires_at)
+                })
+                .filter_map(|(key, window)| {
+                    let source_level = window.source_level?;
+                    let chance_raw_delta = self
+                        .runtime
+                        .inspiration
+                        .chance_raw_delta_for_effect_level(source_level)?;
+                    Some((key, window, chance_raw_delta))
+                })
+                .collect::<Vec<_>>();
+            if exact_windows.len() != 1 {
+                return Err(if exact_windows.is_empty() {
+                    "provider_window_missing"
+                } else {
+                    "provider_window_ambiguous"
+                });
+            }
+            Some(exact_windows[0])
+        };
+        let state_has_required_chance_inputs = |state: &ActorHpState| {
+            (!critical
+                || (state.critical_chance_raw.is_some() && state.critical_damage_raw.is_some()))
+                && (!lucky || state.lucky_chance_raw.is_some())
+        };
+        let exact_state_for_actor = |actor_id: u64| {
+            self.staged_states
+                .get(&actor_id)
+                .filter(|state| state_has_required_chance_inputs(state))
+                .or_else(|| {
+                    self.states
+                        .get(&actor_id)
+                        .filter(|state| state_has_required_chance_inputs(state))
+                })
+        };
+        let exact_alias_state = (recipient_entity_uuid != 0)
+            .then(|| {
+                self.attribute_state_actor_by_entity_uuid
+                    .get(&recipient_entity_uuid)
+                    .copied()
+            })
+            .flatten()
+            .filter(|actor_id| {
+                self.attribute_state_entity_uuid_by_actor.get(actor_id)
+                    == Some(&recipient_entity_uuid)
+            })
+            .and_then(&exact_state_for_actor);
+        let direct_state = self
+            .team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+            .and_then(exact_state_for_actor);
+        let state = exact_alias_state
+            .or(direct_state)
+            .ok_or("recipient_state_missing")?;
+        let (
+            provider_actor_id,
+            provider_chance_raw_delta,
+            provider_critical_damage_raw_delta,
+            provider_lucky_damage_raw_delta,
+        ) = if self.inspiration_candidate_audit_enabled {
+            if state.inspiration_providers.len() != 1 {
+                return Err(if state.inspiration_providers.is_empty() {
+                    "provider_window_missing"
+                } else {
+                    "provider_window_ambiguous"
+                });
+            }
+            let (&provider_actor_id, provider) = state
+                .inspiration_providers
+                .first_key_value()
+                .ok_or("provider_window_missing")?;
+            (
+                provider_actor_id,
+                provider.secondary_raw_add_delta,
+                provider.critical_damage_raw_delta,
+                provider.lucky_damage_raw_delta,
+            )
+        } else {
+            let (key, window, chance_raw_delta) =
+                exact_production_window.expect("production requires one exact window");
+            let provider_actor_id = self
+                .actor_ancestry
+                .actor_for_entity(window.provider_entity_uuid)
+                .unwrap_or(key.provider_actor_id);
+            let provider_state = state
+                .inspiration_providers
+                .get(&key.provider_actor_id)
+                .or_else(|| state.inspiration_providers.get(&provider_actor_id));
+            (
+                provider_actor_id,
+                chance_raw_delta,
+                provider_state.and_then(|provider| provider.critical_damage_raw_delta),
+                provider_state.and_then(|provider| provider.lucky_damage_raw_delta),
+            )
+        };
+        if provider_actor_id == recipient_actor_id
+            || self.actor_ancestry.entity_for_actor(provider_actor_id)
+                == Some(damage.source.entity_uuid.0)
+        {
             return Err("provider_is_recipient");
         }
         if !self.active_players.contains(&provider_actor_id) {
@@ -4746,8 +4910,8 @@ impl BpsrStateDamageContributionProjector {
             .runtime
             .inspiration
             .recipient_dependency_runtime_transfer_enabled
-            && (provider.critical_damage_raw_delta.is_some()
-                || provider.lucky_damage_raw_delta.is_some())
+            && (provider_critical_damage_raw_delta.is_some()
+                || provider_lucky_damage_raw_delta.is_some())
         {
             return Err("recipient_dependency_runtime_transfer_disabled");
         }
@@ -4759,12 +4923,12 @@ impl BpsrStateDamageContributionProjector {
                 .critical_chance_raw
                 .ok_or("critical_chance_state_missing")?,
             state.lucky_chance_raw.ok_or("lucky_chance_state_missing")?,
-            provider.secondary_raw_add_delta,
+            provider_chance_raw_delta,
             state
                 .critical_damage_raw
                 .ok_or("critical_damage_state_missing")?,
-            provider.critical_damage_raw_delta,
-            provider.lucky_damage_raw_delta,
+            provider_critical_damage_raw_delta,
+            provider_lucky_damage_raw_delta,
             self.runtime.critical_damage_factor_interpretation,
         )
         .ok_or("damage_counterfactual_unproven")?;
@@ -4773,6 +4937,14 @@ impl BpsrStateDamageContributionProjector {
             effect_id: self.runtime.inspiration.effect_id,
             provider_actor_id,
             recipient_actor_id,
+            scope: match (critical, lucky) {
+                (true, false) => DamageContributionScope::Component("inspiration-critical-chance"),
+                (false, true) => DamageContributionScope::Component("inspiration-lucky-chance"),
+                (true, true) => {
+                    DamageContributionScope::Component("inspiration-critical-lucky-chance")
+                }
+                (false, false) => unreachable!("an Inspiration occurrence is required"),
+            },
             numerator,
             denominator,
             observed_damage: damage.amount,
@@ -4890,6 +5062,7 @@ impl BpsrStateDamageContributionProjector {
                 effect_id: harmony_grace.effect_id,
                 provider_actor_id: harmony_grace.provider_actor_id,
                 recipient_actor_id,
+                scope: DamageContributionScope::Component("harmony-grace-primary-attack"),
                 numerator: harmony_numerator,
                 denominator: harmony_denominator,
                 observed_damage: damage.amount,
@@ -4900,6 +5073,7 @@ impl BpsrStateDamageContributionProjector {
                 effect_id: functional_amp.effect_id,
                 provider_actor_id: functional_amp.provider_actor_id,
                 recipient_actor_id,
+                scope: DamageContributionScope::Component("functional-amp-attack-magic"),
                 numerator: functional_numerator,
                 denominator: functional_denominator,
                 observed_damage: damage.amount,
@@ -4954,6 +5128,7 @@ impl BpsrStateDamageContributionProjector {
             effect_id: rule.effect_id,
             provider_actor_id,
             recipient_actor_id,
+            scope: DamageContributionScope::Component("target-vulnerability"),
             amount,
             observed_damage: damage.amount,
             included: true,
@@ -5020,6 +5195,7 @@ impl BpsrStateDamageContributionProjector {
             effect_id: rule.effect_id,
             provider_actor_id,
             recipient_actor_id,
+            scope: DamageContributionScope::Component("target-vulnerability"),
             amount: active_observed_damage.checked_sub(inactive_observed_damage)?,
             observed_damage: damage.amount,
             included: true,
@@ -5128,6 +5304,7 @@ impl BpsrStateDamageContributionProjector {
             effect_id: rule.effect_id,
             provider_actor_id,
             recipient_actor_id,
+            scope: DamageContributionScope::Component("target-vulnerability"),
             numerator: i128::from(damage.amount)
                 .checked_mul(i128::from(rule.provider_raw_delta))?,
             denominator: i128::from(rule.active_factor()?),
@@ -5676,6 +5853,7 @@ fn attack_family_for_lane(state: &ActorHpState, lane: PrimaryAttackLane) -> &Att
 fn exact_attack_family_stage_contribution(
     observed_micros: u64,
     effect_id: i64,
+    scope: DamageContributionScope,
     provider_actor_id: u64,
     recipient_actor_id: u64,
     observed_damage: i64,
@@ -5710,6 +5888,7 @@ fn exact_attack_family_stage_contribution(
         effect_id,
         provider_actor_id,
         recipient_actor_id,
+        scope,
         numerator,
         denominator,
         observed_damage,
@@ -6951,8 +7130,10 @@ mod tests {
         assert!(unreported_critical_rule.runtime_eligible);
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
-            vec![55_228, 2_110_140, 2_110_143, 2_302_121, 3_003_052],
-            "the exact packet-pair vulnerability, observed Mechanical Power component, dormant Functional Amp component, Team Luck Lucky component, and class-scoped Harmony proportional rule are production promoted"
+            vec![
+                55_228, 2_110_140, 2_110_143, 2_202_041, 2_302_121, 3_003_052
+            ],
+            "the exact packet-pair vulnerability, observed Mechanical Power component, dormant Functional Amp component, Team Luck components, Inspiration chance components, and class-scoped Harmony proportional rule are production promoted"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -7092,6 +7273,7 @@ mod tests {
                 effect_id: runtime().team_luck.effect_id,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::Component("team-luck-lucky-damage"),
                 numerator: 4_656_827,
                 denominator: 227,
                 observed_damage: 273_931,
@@ -7122,6 +7304,7 @@ mod tests {
                 effect_id: runtime().team_luck.effect_id,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::Component("team-luck-critical-damage"),
                 numerator: 15_264_080,
                 denominator: 10_793,
                 observed_damage: 58_708,
@@ -7237,6 +7420,7 @@ mod tests {
                 effect_id: runtime().team_luck.effect_id,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::Component("team-luck-lucky-damage"),
                 numerator: 4_656_827,
                 denominator: 227,
                 observed_damage: 273_931,
@@ -7535,7 +7719,9 @@ mod tests {
         );
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
-            vec![55_228, 2_110_140, 2_110_143, 2_302_121, 3_003_052]
+            vec![
+                55_228, 2_110_140, 2_110_143, 2_202_041, 2_302_121, 3_003_052
+            ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
         assert_eq!(
@@ -7827,6 +8013,7 @@ mod tests {
                 effect_id: 55_228,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::Component("target-vulnerability"),
                 amount: 14_002,
                 observed_damage: 272_418,
                 included: true,
@@ -8450,6 +8637,7 @@ mod tests {
                 effect_id: runtime().functional_amp.effect_id,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::Component("functional-amp-attack-magic"),
                 numerator: 13_000_000,
                 denominator: 4_361,
                 observed_damage: 100_000,
@@ -8643,6 +8831,7 @@ mod tests {
                 effect_id: runtime().harmony_grace.effect_id,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::Component("harmony-grace-primary-attack"),
                 numerator: 211_629,
                 denominator: 295,
                 observed_damage: 70_543,
@@ -9291,6 +9480,7 @@ mod tests {
             exact_attack_family_stage_contribution(
                 123,
                 runtime().inspiration.effect_id,
+                DamageContributionScope::Component("inspiration-attack-and-factors"),
                 2,
                 4,
                 100_000,
@@ -9304,6 +9494,7 @@ mod tests {
                 effect_id: runtime().inspiration.effect_id,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::Component("inspiration-attack-and-factors"),
                 numerator: 41_800_000,
                 denominator: 5_823,
                 observed_damage: 100_000,
@@ -9314,6 +9505,7 @@ mod tests {
             exact_attack_family_stage_contribution(
                 123,
                 runtime().inspiration.effect_id,
+                DamageContributionScope::Component("inspiration-attack-and-factors"),
                 2,
                 4,
                 100_000,
@@ -9446,6 +9638,95 @@ mod tests {
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
             "recipient-build Crit chance to Crit DMG conversion must be composed as one provider marginal",
+        );
+    }
+
+    #[test]
+    fn inspiration_live_projection_emits_single_outcomes_and_blocks_combined_and_dependencies() {
+        let provider = InspirationProviderState {
+            provider_full_bloom: false,
+            primary_raw_add_delta: 540,
+            secondary_raw_add_delta: 300,
+            physical_attack_base_add_delta: None,
+            magical_attack_base_add_delta: None,
+            external_damage_delta: 105,
+            property_damage_delta: None,
+            haste_delta: None,
+            critical_damage_raw_delta: None,
+            lucky_damage_raw_delta: None,
+        };
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            inspiration_windows: HashMap::from([(
+                EffectWindowKey {
+                    target_actor_id: 4,
+                    provider_actor_id: 2,
+                    instance_id: Some(77),
+                },
+                InspirationWindow {
+                    provider_full_bloom: false,
+                    target_entity_uuid: 40,
+                    provider_entity_uuid: 20,
+                    source_level: Some(2),
+                    origin_source_type_id: Some(1),
+                    origin_source_config_id: Some(2_202_040),
+                    expires_at_observed_micros: Some(30_000_000),
+                },
+            )]),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    critical_chance_raw: Some(7_416),
+                    lucky_chance_raw: Some(800),
+                    critical_damage_raw: Some(15_000),
+                    inspiration_providers: BTreeMap::from([(2, provider)]),
+                    ..ActorHpState::default()
+                },
+            )]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let recipient = test_entity(4, 40);
+
+        let mut critical = critical_test_damage(recipient, 987_654);
+        critical.flags.lucky = Some(false);
+        let critical_contribution = projector
+            .inspiration_occurrence_decision(123, &critical)
+            .expect("the exact Crit-only component is live");
+        assert_eq!(critical_contribution.provider_actor_id, 2);
+        assert_eq!(
+            critical_contribution.scope,
+            DamageContributionScope::Component("inspiration-critical-chance")
+        );
+
+        let mut lucky = critical.clone();
+        lucky.flags.critical = Some(false);
+        lucky.flags.lucky = Some(true);
+        let lucky_contribution = projector
+            .inspiration_occurrence_decision(124, &lucky)
+            .expect("the exact Lucky-only component is live");
+        assert_eq!(
+            lucky_contribution.scope,
+            DamageContributionScope::Component("inspiration-lucky-chance")
+        );
+
+        let mut combined = critical.clone();
+        combined.flags.lucky = Some(true);
+        assert_eq!(
+            projector.inspiration_occurrence_decision(125, &combined),
+            Err("combined_critical_lucky_runtime_transfer_disabled")
+        );
+
+        projector
+            .states
+            .get_mut(&4)
+            .unwrap()
+            .inspiration_providers
+            .get_mut(&2)
+            .unwrap()
+            .critical_damage_raw_delta = Some(600);
+        assert_eq!(
+            projector.inspiration_occurrence_decision(126, &critical),
+            Err("recipient_dependency_runtime_transfer_disabled")
         );
     }
 
@@ -10263,6 +10544,7 @@ mod tests {
             effect_id: runtime().functional_amp.effect_id,
             provider_actor_id: 2,
             recipient_actor_id: 4,
+            scope: DamageContributionScope::Component("functional-amp-attack-magic"),
             numerator: 20,
             denominator: 1,
             observed_damage: 100,
@@ -10273,6 +10555,7 @@ mod tests {
             effect_id: runtime().team_luck.effect_id,
             provider_actor_id: 3,
             recipient_actor_id: 4,
+            scope: DamageContributionScope::Component("team-luck-critical-damage"),
             numerator: 50,
             denominator: 1,
             observed_damage: 100,
@@ -10290,6 +10573,7 @@ mod tests {
             effect_id: runtime().harmony_grace.effect_id,
             provider_actor_id: 5,
             recipient_actor_id: 4,
+            scope: DamageContributionScope::Component("harmony-grace-primary-attack"),
             numerator: 10,
             denominator: 1,
             observed_damage: 100,

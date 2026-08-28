@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn inspiration_stays_retained_until_the_current_state_runtime_promotes_it() {
+    fn inspiration_keeps_catalog_identity_separate_from_promoted_chance_components() {
         assert_eq!(
             classify_rdps_effect(2_202_041).unwrap(),
             RdpsEffectLookup::RetainedMappedUnclassified {
@@ -384,10 +384,10 @@ mod tests {
             }
         );
         assert!(
-            !crate::proven_state_damage_contribution_effect_ids()
+            crate::proven_state_damage_contribution_effect_ids()
                 .unwrap()
                 .contains(&2_202_041),
-            "packet-observed Inspiration state may be retained and explained without claiming that every required damage lane is attribution-ready"
+            "only the Crit-only and Lucky-only chance components are production enabled; the catalog remains unclassified and the combined, dependency, Attack, Mastery, and haste lanes remain uncredited"
         );
     }
 

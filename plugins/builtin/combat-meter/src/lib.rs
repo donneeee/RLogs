@@ -5,9 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use rlogs_combat::{
     ActorAncestryResolver, ActorOwnershipEvidence, ContributionDamageEvent,
     ContributionStatusEvent, ContributionStatusState, DamageContributionReducer,
-    DamageContributionRule, EncounterTerminalState, ExactDamageContributionEvent,
-    ExactDamageContributionProjector, ExactRationalDamageContributionEvent, RunAnalysis,
-    RunSegmentKind, RunSegmentSummary, RunTerminalState,
+    DamageContributionRule, DamageContributionScope, EncounterTerminalState,
+    ExactDamageContributionEvent, ExactDamageContributionProjector,
+    ExactRationalDamageContributionEvent, RunAnalysis, RunSegmentKind, RunSegmentSummary,
+    RunTerminalState,
 };
 use rlogs_events::{
     ActorId, ActorKind, ActorLoadoutEvidence, ActorLoadoutSlot, ActorState, CanonicalEvent,
@@ -130,6 +131,10 @@ pub struct HistoryRationalDamageDelta {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryDamageInfluenceSummary {
     pub effect_id: String,
+    #[serde(default)]
+    pub attribution_component: Option<String>,
+    #[serde(default = "default_complete_effect")]
+    pub complete_effect: bool,
     pub provider_actor_id: String,
     pub provider_entity_uuid: String,
     pub recipient_actor_id: String,
@@ -156,6 +161,10 @@ pub struct HistoryDamageInfluenceSummary {
     /// outside the damage event they were describing. Such evidence remains
     /// visible but must not be joined to a damage ID or target.
     pub damage_context_complete: bool,
+}
+
+fn default_complete_effect() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -879,6 +888,7 @@ enum CombatFactKind {
     },
     ExactDamageContribution {
         effect_id: i64,
+        scope: DamageContributionScope,
         provider_actor_id: u64,
         recipient_actor_id: u64,
         amount: i64,
@@ -889,6 +899,7 @@ enum CombatFactKind {
     },
     ExactRationalDamageContribution {
         effect_id: i64,
+        scope: DamageContributionScope,
         provider_actor_id: u64,
         recipient_actor_id: u64,
         numerator: i128,
@@ -903,6 +914,7 @@ enum CombatFactKind {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct HistoryDamageInfluenceKey {
     effect_id: i64,
+    scope: DamageContributionScope,
     provider_actor_id: u64,
     provider_entity_uuid: i64,
     recipient_actor_id: u64,
@@ -1809,6 +1821,7 @@ impl CombatTimelinePlugin {
                 ability_id: None,
                 kind: CombatFactKind::ExactDamageContribution {
                     effect_id: contribution.effect_id,
+                    scope: contribution.scope,
                     provider_actor_id: contribution.provider_actor_id,
                     recipient_actor_id: contribution.recipient_actor_id,
                     amount: contribution.amount,
@@ -1858,6 +1871,7 @@ impl CombatTimelinePlugin {
                 ability_id: None,
                 kind: CombatFactKind::ExactRationalDamageContribution {
                     effect_id: contribution.effect_id,
+                    scope: contribution.scope,
                     provider_actor_id: contribution.provider_actor_id,
                     recipient_actor_id: contribution.recipient_actor_id,
                     numerator: contribution.numerator,
@@ -2511,6 +2525,7 @@ impl CombatTimelinePlugin {
             },
             CombatFactKind::ExactDamageContribution {
                 effect_id,
+                scope,
                 provider_actor_id,
                 recipient_actor_id,
                 amount,
@@ -2520,6 +2535,7 @@ impl CombatTimelinePlugin {
                 affected_target,
             } => CombatFactKind::ExactDamageContribution {
                 effect_id: *effect_id,
+                scope: *scope,
                 provider_actor_id: self.canonical_actor_id(
                     self.actor_ancestry
                         .resolve_actor_id_at(*provider_actor_id, fact.observed_micros),
@@ -2542,6 +2558,7 @@ impl CombatTimelinePlugin {
             },
             CombatFactKind::ExactRationalDamageContribution {
                 effect_id,
+                scope,
                 provider_actor_id,
                 recipient_actor_id,
                 numerator,
@@ -2552,6 +2569,7 @@ impl CombatTimelinePlugin {
                 affected_target,
             } => CombatFactKind::ExactRationalDamageContribution {
                 effect_id: *effect_id,
+                scope: *scope,
                 provider_actor_id: self.canonical_actor_id(
                     self.actor_ancestry
                         .resolve_actor_id_at(*provider_actor_id, fact.observed_micros),
@@ -2675,6 +2693,7 @@ impl CombatTimelinePlugin {
                 }
                 CombatFactKind::ExactDamageContribution {
                     effect_id,
+                    scope,
                     provider_actor_id,
                     recipient_actor_id,
                     amount,
@@ -2688,6 +2707,7 @@ impl CombatTimelinePlugin {
                         effect_id,
                         provider_actor_id,
                         recipient_actor_id,
+                        scope,
                         amount,
                         observed_damage,
                         included: offset_micros.is_some(),
@@ -2698,6 +2718,7 @@ impl CombatTimelinePlugin {
                             HistoryDamageInfluenceObservation {
                                 observed_micros: fact.observed_micros,
                                 effect_id,
+                                scope,
                                 provider_actor_id,
                                 provider_entity_uuid: fact.source_entity_uuid,
                                 recipient_actor_id,
@@ -2717,6 +2738,7 @@ impl CombatTimelinePlugin {
                 }
                 CombatFactKind::ExactRationalDamageContribution {
                     effect_id,
+                    scope,
                     provider_actor_id,
                     recipient_actor_id,
                     numerator,
@@ -2732,6 +2754,7 @@ impl CombatTimelinePlugin {
                             effect_id,
                             provider_actor_id,
                             recipient_actor_id,
+                            scope,
                             numerator,
                             denominator,
                             observed_damage,
@@ -2744,6 +2767,7 @@ impl CombatTimelinePlugin {
                             HistoryDamageInfluenceObservation {
                                 observed_micros: fact.observed_micros,
                                 effect_id,
+                                scope,
                                 provider_actor_id,
                                 provider_entity_uuid: fact.source_entity_uuid,
                                 recipient_actor_id,
@@ -3217,6 +3241,7 @@ struct HistoryViewSpec {
 struct HistoryDamageInfluenceObservation {
     observed_micros: u64,
     effect_id: i64,
+    scope: DamageContributionScope,
     provider_actor_id: u64,
     provider_entity_uuid: i64,
     recipient_actor_id: u64,
@@ -3235,6 +3260,7 @@ fn observe_history_damage_influence(
 ) {
     let key = HistoryDamageInfluenceKey {
         effect_id: observation.effect_id,
+        scope: observation.scope,
         provider_actor_id: observation.provider_actor_id,
         provider_entity_uuid: observation.provider_entity_uuid,
         recipient_actor_id: observation.recipient_actor_id,
@@ -3294,6 +3320,8 @@ fn finish_history_damage_influences(
         .into_iter()
         .map(|(key, accumulator)| HistoryDamageInfluenceSummary {
             effect_id: key.effect_id.to_string(),
+            attribution_component: key.scope.component_key().map(str::to_owned),
+            complete_effect: key.scope.is_complete_effect(),
             provider_actor_id: key.provider_actor_id.to_string(),
             provider_entity_uuid: key.provider_entity_uuid.to_string(),
             recipient_actor_id: key.recipient_actor_id.to_string(),
@@ -3691,6 +3719,7 @@ mod tests {
         let base = HistoryDamageInfluenceObservation {
             observed_micros: 1_000,
             effect_id: 55_228,
+            scope: DamageContributionScope::Component("target-vulnerability"),
             provider_actor_id: 1,
             provider_entity_uuid: 101,
             recipient_actor_id: 2,
@@ -3731,6 +3760,10 @@ mod tests {
         assert_eq!(rows.len(), 1);
         let row = &rows[0];
         assert_eq!(row.effect_id, "55228");
+        assert_eq!(
+            row.attribution_component.as_deref(),
+            Some("target-vulnerability")
+        );
         assert_eq!(row.affected_ability_id.as_deref(), Some("2206290"));
         assert_eq!(row.target_actor_id.as_deref(), Some("3"));
         assert_eq!(row.damage_event_count, 2);
@@ -3860,6 +3893,7 @@ mod tests {
                         effect_id: 9001,
                         provider_actor_id: 1,
                         recipient_actor_id: 2,
+                        scope: DamageContributionScope::Component("test-integer"),
                         amount: 10,
                         observed_damage: 100,
                         included: true,
@@ -3869,6 +3903,7 @@ mod tests {
                         effect_id: 9001,
                         provider_actor_id: 1,
                         recipient_actor_id: 2,
+                        scope: DamageContributionScope::Component("test-rational"),
                         numerator: 1,
                         denominator: 2,
                         observed_damage: 100,

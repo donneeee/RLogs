@@ -5730,7 +5730,9 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use prost::Message;
-    use rlogs_combat::{ExactDamageContributionEvent, ExactRationalDamageContributionEvent};
+    use rlogs_combat::{
+        DamageContributionScope, ExactDamageContributionEvent, ExactRationalDamageContributionEvent,
+    };
     use rlogs_events::{
         AbilityId, ActorEvent, ActorId, ActorKind, ActorLoadoutEvidence, ActorLoadoutSlot,
         ActorState, CanonicalEvent, CharacterIdentity, CooldownEvent, EntityAttribute,
@@ -6744,6 +6746,7 @@ mod tests {
                 effect_id: 2_407_280,
                 provider_actor_id: 7,
                 recipient_actor_id: 8,
+                scope: DamageContributionScope::CompleteEffect,
                 amount: 5,
                 observed_damage: 100,
                 included: true,
@@ -8576,6 +8579,7 @@ mod tests {
                 effect_id: 9001,
                 provider_actor_id: 7,
                 recipient_actor_id: 8,
+                scope: DamageContributionScope::CompleteEffect,
                 amount: 20,
                 observed_damage: 100,
                 included: true,
@@ -8585,6 +8589,7 @@ mod tests {
                 effect_id: 9001,
                 provider_actor_id: 7,
                 recipient_actor_id: 8,
+                scope: DamageContributionScope::CompleteEffect,
                 numerator: 1,
                 denominator: 2,
                 observed_damage: 100,
@@ -8626,6 +8631,7 @@ mod tests {
                     effect_id: 9001,
                     provider_actor_id: 7,
                     recipient_actor_id: 7,
+                    scope: DamageContributionScope::CompleteEffect,
                     amount: 101,
                     observed_damage: 100,
                     included: true,
@@ -8635,6 +8641,7 @@ mod tests {
                     effect_id: 9999,
                     provider_actor_id: 7,
                     recipient_actor_id: 8,
+                    scope: DamageContributionScope::CompleteEffect,
                     amount: 10,
                     observed_damage: 100,
                     included: false,
@@ -8670,6 +8677,7 @@ mod tests {
                 effect_id: 9001,
                 provider_actor_id: 7,
                 recipient_actor_id: 8,
+                scope: DamageContributionScope::CompleteEffect,
                 amount: 20,
                 observed_damage: 100,
                 included: true,

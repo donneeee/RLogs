@@ -5153,8 +5153,23 @@ fn decode_attribute_value(id: i32, raw: &[u8]) -> Option<EntityAttributeValue> {
         // positive scalar routes: 12510 is Crit Damage and 12530 is Lucky
         // Damage Increase. Keep the allowlist ID-specific; neighboring
         // attributes remain unresolved until independently reviewed.
+        // Current-build Inspiration proof closes the exact retained scalar
+        // routes consumed by its versioned projector. These include final and
+        // raw-add Crit/Luck, Haste, Mastery, Versatility, external damage, and
+        // the serialized Light-property damage lane. This is deliberately an
+        // explicit set rather than a neighboring-ID range.
+        | 11710
+        | 11712
+        | 11780
+        | 11782
+        | 11840
+        | 11930
+        | 11942
+        | 11950
+        | 11952
         | 12510
         | 12530
+        | 13170
         // Packet-observed all-element final/total/add/extra-add/percent/
         // extra-percent family. Fatal Spiral changes the first three together
         // (for example 237 -> 1237) while the remaining components stay
@@ -9094,6 +9109,25 @@ mod tests {
         );
         assert_eq!(decode_attribute_value(12511, &[0xf1, 0x22]), None);
         assert_eq!(decode_attribute_value(12531, &[0xf1, 0x22]), None);
+    }
+
+    #[test]
+    fn inspiration_formula_attributes_decode_exact_packet_observed_varints() {
+        assert_eq!(
+            decode_attribute_value(11710, &[0x82, 0x49]),
+            Some(EntityAttributeValue::Integer(9_346))
+        );
+        for attribute_id in [
+            11712, 11780, 11782, 11840, 11930, 11940, 11942, 11950, 11952, 13170,
+        ] {
+            assert_eq!(
+                decode_attribute_value(attribute_id, &[0xa0, 0x06]),
+                Some(EntityAttributeValue::Integer(800))
+            );
+        }
+        assert_eq!(decode_attribute_value(11711, &[0xa0, 0x06]), None);
+        assert_eq!(decode_attribute_value(11781, &[0xa0, 0x06]), None);
+        assert_eq!(decode_attribute_value(13171, &[0xa0, 0x06]), None);
     }
 
     #[test]

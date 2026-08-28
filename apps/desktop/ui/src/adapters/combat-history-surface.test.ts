@@ -63,6 +63,7 @@ describe("Combat History rDPS influence filtering", () => {
   } as CombatHistoryView;
   const influence = {
     effect_id: "2302121",
+    attribution_component: "inspiration-critical-chance",
     provider_actor_id: provider.actor_id,
     provider_entity_uuid: provider.entity_uuid,
     recipient_actor_id: recipient.actor_id,
@@ -80,6 +81,11 @@ describe("Combat History rDPS influence filtering", () => {
   it("matches effect and affected skill identities together", () => {
     expect(historyDamageInfluenceMatchesQuery(view, influence, "Team Luck 2031109")).toBe(true);
     expect(historyDamageInfluenceMatchesQuery(view, influence, "2302121 Falconry hit")).toBe(true);
+  });
+
+  it("matches the exact attribution component", () => {
+    expect(historyDamageInfluenceMatchesQuery(view, influence, "critical chance")).toBe(true);
+    expect(historyDamageInfluenceMatchesQuery(view, influence, "lucky chance")).toBe(false);
   });
 
   it("matches participant and target presentation without broad false positives", () => {

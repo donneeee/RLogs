@@ -74,6 +74,29 @@ pub struct ContributionDamageEvent {
     pub included: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DamageContributionScope {
+    /// Every damage-relevant component of this effect has been composed for
+    /// the event.
+    CompleteEffect,
+    /// Only this named formula component is transferred. Other components
+    /// remain unresolved and must not be implied by history or UI consumers.
+    Component(&'static str),
+}
+
+impl DamageContributionScope {
+    pub fn component_key(self) -> Option<&'static str> {
+        match self {
+            Self::CompleteEffect => None,
+            Self::Component(key) => Some(key),
+        }
+    }
+
+    pub fn is_complete_effect(self) -> bool {
+        matches!(self, Self::CompleteEffect)
+    }
+}
+
 /// One exact marginal damage transfer produced by a game-specific formula
 /// projector. The original damage event remains canonical and is still
 /// observed separately; this record only moves the proven external portion
@@ -84,6 +107,7 @@ pub struct ExactDamageContributionEvent {
     pub effect_id: i64,
     pub provider_actor_id: u64,
     pub recipient_actor_id: u64,
+    pub scope: DamageContributionScope,
     pub amount: i64,
     /// The complete packet-observed damage amount used to validate that the
     /// marginal transfer cannot exceed its source event.
@@ -102,6 +126,7 @@ pub struct ExactRationalDamageContributionEvent {
     pub effect_id: i64,
     pub provider_actor_id: u64,
     pub recipient_actor_id: u64,
+    pub scope: DamageContributionScope,
     pub numerator: i128,
     pub denominator: i128,
     pub observed_damage: i64,
@@ -1116,6 +1141,7 @@ mod tests {
                 effect_id: 2_404_261,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::CompleteEffect,
                 amount: 107_757,
                 observed_damage: 2_737_001,
                 included: true,
@@ -1141,6 +1167,7 @@ mod tests {
                 effect_id: 1,
                 provider_actor_id: 4,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::CompleteEffect,
                 amount: 10,
                 observed_damage: 100,
                 included: true,
@@ -1150,6 +1177,7 @@ mod tests {
                 effect_id: 1,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::CompleteEffect,
                 amount: 101,
                 observed_damage: 100,
                 included: true,
@@ -1174,6 +1202,7 @@ mod tests {
                     effect_id: 2_302_121,
                     provider_actor_id: 2,
                     recipient_actor_id: 4,
+                    scope: DamageContributionScope::CompleteEffect,
                     numerator,
                     denominator: 3,
                     observed_damage: 100,
@@ -1207,6 +1236,7 @@ mod tests {
                     effect_id: 2_302_121,
                     provider_actor_id: 2,
                     recipient_actor_id: 4,
+                    scope: DamageContributionScope::CompleteEffect,
                     numerator,
                     denominator,
                     observed_damage: 100,
@@ -1237,6 +1267,7 @@ mod tests {
                     effect_id: 2_302_121,
                     provider_actor_id: 2,
                     recipient_actor_id: 4,
+                    scope: DamageContributionScope::CompleteEffect,
                     numerator: denominator / 2,
                     denominator,
                     observed_damage: 100,
@@ -1271,6 +1302,7 @@ mod tests {
                 effect_id: 1,
                 provider_actor_id: 4,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::CompleteEffect,
                 numerator: 1,
                 denominator: 2,
                 observed_damage: 100,
@@ -1281,6 +1313,7 @@ mod tests {
                 effect_id: 1,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::CompleteEffect,
                 numerator: 101,
                 denominator: 1,
                 observed_damage: 100,
@@ -1291,6 +1324,7 @@ mod tests {
                 effect_id: 1,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
+                scope: DamageContributionScope::CompleteEffect,
                 numerator: 1,
                 denominator: 2,
                 observed_damage: 100,

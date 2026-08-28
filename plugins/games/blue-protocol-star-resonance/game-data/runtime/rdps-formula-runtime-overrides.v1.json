@@ -1,5 +1,5 @@
 {
-  "schema_version": 16,
+  "schema_version": 17,
   "deployment_id": "global",
   "builds": [
     {
@@ -83,6 +83,41 @@
           ],
           "runtime_transfer_enabled": false,
           "runtime_recipient_class_ids": []
+        },
+        "inspiration": {
+          "current_build_lifecycle_authority": false,
+          "current_build_magnitude_authority": false,
+          "exact_rational_chance_attribution_authority": false,
+          "protocol_pack_migration_authority": false,
+          "authorized_protocol_pack_digests": [],
+          "formula_authority_basis": "historical-build-inspiration-chance-not-reviewed",
+          "canonical_conservation_replay_authority": false,
+          "chance_proof": {
+            "content_sha256": "",
+            "critical_factor_proof_sha256": "",
+            "exact_build_rlogs": 0,
+            "exact_single_provider_events": 0,
+            "emitted_critical_events": 0,
+            "emitted_lucky_events": 0,
+            "retained_combined_events": 0
+          },
+          "chance_replay": {
+            "content_sha256": "",
+            "content_bytes": 0,
+            "exact_build_rlogs": 0,
+            "total_canonical_events": 0,
+            "emitted_contribution_events": 0,
+            "sessions_with_emissions": 0,
+            "projected_credit": 0,
+            "all_runtime_target_match": false,
+            "all_conserved": false
+          },
+          "chance_magnitudes": [],
+          "critical_chance_runtime_transfer_enabled": false,
+          "lucky_chance_runtime_transfer_enabled": false,
+          "combined_critical_lucky_runtime_transfer_enabled": false,
+          "recipient_dependency_runtime_transfer_enabled": false,
+          "runtime_transfer_enabled": false
         }
       }
     },

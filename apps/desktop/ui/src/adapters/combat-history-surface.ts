@@ -210,6 +210,8 @@ export function historyDamageInfluenceMatchesQuery(
     "effect",
     influence.effect_id,
     effect?.presentation_name,
+    "component",
+    influence.attribution_component,
     "provider",
     influence.provider_actor_id,
     influence.provider_entity_uuid,
@@ -1794,6 +1796,7 @@ export function mountCombatHistorySurface(
     const heading = document.createElement("tr");
     for (const label of [
       "Effect",
+      "Component",
       "Provider",
       "Recipient",
       "Affected damage ID",
@@ -1858,6 +1861,11 @@ export function mountCombatHistorySurface(
       row.dataset.contextComplete = String(influence.damage_context_complete);
       row.append(
         effectCell,
+        textTableCell(
+          influence.attribution_component
+            ? attributionComponentLabel(influence.attribution_component)
+            : "Complete effect",
+        ),
         textTableCell(provider ? actorLabel(provider) : `Actor ${influence.provider_actor_id}`),
         textTableCell(recipient ? actorLabel(recipient) : `Actor ${influence.recipient_actor_id}`),
         abilityCell,
@@ -3308,6 +3316,16 @@ function exactIntegerCell(value: string): HTMLTableCellElement {
   cell.textContent = formatExactInteger(value);
   cell.title = value;
   return cell;
+}
+
+function attributionComponentLabel(value: string): string {
+  return value
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.length <= 4 && part === part.toUpperCase()
+      ? part
+      : `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
 }
 
 function exactInfluenceCell(

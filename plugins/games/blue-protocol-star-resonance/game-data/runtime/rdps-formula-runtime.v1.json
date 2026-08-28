@@ -1,5 +1,5 @@
 {
-  "schema_version": 16,
+  "schema_version": 17,
   "deployment_id": "global",
   "game_build": "24687926",
   "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
@@ -384,6 +384,55 @@
       }
     ],
     "damage_scripts": ["Attack", "MAttack"],
+    "current_build_lifecycle_authority": true,
+    "current_build_magnitude_authority": true,
+    "exact_rational_chance_attribution_authority": true,
+    "protocol_pack_migration_authority": true,
+    "authorized_protocol_pack_digests": [
+      "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+      "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395"
+    ],
+    "formula_authority_basis": "current-build-exact-lifecycle-removal-magnitude-and-critical-factor-replay-plus-target-pack-decoder-contract-migration",
+    "accounting_method": "observed-final-damage-proportional-stage-share",
+    "server_integer_counterfactual_authority": false,
+    "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
+    "unresolved_overlap_fails_closed": true,
+    "canonical_conservation_replay_authority": true,
+    "chance_proof": {
+      "content_sha256": "924f8945ca37963e0726358d7385d7e1ffe19e8caeba15b40d5ba644885aba26",
+      "critical_factor_proof_sha256": "efd4a6b61f3cbd757725a2a65b75982641487b457b1f9eee6c606a030111b938",
+      "exact_build_rlogs": 26,
+      "exact_single_provider_events": 10682,
+      "emitted_critical_events": 10615,
+      "emitted_lucky_events": 6,
+      "retained_combined_events": 10518
+    },
+    "chance_replay": {
+      "content_sha256": "94e7d3fc0037259aa41dee081d0dd6147b9408350e20b763d992ca31592a5400",
+      "content_bytes": 133969924,
+      "exact_build_rlogs": 26,
+      "total_canonical_events": 6411565,
+      "emitted_contribution_events": 13618,
+      "sessions_with_emissions": 6,
+      "projected_credit": 33023110,
+      "all_runtime_target_match": true,
+      "all_conserved": true
+    },
+    "chance_magnitudes": [
+      {
+        "effect_level": 2,
+        "chance_raw_delta": 150,
+        "exact_removal_instances": 10
+      },
+      {
+        "effect_level": 5,
+        "chance_raw_delta": 300,
+        "exact_removal_instances": 5
+      }
+    ],
+    "critical_chance_runtime_transfer_enabled": true,
+    "lucky_chance_runtime_transfer_enabled": true,
+    "combined_critical_lucky_runtime_transfer_enabled": false,
     "recipient_dependency_runtime_transfer_enabled": false,
     "runtime_transfer_enabled": false
   },
