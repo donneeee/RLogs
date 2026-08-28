@@ -1174,7 +1174,7 @@ fn select_remote_factor_cluster(
             (total, cluster)
         })
         .collect::<Vec<_>>();
-    ranked.sort_unstable_by(|left, right| right.0.cmp(&left.0));
+    ranked.sort_unstable_by_key(|entry| std::cmp::Reverse(entry.0));
     let (top_support, top) = ranked.first()?;
     if *top_support < minimum_support
         || ranked.get(1).is_some_and(|runner| runner.0 == *top_support)
