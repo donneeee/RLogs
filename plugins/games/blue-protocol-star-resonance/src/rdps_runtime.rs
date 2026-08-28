@@ -418,9 +418,10 @@ pub(crate) struct HarmonyGraceRuntimeConfig {
     pub remote_paired_output_ignored_effect_ids: Vec<i64>,
     pub remote_paired_output_formula_effect_ids: Vec<i64>,
     pub remote_paired_output_max_pair_gap_micros: u64,
-    /// Exact-build class-2 envelope from the reviewed ability 7998 and 1259
-    /// active/inactive anchors. This rejects mechanically similar child-
-    /// entity outputs that imply a materially different effect magnitude.
+    /// Exact-build class-2 and class-11 envelope from the reviewed abilities
+    /// 7998, 1259, and 2352 active/inactive anchors. This rejects mechanically
+    /// similar child-entity outputs that imply a materially different effect
+    /// magnitude.
     pub remote_paired_output_provider_share_min_basis_points: i64,
     pub remote_paired_output_provider_share_max_basis_points: i64,
     pub remote_paired_output_min_distinct_targets: u32,
@@ -1259,7 +1260,7 @@ impl RdpsRuntimeConfig {
             });
         let harmony_remote_paired_output_is_valid = harmony
             .remote_paired_output_runtime_transfer_enabled
-            && harmony.remote_paired_output_recipient_class_ids == [2]
+            && harmony.remote_paired_output_recipient_class_ids == [2, 11]
             && harmony.remote_paired_output_ignored_effect_ids == [27_016, 55_301, 3_002_011]
             && harmony.remote_paired_output_formula_effect_ids.len() == 583
             && harmony
@@ -2343,7 +2344,7 @@ mod tests {
             current
                 .harmony_grace
                 .remote_paired_output_recipient_class_ids,
-            [2]
+            [2, 11]
         );
         assert_eq!(
             (
@@ -2433,7 +2434,7 @@ mod tests {
 
         let mut broadened_remote_scope = bundled_runtime_value();
         broadened_remote_scope["harmony_grace"]["remote_paired_output_recipient_class_ids"] =
-            serde_json::json!([1, 2]);
+            serde_json::json!([1, 2, 11]);
         assert!(
             runtime_from_value(broadened_remote_scope)
                 .validate()

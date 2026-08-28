@@ -2413,6 +2413,7 @@ impl BpsrStateDamageContributionProjector {
         };
         let mut deferred_remote_harmony_candidate = None;
         let mut deferred_remote_harmony_later_contribution = None;
+        let mut deferred_remote_harmony_suppresses_later_overlap = false;
         match &timeline.kind {
             TimelineEventKind::RunBoundary {
                 state: RunState::Entered,
@@ -2750,14 +2751,28 @@ impl BpsrStateDamageContributionProjector {
                             + target_vulnerability_rational_contributions.len())
                             > 1
                     {
-                        // Team Luck and Thunderwind both modify the critical
-                        // stage. Target vulnerability is also a later damage
-                        // bucket. Any unresolved multi-provider allocation or
-                        // shared cross-term remains fail-closed.
-                        return;
+                        if deferred_remote_harmony_candidate.is_some()
+                            && attack_contributions.is_empty()
+                        {
+                            // The future paired-output receipt is an exact
+                            // final-damage difference with every later-stage
+                            // input held constant. Keep that exact Harmony
+                            // candidate, while suppressing the ambiguous split
+                            // among the simultaneous later-stage providers.
+                            deferred_remote_harmony_suppresses_later_overlap = true;
+                        } else {
+                            // Without a deferred exact paired-output candidate,
+                            // no attribution in this overlap is independently
+                            // safe to emit.
+                            return;
+                        }
                     }
                     if attack_contributions.is_empty() {
-                        if let Some(later) = later_contribution {
+                        if deferred_remote_harmony_suppresses_later_overlap {
+                            // The exact Harmony delta will be emitted when its
+                            // bounded receipt arrives. Do not queue or emit any
+                            // member of the unresolved later-stage overlap.
+                        } else if let Some(later) = later_contribution {
                             rational_output.push(later);
                         } else if let Some(candidate) =
                             self.deferred_team_luck_critical_candidate(envelope, damage)
@@ -2804,7 +2819,8 @@ impl BpsrStateDamageContributionProjector {
                 self.last_target_vulnerability_audit.is_some_and(|audit| {
                     audit.exact_candidate_count == 0
                         && (audit.rational_candidate_count == 0
-                            || deferred_remote_harmony_later_contribution.is_some())
+                            || deferred_remote_harmony_later_contribution.is_some()
+                            || deferred_remote_harmony_suppresses_later_overlap)
                         && !audit.unresolved_attack_overlap
                 }) && output.len() == current_exact_output_start
                     && later_contribution_is_the_only_output;
