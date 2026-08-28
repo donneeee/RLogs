@@ -51,11 +51,11 @@
   "critical_damage_factor_interpretation": "unresolved",
   "target_vulnerability": {
     "current_build_lifecycle_authority": true,
-    "current_build_formula_authority": false,
-    "server_integer_counterfactual_authority": false,
-    "formula_specific_conservation_authority": false,
+    "current_build_formula_authority": true,
+    "server_integer_counterfactual_authority": true,
+    "formula_specific_conservation_authority": true,
     "unresolved_overlap_fails_closed": true,
-    "runtime_transfer_effect_ids": []
+    "runtime_transfer_effect_ids": [55228]
   },
   "team_luck": {
     "effect_id": 2302121,

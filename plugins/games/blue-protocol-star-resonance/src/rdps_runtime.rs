@@ -1158,19 +1158,19 @@ mod tests {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
-        assert!(
-            current
-                .target_vulnerability_runtime_transfer_effect_ids()
-                .is_empty()
+        assert_eq!(
+            current.target_vulnerability_runtime_transfer_effect_ids(),
+            &[55_228]
         );
-        assert!(!current.effect_runtime_transfer_enabled(55_228));
+        assert!(current.effect_runtime_transfer_enabled(55_228));
+        assert!(!current.runtime_promotion_allowed());
 
         let mut premature = base.clone();
-        premature["target_vulnerability"]["runtime_transfer_effect_ids"] =
-            serde_json::json!([55_228]);
+        premature["target_vulnerability"]["formula_specific_conservation_authority"] =
+            serde_json::Value::Bool(false);
         assert!(
             runtime_from_value(premature).validate().is_err(),
-            "an effect ID alone cannot grant target-vulnerability production authority",
+            "an effect ID cannot remain enabled after any component authority is removed",
         );
 
         let mut independently_proven = base;
@@ -1234,7 +1234,10 @@ mod tests {
         );
         assert!(!current.functional_amp.attack_magic_runtime_transfer_enabled);
         assert!(!current.functional_amp.speed_runtime_transfer_enabled);
-        assert!(!current.has_any_runtime_transfer_enabled());
+        assert!(
+            current.has_any_runtime_transfer_enabled(),
+            "the independently promoted target-vulnerability rule keeps the partial runtime active"
+        );
         assert!(!current.effect_runtime_transfer_enabled(current.functional_amp.effect_id));
         assert!(!current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
 

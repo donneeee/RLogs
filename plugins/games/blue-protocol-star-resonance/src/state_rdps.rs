@@ -47,10 +47,10 @@ use crate::{
 };
 
 const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
-const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 2;
+const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 3;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v8";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v9";
 
 static STATE_RDPS_FORMULA_IDENTITY: OnceLock<String> = OnceLock::new();
 
@@ -255,20 +255,31 @@ struct TargetVulnerabilityRdpsRule {
     integer_projection: Option<String>,
     required_critical: bool,
     required_lucky: bool,
+    #[serde(default)]
+    runtime_eligible: bool,
+    active_observed_damage: Option<i64>,
+    inactive_observed_damage: Option<i64>,
+    required_source_class_id: Option<i32>,
+    required_source_context_sha256: Option<String>,
+    #[serde(default)]
+    allowed_target_context_sha256: Vec<String>,
+    #[serde(default)]
+    ignored_context_effect_ids: Vec<i64>,
 }
 
 impl TargetVulnerabilityRdpsRule {
     fn active_factor(&self) -> Option<i64> {
         match self.projection {
-            TargetVulnerabilityProjection::ExactInteger => {
+            TargetVulnerabilityProjection::Integer => {
                 self.inactive_factor?.checked_add(self.provider_raw_delta)
             }
-            TargetVulnerabilityProjection::ExactRationalObservedOutput => self.active_factor,
+            TargetVulnerabilityProjection::RationalObservedOutput => self.active_factor,
+            TargetVulnerabilityProjection::PairedObservedOutput => None,
         }
     }
 
     fn fixed_point_rounding(&self) -> Option<PositiveFixedPointRounding> {
-        if self.projection != TargetVulnerabilityProjection::ExactInteger {
+        if self.projection != TargetVulnerabilityProjection::Integer {
             return None;
         }
         match self.rounding.as_deref()? {
@@ -280,7 +291,7 @@ impl TargetVulnerabilityRdpsRule {
 
     fn is_valid(&self) -> bool {
         match self.projection {
-            TargetVulnerabilityProjection::ExactInteger => {
+            TargetVulnerabilityProjection::Integer => {
                 self.inactive_factor.is_some_and(|factor| factor > 0)
                     && self.active_factor.is_none()
                     && self.provider_raw_delta > 0
@@ -288,7 +299,7 @@ impl TargetVulnerabilityRdpsRule {
                     && self.fixed_point_rounding().is_some()
                     && self.integer_projection.is_none()
             }
-            TargetVulnerabilityProjection::ExactRationalObservedOutput => {
+            TargetVulnerabilityProjection::RationalObservedOutput => {
                 self.inactive_factor.is_none()
                     && self
                         .active_factor
@@ -298,15 +309,52 @@ impl TargetVulnerabilityRdpsRule {
                     && self.integer_projection.as_deref()
                         == Some("sum_exact_then_half_up_per_effect_provider_recipient")
             }
+            TargetVulnerabilityProjection::PairedObservedOutput => {
+                self.inactive_factor.is_none()
+                    && self.active_factor.is_none()
+                    && self.provider_raw_delta == 0
+                    && self.rounding.is_none()
+                    && self.integer_projection.as_deref() == Some("exact_packet_pair")
+                    && self.active_observed_damage.is_some_and(|damage| damage > 0)
+                    && self
+                        .inactive_observed_damage
+                        .is_some_and(|damage| damage >= 0)
+                    && self.active_observed_damage > self.inactive_observed_damage
+                    && self
+                        .required_source_class_id
+                        .is_some_and(|class_id| class_id > 0)
+                    && self
+                        .required_source_context_sha256
+                        .as_deref()
+                        .is_some_and(is_prefixed_sha256)
+                    && !self.allowed_target_context_sha256.is_empty()
+                    && self
+                        .allowed_target_context_sha256
+                        .iter()
+                        .all(|digest| is_prefixed_sha256(digest))
+                    && self
+                        .ignored_context_effect_ids
+                        .iter()
+                        .all(|effect_id| *effect_id > 0 && *effect_id != self.effect_id)
+            }
         }
     }
 }
 
+fn is_prefixed_sha256(value: &str) -> bool {
+    value.strip_prefix("sha256:").is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
 enum TargetVulnerabilityProjection {
-    ExactInteger,
-    ExactRationalObservedOutput,
+    #[serde(rename = "exact_integer")]
+    Integer,
+    #[serde(rename = "exact_rational_observed_output")]
+    RationalObservedOutput,
+    #[serde(rename = "exact_paired_observed_output")]
+    PairedObservedOutput,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -754,6 +802,21 @@ struct TargetVulnerabilityTransitionKey {
     effect_id: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct FormulaStatusKey {
+    target_actor_id: u64,
+    source_actor_id: u64,
+    effect_id: i64,
+    instance_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct FormulaStatusValue {
+    effect_id: i64,
+    stacks: i64,
+    level: i64,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TargetVulnerabilityWindow {
     expires_at_observed_micros: Option<u64>,
@@ -960,6 +1023,11 @@ pub struct BpsrStateDamageContributionProjector {
     fatal_spiral_ambiguous_provider_entities: HashSet<i64>,
     target_vulnerability_windows: HashMap<TargetVulnerabilityWindowKey, TargetVulnerabilityWindow>,
     target_vulnerability_transitions: HashSet<TargetVulnerabilityTransitionKey>,
+    /// Full packet-observed state used only by exact paired-output rules. The
+    /// digest gate prevents a sealed counterfactual from leaking into a
+    /// different remote build or overlapping status context.
+    formula_attributes_by_actor: HashMap<u64, BTreeMap<i32, i64>>,
+    formula_statuses: HashMap<FormulaStatusKey, FormulaStatusValue>,
     /// An unresolved lifecycle may be an offensive buff on a damage source or
     /// a vulnerability/mitigation effect on a damage target. Until an actor or
     /// run lifetime boundary supplies a clean state, no rDPS transfer involving
@@ -1026,6 +1094,8 @@ impl Default for BpsrStateDamageContributionProjector {
             fatal_spiral_ambiguous_provider_entities: HashSet::new(),
             target_vulnerability_windows: HashMap::new(),
             target_vulnerability_transitions: HashSet::new(),
+            formula_attributes_by_actor: HashMap::new(),
+            formula_statuses: HashMap::new(),
             unresolved_status_windows: HashSet::new(),
             actor_ancestry: ActorAncestryResolver::default(),
             latest_observed_micros: 0,
@@ -1308,6 +1378,10 @@ impl BpsrStateDamageContributionProjector {
                         )
                     })
                     .copied()
+                    .filter(|index| {
+                        target_vulnerability_catalog.rules[*index].runtime_eligible
+                            || self.target_vulnerability_candidate_audit_enabled
+                    })
                     .collect::<Vec<_>>();
                 let target_vulnerability_contributions = target_vulnerability_rule_indices
                     .iter()
@@ -1559,6 +1633,7 @@ impl BpsrStateDamageContributionProjector {
     }
 
     fn observe_status(&mut self, status: &rlogs_events::StatusEvent, observed_micros: u64) {
+        self.observe_formula_status(status);
         if status.effect.0 == self.runtime.inspiration.full_bloom_effect_id
             && status.origin.map(|origin| origin.source_config_id)
                 == Some(self.runtime.inspiration.full_bloom_source_config_id)
@@ -1645,6 +1720,37 @@ impl BpsrStateDamageContributionProjector {
         };
         self.effect_windows
             .insert(key, EffectWindow { desired_stacks });
+    }
+
+    fn observe_formula_status(&mut self, status: &rlogs_events::StatusEvent) {
+        let target_actor_id = status.target.actor_id.0;
+        let effect_id = status.effect.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Removed | StatusState::Consumed => {
+                self.formula_statuses.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || key.effect_id != effect_id
+                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let key = FormulaStatusKey {
+                    target_actor_id,
+                    source_actor_id: status.source.map(|source| source.actor_id.0).unwrap_or(0),
+                    effect_id,
+                    instance_id,
+                };
+                self.formula_statuses.insert(
+                    key,
+                    FormulaStatusValue {
+                        effect_id,
+                        stacks: status.stacks.map(i64::from).unwrap_or(-1),
+                        level: status.level.map(i64::from).unwrap_or(-1),
+                    },
+                );
+            }
+        }
     }
 
     fn observe_fatal_spiral_status(&mut self, status: &rlogs_events::StatusEvent) {
@@ -2282,6 +2388,21 @@ impl BpsrStateDamageContributionProjector {
                 .insert(entity_uuid, actor_id);
         }
         self.observe_canonical_ownership(actor_id, entity_uuid, ownership, observed_micros);
+        let mut formula_attributes = if update_kind == EntityAttributeUpdateKind::Snapshot {
+            BTreeMap::new()
+        } else {
+            self.formula_attributes_by_actor
+                .get(&actor_id)
+                .cloned()
+                .unwrap_or_default()
+        };
+        for attribute in attributes {
+            if let Some(value) = integer_attribute(attribute) {
+                formula_attributes.insert(attribute.attribute_id, value);
+            }
+        }
+        self.formula_attributes_by_actor
+            .insert(actor_id, formula_attributes);
         self.observe_thunderwind_proxy_attributes(actor_id, attributes);
         if update_kind == EntityAttributeUpdateKind::Snapshot {
             self.inspiration_snapshot_targets.insert(actor_id);
@@ -4676,7 +4797,10 @@ impl BpsrStateDamageContributionProjector {
         damage: &rlogs_events::DamageEvent,
         rule: &TargetVulnerabilityRdpsRule,
     ) -> Option<ExactDamageContributionEvent> {
-        if rule.projection != TargetVulnerabilityProjection::ExactInteger {
+        if rule.projection == TargetVulnerabilityProjection::PairedObservedOutput {
+            return self.target_vulnerability_paired_contribution(envelope, damage, rule);
+        }
+        if rule.projection != TargetVulnerabilityProjection::Integer {
             return None;
         }
         if damage.amount <= 0
@@ -4719,13 +4843,145 @@ impl BpsrStateDamageContributionProjector {
         })
     }
 
+    fn target_vulnerability_paired_contribution(
+        &self,
+        envelope: &EventEnvelope,
+        damage: &rlogs_events::DamageEvent,
+        rule: &TargetVulnerabilityRdpsRule,
+    ) -> Option<ExactDamageContributionEvent> {
+        let active_observed_damage = rule.active_observed_damage?;
+        let inactive_observed_damage = rule.inactive_observed_damage?;
+        if damage.amount != active_observed_damage
+            || damage.ability.map(|ability| ability.0) != Some(rule.ability_id)
+            || damage.hit_event_id != Some(rule.hit_event_id)
+            || damage.flags.critical != Some(rule.required_critical)
+            || damage.flags.lucky != Some(rule.required_lucky)
+        {
+            return None;
+        }
+
+        let recipient_actor_id = damage.source.actor_id.0;
+        let target_actor_id = damage.target.actor_id.0;
+        if self.class_id_by_actor.get(&recipient_actor_id).copied() != rule.required_source_class_id
+            || self
+                .formula_context_sha256(
+                    recipient_actor_id,
+                    rule.effect_id,
+                    &rule.ignored_context_effect_ids,
+                )
+                .as_deref()
+                != rule.required_source_context_sha256.as_deref()
+        {
+            return None;
+        }
+        let target_context = self.formula_context_sha256(
+            target_actor_id,
+            rule.effect_id,
+            &rule.ignored_context_effect_ids,
+        )?;
+        if !rule
+            .allowed_target_context_sha256
+            .iter()
+            .any(|allowed| allowed == &target_context)
+        {
+            return None;
+        }
+
+        let (provider_ids, _) = self.target_vulnerability_provider_ids(
+            recipient_actor_id,
+            target_actor_id,
+            rule.effect_id,
+        );
+        let mut providers = provider_ids.into_iter();
+        let provider_actor_id = providers.next()?;
+        if providers.next().is_some() {
+            return None;
+        }
+
+        Some(ExactDamageContributionEvent {
+            observed_micros: envelope.time.observed_micros,
+            effect_id: rule.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            amount: active_observed_damage.checked_sub(inactive_observed_damage)?,
+            observed_damage: damage.amount,
+            included: true,
+        })
+    }
+
+    fn formula_context_sha256(
+        &self,
+        actor_id: u64,
+        excluded_effect_id: i64,
+        ignored_effect_ids: &[i64],
+    ) -> Option<String> {
+        let attributes = self.formula_attributes_by_actor.get(&actor_id)?;
+        let mut statuses = self
+            .formula_statuses
+            .iter()
+            .filter(|(key, _)| {
+                key.target_actor_id == actor_id
+                    && key.effect_id != excluded_effect_id
+                    && !ignored_effect_ids.contains(&key.effect_id)
+            })
+            .map(|(_, value)| *value)
+            .collect::<Vec<_>>();
+        statuses.sort_unstable();
+
+        let mut hasher = Sha256::new();
+        hasher.update(b"rlogs-bpsr-formula-context-v1\0");
+        for (attribute_id, value) in attributes {
+            if *attribute_id == ATTR_CURRENT_HP {
+                continue;
+            }
+            hasher.update(b"A");
+            hasher.update(i64::from(*attribute_id).to_le_bytes());
+            hasher.update(value.to_le_bytes());
+        }
+        for status in statuses {
+            hasher.update(b"S");
+            hasher.update(status.effect_id.to_le_bytes());
+            hasher.update(status.stacks.to_le_bytes());
+            hasher.update(status.level.to_le_bytes());
+        }
+        Some(format!("sha256:{:x}", hasher.finalize()))
+    }
+
+    fn formula_context_debug(
+        &self,
+        actor_id: u64,
+        excluded_effect_id: i64,
+        ignored_effect_ids: &[i64],
+    ) -> (Vec<(i32, i64)>, Vec<FormulaStatusValue>) {
+        let attributes = self
+            .formula_attributes_by_actor
+            .get(&actor_id)
+            .into_iter()
+            .flat_map(|attributes| attributes.iter())
+            .filter(|(attribute_id, _)| **attribute_id != ATTR_CURRENT_HP)
+            .map(|(attribute_id, value)| (*attribute_id, *value))
+            .collect::<Vec<_>>();
+        let mut statuses = self
+            .formula_statuses
+            .iter()
+            .filter(|(key, _)| {
+                key.target_actor_id == actor_id
+                    && key.effect_id != excluded_effect_id
+                    && !ignored_effect_ids.contains(&key.effect_id)
+            })
+            .map(|(_, value)| *value)
+            .collect::<Vec<_>>();
+        statuses.sort_unstable();
+        (attributes, statuses)
+    }
+
     fn target_vulnerability_rational_contribution(
         &self,
         envelope: &EventEnvelope,
         damage: &rlogs_events::DamageEvent,
         rule: &TargetVulnerabilityRdpsRule,
     ) -> Option<ExactRationalDamageContributionEvent> {
-        if rule.projection != TargetVulnerabilityProjection::ExactRationalObservedOutput {
+        if rule.projection != TargetVulnerabilityProjection::RationalObservedOutput {
             return None;
         }
         if damage.amount <= 0
@@ -4802,6 +5058,42 @@ impl BpsrStateDamageContributionProjector {
 
         let recipient_actor_id = damage.source.actor_id.0;
         let target_actor_id = damage.target.actor_id.0;
+        if rule.projection == TargetVulnerabilityProjection::PairedObservedOutput {
+            if damage.amount == rule.inactive_observed_damage.unwrap_or_default() {
+                return "paired_inactive_observed_witness";
+            }
+            if damage.amount != rule.active_observed_damage.unwrap_or_default() {
+                return "paired_observed_damage_mismatch";
+            }
+            if self.class_id_by_actor.get(&recipient_actor_id).copied()
+                != rule.required_source_class_id
+            {
+                return "paired_source_class_mismatch";
+            }
+            if self
+                .formula_context_sha256(
+                    recipient_actor_id,
+                    rule.effect_id,
+                    &rule.ignored_context_effect_ids,
+                )
+                .as_deref()
+                != rule.required_source_context_sha256.as_deref()
+            {
+                return "paired_source_context_mismatch";
+            }
+            let target_context = self.formula_context_sha256(
+                target_actor_id,
+                rule.effect_id,
+                &rule.ignored_context_effect_ids,
+            );
+            if !target_context.as_ref().is_some_and(|context| {
+                rule.allowed_target_context_sha256
+                    .iter()
+                    .any(|allowed| allowed == context)
+            }) {
+                return "paired_target_context_mismatch";
+            }
+        }
         let (providers, has_same_wire_provider) = self.target_vulnerability_provider_ids(
             recipient_actor_id,
             target_actor_id,
@@ -4854,15 +5146,18 @@ impl BpsrStateDamageContributionProjector {
     /// same constant-time attribution path; this merely exposes the retained
     /// target/provider identities when a strict packet candidate is rejected.
     pub fn target_vulnerability_audit_detail(&self, damage: &rlogs_events::DamageEvent) -> String {
-        let effect_id = target_vulnerability_rdps_catalog()
+        let rule = target_vulnerability_rdps_catalog()
             .ok()
             .and_then(|catalog| {
                 catalog
                     .rules
                     .iter()
                     .find(|rule| damage.ability.map(|ability| ability.0) == Some(rule.ability_id))
-            })
-            .map(|rule| rule.effect_id);
+            });
+        let effect_id = rule.map(|rule| rule.effect_id);
+        let ignored_effect_ids = rule
+            .map(|rule| rule.ignored_context_effect_ids.as_slice())
+            .unwrap_or_default();
         let transitions = self
             .target_vulnerability_transitions
             .iter()
@@ -4888,9 +5183,24 @@ impl BpsrStateDamageContributionProjector {
                 )
             })
             .collect::<Vec<_>>();
+        let source_context = effect_id.and_then(|effect_id| {
+            self.formula_context_sha256(damage.source.actor_id.0, effect_id, ignored_effect_ids)
+        });
+        let target_context = effect_id.and_then(|effect_id| {
+            self.formula_context_sha256(damage.target.actor_id.0, effect_id, ignored_effect_ids)
+        });
+        let source_state = effect_id.map(|effect_id| {
+            self.formula_context_debug(damage.source.actor_id.0, effect_id, ignored_effect_ids)
+        });
+        let target_state = effect_id.map(|effect_id| {
+            self.formula_context_debug(damage.target.actor_id.0, effect_id, ignored_effect_ids)
+        });
         format!(
-            "effect={effect_id:?} source={} target={} transitions={transitions:?} windows={windows:?}",
-            damage.source.actor_id.0, damage.target.actor_id.0,
+            "effect={effect_id:?} amount={} source={} source_class={:?} source_context={source_context:?} source_state={source_state:?} target={} target_context={target_context:?} target_state={target_state:?} transitions={transitions:?} windows={windows:?}",
+            damage.amount,
+            damage.source.actor_id.0,
+            self.class_id_by_actor.get(&damage.source.actor_id.0),
+            damage.target.actor_id.0,
         )
     }
 
@@ -5131,6 +5441,9 @@ impl BpsrStateDamageContributionProjector {
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.target_vulnerability_transitions
             .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.formula_attributes_by_actor.remove(&actor_id);
+        self.formula_statuses
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
         self.entity_type_by_actor.remove(&actor_id);
         self.summon_config_by_actor.remove(&actor_id);
         self.class_id_by_actor.remove(&actor_id);
@@ -5173,6 +5486,8 @@ impl BpsrStateDamageContributionProjector {
         self.fatal_spiral_ambiguous_provider_entities.clear();
         self.target_vulnerability_windows.clear();
         self.target_vulnerability_transitions.clear();
+        self.formula_attributes_by_actor.clear();
+        self.formula_statuses.clear();
         self.unresolved_status_windows.clear();
         self.actor_ancestry.clear();
         self.entity_type_by_actor.clear();
@@ -6429,20 +6744,22 @@ mod tests {
         );
         assert!(target_rule.required_critical);
         assert!(!target_rule.required_lucky);
-        let rational_rule = &target_catalog.rules[1];
-        assert_eq!(rational_rule.effect_id, 55_228);
-        assert_eq!(rational_rule.ability_id, 2_031_102);
-        assert_eq!(rational_rule.hit_event_id, 3);
-        assert_eq!(rational_rule.damage_attr_id, 2_203_110_203);
-        assert_eq!(rational_rule.active_factor(), Some(19_455));
-        assert_eq!(rational_rule.provider_raw_delta, 1_000);
-        assert_eq!(rational_rule.fixed_point_rounding(), None);
-        assert!(rational_rule.required_critical);
-        assert!(rational_rule.required_lucky);
+        let paired_rule = &target_catalog.rules[1];
+        assert_eq!(paired_rule.effect_id, 55_228);
+        assert_eq!(paired_rule.ability_id, 2_031_102);
+        assert_eq!(paired_rule.hit_event_id, 3);
+        assert_eq!(paired_rule.damage_attr_id, 2_203_110_203);
+        assert_eq!(paired_rule.active_factor(), None);
+        assert_eq!(paired_rule.active_observed_damage, Some(272_418));
+        assert_eq!(paired_rule.inactive_observed_damage, Some(258_416));
+        assert_eq!(paired_rule.required_source_class_id, Some(2));
+        assert!(paired_rule.runtime_eligible);
+        assert!(paired_rule.required_critical);
+        assert!(paired_rule.required_lucky);
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
-            Vec::<i64>::new(),
-            "candidate formulas must not be exposed as proven production effects"
+            vec![55_228],
+            "only the context-scoped exact packet pair is production promoted"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -6760,7 +7077,7 @@ mod tests {
 
         assert!(!runtime().runtime_promotion_allowed());
         assert!(
-            !state_damage_contribution_target_matches(
+            state_damage_contribution_target_matches(
                 "global",
                 "24687926",
                 runtime().protocol_pack_digest.as_str(),
@@ -6783,15 +7100,8 @@ mod tests {
             )
             .unwrap()
         );
-        assert!(
-            proven_state_damage_contribution_effect_ids()
-                .unwrap()
-                .is_empty()
-        );
-        assert_eq!(
-            projector.status(),
-            "formula_pack_blocked: formula=global/24687926; blockers=canonical-replay-conservation,critical-damage-factor-interpretation-authority,party-support-formula-frontier"
-        );
+        assert!(proven_state_damage_contribution_effect_ids().unwrap() == vec![55_228]);
+        assert_eq!(projector.status(), "partial_packet_proven_rules");
         assert_eq!(
             runtime().promotion_blockers(),
             [
@@ -7043,39 +7353,64 @@ mod tests {
     }
 
     #[test]
-    fn target_vulnerability_candidate_retains_exact_rational_observed_output() {
-        let rule = &target_vulnerability_rdps_catalog().unwrap().rules[1];
+    fn exact_paired_target_vulnerability_transfers_rdps_without_mutating_damage() {
+        let mut rule = target_vulnerability_rdps_catalog().unwrap().rules[1].clone();
         let mut projector = BpsrStateDamageContributionProjector {
             active_players: HashSet::from([2, 4]),
             latest_observed_micros: 123,
+            class_id_by_actor: HashMap::from([(4, 2)]),
+            formula_attributes_by_actor: HashMap::from([
+                (4, BTreeMap::from([(11_320, 309_156), (11_321, 309_153)])),
+                (17, BTreeMap::from([(455, 1)])),
+            ]),
             ..BpsrStateDamageContributionProjector::default()
         };
         projector.observe_target_vulnerability_status(
             &target_vulnerability_test_status(2, 17, StatusState::Applied),
             100,
         );
+        rule.required_source_context_sha256 =
+            projector.formula_context_sha256(4, rule.effect_id, &rule.ignored_context_effect_ids);
+        rule.allowed_target_context_sha256 = vec![
+            projector
+                .formula_context_sha256(17, rule.effect_id, &rule.ignored_context_effect_ids)
+                .unwrap(),
+        ];
         let mut damage = critical_test_damage(test_entity(4, 40), 272_418);
         damage.ability = Some(rlogs_events::AbilityId(2_031_102));
         damage.hit_event_id = Some(3);
         damage.flags.lucky = Some(true);
         let envelope = target_vulnerability_test_envelope(damage.clone());
 
+        let contribution = projector
+            .target_vulnerability_exact_contribution(&envelope, &damage, &rule)
+            .expect("the exact packet pair and formula context are complete");
         assert_eq!(
-            projector.target_vulnerability_rational_contribution(&envelope, &damage, rule),
-            Some(ExactRationalDamageContributionEvent {
+            contribution,
+            ExactDamageContributionEvent {
                 observed_micros: 123,
                 effect_id: 55_228,
                 provider_actor_id: 2,
                 recipient_actor_id: 4,
-                numerator: 272_418_000,
-                denominator: 19_455,
+                amount: 14_002,
                 observed_damage: 272_418,
                 included: true,
-            })
+            }
         );
         assert_eq!(
-            projector.target_vulnerability_exact_contribution(&envelope, &damage, rule),
+            damage.amount, 272_418,
+            "ordinary damage must remain unchanged"
+        );
+
+        projector
+            .formula_attributes_by_actor
+            .get_mut(&17)
+            .unwrap()
+            .insert(455, 2);
+        assert_eq!(
+            projector.target_vulnerability_exact_contribution(&envelope, &damage, &rule),
             None,
+            "a changed target formula context must fail closed",
         );
     }
 

@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn historical_target_vulnerability_formula_stays_a_disabled_current_build_candidate() {
+    fn target_vulnerability_identity_remains_candidate_while_exact_state_rule_is_promoted() {
         let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(55_228).unwrap() else {
             panic!("expected reviewed target vulnerability 55228");
         };
@@ -351,10 +351,10 @@ mod tests {
         assert!(!rule.attribution_enabled);
         assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
         assert!(
-            !crate::proven_state_damage_contribution_effect_ids()
+            crate::proven_state_damage_contribution_effect_ids()
                 .unwrap()
                 .contains(&55_228),
-            "reviewed candidate identity must remain retained without runtime credit while promotion is blocked"
+            "only the exact context-scoped state rule grants runtime credit"
         );
     }
 
