@@ -4225,6 +4225,7 @@ impl BpsrStateDamageContributionProjector {
             denominator,
             observed_damage: damage.amount,
             included: true,
+            deferred_damage_context: None,
         })
     }
 
@@ -4412,6 +4413,7 @@ impl BpsrStateDamageContributionProjector {
             denominator,
             observed_damage: damage.amount,
             included: true,
+            deferred_damage_context: None,
         })
     }
 
@@ -5108,6 +5110,7 @@ impl BpsrStateDamageContributionProjector {
             denominator,
             observed_damage: damage.amount,
             included: true,
+            deferred_damage_context: None,
         })
     }
 
@@ -5256,6 +5259,7 @@ impl BpsrStateDamageContributionProjector {
             denominator,
             observed_damage: damage.amount,
             included: true,
+            deferred_damage_context: None,
         })
     }
 
@@ -5552,6 +5556,7 @@ impl BpsrStateDamageContributionProjector {
             denominator,
             observed_damage: damage.amount,
             included: true,
+            deferred_damage_context: None,
         })
     }
 
@@ -5670,6 +5675,7 @@ impl BpsrStateDamageContributionProjector {
                 denominator: harmony_denominator,
                 observed_damage: damage.amount,
                 included: true,
+                deferred_damage_context: None,
             },
             ExactRationalDamageContributionEvent {
                 observed_micros,
@@ -5681,6 +5687,7 @@ impl BpsrStateDamageContributionProjector {
                 denominator: functional_denominator,
                 observed_damage: damage.amount,
                 included: true,
+                deferred_damage_context: None,
             },
         ])
     }
@@ -5913,6 +5920,7 @@ impl BpsrStateDamageContributionProjector {
             denominator: i128::from(rule.active_factor()?),
             observed_damage: damage.amount,
             included: true,
+            deferred_damage_context: None,
         })
     }
 
@@ -6508,6 +6516,7 @@ fn exact_attack_family_stage_contribution(
         denominator,
         observed_damage,
         included: true,
+        deferred_damage_context: None,
     })
 }
 
@@ -8035,6 +8044,7 @@ mod tests {
                 denominator: 227,
                 observed_damage: 273_931,
                 included: true,
+                deferred_damage_context: None,
             })
         );
         assert_eq!(damage.amount, 273_931, "ordinary damage is immutable");
@@ -8066,6 +8076,7 @@ mod tests {
                 denominator: 10_793,
                 observed_damage: 58_708,
                 included: true,
+                deferred_damage_context: None,
             })
         );
 
@@ -8244,6 +8255,7 @@ mod tests {
                 denominator: 227,
                 observed_damage: 273_931,
                 included: true,
+                deferred_damage_context: None,
             })
         );
 
@@ -9461,6 +9473,7 @@ mod tests {
                 denominator: 4_361,
                 observed_damage: 100_000,
                 included: true,
+                deferred_damage_context: None,
             })
         );
 
@@ -9655,6 +9668,7 @@ mod tests {
                 denominator: 295,
                 observed_damage: 70_543,
                 included: true,
+                deferred_damage_context: None,
             })
         );
         let trace = projector
@@ -10318,6 +10332,7 @@ mod tests {
                 denominator: 5_823,
                 observed_damage: 100_000,
                 included: true,
+                deferred_damage_context: None,
             })
         );
         assert_eq!(
@@ -11499,6 +11514,7 @@ mod tests {
             denominator: 1,
             observed_damage: 100,
             included: true,
+            deferred_damage_context: None,
         };
         let later = ExactRationalDamageContributionEvent {
             observed_micros: 1,
@@ -11510,6 +11526,7 @@ mod tests {
             denominator: 1,
             observed_damage: 100,
             included: true,
+            deferred_damage_context: None,
         };
 
         let adjusted =
@@ -11528,6 +11545,7 @@ mod tests {
             denominator: 1,
             observed_damage: 100,
             included: true,
+            deferred_damage_context: None,
         };
         let adjusted_after_both =
             scale_later_rational_marginal_after_many(&[earlier, second_earlier], later).unwrap();

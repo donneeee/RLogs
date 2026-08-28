@@ -11,8 +11,8 @@ pub use attribution::{
     ActorDamageContribution, ContributionDamageEvent, ContributionStatusEvent,
     ContributionStatusState, DamageContributionKind, DamageContributionReducer,
     DamageContributionRule, DamageContributionRuleError, DamageContributionScope,
-    DamageContributionStacking, DamageContributionSummary, EffectDamageContribution,
-    ExactDamageContributionEvent, ExactDamageContributionProjector,
+    DamageContributionStacking, DamageContributionSummary, DeferredDamageContributionContext,
+    EffectDamageContribution, ExactDamageContributionEvent, ExactDamageContributionProjector,
     ExactRationalDamageContributionEvent, RationalEffectDamageContribution,
 };
 pub use model::{

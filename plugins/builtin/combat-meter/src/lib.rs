@@ -1858,6 +1858,17 @@ impl CombatTimelinePlugin {
                 self.canonical_actor_id(contribution.provider_actor_id);
             contribution.recipient_actor_id =
                 self.canonical_actor_id(contribution.recipient_actor_id);
+            let contribution_damage_context = contribution
+                .deferred_damage_context
+                .map(|context| DamageProjectionContext {
+                    event_sequence: context.event_sequence,
+                    recipient_actor_id: contribution.recipient_actor_id,
+                    recipient_entity_uuid: context.recipient_entity_uuid,
+                    affected_ability_id: context.affected_ability_id,
+                    target_actor_id: self.canonical_actor_id(context.target_actor_id),
+                    target_entity_uuid: context.target_entity_uuid,
+                })
+                .or(damage_context);
             self.latest_exact_rational_contributions.push(contribution);
             self.live_attribution
                 .observe_exact_rational_contribution(contribution);
@@ -1870,7 +1881,7 @@ impl CombatTimelinePlugin {
                 .get(&contribution.recipient_actor_id)
                 .map_or_else(
                     || {
-                        damage_context
+                        contribution_damage_context
                             .filter(|context| {
                                 context.recipient_actor_id == contribution.recipient_actor_id
                             })
@@ -1892,10 +1903,11 @@ impl CombatTimelinePlugin {
                     numerator: contribution.numerator,
                     denominator: contribution.denominator,
                     observed_damage: contribution.observed_damage,
-                    damage_event_sequence: damage_context.map(|context| context.event_sequence),
-                    affected_ability_id: damage_context
+                    damage_event_sequence: contribution_damage_context
+                        .map(|context| context.event_sequence),
+                    affected_ability_id: contribution_damage_context
                         .and_then(|context| context.affected_ability_id),
-                    affected_target: damage_context
+                    affected_target: contribution_damage_context
                         .map(|context| (context.target_actor_id, context.target_entity_uuid)),
                 },
             });
@@ -2782,6 +2794,7 @@ impl CombatTimelinePlugin {
                             denominator,
                             observed_damage,
                             included: offset_micros.is_some(),
+                            deferred_damage_context: None,
                         },
                     );
                     if offset_micros.is_some() {
@@ -4238,7 +4251,7 @@ mod tests {
                         included: true,
                     });
                     rational_output.push(ExactRationalDamageContributionEvent {
-                        observed_micros: envelope.time.observed_micros,
+                        observed_micros: 500,
                         effect_id: 9001,
                         provider_actor_id: 1,
                         recipient_actor_id: 2,
@@ -4247,6 +4260,15 @@ mod tests {
                         denominator: 2,
                         observed_damage: 100,
                         included: true,
+                        deferred_damage_context: Some(
+                            rlogs_combat::DeferredDamageContributionContext {
+                                event_sequence: 77,
+                                recipient_entity_uuid: 102,
+                                affected_ability_id: Some(88),
+                                target_actor_id: 9,
+                                target_entity_uuid: 909,
+                            },
+                        ),
                     });
                 }
             }
@@ -4306,6 +4328,30 @@ mod tests {
         assert_eq!(plugin.latest_exact_contributions().len(), 1);
         assert_eq!(plugin.latest_exact_rational_contributions().len(), 1);
         assert_eq!(plugin.latest_exact_contributions()[0].amount, 10);
+        let deferred_fact = plugin
+            .history_facts
+            .iter()
+            .find(|fact| {
+                matches!(
+                    fact.kind,
+                    CombatFactKind::ExactRationalDamageContribution {
+                        effect_id: 9001,
+                        ..
+                    }
+                )
+            })
+            .expect("deferred rational contribution should remain auditable");
+        assert_eq!(deferred_fact.observed_micros, 500);
+        assert_eq!(deferred_fact.target, Some((2, 102)));
+        assert!(matches!(
+            deferred_fact.kind,
+            CombatFactKind::ExactRationalDamageContribution {
+                damage_event_sequence: Some(77),
+                affected_ability_id: Some(88),
+                affected_target: Some((9, 909)),
+                ..
+            }
+        ));
 
         let movement = factory
             .emit(CanonicalEventDraft {

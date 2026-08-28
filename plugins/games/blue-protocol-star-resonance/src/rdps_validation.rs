@@ -8594,6 +8594,7 @@ mod tests {
                 denominator: 2,
                 observed_damage: 100,
                 included: true,
+                deferred_damage_context: None,
             }],
             "provisional-reviewed-formulas",
         );

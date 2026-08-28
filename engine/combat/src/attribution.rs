@@ -121,6 +121,17 @@ pub struct ExactDamageContributionEvent {
 /// fraction is retained here instead of guessing, flooring, or dropping the
 /// event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeferredDamageContributionContext {
+    /// Sequence of the original canonical damage event, not the later event
+    /// that completed a bounded proof.
+    pub event_sequence: u64,
+    pub recipient_entity_uuid: i64,
+    pub affected_ability_id: Option<i64>,
+    pub target_actor_id: u64,
+    pub target_entity_uuid: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExactRationalDamageContributionEvent {
     pub observed_micros: u64,
     pub effect_id: i64,
@@ -131,6 +142,10 @@ pub struct ExactRationalDamageContributionEvent {
     pub denominator: i128,
     pub observed_damage: i64,
     pub included: bool,
+    /// Present only when a live projector emits a previously buffered damage
+    /// contribution after later packet evidence closes its formula inputs.
+    /// Immediate projections leave this absent and inherit the current event.
+    pub deferred_damage_context: Option<DeferredDamageContributionContext>,
 }
 
 /// Game-owned, stateful formula projection used by the generic combat meter.
@@ -1229,6 +1244,7 @@ mod tests {
                     denominator: 3,
                     observed_damage: 100,
                     included: true,
+                    deferred_damage_context: None,
                 },
             ));
         }
@@ -1272,6 +1288,7 @@ mod tests {
                     denominator,
                     observed_damage: 100,
                     included: true,
+                    deferred_damage_context: None,
                 },
             ));
         }
@@ -1304,6 +1321,7 @@ mod tests {
                     denominator,
                     observed_damage: 100,
                     included: true,
+                    deferred_damage_context: None,
                 },
             ));
         }
@@ -1339,6 +1357,7 @@ mod tests {
                 denominator: 2,
                 observed_damage: 100,
                 included: true,
+                deferred_damage_context: None,
             },
             ExactRationalDamageContributionEvent {
                 observed_micros: 1,
@@ -1350,6 +1369,7 @@ mod tests {
                 denominator: 1,
                 observed_damage: 100,
                 included: true,
+                deferred_damage_context: None,
             },
             ExactRationalDamageContributionEvent {
                 observed_micros: 1,
@@ -1361,6 +1381,7 @@ mod tests {
                 denominator: 2,
                 observed_damage: 100,
                 included: false,
+                deferred_damage_context: None,
             },
         ] {
             assert!(!reducer.observe_exact_rational_contribution(event));
