@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn functional_amp_uses_the_current_state_runtime_not_the_older_review_catalog() {
+    fn functional_amp_uses_the_dormant_current_state_runtime_not_the_older_review_catalog() {
         assert_eq!(
             classify_rdps_effect(2_110_143).unwrap(),
             RdpsEffectLookup::RetainedMappedUnclassified {
@@ -400,10 +400,10 @@ mod tests {
             }
         );
         assert!(
-            !crate::proven_state_damage_contribution_effect_ids()
+            crate::proven_state_damage_contribution_effect_ids()
                 .unwrap()
                 .contains(&2_110_143),
-            "current state formula candidates must remain runtime-disabled while proof gates are open"
+            "the migrated rule is armed, while the projector still requires a live exact lifecycle and reversible +360 packet transition before credit"
         );
     }
 }

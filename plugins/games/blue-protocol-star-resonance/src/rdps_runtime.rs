@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 12;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 13;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -133,6 +133,9 @@ pub(crate) struct FunctionalAmpRuntimeConfig {
     /// Even a migrated production rule activates only from an observed exact-
     /// build lifecycle and reversible recipient transition in the current run.
     pub dormant_activation_requires_observed_lifecycle: bool,
+    /// The rDPS allocation contract applied after the current run proves the
+    /// migrated component through its exact reversible packet transition.
+    accounting_method: String,
     /// The server's hidden per-hit integer boundary remains unclaimed.
     pub server_integer_counterfactual_authority: bool,
     /// Exact fractions are accumulated before one UI projection boundary.
@@ -641,6 +644,8 @@ impl RdpsRuntimeConfig {
             || !amp.attack_magic_target_build_lifecycle_schema_authority
             || !amp.attack_magic_target_build_formula_authority
             || !amp.dormant_activation_requires_observed_lifecycle
+            || amp.accounting_method != "observed-final-damage-proportional-stage-share"
+            || amp.server_integer_counterfactual_authority
             || amp.rational_integer_projection
                 != "sum-exact-then-half-up-per-effect-provider-recipient"
             || !amp.unresolved_overlap_fails_closed
@@ -654,9 +659,6 @@ impl RdpsRuntimeConfig {
             || (amp.attack_magic_runtime_transfer_enabled
                 && (!amp.attack_magic_target_build_lifecycle_schema_authority
                     || !amp.attack_magic_target_build_formula_authority
-                    || !amp.attack_magic_target_build_effect_occurrence_observed
-                    || !amp.attack_magic_target_build_damage_replay_observed
-                    || !amp.server_integer_counterfactual_authority
                     || !amp.dormant_activation_requires_observed_lifecycle))
         {
             return Err("bundled BPSR Functional Amp formula is invalid".into());
@@ -1198,7 +1200,7 @@ mod tests {
     }
 
     #[test]
-    fn functional_amp_stays_dormant_until_current_build_replay_and_integer_proof() {
+    fn functional_amp_migrated_rule_activates_only_from_live_exact_evidence() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
@@ -1238,37 +1240,47 @@ mod tests {
                 .functional_amp
                 .server_integer_counterfactual_authority
         );
-        assert!(!current.functional_amp.attack_magic_runtime_transfer_enabled);
+        assert_eq!(current.functional_amp.attack_percent_raw_delta, 360);
+        assert_eq!(
+            current.functional_amp.accounting_method,
+            "observed-final-damage-proportional-stage-share"
+        );
+        assert!(current.functional_amp.attack_magic_runtime_transfer_enabled);
         assert!(!current.functional_amp.speed_runtime_transfer_enabled);
         assert!(
             current.has_any_runtime_transfer_enabled(),
             "the independently promoted target-vulnerability rule keeps the partial runtime active"
         );
-        assert!(!current.effect_runtime_transfer_enabled(current.functional_amp.effect_id));
+        assert!(current.effect_runtime_transfer_enabled(current.functional_amp.effect_id));
         assert!(current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
 
-        let mut transfer_without_current_build_replay = base.clone();
-        transfer_without_current_build_replay["functional_amp"]["attack_magic_runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
+        let mut transfer_without_migration_authority = base.clone();
+        transfer_without_migration_authority["functional_amp"]["attack_magic_target_build_formula_authority"] =
+            serde_json::Value::Bool(false);
         assert!(
-            runtime_from_value(transfer_without_current_build_replay)
+            runtime_from_value(transfer_without_migration_authority)
                 .validate()
                 .is_err(),
-            "historical proof and static migration cannot replace current-build replay",
+            "historical proof cannot replace exact target-build migration authority",
         );
 
-        let mut transfer_without_integer_authority = base.clone();
-        transfer_without_integer_authority["functional_amp"]["attack_magic_target_build_effect_occurrence_observed"] =
-            serde_json::Value::Bool(true);
-        transfer_without_integer_authority["functional_amp"]["attack_magic_target_build_damage_replay_observed"] =
-            serde_json::Value::Bool(true);
-        transfer_without_integer_authority["functional_amp"]["attack_magic_runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
+        let mut wrong_accounting_method = base.clone();
+        wrong_accounting_method["functional_amp"]["accounting_method"] =
+            serde_json::Value::String("server-counterfactual-guess".into());
         assert!(
-            runtime_from_value(transfer_without_integer_authority)
+            runtime_from_value(wrong_accounting_method)
                 .validate()
                 .is_err(),
-            "an observed replay still cannot replace exact server integer authority",
+            "a migrated component must retain the observed-damage proportional contract",
+        );
+
+        let mut invented_server_authority = base.clone();
+        invented_server_authority["functional_amp"]["server_integer_counterfactual_authority"] =
+            serde_json::Value::Bool(true);
+        assert!(
+            runtime_from_value(invented_server_authority)
+                .validate()
+                .is_err()
         );
 
         let mut speed_riding_on_attack_proof = base;

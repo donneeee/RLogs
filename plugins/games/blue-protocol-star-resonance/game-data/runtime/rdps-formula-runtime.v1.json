@@ -1,5 +1,5 @@
 {
-  "schema_version": 12,
+  "schema_version": 13,
   "deployment_id": "global",
   "game_build": "24687926",
   "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
@@ -80,10 +80,11 @@
     "attack_magic_target_build_damage_replay_observed": false,
     "formula_authority_basis": "historical-replay-plus-target-static-and-protocol-schema-migration",
     "dormant_activation_requires_observed_lifecycle": true,
+    "accounting_method": "observed-final-damage-proportional-stage-share",
     "server_integer_counterfactual_authority": false,
     "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
     "unresolved_overlap_fails_closed": true,
-    "attack_magic_runtime_transfer_enabled": false,
+    "attack_magic_runtime_transfer_enabled": true,
     "speed_runtime_transfer_enabled": false
   },
   "mechanical_power": {
