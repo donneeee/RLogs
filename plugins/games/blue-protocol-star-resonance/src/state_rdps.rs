@@ -864,7 +864,6 @@ struct RemoteHarmonyMechanicKey {
     source_entity_uuid: i64,
     target_actor_id: u64,
     target_entity_uuid: i64,
-    class_id: i32,
     ability_id: i64,
     hit_event_id: i32,
     damage_source: Option<i32>,
@@ -940,7 +939,6 @@ struct RemoteHarmonyActionKey {
     source_actor_id: u64,
     source_entity_uuid: i64,
     provider_actor_id: u64,
-    class_id: i32,
     ability_id: i64,
     hit_event_id: i32,
     damage_source: Option<i32>,
@@ -953,8 +951,6 @@ struct RemoteHarmonyActionKey {
     damage_mode: Option<i32>,
     property: Option<i32>,
     coefficient_basis_points: i64,
-    inactive_observed_micros: u64,
-    active_observed_micros: u64,
     source_formula_context_sha256: String,
 }
 
@@ -1275,7 +1271,6 @@ impl BpsrRemoteFactorLearner {
                     source_actor_id: key.source_actor_id,
                     source_entity_uuid: key.source_entity_uuid,
                     provider_actor_id,
-                    class_id: key.class_id,
                     ability_id: key.ability_id,
                     hit_event_id: key.hit_event_id,
                     damage_source: key.damage_source,
@@ -1288,8 +1283,6 @@ impl BpsrRemoteFactorLearner {
                     damage_mode: key.damage_mode,
                     property: key.property,
                     coefficient_basis_points: key.coefficient_basis_points,
-                    inactive_observed_micros: inactive.observed_micros,
-                    active_observed_micros: active.observed_micros,
                     source_formula_context_sha256: key.source_formula_context_sha256.clone(),
                 };
                 action_groups
@@ -1313,20 +1306,11 @@ impl BpsrRemoteFactorLearner {
                 .map(|row| (row.target_actor_id, row.target_entity_uuid))
                 .collect::<BTreeSet<_>>()
                 .len();
-            let distinct_output_pairs = rows
-                .iter()
-                .map(|row| (row.active_damage, row.inactive_damage))
-                .collect::<BTreeSet<_>>()
-                .len();
             if distinct_targets < harmony.remote_paired_output_min_distinct_targets as usize
-                || distinct_output_pairs
-                    < harmony.remote_paired_output_min_distinct_output_pairs as usize
-                || !remote_harmony_provider_share_is_in_bounds(
+                || !remote_harmony_rows_fit_effect_magnitude(
                     &rows,
-                    harmony.remote_paired_output_provider_share_min_basis_points,
-                    harmony.remote_paired_output_provider_share_max_basis_points,
+                    harmony.remote_paired_output_max_provider_share_basis_points,
                 )
-                || !remote_harmony_ratio_intersection_exists(&rows)
             {
                 continue;
             }
@@ -1434,50 +1418,20 @@ impl BpsrRemoteFactorLearner {
     }
 }
 
-fn remote_harmony_ratio_intersection_exists(rows: &[RemoteHarmonyPairedRow]) -> bool {
-    let mut lower = None::<(i64, i64)>;
-    let mut upper = None::<(i64, i64)>;
-    for row in rows {
-        if row.active_damage <= row.inactive_damage || row.active_damage <= 0 {
-            return false;
-        }
-        let candidate_lower = (row.inactive_damage, row.active_damage.saturating_add(1));
-        let candidate_upper = (row.inactive_damage.saturating_add(1), row.active_damage);
-        if lower.is_none_or(|current| rational_pair_less(current, candidate_lower)) {
-            lower = Some(candidate_lower);
-        }
-        if upper.is_none_or(|current| rational_pair_less(candidate_upper, current)) {
-            upper = Some(candidate_upper);
-        }
-    }
-    match (lower, upper) {
-        (Some(lower), Some(upper)) => !rational_pair_less(upper, lower),
-        _ => false,
-    }
-}
-
-fn remote_harmony_provider_share_is_in_bounds(
+fn remote_harmony_rows_fit_effect_magnitude(
     rows: &[RemoteHarmonyPairedRow],
-    minimum_basis_points: i64,
     maximum_basis_points: i64,
 ) -> bool {
-    if rows.is_empty() || minimum_basis_points <= 0 || maximum_basis_points < minimum_basis_points {
-        return false;
-    }
-    rows.iter().all(|row| {
-        let Some(contribution) = row.active_damage.checked_sub(row.inactive_damage) else {
-            return false;
-        };
-        contribution > 0
-            && i128::from(contribution) * i128::from(BPSR_FIXED_POINT_SCALE)
-                >= i128::from(row.active_damage) * i128::from(minimum_basis_points)
-            && i128::from(contribution) * i128::from(BPSR_FIXED_POINT_SCALE)
-                <= i128::from(row.active_damage) * i128::from(maximum_basis_points)
-    })
-}
-
-fn rational_pair_less(left: (i64, i64), right: (i64, i64)) -> bool {
-    i128::from(left.0) * i128::from(right.1) < i128::from(right.0) * i128::from(left.1)
+    !rows.is_empty()
+        && maximum_basis_points > 0
+        && rows.iter().all(|row| {
+            let Some(contribution) = row.active_damage.checked_sub(row.inactive_damage) else {
+                return false;
+            };
+            contribution > 0
+                && i128::from(contribution) * i128::from(BPSR_FIXED_POINT_SCALE)
+                    <= i128::from(row.active_damage) * i128::from(maximum_basis_points)
+        })
 }
 
 fn accumulate_remote_factor_group(
@@ -1839,6 +1793,10 @@ pub struct BpsrStateDamageContributionProjector {
     /// run lifetime boundary supplies a clean state, no rDPS transfer involving
     /// that actor can be proven complete.
     unresolved_status_windows: HashSet<UnresolvedStatusWindowKey>,
+    /// Missing-instance opaque status events advance an exact comparison
+    /// boundary. They also remain unresolved general-formula confounders
+    /// because no terminal row can be joined to a specific lifecycle.
+    unresolved_status_generation_by_actor: HashMap<u64, u64>,
     actor_ancestry: ActorAncestryResolver,
     latest_observed_micros: u64,
     entity_type_by_actor: HashMap<u64, i32>,
@@ -1910,6 +1868,7 @@ impl Default for BpsrStateDamageContributionProjector {
             formula_statuses: HashMap::new(),
             formula_status_prior_values_current_wire: HashMap::new(),
             unresolved_status_windows: HashSet::new(),
+            unresolved_status_generation_by_actor: HashMap::new(),
             actor_ancestry: ActorAncestryResolver::default(),
             latest_observed_micros: 0,
             entity_type_by_actor: HashMap::new(),
@@ -2909,6 +2868,19 @@ impl BpsrStateDamageContributionProjector {
     }
 
     fn observe_unresolved_status(&mut self, status: &rlogs_events::UnresolvedStatusEvent) {
+        if status.instance_id.is_none() {
+            let generation = self
+                .unresolved_status_generation_by_actor
+                .entry(status.target.actor_id.0)
+                .or_default();
+            *generation = generation.saturating_add(1);
+            self.unresolved_status_windows
+                .insert(UnresolvedStatusWindowKey {
+                    target_actor_id: status.target.actor_id.0,
+                    instance_id: None,
+                });
+            return;
+        }
         let key = UnresolvedStatusWindowKey {
             target_actor_id: status.target.actor_id.0,
             instance_id: status.instance_id.map(|instance| instance.0),
@@ -5363,22 +5335,20 @@ impl BpsrStateDamageContributionProjector {
         let runtime = &self.runtime.harmony_grace;
         if !runtime.remote_paired_output_runtime_transfer_enabled
             || damage.amount <= 0
-            || self.damage_has_unresolved_status_confounder(damage)
         {
             return None;
         }
         let source_actor_id = damage.source.actor_id.0;
         let target_actor_id = damage.target.actor_id.0;
-        let class_id = self.class_id_by_actor.get(&source_actor_id).copied()?;
-        if !self.active_players.contains(&source_actor_id)
-            || !runtime
-                .remote_paired_output_recipient_class_ids
-                .contains(&class_id)
-        {
+        if !self.active_players.contains(&source_actor_id) {
             return None;
         }
-        let ability_id = damage.ability?.0;
-        let hit_event_id = damage.hit_event_id?;
+        let Some(ability_id) = damage.ability.map(|ability| ability.0) else {
+            return None;
+        };
+        let Some(hit_event_id) = damage.hit_event_id else {
+            return None;
+        };
         let selected = select_damage_stage(
             ability_id,
             damage.hit_event_id,
@@ -5386,10 +5356,6 @@ impl BpsrStateDamageContributionProjector {
             damage.packet.owner_stage,
             damage.packet.owner_level,
         )?;
-        if selected.fixed_parameter != 0 {
-            return None;
-        }
-
         let mut providers = self
             .harmony_grace_windows
             .iter()
@@ -5417,7 +5383,6 @@ impl BpsrStateDamageContributionProjector {
                 source_entity_uuid: damage.source.entity_uuid.0,
                 target_actor_id,
                 target_entity_uuid: damage.target.entity_uuid.0,
-                class_id,
                 ability_id,
                 hit_event_id,
                 damage_source: damage.damage_source,
@@ -5452,7 +5417,6 @@ impl BpsrStateDamageContributionProjector {
         let runtime = &self.runtime.harmony_grace;
         if !runtime.remote_paired_output_runtime_transfer_enabled
             || damage.amount <= 0
-            || self.damage_has_unresolved_status_confounder(damage)
         {
             return None;
         }
@@ -5463,11 +5427,7 @@ impl BpsrStateDamageContributionProjector {
             .get(&envelope.sequence)?;
         let recipient_actor_id = damage.source.actor_id.0;
         let target_actor_id = damage.target.actor_id.0;
-        let class_id = self.class_id_by_actor.get(&recipient_actor_id).copied()?;
-        if !runtime
-            .remote_paired_output_recipient_class_ids
-            .contains(&class_id)
-            || receipt.recipient_actor_id != recipient_actor_id
+        if receipt.recipient_actor_id != recipient_actor_id
             || receipt.recipient_entity_uuid != damage.source.entity_uuid.0
             || receipt.target_actor_id != target_actor_id
             || receipt.target_entity_uuid != damage.target.entity_uuid.0
@@ -5479,16 +5439,15 @@ impl BpsrStateDamageContributionProjector {
         {
             return None;
         }
-        let selected = select_damage_stage(
+        select_damage_stage(
             receipt.ability_id,
             damage.hit_event_id,
             damage.damage_source,
             damage.packet.owner_stage,
             damage.packet.owner_level,
         )?;
-        if selected.fixed_parameter != 0
-            || self
-                .remote_harmony_source_damage_context_sha256(recipient_actor_id)
+        if self
+            .remote_harmony_source_damage_context_sha256(recipient_actor_id)
                 .as_deref()
                 != Some(receipt.source_formula_context_sha256.as_str())
             || self
@@ -6856,11 +6815,13 @@ impl BpsrStateDamageContributionProjector {
         let runtime = &self.runtime.harmony_grace;
         self.remote_harmony_context_sha256(
             actor_id,
+            true,
             |attribute_id| {
-                !matches!(
-                    attribute_id,
-                    11_310..=11_325 | 11_440 | 11_450 | 11_720 | 11_730
-                )
+                // Harmony changes the recipient's main-stat package and its
+                // Vitality-derived health family. Season strength, attack
+                // speed, and cast speed are independent downstream inputs and
+                // must remain exact comparison dimensions.
+                !matches!(attribute_id, 11_310..=11_325)
             },
             |effect_id| {
                 effect_id != runtime.effect_id
@@ -6879,6 +6840,7 @@ impl BpsrStateDamageContributionProjector {
         let runtime = &self.runtime.harmony_grace;
         self.remote_harmony_context_sha256(
             actor_id,
+            false,
             |attribute_id| attribute_id != ATTR_CURRENT_HP,
             |effect_id| effect_id != runtime.effect_id,
         )
@@ -6887,10 +6849,14 @@ impl BpsrStateDamageContributionProjector {
     fn remote_harmony_context_sha256(
         &self,
         actor_id: u64,
+        attributes_required: bool,
         include_attribute: impl Fn(i32) -> bool,
         include_effect: impl Fn(i64) -> bool,
     ) -> Option<String> {
-        let attributes = self.formula_attributes_by_actor.get(&actor_id)?;
+        let attributes = self.formula_attributes_by_actor.get(&actor_id);
+        if attributes_required && attributes.is_none() {
+            return None;
+        }
         let mut statuses = self
             .formula_statuses
             .iter()
@@ -6918,7 +6884,7 @@ impl BpsrStateDamageContributionProjector {
 
         let mut hasher = Sha256::new();
         hasher.update(b"rlogs-bpsr-remote-harmony-context-v1\0");
-        for (attribute_id, value) in attributes {
+        for (attribute_id, value) in attributes.into_iter().flatten() {
             if !include_attribute(*attribute_id) {
                 continue;
             }
@@ -6935,6 +6901,29 @@ impl BpsrStateDamageContributionProjector {
             update_optional_i64_hash(&mut hasher, status.origin_source_type_id.map(i64::from));
             update_optional_i64_hash(&mut hasher, status.origin_source_config_id);
         }
+        let mut unresolved_instances = self
+            .unresolved_status_windows
+            .iter()
+            .filter(|window| window.target_actor_id == actor_id)
+            .filter_map(|window| window.instance_id)
+            .collect::<Vec<_>>();
+        unresolved_instances.sort_unstable();
+        for instance_id in unresolved_instances {
+            // Preserve opaque lifecycle state as an exact comparison
+            // dimension. An unchanged keyed unknown therefore cancels across
+            // a controlled output pair; a changed one produces a different
+            // context hash and cannot be attributed to Harmony.
+            hasher.update(b"U");
+            hasher.update(instance_id.to_le_bytes());
+        }
+        hasher.update(b"G");
+        hasher.update(
+            self.unresolved_status_generation_by_actor
+                .get(&actor_id)
+                .copied()
+                .unwrap_or_default()
+                .to_le_bytes(),
+        );
         Some(format!("sha256:{:x}", hasher.finalize()))
     }
 
@@ -7387,6 +7376,7 @@ impl BpsrStateDamageContributionProjector {
     fn clear_actor(&mut self, actor_id: u64) {
         self.unresolved_status_windows
             .retain(|window| window.target_actor_id != actor_id);
+        self.unresolved_status_generation_by_actor.remove(&actor_id);
         self.states.remove(&actor_id);
         self.staged_states.remove(&actor_id);
         self.team_luck_critical_ever_observed.remove(&actor_id);
@@ -7502,6 +7492,7 @@ impl BpsrStateDamageContributionProjector {
         self.formula_statuses.clear();
         self.formula_status_prior_values_current_wire.clear();
         self.unresolved_status_windows.clear();
+        self.unresolved_status_generation_by_actor.clear();
         self.actor_ancestry.clear();
         self.entity_type_by_actor.clear();
         self.summon_config_by_actor.clear();
@@ -8767,32 +8758,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_harmony_ratio_gate_accepts_observed_class_two_anchors() {
-        // The two limiting output pairs from the observed class-2 ability
-        // 7998 anchor. Their integer-ratio intervals overlap even though the
-        // damage values and targets differ.
-        let rows = [(870_541, 862_921), (827_980, 820_732)]
-            .into_iter()
-            .enumerate()
-            .map(
-                |(index, (active_damage, inactive_damage))| RemoteHarmonyPairedRow {
-                    active_event_sequence: index as u64 + 1,
-                    recipient_actor_id: 2,
-                    recipient_entity_uuid: 20,
-                    target_actor_id: index as u64 + 10,
-                    target_entity_uuid: index as i64 + 100,
-                    active_damage,
-                    inactive_damage,
-                    target_formula_context_sha256: format!("target-{index}"),
-                },
-            )
-            .collect::<Vec<_>>();
-
-        assert!(remote_harmony_ratio_intersection_exists(&rows));
-    }
-
-    #[test]
-    fn remote_harmony_ratio_gate_rejects_inconsistent_or_nonpositive_pairs() {
+    fn remote_harmony_magnitude_uses_exact_effect_upper_envelope() {
         let row = |active_damage, inactive_damage| RemoteHarmonyPairedRow {
             active_event_sequence: 1,
             recipient_actor_id: 2,
@@ -8803,34 +8769,13 @@ mod tests {
             inactive_damage,
             target_formula_context_sha256: "target".into(),
         };
-        assert!(!remote_harmony_ratio_intersection_exists(&[
-            row(10_000, 9_900),
-            row(10_000, 9_000),
-        ]));
-        assert!(!remote_harmony_ratio_intersection_exists(&[row(100, 100)]));
-    }
-
-    #[test]
-    fn remote_harmony_magnitude_gate_rejects_similar_child_output_overmatches() {
-        let row = |active_damage, inactive_damage| RemoteHarmonyPairedRow {
-            active_event_sequence: 1,
-            recipient_actor_id: 2,
-            recipient_entity_uuid: 20,
-            target_actor_id: 10,
-            target_entity_uuid: 100,
-            active_damage,
-            inactive_damage,
-            target_formula_context_sha256: "target".into(),
-        };
-        assert!(remote_harmony_provider_share_is_in_bounds(
-            &[row(870_541, 862_921), row(104_732, 103_783)],
-            80,
-            100,
+        assert!(remote_harmony_rows_fit_effect_magnitude(
+            &[row(15_468, 15_350), row(9_643, 9_570)],
+            200,
         ));
-        assert!(!remote_harmony_provider_share_is_in_bounds(
-            &[row(1_043_836, 820_732), row(870_541, 862_921)],
-            80,
-            100,
+        assert!(!remote_harmony_rows_fit_effect_magnitude(
+            &[row(903_410, 613_888)],
+            200,
         ));
     }
 
@@ -8896,7 +8841,6 @@ mod tests {
                     source_entity_uuid: 20,
                     target_actor_id: 10 + index,
                     target_entity_uuid: 100 + index as i64,
-                    class_id: 2,
                     ability_id: 7_998,
                     hit_event_id: 1,
                     damage_source: Some(1),
@@ -8917,13 +8861,15 @@ mod tests {
                 RemoteHarmonyOutcomeGroup {
                     inactive: vec![RemoteHarmonyDamageObservation {
                         event_sequence: 10 + index,
-                        observed_micros: 100,
+                        // Replicated proof can come from separate actions. The
+                        // effect has no same-timestamp or multi-target gate.
+                        observed_micros: 100 + index * 1_000_000,
                         amount: inactive_damage,
                         provider_actor_id: None,
                     }],
                     active: vec![RemoteHarmonyDamageObservation {
                         event_sequence: 20 + index,
-                        observed_micros: 200,
+                        observed_micros: 200 + index * 1_000_000,
                         amount: active_damage,
                         provider_actor_id: Some(3),
                     }],
@@ -8976,7 +8922,6 @@ mod tests {
                     source_entity_uuid: 40,
                     target_actor_id: 20 + index,
                     target_entity_uuid: 200 + index as i64,
-                    class_id: 2,
                     ability_id: 1_259,
                     hit_event_id: 1,
                     damage_source: None,
@@ -9126,7 +9071,6 @@ mod tests {
                 source_entity_uuid: 20,
                 target_actor_id: 10,
                 target_entity_uuid: 100,
-                class_id: 2,
                 ability_id: 7_998,
                 hit_event_id: 1,
                 damage_source: Some(1),

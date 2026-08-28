@@ -414,18 +414,13 @@ pub(crate) struct HarmonyGraceRuntimeConfig {
     /// without a character snapshot. The learner remains build-scoped and
     /// emits only the active rows that have a same-context inactive witness.
     pub remote_paired_output_runtime_transfer_enabled: bool,
-    pub remote_paired_output_recipient_class_ids: Vec<i32>,
     pub remote_paired_output_ignored_effect_ids: Vec<i64>,
     pub remote_paired_output_formula_effect_ids: Vec<i64>,
     pub remote_paired_output_max_pair_gap_micros: u64,
-    /// Exact-build class-1, class-2, and class-11 envelope from the reviewed
-    /// abilities 179908, 7998, 1259, and 2352 active/inactive anchors. This
-    /// rejects mechanically similar child-entity outputs that imply a
-    /// materially different effect magnitude.
-    pub remote_paired_output_provider_share_min_basis_points: i64,
-    pub remote_paired_output_provider_share_max_basis_points: i64,
+    /// Exact +2% primary-stat magnitude is an upper envelope for a same-stage
+    /// damage marginal when every other packet formula input is unchanged.
+    pub remote_paired_output_max_provider_share_basis_points: i64,
     pub remote_paired_output_min_distinct_targets: u32,
-    pub remote_paired_output_min_distinct_output_pairs: u32,
 }
 
 impl HarmonyGraceRuntimeConfig {
@@ -1260,7 +1255,6 @@ impl RdpsRuntimeConfig {
             });
         let harmony_remote_paired_output_is_valid = harmony
             .remote_paired_output_runtime_transfer_enabled
-            && harmony.remote_paired_output_recipient_class_ids == [1, 2, 11]
             && harmony.remote_paired_output_ignored_effect_ids == [27_016, 55_301, 3_002_011]
             && harmony.remote_paired_output_formula_effect_ids.len() == 583
             && harmony
@@ -1276,10 +1270,8 @@ impl RdpsRuntimeConfig {
                     == "da6bc3f98a3c8c38105bc9ff17eb8fd3be50f905481046c919969d34c86a44de"
             }
             && harmony.remote_paired_output_max_pair_gap_micros == 30_000_000
-            && harmony.remote_paired_output_provider_share_min_basis_points == 80
-            && harmony.remote_paired_output_provider_share_max_basis_points == 100
-            && harmony.remote_paired_output_min_distinct_targets >= 2
-            && harmony.remote_paired_output_min_distinct_output_pairs >= 2;
+            && harmony.remote_paired_output_max_provider_share_basis_points == 200
+            && harmony.remote_paired_output_min_distinct_targets >= 2;
         if harmony.effect_id <= 0
             || harmony.source_terminal_effect_id <= 0
             || harmony.effect_id == harmony.source_terminal_effect_id
@@ -2340,23 +2332,6 @@ mod tests {
                 .harmony_grace
                 .remote_paired_output_runtime_transfer_enabled
         );
-        assert_eq!(
-            current
-                .harmony_grace
-                .remote_paired_output_recipient_class_ids,
-            [1, 2, 11]
-        );
-        assert_eq!(
-            (
-                current
-                    .harmony_grace
-                    .remote_paired_output_provider_share_min_basis_points,
-                current
-                    .harmony_grace
-                    .remote_paired_output_provider_share_max_basis_points,
-            ),
-            (80, 100)
-        );
         let class_11 = current
             .harmony_grace
             .recipient_rules
@@ -2432,29 +2407,11 @@ mod tests {
             serde_json::json!([11]);
         assert!(runtime_from_value(disabled_with_class).validate().is_err());
 
-        let mut broadened_remote_scope = bundled_runtime_value();
-        broadened_remote_scope["harmony_grace"]["remote_paired_output_recipient_class_ids"] =
-            serde_json::json!([1, 2, 11, 13]);
-        assert!(
-            runtime_from_value(broadened_remote_scope)
-                .validate()
-                .is_err()
-        );
-
         let mut altered_remote_context = bundled_runtime_value();
         altered_remote_context["harmony_grace"]["remote_paired_output_ignored_effect_ids"] =
             serde_json::json!([27016, 55301]);
         assert!(
             runtime_from_value(altered_remote_context)
-                .validate()
-                .is_err()
-        );
-
-        let mut altered_remote_magnitude = bundled_runtime_value();
-        altered_remote_magnitude["harmony_grace"]["remote_paired_output_provider_share_max_basis_points"] =
-            serde_json::json!(2_500);
-        assert!(
-            runtime_from_value(altered_remote_magnitude)
                 .validate()
                 .is_err()
         );
