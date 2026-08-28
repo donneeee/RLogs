@@ -53,6 +53,7 @@ describe("Combat Meter settings", () => {
     expect(settings.historySpecializationColors).toEqual({});
     expect(settings.historyPartyViews.map((view) => view.label)).toEqual([
       "Damage",
+      "rDPS",
       "Healing",
       "Defense",
     ]);

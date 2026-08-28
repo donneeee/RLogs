@@ -50,6 +50,21 @@ export const DEFAULT_HISTORY_PARTY_VIEWS: readonly HistoryPartyViewSettings[] = 
     detailMode: "damage",
   },
   {
+    id: "rdps",
+    label: "rDPS",
+    columns: ["player", "damage", "rdps", "rdpsGiven", "rdpsReceived"],
+    widths: {
+      player: 360,
+      damage: 120,
+      rdps: 110,
+      rdpsGiven: 130,
+      rdpsReceived: 135,
+    },
+    sortKey: "rdps",
+    sortDirection: "descending",
+    detailMode: "damage",
+  },
+  {
     id: "healing",
     label: "Healing",
     columns: ["player", "effectiveHealing", "healing", "shielding", "hps", "deaths"],

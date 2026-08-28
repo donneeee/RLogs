@@ -35,6 +35,20 @@ describe("describeRdpsStatus", () => {
     );
   });
 
+  it("keeps stale provider credit hidden during its one-time saved history refresh", () => {
+    const presentation = describeRdpsStatus(
+      "formula_refresh_queued: recalculating archived rDPS in the background",
+    );
+
+    expect(presentation.state).toBe("refreshing");
+    expect(presentation.providerCreditEnabled).toBe(false);
+    expect(presentation.compactLabel).toContain("Saving updated rDPS");
+    expect(presentation.historyMessage).toContain("Later opens will use that saved result immediately");
+    expect(presentation.historyMessage).toContain("does not scan or replay the rest of history at startup");
+    expect(presentation.historyMessage).toContain("opened immediately");
+    expect(presentation.historyMessage).toContain("Live capture always has priority");
+  });
+
   it("reports a fully ready formula status as active", () => {
     expect(describeRdpsStatus("ready")).toEqual({
       state: "active",

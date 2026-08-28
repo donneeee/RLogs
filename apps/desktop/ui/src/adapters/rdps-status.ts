@@ -3,6 +3,7 @@ export type RdpsReadinessState =
   | "blocked"
   | "incompatible"
   | "provisional"
+  | "refreshing"
   | "replay_unavailable"
   | "waiting"
   | "pending";
@@ -93,6 +94,17 @@ export function describeRdpsStatus(status: string): RdpsStatusPresentation {
       compactLabel: "Unavailable — exact sealed-log replay was not validated",
       historyMessage:
         "Archived rDPS is unavailable because the exact sealed-log replay could not be validated. Ordinary damage and all other saved combat metrics remain unchanged.",
+    };
+  }
+
+  if (status.startsWith("formula_refresh_queued:")) {
+    return {
+      state: "refreshing",
+      providerCreditEnabled: false,
+      blockerCodes: [],
+      compactLabel: "Saving updated rDPS for this archived run",
+      historyMessage:
+        "This saved run opened immediately using its existing combat summary. Because you opened this run, its stale rDPS projection is being recalculated once and saved back to history after conservation checks pass. Later opens will use that saved result immediately; rLogs does not scan or replay the rest of history at startup. Live capture always has priority.",
     };
   }
 
