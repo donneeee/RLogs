@@ -3374,11 +3374,10 @@ impl RuntimeController {
             |processed_events, processed_bytes, total_bytes| {
                 final_processed_events = processed_events;
                 final_processed_bytes = processed_bytes;
-                let percent = if total_bytes == 0 {
-                    0
-                } else {
-                    processed_bytes.saturating_mul(100) / total_bytes
-                };
+                let percent = processed_bytes
+                    .saturating_mul(100)
+                    .checked_div(total_bytes)
+                    .unwrap_or(0);
                 if percent <= last_percent
                     && last_progress_publish.elapsed() < Duration::from_millis(250)
                 {
