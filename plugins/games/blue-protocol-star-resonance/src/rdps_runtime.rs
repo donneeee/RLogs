@@ -497,6 +497,9 @@ pub(crate) struct InspirationRuntimeConfig {
     pub haste_attribute_id: i32,
     pub packet_proven_vectors: Vec<InspirationVectorRuntimeConfig>,
     damage_scripts: Vec<String>,
+    /// Independent gate for recipient talent/passive/Imagine conversions
+    /// observed as downstream Crit-DMG or Lucky-DMG packet transitions.
+    pub recipient_dependency_runtime_transfer_enabled: bool,
     pub runtime_transfer_enabled: bool,
 }
 
@@ -1049,6 +1052,7 @@ impl RdpsRuntimeConfig {
                 != 1
             || inspiration.damage_scripts != ["Attack", "MAttack"]
             || inspiration.property_damage_property != 7
+            || inspiration.recipient_dependency_runtime_transfer_enabled
             || inspiration.runtime_transfer_enabled
         {
             return Err(
@@ -1899,5 +1903,20 @@ mod tests {
                 .harmony_grace
                 .runtime_transfer_enabled
         );
+    }
+
+    #[test]
+    fn inspiration_recipient_dependencies_require_independent_runtime_authority() {
+        let current = rdps_runtime_config().unwrap();
+        assert!(
+            !current
+                .inspiration
+                .recipient_dependency_runtime_transfer_enabled
+        );
+
+        let mut unproven = bundled_runtime_value();
+        unproven["inspiration"]["recipient_dependency_runtime_transfer_enabled"] =
+            serde_json::Value::Bool(true);
+        assert!(runtime_from_value(unproven).validate().is_err());
     }
 }

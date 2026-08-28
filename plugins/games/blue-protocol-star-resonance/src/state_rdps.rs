@@ -732,6 +732,14 @@ struct InspirationProviderState {
     /// serialization gap and makes Light events ineligible for attribution.
     property_damage_delta: Option<i64>,
     haste_delta: Option<i64>,
+    /// Recipient-build-dependent Crit DMG change observed on the same exact
+    /// Inspiration transition. This captures talent/passive/Imagine
+    /// conversions without pretending that one class formula applies to all
+    /// recipients.
+    critical_damage_raw_delta: Option<i64>,
+    /// Reserved independently from the critical lane because recipient builds
+    /// may convert Luck into Lucky DMG through a different rule chain.
+    lucky_damage_raw_delta: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -4734,6 +4742,15 @@ impl BpsrStateDamageContributionProjector {
         if !self.active_players.contains(&provider_actor_id) {
             return Err("provider_inactive");
         }
+        if !self
+            .runtime
+            .inspiration
+            .recipient_dependency_runtime_transfer_enabled
+            && (provider.critical_damage_raw_delta.is_some()
+                || provider.lucky_damage_raw_delta.is_some())
+        {
+            return Err("recipient_dependency_runtime_transfer_disabled");
+        }
         let (numerator, denominator) = exact_inspiration_occurrence_fraction(
             damage.amount,
             critical,
@@ -4746,6 +4763,8 @@ impl BpsrStateDamageContributionProjector {
             state
                 .critical_damage_raw
                 .ok_or("critical_damage_state_missing")?,
+            provider.critical_damage_raw_delta,
+            provider.lucky_damage_raw_delta,
             self.runtime.critical_damage_factor_interpretation,
         )
         .ok_or("damage_counterfactual_unproven")?;
@@ -6316,6 +6335,12 @@ fn reconcile_inspiration_state(
             {
                 state.haste_delta = None;
             }
+            if option_delta(previous.critical_damage_raw, next.critical_damage_raw) != Some(0) {
+                state.critical_damage_raw_delta = None;
+            }
+            if option_delta(previous.lucky_damage_raw, next.lucky_damage_raw) != Some(0) {
+                state.lucky_damage_raw_delta = None;
+            }
             if let Some(property_change) =
                 option_delta(previous.property_damage_raw, next.property_damage_raw)
                 && property_change != 0
@@ -6450,6 +6475,13 @@ fn inspiration_vector_transition(
         direction,
     )
     .filter(|delta| *delta == vector.property_damage_raw_delta);
+    let critical_damage_raw_delta = positive_directional_delta(
+        previous.critical_damage_raw,
+        next.critical_damage_raw,
+        direction,
+    );
+    let lucky_damage_raw_delta =
+        positive_directional_delta(previous.lucky_damage_raw, next.lucky_damage_raw, direction);
     Some(InspirationProviderState {
         provider_full_bloom: vector.provider_full_bloom,
         primary_raw_add_delta: vector.primary_raw_add_delta,
@@ -6459,6 +6491,8 @@ fn inspiration_vector_transition(
         external_damage_delta: vector.external_damage_delta,
         property_damage_delta,
         haste_delta,
+        critical_damage_raw_delta,
+        lucky_damage_raw_delta,
     })
 }
 
@@ -6513,6 +6547,16 @@ fn inspiration_state_removal_matches(
             previous.property_damage_raw,
             next.property_damage_raw,
             state.property_damage_delta,
+        )
+        && optional_component_removal_matches(
+            previous.critical_damage_raw,
+            next.critical_damage_raw,
+            state.critical_damage_raw_delta,
+        )
+        && optional_component_removal_matches(
+            previous.lucky_damage_raw,
+            next.lucky_damage_raw,
+            state.lucky_damage_raw_delta,
         )
 }
 
@@ -6586,6 +6630,14 @@ fn inspiration_mode_transition(
                 next.haste_percent_basis_points,
             ),
         ),
+        critical_damage_raw_delta: adjusted_positive_component(
+            old.critical_damage_raw_delta,
+            option_delta(previous.critical_damage_raw, next.critical_damage_raw),
+        ),
+        lucky_damage_raw_delta: adjusted_positive_component(
+            old.lucky_damage_raw_delta,
+            option_delta(previous.lucky_damage_raw, next.lucky_damage_raw),
+        ),
     })
 }
 
@@ -6627,30 +6679,53 @@ fn exact_inspiration_occurrence_fraction(
     current_lucky_chance_raw: i64,
     provider_chance_raw_delta: i64,
     current_critical_damage_raw: i64,
+    provider_critical_damage_raw_delta: Option<i64>,
+    provider_lucky_damage_raw_delta: Option<i64>,
     critical_damage_factor_interpretation: CriticalDamageFactorInterpretation,
 ) -> Option<(i128, i128)> {
     match (critical, lucky) {
-        (true, false) => exact_external_critical_chance_fraction(
-            observed_damage,
-            current_critical_chance_raw,
-            provider_chance_raw_delta,
-            current_critical_damage_raw,
-            critical_damage_factor_interpretation,
-        ),
-        (false, true) => exact_external_lucky_chance_fraction(
-            observed_damage,
-            current_lucky_chance_raw,
-            provider_chance_raw_delta,
-        ),
-        (true, true) => exact_external_combined_critical_lucky_chance_fraction(
-            observed_damage,
-            current_critical_chance_raw,
-            provider_chance_raw_delta,
-            current_lucky_chance_raw,
-            provider_chance_raw_delta,
-            current_critical_damage_raw,
-            critical_damage_factor_interpretation,
-        ),
+        (true, false) => match provider_critical_damage_raw_delta {
+            Some(provider_damage_delta) => exact_external_critical_chance_and_damage_fraction(
+                observed_damage,
+                current_critical_chance_raw,
+                provider_chance_raw_delta,
+                current_critical_damage_raw,
+                provider_damage_delta,
+                critical_damage_factor_interpretation,
+            ),
+            None => exact_external_critical_chance_fraction(
+                observed_damage,
+                current_critical_chance_raw,
+                provider_chance_raw_delta,
+                current_critical_damage_raw,
+                critical_damage_factor_interpretation,
+            ),
+        },
+        (false, true) if provider_lucky_damage_raw_delta.is_none() => {
+            exact_external_lucky_chance_fraction(
+                observed_damage,
+                current_lucky_chance_raw,
+                provider_chance_raw_delta,
+            )
+        }
+        (true, true)
+            if provider_critical_damage_raw_delta.is_none()
+                && provider_lucky_damage_raw_delta.is_none() =>
+        {
+            exact_external_combined_critical_lucky_chance_fraction(
+                observed_damage,
+                current_critical_chance_raw,
+                provider_chance_raw_delta,
+                current_lucky_chance_raw,
+                provider_chance_raw_delta,
+                current_critical_damage_raw,
+                critical_damage_factor_interpretation,
+            )
+        }
+        // Lucky-DMG dependency and combined Critical+Lucky dependency order
+        // require their own exact joint formula. Retain the observed damage and
+        // emit no partial provider credit until those paths are proven.
+        (false, true) | (true, true) => None,
         (false, false) => None,
     }
 }
@@ -6954,6 +7029,8 @@ mod tests {
                 800,
                 300,
                 10_128,
+                None,
+                None,
                 interpretation,
             )
             .is_some(),
@@ -9282,6 +9359,8 @@ mod tests {
                 lucky_chance,
                 provider_delta,
                 critical_damage,
+                None,
+                None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
             exact_external_critical_chance_fraction(
@@ -9301,6 +9380,8 @@ mod tests {
                 lucky_chance,
                 provider_delta,
                 critical_damage,
+                None,
+                None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
             exact_external_lucky_chance_fraction(observed_damage, lucky_chance, provider_delta,)
@@ -9314,6 +9395,8 @@ mod tests {
                 lucky_chance,
                 provider_delta,
                 critical_damage,
+                None,
+                None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
             exact_external_combined_critical_lucky_chance_fraction(
@@ -9335,9 +9418,34 @@ mod tests {
                 lucky_chance,
                 provider_delta,
                 critical_damage,
+                None,
+                None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
             None
+        );
+        assert_eq!(
+            exact_inspiration_occurrence_fraction(
+                observed_damage,
+                true,
+                false,
+                critical_chance,
+                lucky_chance,
+                provider_delta,
+                critical_damage,
+                Some(600),
+                None,
+                CriticalDamageFactorInterpretation::AdditiveBonus,
+            ),
+            exact_external_critical_chance_and_damage_fraction(
+                observed_damage,
+                critical_chance,
+                provider_delta,
+                critical_damage,
+                600,
+                CriticalDamageFactorInterpretation::AdditiveBonus,
+            ),
+            "recipient-build Crit chance to Crit DMG conversion must be composed as one provider marginal",
         );
     }
 
@@ -9356,6 +9464,7 @@ mod tests {
             external_damage_raw: Some(575),
             property_damage_raw: Some(12_858),
             haste_percent_basis_points: Some(3_918),
+            critical_damage_raw: Some(10_128),
             physical_attack: AttackFamilyState {
                 base_add: Some(4_479),
                 ..AttackFamilyState::default()
@@ -9375,6 +9484,7 @@ mod tests {
             external_damage_raw: Some(680),
             property_damage_raw: Some(13_038),
             haste_percent_basis_points: Some(4_300),
+            critical_damage_raw: Some(10_728),
             physical_attack: AttackFamilyState {
                 base_add: Some(4_839),
                 ..AttackFamilyState::default()
@@ -9400,6 +9510,8 @@ mod tests {
                     external_damage_delta: 105,
                     property_damage_delta: Some(180),
                     haste_delta: Some(382),
+                    critical_damage_raw_delta: Some(600),
+                    lucky_damage_raw_delta: None,
                 }
             )])
         );
@@ -9416,6 +9528,8 @@ mod tests {
             external_damage_delta: 105,
             property_damage_delta: None,
             haste_delta: Some(382),
+            critical_damage_raw_delta: None,
+            lucky_damage_raw_delta: None,
         };
         let previous = ActorHpState {
             property_damage_raw: Some(12_858),
@@ -9468,6 +9582,8 @@ mod tests {
             external_damage_delta: 105,
             property_damage_delta: Some(180),
             haste_delta: Some(382),
+            critical_damage_raw_delta: None,
+            lucky_damage_raw_delta: None,
         };
         let previous = ActorHpState {
             primary_raw_add: [Some(1_017), Some(1_017), Some(6_616), Some(39_373)],

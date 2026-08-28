@@ -384,6 +384,7 @@
       }
     ],
     "damage_scripts": ["Attack", "MAttack"],
+    "recipient_dependency_runtime_transfer_enabled": false,
     "runtime_transfer_enabled": false
   },
   "highland_blood": {
