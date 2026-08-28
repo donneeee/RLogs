@@ -261,6 +261,11 @@ pub struct HistoryActorSummary {
     pub rdps_contribution_given: Option<i64>,
     #[serde(default)]
     pub rdps_contribution_received: Option<i64>,
+    /// True when the numeric rDPS fields are conserved, packet-proven known
+    /// subtotals but one or more external formula inputs remain unresolved.
+    /// Ordinary damage is never affected by this marker.
+    #[serde(default)]
+    pub rdps_incomplete: bool,
     pub apm: Option<f64>,
     pub observed_cast_events: u64,
     pub abilities: Vec<HistoryAbilitySummary>,
@@ -516,6 +521,8 @@ pub struct ActorCombatSummary {
     pub rdps_contribution_given: Option<i64>,
     #[serde(default)]
     pub rdps_contribution_received: Option<i64>,
+    #[serde(default)]
+    pub rdps_incomplete: bool,
     pub reported_healing: i64,
     pub effective_healing: i64,
     pub overheal: i64,
@@ -960,6 +967,7 @@ struct HistoryValueAccumulator {
     rdps_damage: Option<i64>,
     rdps_contribution_given: Option<i64>,
     rdps_contribution_received: Option<i64>,
+    rdps_incomplete: bool,
     abilities: BTreeMap<i64, HistoryAbilityAccumulator>,
     targets: BTreeMap<u64, HistoryTargetAccumulator>,
     effects: BTreeMap<(i64, u64), HistoryEffectAccumulator>,
@@ -2127,7 +2135,7 @@ impl CombatTimelinePlugin {
             .filter(|(_, actor)| !active_actors_only || has_live_meter_activity(actor))
             .map(|(actor_id, actor)| {
                 let contribution = contribution_summary.actors.get(actor_id);
-                let rdps_complete = !incomplete_rdps_actor_ids.contains(actor_id);
+                let rdps_incomplete = incomplete_rdps_actor_ids.contains(actor_id);
                 ActorCombatSummary {
                     actor_id: actor_id.to_string(),
                     entity_uuid: actor.entity_uuid.to_string(),
@@ -2167,10 +2175,10 @@ impl CombatTimelinePlugin {
                     } else {
                         actor.damage_taken as f64 * 1_000_000.0 / rate_duration as f64
                     },
-                    rdps_damage: (rdps_enabled && rdps_complete).then(|| {
+                    rdps_damage: rdps_enabled.then(|| {
                         contribution.map_or(actor.reported_damage, |actor| actor.rdps_damage)
                     }),
-                    rdps: (rdps_enabled && rdps_complete).then(|| {
+                    rdps: rdps_enabled.then(|| {
                         if rate_duration == 0 {
                             0.0
                         } else {
@@ -2180,10 +2188,11 @@ impl CombatTimelinePlugin {
                                 / rate_duration as f64
                         }
                     }),
-                    rdps_contribution_given: (rdps_enabled && rdps_complete)
+                    rdps_contribution_given: rdps_enabled
                         .then(|| contribution.map_or(0, |actor| actor.contribution_given)),
-                    rdps_contribution_received: (rdps_enabled && rdps_complete)
+                    rdps_contribution_received: rdps_enabled
                         .then(|| contribution.map_or(0, |actor| actor.contribution_received)),
+                    rdps_incomplete,
                     reported_healing: actor.reported_healing,
                     effective_healing: actor.effective_healing,
                     overheal: actor.overheal,
@@ -2974,9 +2983,7 @@ impl CombatTimelinePlugin {
             if let Some(projector) = self.exact_contribution_projector.as_ref() {
                 for actor_id in projector.incomplete_rdps_actor_ids() {
                     if let Some(value) = values.get_mut(&actor_id) {
-                        value.rdps_damage = None;
-                        value.rdps_contribution_given = None;
-                        value.rdps_contribution_received = None;
+                        value.rdps_incomplete = true;
                     }
                 }
             }
@@ -3156,6 +3163,7 @@ impl CombatTimelinePlugin {
             rdps_damage: value.rdps_damage,
             rdps_contribution_given: value.rdps_contribution_given,
             rdps_contribution_received: value.rdps_contribution_received,
+            rdps_incomplete: value.rdps_incomplete,
             apm: None,
             observed_cast_events: value.casts,
             abilities: value
@@ -4107,7 +4115,7 @@ mod tests {
     }
 
     #[test]
-    fn unresolved_external_formula_marks_rdps_incomplete_without_hiding_damage() {
+    fn unresolved_external_formula_marks_known_rdps_subtotal_incomplete() {
         #[derive(Debug)]
         struct IncompleteProjector;
 
@@ -4189,10 +4197,11 @@ mod tests {
             .find(|actor| actor.actor_id == "1")
             .unwrap();
         assert_eq!(actor.reported_damage, 2_737_001);
-        assert_eq!(actor.rdps_damage, None);
-        assert_eq!(actor.rdps, None);
-        assert_eq!(actor.rdps_contribution_given, None);
-        assert_eq!(actor.rdps_contribution_received, None);
+        assert_eq!(actor.rdps_damage, Some(2_737_001));
+        assert_eq!(actor.rdps, Some(2_737_001.0));
+        assert_eq!(actor.rdps_contribution_given, Some(0));
+        assert_eq!(actor.rdps_contribution_received, Some(0));
+        assert!(actor.rdps_incomplete);
     }
 
     #[test]
@@ -5632,6 +5641,7 @@ mod tests {
             rdps: None,
             rdps_contribution_given: None,
             rdps_contribution_received: None,
+            rdps_incomplete: false,
             reported_healing: 0,
             effective_healing: 0,
             overheal: 0,

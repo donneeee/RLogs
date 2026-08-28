@@ -277,8 +277,8 @@ pub use state_formula::{
     two_stage_percent_input_marginal,
 };
 pub use state_rdps::{
-    BpsrStateDamageContributionProjector, HarmonyGraceFamilyRoundingDiagnostic,
-    HarmonyGraceFormulaTrace, RemoteRdpsEvidencePolicy,
+    BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline, BpsrStateDamageContributionProjector,
+    HarmonyGraceFamilyRoundingDiagnostic, HarmonyGraceFormulaTrace, RemoteRdpsEvidencePolicy,
     proven_state_damage_contribution_effect_ids, remote_rdps_evidence_policy,
     state_damage_contribution_deployment_id, state_damage_contribution_formula_identity,
     state_damage_contribution_formula_target_matches, state_damage_contribution_game_build,

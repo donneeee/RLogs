@@ -661,6 +661,7 @@ pub(crate) fn merge_rdps_projection(
                     actor.rdps_damage = None;
                     actor.rdps_contribution_given = None;
                     actor.rdps_contribution_received = None;
+                    actor.rdps_incomplete = false;
                     continue;
                 };
                 if actor.damage != projected_actor.damage {
@@ -672,6 +673,7 @@ pub(crate) fn merge_rdps_projection(
                 actor.rdps_damage = projected_actor.rdps_damage;
                 actor.rdps_contribution_given = projected_actor.rdps_contribution_given;
                 actor.rdps_contribution_received = projected_actor.rdps_contribution_received;
+                actor.rdps_incomplete = projected_actor.rdps_incomplete;
                 actor.rdps = actor.rdps_damage.map(|damage| {
                     if view.elapsed_micros == 0 {
                         0.0
@@ -850,7 +852,6 @@ fn validate_rdps_conservation(
     let mut rdps_damage = 0_i128;
     let mut contribution_given = 0_i128;
     let mut contribution_received = 0_i128;
-    let mut has_unresolved_actor = false;
     for actor in &view.actors {
         let (adjusted, given, received) = match (
             actor.rdps_damage,
@@ -858,10 +859,7 @@ fn validate_rdps_conservation(
             actor.rdps_contribution_received,
         ) {
             (Some(adjusted), Some(given), Some(received)) => (adjusted, given, received),
-            (None, None, None) => {
-                has_unresolved_actor = true;
-                continue;
-            }
+            (None, None, None) if actor.damage == 0 => (0, 0, 0),
             _ => {
                 return Err(format!(
                     "actor {} has an incomplete exact rDPS tuple",
@@ -898,9 +896,7 @@ fn validate_rdps_conservation(
             .checked_add(i128::from(received))
             .ok_or_else(|| "contribution-received sum overflowed".to_string())?;
     }
-    if !has_unresolved_actor
-        && (contribution_given != contribution_received || ordinary_damage != rdps_damage)
-    {
+    if contribution_given != contribution_received || ordinary_damage != rdps_damage {
         return Err("rDPS transfer does not conserve the view's ordinary damage".into());
     }
     Ok(())
@@ -1230,23 +1226,6 @@ mod tests {
         projection.runs[0].views[0].actors[1].damage = 61;
         projection.runs[0].views[0].actors[1].rdps_damage = Some(51);
         assert!(merge_rdps_projection(&saved, &projection).is_err());
-    }
-
-    #[test]
-    fn rdps_conservation_accepts_explicitly_unresolved_complete_tuples() {
-        let mut snapshot = fixture_snapshot("monitor.formula-unresolved", &[0]);
-        snapshot.runs[0].views[0].actors =
-            vec![fixture_actor("1", "101", 40), fixture_actor("2", "102", 60)];
-        let view = &mut snapshot.runs[0].views[0];
-        view.actors[0].rdps = None;
-        view.actors[0].rdps_damage = None;
-        view.actors[0].rdps_contribution_given = None;
-        view.actors[0].rdps_contribution_received = None;
-
-        assert_eq!(validate_rdps_conservation(view), Ok(()));
-
-        view.actors[0].rdps_damage = Some(40);
-        assert!(validate_rdps_conservation(view).is_err());
     }
 
     #[test]

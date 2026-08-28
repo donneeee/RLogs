@@ -36,6 +36,7 @@ export interface CombatActorSummary {
   rdps: number | null;
   rdps_contribution_given: number | null;
   rdps_contribution_received: number | null;
+  rdps_incomplete: boolean;
   reported_healing: number;
   effective_healing: number;
   overheal: number;
@@ -116,7 +117,13 @@ export function parseCombatTimelineSnapshot(
       "The local host returned an invalid or unsupported Combat Meter snapshot.",
     );
   }
-  const snapshot = value as unknown as CombatTimelineSnapshot;
+  const snapshot = {
+    ...value,
+    actors: value.actors.map((actor) => ({
+      ...actor,
+      rdps_incomplete: actor.rdps_incomplete === true,
+    })),
+  } as unknown as CombatTimelineSnapshot;
   if (describeRdpsStatus(snapshot.rdps_status).providerCreditEnabled) {
     return snapshot;
   }
@@ -128,6 +135,7 @@ export function parseCombatTimelineSnapshot(
       rdps: null,
       rdps_contribution_given: null,
       rdps_contribution_received: null,
+      rdps_incomplete: false,
     })),
   };
 }
@@ -176,6 +184,7 @@ function isCombatActor(value: unknown): value is CombatActorSummary {
     isOptionalFiniteNumber(value.rdps) &&
     isOptionalSafeInteger(value.rdps_contribution_given) &&
     isOptionalSafeInteger(value.rdps_contribution_received) &&
+    (value.rdps_incomplete === undefined || typeof value.rdps_incomplete === "boolean") &&
     isSafeInteger(value.reported_healing) &&
     isSafeInteger(value.effective_healing) &&
     isSafeInteger(value.overheal) &&

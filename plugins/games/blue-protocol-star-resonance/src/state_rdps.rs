@@ -53,7 +53,10 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v14";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v15";
+const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
+const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
+const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
 
 static STATE_RDPS_FORMULA_IDENTITY: OnceLock<String> = OnceLock::new();
 
@@ -822,6 +825,313 @@ struct TeamLuckWindowKey {
     instance_id: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct RemoteFactorMechanicKey {
+    actor_id: u64,
+    bucket: u64,
+    direct_source_entity_uuid: Option<i64>,
+    target_entity_uuid: i64,
+    ability_id: Option<i64>,
+    hit_event_id: Option<i32>,
+    damage_source: Option<i32>,
+    damage_type: Option<i32>,
+    blocked: Option<bool>,
+    periodic: Option<bool>,
+    owner_id: Option<i32>,
+    owner_level: Option<i32>,
+    owner_stage: Option<i32>,
+    damage_mode: Option<i32>,
+}
+
+#[derive(Debug, Default)]
+struct RemoteFactorOutcomeGroup {
+    normal: BTreeMap<i64, u32>,
+    critical: BTreeMap<i64, u32>,
+    saturated: bool,
+}
+
+/// Bounded packet-derived critical-factor timeline for remote party members.
+///
+/// Values are reconstructed from repeated normal/critical outcomes with the
+/// same packet mechanic identity while Team Luck is active. They are never
+/// copied from a current character profile and remain explicitly separate
+/// from packet-observed attribute snapshots.
+#[derive(Debug, Clone, Default)]
+pub struct BpsrRemoteFactorTimeline {
+    critical_damage_raw_by_actor_bucket: HashMap<u64, BTreeMap<u64, i64>>,
+    critical_damage_raw_by_actor: HashMap<u64, i64>,
+}
+
+impl BpsrRemoteFactorTimeline {
+    fn critical_damage_raw(&self, actor_id: u64, observed_micros: u64) -> Option<i64> {
+        let bucket = observed_micros / REMOTE_FACTOR_BUCKET_MICROS;
+        if let Some(values) = self.critical_damage_raw_by_actor_bucket.get(&actor_id) {
+            if let Some(value) = values.get(&bucket) {
+                return Some(*value);
+            }
+            let previous = values.range(..bucket).next_back();
+            let next = values.range((bucket + 1)..).next();
+            let nearest = match (previous, next) {
+                (Some(left), Some(right)) => {
+                    let left_distance = bucket.saturating_sub(*left.0);
+                    let right_distance = right.0.saturating_sub(bucket);
+                    if left_distance <= right_distance {
+                        Some(left)
+                    } else {
+                        Some(right)
+                    }
+                }
+                (Some(left), None) => Some(left),
+                (None, Some(right)) => Some(right),
+                (None, None) => None,
+            };
+            if let Some((candidate_bucket, value)) = nearest
+                && bucket.abs_diff(*candidate_bucket) <= REMOTE_FACTOR_NEAREST_BUCKET_LIMIT
+            {
+                return Some(*value);
+            }
+        }
+        self.critical_damage_raw_by_actor.get(&actor_id).copied()
+    }
+
+    pub fn inferred_actor_count(&self) -> usize {
+        self.critical_damage_raw_by_actor_bucket.len()
+    }
+}
+
+/// Streaming first-pass learner used for sealed history. Its state is bounded
+/// by packet mechanic identities and distinct damage amounts; over-wide groups
+/// are rejected instead of growing without limit or manufacturing a factor.
+#[derive(Debug, Default)]
+pub struct BpsrRemoteFactorLearner {
+    team_luck_windows: HashSet<TeamLuckWindowKey>,
+    groups: HashMap<RemoteFactorMechanicKey, RemoteFactorOutcomeGroup>,
+}
+
+impl BpsrRemoteFactorLearner {
+    pub fn new() -> Result<Self, String> {
+        rdps_runtime_config()?;
+        Ok(Self::default())
+    }
+
+    pub fn observe(&mut self, envelope: &EventEnvelope) {
+        let Ok(Some(runtime)) = rdps_runtime_config_for_identity(
+            &envelope.region.identity.deployment_id,
+            &envelope.region.client_build,
+            &envelope.region.protocol_pack_digest,
+        ) else {
+            return;
+        };
+        if !runtime.team_luck.critical_damage_runtime_transfer_enabled {
+            return;
+        }
+        let CanonicalEvent::Timeline(timeline) = &envelope.event else {
+            return;
+        };
+        match &timeline.kind {
+            TimelineEventKind::RunBoundary { .. }
+            | TimelineEventKind::EncounterBoundary {
+                state: EncounterState::Wiped,
+                ..
+            } => self.team_luck_windows.clear(),
+            TimelineEventKind::Status(status)
+                if status.effect.0 == runtime.team_luck.effect_id
+                    && status
+                        .origin
+                        .map(|origin| (origin.source_type_id, origin.source_config_id))
+                        == Some((
+                            runtime.team_luck.source_type_id,
+                            runtime.team_luck.source_config_id,
+                        )) =>
+            {
+                self.observe_team_luck_status(status);
+            }
+            TimelineEventKind::Damage(damage) => {
+                self.observe_damage(envelope.time.observed_micros, damage);
+            }
+            _ => {}
+        }
+    }
+
+    fn observe_team_luck_status(&mut self, status: &rlogs_events::StatusEvent) {
+        let Some(provider) = status.source else {
+            return;
+        };
+        let key = TeamLuckWindowKey {
+            target_actor_id: status.target.actor_id.0,
+            target_entity_uuid: status.target.entity_uuid.0,
+            provider_actor_id: provider.actor_id.0,
+            provider_entity_uuid: provider.entity_uuid.0,
+            instance_id: status.instance_id.map(|instance| instance.0),
+        };
+        if matches!(
+            status.state,
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+        ) {
+            self.team_luck_windows.insert(key);
+        } else {
+            self.team_luck_windows.remove(&key);
+        }
+    }
+
+    fn observe_damage(&mut self, observed_micros: u64, damage: &rlogs_events::DamageEvent) {
+        if damage.amount <= 0 || damage.flags.lucky == Some(true) {
+            return;
+        }
+        let actor_id = damage.source.actor_id.0;
+        let entity_uuid = damage.source.entity_uuid.0;
+        if !self.team_luck_windows.iter().any(|window| {
+            window.target_entity_uuid == entity_uuid && window.provider_entity_uuid != entity_uuid
+        }) {
+            return;
+        }
+        let key = RemoteFactorMechanicKey {
+            actor_id,
+            bucket: observed_micros / REMOTE_FACTOR_BUCKET_MICROS,
+            direct_source_entity_uuid: damage.direct_source.map(|source| source.entity_uuid.0),
+            target_entity_uuid: damage.target.entity_uuid.0,
+            ability_id: damage.ability.map(|ability| ability.0),
+            hit_event_id: damage.hit_event_id,
+            damage_source: damage.damage_source,
+            damage_type: damage.damage_type,
+            blocked: damage.flags.blocked,
+            periodic: damage.flags.periodic,
+            owner_id: damage.packet.owner_id,
+            owner_level: damage.packet.owner_level,
+            owner_stage: damage.packet.owner_stage,
+            damage_mode: damage.packet.damage_mode,
+        };
+        let group = self.groups.entry(key).or_default();
+        let amounts = if damage.flags.critical == Some(true) {
+            &mut group.critical
+        } else {
+            &mut group.normal
+        };
+        if !amounts.contains_key(&damage.amount)
+            && amounts.len() >= REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS
+        {
+            group.saturated = true;
+            return;
+        }
+        amounts
+            .entry(damage.amount)
+            .and_modify(|count| *count = count.saturating_add(1))
+            .or_insert(1);
+    }
+
+    pub fn finish(self) -> BpsrRemoteFactorTimeline {
+        let mut by_bucket = HashMap::<(u64, u64), BTreeMap<i64, u64>>::new();
+        let mut by_actor = HashMap::<u64, BTreeMap<i64, u64>>::new();
+        for (key, group) in self.groups {
+            if group.saturated || group.normal.is_empty() || group.critical.is_empty() {
+                continue;
+            }
+            let bucket_histogram = by_bucket.entry((key.actor_id, key.bucket)).or_default();
+            let actor_histogram = by_actor.entry(key.actor_id).or_default();
+            for (normal, normal_count) in &group.normal {
+                for (critical, critical_count) in &group.critical {
+                    let Some((low, high)) = remote_critical_factor_interval(*normal, *critical)
+                    else {
+                        continue;
+                    };
+                    if high.saturating_sub(low) > 2 {
+                        continue;
+                    }
+                    let support =
+                        u64::from(*normal_count).saturating_mul(u64::from(*critical_count));
+                    for raw in low..=high {
+                        if !(520..=50_000).contains(&raw) {
+                            continue;
+                        }
+                        bucket_histogram
+                            .entry(raw)
+                            .and_modify(|value| *value = value.saturating_add(support))
+                            .or_insert(support);
+                        actor_histogram
+                            .entry(raw)
+                            .and_modify(|value| *value = value.saturating_add(support))
+                            .or_insert(support);
+                    }
+                }
+            }
+        }
+        let mut timeline = BpsrRemoteFactorTimeline::default();
+        for ((actor_id, bucket), histogram) in by_bucket {
+            if let Some(raw) = select_remote_factor_cluster(&histogram, 2) {
+                timeline
+                    .critical_damage_raw_by_actor_bucket
+                    .entry(actor_id)
+                    .or_default()
+                    .insert(bucket, raw);
+            }
+        }
+        for (actor_id, histogram) in by_actor {
+            if let Some(raw) = select_remote_factor_cluster(&histogram, 4) {
+                timeline.critical_damage_raw_by_actor.insert(actor_id, raw);
+            }
+        }
+        timeline
+    }
+}
+
+fn remote_critical_factor_interval(normal: i64, critical: i64) -> Option<(i64, i64)> {
+    if normal <= 0 || critical <= 0 {
+        return None;
+    }
+    let normal = i128::from(normal);
+    let critical = i128::from(critical);
+    let ceil_div = |numerator: i128, denominator: i128| {
+        numerator
+            .checked_add(denominator.checked_sub(1)?)?
+            .checked_div(denominator)
+    };
+    let low = ceil_div(critical.checked_mul(10_000)?, normal)?.checked_sub(10_000)?;
+    let high = ceil_div(critical.checked_add(1)?.checked_mul(10_000)?, normal)?
+        .checked_sub(1)?
+        .checked_sub(10_000)?;
+    Some((i64::try_from(low).ok()?, i64::try_from(high).ok()?))
+}
+
+fn select_remote_factor_cluster(
+    histogram: &BTreeMap<i64, u64>,
+    minimum_support: u64,
+) -> Option<i64> {
+    let mut clusters = Vec::<Vec<(i64, u64)>>::new();
+    for (&raw, &support) in histogram {
+        if clusters
+            .last()
+            .and_then(|cluster| cluster.last())
+            .is_some_and(|(previous, _)| raw.saturating_sub(*previous) <= 3)
+        {
+            clusters.last_mut()?.push((raw, support));
+        } else {
+            clusters.push(vec![(raw, support)]);
+        }
+    }
+    let mut ranked = clusters
+        .into_iter()
+        .map(|cluster| {
+            let total = cluster
+                .iter()
+                .fold(0_u64, |sum, (_, support)| sum.saturating_add(*support));
+            (total, cluster)
+        })
+        .collect::<Vec<_>>();
+    ranked.sort_unstable_by(|left, right| right.0.cmp(&left.0));
+    let (top_support, top) = ranked.first()?;
+    if *top_support < minimum_support
+        || ranked.get(1).is_some_and(|runner| runner.0 == *top_support)
+    {
+        return None;
+    }
+    let midpoint = top_support.saturating_add(1) / 2;
+    let mut cumulative = 0_u64;
+    top.iter().find_map(|(raw, support)| {
+        cumulative = cumulative.saturating_add(*support);
+        (cumulative >= midpoint).then_some(*raw)
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct FunctionalAmpWindowKey {
     target_actor_id: u64,
@@ -1036,6 +1346,7 @@ pub struct BpsrStateDamageContributionProjector {
     team_luck_lucky_ever_observed: HashSet<u64>,
     team_luck_critical_cleared_by_snapshot: HashSet<u64>,
     team_luck_lucky_cleared_by_snapshot: HashSet<u64>,
+    remote_factor_timeline: Option<BpsrRemoteFactorTimeline>,
     incomplete_rdps_actor_ids: HashSet<u64>,
     effect_windows: HashMap<EffectWindowKey, EffectWindow>,
     team_luck_windows: HashSet<TeamLuckWindowKey>,
@@ -1118,6 +1429,7 @@ impl Default for BpsrStateDamageContributionProjector {
             team_luck_lucky_ever_observed: HashSet::new(),
             team_luck_critical_cleared_by_snapshot: HashSet::new(),
             team_luck_lucky_cleared_by_snapshot: HashSet::new(),
+            remote_factor_timeline: None,
             incomplete_rdps_actor_ids: HashSet::new(),
             effect_windows: HashMap::new(),
             team_luck_windows: HashSet::new(),
@@ -1167,6 +1479,14 @@ impl BpsrStateDamageContributionProjector {
         target_vulnerability_rdps_catalog()?;
         validate_damage_stage_catalog()?;
         Ok(Self::default())
+    }
+
+    pub fn new_with_remote_factor_timeline(
+        remote_factor_timeline: BpsrRemoteFactorTimeline,
+    ) -> Result<Self, String> {
+        let mut projector = Self::new()?;
+        projector.remote_factor_timeline = Some(remote_factor_timeline);
+        Ok(projector)
     }
 
     /// Constructs an offline replay projector that evaluates the unpromoted
@@ -3587,7 +3907,14 @@ impl BpsrStateDamageContributionProjector {
         damage: &rlogs_events::DamageEvent,
     ) -> Option<ExactRationalDamageContributionEvent> {
         match self.team_luck_decision(envelope.time.observed_micros, damage) {
-            Ok(contribution) => Some(contribution),
+            Ok(contribution) => {
+                if contribution.scope
+                    == DamageContributionScope::Component("team-luck-critical-damage-reconstructed")
+                {
+                    self.mark_team_luck_incomplete(damage);
+                }
+                Some(contribution)
+            }
             Err(
                 "recipient_state_never_observed"
                 | "critical_damage_state_never_observed"
@@ -3692,55 +4019,60 @@ impl BpsrStateDamageContributionProjector {
         if providers.next().is_some() {
             return Err("provider_window_ambiguous");
         }
-        let state_actor_id = self
+        let state = self
             .team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
-            .ok_or_else(|| {
-                self.team_luck_missing_state_gate(
-                    recipient_actor_id,
-                    recipient_entity_uuid,
-                    critical,
-                    lucky,
-                    "recipient_state_missing",
-                )
-            })?;
-        let state = self.states.get(&state_actor_id).ok_or_else(|| {
-            self.team_luck_missing_state_gate(
+            .and_then(|state_actor_id| self.states.get(&state_actor_id));
+        let reconstructed_critical_damage_raw = (critical && !lucky)
+            .then(|| {
+                self.remote_factor_timeline
+                    .as_ref()?
+                    .critical_damage_raw(recipient_actor_id, observed_micros)
+            })
+            .flatten();
+        if state.is_none() && reconstructed_critical_damage_raw.is_none() {
+            return Err(self.team_luck_missing_state_gate(
                 recipient_actor_id,
                 recipient_entity_uuid,
                 critical,
                 lucky,
                 "recipient_state_missing",
-            )
-        })?;
+            ));
+        }
         // Team Luck has two independent outcome lanes. A critical-only hit is
         // counterfactual against the recipient's critical-damage state; a
         // Lucky-only hit is counterfactual against Lucky-damage state. Do not
         // require the unrelated lane to have appeared in the retained actor
         // attributes, otherwise a fully proven critical hit is discarded just
         // because no Lucky-damage snapshot was observed (and vice versa).
+        let observed_critical_damage_raw = state.and_then(|state| state.critical_damage_raw);
+        let critical_factor_reconstructed = critical && observed_critical_damage_raw.is_none();
         let critical_damage_raw = if critical {
-            state.critical_damage_raw.ok_or_else(|| {
-                self.team_luck_missing_state_gate(
-                    recipient_actor_id,
-                    recipient_entity_uuid,
-                    true,
-                    false,
-                    "critical_damage_state_missing",
-                )
-            })?
+            observed_critical_damage_raw
+                .or(reconstructed_critical_damage_raw)
+                .ok_or_else(|| {
+                    self.team_luck_missing_state_gate(
+                        recipient_actor_id,
+                        recipient_entity_uuid,
+                        true,
+                        false,
+                        "critical_damage_state_missing",
+                    )
+                })?
         } else {
             0
         };
         let lucky_damage_raw = if lucky {
-            state.lucky_damage_raw.ok_or_else(|| {
-                self.team_luck_missing_state_gate(
-                    recipient_actor_id,
-                    recipient_entity_uuid,
-                    false,
-                    true,
-                    "lucky_damage_state_missing",
-                )
-            })?
+            state
+                .and_then(|state| state.lucky_damage_raw)
+                .ok_or_else(|| {
+                    self.team_luck_missing_state_gate(
+                        recipient_actor_id,
+                        recipient_entity_uuid,
+                        false,
+                        true,
+                        "lucky_damage_state_missing",
+                    )
+                })?
         } else {
             0
         };
@@ -3761,7 +4093,9 @@ impl BpsrStateDamageContributionProjector {
             effect_id: self.runtime.team_luck.effect_id,
             provider_actor_id,
             recipient_actor_id,
-            scope: DamageContributionScope::Component(if critical {
+            scope: DamageContributionScope::Component(if critical_factor_reconstructed {
+                "team-luck-critical-damage-reconstructed"
+            } else if critical {
                 "team-luck-critical-damage"
             } else {
                 "team-luck-lucky-damage"
@@ -7160,6 +7494,47 @@ mod tests {
 
     fn runtime() -> &'static RdpsRuntimeConfig {
         rdps_runtime_config().expect("bundled rDPS runtime pack should validate")
+    }
+
+    #[test]
+    fn remote_critical_factor_interval_recovers_exact_additive_bonus() {
+        assert_eq!(
+            remote_critical_factor_interval(10_000, 18_000),
+            Some((8_000, 8_000))
+        );
+        assert_eq!(remote_critical_factor_interval(0, 18_000), None);
+    }
+
+    #[test]
+    fn remote_factor_cluster_rejects_ties_and_uses_weighted_consensus() {
+        let consensus = BTreeMap::from([(8_520, 5), (8_521, 9), (8_522, 4), (12_520, 3)]);
+        assert_eq!(select_remote_factor_cluster(&consensus, 4), Some(8_521));
+
+        let tied = BTreeMap::from([(8_520, 4), (12_520, 4)]);
+        assert_eq!(select_remote_factor_cluster(&tied, 4), None);
+    }
+
+    #[test]
+    fn remote_factor_timeline_prefers_bucket_then_bounded_neighbor() {
+        let timeline = BpsrRemoteFactorTimeline {
+            critical_damage_raw_by_actor_bucket: HashMap::from([(
+                2,
+                BTreeMap::from([(100, 8_520), (110, 12_520)]),
+            )]),
+            critical_damage_raw_by_actor: HashMap::from([(2, 10_520)]),
+        };
+        assert_eq!(
+            timeline.critical_damage_raw(2, 100 * REMOTE_FACTOR_BUCKET_MICROS),
+            Some(8_520)
+        );
+        assert_eq!(
+            timeline.critical_damage_raw(2, 104 * REMOTE_FACTOR_BUCKET_MICROS),
+            Some(8_520)
+        );
+        assert_eq!(
+            timeline.critical_damage_raw(2, 200 * REMOTE_FACTOR_BUCKET_MICROS),
+            Some(10_520)
+        );
     }
 
     fn test_entity(actor_id: u64, entity_uuid: i64) -> EntityRef {

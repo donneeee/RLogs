@@ -1370,13 +1370,13 @@ export function mountCombatHistorySurface(
             row.append(numeric(metrics.tps));
             break;
           case "rdps":
-            row.append(rdpsNumeric(actor.rdps, false, targetActorId === null));
+            row.append(rdpsNumeric(actor.rdps, false, targetActorId === null, actor.rdps_incomplete));
             break;
           case "rdpsGiven":
-            row.append(rdpsNumeric(actor.rdps_contribution_given, true, targetActorId === null));
+            row.append(rdpsNumeric(actor.rdps_contribution_given, true, targetActorId === null, actor.rdps_incomplete));
             break;
           case "rdpsReceived":
-            row.append(rdpsNumeric(actor.rdps_contribution_received, true, targetActorId === null));
+            row.append(rdpsNumeric(actor.rdps_contribution_received, true, targetActorId === null, actor.rdps_incomplete));
             break;
           case "apm":
             row.append(numeric(targetActorId ? null : actor.apm));
@@ -1634,17 +1634,13 @@ export function mountCombatHistorySurface(
       [INTEGER.format(actorMetrics.damage), "Damage"],
       [NUMBER.format(actorMetrics.dps), "DPS"],
       [NUMBER.format(actorMetrics.encounterDps), "eDPS"],
-      [actor.rdps === null ? "Unresolved" : NUMBER.format(actor.rdps), "rDPS"],
+      [rdpsDisplay(actor.rdps, false, actor.rdps_incomplete), "rDPS"],
       [
-        actor.rdps_contribution_given === null
-          ? "Unresolved"
-          : INTEGER.format(actor.rdps_contribution_given),
+        rdpsDisplay(actor.rdps_contribution_given, true, actor.rdps_incomplete),
         "rDPS granted",
       ],
       [
-        actor.rdps_contribution_received === null
-          ? "Unresolved"
-          : INTEGER.format(actor.rdps_contribution_received),
+        rdpsDisplay(actor.rdps_contribution_received, true, actor.rdps_incomplete),
         "rDPS received",
       ],
       [NUMBER.format(actorMetrics.hps), "HPS"],
@@ -3781,6 +3777,7 @@ function rdpsNumeric(
   value: number | null,
   integer = false,
   applicable = true,
+  incomplete = false,
 ): HTMLTableCellElement {
   const cell = document.createElement("td");
   cell.className = "meter-number";
@@ -3790,9 +3787,18 @@ function rdpsNumeric(
     cell.textContent = "Unresolved";
     cell.title = "The exact rDPS total is incomplete; ordinary damage remains available.";
   } else {
-    cell.textContent = integer ? INTEGER.format(value) : NUMBER.format(value);
+    cell.textContent = rdpsDisplay(value, integer, incomplete);
+    if (incomplete) {
+      cell.title = "Reconstructed packet-proven subtotal; one or more remote formula inputs remain unresolved.";
+    }
   }
   return cell;
+}
+
+function rdpsDisplay(value: number | null, integer: boolean, incomplete: boolean): string {
+  if (value === null) return "Unresolved";
+  const formatted = integer ? INTEGER.format(value) : NUMBER.format(value);
+  return incomplete ? `≈${formatted}` : formatted;
 }
 
 function percentageCell(value: number | null): HTMLTableCellElement {

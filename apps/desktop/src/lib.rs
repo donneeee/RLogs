@@ -55,21 +55,21 @@ use rlogs_events::{
     TimelineEventKind,
 };
 use rlogs_game_bpsr::{
-    BPSR_GAME_PLUGIN_ID, BpsrSceneRunIdentity, BpsrStateDamageContributionProjector,
-    ContinuousBpsrRecorder, ContinuousRecordingConfig, ContinuousResearchJournalConfig, GameBuild,
-    LiveProtocolPackKind, NetworkEndpoint, OfflineRecordingConfig, OfflineRecordingLimits,
-    OfflineRecordingReport, ProtocolPack, ProtocolRuntimeConfig,
-    RDPS_VALIDATION_REPORT_SCHEMA_VERSION, RdpsValidationAnalyzer, RdpsValidationProgress,
-    RdpsValidationReport, RegionResolverError, ResolvedRegion, SealedDungeonRunLog,
-    ServerRealmCatalog, auxiliary_action_presentation, battle_imagine_presentation,
-    bundled_run_reducer_config, bundled_scene_run_identities, character_id_from_entity_uuid,
-    combat_action_presentation, confirmed_damage_contribution_rules, is_boss_monster,
-    is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
-    localized_class_identities, localized_combat_action_name, localized_monster_name,
-    localized_recount_group_name, localized_scene_name, localized_specialization_identities,
-    localized_status_effect_name, project_local_profile_packages, record_offline_capture,
-    resolve_actor_combat_identity, resolve_actor_combat_presentation,
-    resolve_live_steam_protocol_pack, scene_boss_monster_ids,
+    BPSR_GAME_PLUGIN_ID, BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline, BpsrSceneRunIdentity,
+    BpsrStateDamageContributionProjector, ContinuousBpsrRecorder, ContinuousRecordingConfig,
+    ContinuousResearchJournalConfig, GameBuild, LiveProtocolPackKind, NetworkEndpoint,
+    OfflineRecordingConfig, OfflineRecordingLimits, OfflineRecordingReport, ProtocolPack,
+    ProtocolRuntimeConfig, RDPS_VALIDATION_REPORT_SCHEMA_VERSION, RdpsValidationAnalyzer,
+    RdpsValidationProgress, RdpsValidationReport, RegionResolverError, ResolvedRegion,
+    SealedDungeonRunLog, ServerRealmCatalog, auxiliary_action_presentation,
+    battle_imagine_presentation, bundled_run_reducer_config, bundled_scene_run_identities,
+    character_id_from_entity_uuid, combat_action_presentation, confirmed_damage_contribution_rules,
+    is_boss_monster, is_localized_class_name, localized_auxiliary_action_name,
+    localized_battle_imagine_name, localized_class_identities, localized_combat_action_name,
+    localized_monster_name, localized_recount_group_name, localized_scene_name,
+    localized_specialization_identities, localized_status_effect_name,
+    project_local_profile_packages, record_offline_capture, resolve_actor_combat_identity,
+    resolve_actor_combat_presentation, resolve_live_steam_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
     status_effect_presentation, weapon_level_presentation, weapon_presentation,
 };
@@ -6544,9 +6544,21 @@ fn replay_builtins_and_build_artifact(
 }
 
 fn bpsr_combat_timeline_plugin() -> Result<CombatTimelinePlugin, String> {
+    bpsr_combat_timeline_plugin_with_remote_factors(None)
+}
+
+fn bpsr_combat_timeline_plugin_with_remote_factors(
+    remote_factors: Option<BpsrRemoteFactorTimeline>,
+) -> Result<CombatTimelinePlugin, String> {
+    let projector = match remote_factors {
+        Some(remote_factors) => {
+            BpsrStateDamageContributionProjector::new_with_remote_factor_timeline(remote_factors)?
+        }
+        None => BpsrStateDamageContributionProjector::new()?,
+    };
     Ok(CombatTimelinePlugin::with_damage_contribution_projection(
         confirmed_damage_contribution_rules()?,
-        Some(Box::new(BpsrStateDamageContributionProjector::new()?)),
+        Some(Box::new(projector)),
     )?
     .with_live_health_attributes(LiveHealthAttributeMapping {
         current_hp: 11_310,
@@ -6609,6 +6621,46 @@ fn replay_bpsr_combat_history_interruptible(
         return Ok(None);
     }
     let total_bytes = path.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+    let total_work_bytes = total_bytes.saturating_mul(2);
+    let inference_file = File::open(path).map_err(|error| {
+        format!(
+            "could not open sealed combat log for remote-factor reconstruction {}: {error}",
+            path.display()
+        )
+    })?;
+    let inference_consumed = Arc::new(AtomicU64::new(0));
+    let inference_tracked = ProgressTrackingBufRead::new(
+        BufReader::new(inference_file),
+        Arc::clone(&inference_consumed),
+    );
+    let mut inference_reader = RlogReader::new(inference_tracked, RlogLimits::default())
+        .map_err(|error| format!("could not validate combat log header: {error}"))?;
+    let mut remote_factor_learner = BpsrRemoteFactorLearner::new()?;
+    let mut progress_event_count = 0_u64;
+    while let Some(event) = inference_reader
+        .next_event()
+        .map_err(|error| format!("remote-factor reconstruction replay failed: {error}"))?
+    {
+        remote_factor_learner.observe(&event);
+        progress_event_count = progress_event_count.saturating_add(1);
+        if progress_event_count % 4_096 == 0 {
+            on_progress(
+                progress_event_count,
+                inference_consumed.load(Ordering::Relaxed).min(total_bytes),
+                total_work_bytes,
+            );
+            if should_defer() {
+                return Ok(None);
+            }
+        }
+    }
+    if inference_reader.summary().is_none() {
+        return Err("sealed combat log has no validated integrity summary".into());
+    }
+    let remote_factors = remote_factor_learner.finish();
+    if should_defer() {
+        return Ok(None);
+    }
     let file = File::open(path).map_err(|error| {
         format!(
             "could not open sealed combat log {}: {error}",
@@ -6620,7 +6672,7 @@ fn replay_bpsr_combat_history_interruptible(
     let mut reader = RlogReader::new(tracked, RlogLimits::default())
         .map_err(|error| format!("could not validate combat log header: {error}"))?;
     let header = reader.header().clone();
-    let mut meter = bpsr_combat_timeline_plugin()?;
+    let mut meter = bpsr_combat_timeline_plugin_with_remote_factors(Some(remote_factors))?;
     meter.begin_live(&header);
     let mut encounter = EncounterRecorderPlugin::new(
         bundled_run_reducer_config()
@@ -6638,10 +6690,11 @@ fn replay_bpsr_combat_history_interruptible(
             .map_err(|error| format!("encounter replay failed: {error}"))?;
         event_count = event_count.saturating_add(1);
         if event_count % 4_096 == 0 {
+            progress_event_count = progress_event_count.saturating_add(4_096);
             on_progress(
-                event_count,
-                consumed.load(Ordering::Relaxed).min(total_bytes),
-                total_bytes,
+                progress_event_count,
+                total_bytes.saturating_add(consumed.load(Ordering::Relaxed).min(total_bytes)),
+                total_work_bytes,
             );
             if should_defer() {
                 return Ok(None);
@@ -6649,9 +6702,9 @@ fn replay_bpsr_combat_history_interruptible(
         }
     }
     on_progress(
-        event_count,
-        consumed.load(Ordering::Relaxed).min(total_bytes),
-        total_bytes,
+        progress_event_count.saturating_add(event_count % 4_096),
+        total_bytes.saturating_add(consumed.load(Ordering::Relaxed).min(total_bytes)),
+        total_work_bytes,
     );
     if reader.summary().is_none() {
         return Err("sealed combat log has no validated integrity summary".into());
@@ -6692,6 +6745,7 @@ fn clear_history_rdps_projection(snapshot: &mut CombatHistorySnapshot, status: &
                 actor.rdps_damage = None;
                 actor.rdps_contribution_given = None;
                 actor.rdps_contribution_received = None;
+                actor.rdps_incomplete = false;
             }
         }
     }
@@ -8802,6 +8856,7 @@ mod tests {
             rdps: None,
             rdps_contribution_given: None,
             rdps_contribution_received: None,
+            rdps_incomplete: false,
             reported_healing: 0,
             effective_healing: 0,
             overheal: 0,
@@ -9630,6 +9685,22 @@ mod tests {
                     view.id,
                     view.actors.len()
                 );
+                if view.id == "all" {
+                    for actor in view.actors.iter().filter(|actor| {
+                        actor.damage > 0 && actor.actor_kind.as_deref() == Some("player")
+                    }) {
+                        eprintln!(
+                            "party actor={} name={} damage={} rdps_damage={:?} given={:?} received={:?} incomplete={}",
+                            actor.actor_id,
+                            actor.display_name.as_deref().unwrap_or("unknown"),
+                            actor.damage,
+                            actor.rdps_damage,
+                            actor.rdps_contribution_given,
+                            actor.rdps_contribution_received,
+                            actor.rdps_incomplete,
+                        );
+                    }
+                }
             }
         }
         eprintln!(

@@ -207,6 +207,7 @@ export interface HistoryActorSummary {
   rdps_damage: number | null;
   rdps_contribution_given: number | null;
   rdps_contribution_received: number | null;
+  rdps_incomplete: boolean;
   apm: number | null;
   observed_cast_events: number;
   abilities: HistoryAbilitySummary[];
@@ -530,6 +531,10 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
         if (parsedActor.rdps_contribution_received === undefined) {
           parsedActor.rdps_contribution_received = null;
         }
+        if (parsedActor.rdps_incomplete === undefined) parsedActor.rdps_incomplete = false;
+        if (typeof parsedActor.rdps_incomplete !== "boolean") {
+          throw new Error("actor rDPS incomplete marker must be boolean");
+        }
         optionalInteger(parsedActor.rdps_damage, "actor rDPS damage");
         if (parsedActor.rdps !== null) finiteNumber(parsedActor.rdps, "actor rDPS");
         optionalInteger(
@@ -545,6 +550,7 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
           parsedActor.rdps_damage = null;
           parsedActor.rdps_contribution_given = null;
           parsedActor.rdps_contribution_received = null;
+          parsedActor.rdps_incomplete = false;
         }
         normalizeLoadout(parsedActor, "primary_loadout", "actor primary loadout");
         normalizeLoadout(parsedActor, "auxiliary_loadout", "actor auxiliary loadout");
