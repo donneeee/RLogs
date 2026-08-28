@@ -11,6 +11,7 @@
 use std::{collections::HashMap, sync::OnceLock};
 
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
@@ -409,6 +410,21 @@ pub(crate) struct HarmonyGraceRuntimeConfig {
     /// Only recipient classes with exact behavioral closure may be enabled.
     /// Candidate rules for other classes remain available to offline replay.
     pub runtime_recipient_class_ids: Vec<i32>,
+    /// Exact paired final-damage observations may authorize remote recipients
+    /// without a character snapshot. The learner remains build-scoped and
+    /// emits only the active rows that have a same-context inactive witness.
+    pub remote_paired_output_runtime_transfer_enabled: bool,
+    pub remote_paired_output_recipient_class_ids: Vec<i32>,
+    pub remote_paired_output_ignored_effect_ids: Vec<i64>,
+    pub remote_paired_output_formula_effect_ids: Vec<i64>,
+    pub remote_paired_output_max_pair_gap_micros: u64,
+    /// Exact-build class-2 envelope from the reviewed ability 7998 and 1259
+    /// active/inactive anchors. This rejects mechanically similar child-
+    /// entity outputs that imply a materially different effect magnitude.
+    pub remote_paired_output_provider_share_min_basis_points: i64,
+    pub remote_paired_output_provider_share_max_basis_points: i64,
+    pub remote_paired_output_min_distinct_targets: u32,
+    pub remote_paired_output_min_distinct_output_pairs: u32,
 }
 
 impl HarmonyGraceRuntimeConfig {
@@ -1241,6 +1257,28 @@ impl RdpsRuntimeConfig {
                         .iter()
                         .any(|rule| rule.recipient_class_id == *class_id)
             });
+        let harmony_remote_paired_output_is_valid = harmony
+            .remote_paired_output_runtime_transfer_enabled
+            && harmony.remote_paired_output_recipient_class_ids == [2]
+            && harmony.remote_paired_output_ignored_effect_ids == [27_016, 55_301, 3_002_011]
+            && harmony.remote_paired_output_formula_effect_ids.len() == 583
+            && harmony
+                .remote_paired_output_formula_effect_ids
+                .windows(2)
+                .all(|pair| pair[0] < pair[1])
+            && {
+                let mut hasher = Sha256::new();
+                for effect_id in &harmony.remote_paired_output_formula_effect_ids {
+                    hasher.update(effect_id.to_le_bytes());
+                }
+                format!("{:x}", hasher.finalize())
+                    == "da6bc3f98a3c8c38105bc9ff17eb8fd3be50f905481046c919969d34c86a44de"
+            }
+            && harmony.remote_paired_output_max_pair_gap_micros == 30_000_000
+            && harmony.remote_paired_output_provider_share_min_basis_points == 80
+            && harmony.remote_paired_output_provider_share_max_basis_points == 100
+            && harmony.remote_paired_output_min_distinct_targets >= 2
+            && harmony.remote_paired_output_min_distinct_output_pairs >= 2;
         if harmony.effect_id <= 0
             || harmony.source_terminal_effect_id <= 0
             || harmony.effect_id == harmony.source_terminal_effect_id
@@ -1250,6 +1288,7 @@ impl RdpsRuntimeConfig {
                 != "sum-exact-then-half-up-per-effect-provider-recipient"
             || !harmony.unresolved_overlap_fails_closed
             || !harmony_runtime_classes_are_valid
+            || !harmony_remote_paired_output_is_valid
             || (harmony.runtime_transfer_enabled
                 && (!harmony_runtime_authority || harmony.runtime_recipient_class_ids != [11]))
             || (!harmony.runtime_transfer_enabled
@@ -2295,6 +2334,28 @@ mod tests {
         assert!(!current.runtime_promotion_allowed());
         assert!(current.harmony_grace.runtime_transfer_enabled);
         assert_eq!(current.harmony_grace.runtime_recipient_class_ids, [11]);
+        assert!(
+            current
+                .harmony_grace
+                .remote_paired_output_runtime_transfer_enabled
+        );
+        assert_eq!(
+            current
+                .harmony_grace
+                .remote_paired_output_recipient_class_ids,
+            [2]
+        );
+        assert_eq!(
+            (
+                current
+                    .harmony_grace
+                    .remote_paired_output_provider_share_min_basis_points,
+                current
+                    .harmony_grace
+                    .remote_paired_output_provider_share_max_basis_points,
+            ),
+            (80, 100)
+        );
         let class_11 = current
             .harmony_grace
             .recipient_rules
@@ -2369,6 +2430,42 @@ mod tests {
         disabled_with_class["harmony_grace"]["runtime_recipient_class_ids"] =
             serde_json::json!([11]);
         assert!(runtime_from_value(disabled_with_class).validate().is_err());
+
+        let mut broadened_remote_scope = bundled_runtime_value();
+        broadened_remote_scope["harmony_grace"]["remote_paired_output_recipient_class_ids"] =
+            serde_json::json!([1, 2]);
+        assert!(
+            runtime_from_value(broadened_remote_scope)
+                .validate()
+                .is_err()
+        );
+
+        let mut altered_remote_context = bundled_runtime_value();
+        altered_remote_context["harmony_grace"]["remote_paired_output_ignored_effect_ids"] =
+            serde_json::json!([27016, 55301]);
+        assert!(
+            runtime_from_value(altered_remote_context)
+                .validate()
+                .is_err()
+        );
+
+        let mut altered_remote_magnitude = bundled_runtime_value();
+        altered_remote_magnitude["harmony_grace"]["remote_paired_output_provider_share_max_basis_points"] =
+            serde_json::json!(2_500);
+        assert!(
+            runtime_from_value(altered_remote_magnitude)
+                .validate()
+                .is_err()
+        );
+
+        let mut altered_remote_formula_set = bundled_runtime_value();
+        altered_remote_formula_set["harmony_grace"]["remote_paired_output_formula_effect_ids"][0] =
+            serde_json::json!(1);
+        assert!(
+            runtime_from_value(altered_remote_formula_set)
+                .validate()
+                .is_err()
+        );
     }
 
     #[test]

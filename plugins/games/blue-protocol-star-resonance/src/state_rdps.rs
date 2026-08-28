@@ -6,7 +6,7 @@
 //! calculation snapshot, and damage formula.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     sync::OnceLock,
 };
 
@@ -53,7 +53,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v16";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v18";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -61,6 +61,9 @@ const REMOTE_FACTOR_MAX_MECHANIC_GROUPS: usize = 4_096;
 const LIVE_REMOTE_FACTOR_EVIDENCE_HORIZON_MICROS: u64 =
     REMOTE_FACTOR_BUCKET_MICROS * REMOTE_FACTOR_NEAREST_BUCKET_LIMIT;
 const LIVE_DEFERRED_TEAM_LUCK_LIMIT: usize = 4_096;
+const LIVE_DEFERRED_REMOTE_HARMONY_LIMIT: usize = 4_096;
+const REMOTE_HARMONY_MAX_MECHANIC_GROUPS: usize = 8_192;
+const REMOTE_HARMONY_MAX_OBSERVATIONS_PER_STATE: usize = 64;
 
 static STATE_RDPS_FORMULA_IDENTITY: OnceLock<String> = OnceLock::new();
 
@@ -854,6 +857,119 @@ struct RemoteFactorOutcomeGroup {
     saturated: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct RemoteHarmonyMechanicKey {
+    run_epoch: u64,
+    source_actor_id: u64,
+    source_entity_uuid: i64,
+    target_actor_id: u64,
+    target_entity_uuid: i64,
+    class_id: i32,
+    ability_id: i64,
+    hit_event_id: i32,
+    damage_source: Option<i32>,
+    damage_type: Option<i32>,
+    critical: Option<bool>,
+    lucky: Option<bool>,
+    blocked: Option<bool>,
+    periodic: Option<bool>,
+    owner_id: Option<i32>,
+    owner_level: Option<i32>,
+    owner_stage: Option<i32>,
+    damage_mode: Option<i32>,
+    property: Option<i32>,
+    coefficient_basis_points: i64,
+    source_formula_context_sha256: String,
+    target_formula_context_sha256: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RemoteHarmonyDamageObservation {
+    event_sequence: u64,
+    observed_micros: u64,
+    amount: i64,
+    provider_actor_id: Option<u64>,
+}
+
+#[derive(Debug)]
+struct RemoteHarmonyProbeObservation {
+    key: RemoteHarmonyMechanicKey,
+    observation: RemoteHarmonyDamageObservation,
+}
+
+#[derive(Debug, Default)]
+struct RemoteHarmonyOutcomeGroup {
+    inactive: Vec<RemoteHarmonyDamageObservation>,
+    active: Vec<RemoteHarmonyDamageObservation>,
+    saturated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DeferredRemoteHarmonyDamage {
+    observed_micros: u64,
+    event_sequence: u64,
+    provider_actor_id: u64,
+    recipient_actor_id: u64,
+    recipient_entity_uuid: i64,
+    affected_ability_id: i64,
+    hit_event_id: i32,
+    target_actor_id: u64,
+    target_entity_uuid: i64,
+    observed_damage: i64,
+    later_contribution: Option<ExactRationalDamageContributionEvent>,
+}
+
+#[derive(Debug, Clone)]
+struct RemoteHarmonyPairedContribution {
+    provider_actor_id: u64,
+    recipient_actor_id: u64,
+    recipient_entity_uuid: i64,
+    target_actor_id: u64,
+    target_entity_uuid: i64,
+    ability_id: i64,
+    hit_event_id: i32,
+    observed_damage: i64,
+    contribution: i64,
+    source_formula_context_sha256: String,
+    target_formula_context_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct RemoteHarmonyActionKey {
+    run_epoch: u64,
+    source_actor_id: u64,
+    source_entity_uuid: i64,
+    provider_actor_id: u64,
+    class_id: i32,
+    ability_id: i64,
+    hit_event_id: i32,
+    damage_source: Option<i32>,
+    damage_type: Option<i32>,
+    blocked: Option<bool>,
+    periodic: Option<bool>,
+    owner_id: Option<i32>,
+    owner_level: Option<i32>,
+    owner_stage: Option<i32>,
+    damage_mode: Option<i32>,
+    property: Option<i32>,
+    coefficient_basis_points: i64,
+    inactive_observed_micros: u64,
+    active_observed_micros: u64,
+    source_formula_context_sha256: String,
+}
+
+#[derive(Debug, Clone)]
+struct RemoteHarmonyPairedRow {
+    active_event_sequence: u64,
+    recipient_actor_id: u64,
+    recipient_entity_uuid: i64,
+    target_actor_id: u64,
+    target_entity_uuid: i64,
+    active_damage: i64,
+    inactive_damage: i64,
+    target_formula_context_sha256: String,
+}
+
 /// Bounded packet-derived critical-factor timeline for remote party members.
 ///
 /// Values are reconstructed from repeated normal/critical outcomes with the
@@ -864,6 +980,7 @@ struct RemoteFactorOutcomeGroup {
 pub struct BpsrRemoteFactorTimeline {
     critical_damage_raw_by_actor_bucket: HashMap<u64, BTreeMap<u64, i64>>,
     critical_damage_raw_by_actor: HashMap<u64, i64>,
+    remote_harmony_by_event_sequence: HashMap<u64, RemoteHarmonyPairedContribution>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -953,12 +1070,19 @@ impl BpsrRemoteFactorTimeline {
 pub struct BpsrRemoteFactorLearner {
     team_luck_windows: HashSet<TeamLuckWindowKey>,
     groups: HashMap<RemoteFactorMechanicKey, RemoteFactorOutcomeGroup>,
+    harmony_probe: Option<Box<BpsrStateDamageContributionProjector>>,
+    harmony_run_epoch: u64,
+    harmony_groups: HashMap<RemoteHarmonyMechanicKey, RemoteHarmonyOutcomeGroup>,
+    harmony_receipts_dirty: bool,
 }
 
 impl BpsrRemoteFactorLearner {
     pub fn new() -> Result<Self, String> {
         rdps_runtime_config()?;
-        Ok(Self::default())
+        Ok(Self {
+            harmony_probe: Some(Box::new(BpsrStateDamageContributionProjector::new()?)),
+            ..Self::default()
+        })
     }
 
     pub fn observe(&mut self, envelope: &EventEnvelope) {
@@ -969,8 +1093,27 @@ impl BpsrRemoteFactorLearner {
         ) else {
             return;
         };
-        if !runtime.team_luck.critical_damage_runtime_transfer_enabled {
-            return;
+        let mut harmony_observation = None;
+        if runtime
+            .harmony_grace
+            .remote_paired_output_runtime_transfer_enabled
+            && let Some(probe) = self.harmony_probe.as_mut()
+        {
+            let mut discarded_exact = Vec::new();
+            let mut discarded_rational = Vec::new();
+            probe.observe(envelope, &mut discarded_exact, &mut discarded_rational);
+            if let CanonicalEvent::Timeline(timeline) = &envelope.event
+                && let TimelineEventKind::Damage(damage) = &timeline.kind
+            {
+                harmony_observation = probe.remote_harmony_probe_observation(
+                    self.harmony_run_epoch,
+                    envelope,
+                    damage,
+                );
+            }
+        }
+        if let Some(observation) = harmony_observation {
+            self.observe_remote_harmony_damage(observation);
         }
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
             return;
@@ -980,9 +1123,13 @@ impl BpsrRemoteFactorLearner {
             | TimelineEventKind::EncounterBoundary {
                 state: EncounterState::Wiped,
                 ..
-            } => self.team_luck_windows.clear(),
+            } => {
+                self.team_luck_windows.clear();
+                self.harmony_run_epoch = self.harmony_run_epoch.saturating_add(1);
+            }
             TimelineEventKind::Status(status)
-                if status.effect.0 == runtime.team_luck.effect_id
+                if runtime.team_luck.critical_damage_runtime_transfer_enabled
+                    && status.effect.0 == runtime.team_luck.effect_id
                     && status
                         .origin
                         .map(|origin| (origin.source_type_id, origin.source_config_id))
@@ -993,7 +1140,9 @@ impl BpsrRemoteFactorLearner {
             {
                 self.observe_team_luck_status(status);
             }
-            TimelineEventKind::Damage(damage) => {
+            TimelineEventKind::Damage(damage)
+                if runtime.team_luck.critical_damage_runtime_transfer_enabled =>
+            {
                 self.observe_damage(envelope.time.observed_micros, damage);
             }
             _ => {}
@@ -1070,7 +1219,154 @@ impl BpsrRemoteFactorLearner {
             .or_insert(1);
     }
 
+    fn observe_remote_harmony_damage(&mut self, observed: RemoteHarmonyProbeObservation) {
+        if !self.harmony_groups.contains_key(&observed.key)
+            && self.harmony_groups.len() >= REMOTE_HARMONY_MAX_MECHANIC_GROUPS
+        {
+            return;
+        }
+        let group = self.harmony_groups.entry(observed.key).or_default();
+        let observations = if observed.observation.provider_actor_id.is_some() {
+            &mut group.active
+        } else {
+            &mut group.inactive
+        };
+        if observations.len() >= REMOTE_HARMONY_MAX_OBSERVATIONS_PER_STATE {
+            group.saturated = true;
+            return;
+        }
+        observations.push(observed.observation);
+        if !group.active.is_empty() && !group.inactive.is_empty() {
+            self.harmony_receipts_dirty = true;
+        }
+    }
+
+    fn remote_harmony_receipts(&self) -> HashMap<u64, RemoteHarmonyPairedContribution> {
+        let mut receipts = HashMap::new();
+        let harmony = &rdps_runtime_config()
+            .expect("remote learner was constructed from a valid runtime")
+            .harmony_grace;
+        let mut action_groups =
+            HashMap::<RemoteHarmonyActionKey, Vec<RemoteHarmonyPairedRow>>::new();
+        for (key, group) in &self.harmony_groups {
+            if group.saturated || group.inactive.is_empty() || group.active.is_empty() {
+                continue;
+            }
+            for active in &group.active {
+                let Some(provider_actor_id) = active.provider_actor_id else {
+                    continue;
+                };
+                if provider_actor_id == key.source_actor_id {
+                    continue;
+                }
+                let Some(inactive) = group.inactive.iter().min_by_key(|inactive| {
+                    inactive.observed_micros.abs_diff(active.observed_micros)
+                }) else {
+                    continue;
+                };
+                if inactive.observed_micros.abs_diff(active.observed_micros)
+                    > harmony.remote_paired_output_max_pair_gap_micros
+                    || active.amount <= inactive.amount
+                {
+                    continue;
+                }
+                let action_key = RemoteHarmonyActionKey {
+                    run_epoch: key.run_epoch,
+                    source_actor_id: key.source_actor_id,
+                    source_entity_uuid: key.source_entity_uuid,
+                    provider_actor_id,
+                    class_id: key.class_id,
+                    ability_id: key.ability_id,
+                    hit_event_id: key.hit_event_id,
+                    damage_source: key.damage_source,
+                    damage_type: key.damage_type,
+                    blocked: key.blocked,
+                    periodic: key.periodic,
+                    owner_id: key.owner_id,
+                    owner_level: key.owner_level,
+                    owner_stage: key.owner_stage,
+                    damage_mode: key.damage_mode,
+                    property: key.property,
+                    coefficient_basis_points: key.coefficient_basis_points,
+                    inactive_observed_micros: inactive.observed_micros,
+                    active_observed_micros: active.observed_micros,
+                    source_formula_context_sha256: key.source_formula_context_sha256.clone(),
+                };
+                action_groups
+                    .entry(action_key)
+                    .or_default()
+                    .push(RemoteHarmonyPairedRow {
+                        active_event_sequence: active.event_sequence,
+                        recipient_actor_id: key.source_actor_id,
+                        recipient_entity_uuid: key.source_entity_uuid,
+                        target_actor_id: key.target_actor_id,
+                        target_entity_uuid: key.target_entity_uuid,
+                        active_damage: active.amount,
+                        inactive_damage: inactive.amount,
+                        target_formula_context_sha256: key.target_formula_context_sha256.clone(),
+                    });
+            }
+        }
+        for (key, rows) in action_groups {
+            let distinct_targets = rows
+                .iter()
+                .map(|row| (row.target_actor_id, row.target_entity_uuid))
+                .collect::<BTreeSet<_>>()
+                .len();
+            let distinct_output_pairs = rows
+                .iter()
+                .map(|row| (row.active_damage, row.inactive_damage))
+                .collect::<BTreeSet<_>>()
+                .len();
+            if distinct_targets < harmony.remote_paired_output_min_distinct_targets as usize
+                || distinct_output_pairs
+                    < harmony.remote_paired_output_min_distinct_output_pairs as usize
+                || !remote_harmony_provider_share_is_in_bounds(
+                    &rows,
+                    harmony.remote_paired_output_provider_share_min_basis_points,
+                    harmony.remote_paired_output_provider_share_max_basis_points,
+                )
+                || !remote_harmony_ratio_intersection_exists(&rows)
+            {
+                continue;
+            }
+            for row in rows {
+                let Some(contribution) = row.active_damage.checked_sub(row.inactive_damage) else {
+                    continue;
+                };
+                receipts.insert(
+                    row.active_event_sequence,
+                    RemoteHarmonyPairedContribution {
+                        provider_actor_id: key.provider_actor_id,
+                        recipient_actor_id: row.recipient_actor_id,
+                        recipient_entity_uuid: row.recipient_entity_uuid,
+                        target_actor_id: row.target_actor_id,
+                        target_entity_uuid: row.target_entity_uuid,
+                        ability_id: key.ability_id,
+                        hit_event_id: key.hit_event_id,
+                        observed_damage: row.active_damage,
+                        contribution,
+                        source_formula_context_sha256: key.source_formula_context_sha256.clone(),
+                        target_formula_context_sha256: row.target_formula_context_sha256,
+                    },
+                );
+            }
+        }
+        receipts
+    }
+
+    fn take_remote_harmony_receipts_if_dirty(
+        &mut self,
+    ) -> Option<HashMap<u64, RemoteHarmonyPairedContribution>> {
+        if !self.harmony_receipts_dirty {
+            return None;
+        }
+        self.harmony_receipts_dirty = false;
+        Some(self.remote_harmony_receipts())
+    }
+
     pub fn finish(self) -> BpsrRemoteFactorTimeline {
+        let remote_harmony_by_event_sequence = self.remote_harmony_receipts();
         let mut by_bucket = HashMap::<(u64, u64), BTreeMap<i64, u64>>::new();
         let mut by_actor = HashMap::<u64, BTreeMap<i64, u64>>::new();
         for (key, group) in self.groups {
@@ -1094,6 +1390,7 @@ impl BpsrRemoteFactorLearner {
                 timeline.critical_damage_raw_by_actor.insert(actor_id, raw);
             }
         }
+        timeline.remote_harmony_by_event_sequence = remote_harmony_by_event_sequence;
         timeline
     }
 
@@ -1135,6 +1432,52 @@ impl BpsrRemoteFactorLearner {
         }
         select_remote_factor_cluster(&histogram, 4)
     }
+}
+
+fn remote_harmony_ratio_intersection_exists(rows: &[RemoteHarmonyPairedRow]) -> bool {
+    let mut lower = None::<(i64, i64)>;
+    let mut upper = None::<(i64, i64)>;
+    for row in rows {
+        if row.active_damage <= row.inactive_damage || row.active_damage <= 0 {
+            return false;
+        }
+        let candidate_lower = (row.inactive_damage, row.active_damage.saturating_add(1));
+        let candidate_upper = (row.inactive_damage.saturating_add(1), row.active_damage);
+        if lower.is_none_or(|current| rational_pair_less(current, candidate_lower)) {
+            lower = Some(candidate_lower);
+        }
+        if upper.is_none_or(|current| rational_pair_less(candidate_upper, current)) {
+            upper = Some(candidate_upper);
+        }
+    }
+    match (lower, upper) {
+        (Some(lower), Some(upper)) => !rational_pair_less(upper, lower),
+        _ => false,
+    }
+}
+
+fn remote_harmony_provider_share_is_in_bounds(
+    rows: &[RemoteHarmonyPairedRow],
+    minimum_basis_points: i64,
+    maximum_basis_points: i64,
+) -> bool {
+    if rows.is_empty() || minimum_basis_points <= 0 || maximum_basis_points < minimum_basis_points {
+        return false;
+    }
+    rows.iter().all(|row| {
+        let Some(contribution) = row.active_damage.checked_sub(row.inactive_damage) else {
+            return false;
+        };
+        contribution > 0
+            && i128::from(contribution) * i128::from(BPSR_FIXED_POINT_SCALE)
+                >= i128::from(row.active_damage) * i128::from(minimum_basis_points)
+            && i128::from(contribution) * i128::from(BPSR_FIXED_POINT_SCALE)
+                <= i128::from(row.active_damage) * i128::from(maximum_basis_points)
+    })
+}
+
+fn rational_pair_less(left: (i64, i64), right: (i64, i64)) -> bool {
+    i128::from(left.0) * i128::from(right.1) < i128::from(right.0) * i128::from(left.1)
 }
 
 fn accumulate_remote_factor_group(
@@ -1259,8 +1602,11 @@ struct FormulaStatusKey {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct FormulaStatusValue {
     effect_id: i64,
+    source_entity_uuid: Option<i64>,
     stacks: i64,
     level: i64,
+    origin_source_type_id: Option<i32>,
+    origin_source_config_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1441,6 +1787,7 @@ pub struct BpsrStateDamageContributionProjector {
     remote_factor_timeline: Option<BpsrRemoteFactorTimeline>,
     live_remote_factor_learner: Option<BpsrRemoteFactorLearner>,
     deferred_team_luck_critical_damage: VecDeque<DeferredTeamLuckCriticalDamage>,
+    deferred_remote_harmony_damage: VecDeque<DeferredRemoteHarmonyDamage>,
     incomplete_rdps_actor_ids: HashSet<u64>,
     effect_windows: HashMap<EffectWindowKey, EffectWindow>,
     team_luck_windows: HashSet<TeamLuckWindowKey>,
@@ -1482,6 +1829,11 @@ pub struct BpsrStateDamageContributionProjector {
     /// different remote build or overlapping status context.
     formula_attributes_by_actor: HashMap<u64, BTreeMap<i32, i64>>,
     formula_statuses: HashMap<FormulaStatusKey, FormulaStatusValue>,
+    /// Original formula-status values for keys mutated by the current wire.
+    /// Remote paired-output proofs hash this pre-wire view because on-hit
+    /// applications and refreshes serialized earlier in the same packet are
+    /// results of the damage action, not inputs to that action.
+    formula_status_prior_values_current_wire: HashMap<FormulaStatusKey, Option<FormulaStatusValue>>,
     /// An unresolved lifecycle may be an offensive buff on a damage source or
     /// a vulnerability/mitigation effect on a damage target. Until an actor or
     /// run lifetime boundary supplies a clean state, no rDPS transfer involving
@@ -1526,6 +1878,7 @@ impl Default for BpsrStateDamageContributionProjector {
             remote_factor_timeline: None,
             live_remote_factor_learner: None,
             deferred_team_luck_critical_damage: VecDeque::new(),
+            deferred_remote_harmony_damage: VecDeque::new(),
             incomplete_rdps_actor_ids: HashSet::new(),
             effect_windows: HashMap::new(),
             team_luck_windows: HashSet::new(),
@@ -1555,6 +1908,7 @@ impl Default for BpsrStateDamageContributionProjector {
             target_vulnerability_transitions: HashSet::new(),
             formula_attributes_by_actor: HashMap::new(),
             formula_statuses: HashMap::new(),
+            formula_status_prior_values_current_wire: HashMap::new(),
             unresolved_status_windows: HashSet::new(),
             actor_ancestry: ActorAncestryResolver::default(),
             latest_observed_micros: 0,
@@ -1640,6 +1994,143 @@ impl BpsrStateDamageContributionProjector {
                 .critical_damage_raw_by_actor
                 .insert(actor_id, actor_critical_damage_raw);
         }
+    }
+
+    fn refresh_live_remote_harmony_receipts(&mut self) {
+        let Some(receipts) = self
+            .live_remote_factor_learner
+            .as_mut()
+            .and_then(BpsrRemoteFactorLearner::take_remote_harmony_receipts_if_dirty)
+        else {
+            return;
+        };
+        self.remote_factor_timeline
+            .get_or_insert_default()
+            .remote_harmony_by_event_sequence
+            .extend(receipts);
+    }
+
+    fn deferred_remote_harmony_candidate(
+        &self,
+        envelope: &EventEnvelope,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<DeferredRemoteHarmonyDamage> {
+        if self.live_remote_factor_learner.is_none()
+            || self
+                .remote_factor_timeline
+                .as_ref()
+                .is_some_and(|timeline| {
+                    timeline
+                        .remote_harmony_by_event_sequence
+                        .contains_key(&envelope.sequence)
+                })
+        {
+            return None;
+        }
+        let observation = self.remote_harmony_probe_observation(0, envelope, damage)?;
+        Some(DeferredRemoteHarmonyDamage {
+            observed_micros: envelope.time.observed_micros,
+            event_sequence: envelope.sequence,
+            provider_actor_id: observation.observation.provider_actor_id?,
+            recipient_actor_id: observation.key.source_actor_id,
+            recipient_entity_uuid: observation.key.source_entity_uuid,
+            affected_ability_id: observation.key.ability_id,
+            hit_event_id: observation.key.hit_event_id,
+            target_actor_id: observation.key.target_actor_id,
+            target_entity_uuid: observation.key.target_entity_uuid,
+            observed_damage: observation.observation.amount,
+            later_contribution: None,
+        })
+    }
+
+    fn buffer_deferred_remote_harmony_damage(&mut self, candidate: DeferredRemoteHarmonyDamage) {
+        if self.deferred_remote_harmony_damage.len() >= LIVE_DEFERRED_REMOTE_HARMONY_LIMIT {
+            self.deferred_remote_harmony_damage.pop_front();
+        }
+        self.deferred_remote_harmony_damage.push_back(candidate);
+    }
+
+    fn drain_ready_deferred_remote_harmony(
+        &mut self,
+        observed_micros: u64,
+        force: bool,
+    ) -> Vec<ExactRationalDamageContributionEvent> {
+        let pending = std::mem::take(&mut self.deferred_remote_harmony_damage);
+        let mut retained = VecDeque::new();
+        let mut output = Vec::new();
+        for mut damage in pending {
+            let receipt = self.remote_factor_timeline.as_ref().and_then(|timeline| {
+                timeline
+                    .remote_harmony_by_event_sequence
+                    .get(&damage.event_sequence)
+            });
+            if let Some(receipt) = receipt
+                && receipt.provider_actor_id == damage.provider_actor_id
+                && receipt.recipient_actor_id == damage.recipient_actor_id
+                && receipt.recipient_entity_uuid == damage.recipient_entity_uuid
+                && receipt.ability_id == damage.affected_ability_id
+                && receipt.hit_event_id == damage.hit_event_id
+                && receipt.target_actor_id == damage.target_actor_id
+                && receipt.target_entity_uuid == damage.target_entity_uuid
+                && receipt.observed_damage == damage.observed_damage
+                && receipt.contribution > 0
+                && receipt.contribution <= damage.observed_damage
+            {
+                let deferred_damage_context = Some(DeferredDamageContributionContext {
+                    event_sequence: damage.event_sequence,
+                    recipient_entity_uuid: damage.recipient_entity_uuid,
+                    affected_ability_id: Some(damage.affected_ability_id),
+                    target_actor_id: damage.target_actor_id,
+                    target_entity_uuid: damage.target_entity_uuid,
+                });
+                let remote_harmony = ExactRationalDamageContributionEvent {
+                    observed_micros: damage.observed_micros,
+                    effect_id: self.runtime.harmony_grace.effect_id,
+                    provider_actor_id: damage.provider_actor_id,
+                    recipient_actor_id: damage.recipient_actor_id,
+                    scope: DamageContributionScope::Component("harmony-grace-remote-paired-output"),
+                    numerator: i128::from(receipt.contribution),
+                    denominator: 1,
+                    observed_damage: damage.observed_damage,
+                    included: true,
+                    deferred_damage_context,
+                };
+                if let Some(mut later) = damage.later_contribution.take() {
+                    later.deferred_damage_context = deferred_damage_context;
+                    if let Some(later) = scale_later_rational_marginal_after_many(
+                        std::slice::from_ref(&remote_harmony),
+                        later,
+                    ) {
+                        output.push(remote_harmony);
+                        output.push(later);
+                    } else {
+                        output.push(remote_harmony);
+                    }
+                } else {
+                    output.push(remote_harmony);
+                }
+                continue;
+            }
+            let ready_at = damage.observed_micros.saturating_add(
+                self.runtime
+                    .harmony_grace
+                    .remote_paired_output_max_pair_gap_micros,
+            );
+            if !force && observed_micros < ready_at {
+                retained.push_back(damage);
+            } else if let Some(mut later) = damage.later_contribution {
+                later.deferred_damage_context = Some(DeferredDamageContributionContext {
+                    event_sequence: damage.event_sequence,
+                    recipient_entity_uuid: damage.recipient_entity_uuid,
+                    affected_ability_id: Some(damage.affected_ability_id),
+                    target_actor_id: damage.target_actor_id,
+                    target_entity_uuid: damage.target_entity_uuid,
+                });
+                output.push(later);
+            }
+        }
+        self.deferred_remote_harmony_damage = retained;
+        output
     }
 
     fn deferred_team_luck_critical_candidate(
@@ -1920,6 +2411,8 @@ impl BpsrStateDamageContributionProjector {
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
             return;
         };
+        let mut deferred_remote_harmony_candidate = None;
+        let mut deferred_remote_harmony_later_contribution = None;
         match &timeline.kind {
             TimelineEventKind::RunBoundary {
                 state: RunState::Entered,
@@ -1929,6 +2422,10 @@ impl BpsrStateDamageContributionProjector {
                 state: RunState::Ended | RunState::Completed | RunState::Failed | RunState::Exited,
                 ..
             } => {
+                self.refresh_live_remote_harmony_receipts();
+                rational_output.extend(
+                    self.drain_ready_deferred_remote_harmony(envelope.time.observed_micros, true),
+                );
                 rational_output.extend(
                     self.drain_ready_deferred_team_luck(envelope.time.observed_micros, true),
                 );
@@ -1938,6 +2435,10 @@ impl BpsrStateDamageContributionProjector {
                 state: EncounterState::Wiped,
                 ..
             } => {
+                self.refresh_live_remote_harmony_receipts();
+                rational_output.extend(
+                    self.drain_ready_deferred_remote_harmony(envelope.time.observed_micros, true),
+                );
                 rational_output.extend(
                     self.drain_ready_deferred_team_luck(envelope.time.observed_micros, true),
                 );
@@ -2005,10 +2506,25 @@ impl BpsrStateDamageContributionProjector {
                 if let Some(learner) = self.live_remote_factor_learner.as_mut() {
                     learner.observe(envelope);
                 }
+                self.refresh_live_remote_harmony_receipts();
                 self.refresh_live_remote_critical_factor(envelope.time.observed_micros, damage);
+                rational_output.extend(
+                    self.drain_ready_deferred_remote_harmony(envelope.time.observed_micros, false),
+                );
                 rational_output.extend(
                     self.drain_ready_deferred_team_luck(envelope.time.observed_micros, false),
                 );
+                let current_exact_output_start = output.len();
+                let current_rational_output_start = rational_output.len();
+                deferred_remote_harmony_candidate = self
+                    .deferred_remote_harmony_candidate(envelope, damage)
+                    .map(|candidate| {
+                        (
+                            candidate,
+                            current_exact_output_start,
+                            current_rational_output_start,
+                        )
+                    });
                 let rule = state_rdps_catalog()
                     .expect("catalog was validated when the projector was built")
                     .rules
@@ -2039,6 +2555,8 @@ impl BpsrStateDamageContributionProjector {
                     self.functional_amp_contribution(envelope.time.observed_micros, damage);
                 let harmony_grace_contribution =
                     self.harmony_grace_contribution(envelope.time.observed_micros, damage);
+                let remote_harmony_paired_output_contribution =
+                    self.remote_harmony_paired_output_contribution(envelope, damage);
                 let mechanical_power_contribution =
                     self.mechanical_power_contribution(envelope.time.observed_micros, damage);
                 let mut inspiration_contribution =
@@ -2138,6 +2656,7 @@ impl BpsrStateDamageContributionProjector {
                 };
                 let rational_candidate_count = usize::from(team_luck_contribution.is_some())
                     + attack_contributions.len()
+                    + usize::from(remote_harmony_paired_output_contribution.is_some())
                     + usize::from(inspiration_occurrence_contribution.is_some())
                     + usize::from(thunderwind_contribution.is_some())
                     + target_vulnerability_rational_contributions.len();
@@ -2188,12 +2707,55 @@ impl BpsrStateDamageContributionProjector {
                         (None, None, Some(thunderwind), []) => Some(thunderwind),
                         (None, None, None, [target_vulnerability]) => Some(*target_vulnerability),
                         (None, None, None, []) => None,
+                        // Multiple later-stage providers need a separately
+                        // proven allocation order. The paired Harmony delta is
+                        // still exact because every other context was held
+                        // constant, so retain it while suppressing only the
+                        // ambiguous later-stage allocation.
+                        _ => None,
+                    };
+                    if deferred_remote_harmony_candidate.is_some()
+                        && attack_contributions.is_empty()
+                    {
+                        deferred_remote_harmony_later_contribution = later_contribution;
+                    }
+                    if let Some(remote_harmony) = remote_harmony_paired_output_contribution {
+                        // This receipt is an exact final-output difference, so
+                        // it already contains every unchanged downstream
+                        // stage. A same- or earlier-stage contribution still
+                        // needs a proved allocation order. A unique later-
+                        // stage contribution can be evaluated on the damage
+                        // remaining after Harmony, matching the established
+                        // attack-before-critical/vulnerability accounting
+                        // order.
+                        if attack_contributions.is_empty() {
+                            if let Some(later) = later_contribution.and_then(|later| {
+                                scale_later_rational_marginal_after_many(
+                                    std::slice::from_ref(&remote_harmony),
+                                    later,
+                                )
+                            }) {
+                                rational_output.push(remote_harmony);
+                                rational_output.push(later);
+                            } else {
+                                rational_output.push(remote_harmony);
+                            }
+                        }
+                        return;
+                    }
+                    if later_contribution.is_none()
+                        && (usize::from(team_luck_contribution.is_some())
+                            + usize::from(inspiration_occurrence_contribution.is_some())
+                            + usize::from(thunderwind_contribution.is_some())
+                            + target_vulnerability_rational_contributions.len())
+                            > 1
+                    {
                         // Team Luck and Thunderwind both modify the critical
                         // stage. Target vulnerability is also a later damage
                         // bucket. Any unresolved multi-provider allocation or
                         // shared cross-term remains fail-closed.
-                        _ => return,
-                    };
+                        return;
+                    }
                     if attack_contributions.is_empty() {
                         if let Some(later) = later_contribution {
                             rational_output.push(later);
@@ -2228,6 +2790,29 @@ impl BpsrStateDamageContributionProjector {
                 self.actor_ancestry.observe_entity(healing.target);
             }
             _ => {}
+        }
+        if let Some((mut candidate, current_exact_output_start, current_rational_output_start)) =
+            deferred_remote_harmony_candidate
+        {
+            let current_rational_output = &rational_output[current_rational_output_start..];
+            let later_contribution_is_the_only_output =
+                match deferred_remote_harmony_later_contribution {
+                    Some(later) => current_rational_output == [later],
+                    None => current_rational_output.is_empty(),
+                };
+            let no_competing_contribution =
+                self.last_target_vulnerability_audit.is_some_and(|audit| {
+                    audit.exact_candidate_count == 0
+                        && (audit.rational_candidate_count == 0
+                            || deferred_remote_harmony_later_contribution.is_some())
+                        && !audit.unresolved_attack_overlap
+                }) && output.len() == current_exact_output_start
+                    && later_contribution_is_the_only_output;
+            if no_competing_contribution {
+                rational_output.truncate(current_rational_output_start);
+                candidate.later_contribution = deferred_remote_harmony_later_contribution;
+                self.buffer_deferred_remote_harmony_damage(candidate);
+            }
         }
         if !self.runtime_applicable && offline_candidate_audit_applicable {
             let exact_candidate_effect_ids = &target_vulnerability_rdps_catalog()
@@ -2295,6 +2880,7 @@ impl BpsrStateDamageContributionProjector {
             self.fatal_spiral_transitions.clear();
             self.fatal_spiral_snapshot_targets.clear();
             self.target_vulnerability_transitions.clear();
+            self.formula_status_prior_values_current_wire.clear();
         }
         self.current_wire = Some(wire);
     }
@@ -2436,11 +3022,23 @@ impl BpsrStateDamageContributionProjector {
         let instance_id = status.instance_id.map(|instance| instance.0);
         match status.state {
             StatusState::Removed | StatusState::Consumed => {
-                self.formula_statuses.retain(|key, _| {
-                    key.target_actor_id != target_actor_id
-                        || key.effect_id != effect_id
-                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
-                });
+                let removed_keys = self
+                    .formula_statuses
+                    .keys()
+                    .filter(|key| {
+                        key.target_actor_id == target_actor_id
+                            && key.effect_id == effect_id
+                            && instance_id.is_none_or(|instance| key.instance_id == Some(instance))
+                    })
+                    .copied()
+                    .collect::<Vec<_>>();
+                for key in removed_keys {
+                    let prior = self.formula_statuses.get(&key).copied();
+                    self.formula_status_prior_values_current_wire
+                        .entry(key)
+                        .or_insert(prior);
+                    self.formula_statuses.remove(&key);
+                }
             }
             StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
                 let key = FormulaStatusKey {
@@ -2449,12 +3047,21 @@ impl BpsrStateDamageContributionProjector {
                     effect_id,
                     instance_id,
                 };
+                let prior = self.formula_statuses.get(&key).copied();
+                self.formula_status_prior_values_current_wire
+                    .entry(key)
+                    .or_insert(prior);
                 self.formula_statuses.insert(
                     key,
                     FormulaStatusValue {
                         effect_id,
+                        source_entity_uuid: status.source.map(|source| source.entity_uuid.0),
                         stacks: status.stacks.map(i64::from).unwrap_or(-1),
                         level: status.level.map(i64::from).unwrap_or(-1),
+                        origin_source_type_id: status.origin.map(|origin| origin.source_type_id),
+                        origin_source_config_id: status
+                            .origin
+                            .map(|origin| origin.source_config_id),
                     },
                 );
             }
@@ -4731,6 +5338,179 @@ impl BpsrStateDamageContributionProjector {
         self.harmony_grace_decision(observed_micros, damage).ok()
     }
 
+    fn remote_harmony_probe_observation(
+        &self,
+        run_epoch: u64,
+        envelope: &EventEnvelope,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<RemoteHarmonyProbeObservation> {
+        let runtime = &self.runtime.harmony_grace;
+        if !runtime.remote_paired_output_runtime_transfer_enabled
+            || damage.amount <= 0
+            || self.damage_has_unresolved_status_confounder(damage)
+        {
+            return None;
+        }
+        let source_actor_id = damage.source.actor_id.0;
+        let target_actor_id = damage.target.actor_id.0;
+        let class_id = self.class_id_by_actor.get(&source_actor_id).copied()?;
+        if !self.active_players.contains(&source_actor_id)
+            || !runtime
+                .remote_paired_output_recipient_class_ids
+                .contains(&class_id)
+        {
+            return None;
+        }
+        let ability_id = damage.ability?.0;
+        let hit_event_id = damage.hit_event_id?;
+        let selected = select_damage_stage(
+            ability_id,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        )?;
+        if selected.fixed_parameter != 0 {
+            return None;
+        }
+
+        let mut providers = self
+            .harmony_grace_windows
+            .iter()
+            .filter(|window| window.target_actor_id == source_actor_id)
+            .map(|window| window.provider_actor_id)
+            .collect::<BTreeSet<_>>()
+            .into_iter();
+        let provider_actor_id = providers.next();
+        if providers.next().is_some()
+            || provider_actor_id.is_some_and(|provider| {
+                provider == source_actor_id || !self.active_players.contains(&provider)
+            })
+        {
+            return None;
+        }
+        let source_formula_context_sha256 =
+            self.remote_harmony_source_damage_context_sha256(source_actor_id)?;
+        let target_formula_context_sha256 =
+            self.remote_harmony_target_context_sha256(target_actor_id)?;
+
+        Some(RemoteHarmonyProbeObservation {
+            key: RemoteHarmonyMechanicKey {
+                run_epoch,
+                source_actor_id,
+                source_entity_uuid: damage.source.entity_uuid.0,
+                target_actor_id,
+                target_entity_uuid: damage.target.entity_uuid.0,
+                class_id,
+                ability_id,
+                hit_event_id,
+                damage_source: damage.damage_source,
+                damage_type: damage.damage_type,
+                critical: damage.flags.critical,
+                lucky: damage.flags.lucky,
+                blocked: damage.flags.blocked,
+                periodic: damage.flags.periodic,
+                owner_id: damage.packet.owner_id,
+                owner_level: damage.packet.owner_level,
+                owner_stage: damage.packet.owner_stage,
+                damage_mode: damage.packet.damage_mode,
+                property: damage.packet.property,
+                coefficient_basis_points: selected.coefficient_basis_points,
+                source_formula_context_sha256,
+                target_formula_context_sha256,
+            },
+            observation: RemoteHarmonyDamageObservation {
+                event_sequence: envelope.sequence,
+                observed_micros: envelope.time.observed_micros,
+                amount: damage.amount,
+                provider_actor_id,
+            },
+        })
+    }
+
+    fn remote_harmony_paired_output_contribution(
+        &self,
+        envelope: &EventEnvelope,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        let runtime = &self.runtime.harmony_grace;
+        if !runtime.remote_paired_output_runtime_transfer_enabled
+            || damage.amount <= 0
+            || self.damage_has_unresolved_status_confounder(damage)
+        {
+            return None;
+        }
+        let receipt = self
+            .remote_factor_timeline
+            .as_ref()?
+            .remote_harmony_by_event_sequence
+            .get(&envelope.sequence)?;
+        let recipient_actor_id = damage.source.actor_id.0;
+        let target_actor_id = damage.target.actor_id.0;
+        let class_id = self.class_id_by_actor.get(&recipient_actor_id).copied()?;
+        if !runtime
+            .remote_paired_output_recipient_class_ids
+            .contains(&class_id)
+            || receipt.recipient_actor_id != recipient_actor_id
+            || receipt.recipient_entity_uuid != damage.source.entity_uuid.0
+            || receipt.target_actor_id != target_actor_id
+            || receipt.target_entity_uuid != damage.target.entity_uuid.0
+            || Some(receipt.ability_id) != damage.ability.map(|ability| ability.0)
+            || Some(receipt.hit_event_id) != damage.hit_event_id
+            || receipt.observed_damage != damage.amount
+            || receipt.contribution <= 0
+            || receipt.contribution > damage.amount
+        {
+            return None;
+        }
+        let selected = select_damage_stage(
+            receipt.ability_id,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        )?;
+        if selected.fixed_parameter != 0
+            || self
+                .remote_harmony_source_damage_context_sha256(recipient_actor_id)
+                .as_deref()
+                != Some(receipt.source_formula_context_sha256.as_str())
+            || self
+                .remote_harmony_target_context_sha256(target_actor_id)
+                .as_deref()
+                != Some(receipt.target_formula_context_sha256.as_str())
+        {
+            return None;
+        }
+        let mut providers = self
+            .harmony_grace_windows
+            .iter()
+            .filter(|window| window.target_actor_id == recipient_actor_id)
+            .map(|window| window.provider_actor_id)
+            .collect::<BTreeSet<_>>()
+            .into_iter();
+        if providers.next() != Some(receipt.provider_actor_id)
+            || providers.next().is_some()
+            || receipt.provider_actor_id == recipient_actor_id
+            || !self.active_players.contains(&receipt.provider_actor_id)
+        {
+            return None;
+        }
+
+        Some(ExactRationalDamageContributionEvent {
+            observed_micros: envelope.time.observed_micros,
+            effect_id: runtime.effect_id,
+            provider_actor_id: receipt.provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component("harmony-grace-remote-paired-output"),
+            numerator: i128::from(receipt.contribution),
+            denominator: 1,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
     /// Audit-only explanation for why a damage row did or did not receive a
     /// Harmony Grace transfer. Live projection does not call this method, so
     /// detailed proof diagnostics add no work to the meter's hot path.
@@ -6056,6 +6836,92 @@ impl BpsrStateDamageContributionProjector {
         Some(format!("sha256:{:x}", hasher.finalize()))
     }
 
+    fn remote_harmony_source_damage_context_sha256(&self, actor_id: u64) -> Option<String> {
+        let runtime = &self.runtime.harmony_grace;
+        self.remote_harmony_context_sha256(
+            actor_id,
+            |attribute_id| {
+                !matches!(
+                    attribute_id,
+                    11_310..=11_325 | 11_440 | 11_450 | 11_720 | 11_730
+                )
+            },
+            |effect_id| {
+                effect_id != runtime.effect_id
+                    && !runtime
+                        .remote_paired_output_ignored_effect_ids
+                        .contains(&effect_id)
+                    && runtime
+                        .remote_paired_output_formula_effect_ids
+                        .binary_search(&effect_id)
+                        .is_ok()
+            },
+        )
+    }
+
+    fn remote_harmony_target_context_sha256(&self, actor_id: u64) -> Option<String> {
+        let runtime = &self.runtime.harmony_grace;
+        self.remote_harmony_context_sha256(
+            actor_id,
+            |attribute_id| attribute_id != ATTR_CURRENT_HP,
+            |effect_id| effect_id != runtime.effect_id,
+        )
+    }
+
+    fn remote_harmony_context_sha256(
+        &self,
+        actor_id: u64,
+        include_attribute: impl Fn(i32) -> bool,
+        include_effect: impl Fn(i64) -> bool,
+    ) -> Option<String> {
+        let attributes = self.formula_attributes_by_actor.get(&actor_id)?;
+        let mut statuses = self
+            .formula_statuses
+            .iter()
+            .filter_map(|(key, current)| {
+                if key.target_actor_id != actor_id || !include_effect(key.effect_id) {
+                    return None;
+                }
+                match self.formula_status_prior_values_current_wire.get(key) {
+                    Some(prior) => *prior,
+                    None => Some(*current),
+                }
+            })
+            .collect::<Vec<_>>();
+        statuses.extend(
+            self.formula_status_prior_values_current_wire
+                .iter()
+                .filter(|(key, _)| {
+                    key.target_actor_id == actor_id
+                        && include_effect(key.effect_id)
+                        && !self.formula_statuses.contains_key(key)
+                })
+                .filter_map(|(_, prior)| *prior),
+        );
+        statuses.sort_unstable();
+
+        let mut hasher = Sha256::new();
+        hasher.update(b"rlogs-bpsr-remote-harmony-context-v1\0");
+        for (attribute_id, value) in attributes {
+            if !include_attribute(*attribute_id) {
+                continue;
+            }
+            hasher.update(b"A");
+            hasher.update(i64::from(*attribute_id).to_le_bytes());
+            hasher.update(value.to_le_bytes());
+        }
+        for status in statuses {
+            hasher.update(b"S");
+            hasher.update(status.effect_id.to_le_bytes());
+            update_optional_i64_hash(&mut hasher, status.source_entity_uuid);
+            hasher.update(status.stacks.to_le_bytes());
+            hasher.update(status.level.to_le_bytes());
+            update_optional_i64_hash(&mut hasher, status.origin_source_type_id.map(i64::from));
+            update_optional_i64_hash(&mut hasher, status.origin_source_config_id);
+        }
+        Some(format!("sha256:{:x}", hasher.finalize()))
+    }
+
     fn formula_context_debug(
         &self,
         actor_id: u64,
@@ -6561,6 +7427,8 @@ impl BpsrStateDamageContributionProjector {
         self.formula_attributes_by_actor.remove(&actor_id);
         self.formula_statuses
             .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
+        self.formula_status_prior_values_current_wire
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
         self.entity_type_by_actor.remove(&actor_id);
         self.summon_config_by_actor.remove(&actor_id);
         self.class_id_by_actor.remove(&actor_id);
@@ -6569,10 +7437,14 @@ impl BpsrStateDamageContributionProjector {
 
     fn clear_run_state(&mut self) {
         if self.live_remote_factor_learner.is_some() {
-            self.live_remote_factor_learner = Some(BpsrRemoteFactorLearner::default());
+            self.live_remote_factor_learner = Some(
+                BpsrRemoteFactorLearner::new()
+                    .expect("live learner runtime was validated when the projector was built"),
+            );
             self.remote_factor_timeline = Some(BpsrRemoteFactorTimeline::default());
         }
         self.deferred_team_luck_critical_damage.clear();
+        self.deferred_remote_harmony_damage.clear();
         self.current_wire = None;
         self.states.clear();
         self.staged_states.clear();
@@ -6612,6 +7484,7 @@ impl BpsrStateDamageContributionProjector {
         self.target_vulnerability_transitions.clear();
         self.formula_attributes_by_actor.clear();
         self.formula_statuses.clear();
+        self.formula_status_prior_values_current_wire.clear();
         self.unresolved_status_windows.clear();
         self.actor_ancestry.clear();
         self.entity_type_by_actor.clear();
@@ -6623,6 +7496,16 @@ impl BpsrStateDamageContributionProjector {
         self.clear_run_state();
         self.class_id_by_actor.clear();
         self.active_players.clear();
+    }
+}
+
+fn update_optional_i64_hash(hasher: &mut Sha256, value: Option<i64>) {
+    match value {
+        Some(value) => {
+            hasher.update(b"P");
+            hasher.update(value.to_le_bytes());
+        }
+        None => hasher.update(b"N"),
     }
 }
 
@@ -6991,6 +7874,9 @@ impl ExactDamageContributionProjector for BpsrStateDamageContributionProjector {
         _output: &mut Vec<ExactDamageContributionEvent>,
         rational_output: &mut Vec<ExactRationalDamageContributionEvent>,
     ) {
+        self.refresh_live_remote_harmony_receipts();
+        rational_output
+            .extend(self.drain_ready_deferred_remote_harmony(self.latest_observed_micros, true));
         rational_output
             .extend(self.drain_ready_deferred_team_luck(self.latest_observed_micros, true));
     }
@@ -7865,6 +8751,402 @@ mod tests {
     }
 
     #[test]
+    fn remote_harmony_ratio_gate_accepts_observed_class_two_anchors() {
+        // The two limiting output pairs from the observed class-2 ability
+        // 7998 anchor. Their integer-ratio intervals overlap even though the
+        // damage values and targets differ.
+        let rows = [(870_541, 862_921), (827_980, 820_732)]
+            .into_iter()
+            .enumerate()
+            .map(
+                |(index, (active_damage, inactive_damage))| RemoteHarmonyPairedRow {
+                    active_event_sequence: index as u64 + 1,
+                    recipient_actor_id: 2,
+                    recipient_entity_uuid: 20,
+                    target_actor_id: index as u64 + 10,
+                    target_entity_uuid: index as i64 + 100,
+                    active_damage,
+                    inactive_damage,
+                    target_formula_context_sha256: format!("target-{index}"),
+                },
+            )
+            .collect::<Vec<_>>();
+
+        assert!(remote_harmony_ratio_intersection_exists(&rows));
+    }
+
+    #[test]
+    fn remote_harmony_ratio_gate_rejects_inconsistent_or_nonpositive_pairs() {
+        let row = |active_damage, inactive_damage| RemoteHarmonyPairedRow {
+            active_event_sequence: 1,
+            recipient_actor_id: 2,
+            recipient_entity_uuid: 20,
+            target_actor_id: 10,
+            target_entity_uuid: 100,
+            active_damage,
+            inactive_damage,
+            target_formula_context_sha256: "target".into(),
+        };
+        assert!(!remote_harmony_ratio_intersection_exists(&[
+            row(10_000, 9_900),
+            row(10_000, 9_000),
+        ]));
+        assert!(!remote_harmony_ratio_intersection_exists(&[row(100, 100)]));
+    }
+
+    #[test]
+    fn remote_harmony_magnitude_gate_rejects_similar_child_output_overmatches() {
+        let row = |active_damage, inactive_damage| RemoteHarmonyPairedRow {
+            active_event_sequence: 1,
+            recipient_actor_id: 2,
+            recipient_entity_uuid: 20,
+            target_actor_id: 10,
+            target_entity_uuid: 100,
+            active_damage,
+            inactive_damage,
+            target_formula_context_sha256: "target".into(),
+        };
+        assert!(remote_harmony_provider_share_is_in_bounds(
+            &[row(870_541, 862_921), row(104_732, 103_783)],
+            80,
+            100,
+        ));
+        assert!(!remote_harmony_provider_share_is_in_bounds(
+            &[row(1_043_836, 820_732), row(870_541, 862_921)],
+            80,
+            100,
+        ));
+    }
+
+    #[test]
+    fn remote_harmony_context_uses_pre_wire_status_state() {
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        projector
+            .formula_attributes_by_actor
+            .insert(10, BTreeMap::new());
+        let key = FormulaStatusKey {
+            target_actor_id: 10,
+            source_actor_id: 2,
+            effect_id: 2_300_621,
+            instance_id: Some(47),
+        };
+        let original = FormulaStatusValue {
+            effect_id: key.effect_id,
+            source_entity_uuid: Some(20),
+            stacks: 1,
+            level: 1,
+            origin_source_type_id: Some(1),
+            origin_source_config_id: Some(2_300_620),
+        };
+        projector.formula_statuses.insert(key, original);
+        let original_context = projector
+            .remote_harmony_target_context_sha256(10)
+            .expect("target context should hash");
+
+        projector
+            .formula_status_prior_values_current_wire
+            .insert(key, Some(original));
+        projector.formula_statuses.insert(
+            key,
+            FormulaStatusValue {
+                stacks: 4,
+                ..original
+            },
+        );
+        assert_eq!(
+            projector.remote_harmony_target_context_sha256(10),
+            Some(original_context.clone()),
+            "a same-wire refresh is an output of the current hit"
+        );
+
+        projector.formula_status_prior_values_current_wire.clear();
+        assert_ne!(
+            projector.remote_harmony_target_context_sha256(10),
+            Some(original_context),
+            "the refreshed value becomes authoritative on the next wire"
+        );
+    }
+
+    #[test]
+    fn remote_harmony_learner_emits_only_multi_target_exact_rows() {
+        let mut learner = BpsrRemoteFactorLearner::default();
+        for (index, active_damage, inactive_damage) in
+            [(0_u64, 870_541, 862_921), (1_u64, 827_980, 820_732)]
+        {
+            learner.harmony_groups.insert(
+                RemoteHarmonyMechanicKey {
+                    run_epoch: 0,
+                    source_actor_id: 2,
+                    source_entity_uuid: 20,
+                    target_actor_id: 10 + index,
+                    target_entity_uuid: 100 + index as i64,
+                    class_id: 2,
+                    ability_id: 7_998,
+                    hit_event_id: 1,
+                    damage_source: Some(1),
+                    damage_type: Some(1),
+                    critical: Some(false),
+                    lucky: Some(false),
+                    blocked: Some(false),
+                    periodic: Some(false),
+                    owner_id: None,
+                    owner_level: None,
+                    owner_stage: None,
+                    damage_mode: None,
+                    property: None,
+                    coefficient_basis_points: 10_000,
+                    source_formula_context_sha256: "source-context".into(),
+                    target_formula_context_sha256: format!("target-context-{index}"),
+                },
+                RemoteHarmonyOutcomeGroup {
+                    inactive: vec![RemoteHarmonyDamageObservation {
+                        event_sequence: 10 + index,
+                        observed_micros: 100,
+                        amount: inactive_damage,
+                        provider_actor_id: None,
+                    }],
+                    active: vec![RemoteHarmonyDamageObservation {
+                        event_sequence: 20 + index,
+                        observed_micros: 200,
+                        amount: active_damage,
+                        provider_actor_id: Some(3),
+                    }],
+                    saturated: false,
+                },
+            );
+        }
+
+        let timeline = learner.finish();
+        assert_eq!(timeline.remote_harmony_by_event_sequence.len(), 2);
+        assert_eq!(
+            timeline
+                .remote_harmony_by_event_sequence
+                .get(&20)
+                .map(|receipt| receipt.contribution),
+            Some(7_620)
+        );
+        assert_eq!(
+            timeline
+                .remote_harmony_by_event_sequence
+                .get(&21)
+                .map(|receipt| receipt.contribution),
+            Some(7_248)
+        );
+
+        let mut insufficient = BpsrRemoteFactorLearner::default();
+        insufficient
+            .harmony_groups
+            .extend(learner_fixture_single_remote_harmony_group().into_iter());
+        assert!(
+            insufficient
+                .finish()
+                .remote_harmony_by_event_sequence
+                .is_empty(),
+            "one target cannot authorize a remote output transfer"
+        );
+    }
+
+    #[test]
+    fn remote_harmony_action_proof_combines_matching_critical_and_normal_pairs() {
+        let mut learner = BpsrRemoteFactorLearner::default();
+        for (index, critical, active_damage, inactive_damage) in [
+            (0_u64, Some(true), 104_732, 103_783),
+            (1_u64, None, 46_947, 46_522),
+        ] {
+            learner.harmony_groups.insert(
+                RemoteHarmonyMechanicKey {
+                    run_epoch: 0,
+                    source_actor_id: 4,
+                    source_entity_uuid: 40,
+                    target_actor_id: 20 + index,
+                    target_entity_uuid: 200 + index as i64,
+                    class_id: 2,
+                    ability_id: 1_259,
+                    hit_event_id: 1,
+                    damage_source: None,
+                    damage_type: None,
+                    critical,
+                    lucky: Some(false),
+                    blocked: Some(false),
+                    periodic: None,
+                    owner_id: Some(1_259),
+                    owner_level: Some(1),
+                    owner_stage: None,
+                    damage_mode: Some(2),
+                    property: Some(2),
+                    coefficient_basis_points: 10_000,
+                    source_formula_context_sha256: "source-context".into(),
+                    target_formula_context_sha256: format!("target-context-{index}"),
+                },
+                RemoteHarmonyOutcomeGroup {
+                    inactive: vec![RemoteHarmonyDamageObservation {
+                        event_sequence: 100 + index,
+                        observed_micros: 200,
+                        amount: inactive_damage,
+                        provider_actor_id: None,
+                    }],
+                    active: vec![RemoteHarmonyDamageObservation {
+                        event_sequence: 200 + index,
+                        observed_micros: 100,
+                        amount: active_damage,
+                        provider_actor_id: Some(1),
+                    }],
+                    saturated: false,
+                },
+            );
+        }
+
+        let timeline = learner.finish();
+        assert_eq!(timeline.remote_harmony_by_event_sequence.len(), 2);
+        assert_eq!(
+            timeline
+                .remote_harmony_by_event_sequence
+                .values()
+                .map(|receipt| receipt.contribution)
+                .sum::<i64>(),
+            1_374
+        );
+    }
+
+    #[test]
+    fn live_remote_harmony_refresh_is_dirty_gated_and_repeatable() {
+        let mut learner = BpsrRemoteFactorLearner::default();
+        for (index, active_damage, inactive_damage) in
+            [(0_u64, 870_541, 862_921), (1_u64, 827_980, 820_732)]
+        {
+            let mut group = learner_fixture_single_remote_harmony_group()
+                .into_values()
+                .next()
+                .unwrap();
+            group.active[0].event_sequence = 20 + index;
+            group.active[0].amount = active_damage;
+            group.inactive[0].event_sequence = 10 + index;
+            group.inactive[0].amount = inactive_damage;
+            let mut key = learner_fixture_single_remote_harmony_group()
+                .into_keys()
+                .next()
+                .unwrap();
+            key.target_actor_id = 10 + index;
+            key.target_entity_uuid = 100 + index as i64;
+            key.target_formula_context_sha256 = format!("target-context-{index}");
+            learner.harmony_groups.insert(key, group);
+        }
+        learner.harmony_receipts_dirty = true;
+
+        let first = learner
+            .take_remote_harmony_receipts_if_dirty()
+            .expect("new active/inactive evidence should refresh receipts");
+        assert_eq!(first.len(), 2);
+        assert!(learner.take_remote_harmony_receipts_if_dirty().is_none());
+        learner.harmony_receipts_dirty = true;
+        assert_eq!(
+            learner
+                .take_remote_harmony_receipts_if_dirty()
+                .expect("later comparison evidence should be refreshable")
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn live_remote_harmony_deferred_receipt_preserves_original_damage_identity() {
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        projector.remote_factor_timeline = Some(BpsrRemoteFactorTimeline {
+            remote_harmony_by_event_sequence: HashMap::from([(
+                77,
+                RemoteHarmonyPairedContribution {
+                    provider_actor_id: 3,
+                    recipient_actor_id: 2,
+                    recipient_entity_uuid: 20,
+                    target_actor_id: 10,
+                    target_entity_uuid: 100,
+                    ability_id: 7_998,
+                    hit_event_id: 1,
+                    observed_damage: 870_541,
+                    contribution: 7_620,
+                    source_formula_context_sha256: "source-context".into(),
+                    target_formula_context_sha256: "target-context".into(),
+                },
+            )]),
+            ..BpsrRemoteFactorTimeline::default()
+        });
+        projector.buffer_deferred_remote_harmony_damage(DeferredRemoteHarmonyDamage {
+            observed_micros: 1_000,
+            event_sequence: 77,
+            provider_actor_id: 3,
+            recipient_actor_id: 2,
+            recipient_entity_uuid: 20,
+            affected_ability_id: 7_998,
+            hit_event_id: 1,
+            target_actor_id: 10,
+            target_entity_uuid: 100,
+            observed_damage: 870_541,
+            later_contribution: None,
+        });
+
+        let output = projector.drain_ready_deferred_remote_harmony(2_000, false);
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0].numerator, 7_620);
+        assert_eq!(output[0].denominator, 1);
+        assert_eq!(
+            output[0].deferred_damage_context,
+            Some(DeferredDamageContributionContext {
+                event_sequence: 77,
+                recipient_entity_uuid: 20,
+                affected_ability_id: Some(7_998),
+                target_actor_id: 10,
+                target_entity_uuid: 100,
+            })
+        );
+        assert!(projector.deferred_remote_harmony_damage.is_empty());
+    }
+
+    fn learner_fixture_single_remote_harmony_group()
+    -> HashMap<RemoteHarmonyMechanicKey, RemoteHarmonyOutcomeGroup> {
+        HashMap::from([(
+            RemoteHarmonyMechanicKey {
+                run_epoch: 0,
+                source_actor_id: 2,
+                source_entity_uuid: 20,
+                target_actor_id: 10,
+                target_entity_uuid: 100,
+                class_id: 2,
+                ability_id: 7_998,
+                hit_event_id: 1,
+                damage_source: Some(1),
+                damage_type: Some(1),
+                critical: Some(false),
+                lucky: Some(false),
+                blocked: Some(false),
+                periodic: Some(false),
+                owner_id: None,
+                owner_level: None,
+                owner_stage: None,
+                damage_mode: None,
+                property: None,
+                coefficient_basis_points: 10_000,
+                source_formula_context_sha256: "source-context".into(),
+                target_formula_context_sha256: "target-context".into(),
+            },
+            RemoteHarmonyOutcomeGroup {
+                inactive: vec![RemoteHarmonyDamageObservation {
+                    event_sequence: 10,
+                    observed_micros: 100,
+                    amount: 862_921,
+                    provider_actor_id: None,
+                }],
+                active: vec![RemoteHarmonyDamageObservation {
+                    event_sequence: 20,
+                    observed_micros: 200,
+                    amount: 870_541,
+                    provider_actor_id: Some(3),
+                }],
+                saturated: false,
+            },
+        )])
+    }
+
+    #[test]
     fn live_remote_factor_requires_bucket_local_repeated_support() {
         let bucket = 17;
         let mut learner = BpsrRemoteFactorLearner::default();
@@ -8048,6 +9330,7 @@ mod tests {
                 BTreeMap::from([(100, 8_520), (110, 12_520)]),
             )]),
             critical_damage_raw_by_actor: HashMap::from([(2, 10_520)]),
+            ..BpsrRemoteFactorTimeline::default()
         };
         assert_eq!(
             timeline.critical_damage_raw(2, 100 * REMOTE_FACTOR_BUCKET_MICROS),
