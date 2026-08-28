@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 15;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 16;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -140,6 +140,51 @@ const TEAM_LUCK_CURRENT_LUCKY_DAMAGE_ROUTES: [TeamLuckLuckyDamageRoute; 9] = [
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct TeamLuckCriticalDamageRatioProof {
+    content_sha256: String,
+    pair_audit_sha256: String,
+    exact_build_cohort_sha256: String,
+    current_build_preflight_sha256: String,
+    exact_build_rlogs: usize,
+    strict_normal_critical_pairs: usize,
+    authority_pairs: usize,
+    unresolved_hidden_state_pairs: usize,
+    sessions: usize,
+    abilities: usize,
+    targets: usize,
+    critical_damage_raw_values: usize,
+    maximum_pair_gap_micros: u64,
+    additive_maximum_absolute_residual: u64,
+    rejected_direct_minimum_absolute_residual: u64,
+}
+
+impl TeamLuckCriticalDamageRatioProof {
+    fn is_valid(&self) -> bool {
+        self.content_sha256 == "24eb04c1cffae2014da6aaab9066125fc17cbc4b4a3af0993a0bb9315b3c1c02"
+            && self.pair_audit_sha256
+                == "04659a18ad261fa4717b92a90edc3a96a3410291057a98876353a72e77bc3290"
+            && self.exact_build_cohort_sha256
+                == "5e9c52a0a166463dab85c04c4b8e291e9ddf1ffab48596ac362e8bbcd75e0457"
+            && self.current_build_preflight_sha256
+                == "5362fc06d3d64dd7917ae64e6735485a819d89dbfc5d36e71e1847373ca887c2"
+            && self.exact_build_rlogs == 26
+            && self.strict_normal_critical_pairs == 30
+            && self.authority_pairs == 21
+            && self.unresolved_hidden_state_pairs == 9
+            && self.authority_pairs + self.unresolved_hidden_state_pairs
+                == self.strict_normal_critical_pairs
+            && self.sessions == 7
+            && self.abilities == 5
+            && self.targets == 12
+            && self.critical_damage_raw_values == 13
+            && self.maximum_pair_gap_micros == 1_085_197
+            && self.additive_maximum_absolute_residual == 1
+            && self.rejected_direct_minimum_absolute_residual == 2_221
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct TeamLuckRuntimeConfig {
     pub effect_id: i64,
     pub source_type_id: i32,
@@ -149,6 +194,13 @@ pub(crate) struct TeamLuckRuntimeConfig {
     pub critical_raw_delta: i64,
     pub lucky_raw_delta: i64,
     pub combined_critical_lucky_enabled: bool,
+    pub critical_damage_current_build_lifecycle_authority: bool,
+    pub critical_damage_current_build_executor_authority: bool,
+    pub critical_damage_exact_rational_attribution_authority: bool,
+    pub critical_damage_protocol_pack_migration_authority: bool,
+    pub critical_damage_authorized_protocol_pack_digests: Vec<String>,
+    critical_damage_formula_authority_basis: String,
+    critical_damage_ratio_proof: TeamLuckCriticalDamageRatioProof,
     pub lucky_damage_current_build_lifecycle_authority: bool,
     pub lucky_damage_current_build_executor_authority: bool,
     pub lucky_damage_exact_rational_attribution_authority: bool,
@@ -170,11 +222,13 @@ impl TeamLuckRuntimeConfig {
         ability_id: Option<i64>,
         hit_event_id: Option<i32>,
     ) -> bool {
-        ability_id.zip(hit_event_id).is_some_and(|(ability_id, hit_event_id)| {
-            self.lucky_damage_routes.iter().any(|route| {
-                route.ability_id == ability_id && route.hit_event_id == hit_event_id
+        ability_id
+            .zip(hit_event_id)
+            .is_some_and(|(ability_id, hit_event_id)| {
+                self.lucky_damage_routes.iter().any(|route| {
+                    route.ability_id == ability_id && route.hit_event_id == hit_event_id
+                })
             })
-        })
     }
 }
 
@@ -544,6 +598,7 @@ impl RdpsRuntimeConfig {
                 .runtime_transfer_effect_ids
                 .is_empty()
             || self.functional_amp.attack_magic_runtime_transfer_enabled
+            || self.team_luck.critical_damage_runtime_transfer_enabled
             || self.team_luck.lucky_damage_runtime_transfer_enabled
             || self.mechanical_power.runtime_transfer_enabled
             || self.harmony_grace.runtime_transfer_enabled
@@ -560,7 +615,8 @@ impl RdpsRuntimeConfig {
             || (effect_id == self.functional_amp.effect_id
                 && self.functional_amp.attack_magic_runtime_transfer_enabled)
             || (effect_id == self.team_luck.effect_id
-                && self.team_luck.lucky_damage_runtime_transfer_enabled)
+                && (self.team_luck.critical_damage_runtime_transfer_enabled
+                    || self.team_luck.lucky_damage_runtime_transfer_enabled))
             || (effect_id == self.mechanical_power.effect_id
                 && self.mechanical_power.runtime_transfer_enabled)
             || (effect_id == self.harmony_grace.effect_id
@@ -696,36 +752,61 @@ impl RdpsRuntimeConfig {
         }
 
         let team_luck = &self.team_luck;
-        let team_luck_routes_are_valid = team_luck
-            .lucky_damage_routes
-            .iter()
-            .enumerate()
-            .all(|(index, route)| {
-                route.ability_id > 0
-                    && route.hit_event_id >= 0
-                    && !team_luck.lucky_damage_routes[..index].contains(route)
-            });
-        let team_luck_lucky_runtime_authority =
-            team_luck.lucky_damage_current_build_lifecycle_authority
-                && team_luck.lucky_damage_current_build_executor_authority
-                && team_luck.lucky_damage_exact_rational_attribution_authority
-                && team_luck.lucky_damage_protocol_pack_migration_authority
-                && team_luck.lucky_damage_authorized_protocol_pack_digests
-                    == [
-                        "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
-                        "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
-                    ]
-                && team_luck
-                    .lucky_damage_authorized_protocol_pack_digests
-                    .contains(&self.protocol_pack_digest)
-                && team_luck.formula_authority_basis
-                    == "current-build-prior-pack-replay-plus-target-pack-decoder-contract-migration"
-                && team_luck.accounting_method
-                    == "observed-final-damage-proportional-stage-share"
-                && !team_luck.server_integer_counterfactual_authority
-                && team_luck.rational_integer_projection
-                    == "sum-exact-then-half-up-per-effect-provider-recipient"
-                && team_luck.unresolved_overlap_fails_closed;
+        let team_luck_routes_are_valid =
+            team_luck
+                .lucky_damage_routes
+                .iter()
+                .enumerate()
+                .all(|(index, route)| {
+                    route.ability_id > 0
+                        && route.hit_event_id >= 0
+                        && !team_luck.lucky_damage_routes[..index].contains(route)
+                });
+        let team_luck_critical_runtime_authority = self
+            .policy
+            .critical_damage_factor_interpretation_authority
+            && self.critical_damage_factor_interpretation
+                == CriticalDamageFactorInterpretation::AdditiveBonus
+            && team_luck.critical_damage_current_build_lifecycle_authority
+            && team_luck.critical_damage_current_build_executor_authority
+            && team_luck.critical_damage_exact_rational_attribution_authority
+            && team_luck.critical_damage_protocol_pack_migration_authority
+            && team_luck.critical_damage_authorized_protocol_pack_digests
+                == [
+                    "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+                    "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+                ]
+            && team_luck
+                .critical_damage_authorized_protocol_pack_digests
+                .contains(&self.protocol_pack_digest)
+            && team_luck.critical_damage_formula_authority_basis
+                == "current-build-strict-normal-vs-critical-ratio-replay-plus-target-pack-decoder-contract-migration"
+            && team_luck.critical_damage_ratio_proof.is_valid()
+            && team_luck.accounting_method == "observed-final-damage-proportional-stage-share"
+            && !team_luck.server_integer_counterfactual_authority
+            && team_luck.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && team_luck.unresolved_overlap_fails_closed;
+        let team_luck_lucky_runtime_authority = team_luck
+            .lucky_damage_current_build_lifecycle_authority
+            && team_luck.lucky_damage_current_build_executor_authority
+            && team_luck.lucky_damage_exact_rational_attribution_authority
+            && team_luck.lucky_damage_protocol_pack_migration_authority
+            && team_luck.lucky_damage_authorized_protocol_pack_digests
+                == [
+                    "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+                    "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+                ]
+            && team_luck
+                .lucky_damage_authorized_protocol_pack_digests
+                .contains(&self.protocol_pack_digest)
+            && team_luck.formula_authority_basis
+                == "current-build-prior-pack-replay-plus-target-pack-decoder-contract-migration"
+            && team_luck.accounting_method == "observed-final-damage-proportional-stage-share"
+            && !team_luck.server_integer_counterfactual_authority
+            && team_luck.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && team_luck.unresolved_overlap_fails_closed;
         if team_luck.effect_id <= 0
             || team_luck.source_type_id <= 0
             || team_luck.source_config_id <= 0
@@ -735,12 +816,20 @@ impl RdpsRuntimeConfig {
             || team_luck.critical_raw_delta <= 0
             || team_luck.lucky_raw_delta <= 0
             || team_luck.combined_critical_lucky_enabled
-            || team_luck.critical_damage_runtime_transfer_enabled
             || !team_luck_routes_are_valid
+            || (team_luck.critical_damage_runtime_transfer_enabled
+                && !team_luck_critical_runtime_authority)
+            || (!team_luck.critical_damage_runtime_transfer_enabled
+                && (team_luck.critical_damage_current_build_lifecycle_authority
+                    || team_luck.critical_damage_current_build_executor_authority
+                    || team_luck.critical_damage_exact_rational_attribution_authority
+                    || team_luck.critical_damage_protocol_pack_migration_authority
+                    || !team_luck
+                        .critical_damage_authorized_protocol_pack_digests
+                        .is_empty()))
             || (team_luck.lucky_damage_runtime_transfer_enabled
                 && (!team_luck_lucky_runtime_authority
-                    || team_luck.lucky_damage_routes
-                        != TEAM_LUCK_CURRENT_LUCKY_DAMAGE_ROUTES))
+                    || team_luck.lucky_damage_routes != TEAM_LUCK_CURRENT_LUCKY_DAMAGE_ROUTES))
             || (!team_luck.lucky_damage_runtime_transfer_enabled
                 && !team_luck.lucky_damage_routes.is_empty())
         {
@@ -1208,23 +1297,28 @@ mod tests {
         let current = runtime_from_value(base.clone());
         assert_eq!(
             current.critical_damage_factor_interpretation,
-            CriticalDamageFactorInterpretation::Unresolved,
+            CriticalDamageFactorInterpretation::AdditiveBonus,
+        );
+        assert!(
+            current
+                .policy
+                .critical_damage_factor_interpretation_authority
         );
         assert!(current.validate().is_ok());
 
-        let mut candidate_without_authority = base.clone();
-        candidate_without_authority["critical_damage_factor_interpretation"] =
-            serde_json::Value::String("additive_bonus".into());
+        let mut interpretation_without_authority = base.clone();
+        interpretation_without_authority["policy"]["critical_damage_factor_interpretation_authority"] =
+            serde_json::Value::Bool(false);
         assert!(
-            runtime_from_value(candidate_without_authority)
+            runtime_from_value(interpretation_without_authority)
                 .validate()
                 .is_err(),
-            "a candidate name alone must not become runtime authority",
+            "a resolved interpretation without exact-build authority must fail",
         );
 
         let mut authority_without_interpretation = base.clone();
-        authority_without_interpretation["policy"]["critical_damage_factor_interpretation_authority"] =
-            serde_json::Value::Bool(true);
+        authority_without_interpretation["critical_damage_factor_interpretation"] =
+            serde_json::Value::String("unresolved".into());
         assert!(
             runtime_from_value(authority_without_interpretation)
                 .validate()
@@ -1232,33 +1326,22 @@ mod tests {
             "authority without a resolved exact-build interpretation must fail",
         );
 
-        let mut resolved_but_still_globally_blocked = base.clone();
-        resolved_but_still_globally_blocked["policy"]["critical_damage_factor_interpretation_authority"] =
-            serde_json::Value::Bool(true);
-        resolved_but_still_globally_blocked["critical_damage_factor_interpretation"] =
+        let mut wrong_resolved_interpretation = base.clone();
+        wrong_resolved_interpretation["critical_damage_factor_interpretation"] =
             serde_json::Value::String("direct_total".into());
-        resolved_but_still_globally_blocked["promotion_blockers"]
-            .as_array_mut()
-            .expect("promotion blockers should be an array")
-            .retain(|blocker| {
-                blocker.as_str() != Some("critical-damage-factor-interpretation-authority")
-            });
         assert!(
-            runtime_from_value(resolved_but_still_globally_blocked)
-                .validate()
-                .is_ok()
-        );
-
-        let mut promotion_without_interpretation_authority = base;
-        promotion_without_interpretation_authority["promotion_state"] =
-            serde_json::Value::String("approved".into());
-        promotion_without_interpretation_authority["policy"]["runtime_promotion_allowed"] =
-            serde_json::Value::Bool(true);
-        assert!(
-            runtime_from_value(promotion_without_interpretation_authority)
+            runtime_from_value(wrong_resolved_interpretation)
                 .validate()
                 .is_err(),
-            "global promotion cannot bypass unresolved critical arithmetic",
+            "Team Luck critical authority is exact to additive_bonus, not any resolved candidate",
+        );
+
+        let mut altered_proof = base;
+        altered_proof["team_luck"]["critical_damage_ratio_proof"]["authority_pairs"] =
+            serde_json::json!(20);
+        assert!(
+            runtime_from_value(altered_proof).validate().is_err(),
+            "the sealed ratio-proof receipt must not be weakened",
         );
     }
 
@@ -1271,7 +1354,6 @@ mod tests {
             current.promotion_blockers(),
             [
                 "canonical-replay-conservation",
-                "critical-damage-factor-interpretation-authority",
                 "party-support-formula-frontier",
             ]
         );
@@ -1347,23 +1429,67 @@ mod tests {
     }
 
     #[test]
-    fn team_luck_promotes_only_the_current_build_lucky_component_routes() {
+    fn team_luck_promotes_current_build_critical_and_lucky_components_separately() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
         assert!(!current.runtime_promotion_allowed());
-        assert!(!current.team_luck.critical_damage_runtime_transfer_enabled);
+        assert!(current.team_luck.critical_damage_runtime_transfer_enabled);
         assert!(current.team_luck.lucky_damage_runtime_transfer_enabled);
-        assert!(current.team_luck.lucky_damage_current_build_lifecycle_authority);
-        assert!(current.team_luck.lucky_damage_current_build_executor_authority);
-        assert!(current
-            .team_luck
-            .lucky_damage_exact_rational_attribution_authority);
-        assert!(current
-            .team_luck
-            .lucky_damage_protocol_pack_migration_authority);
+        assert!(
+            current
+                .team_luck
+                .critical_damage_current_build_lifecycle_authority
+        );
+        assert!(
+            current
+                .team_luck
+                .critical_damage_current_build_executor_authority
+        );
+        assert!(
+            current
+                .team_luck
+                .critical_damage_exact_rational_attribution_authority
+        );
+        assert!(
+            current
+                .team_luck
+                .critical_damage_protocol_pack_migration_authority
+        );
+        assert!(current.team_luck.critical_damage_ratio_proof.is_valid());
         assert_eq!(
-            current.team_luck.lucky_damage_authorized_protocol_pack_digests,
+            current
+                .team_luck
+                .critical_damage_authorized_protocol_pack_digests,
+            [
+                "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+                "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+            ]
+        );
+        assert!(
+            current
+                .team_luck
+                .lucky_damage_current_build_lifecycle_authority
+        );
+        assert!(
+            current
+                .team_luck
+                .lucky_damage_current_build_executor_authority
+        );
+        assert!(
+            current
+                .team_luck
+                .lucky_damage_exact_rational_attribution_authority
+        );
+        assert!(
+            current
+                .team_luck
+                .lucky_damage_protocol_pack_migration_authority
+        );
+        assert_eq!(
+            current
+                .team_luck
+                .lucky_damage_authorized_protocol_pack_digests,
             [
                 "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
                 "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
@@ -1375,13 +1501,28 @@ mod tests {
             current.team_luck.lucky_damage_routes,
             TEAM_LUCK_CURRENT_LUCKY_DAMAGE_ROUTES
         );
-        assert!(current
-            .team_luck
-            .is_lucky_damage_route(Some(2_031_101), Some(3)));
-        assert!(!current
-            .team_luck
-            .is_lucky_damage_route(Some(2_031_101), Some(4)));
+        assert!(
+            current
+                .team_luck
+                .is_lucky_damage_route(Some(2_031_101), Some(3))
+        );
+        assert!(
+            !current
+                .team_luck
+                .is_lucky_damage_route(Some(2_031_101), Some(4))
+        );
         assert!(current.effect_runtime_transfer_enabled(current.team_luck.effect_id));
+
+        for field in [
+            "critical_damage_current_build_lifecycle_authority",
+            "critical_damage_current_build_executor_authority",
+            "critical_damage_exact_rational_attribution_authority",
+            "critical_damage_protocol_pack_migration_authority",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["team_luck"][field] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
 
         for field in [
             "lucky_damage_current_build_lifecycle_authority",
@@ -1394,23 +1535,26 @@ mod tests {
             assert!(runtime_from_value(missing_authority).validate().is_err());
         }
 
-        let mut critical_riding_on_lucky_proof = base.clone();
-        critical_riding_on_lucky_proof["team_luck"]
-            ["critical_damage_runtime_transfer_enabled"] = serde_json::Value::Bool(true);
-        assert!(runtime_from_value(critical_riding_on_lucky_proof)
-            .validate()
-            .is_err());
+        let mut missing_critical_digest_authority = base.clone();
+        missing_critical_digest_authority["team_luck"]["critical_damage_authorized_protocol_pack_digests"] =
+            serde_json::json!([]);
+        assert!(
+            runtime_from_value(missing_critical_digest_authority)
+                .validate()
+                .is_err()
+        );
 
         let mut invented_server_authority = base.clone();
         invented_server_authority["team_luck"]["server_integer_counterfactual_authority"] =
             serde_json::Value::Bool(true);
-        assert!(runtime_from_value(invented_server_authority)
-            .validate()
-            .is_err());
+        assert!(
+            runtime_from_value(invented_server_authority)
+                .validate()
+                .is_err()
+        );
 
         let mut wrong_route = base.clone();
-        wrong_route["team_luck"]["lucky_damage_routes"][0]["hit_event_id"] =
-            serde_json::json!(4);
+        wrong_route["team_luck"]["lucky_damage_routes"][0]["hit_event_id"] = serde_json::json!(4);
         assert!(runtime_from_value(wrong_route).validate().is_err());
 
         let mut guessed_overlap = base.clone();
@@ -1440,13 +1584,15 @@ mod tests {
         assert_ne!(current.protocol_pack_digest, prior.protocol_pack_digest);
         assert!(current.effect_runtime_transfer_enabled(current.team_luck.effect_id));
         assert!(prior.effect_runtime_transfer_enabled(prior.team_luck.effect_id));
-        assert!(rdps_runtime_config_for_identity(
-            "global",
-            "24687926",
-            "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-        )
-        .unwrap()
-        .is_none());
+        assert!(
+            rdps_runtime_config_for_identity(
+                "global",
+                "24687926",
+                "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            )
+            .unwrap()
+            .is_none()
+        );
         assert_eq!(
             rdps_runtime_config_for("global", "24687926")
                 .unwrap()

@@ -1,19 +1,18 @@
 {
-  "schema_version": 15,
+  "schema_version": 16,
   "deployment_id": "global",
   "game_build": "24687926",
   "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
   "promotion_state": "blocked-current-build-proof-gates-open",
   "promotion_blockers": [
     "canonical-replay-conservation",
-    "critical-damage-factor-interpretation-authority",
     "party-support-formula-frontier"
   ],
   "policy": {
     "canonical_events_retained": true,
     "unresolved_events_hidden": false,
     "candidate_rules_enabled": false,
-    "critical_damage_factor_interpretation_authority": false,
+    "critical_damage_factor_interpretation_authority": true,
     "party_support_formula_frontier_complete": false,
     "promotion_requires_exact_conservation": true,
     "game_files_are_identity_and_coefficient_evidence_not_packet_occurrence_evidence": true,
@@ -48,7 +47,7 @@
     "standard_magic_attack_rules": 397,
     "standard_rules": 3507
   },
-  "critical_damage_factor_interpretation": "unresolved",
+  "critical_damage_factor_interpretation": "additive_bonus",
   "target_vulnerability": {
     "current_build_lifecycle_authority": true,
     "current_build_formula_authority": true,
@@ -66,6 +65,32 @@
     "critical_raw_delta": 520,
     "lucky_raw_delta": 340,
     "combined_critical_lucky_enabled": false,
+    "critical_damage_current_build_lifecycle_authority": true,
+    "critical_damage_current_build_executor_authority": true,
+    "critical_damage_exact_rational_attribution_authority": true,
+    "critical_damage_protocol_pack_migration_authority": true,
+    "critical_damage_authorized_protocol_pack_digests": [
+      "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+      "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395"
+    ],
+    "critical_damage_formula_authority_basis": "current-build-strict-normal-vs-critical-ratio-replay-plus-target-pack-decoder-contract-migration",
+    "critical_damage_ratio_proof": {
+      "content_sha256": "24eb04c1cffae2014da6aaab9066125fc17cbc4b4a3af0993a0bb9315b3c1c02",
+      "pair_audit_sha256": "04659a18ad261fa4717b92a90edc3a96a3410291057a98876353a72e77bc3290",
+      "exact_build_cohort_sha256": "5e9c52a0a166463dab85c04c4b8e291e9ddf1ffab48596ac362e8bbcd75e0457",
+      "current_build_preflight_sha256": "5362fc06d3d64dd7917ae64e6735485a819d89dbfc5d36e71e1847373ca887c2",
+      "exact_build_rlogs": 26,
+      "strict_normal_critical_pairs": 30,
+      "authority_pairs": 21,
+      "unresolved_hidden_state_pairs": 9,
+      "sessions": 7,
+      "abilities": 5,
+      "targets": 12,
+      "critical_damage_raw_values": 13,
+      "maximum_pair_gap_micros": 1085197,
+      "additive_maximum_absolute_residual": 1,
+      "rejected_direct_minimum_absolute_residual": 2221
+    },
     "lucky_damage_current_build_lifecycle_authority": true,
     "lucky_damage_current_build_executor_authority": true,
     "lucky_damage_exact_rational_attribution_authority": true,
@@ -79,7 +104,7 @@
     "server_integer_counterfactual_authority": false,
     "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
     "unresolved_overlap_fails_closed": true,
-    "critical_damage_runtime_transfer_enabled": false,
+    "critical_damage_runtime_transfer_enabled": true,
     "lucky_damage_runtime_transfer_enabled": true,
     "lucky_damage_routes": [
       { "ability_id": 2031101, "hit_event_id": 3 },

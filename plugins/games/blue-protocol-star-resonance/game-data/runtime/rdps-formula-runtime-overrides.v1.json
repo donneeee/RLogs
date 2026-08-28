@@ -1,5 +1,5 @@
 {
-  "schema_version": 15,
+  "schema_version": 16,
   "deployment_id": "global",
   "builds": [
     {
@@ -13,7 +13,17 @@
           "critical-damage-factor-interpretation-authority",
           "party-support-formula-frontier"
         ],
+        "policy": {
+          "critical_damage_factor_interpretation_authority": false
+        },
+        "critical_damage_factor_interpretation": "unresolved",
         "team_luck": {
+          "critical_damage_current_build_lifecycle_authority": false,
+          "critical_damage_current_build_executor_authority": false,
+          "critical_damage_exact_rational_attribution_authority": false,
+          "critical_damage_protocol_pack_migration_authority": false,
+          "critical_damage_authorized_protocol_pack_digests": [],
+          "critical_damage_formula_authority_basis": "historical-build-critical-damage-not-reviewed",
           "lucky_damage_current_build_lifecycle_authority": false,
           "lucky_damage_current_build_executor_authority": false,
           "lucky_damage_exact_rational_attribution_authority": false,

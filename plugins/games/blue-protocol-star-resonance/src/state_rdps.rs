@@ -3525,16 +3525,22 @@ impl BpsrStateDamageContributionProjector {
             return Err("occurrence_missing");
         }
         if !self.runtime.runtime_promotion_allowed() {
-            if critical {
+            if critical
+                && !self
+                    .runtime
+                    .team_luck
+                    .critical_damage_runtime_transfer_enabled
+            {
                 return Err("critical_damage_runtime_transfer_disabled");
             }
-            if !self.runtime.team_luck.lucky_damage_runtime_transfer_enabled {
+            if lucky && !self.runtime.team_luck.lucky_damage_runtime_transfer_enabled {
                 return Err("lucky_damage_runtime_transfer_disabled");
             }
-            if !self
-                .runtime
-                .team_luck
-                .is_lucky_damage_route(damage.ability.map(|ability| ability.0), damage.hit_event_id)
+            if lucky
+                && !self.runtime.team_luck.is_lucky_damage_route(
+                    damage.ability.map(|ability| ability.0),
+                    damage.hit_event_id,
+                )
             {
                 return Err("lucky_damage_route_unproven");
             }
@@ -3741,6 +3747,15 @@ impl BpsrStateDamageContributionProjector {
         observed_micros: u64,
         damage: &rlogs_events::DamageEvent,
     ) -> Option<ExactRationalDamageContributionEvent> {
+        if !self
+            .runtime
+            .effect_runtime_transfer_enabled(self.runtime.thunderwind.effect_id)
+        {
+            // Thunderwind remains an auditable candidate. A newly resolved
+            // shared critical factor must not let it participate in production
+            // overlap selection or suppress an independently promoted effect.
+            return None;
+        }
         self.thunderwind_decision(observed_micros, damage).ok()
     }
 
@@ -6759,10 +6774,10 @@ mod tests {
     fn catalog_is_current_build_and_formula_exact() {
         assert_eq!(
             runtime().critical_damage_factor_interpretation,
-            CriticalDamageFactorInterpretation::Unresolved,
+            CriticalDamageFactorInterpretation::AdditiveBonus,
         );
         assert!(
-            !runtime()
+            runtime()
                 .critical_damage_factor_interpretation
                 .is_resolved()
         );
@@ -6910,11 +6925,11 @@ mod tests {
     }
 
     #[test]
-    fn unresolved_current_build_interpretation_blocks_all_critical_dependents() {
+    fn current_build_interpretation_enables_exact_critical_damage_but_not_unproven_dependents() {
         let interpretation = runtime().critical_damage_factor_interpretation;
         assert_eq!(
             interpretation,
-            CriticalDamageFactorInterpretation::Unresolved
+            CriticalDamageFactorInterpretation::AdditiveBonus
         );
         assert_eq!(
             exact_team_luck_accounting_fraction(
@@ -6928,9 +6943,9 @@ mod tests {
                 runtime().team_luck.combined_critical_lucky_enabled,
                 interpretation,
             ),
-            None,
+            Some((1_625_000, 629)),
         );
-        assert_eq!(
+        assert!(
             exact_inspiration_occurrence_fraction(
                 100_000,
                 true,
@@ -6940,13 +6955,14 @@ mod tests {
                 300,
                 10_128,
                 interpretation,
-            ),
-            None,
+            )
+            .is_some(),
+            "the shared factor interpretation is resolved even though Inspiration still has independent runtime promotion gates",
         );
     }
 
     #[test]
-    fn team_luck_live_projection_accepts_only_exact_lucky_routes_and_keeps_critical_closed() {
+    fn team_luck_live_projection_accepts_exact_single_outcome_routes_and_keeps_combined_closed() {
         let current_wire = WireKey {
             connection_id: 1,
             stream_id: 2,
@@ -7016,10 +7032,49 @@ mod tests {
         damage.hit_event_id = Some(3);
         damage.flags.critical = Some(true);
         damage.flags.lucky = Some(false);
+        damage.amount = 58_708;
+        projector
+            .states
+            .get_mut(&4)
+            .expect("recipient state")
+            .critical_damage_raw = Some(11_586);
         assert_eq!(
             projector.team_luck_decision(123, &damage),
-            Err("critical_damage_runtime_transfer_disabled")
+            Ok(ExactRationalDamageContributionEvent {
+                observed_micros: 123,
+                effect_id: runtime().team_luck.effect_id,
+                provider_actor_id: 2,
+                recipient_actor_id: 4,
+                numerator: 15_264_080,
+                denominator: 10_793,
+                observed_damage: 58_708,
+                included: true,
+            })
         );
+
+        damage.flags.lucky = Some(true);
+        assert_eq!(
+            projector.team_luck_decision(123, &damage),
+            Err("damage_counterfactual_unproven"),
+            "combined Crit+Lucky ordering remains fail-closed"
+        );
+
+        damage.flags.lucky = Some(false);
+        projector
+            .states
+            .get_mut(&4)
+            .expect("recipient state")
+            .critical_damage_raw = None;
+        assert_eq!(
+            projector.team_luck_decision(123, &damage),
+            Err("critical_damage_state_never_observed"),
+            "remote or otherwise absent recipient critical state must not receive invented credit"
+        );
+        projector
+            .states
+            .get_mut(&4)
+            .expect("recipient state")
+            .critical_damage_raw = Some(10_128);
 
         projector.team_luck_windows.clear();
         let mut status = rlogs_events::StatusEvent {
@@ -7410,7 +7465,6 @@ mod tests {
             runtime().promotion_blockers(),
             [
                 "canonical-replay-conservation",
-                "critical-damage-factor-interpretation-authority",
                 "party-support-formula-frontier",
             ]
         );
@@ -7838,7 +7892,7 @@ mod tests {
     }
 
     #[test]
-    fn thunderwind_proxy_owner_child_and_exact_vector_still_requires_interpretation_authority() {
+    fn thunderwind_resolved_candidate_does_not_bypass_its_runtime_transfer_gate() {
         let config = &runtime().thunderwind;
         let wire = WireKey {
             connection_id: 1,
@@ -7965,8 +8019,8 @@ mod tests {
         assert_eq!(projector.thunderwind_contribution(123, &damage), None);
         assert_eq!(
             projector.thunderwind_audit_gate(&damage),
-            "damage_counterfactual_unproven",
-            "current-build unresolved interpretation must prevent provider credit",
+            "emitted",
+            "the candidate remains arithmetically auditable while production transfer stays disabled",
         );
     }
 
@@ -10076,8 +10130,8 @@ mod tests {
         assert_eq!(team_luck_fraction(100, false, false, 10_128, 4_540), None);
         assert_eq!(
             team_luck_fraction(1, true, false, 10_128, 4_540),
-            None,
-            "outputs outside the proven multiplier image remain visible but unattributed"
+            Some((65, 2_516)),
+            "critical attribution conserves the packet-observed final through the proven proportional factor share without claiming hidden server rounding"
         );
         assert_eq!(
             team_luck_fraction(46_908, true, true, 10_128, 4_540),

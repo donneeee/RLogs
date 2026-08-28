@@ -541,8 +541,11 @@ pub fn exact_external_combined_critical_lucky_chance_fraction(
 /// Returns the exact conserved provider share of a critical damage multiplier.
 ///
 /// `interpretation` converts attribute 12510 into the exact current factor.
-/// The packet-observed output must belong to that exact floor stage; otherwise
-/// the row remains visible but unattributed.
+/// Attribution is the reduced rational share of the packet-observed final
+/// damage, so it does not claim an unobserved server integer counterfactual.
+/// Provider credit and recipient subtraction use the same fraction and remain
+/// exactly conserved. Callers must gate the factor interpretation and provider
+/// delta through build-specific evidence before using this accounting model.
 pub fn exact_external_critical_damage_fraction(
     observed_damage: i64,
     current_critical_damage_raw: i64,
@@ -554,7 +557,7 @@ pub fn exact_external_critical_damage_fraction(
     if provider_critical_damage_raw_delta > current_bonus {
         return None;
     }
-    exact_external_fixed_point_multiplier_fraction(
+    exact_external_fixed_point_multiplier_share_fraction(
         observed_damage,
         current_factor,
         provider_critical_damage_raw_delta,
@@ -848,6 +851,22 @@ fn exact_external_fixed_point_multiplier_fraction(
         current_factor,
         PositiveFixedPointRounding::Floor,
     )?;
+    let numerator = i128::from(observed_damage).checked_mul(i128::from(provider_raw_delta))?;
+    reduce_positive_fraction(numerator, i128::from(current_factor))
+}
+
+fn exact_external_fixed_point_multiplier_share_fraction(
+    observed_damage: i64,
+    current_factor: i64,
+    provider_raw_delta: i64,
+) -> Option<(i128, i128)> {
+    if observed_damage <= 0
+        || current_factor <= 0
+        || provider_raw_delta <= 0
+        || provider_raw_delta >= current_factor
+    {
+        return None;
+    }
     let numerator = i128::from(observed_damage).checked_mul(i128::from(provider_raw_delta))?;
     reduce_positive_fraction(numerator, i128::from(current_factor))
 }
@@ -1349,8 +1368,8 @@ mod tests {
                 520,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
-            None,
-            "outputs outside the proven floor image remain unattributed"
+            Some((65, 2_516)),
+            "critical attribution uses the conserved packet-observed proportional share without claiming a server-floor inverse"
         );
         assert_eq!(
             exact_external_lucky_damage_fraction(100, 340, 340),

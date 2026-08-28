@@ -7,6 +7,7 @@ import type {
   CombatHistorySnapshot,
   CombatHistoryView,
   CombatRunHistory,
+  HistoryDamageInfluenceSummary,
   HistoryAbilitySummary,
   HistoryActorSummary,
   HistoryTargetIdentity,
@@ -182,6 +183,64 @@ export function incomingDamageSourceGroups(
     .sort((left, right) => right.total - left.total);
 }
 
+export function historyDamageInfluenceMatchesQuery(
+  view: CombatHistoryView,
+  influence: HistoryDamageInfluenceSummary,
+  query: string,
+): boolean {
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
+  if (terms.length === 0) return true;
+
+  const provider = view.actors.find(
+    (candidate) => candidate.actor_id === influence.provider_actor_id,
+  );
+  const recipient = view.actors.find(
+    (candidate) => candidate.actor_id === influence.recipient_actor_id,
+  );
+  const target = view.targets.find(
+    (candidate) => candidate.actor_id === influence.target_actor_id,
+  );
+  const effect = view.actors
+    .flatMap((candidate) => candidate.effects)
+    .find((candidate) => candidate.effect_id === influence.effect_id);
+  const ability = recipient?.abilities.find(
+    (candidate) => candidate.ability_id === influence.affected_ability_id,
+  );
+  const searchable = [
+    "effect",
+    influence.effect_id,
+    effect?.presentation_name,
+    "provider",
+    influence.provider_actor_id,
+    influence.provider_entity_uuid,
+    provider?.character_id,
+    provider?.display_name,
+    provider?.presentation_name,
+    provider?.presentation_class_name,
+    provider?.presentation_specialization_name,
+    "recipient",
+    influence.recipient_actor_id,
+    influence.recipient_entity_uuid,
+    recipient?.character_id,
+    recipient?.display_name,
+    recipient?.presentation_name,
+    recipient?.presentation_class_name,
+    recipient?.presentation_specialization_name,
+    "skill ability",
+    influence.affected_ability_id,
+    ability?.presentation_name,
+    "target",
+    influence.target_actor_id,
+    influence.target_entity_uuid,
+    target?.monster_id,
+    target?.display_name,
+    target?.presentation_name,
+  ].filter((value): value is string => value !== null && value !== undefined)
+    .join(" ")
+    .toLocaleLowerCase();
+  return terms.every((term) => searchable.includes(term));
+}
+
 export function mountCombatHistorySurface(
   container: HTMLElement,
   loadCatalog: () => Promise<CombatHistoryCatalog>,
@@ -214,6 +273,7 @@ export function mountCombatHistorySurface(
   let historyPartyViewId = DEFAULT_COMBAT_METER_SETTINGS.historyPartyViews[0]!.id;
   let abilitySortKey: AbilitySortKey = "damage";
   let abilitySortDirection: AbilitySortDirection = "descending";
+  let influenceQuery = "";
   let collapsedRecountGroups = new Set<string>();
   let loadInFlight: Promise<void> | null = null;
   let reloadAfterCurrent = false;
@@ -1674,10 +1734,13 @@ export function mountCombatHistorySurface(
     actor: HistoryActorSummary,
   ): HTMLElement => {
     const card = element("section", "content-card combat-history-influence-card");
-    const influences = (view.damage_influences ?? []).filter((influence) =>
+    const actorInfluences = (view.damage_influences ?? []).filter((influence) =>
       (influence.provider_actor_id === actor.actor_id ||
         influence.recipient_actor_id === actor.actor_id) &&
       (targetActorId === null || influence.target_actor_id === targetActorId)
+    );
+    const influences = actorInfluences.filter((influence) =>
+      historyDamageInfluenceMatchesQuery(view, influence, influenceQuery)
     );
     card.append(
       element(
@@ -1687,10 +1750,32 @@ export function mountCombatHistorySurface(
         element(
           "span",
           "",
-          `${influences.length} exact relationship${influences.length === 1 ? "" : "s"}`,
+          influenceQuery.trim()
+            ? `${influences.length} of ${actorInfluences.length} exact relationships`
+            : `${influences.length} exact relationship${influences.length === 1 ? "" : "s"}`,
         ),
       ),
     );
+    const toolbar = element("div", "combat-history-influence-toolbar");
+    const search = document.createElement("input");
+    search.type = "search";
+    search.className = "combat-history-influence-search";
+    search.value = influenceQuery;
+    search.placeholder = "Filter UID, effect ID, skill ID, player, or target…";
+    search.setAttribute("aria-label", "Filter damage influences");
+    search.addEventListener("input", () => {
+      influenceQuery = search.value;
+      render();
+      requestAnimationFrame(() => {
+        const next = content.querySelector<HTMLInputElement>(
+          ".combat-history-influence-search",
+        );
+        next?.focus();
+        next?.setSelectionRange(influenceQuery.length, influenceQuery.length);
+      });
+    });
+    toolbar.append(search);
+    card.append(toolbar);
     if (influences.length === 0) {
       card.append(
         element(
@@ -1715,10 +1800,10 @@ export function mountCombatHistorySurface(
       "Target",
       "Events",
       "Observed damage",
-      "Attributed delta",
+      "Attributed rDPS",
     ]) {
       const cell = document.createElement("th");
-      if (["Events", "Observed damage", "Attributed delta"].includes(label)) {
+      if (["Events", "Observed damage", "Attributed rDPS"].includes(label)) {
         cell.className = "meter-number";
       }
       cell.textContent = label;

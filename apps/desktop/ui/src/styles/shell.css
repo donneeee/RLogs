@@ -5113,6 +5113,21 @@ body {
   min-width: 1180px;
 }
 
+.combat-history-influence-toolbar {
+  display: flex;
+  padding: 0 0 10px;
+}
+
+.combat-history-influence-toolbar input {
+  width: min(100%, 520px);
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
 .combat-history-influence-table th,
 .combat-history-influence-table td {
   padding: 8px 10px;

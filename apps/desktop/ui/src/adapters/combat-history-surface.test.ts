@@ -17,6 +17,7 @@ import {
   filterAndSortHistoryEntries,
   graphScaleMaximum,
   groupDisplayedAbilities,
+  historyDamageInfluenceMatchesQuery,
   historyActorColor,
   historyTargetLabel,
   incomingDamageSourceGroups,
@@ -26,6 +27,66 @@ import {
   supplementalDifficultyLabel,
   terminalPresentationLabel,
 } from "./combat-history-surface";
+
+describe("Combat History rDPS influence filtering", () => {
+  const provider = {
+    actor_id: "provider-actor",
+    entity_uuid: "provider-entity",
+    character_id: "1002003",
+    display_name: "Support",
+    presentation_name: "Support",
+    presentation_class_name: "Shield Knight",
+    presentation_specialization_name: "Recovery",
+    abilities: [],
+    effects: [{ effect_id: "2302121", presentation_name: "Team Luck" }],
+  } as unknown as HistoryActorSummary;
+  const recipient = {
+    actor_id: "recipient-actor",
+    entity_uuid: "recipient-entity",
+    character_id: "3296036",
+    display_name: "MarieRose",
+    presentation_name: "MarieRose",
+    presentation_class_name: "Marksman",
+    presentation_specialization_name: "Falconry",
+    abilities: [{ ability_id: "2031109", presentation_name: "Falconry hit" }],
+    effects: [],
+  } as unknown as HistoryActorSummary;
+  const view = {
+    actors: [provider, recipient],
+    targets: [{
+      actor_id: "target-actor",
+      entity_uuid: "target-entity",
+      monster_id: "70101",
+      display_name: "Training Dummy",
+      presentation_name: "Training Dummy",
+    }],
+  } as CombatHistoryView;
+  const influence = {
+    effect_id: "2302121",
+    provider_actor_id: provider.actor_id,
+    provider_entity_uuid: provider.entity_uuid,
+    recipient_actor_id: recipient.actor_id,
+    recipient_entity_uuid: recipient.entity_uuid,
+    affected_ability_id: "2031109",
+    target_actor_id: "target-actor",
+    target_entity_uuid: "target-entity",
+  } as CombatHistoryView["damage_influences"][number];
+
+  it("matches exact provider and recipient UIDs", () => {
+    expect(historyDamageInfluenceMatchesQuery(view, influence, "1002003")).toBe(true);
+    expect(historyDamageInfluenceMatchesQuery(view, influence, "3296036")).toBe(true);
+  });
+
+  it("matches effect and affected skill identities together", () => {
+    expect(historyDamageInfluenceMatchesQuery(view, influence, "Team Luck 2031109")).toBe(true);
+    expect(historyDamageInfluenceMatchesQuery(view, influence, "2302121 Falconry hit")).toBe(true);
+  });
+
+  it("matches participant and target presentation without broad false positives", () => {
+    expect(historyDamageInfluenceMatchesQuery(view, influence, "MarieRose Training Dummy")).toBe(true);
+    expect(historyDamageInfluenceMatchesQuery(view, influence, "unrelated-player")).toBe(false);
+  });
+});
 
 describe("Combat History catalog participant identity", () => {
   it("prefers the captured public name and shared localized presentation", () => {
