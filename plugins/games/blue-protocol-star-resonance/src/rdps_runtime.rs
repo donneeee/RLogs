@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 14;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 15;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -92,15 +92,90 @@ pub(crate) struct DamageStageCatalogRuntimeConfig {
     pub standard_rules: usize,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TeamLuckLuckyDamageRoute {
+    pub ability_id: i64,
+    pub hit_event_id: i32,
+}
+
+const TEAM_LUCK_CURRENT_LUCKY_DAMAGE_ROUTES: [TeamLuckLuckyDamageRoute; 9] = [
+    TeamLuckLuckyDamageRoute {
+        ability_id: 2_031_101,
+        hit_event_id: 3,
+    },
+    TeamLuckLuckyDamageRoute {
+        ability_id: 2_031_102,
+        hit_event_id: 3,
+    },
+    TeamLuckLuckyDamageRoute {
+        ability_id: 2_031_103,
+        hit_event_id: 3,
+    },
+    TeamLuckLuckyDamageRoute {
+        ability_id: 2_031_104,
+        hit_event_id: 3,
+    },
+    TeamLuckLuckyDamageRoute {
+        ability_id: 2_031_105,
+        hit_event_id: 3,
+    },
+    TeamLuckLuckyDamageRoute {
+        ability_id: 2_031_107,
+        hit_event_id: 3,
+    },
+    TeamLuckLuckyDamageRoute {
+        ability_id: 2_031_109,
+        hit_event_id: 3,
+    },
+    TeamLuckLuckyDamageRoute {
+        ability_id: 2_031_110,
+        hit_event_id: 3,
+    },
+    TeamLuckLuckyDamageRoute {
+        ability_id: 2_031_111,
+        hit_event_id: 3,
+    },
+];
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TeamLuckRuntimeConfig {
     pub effect_id: i64,
+    pub source_type_id: i32,
+    pub source_config_id: i64,
     pub critical_damage_attribute_id: i32,
     pub lucky_damage_attribute_id: i32,
     pub critical_raw_delta: i64,
     pub lucky_raw_delta: i64,
     pub combined_critical_lucky_enabled: bool,
+    pub lucky_damage_current_build_lifecycle_authority: bool,
+    pub lucky_damage_current_build_executor_authority: bool,
+    pub lucky_damage_exact_rational_attribution_authority: bool,
+    pub lucky_damage_protocol_pack_migration_authority: bool,
+    pub lucky_damage_authorized_protocol_pack_digests: Vec<String>,
+    formula_authority_basis: String,
+    accounting_method: String,
+    pub server_integer_counterfactual_authority: bool,
+    rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub critical_damage_runtime_transfer_enabled: bool,
+    pub lucky_damage_runtime_transfer_enabled: bool,
+    pub lucky_damage_routes: Vec<TeamLuckLuckyDamageRoute>,
+}
+
+impl TeamLuckRuntimeConfig {
+    pub(crate) fn is_lucky_damage_route(
+        &self,
+        ability_id: Option<i64>,
+        hit_event_id: Option<i32>,
+    ) -> bool {
+        ability_id.zip(hit_event_id).is_some_and(|(ability_id, hit_event_id)| {
+            self.lucky_damage_routes.iter().any(|route| {
+                route.ability_id == ability_id && route.hit_event_id == hit_event_id
+            })
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -469,6 +544,7 @@ impl RdpsRuntimeConfig {
                 .runtime_transfer_effect_ids
                 .is_empty()
             || self.functional_amp.attack_magic_runtime_transfer_enabled
+            || self.team_luck.lucky_damage_runtime_transfer_enabled
             || self.mechanical_power.runtime_transfer_enabled
             || self.harmony_grace.runtime_transfer_enabled
     }
@@ -483,6 +559,8 @@ impl RdpsRuntimeConfig {
                 .contains(&effect_id)
             || (effect_id == self.functional_amp.effect_id
                 && self.functional_amp.attack_magic_runtime_transfer_enabled)
+            || (effect_id == self.team_luck.effect_id
+                && self.team_luck.lucky_damage_runtime_transfer_enabled)
             || (effect_id == self.mechanical_power.effect_id
                 && self.mechanical_power.runtime_transfer_enabled)
             || (effect_id == self.harmony_grace.effect_id
@@ -618,13 +696,53 @@ impl RdpsRuntimeConfig {
         }
 
         let team_luck = &self.team_luck;
+        let team_luck_routes_are_valid = team_luck
+            .lucky_damage_routes
+            .iter()
+            .enumerate()
+            .all(|(index, route)| {
+                route.ability_id > 0
+                    && route.hit_event_id >= 0
+                    && !team_luck.lucky_damage_routes[..index].contains(route)
+            });
+        let team_luck_lucky_runtime_authority =
+            team_luck.lucky_damage_current_build_lifecycle_authority
+                && team_luck.lucky_damage_current_build_executor_authority
+                && team_luck.lucky_damage_exact_rational_attribution_authority
+                && team_luck.lucky_damage_protocol_pack_migration_authority
+                && team_luck.lucky_damage_authorized_protocol_pack_digests
+                    == [
+                        "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+                        "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+                    ]
+                && team_luck
+                    .lucky_damage_authorized_protocol_pack_digests
+                    .contains(&self.protocol_pack_digest)
+                && team_luck.formula_authority_basis
+                    == "current-build-prior-pack-replay-plus-target-pack-decoder-contract-migration"
+                && team_luck.accounting_method
+                    == "observed-final-damage-proportional-stage-share"
+                && !team_luck.server_integer_counterfactual_authority
+                && team_luck.rational_integer_projection
+                    == "sum-exact-then-half-up-per-effect-provider-recipient"
+                && team_luck.unresolved_overlap_fails_closed;
         if team_luck.effect_id <= 0
+            || team_luck.source_type_id <= 0
+            || team_luck.source_config_id <= 0
             || team_luck.critical_damage_attribute_id <= 0
             || team_luck.lucky_damage_attribute_id <= 0
             || team_luck.critical_damage_attribute_id == team_luck.lucky_damage_attribute_id
             || team_luck.critical_raw_delta <= 0
             || team_luck.lucky_raw_delta <= 0
             || team_luck.combined_critical_lucky_enabled
+            || team_luck.critical_damage_runtime_transfer_enabled
+            || !team_luck_routes_are_valid
+            || (team_luck.lucky_damage_runtime_transfer_enabled
+                && (!team_luck_lucky_runtime_authority
+                    || team_luck.lucky_damage_routes
+                        != TEAM_LUCK_CURRENT_LUCKY_DAMAGE_ROUTES))
+            || (!team_luck.lucky_damage_runtime_transfer_enabled
+                && !team_luck.lucky_damage_routes.is_empty())
         {
             return Err("bundled BPSR Team Luck formula is invalid".into());
         }
@@ -902,6 +1020,7 @@ fn rules_are_valid_and_unique(rules: &[PrimaryStatRecipientRule]) -> bool {
 #[serde(deny_unknown_fields)]
 struct RdpsRuntimeBuildOverride {
     game_build: String,
+    protocol_pack_digest: String,
     patch: serde_json::Value,
 }
 
@@ -916,8 +1035,9 @@ struct RdpsRuntimeBuildOverrides {
 #[derive(Debug)]
 struct RdpsRuntimeRegistry {
     deployment_id: String,
-    latest_build: String,
-    by_build: HashMap<String, RdpsRuntimeConfig>,
+    default_identity: (String, String),
+    default_identity_by_build: HashMap<String, (String, String)>,
+    by_identity: HashMap<(String, String), RdpsRuntimeConfig>,
 }
 
 static RDPS_RUNTIME_REGISTRY: OnceLock<Result<RdpsRuntimeRegistry, String>> = OnceLock::new();
@@ -930,9 +1050,9 @@ pub(crate) enum PromotedRemoteEffectMagnitudeModel {
 pub(crate) fn rdps_runtime_config() -> Result<&'static RdpsRuntimeConfig, String> {
     let registry = rdps_runtime_registry()?;
     registry
-        .by_build
-        .get(&registry.latest_build)
-        .ok_or_else(|| "bundled BPSR rDPS registry has no latest formula pack".into())
+        .by_identity
+        .get(&registry.default_identity)
+        .ok_or_else(|| "bundled BPSR rDPS registry has no default formula pack".into())
 }
 
 pub(crate) fn rdps_runtime_config_for(
@@ -943,10 +1063,24 @@ pub(crate) fn rdps_runtime_config_for(
     if deployment_id != registry.deployment_id {
         return Ok(None);
     }
-    if let Some(runtime) = registry.by_build.get(game_build) {
-        return Ok(Some(runtime));
+    Ok(registry
+        .default_identity_by_build
+        .get(game_build)
+        .and_then(|identity| registry.by_identity.get(identity)))
+}
+
+pub(crate) fn rdps_runtime_config_for_identity(
+    deployment_id: &str,
+    game_build: &str,
+    protocol_pack_digest: &str,
+) -> Result<Option<&'static RdpsRuntimeConfig>, String> {
+    let registry = rdps_runtime_registry()?;
+    if deployment_id != registry.deployment_id {
+        return Ok(None);
     }
-    Ok(None)
+    Ok(registry
+        .by_identity
+        .get(&(game_build.to_owned(), protocol_pack_digest.to_owned())))
 }
 
 fn rdps_runtime_registry() -> Result<&'static RdpsRuntimeRegistry, String> {
@@ -972,14 +1106,20 @@ fn rdps_runtime_registry() -> Result<&'static RdpsRuntimeRegistry, String> {
             }
 
             let deployment_id = base.deployment_id.clone();
-            let mut latest_build = base.game_build.clone();
-            let mut by_build = HashMap::from([(base.game_build.clone(), base)]);
+            let default_identity = (base.game_build.clone(), base.protocol_pack_digest.clone());
+            let mut default_identity_by_build =
+                HashMap::from([(base.game_build.clone(), default_identity.clone())]);
+            let mut by_identity = HashMap::from([(default_identity.clone(), base)]);
             for build_override in overrides.builds {
                 if build_override.game_build.is_empty()
-                    || by_build.contains_key(&build_override.game_build)
+                    || !is_prefixed_sha256(&build_override.protocol_pack_digest)
+                    || by_identity.contains_key(&(
+                        build_override.game_build.clone(),
+                        build_override.protocol_pack_digest.clone(),
+                    ))
                 {
                     return Err(
-                        "bundled BPSR rDPS formula overrides contain a duplicate or empty build"
+                        "bundled BPSR rDPS formula overrides contain a duplicate or invalid identity"
                             .into(),
                     );
                 }
@@ -990,23 +1130,25 @@ fn rdps_runtime_registry() -> Result<&'static RdpsRuntimeRegistry, String> {
                 })?;
                 if config.deployment_id != deployment_id
                     || config.game_build != build_override.game_build
-                    || !is_prefixed_sha256(&config.protocol_pack_digest)
+                    || config.protocol_pack_digest != build_override.protocol_pack_digest
                 {
                     return Err(
                         "bundled BPSR rDPS formula override changed its declared identity".into(),
                     );
                 }
                 config.validate()?;
-                if numeric_build(&config.game_build) > numeric_build(&latest_build) {
-                    latest_build = config.game_build.clone();
-                }
-                by_build.insert(config.game_build.clone(), config);
+                let identity = (config.game_build.clone(), config.protocol_pack_digest.clone());
+                default_identity_by_build
+                    .entry(config.game_build.clone())
+                    .or_insert_with(|| identity.clone());
+                by_identity.insert(identity, config);
             }
 
             Ok(RdpsRuntimeRegistry {
                 deployment_id,
-                latest_build,
-                by_build,
+                default_identity,
+                default_identity_by_build,
+                by_identity,
             })
         })
         .as_ref()
@@ -1202,6 +1344,116 @@ mod tests {
         assert!(independently_proven.has_any_runtime_transfer_enabled());
         assert!(independently_proven.effect_runtime_transfer_enabled(55_228));
         assert!(!independently_proven.effect_runtime_transfer_enabled(55_229));
+    }
+
+    #[test]
+    fn team_luck_promotes_only_the_current_build_lucky_component_routes() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert!(!current.runtime_promotion_allowed());
+        assert!(!current.team_luck.critical_damage_runtime_transfer_enabled);
+        assert!(current.team_luck.lucky_damage_runtime_transfer_enabled);
+        assert!(current.team_luck.lucky_damage_current_build_lifecycle_authority);
+        assert!(current.team_luck.lucky_damage_current_build_executor_authority);
+        assert!(current
+            .team_luck
+            .lucky_damage_exact_rational_attribution_authority);
+        assert!(current
+            .team_luck
+            .lucky_damage_protocol_pack_migration_authority);
+        assert_eq!(
+            current.team_luck.lucky_damage_authorized_protocol_pack_digests,
+            [
+                "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+                "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+            ]
+        );
+        assert!(!current.team_luck.server_integer_counterfactual_authority);
+        assert!(current.team_luck.unresolved_overlap_fails_closed);
+        assert_eq!(
+            current.team_luck.lucky_damage_routes,
+            TEAM_LUCK_CURRENT_LUCKY_DAMAGE_ROUTES
+        );
+        assert!(current
+            .team_luck
+            .is_lucky_damage_route(Some(2_031_101), Some(3)));
+        assert!(!current
+            .team_luck
+            .is_lucky_damage_route(Some(2_031_101), Some(4)));
+        assert!(current.effect_runtime_transfer_enabled(current.team_luck.effect_id));
+
+        for field in [
+            "lucky_damage_current_build_lifecycle_authority",
+            "lucky_damage_current_build_executor_authority",
+            "lucky_damage_exact_rational_attribution_authority",
+            "lucky_damage_protocol_pack_migration_authority",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["team_luck"][field] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let mut critical_riding_on_lucky_proof = base.clone();
+        critical_riding_on_lucky_proof["team_luck"]
+            ["critical_damage_runtime_transfer_enabled"] = serde_json::Value::Bool(true);
+        assert!(runtime_from_value(critical_riding_on_lucky_proof)
+            .validate()
+            .is_err());
+
+        let mut invented_server_authority = base.clone();
+        invented_server_authority["team_luck"]["server_integer_counterfactual_authority"] =
+            serde_json::Value::Bool(true);
+        assert!(runtime_from_value(invented_server_authority)
+            .validate()
+            .is_err());
+
+        let mut wrong_route = base.clone();
+        wrong_route["team_luck"]["lucky_damage_routes"][0]["hit_event_id"] =
+            serde_json::json!(4);
+        assert!(runtime_from_value(wrong_route).validate().is_err());
+
+        let mut guessed_overlap = base.clone();
+        guessed_overlap["team_luck"]["unresolved_overlap_fails_closed"] =
+            serde_json::Value::Bool(false);
+        assert!(runtime_from_value(guessed_overlap).validate().is_err());
+
+        let mut wrong_projection = base;
+        wrong_projection["team_luck"]["rational_integer_projection"] =
+            serde_json::Value::String("per-hit-floor".into());
+        assert!(runtime_from_value(wrong_projection).validate().is_err());
+    }
+
+    #[test]
+    fn registry_keeps_same_build_protocol_identities_separate() {
+        let prior_digest =
+            "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b";
+        let current_digest =
+            "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395";
+        let current = rdps_runtime_config_for_identity("global", "24687926", current_digest)
+            .unwrap()
+            .expect("current protocol identity should be registered");
+        let prior = rdps_runtime_config_for_identity("global", "24687926", prior_digest)
+            .unwrap()
+            .expect("current-build history protocol identity should be registered");
+        assert_eq!(current.game_build, prior.game_build);
+        assert_ne!(current.protocol_pack_digest, prior.protocol_pack_digest);
+        assert!(current.effect_runtime_transfer_enabled(current.team_luck.effect_id));
+        assert!(prior.effect_runtime_transfer_enabled(prior.team_luck.effect_id));
+        assert!(rdps_runtime_config_for_identity(
+            "global",
+            "24687926",
+            "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        )
+        .unwrap()
+        .is_none());
+        assert_eq!(
+            rdps_runtime_config_for("global", "24687926")
+                .unwrap()
+                .expect("build-default identity should remain available")
+                .protocol_pack_digest,
+            current_digest,
+        );
     }
 
     #[test]

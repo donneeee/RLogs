@@ -1,5 +1,5 @@
 {
-  "schema_version": 14,
+  "schema_version": 15,
   "deployment_id": "global",
   "game_build": "24687926",
   "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
@@ -59,11 +59,39 @@
   },
   "team_luck": {
     "effect_id": 2302121,
+    "source_type_id": 1,
+    "source_config_id": 2302120,
     "critical_damage_attribute_id": 12510,
     "lucky_damage_attribute_id": 12530,
     "critical_raw_delta": 520,
     "lucky_raw_delta": 340,
-    "combined_critical_lucky_enabled": false
+    "combined_critical_lucky_enabled": false,
+    "lucky_damage_current_build_lifecycle_authority": true,
+    "lucky_damage_current_build_executor_authority": true,
+    "lucky_damage_exact_rational_attribution_authority": true,
+    "lucky_damage_protocol_pack_migration_authority": true,
+    "lucky_damage_authorized_protocol_pack_digests": [
+      "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+      "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395"
+    ],
+    "formula_authority_basis": "current-build-prior-pack-replay-plus-target-pack-decoder-contract-migration",
+    "accounting_method": "observed-final-damage-proportional-stage-share",
+    "server_integer_counterfactual_authority": false,
+    "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
+    "unresolved_overlap_fails_closed": true,
+    "critical_damage_runtime_transfer_enabled": false,
+    "lucky_damage_runtime_transfer_enabled": true,
+    "lucky_damage_routes": [
+      { "ability_id": 2031101, "hit_event_id": 3 },
+      { "ability_id": 2031102, "hit_event_id": 3 },
+      { "ability_id": 2031103, "hit_event_id": 3 },
+      { "ability_id": 2031104, "hit_event_id": 3 },
+      { "ability_id": 2031105, "hit_event_id": 3 },
+      { "ability_id": 2031107, "hit_event_id": 3 },
+      { "ability_id": 2031109, "hit_event_id": 3 },
+      { "ability_id": 2031110, "hit_event_id": 3 },
+      { "ability_id": 2031111, "hit_event_id": 3 }
+    ]
   },
   "functional_amp": {
     "effect_id": 2110143,

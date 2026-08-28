@@ -42,6 +42,7 @@ use crate::{
         AttackFamilyRuntimeConfig, AttributeFamilyRounding, InspirationVectorRuntimeConfig,
         PrimaryAttackLane, PrimaryStatRecipientRule, RdpsRuntimeConfig,
         ThunderwindVectorRuntimeConfig, rdps_runtime_config, rdps_runtime_config_for,
+        rdps_runtime_config_for_identity,
     },
     specialization_identity_from_observed_abilities, two_stage_percent_input_marginal,
 };
@@ -163,6 +164,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
         );
     }
     effect_ids.extend_from_slice(runtime.target_vulnerability_runtime_transfer_effect_ids());
+    if runtime.effect_runtime_transfer_enabled(runtime.team_luck.effect_id) {
+        effect_ids.push(runtime.team_luck.effect_id);
+    }
     if runtime.effect_runtime_transfer_enabled(runtime.functional_amp.effect_id) {
         effect_ids.push(runtime.functional_amp.effect_id);
     }
@@ -221,10 +225,8 @@ pub fn state_damage_contribution_target_matches(
     protocol_pack_digest: &str,
 ) -> Result<bool, String> {
     Ok(
-        rdps_runtime_config_for(deployment_id, client_build)?.is_some_and(|runtime| {
-            runtime.protocol_pack_digest == protocol_pack_digest
-                && runtime.has_any_runtime_transfer_enabled()
-        }),
+        rdps_runtime_config_for_identity(deployment_id, client_build, protocol_pack_digest)?
+            .is_some_and(RdpsRuntimeConfig::has_any_runtime_transfer_enabled),
     )
 }
 
@@ -236,8 +238,10 @@ pub fn state_damage_contribution_formula_target_matches(
     client_build: &str,
     protocol_pack_digest: &str,
 ) -> Result<bool, String> {
-    Ok(rdps_runtime_config_for(deployment_id, client_build)?
-        .is_some_and(|runtime| runtime.protocol_pack_digest == protocol_pack_digest))
+    Ok(
+        rdps_runtime_config_for_identity(deployment_id, client_build, protocol_pack_digest)?
+            .is_some(),
+    )
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1209,9 +1213,10 @@ impl BpsrStateDamageContributionProjector {
         let rational_output_start = rational_output.len();
         self.last_target_vulnerability_audit = None;
         self.latest_observed_micros = envelope.time.observed_micros;
-        let selected_runtime = rdps_runtime_config_for(
+        let selected_runtime = rdps_runtime_config_for_identity(
             &envelope.region.identity.deployment_id,
             &envelope.region.client_build,
+            &envelope.region.protocol_pack_digest,
         )
         .ok()
         .flatten();
@@ -1667,7 +1672,15 @@ impl BpsrStateDamageContributionProjector {
         {
             self.observe_inspiration_status(status);
         }
-        if status.effect.0 == self.runtime.team_luck.effect_id {
+        if status.effect.0 == self.runtime.team_luck.effect_id
+            && status
+                .origin
+                .map(|origin| (origin.source_type_id, origin.source_config_id))
+                == Some((
+                    self.runtime.team_luck.source_type_id,
+                    self.runtime.team_luck.source_config_id,
+                ))
+        {
             self.observe_team_luck_status(status);
         }
         if status.effect.0 == self.runtime.functional_amp.effect_id
@@ -3492,6 +3505,9 @@ impl BpsrStateDamageContributionProjector {
     }
 
     pub fn team_luck_audit_gate(&self, damage: &rlogs_events::DamageEvent) -> &'static str {
+        if !self.runtime_applicable {
+            return "runtime_identity_inapplicable";
+        }
         match self.team_luck_decision(self.latest_observed_micros, damage) {
             Ok(_) => "emitted",
             Err(gate) => gate,
@@ -3507,6 +3523,21 @@ impl BpsrStateDamageContributionProjector {
         let lucky = damage.flags.lucky == Some(true);
         if !critical && !lucky {
             return Err("occurrence_missing");
+        }
+        if !self.runtime.runtime_promotion_allowed() {
+            if critical {
+                return Err("critical_damage_runtime_transfer_disabled");
+            }
+            if !self.runtime.team_luck.lucky_damage_runtime_transfer_enabled {
+                return Err("lucky_damage_runtime_transfer_disabled");
+            }
+            if !self
+                .runtime
+                .team_luck
+                .is_lucky_damage_route(damage.ability.map(|ability| ability.0), damage.hit_event_id)
+            {
+                return Err("lucky_damage_route_unproven");
+            }
         }
         if damage.amount <= 0 {
             return Err("non_positive_damage");
@@ -3529,7 +3560,18 @@ impl BpsrStateDamageContributionProjector {
         if providers.next().is_some() {
             return Err("provider_window_ambiguous");
         }
-        let state = self.states.get(&recipient_actor_id).ok_or_else(|| {
+        let state_actor_id = self
+            .team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+            .ok_or_else(|| {
+                self.team_luck_missing_state_gate(
+                    recipient_actor_id,
+                    recipient_entity_uuid,
+                    critical,
+                    lucky,
+                    "recipient_state_missing",
+                )
+            })?;
+        let state = self.states.get(&state_actor_id).ok_or_else(|| {
             self.team_luck_missing_state_gate(
                 recipient_actor_id,
                 recipient_entity_uuid,
@@ -3594,6 +3636,45 @@ impl BpsrStateDamageContributionProjector {
         })
     }
 
+    /// Resolves an attribute state only through the damage actor itself or an
+    /// actor alias proven to carry the same nonzero entity UUID. Actor IDs can
+    /// rotate during a run, while entity UUID is the stable player identity.
+    /// Never fall through to a state whose recorded entity differs.
+    fn team_luck_state_actor_id(
+        &self,
+        recipient_actor_id: u64,
+        recipient_entity_uuid: i64,
+        staged: bool,
+    ) -> Option<u64> {
+        let states = if staged {
+            &self.staged_states
+        } else {
+            &self.states
+        };
+        let direct_identity_matches = self
+            .attribute_state_entity_uuid_by_actor
+            .get(&recipient_actor_id)
+            .is_none_or(|entity_uuid| {
+                recipient_entity_uuid == 0 || *entity_uuid == recipient_entity_uuid
+            });
+        if direct_identity_matches && states.contains_key(&recipient_actor_id) {
+            return Some(recipient_actor_id);
+        }
+        if recipient_entity_uuid == 0 {
+            return None;
+        }
+        let alias_actor_id = self
+            .attribute_state_actor_by_entity_uuid
+            .get(&recipient_entity_uuid)
+            .copied()?;
+        (self
+            .attribute_state_entity_uuid_by_actor
+            .get(&alias_actor_id)
+            == Some(&recipient_entity_uuid)
+            && states.contains_key(&alias_actor_id))
+        .then_some(alias_actor_id)
+    }
+
     fn team_luck_missing_state_gate(
         &self,
         recipient_actor_id: u64,
@@ -3608,7 +3689,11 @@ impl BpsrStateDamageContributionProjector {
             "lucky_damage_state_missing" => "lucky_damage_state_never_observed",
             _ => missing_gate,
         };
-        if let Some(staged_state) = self.staged_states.get(&recipient_actor_id) {
+        let staged_actor_id =
+            self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, true);
+        if let Some(staged_state) =
+            staged_actor_id.and_then(|actor_id| self.staged_states.get(&actor_id))
+        {
             let requested_state_is_present = (!critical
                 || staged_state.critical_damage_raw.is_some())
                 && (!lucky || staged_state.lucky_damage_raw.is_some());
@@ -3621,57 +3706,34 @@ impl BpsrStateDamageContributionProjector {
                 };
             }
         }
+        let state_actor_id = self
+            .team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+            .unwrap_or(recipient_actor_id);
         if critical
             && self
                 .team_luck_critical_cleared_by_snapshot
-                .contains(&recipient_actor_id)
+                .contains(&state_actor_id)
         {
             return "critical_damage_state_cleared_by_snapshot";
         }
         if lucky
             && self
                 .team_luck_lucky_cleared_by_snapshot
-                .contains(&recipient_actor_id)
+                .contains(&state_actor_id)
         {
             return "lucky_damage_state_cleared_by_snapshot";
         }
         if critical
             && self
                 .team_luck_critical_ever_observed
-                .contains(&recipient_actor_id)
+                .contains(&state_actor_id)
         {
             return "critical_damage_state_previously_observed_missing";
         }
-        if lucky
-            && self
-                .team_luck_lucky_ever_observed
-                .contains(&recipient_actor_id)
-        {
+        if lucky && self.team_luck_lucky_ever_observed.contains(&state_actor_id) {
             return "lucky_damage_state_previously_observed_missing";
         }
-        let Some(alias_actor_id) = self
-            .attribute_state_actor_by_entity_uuid
-            .get(&recipient_entity_uuid)
-            .copied()
-            .filter(|alias_actor_id| *alias_actor_id != recipient_actor_id)
-        else {
-            return never_observed_gate;
-        };
-        let Some(alias_state) = self.states.get(&alias_actor_id) else {
-            return never_observed_gate;
-        };
-        if critical && alias_state.critical_damage_raw.is_none() {
-            return never_observed_gate;
-        }
-        if lucky && alias_state.lucky_damage_raw.is_none() {
-            return never_observed_gate;
-        }
-        match missing_gate {
-            "recipient_state_missing" => "recipient_state_alias_available",
-            "critical_damage_state_missing" => "critical_damage_state_alias_available",
-            "lucky_damage_state_missing" => "lucky_damage_state_alias_available",
-            _ => missing_gate,
-        }
+        never_observed_gate
     }
 
     fn thunderwind_contribution(
@@ -6799,8 +6861,8 @@ mod tests {
         assert!(unreported_critical_rule.runtime_eligible);
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
-            vec![55_228, 2_110_140, 2_110_143, 3_003_052],
-            "the exact packet-pair vulnerability, observed Mechanical Power component, dormant Functional Amp component, and class-scoped Harmony proportional rule are production promoted"
+            vec![55_228, 2_110_140, 2_110_143, 2_302_121, 3_003_052],
+            "the exact packet-pair vulnerability, observed Mechanical Power component, dormant Functional Amp component, Team Luck Lucky component, and class-scoped Harmony proportional rule are production promoted"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -6880,6 +6942,188 @@ mod tests {
                 interpretation,
             ),
             None,
+        );
+    }
+
+    #[test]
+    fn team_luck_live_projection_accepts_only_exact_lucky_routes_and_keeps_critical_closed() {
+        let current_wire = WireKey {
+            connection_id: 1,
+            stream_id: 2,
+            capture_sequence: 3,
+        };
+        let mut projector = BpsrStateDamageContributionProjector {
+            current_wire: Some(current_wire),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    critical_damage_raw: Some(10_128),
+                    lucky_damage_raw: Some(4_540),
+                    ..ActorHpState::default()
+                },
+            )]),
+            active_players: HashSet::from([2, 4]),
+            team_luck_windows: HashSet::from([TeamLuckWindowKey {
+                target_actor_id: 4,
+                target_entity_uuid: 40,
+                provider_actor_id: 2,
+                provider_entity_uuid: 20,
+                instance_id: Some(11),
+            }]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let mut damage = rlogs_events::DamageEvent {
+            source: test_entity(4, 40),
+            direct_source: None,
+            target: test_entity(17, 170),
+            ability: Some(rlogs_events::AbilityId(2_031_101)),
+            amount: 273_931,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(3),
+            damage_source: None,
+            damage_type: Some(2),
+            flags: rlogs_events::DamageFlags {
+                critical: Some(false),
+                lucky: Some(true),
+                ..rlogs_events::DamageFlags::default()
+            },
+            packet: rlogs_events::DamagePacketDetail::default(),
+        };
+
+        assert_eq!(
+            projector.team_luck_decision(123, &damage),
+            Ok(ExactRationalDamageContributionEvent {
+                observed_micros: 123,
+                effect_id: runtime().team_luck.effect_id,
+                provider_actor_id: 2,
+                recipient_actor_id: 4,
+                numerator: 4_656_827,
+                denominator: 227,
+                observed_damage: 273_931,
+                included: true,
+            })
+        );
+        assert_eq!(damage.amount, 273_931, "ordinary damage is immutable");
+
+        damage.hit_event_id = Some(4);
+        assert_eq!(
+            projector.team_luck_decision(123, &damage),
+            Err("lucky_damage_route_unproven")
+        );
+
+        damage.hit_event_id = Some(3);
+        damage.flags.critical = Some(true);
+        damage.flags.lucky = Some(false);
+        assert_eq!(
+            projector.team_luck_decision(123, &damage),
+            Err("critical_damage_runtime_transfer_disabled")
+        );
+
+        projector.team_luck_windows.clear();
+        let mut status = rlogs_events::StatusEvent {
+            source: Some(test_entity(2, 20)),
+            target: test_entity(4, 40),
+            effect: rlogs_events::StatusEffectId(runtime().team_luck.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(11)),
+            origin: Some(rlogs_events::StatusOrigin {
+                source_type_id: runtime().team_luck.source_type_id,
+                source_config_id: runtime().team_luck.source_config_id,
+            }),
+            state: StatusState::Applied,
+            stacks: Some(1),
+            duration_millis: Some(15_000),
+            level: Some(1),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+        };
+        projector.observe_status(&status, 123);
+        assert_eq!(projector.team_luck_windows.len(), 1);
+
+        projector.team_luck_windows.clear();
+        status.origin = Some(rlogs_events::StatusOrigin {
+            source_type_id: runtime().team_luck.source_type_id,
+            source_config_id: runtime().team_luck.source_config_id + 1,
+        });
+        projector.observe_status(&status, 123);
+        assert!(projector.team_luck_windows.is_empty());
+    }
+
+    #[test]
+    fn team_luck_live_projection_joins_rotated_actor_ids_only_by_exact_entity_uuid() {
+        let mut projector = BpsrStateDamageContributionProjector {
+            current_wire: Some(WireKey {
+                connection_id: 1,
+                stream_id: 2,
+                capture_sequence: 3,
+            }),
+            states: HashMap::from([(
+                400,
+                ActorHpState {
+                    lucky_damage_raw: Some(4_540),
+                    ..ActorHpState::default()
+                },
+            )]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 400)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(400, 40)]),
+            active_players: HashSet::from([2, 4, 400]),
+            team_luck_windows: HashSet::from([TeamLuckWindowKey {
+                target_actor_id: 400,
+                target_entity_uuid: 40,
+                provider_actor_id: 2,
+                provider_entity_uuid: 20,
+                instance_id: Some(11),
+            }]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let mut damage = rlogs_events::DamageEvent {
+            source: test_entity(4, 40),
+            direct_source: None,
+            target: test_entity(17, 170),
+            ability: Some(rlogs_events::AbilityId(2_031_101)),
+            amount: 273_931,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(3),
+            damage_source: None,
+            damage_type: Some(2),
+            flags: rlogs_events::DamageFlags {
+                critical: Some(false),
+                lucky: Some(true),
+                ..rlogs_events::DamageFlags::default()
+            },
+            packet: rlogs_events::DamagePacketDetail::default(),
+        };
+
+        assert_eq!(
+            projector.team_luck_decision(123, &damage),
+            Ok(ExactRationalDamageContributionEvent {
+                observed_micros: 123,
+                effect_id: runtime().team_luck.effect_id,
+                provider_actor_id: 2,
+                recipient_actor_id: 4,
+                numerator: 4_656_827,
+                denominator: 227,
+                observed_damage: 273_931,
+                included: true,
+            })
+        );
+
+        projector.team_luck_windows = HashSet::from([TeamLuckWindowKey {
+            target_actor_id: 4,
+            target_entity_uuid: 41,
+            provider_actor_id: 2,
+            provider_entity_uuid: 20,
+            instance_id: Some(12),
+        }]);
+        damage.source = test_entity(4, 41);
+        assert_eq!(
+            projector.team_luck_decision(123, &damage),
+            Err("recipient_state_never_observed"),
+            "an actor-id collision must not reuse another entity's state"
         );
     }
 
@@ -7133,6 +7377,22 @@ mod tests {
             )
             .unwrap()
         );
+        let prior_pack_digest =
+            "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b";
+        assert!(
+            state_damage_contribution_target_matches("global", "24687926", prior_pack_digest,)
+                .unwrap(),
+            "current-build history keeps its exact prior decoder identity"
+        );
+        let prior_pack_runtime =
+            rdps_runtime_config_for_identity("global", "24687926", prior_pack_digest)
+                .unwrap()
+                .expect("the exact current-build prior-pack identity should be replayable");
+        assert_eq!(prior_pack_runtime.protocol_pack_digest, prior_pack_digest);
+        assert!(
+            prior_pack_runtime
+                .effect_runtime_transfer_enabled(prior_pack_runtime.team_luck.effect_id)
+        );
         assert!(
             !state_damage_contribution_formula_target_matches(
                 "global",
@@ -7143,7 +7403,7 @@ mod tests {
         );
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
-            vec![55_228, 2_110_140, 2_110_143, 3_003_052]
+            vec![55_228, 2_110_140, 2_110_143, 2_302_121, 3_003_052]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
         assert_eq!(

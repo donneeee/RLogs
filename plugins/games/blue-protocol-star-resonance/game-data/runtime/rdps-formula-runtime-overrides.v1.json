@@ -1,9 +1,10 @@
 {
-  "schema_version": 14,
+  "schema_version": 15,
   "deployment_id": "global",
   "builds": [
     {
       "game_build": "24252055",
+      "protocol_pack_digest": "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
       "patch": {
         "game_build": "24252055",
         "protocol_pack_digest": "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
@@ -12,6 +13,14 @@
           "critical-damage-factor-interpretation-authority",
           "party-support-formula-frontier"
         ],
+        "team_luck": {
+          "lucky_damage_current_build_lifecycle_authority": false,
+          "lucky_damage_current_build_executor_authority": false,
+          "lucky_damage_exact_rational_attribution_authority": false,
+          "critical_damage_runtime_transfer_enabled": false,
+          "lucky_damage_runtime_transfer_enabled": false,
+          "lucky_damage_routes": []
+        },
         "functional_amp": {
           "attack_magic_target_build_lifecycle_schema_authority": true,
           "attack_magic_target_build_formula_authority": true,
@@ -65,6 +74,14 @@
           "runtime_transfer_enabled": false,
           "runtime_recipient_class_ids": []
         }
+      }
+    },
+    {
+      "game_build": "24687926",
+      "protocol_pack_digest": "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+      "patch": {
+        "game_build": "24687926",
+        "protocol_pack_digest": "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b"
       }
     }
   ]

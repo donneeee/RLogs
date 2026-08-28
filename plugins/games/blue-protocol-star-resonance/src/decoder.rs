@@ -5149,6 +5149,12 @@ fn decode_attribute_value(id: i32, raw: &[u8]) -> Option<EntityAttributeValue> {
         | ATTR_MAX_HP_EXTRA_ADD
         | ATTR_MAX_HP_PERCENT
         | ATTR_MAX_HP_EXTRA_PERCENT
+        // Current-build Team Luck status/attribute proof closes these exact
+        // positive scalar routes: 12510 is Crit Damage and 12530 is Lucky
+        // Damage Increase. Keep the allowlist ID-specific; neighboring
+        // attributes remain unresolved until independently reviewed.
+        | 12510
+        | 12530
         // Packet-observed all-element final/total/add/extra-add/percent/
         // extra-percent family. Fatal Spiral changes the first three together
         // (for example 237 -> 1237) while the remaining components stay
@@ -9074,6 +9080,20 @@ mod tests {
             decode_attribute_value(ATTR_MASTERY, &[0xb7, 0x07]),
             Some(EntityAttributeValue::Integer(951))
         );
+    }
+
+    #[test]
+    fn team_luck_formula_attributes_decode_exact_packet_observed_varints() {
+        assert_eq!(
+            decode_attribute_value(12510, &[0xa9, 0x98, 0x01]),
+            Some(EntityAttributeValue::Integer(19_497))
+        );
+        assert_eq!(
+            decode_attribute_value(12530, &[0xf1, 0x22]),
+            Some(EntityAttributeValue::Integer(4_465))
+        );
+        assert_eq!(decode_attribute_value(12511, &[0xf1, 0x22]), None);
+        assert_eq!(decode_attribute_value(12531, &[0xf1, 0x22]), None);
     }
 
     #[test]
