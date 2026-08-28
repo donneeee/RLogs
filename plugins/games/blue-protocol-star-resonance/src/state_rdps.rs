@@ -47,10 +47,10 @@ use crate::{
 };
 
 const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
-const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 3;
+const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v9";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v10";
 
 static STATE_RDPS_FORMULA_IDENTITY: OnceLock<String> = OnceLock::new();
 
@@ -253,7 +253,7 @@ struct TargetVulnerabilityRdpsRule {
     provider_raw_delta: i64,
     rounding: Option<String>,
     integer_projection: Option<String>,
-    required_critical: bool,
+    required_critical: RequiredCriticalObservation,
     required_lucky: bool,
     #[serde(default)]
     runtime_eligible: bool,
@@ -341,6 +341,28 @@ impl TargetVulnerabilityRdpsRule {
     }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+enum RequiredCriticalObservation {
+    Unreported,
+    ReportedFalse,
+    ReportedTrue,
+}
+
+impl RequiredCriticalObservation {
+    fn packet_value(self) -> Option<bool> {
+        match self {
+            Self::Unreported => None,
+            Self::ReportedFalse => Some(false),
+            Self::ReportedTrue => Some(true),
+        }
+    }
+
+    fn matches(self, observed: Option<bool>) -> bool {
+        self.packet_value() == observed
+    }
+}
+
 fn is_prefixed_sha256(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(|digest| {
         digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -361,7 +383,7 @@ enum TargetVulnerabilityProjection {
 struct TargetVulnerabilityDamageKey {
     ability_id: i64,
     hit_event_id: i32,
-    critical: bool,
+    critical: Option<bool>,
     lucky: bool,
 }
 
@@ -394,8 +416,7 @@ impl TargetVulnerabilityRdpsCatalog {
         critical: Option<bool>,
         lucky: Option<bool>,
     ) -> &[usize] {
-        let (Some(hit_event_id), Some(critical), Some(lucky)) = (hit_event_id, critical, lucky)
-        else {
+        let (Some(hit_event_id), Some(lucky)) = (hit_event_id, lucky) else {
             return &[];
         };
         self.rule_indices_by_damage_key
@@ -470,7 +491,7 @@ fn target_vulnerability_rdps_catalog() -> Result<&'static TargetVulnerabilityRdp
                     .entry(TargetVulnerabilityDamageKey {
                         ability_id: rule.ability_id,
                         hit_event_id: rule.hit_event_id,
-                        critical: rule.required_critical,
+                        critical: rule.required_critical.packet_value(),
                         lucky: rule.required_lucky,
                     })
                     .or_default()
@@ -4806,7 +4827,7 @@ impl BpsrStateDamageContributionProjector {
         if damage.amount <= 0
             || damage.ability.map(|ability| ability.0) != Some(rule.ability_id)
             || damage.hit_event_id != Some(rule.hit_event_id)
-            || damage.flags.critical != Some(rule.required_critical)
+            || !rule.required_critical.matches(damage.flags.critical)
             || damage.flags.lucky != Some(rule.required_lucky)
         {
             return None;
@@ -4854,7 +4875,7 @@ impl BpsrStateDamageContributionProjector {
         if damage.amount != active_observed_damage
             || damage.ability.map(|ability| ability.0) != Some(rule.ability_id)
             || damage.hit_event_id != Some(rule.hit_event_id)
-            || damage.flags.critical != Some(rule.required_critical)
+            || !rule.required_critical.matches(damage.flags.critical)
             || damage.flags.lucky != Some(rule.required_lucky)
         {
             return None;
@@ -4987,7 +5008,7 @@ impl BpsrStateDamageContributionProjector {
         if damage.amount <= 0
             || damage.ability.map(|ability| ability.0) != Some(rule.ability_id)
             || damage.hit_event_id != Some(rule.hit_event_id)
-            || damage.flags.critical != Some(rule.required_critical)
+            || !rule.required_critical.matches(damage.flags.critical)
             || damage.flags.lucky != Some(rule.required_lucky)
         {
             return None;
@@ -5042,14 +5063,14 @@ impl BpsrStateDamageContributionProjector {
         if !rule_indices.iter().any(|index| {
             let rule = &catalog.rules[*index];
             damage.hit_event_id == Some(rule.hit_event_id)
-                && damage.flags.critical == Some(rule.required_critical)
+                && rule.required_critical.matches(damage.flags.critical)
         }) {
             return "critical_flag_mismatch";
         }
         let Some(rule) = rule_indices.iter().find_map(|index| {
             let rule = &catalog.rules[*index];
             (damage.hit_event_id == Some(rule.hit_event_id)
-                && damage.flags.critical == Some(rule.required_critical)
+                && rule.required_critical.matches(damage.flags.critical)
                 && damage.flags.lucky == Some(rule.required_lucky))
             .then_some(rule)
         }) else {
@@ -6742,7 +6763,10 @@ mod tests {
             target_rule.fixed_point_rounding(),
             Some(PositiveFixedPointRounding::Floor)
         );
-        assert!(target_rule.required_critical);
+        assert_eq!(
+            target_rule.required_critical,
+            RequiredCriticalObservation::ReportedTrue
+        );
         assert!(!target_rule.required_lucky);
         let paired_rule = &target_catalog.rules[1];
         assert_eq!(paired_rule.effect_id, 55_228);
@@ -6754,8 +6778,25 @@ mod tests {
         assert_eq!(paired_rule.inactive_observed_damage, Some(258_416));
         assert_eq!(paired_rule.required_source_class_id, Some(2));
         assert!(paired_rule.runtime_eligible);
-        assert!(paired_rule.required_critical);
+        assert_eq!(
+            paired_rule.required_critical,
+            RequiredCriticalObservation::ReportedTrue
+        );
         assert!(paired_rule.required_lucky);
+        let unreported_critical_rule = &target_catalog.rules[2];
+        assert_eq!(
+            unreported_critical_rule.required_critical,
+            RequiredCriticalObservation::Unreported
+        );
+        assert_eq!(
+            unreported_critical_rule.active_observed_damage,
+            Some(114_422)
+        );
+        assert_eq!(
+            unreported_critical_rule.inactive_observed_damage,
+            Some(108_540)
+        );
+        assert!(unreported_critical_rule.runtime_eligible);
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![55_228],
@@ -6781,7 +6822,7 @@ mod tests {
                 "active_factor": 19455,
                 "provider_raw_delta": 1000,
                 "integer_projection": "sum_exact_then_half_up_per_effect_provider_recipient",
-                "required_critical": true,
+                "required_critical": "reported_true",
                 "required_lucky": true
             }"#,
         )
@@ -6798,7 +6839,7 @@ mod tests {
                 "active_factor": 19455,
                 "provider_raw_delta": 1000,
                 "integer_projection": "sum_exact_then_half_up_per_effect_provider_recipient",
-                "required_critical": true,
+                "required_critical": "reported_true",
                 "required_lucky": true,
                 "unreviewed_formula_field": 1
             }"#,
@@ -7411,6 +7452,54 @@ mod tests {
             projector.target_vulnerability_exact_contribution(&envelope, &damage, &rule),
             None,
             "a changed target formula context must fail closed",
+        );
+    }
+
+    #[test]
+    fn exact_paired_unreported_critical_branch_is_distinct_from_reported_false() {
+        let mut rule = target_vulnerability_rdps_catalog().unwrap().rules[2].clone();
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            latest_observed_micros: 123,
+            class_id_by_actor: HashMap::from([(4, 2)]),
+            formula_attributes_by_actor: HashMap::from([
+                (4, BTreeMap::from([(11_320, 309_156), (11_321, 309_153)])),
+                (17, BTreeMap::from([(455, 1)])),
+            ]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_target_vulnerability_status(
+            &target_vulnerability_test_status(2, 17, StatusState::Applied),
+            100,
+        );
+        rule.required_source_context_sha256 =
+            projector.formula_context_sha256(4, rule.effect_id, &rule.ignored_context_effect_ids);
+        rule.allowed_target_context_sha256 = vec![
+            projector
+                .formula_context_sha256(17, rule.effect_id, &rule.ignored_context_effect_ids)
+                .unwrap(),
+        ];
+
+        let mut damage = critical_test_damage(test_entity(4, 40), 114_422);
+        damage.ability = Some(rlogs_events::AbilityId(2_031_102));
+        damage.hit_event_id = Some(3);
+        damage.flags.critical = None;
+        damage.flags.lucky = Some(true);
+        let envelope = target_vulnerability_test_envelope(damage.clone());
+        let contribution = projector
+            .target_vulnerability_exact_contribution(&envelope, &damage, &rule)
+            .expect("the exact unreported-critical packet pair should match");
+        assert_eq!(contribution.amount, 5_882);
+        assert_eq!(
+            damage.amount, 114_422,
+            "ordinary damage must remain unchanged"
+        );
+
+        damage.flags.critical = Some(false);
+        assert_eq!(
+            projector.target_vulnerability_exact_contribution(&envelope, &damage, &rule),
+            None,
+            "reported false must not alias the packet's unreported critical state",
         );
     }
 
