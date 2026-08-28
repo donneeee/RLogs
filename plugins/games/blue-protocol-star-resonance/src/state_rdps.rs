@@ -897,6 +897,36 @@ impl BpsrRemoteFactorTimeline {
     pub fn inferred_actor_count(&self) -> usize {
         self.critical_damage_raw_by_actor_bucket.len()
     }
+
+    fn has_exact_critical_damage_raw(&self, actor_id: u64, observed_micros: u64) -> bool {
+        let bucket = observed_micros / REMOTE_FACTOR_BUCKET_MICROS;
+        self.critical_damage_raw_by_actor_bucket
+            .get(&actor_id)
+            .is_some_and(|values| values.contains_key(&bucket))
+    }
+
+    fn insert_critical_damage_raw(
+        &mut self,
+        actor_id: u64,
+        observed_micros: u64,
+        critical_damage_raw: i64,
+    ) {
+        let bucket = observed_micros / REMOTE_FACTOR_BUCKET_MICROS;
+        self.critical_damage_raw_by_actor_bucket
+            .entry(actor_id)
+            .or_default()
+            .insert(bucket, critical_damage_raw);
+    }
+
+    fn retain_recent_buckets(&mut self, observed_micros: u64) {
+        let bucket = observed_micros / REMOTE_FACTOR_BUCKET_MICROS;
+        let minimum_bucket = bucket.saturating_sub(REMOTE_FACTOR_NEAREST_BUCKET_LIMIT);
+        self.critical_damage_raw_by_actor_bucket
+            .retain(|_, values| {
+                values.retain(|candidate_bucket, _| *candidate_bucket >= minimum_bucket);
+                !values.is_empty()
+            });
+    }
 }
 
 /// Streaming first-pass learner used for sealed history. Its state is bounded
@@ -1023,37 +1053,10 @@ impl BpsrRemoteFactorLearner {
         let mut by_bucket = HashMap::<(u64, u64), BTreeMap<i64, u64>>::new();
         let mut by_actor = HashMap::<u64, BTreeMap<i64, u64>>::new();
         for (key, group) in self.groups {
-            if group.saturated || group.normal.is_empty() || group.critical.is_empty() {
-                continue;
-            }
             let bucket_histogram = by_bucket.entry((key.actor_id, key.bucket)).or_default();
             let actor_histogram = by_actor.entry(key.actor_id).or_default();
-            for (normal, normal_count) in &group.normal {
-                for (critical, critical_count) in &group.critical {
-                    let Some((low, high)) = remote_critical_factor_interval(*normal, *critical)
-                    else {
-                        continue;
-                    };
-                    if high.saturating_sub(low) > 2 {
-                        continue;
-                    }
-                    let support =
-                        u64::from(*normal_count).saturating_mul(u64::from(*critical_count));
-                    for raw in low..=high {
-                        if !(520..=50_000).contains(&raw) {
-                            continue;
-                        }
-                        bucket_histogram
-                            .entry(raw)
-                            .and_modify(|value| *value = value.saturating_add(support))
-                            .or_insert(support);
-                        actor_histogram
-                            .entry(raw)
-                            .and_modify(|value| *value = value.saturating_add(support))
-                            .or_insert(support);
-                    }
-                }
-            }
+            accumulate_remote_factor_group(&group, bucket_histogram);
+            accumulate_remote_factor_group(&group, actor_histogram);
         }
         let mut timeline = BpsrRemoteFactorTimeline::default();
         for ((actor_id, bucket), histogram) in by_bucket {
@@ -1071,6 +1074,60 @@ impl BpsrRemoteFactorLearner {
             }
         }
         timeline
+    }
+
+    /// Returns a factor only after the current five-second bucket independently
+    /// reaches the same evidence threshold used by sealed-history replay. This
+    /// is intentionally bucket-local: a live reducer cannot borrow a future
+    /// observation or a later character state.
+    fn inferred_current_critical_damage_raw(
+        &self,
+        actor_id: u64,
+        observed_micros: u64,
+    ) -> Option<i64> {
+        let bucket = observed_micros / REMOTE_FACTOR_BUCKET_MICROS;
+        let mut histogram = BTreeMap::<i64, u64>::new();
+        for (key, group) in &self.groups {
+            if key.actor_id == actor_id && key.bucket == bucket {
+                accumulate_remote_factor_group(group, &mut histogram);
+            }
+        }
+        select_remote_factor_cluster(&histogram, 2)
+    }
+
+    fn retain_recent_buckets(&mut self, observed_micros: u64) {
+        let bucket = observed_micros / REMOTE_FACTOR_BUCKET_MICROS;
+        let minimum_bucket = bucket.saturating_sub(REMOTE_FACTOR_NEAREST_BUCKET_LIMIT);
+        self.groups.retain(|key, _| key.bucket >= minimum_bucket);
+    }
+}
+
+fn accumulate_remote_factor_group(
+    group: &RemoteFactorOutcomeGroup,
+    histogram: &mut BTreeMap<i64, u64>,
+) {
+    if group.saturated || group.normal.is_empty() || group.critical.is_empty() {
+        return;
+    }
+    for (normal, normal_count) in &group.normal {
+        for (critical, critical_count) in &group.critical {
+            let Some((low, high)) = remote_critical_factor_interval(*normal, *critical) else {
+                continue;
+            };
+            if high.saturating_sub(low) > 2 {
+                continue;
+            }
+            let support = u64::from(*normal_count).saturating_mul(u64::from(*critical_count));
+            for raw in low..=high {
+                if !(520..=50_000).contains(&raw) {
+                    continue;
+                }
+                histogram
+                    .entry(raw)
+                    .and_modify(|value| *value = value.saturating_add(support))
+                    .or_insert(support);
+            }
+        }
     }
 }
 
@@ -1347,6 +1404,7 @@ pub struct BpsrStateDamageContributionProjector {
     team_luck_critical_cleared_by_snapshot: HashSet<u64>,
     team_luck_lucky_cleared_by_snapshot: HashSet<u64>,
     remote_factor_timeline: Option<BpsrRemoteFactorTimeline>,
+    live_remote_factor_learner: Option<BpsrRemoteFactorLearner>,
     incomplete_rdps_actor_ids: HashSet<u64>,
     effect_windows: HashMap<EffectWindowKey, EffectWindow>,
     team_luck_windows: HashSet<TeamLuckWindowKey>,
@@ -1430,6 +1488,7 @@ impl Default for BpsrStateDamageContributionProjector {
             team_luck_critical_cleared_by_snapshot: HashSet::new(),
             team_luck_lucky_cleared_by_snapshot: HashSet::new(),
             remote_factor_timeline: None,
+            live_remote_factor_learner: None,
             incomplete_rdps_actor_ids: HashSet::new(),
             effect_windows: HashMap::new(),
             team_luck_windows: HashSet::new(),
@@ -1487,6 +1546,64 @@ impl BpsrStateDamageContributionProjector {
         let mut projector = Self::new()?;
         projector.remote_factor_timeline = Some(remote_factor_timeline);
         Ok(projector)
+    }
+
+    /// Constructs the production live projector. Remote factors begin empty
+    /// and are learned only from packet-observed outcomes in the active run;
+    /// sealed history continues to use the stronger two-pass constructor.
+    pub fn new_live() -> Result<Self, String> {
+        let mut projector = Self::new()?;
+        projector.remote_factor_timeline = Some(BpsrRemoteFactorTimeline::default());
+        projector.live_remote_factor_learner = Some(BpsrRemoteFactorLearner::new()?);
+        Ok(projector)
+    }
+
+    fn refresh_live_remote_critical_factor(
+        &mut self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) {
+        if damage.amount <= 0 || damage.flags.lucky == Some(true) {
+            return;
+        }
+        let actor_id = damage.source.actor_id.0;
+        let entity_uuid = damage.source.entity_uuid.0;
+        if !self.active_players.contains(&actor_id)
+            || !self.team_luck_windows.iter().any(|window| {
+                window.target_entity_uuid == entity_uuid
+                    && window.provider_entity_uuid != entity_uuid
+                    && self.active_players.contains(&window.provider_actor_id)
+            })
+        {
+            return;
+        }
+        if let Some(learner) = self.live_remote_factor_learner.as_mut() {
+            learner.retain_recent_buckets(observed_micros);
+        }
+        if let Some(timeline) = self.remote_factor_timeline.as_mut() {
+            timeline.retain_recent_buckets(observed_micros);
+        }
+        if self
+            .remote_factor_timeline
+            .as_ref()
+            .is_some_and(|timeline| {
+                timeline.has_exact_critical_damage_raw(actor_id, observed_micros)
+            })
+        {
+            return;
+        }
+        let Some(critical_damage_raw) =
+            self.live_remote_factor_learner
+                .as_ref()
+                .and_then(|learner| {
+                    learner.inferred_current_critical_damage_raw(actor_id, observed_micros)
+                })
+        else {
+            return;
+        };
+        self.remote_factor_timeline
+            .get_or_insert_default()
+            .insert_critical_damage_raw(actor_id, observed_micros, critical_damage_raw);
     }
 
     /// Constructs an offline replay projector that evaluates the unpromoted
@@ -1555,6 +1672,9 @@ impl BpsrStateDamageContributionProjector {
         output: &mut Vec<ExactDamageContributionEvent>,
         rational_output: &mut Vec<ExactRationalDamageContributionEvent>,
     ) {
+        if let Some(learner) = self.live_remote_factor_learner.as_mut() {
+            learner.observe(envelope);
+        }
         let exact_output_start = output.len();
         let rational_output_start = rational_output.len();
         self.last_target_vulnerability_audit = None;
@@ -1669,6 +1789,7 @@ impl BpsrStateDamageContributionProjector {
                 envelope.time.observed_micros,
             ),
             TimelineEventKind::Damage(damage) => {
+                self.refresh_live_remote_critical_factor(envelope.time.observed_micros, damage);
                 self.actor_ancestry
                     .observe_damage(envelope.time.observed_micros, damage);
                 if let Some(ability) = damage.ability {
@@ -6233,6 +6354,10 @@ impl BpsrStateDamageContributionProjector {
     }
 
     fn clear_run_state(&mut self) {
+        if self.live_remote_factor_learner.is_some() {
+            self.live_remote_factor_learner = Some(BpsrRemoteFactorLearner::default());
+            self.remote_factor_timeline = Some(BpsrRemoteFactorTimeline::default());
+        }
         self.current_wire = None;
         self.states.clear();
         self.staged_states.clear();
@@ -7512,6 +7637,52 @@ mod tests {
 
         let tied = BTreeMap::from([(8_520, 4), (12_520, 4)]);
         assert_eq!(select_remote_factor_cluster(&tied, 4), None);
+    }
+
+    #[test]
+    fn live_remote_factor_requires_bucket_local_repeated_support() {
+        let bucket = 17;
+        let mut learner = BpsrRemoteFactorLearner::default();
+        learner.groups.insert(
+            RemoteFactorMechanicKey {
+                actor_id: 2,
+                bucket,
+                direct_source_entity_uuid: None,
+                target_entity_uuid: 99,
+                ability_id: Some(2_031_102),
+                hit_event_id: Some(3),
+                damage_source: Some(1),
+                damage_type: Some(1),
+                blocked: Some(false),
+                periodic: Some(false),
+                owner_id: None,
+                owner_level: None,
+                owner_stage: None,
+                damage_mode: None,
+            },
+            RemoteFactorOutcomeGroup {
+                normal: BTreeMap::from([(10_000, 2)]),
+                critical: BTreeMap::from([(18_520, 1)]),
+                saturated: false,
+            },
+        );
+
+        assert_eq!(
+            learner.inferred_current_critical_damage_raw(2, bucket * REMOTE_FACTOR_BUCKET_MICROS,),
+            Some(8_520)
+        );
+        assert_eq!(
+            learner.inferred_current_critical_damage_raw(
+                2,
+                (bucket + 1) * REMOTE_FACTOR_BUCKET_MICROS,
+            ),
+            None,
+            "live inference must not borrow a future or neighboring bucket"
+        );
+        learner.retain_recent_buckets(
+            (bucket + REMOTE_FACTOR_NEAREST_BUCKET_LIMIT + 1) * REMOTE_FACTOR_BUCKET_MICROS,
+        );
+        assert!(learner.groups.is_empty(), "live evidence must age out");
     }
 
     #[test]

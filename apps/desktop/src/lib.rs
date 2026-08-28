@@ -6554,7 +6554,7 @@ fn bpsr_combat_timeline_plugin_with_remote_factors(
         Some(remote_factors) => {
             BpsrStateDamageContributionProjector::new_with_remote_factor_timeline(remote_factors)?
         }
-        None => BpsrStateDamageContributionProjector::new()?,
+        None => BpsrStateDamageContributionProjector::new_live()?,
     };
     Ok(CombatTimelinePlugin::with_damage_contribution_projection(
         confirmed_damage_contribution_rules()?,
@@ -9706,6 +9706,59 @@ mod tests {
         eprintln!(
             "formula_identity={}",
             refreshed.rdps_formula_identity.as_deref().unwrap()
+        );
+    }
+
+    #[test]
+    #[ignore = "set RLOGS_EXTERNAL_RLOG to an explicitly reviewed local capture"]
+    fn external_live_remote_rdps_preview_is_conserved() {
+        let rlog = std::env::var_os("RLOGS_EXTERNAL_RLOG")
+            .map(PathBuf::from)
+            .expect("RLOGS_EXTERNAL_RLOG must name a reviewed sealed log");
+        let (_, combat_report, _) = replay_rlog_pair(
+            BufReader::new(File::open(rlog).expect("reviewed rlog should open")),
+            bpsr_combat_timeline_plugin().expect("live BPSR projector should build"),
+            EncounterRecorderPlugin::new(
+                bundled_run_reducer_config().expect("run reducer config should load"),
+            ),
+            RlogLimits::default(),
+            PluginRunLimits::default(),
+            PluginRunLimits::default(),
+        )
+        .expect("reviewed rlog should replay through the live projector");
+        let combat =
+            combat_timeline_snapshot(&combat_report).expect("live combat projection should decode");
+        let players = combat
+            .actors
+            .iter()
+            .filter(|actor| actor.actor_kind.as_deref() == Some("player"))
+            .collect::<Vec<_>>();
+        let given = players
+            .iter()
+            .map(|actor| i128::from(actor.rdps_contribution_given.unwrap_or_default()))
+            .sum::<i128>();
+        let received = players
+            .iter()
+            .map(|actor| i128::from(actor.rdps_contribution_received.unwrap_or_default()))
+            .sum::<i128>();
+        for actor in &players {
+            eprintln!(
+                "live party actor={} name={} damage={} rdps_damage={:?} given={:?} received={:?} incomplete={}",
+                actor.actor_id,
+                actor.display_name.as_deref().unwrap_or("unknown"),
+                actor.reported_damage,
+                actor.rdps_damage,
+                actor.rdps_contribution_given,
+                actor.rdps_contribution_received,
+                actor.rdps_incomplete,
+            );
+        }
+        assert_eq!(given, received);
+        assert!(
+            players.iter().any(|actor| {
+                actor.actor_id != "17" && actor.rdps_contribution_received.unwrap_or_default() > 0
+            }),
+            "at least one remote teammate must receive packet-reconstructed live attribution"
         );
     }
 
