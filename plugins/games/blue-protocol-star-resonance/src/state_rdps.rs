@@ -3588,18 +3588,15 @@ impl BpsrStateDamageContributionProjector {
     ) -> Option<ExactRationalDamageContributionEvent> {
         match self.team_luck_decision(envelope.time.observed_micros, damage) {
             Ok(contribution) => Some(contribution),
-            Err(gate)
-                if matches!(
-                    gate,
-                    "recipient_state_never_observed"
-                        | "critical_damage_state_never_observed"
-                        | "lucky_damage_state_never_observed"
-                        | "critical_damage_state_cleared_by_snapshot"
-                        | "lucky_damage_state_cleared_by_snapshot"
-                        | "critical_damage_state_previously_observed_missing"
-                        | "lucky_damage_state_previously_observed_missing"
-                ) =>
-            {
+            Err(
+                "recipient_state_never_observed"
+                | "critical_damage_state_never_observed"
+                | "lucky_damage_state_never_observed"
+                | "critical_damage_state_cleared_by_snapshot"
+                | "lucky_damage_state_cleared_by_snapshot"
+                | "critical_damage_state_previously_observed_missing"
+                | "lucky_damage_state_previously_observed_missing",
+            ) => {
                 self.mark_team_luck_incomplete(damage);
                 None
             }
