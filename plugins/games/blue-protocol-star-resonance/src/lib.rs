@@ -258,6 +258,7 @@ pub use skill_speed::{
 };
 pub use specialization_detection::{
     specialization_from_observed_abilities, specialization_identity_from_observed_abilities,
+    specialization_talent_node_ids,
 };
 pub use state_formula::{
     AdditiveFixedPointPairCandidate, BPSR_FIXED_POINT_SCALE, CriticalDamageFactorInterpretation,

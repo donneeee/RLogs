@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 const BUNDLED_SPECIALIZATION_DETECTION: &str =
     include_str!("../game-data/runtime/specialization-detection.v2.json");
+const SPECIALIZATION_DETECTION_GAME_BUILD: &str = "24687926";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -45,6 +46,7 @@ struct SpecializationDetectionCatalog {
     by_class_talent: HashMap<(i32, i64), i32>,
     by_unique_ability: HashMap<i64, SpecializationAbilityEvidence>,
     by_unique_passive_selector: HashMap<i64, (i32, i32)>,
+    talent_nodes_by_specialization: HashMap<i32, Vec<i64>>,
 }
 
 fn catalog() -> Result<&'static SpecializationDetectionCatalog, String> {
@@ -56,7 +58,7 @@ fn catalog() -> Result<&'static SpecializationDetectionCatalog, String> {
                     format!("bundled BPSR specialization detection is invalid: {error}")
                 })?;
             if definition.schema_version != 2
-                || definition.client_build != "24252055"
+                || definition.client_build != SPECIALIZATION_DETECTION_GAME_BUILD
                 || definition.specializations.is_empty()
                 || definition.specializations.len() > 64
             {
@@ -71,6 +73,7 @@ fn catalog() -> Result<&'static SpecializationDetectionCatalog, String> {
             let mut by_class_talent = HashMap::new();
             let mut by_unique_ability = HashMap::new();
             let mut by_unique_passive_selector = HashMap::new();
+            let mut talent_nodes_by_specialization = HashMap::new();
             for evidence in definition.specializations {
                 if evidence.specialization_id <= 0
                     || evidence.class_id <= 0
@@ -89,6 +92,11 @@ fn catalog() -> Result<&'static SpecializationDetectionCatalog, String> {
                         evidence.specialization_id
                     ));
                 }
+
+                let mut talent_node_ids = evidence.talent_node_ids.clone();
+                talent_node_ids.sort_unstable();
+                talent_node_ids.dedup();
+                talent_nodes_by_specialization.insert(evidence.specialization_id, talent_node_ids);
 
                 for (ability_ids, strength) in [
                     (
@@ -162,10 +170,24 @@ fn catalog() -> Result<&'static SpecializationDetectionCatalog, String> {
                 by_class_talent,
                 by_unique_ability,
                 by_unique_passive_selector,
+                talent_nodes_by_specialization,
             })
         })
         .as_ref()
         .map_err(Clone::clone)
+}
+
+/// Returns the exact talent-selector IDs associated with a runtime specialization.
+///
+/// This is an identity crosswalk only. It does not imply that a remote player has
+/// selected any child talent, passive, or Imagine dependency.
+pub fn specialization_talent_node_ids(
+    specialization_id: i32,
+) -> Result<Option<&'static [i64]>, String> {
+    Ok(catalog()?
+        .talent_nodes_by_specialization
+        .get(&specialization_id)
+        .map(Vec::as_slice))
 }
 
 #[cfg(test)]
@@ -346,6 +368,15 @@ mod tests {
             specialization_from_evidence(3, [], [312]).unwrap(),
             Some(128)
         );
+    }
+
+    #[test]
+    fn current_falconry_runtime_identity_crosswalks_to_its_talent_selector() {
+        assert_eq!(
+            specialization_talent_node_ids(117).unwrap(),
+            Some([1_129].as_slice())
+        );
+        assert_eq!(specialization_talent_node_ids(999).unwrap(), None);
     }
 
     #[test]
