@@ -1802,6 +1802,27 @@ impl CombatTimelinePlugin {
                 &mut self.projected_rational_contributions,
             );
         }
+        self.consume_projected_contributions(damage_context);
+    }
+
+    fn finish_exact_contributions(&mut self) {
+        self.latest_exact_contributions.clear();
+        self.latest_exact_rational_contributions.clear();
+        self.projected_contributions.clear();
+        self.projected_rational_contributions.clear();
+        {
+            let Some(projector) = self.exact_contribution_projector.as_mut() else {
+                return;
+            };
+            projector.finish(
+                &mut self.projected_contributions,
+                &mut self.projected_rational_contributions,
+            );
+        }
+        self.consume_projected_contributions(None);
+    }
+
+    fn consume_projected_contributions(&mut self, damage_context: Option<DamageProjectionContext>) {
         let mut projected = std::mem::take(&mut self.projected_contributions);
         for mut contribution in projected.iter().copied() {
             contribution.provider_actor_id =
@@ -3600,6 +3621,7 @@ impl ReplayPlugin for CombatTimelinePlugin {
     }
 
     fn finish(&mut self, output: &mut PluginOutputSink<'_>) -> Result<(), PluginFailure> {
+        self.finish_exact_contributions();
         if self.active_combat_started.is_some() {
             self.closed_at_log_end = true;
             self.end_combat(self.last_event_micros.unwrap_or_default());
@@ -4272,6 +4294,33 @@ mod tests {
                     });
                 }
             }
+
+            fn finish(
+                &mut self,
+                _output: &mut Vec<ExactDamageContributionEvent>,
+                rational_output: &mut Vec<ExactRationalDamageContributionEvent>,
+            ) {
+                rational_output.push(ExactRationalDamageContributionEvent {
+                    observed_micros: 600,
+                    effect_id: 9002,
+                    provider_actor_id: 1,
+                    recipient_actor_id: 2,
+                    scope: DamageContributionScope::Component("test-finish-rational"),
+                    numerator: 1,
+                    denominator: 4,
+                    observed_damage: 100,
+                    included: true,
+                    deferred_damage_context: Some(
+                        rlogs_combat::DeferredDamageContributionContext {
+                            event_sequence: 78,
+                            recipient_entity_uuid: 102,
+                            affected_ability_id: Some(89),
+                            target_actor_id: 9,
+                            target_entity_uuid: 909,
+                        },
+                    ),
+                });
+            }
         }
 
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -4375,6 +4424,25 @@ mod tests {
         plugin.observe_live(&movement);
         assert!(plugin.latest_exact_contributions().is_empty());
         assert!(plugin.latest_exact_rational_contributions().is_empty());
+
+        plugin.finish_exact_contributions();
+        assert_eq!(plugin.latest_exact_rational_contributions().len(), 1);
+        assert_eq!(
+            plugin.latest_exact_rational_contributions()[0].effect_id,
+            9002
+        );
+        assert!(plugin.history_facts.iter().any(|fact| {
+            matches!(
+                fact.kind,
+                CombatFactKind::ExactRationalDamageContribution {
+                    effect_id: 9002,
+                    damage_event_sequence: Some(78),
+                    affected_ability_id: Some(89),
+                    affected_target: Some((9, 909)),
+                    ..
+                }
+            )
+        }));
     }
 
     #[test]

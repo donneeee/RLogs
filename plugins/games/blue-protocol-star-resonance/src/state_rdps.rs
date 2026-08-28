@@ -6,14 +6,14 @@
 //! calculation snapshot, and damage formula.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     sync::OnceLock,
 };
 
 use rlogs_combat::{
     ActorAncestryResolver, ActorOwnershipEvidence, DamageContributionScope,
-    ExactDamageContributionEvent, ExactDamageContributionProjector,
-    ExactRationalDamageContributionEvent,
+    DeferredDamageContributionContext, ExactDamageContributionEvent,
+    ExactDamageContributionProjector, ExactRationalDamageContributionEvent,
 };
 use rlogs_events::{
     ActorKind, ActorState, CanonicalEvent, EncounterState, EntityAttribute,
@@ -53,10 +53,14 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v15";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v16";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
+const REMOTE_FACTOR_MAX_MECHANIC_GROUPS: usize = 4_096;
+const LIVE_REMOTE_FACTOR_EVIDENCE_HORIZON_MICROS: u64 =
+    REMOTE_FACTOR_BUCKET_MICROS * REMOTE_FACTOR_NEAREST_BUCKET_LIMIT;
+const LIVE_DEFERRED_TEAM_LUCK_LIMIT: usize = 4_096;
 
 static STATE_RDPS_FORMULA_IDENTITY: OnceLock<String> = OnceLock::new();
 
@@ -862,6 +866,19 @@ pub struct BpsrRemoteFactorTimeline {
     critical_damage_raw_by_actor: HashMap<u64, i64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DeferredTeamLuckCriticalDamage {
+    observed_micros: u64,
+    event_sequence: u64,
+    provider_actor_id: u64,
+    recipient_actor_id: u64,
+    recipient_entity_uuid: i64,
+    affected_ability_id: Option<i64>,
+    target_actor_id: u64,
+    target_entity_uuid: i64,
+    observed_damage: i64,
+}
+
 impl BpsrRemoteFactorTimeline {
     fn critical_damage_raw(&self, actor_id: u64, observed_micros: u64) -> Option<i64> {
         let bucket = observed_micros / REMOTE_FACTOR_BUCKET_MICROS;
@@ -1031,6 +1048,10 @@ impl BpsrRemoteFactorLearner {
             owner_stage: damage.packet.owner_stage,
             damage_mode: damage.packet.damage_mode,
         };
+        if !self.groups.contains_key(&key) && self.groups.len() >= REMOTE_FACTOR_MAX_MECHANIC_GROUPS
+        {
+            return;
+        }
         let group = self.groups.entry(key).or_default();
         let amounts = if damage.flags.critical == Some(true) {
             &mut group.critical
@@ -1076,29 +1097,43 @@ impl BpsrRemoteFactorLearner {
         timeline
     }
 
-    /// Returns a factor only after the current five-second bucket independently
-    /// reaches the same evidence threshold used by sealed-history replay. This
-    /// is intentionally bucket-local: a live reducer cannot borrow a future
-    /// observation or a later character state.
+    /// Returns a factor after either the current five-second bucket reaches
+    /// sealed history's bucket threshold or the bounded trailing 30-second
+    /// window reaches sealed history's stronger actor threshold. This never
+    /// borrows a future observation or a current character profile.
     fn inferred_current_critical_damage_raw(
         &self,
         actor_id: u64,
         observed_micros: u64,
     ) -> Option<i64> {
         let bucket = observed_micros / REMOTE_FACTOR_BUCKET_MICROS;
-        let mut histogram = BTreeMap::<i64, u64>::new();
+        let mut bucket_histogram = BTreeMap::<i64, u64>::new();
         for (key, group) in &self.groups {
             if key.actor_id == actor_id && key.bucket == bucket {
+                accumulate_remote_factor_group(group, &mut bucket_histogram);
+            }
+        }
+        if let Some(raw) = select_remote_factor_cluster(&bucket_histogram, 2) {
+            return Some(raw);
+        }
+        let minimum_bucket = bucket.saturating_sub(REMOTE_FACTOR_NEAREST_BUCKET_LIMIT);
+        let mut trailing_histogram = BTreeMap::<i64, u64>::new();
+        for (key, group) in &self.groups {
+            if key.actor_id == actor_id && (minimum_bucket..=bucket).contains(&key.bucket) {
+                accumulate_remote_factor_group(group, &mut trailing_histogram);
+            }
+        }
+        select_remote_factor_cluster(&trailing_histogram, 4)
+    }
+
+    fn inferred_actor_critical_damage_raw(&self, actor_id: u64) -> Option<i64> {
+        let mut histogram = BTreeMap::<i64, u64>::new();
+        for (key, group) in &self.groups {
+            if key.actor_id == actor_id {
                 accumulate_remote_factor_group(group, &mut histogram);
             }
         }
-        select_remote_factor_cluster(&histogram, 2)
-    }
-
-    fn retain_recent_buckets(&mut self, observed_micros: u64) {
-        let bucket = observed_micros / REMOTE_FACTOR_BUCKET_MICROS;
-        let minimum_bucket = bucket.saturating_sub(REMOTE_FACTOR_NEAREST_BUCKET_LIMIT);
-        self.groups.retain(|key, _| key.bucket >= minimum_bucket);
+        select_remote_factor_cluster(&histogram, 4)
     }
 }
 
@@ -1405,6 +1440,7 @@ pub struct BpsrStateDamageContributionProjector {
     team_luck_lucky_cleared_by_snapshot: HashSet<u64>,
     remote_factor_timeline: Option<BpsrRemoteFactorTimeline>,
     live_remote_factor_learner: Option<BpsrRemoteFactorLearner>,
+    deferred_team_luck_critical_damage: VecDeque<DeferredTeamLuckCriticalDamage>,
     incomplete_rdps_actor_ids: HashSet<u64>,
     effect_windows: HashMap<EffectWindowKey, EffectWindow>,
     team_luck_windows: HashSet<TeamLuckWindowKey>,
@@ -1489,6 +1525,7 @@ impl Default for BpsrStateDamageContributionProjector {
             team_luck_lucky_cleared_by_snapshot: HashSet::new(),
             remote_factor_timeline: None,
             live_remote_factor_learner: None,
+            deferred_team_luck_critical_damage: VecDeque::new(),
             incomplete_rdps_actor_ids: HashSet::new(),
             effect_windows: HashMap::new(),
             team_luck_windows: HashSet::new(),
@@ -1577,33 +1614,170 @@ impl BpsrStateDamageContributionProjector {
         {
             return;
         }
-        if let Some(learner) = self.live_remote_factor_learner.as_mut() {
-            learner.retain_recent_buckets(observed_micros);
-        }
         if let Some(timeline) = self.remote_factor_timeline.as_mut() {
             timeline.retain_recent_buckets(observed_micros);
         }
-        if self
-            .remote_factor_timeline
+        let (current_critical_damage_raw, actor_critical_damage_raw) = self
+            .live_remote_factor_learner
             .as_ref()
-            .is_some_and(|timeline| {
-                timeline.has_exact_critical_damage_raw(actor_id, observed_micros)
+            .map(|learner| {
+                (
+                    learner.inferred_current_critical_damage_raw(actor_id, observed_micros),
+                    learner.inferred_actor_critical_damage_raw(actor_id),
+                )
             })
-        {
-            return;
-        }
-        let Some(critical_damage_raw) =
-            self.live_remote_factor_learner
-                .as_ref()
-                .and_then(|learner| {
-                    learner.inferred_current_critical_damage_raw(actor_id, observed_micros)
-                })
+            .unwrap_or((None, None));
+        let Some(critical_damage_raw) = current_critical_damage_raw.or(actor_critical_damage_raw)
         else {
             return;
         };
-        self.remote_factor_timeline
-            .get_or_insert_default()
-            .insert_critical_damage_raw(actor_id, observed_micros, critical_damage_raw);
+        let timeline = self.remote_factor_timeline.get_or_insert_default();
+        if !timeline.has_exact_critical_damage_raw(actor_id, observed_micros) {
+            timeline.insert_critical_damage_raw(actor_id, observed_micros, critical_damage_raw);
+        }
+        if let Some(actor_critical_damage_raw) = actor_critical_damage_raw {
+            timeline
+                .critical_damage_raw_by_actor
+                .insert(actor_id, actor_critical_damage_raw);
+        }
+    }
+
+    fn deferred_team_luck_critical_candidate(
+        &self,
+        envelope: &EventEnvelope,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<DeferredTeamLuckCriticalDamage> {
+        if self.live_remote_factor_learner.is_none()
+            || !self
+                .runtime
+                .team_luck
+                .critical_damage_runtime_transfer_enabled
+            || damage.amount <= 0
+            || damage.flags.critical != Some(true)
+            || damage.flags.lucky == Some(true)
+        {
+            return None;
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        if !self.active_players.contains(&recipient_actor_id)
+            || self
+                .team_luck_transition_wires
+                .get(&recipient_actor_id)
+                .copied()
+                == self.current_wire
+        {
+            return None;
+        }
+        let exact_critical_damage_raw = self
+            .team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+            .and_then(|actor_id| self.states.get(&actor_id))
+            .and_then(|state| state.critical_damage_raw);
+        let reconstructed_critical_damage_raw =
+            self.remote_factor_timeline.as_ref().and_then(|timeline| {
+                timeline.critical_damage_raw(recipient_actor_id, envelope.time.observed_micros)
+            });
+        if exact_critical_damage_raw.is_some() || reconstructed_critical_damage_raw.is_some() {
+            return None;
+        }
+        let mut providers = self
+            .team_luck_windows
+            .iter()
+            .filter(|window| window.target_entity_uuid == recipient_entity_uuid)
+            .filter(|window| window.provider_entity_uuid != recipient_entity_uuid)
+            .filter(|window| self.active_players.contains(&window.provider_actor_id))
+            .map(|window| window.provider_actor_id)
+            .collect::<HashSet<_>>()
+            .into_iter();
+        let provider_actor_id = providers.next()?;
+        if providers.next().is_some() {
+            return None;
+        }
+        Some(DeferredTeamLuckCriticalDamage {
+            observed_micros: envelope.time.observed_micros,
+            event_sequence: envelope.sequence,
+            provider_actor_id,
+            recipient_actor_id,
+            recipient_entity_uuid,
+            affected_ability_id: damage.ability.map(|ability| ability.0),
+            target_actor_id: damage.target.actor_id.0,
+            target_entity_uuid: damage.target.entity_uuid.0,
+            observed_damage: damage.amount,
+        })
+    }
+
+    fn buffer_deferred_team_luck_critical_damage(
+        &mut self,
+        candidate: DeferredTeamLuckCriticalDamage,
+    ) {
+        if self.deferred_team_luck_critical_damage.len() >= LIVE_DEFERRED_TEAM_LUCK_LIMIT {
+            self.deferred_team_luck_critical_damage.pop_front();
+        }
+        self.deferred_team_luck_critical_damage.push_back(candidate);
+    }
+
+    fn drain_ready_deferred_team_luck(
+        &mut self,
+        observed_micros: u64,
+        force: bool,
+    ) -> Vec<ExactRationalDamageContributionEvent> {
+        let pending = std::mem::take(&mut self.deferred_team_luck_critical_damage);
+        let mut retained = VecDeque::new();
+        let mut output = Vec::new();
+        for damage in pending {
+            let ready_at = damage
+                .observed_micros
+                .saturating_add(LIVE_REMOTE_FACTOR_EVIDENCE_HORIZON_MICROS);
+            if !force && observed_micros < ready_at {
+                retained.push_back(damage);
+                continue;
+            }
+            let Some(critical_damage_raw) =
+                self.remote_factor_timeline.as_ref().and_then(|timeline| {
+                    timeline.critical_damage_raw(damage.recipient_actor_id, damage.observed_micros)
+                })
+            else {
+                if !force {
+                    retained.push_back(damage);
+                }
+                continue;
+            };
+            let Some((numerator, denominator)) = exact_team_luck_accounting_fraction(
+                damage.observed_damage,
+                true,
+                false,
+                critical_damage_raw,
+                0,
+                self.runtime.team_luck.critical_raw_delta,
+                self.runtime.team_luck.lucky_raw_delta,
+                self.runtime.team_luck.combined_critical_lucky_enabled,
+                self.runtime.critical_damage_factor_interpretation,
+            ) else {
+                continue;
+            };
+            output.push(ExactRationalDamageContributionEvent {
+                observed_micros: damage.observed_micros,
+                effect_id: self.runtime.team_luck.effect_id,
+                provider_actor_id: damage.provider_actor_id,
+                recipient_actor_id: damage.recipient_actor_id,
+                scope: DamageContributionScope::Component(
+                    "team-luck-critical-damage-reconstructed",
+                ),
+                numerator,
+                denominator,
+                observed_damage: damage.observed_damage,
+                included: true,
+                deferred_damage_context: Some(DeferredDamageContributionContext {
+                    event_sequence: damage.event_sequence,
+                    recipient_entity_uuid: damage.recipient_entity_uuid,
+                    affected_ability_id: damage.affected_ability_id,
+                    target_actor_id: damage.target_actor_id,
+                    target_entity_uuid: damage.target_entity_uuid,
+                }),
+            });
+        }
+        self.deferred_team_luck_critical_damage = retained;
+        output
     }
 
     /// Constructs an offline replay projector that evaluates the unpromoted
@@ -1672,7 +1846,12 @@ impl BpsrStateDamageContributionProjector {
         output: &mut Vec<ExactDamageContributionEvent>,
         rational_output: &mut Vec<ExactRationalDamageContributionEvent>,
     ) {
-        if let Some(learner) = self.live_remote_factor_learner.as_mut() {
+        let envelope_is_damage = matches!(
+            &envelope.event,
+            CanonicalEvent::Timeline(timeline)
+                if matches!(&timeline.kind, TimelineEventKind::Damage(_))
+        );
+        if !envelope_is_damage && let Some(learner) = self.live_remote_factor_learner.as_mut() {
             learner.observe(envelope);
         }
         let exact_output_start = output.len();
@@ -1746,10 +1925,24 @@ impl BpsrStateDamageContributionProjector {
                 state: RunState::Entered,
                 ..
             } => self.clear_run_state(),
+            TimelineEventKind::RunBoundary {
+                state: RunState::Ended | RunState::Completed | RunState::Failed | RunState::Exited,
+                ..
+            } => {
+                rational_output.extend(
+                    self.drain_ready_deferred_team_luck(envelope.time.observed_micros, true),
+                );
+                self.clear_run_state();
+            }
             TimelineEventKind::EncounterBoundary {
                 state: EncounterState::Wiped,
                 ..
-            } => self.clear_run_state(),
+            } => {
+                rational_output.extend(
+                    self.drain_ready_deferred_team_luck(envelope.time.observed_micros, true),
+                );
+                self.clear_run_state();
+            }
             TimelineEventKind::Actor(actor) => {
                 let actor_id = actor.actor.actor_id.0;
                 if matches!(
@@ -1789,7 +1982,6 @@ impl BpsrStateDamageContributionProjector {
                 envelope.time.observed_micros,
             ),
             TimelineEventKind::Damage(damage) => {
-                self.refresh_live_remote_critical_factor(envelope.time.observed_micros, damage);
                 self.actor_ancestry
                     .observe_damage(envelope.time.observed_micros, damage);
                 if let Some(ability) = damage.ability {
@@ -1799,6 +1991,9 @@ impl BpsrStateDamageContributionProjector {
                         .insert(ability.0);
                 }
                 if self.damage_has_unresolved_status_confounder(damage) {
+                    rational_output.extend(
+                        self.drain_ready_deferred_team_luck(envelope.time.observed_micros, false),
+                    );
                     self.last_target_vulnerability_audit = Some(TargetVulnerabilityAudit {
                         gate: "unresolved_status_confounder",
                         exact_candidate_count: 0,
@@ -1807,6 +2002,13 @@ impl BpsrStateDamageContributionProjector {
                     });
                     return;
                 }
+                if let Some(learner) = self.live_remote_factor_learner.as_mut() {
+                    learner.observe(envelope);
+                }
+                self.refresh_live_remote_critical_factor(envelope.time.observed_micros, damage);
+                rational_output.extend(
+                    self.drain_ready_deferred_team_luck(envelope.time.observed_micros, false),
+                );
                 let rule = state_rdps_catalog()
                     .expect("catalog was validated when the projector was built")
                     .rules
@@ -1995,6 +2197,10 @@ impl BpsrStateDamageContributionProjector {
                     if attack_contributions.is_empty() {
                         if let Some(later) = later_contribution {
                             rational_output.push(later);
+                        } else if let Some(candidate) =
+                            self.deferred_team_luck_critical_candidate(envelope, damage)
+                        {
+                            self.buffer_deferred_team_luck_critical_damage(candidate);
                         }
                     } else if let Some(later) = later_contribution {
                         if let Some(later_after_attack) =
@@ -6366,6 +6572,7 @@ impl BpsrStateDamageContributionProjector {
             self.live_remote_factor_learner = Some(BpsrRemoteFactorLearner::default());
             self.remote_factor_timeline = Some(BpsrRemoteFactorTimeline::default());
         }
+        self.deferred_team_luck_critical_damage.clear();
         self.current_wire = None;
         self.states.clear();
         self.staged_states.clear();
@@ -6777,6 +6984,15 @@ impl ExactDamageContributionProjector for BpsrStateDamageContributionProjector {
         rational_output: &mut Vec<ExactRationalDamageContributionEvent>,
     ) {
         self.observe_timeline(envelope, output, rational_output);
+    }
+
+    fn finish(
+        &mut self,
+        _output: &mut Vec<ExactDamageContributionEvent>,
+        rational_output: &mut Vec<ExactRationalDamageContributionEvent>,
+    ) {
+        rational_output
+            .extend(self.drain_ready_deferred_team_luck(self.latest_observed_micros, true));
     }
 }
 
@@ -7688,10 +7904,140 @@ mod tests {
             None,
             "live inference must not borrow a future or neighboring bucket"
         );
-        learner.retain_recent_buckets(
-            (bucket + REMOTE_FACTOR_NEAREST_BUCKET_LIMIT + 1) * REMOTE_FACTOR_BUCKET_MICROS,
+        assert!(
+            learner.groups.len() <= REMOTE_FACTOR_MAX_MECHANIC_GROUPS,
+            "run-level evidence remains hard-capped"
         );
-        assert!(learner.groups.is_empty(), "live evidence must age out");
+    }
+
+    #[test]
+    fn live_remote_factor_uses_stronger_support_across_trailing_window() {
+        let bucket = 17;
+        let mut learner = BpsrRemoteFactorLearner::default();
+        for candidate_bucket in [bucket - 3, bucket - 2, bucket - 1, bucket] {
+            learner.groups.insert(
+                RemoteFactorMechanicKey {
+                    actor_id: 2,
+                    bucket: candidate_bucket,
+                    direct_source_entity_uuid: None,
+                    target_entity_uuid: 99,
+                    ability_id: Some(2_031_102),
+                    hit_event_id: Some(3),
+                    damage_source: Some(1),
+                    damage_type: Some(1),
+                    blocked: Some(false),
+                    periodic: Some(false),
+                    owner_id: None,
+                    owner_level: None,
+                    owner_stage: None,
+                    damage_mode: None,
+                },
+                RemoteFactorOutcomeGroup {
+                    normal: BTreeMap::from([(10_000, 1)]),
+                    critical: BTreeMap::from([(18_520, 1)]),
+                    saturated: false,
+                },
+            );
+        }
+
+        assert_eq!(
+            learner.inferred_current_critical_damage_raw(2, bucket * REMOTE_FACTOR_BUCKET_MICROS,),
+            Some(8_520),
+            "four sparse exact intervals meet the stronger trailing-window threshold"
+        );
+    }
+
+    #[test]
+    fn deferred_live_team_luck_waits_for_full_evidence_horizon_and_keeps_hit_identity() {
+        let observed_micros = 10_000_000;
+        let evidence_micros = observed_micros + LIVE_REMOTE_FACTOR_EVIDENCE_HORIZON_MICROS;
+        let critical_damage_raw = 10_128;
+        let observed_damage = 46_908;
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        let mut timeline = BpsrRemoteFactorTimeline::default();
+        timeline.insert_critical_damage_raw(4, evidence_micros, critical_damage_raw);
+        projector.remote_factor_timeline = Some(timeline);
+        projector
+            .deferred_team_luck_critical_damage
+            .push_back(DeferredTeamLuckCriticalDamage {
+                observed_micros,
+                event_sequence: 77,
+                provider_actor_id: 2,
+                recipient_actor_id: 4,
+                recipient_entity_uuid: 404,
+                affected_ability_id: Some(88),
+                target_actor_id: 9,
+                target_entity_uuid: 909,
+                observed_damage,
+            });
+
+        assert!(
+            projector
+                .drain_ready_deferred_team_luck(evidence_micros - 1, false)
+                .is_empty()
+        );
+        assert_eq!(projector.deferred_team_luck_critical_damage.len(), 1);
+
+        let output = projector.drain_ready_deferred_team_luck(evidence_micros, false);
+        assert_eq!(output.len(), 1);
+        let contribution = output[0];
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            exact_team_luck_accounting_fraction(
+                observed_damage,
+                true,
+                false,
+                critical_damage_raw,
+                0,
+                runtime().team_luck.critical_raw_delta,
+                runtime().team_luck.lucky_raw_delta,
+                runtime().team_luck.combined_critical_lucky_enabled,
+                runtime().critical_damage_factor_interpretation,
+            )
+            .unwrap()
+        );
+        assert_eq!(contribution.observed_micros, observed_micros);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(
+            contribution.deferred_damage_context,
+            Some(DeferredDamageContributionContext {
+                event_sequence: 77,
+                recipient_entity_uuid: 404,
+                affected_ability_id: Some(88),
+                target_actor_id: 9,
+                target_entity_uuid: 909,
+            })
+        );
+    }
+
+    #[test]
+    fn deferred_live_team_luck_queue_is_strictly_bounded() {
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        for event_sequence in 1..=(LIVE_DEFERRED_TEAM_LUCK_LIMIT as u64 + 1) {
+            projector.buffer_deferred_team_luck_critical_damage(DeferredTeamLuckCriticalDamage {
+                observed_micros: event_sequence,
+                event_sequence,
+                provider_actor_id: 2,
+                recipient_actor_id: 4,
+                recipient_entity_uuid: 404,
+                affected_ability_id: Some(88),
+                target_actor_id: 9,
+                target_entity_uuid: 909,
+                observed_damage: 100,
+            });
+        }
+        assert_eq!(
+            projector.deferred_team_luck_critical_damage.len(),
+            LIVE_DEFERRED_TEAM_LUCK_LIMIT
+        );
+        assert_eq!(
+            projector
+                .deferred_team_luck_critical_damage
+                .front()
+                .map(|damage| damage.event_sequence),
+            Some(2)
+        );
     }
 
     #[test]

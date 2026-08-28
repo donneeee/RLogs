@@ -186,6 +186,14 @@ pub trait ExactDamageContributionProjector: std::fmt::Debug + Send {
         output: &mut Vec<ExactDamageContributionEvent>,
         rational_output: &mut Vec<ExactRationalDamageContributionEvent>,
     );
+    /// Emits contributions whose bounded evidence became conclusive only at
+    /// replay/session finalization. Immediate-only projectors need no action.
+    fn finish(
+        &mut self,
+        _output: &mut Vec<ExactDamageContributionEvent>,
+        _rational_output: &mut Vec<ExactRationalDamageContributionEvent>,
+    ) {
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
