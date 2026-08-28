@@ -6799,8 +6799,8 @@ mod tests {
         assert!(unreported_critical_rule.runtime_eligible);
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
-            vec![55_228, 2_110_143, 3_003_052],
-            "the exact packet-pair vulnerability, dormant Functional Amp component, and class-scoped Harmony proportional rule are production promoted"
+            vec![55_228, 2_110_140, 2_110_143, 3_003_052],
+            "the exact packet-pair vulnerability, observed Mechanical Power component, dormant Functional Amp component, and class-scoped Harmony proportional rule are production promoted"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -7143,7 +7143,7 @@ mod tests {
         );
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
-            vec![55_228, 2_110_143, 3_003_052]
+            vec![55_228, 2_110_140, 2_110_143, 3_003_052]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
         assert_eq!(
@@ -8300,6 +8300,14 @@ mod tests {
         assert_eq!(
             production.runtime.mechanical_power.recipient_rules[0].primary_percent_raw_delta,
             1_500
+        );
+        assert_eq!(
+            production
+                .runtime
+                .mechanical_power
+                .production_primary_percent_raw_delta(11),
+            Some(750),
+            "production must use only the exact packet-observed tier-0 transition"
         );
 
         let candidate =

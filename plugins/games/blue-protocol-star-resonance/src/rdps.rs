@@ -359,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn mechanical_power_is_retained_for_scoped_replay_without_production_credit() {
+    fn mechanical_power_uses_the_scoped_state_runtime_not_the_review_catalog() {
         assert_eq!(
             classify_rdps_effect(2_110_140).unwrap(),
             RdpsEffectLookup::RetainedMappedUnclassified {
@@ -368,10 +368,10 @@ mod tests {
         );
         assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
         assert!(
-            !crate::proven_state_damage_contribution_effect_ids()
+            crate::proven_state_damage_contribution_effect_ids()
                 .unwrap()
                 .contains(&2_110_140),
-            "the class/tier candidate remains replayable but cannot supply provider credit before operation-order and integer proof"
+            "only the observed class-11 +750 proportional component is production enabled; other tiers, classes, haste, and overlaps remain uncredited"
         );
     }
 

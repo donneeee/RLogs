@@ -1,5 +1,5 @@
 {
-  "schema_version": 13,
+  "schema_version": 14,
   "deployment_id": "global",
   "game_build": "24687926",
   "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
@@ -116,13 +116,14 @@
     "damage_stage_operation_order_authority": false,
     "damage_stage_integer_rounding_authority": false,
     "class_11_tier_0_current_pack_lifecycle_authority": true,
-    "class_11_tier_0_exact_rational_attribution_authority": false,
+    "class_11_tier_0_exact_rational_attribution_authority": true,
+    "accounting_method": "observed-final-damage-proportional-stage-share",
     "server_integer_counterfactual_authority": false,
     "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
     "unresolved_overlap_fails_closed": true,
-    "runtime_transfer_enabled": false,
-    "runtime_recipient_class_ids": [],
-    "runtime_primary_percent_raw_deltas": []
+    "runtime_transfer_enabled": true,
+    "runtime_recipient_class_ids": [11],
+    "runtime_primary_percent_raw_deltas": [750]
   },
   "harmony_grace": {
     "effect_id": 3003052,

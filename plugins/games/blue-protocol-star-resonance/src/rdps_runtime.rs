@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 13;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 14;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -221,6 +221,10 @@ pub(crate) struct MechanicalPowerRuntimeConfig {
     /// the exact packet-proven primary -> Attack stage body. This deliberately
     /// does not claim the server's hidden counterfactual integer boundary.
     pub class_11_tier_0_exact_rational_attribution_authority: bool,
+    /// The observed-final-damage rDPS accounting policy used for the exact
+    /// class-11 +750 transition. This remains distinct from any claim about
+    /// the hidden server implementation.
+    accounting_method: String,
     pub server_integer_counterfactual_authority: bool,
     rational_integer_projection: String,
     pub unresolved_overlap_fails_closed: bool,
@@ -668,9 +672,10 @@ impl RdpsRuntimeConfig {
         let mechanical_runtime_authority = mechanical
             .class_11_tier_0_current_pack_lifecycle_authority
             && mechanical.class_11_tier_0_exact_rational_attribution_authority
-            && mechanical.damage_stage_operation_order_authority
-            && mechanical.damage_stage_integer_rounding_authority
-            && mechanical.server_integer_counterfactual_authority
+            && mechanical.accounting_method == "observed-final-damage-proportional-stage-share"
+            && !mechanical.damage_stage_operation_order_authority
+            && !mechanical.damage_stage_integer_rounding_authority
+            && !mechanical.server_integer_counterfactual_authority
             && mechanical.rational_integer_projection
                 == "sum-exact-then-half-up-per-effect-provider-recipient"
             && mechanical.unresolved_overlap_fails_closed;
@@ -1295,20 +1300,24 @@ mod tests {
     }
 
     #[test]
-    fn mechanical_power_requires_operation_order_and_integer_proof_for_runtime() {
+    fn mechanical_power_uses_only_the_observed_class_11_proportional_component() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
-        assert!(!current.mechanical_power.runtime_transfer_enabled);
+        assert!(current.mechanical_power.runtime_transfer_enabled);
         assert!(
             current
                 .mechanical_power
                 .class_11_tier_0_current_pack_lifecycle_authority
         );
         assert!(
-            !current
+            current
                 .mechanical_power
                 .class_11_tier_0_exact_rational_attribution_authority
+        );
+        assert_eq!(
+            current.mechanical_power.accounting_method,
+            "observed-final-damage-proportional-stage-share"
         );
         assert!(
             !current
@@ -1326,23 +1335,16 @@ mod tests {
                 .server_integer_counterfactual_authority
         );
         assert!(current.mechanical_power.unresolved_overlap_fails_closed);
-        assert!(
-            current
-                .mechanical_power
-                .runtime_recipient_class_ids
-                .is_empty()
-        );
-        assert!(
-            current
-                .mechanical_power
-                .runtime_primary_percent_raw_deltas
-                .is_empty()
+        assert_eq!(current.mechanical_power.runtime_recipient_class_ids, [11]);
+        assert_eq!(
+            current.mechanical_power.runtime_primary_percent_raw_deltas,
+            [750]
         );
         assert_eq!(
             current
                 .mechanical_power
                 .production_primary_percent_raw_delta(11),
-            None
+            Some(750)
         );
         assert_eq!(
             current
@@ -1350,36 +1352,40 @@ mod tests {
                 .production_primary_percent_raw_delta(9),
             None
         );
-        assert!(!current.effect_runtime_transfer_enabled(current.mechanical_power.effect_id));
+        assert!(current.effect_runtime_transfer_enabled(current.mechanical_power.effect_id));
 
-        let mut premature_transfer = base.clone();
-        premature_transfer["mechanical_power"]["runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
-        premature_transfer["mechanical_power"]["runtime_recipient_class_ids"] =
-            serde_json::json!([11]);
-        premature_transfer["mechanical_power"]["runtime_primary_percent_raw_deltas"] =
-            serde_json::json!([750]);
+        let mut missing_rational_authority = base.clone();
+        missing_rational_authority["mechanical_power"]["class_11_tier_0_exact_rational_attribution_authority"] =
+            serde_json::Value::Bool(false);
         assert!(
-            runtime_from_value(premature_transfer.clone())
+            runtime_from_value(missing_rational_authority)
                 .validate()
                 .is_err(),
-            "packet lifecycle and a candidate marginal do not prove the damage operator",
+            "runtime transfer requires the exact observed-damage stage-share proof",
         );
 
-        let mut complete_proof_contract = premature_transfer;
-        complete_proof_contract["mechanical_power"]["class_11_tier_0_exact_rational_attribution_authority"] =
-            serde_json::Value::Bool(true);
-        complete_proof_contract["mechanical_power"]["damage_stage_operation_order_authority"] =
-            serde_json::Value::Bool(true);
-        complete_proof_contract["mechanical_power"]["damage_stage_integer_rounding_authority"] =
-            serde_json::Value::Bool(true);
-        complete_proof_contract["mechanical_power"]["server_integer_counterfactual_authority"] =
-            serde_json::Value::Bool(true);
+        let mut wrong_accounting_method = base.clone();
+        wrong_accounting_method["mechanical_power"]["accounting_method"] =
+            serde_json::Value::String("server-counterfactual-guess".into());
         assert!(
-            runtime_from_value(complete_proof_contract)
+            runtime_from_value(wrong_accounting_method)
                 .validate()
-                .is_ok()
+                .is_err()
         );
+
+        for field in [
+            "damage_stage_operation_order_authority",
+            "damage_stage_integer_rounding_authority",
+            "server_integer_counterfactual_authority",
+        ] {
+            let mut invented_server_authority = base.clone();
+            invented_server_authority["mechanical_power"][field] = serde_json::Value::Bool(true);
+            assert!(
+                runtime_from_value(invented_server_authority)
+                    .validate()
+                    .is_err()
+            );
+        }
 
         let mut wrong_projection = base.clone();
         wrong_projection["mechanical_power"]["rational_integer_projection"] =
@@ -1392,6 +1398,8 @@ mod tests {
         assert!(runtime_from_value(guessed_overlap).validate().is_err());
 
         let mut disabled_with_scope = base;
+        disabled_with_scope["mechanical_power"]["runtime_transfer_enabled"] =
+            serde_json::Value::Bool(false);
         disabled_with_scope["mechanical_power"]["runtime_recipient_class_ids"] =
             serde_json::json!([11]);
         assert!(runtime_from_value(disabled_with_scope).validate().is_err());
