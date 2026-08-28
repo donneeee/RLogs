@@ -492,6 +492,48 @@ pub fn exact_external_lucky_chance_fraction(
     reduce_positive_fraction(numerator, i128::from(current_lucky_chance_raw))
 }
 
+/// Returns one exact, non-overlapping provider share for a non-critical Lucky
+/// row when the same provider increases both its occurrence chance and its
+/// complete Lucky-DMG multiplier.
+///
+/// For current chance `C`, provider chance `dC`, current multiplier `M`, and
+/// provider multiplier `dM`, the active expected Lucky component is `C*M` and
+/// the provider-removed component is `(C-dC)*(M-dM)`. Subtracting those
+/// composites before applying the observed packet value assigns their shared
+/// cross-term once. Recipient-owned talent, passive, and Imagine terms remain
+/// inside both multiplier states and are therefore preserved.
+pub fn exact_external_lucky_chance_and_damage_fraction(
+    observed_damage: i64,
+    current_lucky_chance_raw: i64,
+    provider_lucky_chance_raw_delta: i64,
+    current_lucky_damage_raw: i64,
+    provider_lucky_damage_raw_delta: i64,
+) -> Option<(i128, i128)> {
+    if observed_damage <= 0
+        || current_lucky_chance_raw <= 0
+        || provider_lucky_chance_raw_delta <= 0
+        || provider_lucky_chance_raw_delta > current_lucky_chance_raw
+        || current_lucky_damage_raw <= 0
+        || provider_lucky_damage_raw_delta <= 0
+        || provider_lucky_damage_raw_delta >= current_lucky_damage_raw
+    {
+        return None;
+    }
+    let active_composite =
+        i128::from(current_lucky_chance_raw).checked_mul(i128::from(current_lucky_damage_raw))?;
+    let provider_removed_composite =
+        i128::from(current_lucky_chance_raw.checked_sub(provider_lucky_chance_raw_delta)?)
+            .checked_mul(i128::from(
+                current_lucky_damage_raw.checked_sub(provider_lucky_damage_raw_delta)?,
+            ))?;
+    let provider_marginal = active_composite.checked_sub(provider_removed_composite)?;
+    if provider_marginal <= 0 {
+        return None;
+    }
+    let numerator = i128::from(observed_damage).checked_mul(provider_marginal)?;
+    reduce_positive_fraction(numerator, active_composite)
+}
+
 /// Returns one exact, non-overlapping provider share for a packet Lucky
 /// component which also received the critical outcome flag.
 ///
@@ -1301,6 +1343,19 @@ mod tests {
         assert_eq!(
             exact_external_lucky_chance_fraction(9_000, 1_500, 300),
             Some((1_800, 1))
+        );
+        assert_eq!(
+            exact_external_lucky_chance_and_damage_fraction(9_000, 650, 150, 4_162, 37),
+            Some((57_852_000, 27_053))
+        );
+        assert_eq!(
+            exact_external_lucky_chance_and_damage_fraction(9_000, 650, 150, 4_502, 37),
+            Some((62_442_000, 29_263)),
+            "recipient-owned Lucky-DMG terms remain in both counterfactual states"
+        );
+        assert_eq!(
+            exact_external_lucky_chance_and_damage_fraction(9_000, 650, 651, 4_162, 37),
+            None
         );
         assert_eq!(
             exact_external_combined_critical_lucky_chance_fraction(

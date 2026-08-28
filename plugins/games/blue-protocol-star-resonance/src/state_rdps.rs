@@ -36,9 +36,10 @@ use crate::{
     exact_external_attack_ordered_stage_fraction,
     exact_external_combined_critical_lucky_chance_fraction,
     exact_external_critical_chance_and_damage_fraction, exact_external_critical_chance_fraction,
-    exact_external_critical_damage_fraction, exact_external_lucky_chance_fraction,
-    exact_external_lucky_damage_fraction, linear_state_scaled_damage_marginal,
-    packet_attribute_family_provider_marginal, packet_attribute_family_value,
+    exact_external_critical_damage_fraction, exact_external_lucky_chance_and_damage_fraction,
+    exact_external_lucky_chance_fraction, exact_external_lucky_damage_fraction,
+    linear_state_scaled_damage_marginal, packet_attribute_family_provider_marginal,
+    packet_attribute_family_value,
     rdps_runtime::{
         AttackFamilyRuntimeConfig, AttributeFamilyRounding, InspirationVectorRuntimeConfig,
         PrimaryAttackLane, PrimaryStatRecipientRule, RdpsRuntimeConfig,
@@ -52,7 +53,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v11";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v12";
 
 static STATE_RDPS_FORMULA_IDENTITY: OnceLock<String> = OnceLock::new();
 
@@ -4866,7 +4867,14 @@ impl BpsrStateDamageContributionProjector {
         let state_has_required_chance_inputs = |state: &ActorHpState| {
             (!critical
                 || (state.critical_chance_raw.is_some() && state.critical_damage_raw.is_some()))
-                && (!lucky || state.lucky_chance_raw.is_some())
+                && (!lucky
+                    || (state.lucky_chance_raw.is_some()
+                        && (!self
+                            .runtime
+                            .inspiration
+                            .base_lucky_damage_dependency_runtime_transfer_enabled
+                            || self.inspiration_candidate_audit_enabled
+                            || state.lucky_damage_raw.is_some())))
         };
         let exact_state_for_actor = |actor_id: u64| {
             self.staged_states
@@ -4900,7 +4908,7 @@ impl BpsrStateDamageContributionProjector {
             provider_actor_id,
             provider_chance_raw_delta,
             mut provider_critical_damage_raw_delta,
-            provider_lucky_damage_raw_delta,
+            mut provider_lucky_damage_raw_delta,
         ) = if self.inspiration_candidate_audit_enabled {
             if state.inspiration_providers.len() != 1 {
                 return Err(if state.inspiration_providers.is_empty() {
@@ -4949,6 +4957,25 @@ impl BpsrStateDamageContributionProjector {
                     .ok_or("recipient_dependency_delta_unproven")?,
             );
         }
+        if !self.inspiration_candidate_audit_enabled
+            && !critical
+            && lucky
+            && self
+                .runtime
+                .inspiration
+                .base_lucky_damage_dependency_runtime_transfer_enabled
+        {
+            provider_lucky_damage_raw_delta = Some(
+                self.runtime
+                    .inspiration
+                    .base_lucky_damage_dependency
+                    .lucky_damage_raw_delta(
+                        state.lucky_chance_raw.ok_or("lucky_chance_state_missing")?,
+                        provider_chance_raw_delta,
+                    )
+                    .ok_or("base_lucky_damage_dependency_delta_unproven")?,
+            );
+        }
         if provider_actor_id == recipient_actor_id
             || self.actor_ancestry.entity_for_actor(provider_actor_id)
                 == Some(damage.source.entity_uuid.0)
@@ -4962,10 +4989,18 @@ impl BpsrStateDamageContributionProjector {
             .runtime
             .inspiration
             .recipient_dependency_runtime_transfer_enabled
-            && (provider_critical_damage_raw_delta.is_some()
-                || provider_lucky_damage_raw_delta.is_some())
+            && provider_critical_damage_raw_delta.is_some()
         {
             return Err("recipient_dependency_runtime_transfer_disabled");
+        }
+        if !self.inspiration_candidate_audit_enabled
+            && !self
+                .runtime
+                .inspiration
+                .base_lucky_damage_dependency_runtime_transfer_enabled
+            && provider_lucky_damage_raw_delta.is_some()
+        {
+            return Err("base_lucky_damage_dependency_runtime_transfer_disabled");
         }
         let (numerator, denominator) = exact_inspiration_occurrence_fraction(
             damage.amount,
@@ -4980,6 +5015,7 @@ impl BpsrStateDamageContributionProjector {
                 .critical_damage_raw
                 .ok_or("critical_damage_state_missing")?,
             provider_critical_damage_raw_delta,
+            state.lucky_damage_raw,
             provider_lucky_damage_raw_delta,
             self.runtime.critical_damage_factor_interpretation,
         )
@@ -4989,18 +5025,28 @@ impl BpsrStateDamageContributionProjector {
             effect_id: self.runtime.inspiration.effect_id,
             provider_actor_id,
             recipient_actor_id,
-            scope: match (critical, lucky, provider_critical_damage_raw_delta) {
-                (true, false, Some(_)) => DamageContributionScope::Component(
+            scope: match (
+                critical,
+                lucky,
+                provider_critical_damage_raw_delta,
+                provider_lucky_damage_raw_delta,
+            ) {
+                (true, false, Some(_), _) => DamageContributionScope::Component(
                     "inspiration-critical-chance-and-recipient-conversion",
                 ),
-                (true, false, None) => {
+                (true, false, None, _) => {
                     DamageContributionScope::Component("inspiration-critical-chance")
                 }
-                (false, true, _) => DamageContributionScope::Component("inspiration-lucky-chance"),
-                (true, true, _) => {
+                (false, true, _, Some(_)) => DamageContributionScope::Component(
+                    "inspiration-lucky-chance-and-base-lucky-damage",
+                ),
+                (false, true, _, None) => {
+                    DamageContributionScope::Component("inspiration-lucky-chance")
+                }
+                (true, true, _, _) => {
                     DamageContributionScope::Component("inspiration-critical-lucky-chance")
                 }
-                (false, false, _) => unreachable!("an Inspiration occurrence is required"),
+                (false, false, _, _) => unreachable!("an Inspiration occurrence is required"),
             },
             numerator,
             denominator,
@@ -6957,6 +7003,7 @@ fn exact_inspiration_occurrence_fraction(
     provider_chance_raw_delta: i64,
     current_critical_damage_raw: i64,
     provider_critical_damage_raw_delta: Option<i64>,
+    current_lucky_damage_raw: Option<i64>,
     provider_lucky_damage_raw_delta: Option<i64>,
     critical_damage_factor_interpretation: CriticalDamageFactorInterpretation,
 ) -> Option<(i128, i128)> {
@@ -6985,6 +7032,13 @@ fn exact_inspiration_occurrence_fraction(
                 provider_chance_raw_delta,
             )
         }
+        (false, true) => exact_external_lucky_chance_and_damage_fraction(
+            observed_damage,
+            current_lucky_chance_raw,
+            provider_chance_raw_delta,
+            current_lucky_damage_raw?,
+            provider_lucky_damage_raw_delta?,
+        ),
         (true, true)
             if provider_critical_damage_raw_delta.is_none()
                 && provider_lucky_damage_raw_delta.is_none() =>
@@ -6999,10 +7053,10 @@ fn exact_inspiration_occurrence_fraction(
                 critical_damage_factor_interpretation,
             )
         }
-        // Lucky-DMG dependency and combined Critical+Lucky dependency order
-        // require their own exact joint formula. Retain the observed damage and
-        // emit no partial provider credit until those paths are proven.
-        (false, true) | (true, true) => None,
+        // Combined Critical+Lucky dependency order requires its own exact
+        // joint formula. Retain the observed damage and emit no partial
+        // provider credit until that path is proven.
+        (true, true) => None,
         (false, false) => None,
     }
 }
@@ -7308,6 +7362,7 @@ mod tests {
                 800,
                 300,
                 10_128,
+                None,
                 None,
                 None,
                 interpretation,
@@ -9651,6 +9706,7 @@ mod tests {
                 critical_damage,
                 None,
                 None,
+                None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
             exact_external_critical_chance_fraction(
@@ -9672,9 +9728,33 @@ mod tests {
                 critical_damage,
                 None,
                 None,
+                None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
             exact_external_lucky_chance_fraction(observed_damage, lucky_chance, provider_delta,)
+        );
+        assert_eq!(
+            exact_inspiration_occurrence_fraction(
+                observed_damage,
+                false,
+                true,
+                critical_chance,
+                lucky_chance,
+                provider_delta,
+                critical_damage,
+                None,
+                Some(4_200),
+                Some(75),
+                CriticalDamageFactorInterpretation::AdditiveBonus,
+            ),
+            exact_external_lucky_chance_and_damage_fraction(
+                observed_damage,
+                lucky_chance,
+                provider_delta,
+                4_200,
+                75,
+            ),
+            "base Luck conversion must compose chance and Lucky-DMG as one marginal",
         );
         assert_eq!(
             exact_inspiration_occurrence_fraction(
@@ -9685,6 +9765,7 @@ mod tests {
                 lucky_chance,
                 provider_delta,
                 critical_damage,
+                None,
                 None,
                 None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
@@ -9710,6 +9791,7 @@ mod tests {
                 critical_damage,
                 None,
                 None,
+                None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
             None
@@ -9724,6 +9806,7 @@ mod tests {
                 provider_delta,
                 critical_damage,
                 Some(600),
+                None,
                 None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
@@ -9777,6 +9860,7 @@ mod tests {
                     critical_chance_raw: Some(7_416),
                     lucky_chance_raw: Some(800),
                     critical_damage_raw: Some(15_000),
+                    lucky_damage_raw: Some(4_200),
                     inspiration_providers: BTreeMap::from([(2, provider)]),
                     ..ActorHpState::default()
                 },
@@ -9804,7 +9888,12 @@ mod tests {
             .expect("the exact Lucky-only component is live");
         assert_eq!(
             lucky_contribution.scope,
-            DamageContributionScope::Component("inspiration-lucky-chance")
+            DamageContributionScope::Component("inspiration-lucky-chance-and-base-lucky-damage")
+        );
+        assert_eq!(
+            (lucky_contribution.numerator, lucky_contribution.denominator),
+            exact_external_lucky_chance_and_damage_fraction(lucky.amount, 800, 150, 4_200, 38,)
+                .unwrap()
         );
 
         let mut combined = critical.clone();

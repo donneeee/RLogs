@@ -601,6 +601,100 @@ impl InspirationRecipientDependencyRuntimeConfig {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InspirationBaseLuckyDamageReplayRuntimeConfig {
+    pub content_sha256: String,
+    pub content_bytes: u64,
+    pub exact_build_rlogs: u32,
+    pub total_canonical_events: u64,
+    pub emitted_contribution_events: u64,
+    pub sessions_with_emissions: u32,
+    pub dependency_affected_sessions: u32,
+    pub projected_credit: u64,
+    pub dependency_increment: u64,
+    pub all_runtime_target_match: bool,
+    pub all_conserved: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InspirationBaseLuckyDamageDependencyRuntimeConfig {
+    pub lucky_chance_attribute_id: i32,
+    pub lucky_damage_attribute_id: i32,
+    pub chance_to_lucky_damage_numerator: i64,
+    pub chance_to_lucky_damage_denominator: i64,
+    pub rounding: String,
+    pub exact_build_game_file_semantic_authority: bool,
+    pub exact_build_packet_formula_authority: bool,
+    pub proof_content_sha256: String,
+    pub proof_content_bytes: u64,
+    pub proof_exact_build_rlogs: u32,
+    pub packet_lucky_damage_updates_evaluated: u32,
+    pub informative_additive_strata: u32,
+    pub informative_strata_observations: u32,
+    pub exact_marginal_comparisons: u32,
+    pub marginal_mismatches: u32,
+    pub replay: InspirationBaseLuckyDamageReplayRuntimeConfig,
+}
+
+impl InspirationBaseLuckyDamageDependencyRuntimeConfig {
+    fn is_current_authority(&self) -> bool {
+        self.lucky_chance_attribute_id == 11_780
+            && self.lucky_damage_attribute_id == 12_530
+            && self.chance_to_lucky_damage_numerator == 1
+            && self.chance_to_lucky_damage_denominator == 4
+            && self.rounding == "mathematical_floor"
+            && self.exact_build_game_file_semantic_authority
+            && self.exact_build_packet_formula_authority
+            && self.proof_content_sha256
+                == "da51a9c254ed4acb23844c2ae445b70d0742c1f54d066d59894b7af422dab63e"
+            && self.proof_content_bytes == 12_177
+            && self.proof_exact_build_rlogs == 26
+            && self.packet_lucky_damage_updates_evaluated == 348
+            && self.informative_additive_strata == 2
+            && self.informative_strata_observations == 278
+            && self.exact_marginal_comparisons == 11
+            && self.marginal_mismatches == 0
+            && self.replay.content_sha256
+                == "f4243f9f877f998980f2cccddb63569b73622e64d1197aa4bdadbf5ce1d3168d"
+            && self.replay.content_bytes == 134_022_165
+            && self.replay.exact_build_rlogs == 26
+            && self.replay.total_canonical_events == 6_411_565
+            && self.replay.emitted_contribution_events == 13_618
+            && self.replay.sessions_with_emissions == 6
+            && self.replay.dependency_affected_sessions == 5
+            && self.replay.projected_credit == 40_570_593
+            && self.replay.dependency_increment == 1_115
+            && self.replay.all_runtime_target_match
+            && self.replay.all_conserved
+    }
+
+    pub(crate) fn lucky_damage_raw_delta(
+        &self,
+        current_lucky_chance_raw: i64,
+        provider_lucky_chance_raw_delta: i64,
+    ) -> Option<i64> {
+        if current_lucky_chance_raw <= 0
+            || provider_lucky_chance_raw_delta <= 0
+            || provider_lucky_chance_raw_delta > current_lucky_chance_raw
+        {
+            return None;
+        }
+        let provider_removed_chance =
+            current_lucky_chance_raw.checked_sub(provider_lucky_chance_raw_delta)?;
+        let active = current_lucky_chance_raw
+            .checked_mul(self.chance_to_lucky_damage_numerator)?
+            .div_euclid(self.chance_to_lucky_damage_denominator);
+        let provider_removed = provider_removed_chance
+            .checked_mul(self.chance_to_lucky_damage_numerator)?
+            .div_euclid(self.chance_to_lucky_damage_denominator);
+        active
+            .checked_sub(provider_removed)
+            .filter(|delta| *delta > 0)
+    }
+}
+
 impl InspirationChanceProofRuntimeConfig {
     fn is_current_authority(&self) -> bool {
         self.content_sha256 == "924f8945ca37963e0726358d7385d7e1ffe19e8caeba15b40d5ba644885aba26"
@@ -665,12 +759,16 @@ pub(crate) struct InspirationRuntimeConfig {
     pub chance_replay: InspirationChanceReplayRuntimeConfig,
     pub chance_magnitudes: Vec<InspirationChanceMagnitudeRuntimeConfig>,
     pub recipient_dependency: InspirationRecipientDependencyRuntimeConfig,
+    pub base_lucky_damage_dependency: InspirationBaseLuckyDamageDependencyRuntimeConfig,
     pub critical_chance_runtime_transfer_enabled: bool,
     pub lucky_chance_runtime_transfer_enabled: bool,
     pub combined_critical_lucky_runtime_transfer_enabled: bool,
     /// Independent gate for recipient talent/passive/Imagine conversions
     /// observed as downstream Crit-DMG or Lucky-DMG packet transitions.
     pub recipient_dependency_runtime_transfer_enabled: bool,
+    /// Independent gate for the universal base Luck -> Lucky-DMG stage. Class,
+    /// talent, and Imagine-specific terms remain separate dependency rules.
+    pub base_lucky_damage_dependency_runtime_transfer_enabled: bool,
     /// Base Attack/Mastery/External/Property/Haste composition remains a
     /// separate frontier from the proven chance component.
     pub runtime_transfer_enabled: bool,
@@ -1287,6 +1385,20 @@ impl RdpsRuntimeConfig {
             || (inspiration.recipient_dependency_runtime_transfer_enabled
                 && (!inspiration_critical_runtime_authority
                     || !inspiration.recipient_dependency.is_current_authority()))
+            || (inspiration.base_lucky_damage_dependency_runtime_transfer_enabled
+                && (!inspiration_chance_shared_runtime_authority
+                    || !inspiration.lucky_chance_runtime_transfer_enabled
+                    || inspiration
+                        .base_lucky_damage_dependency
+                        .lucky_chance_attribute_id
+                        != inspiration.lucky_chance_attribute_id
+                    || inspiration
+                        .base_lucky_damage_dependency
+                        .lucky_damage_attribute_id
+                        != self.team_luck.lucky_damage_attribute_id
+                    || !inspiration
+                        .base_lucky_damage_dependency
+                        .is_current_authority()))
             || (inspiration.critical_chance_runtime_transfer_enabled
                 && (!inspiration_critical_runtime_authority
                     || !inspiration_chance_magnitudes_are_current_authority))
@@ -1600,6 +1712,13 @@ mod tests {
     fn promotion_blockers_are_known_unique_and_match_runtime_authority() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
+        assert!(
+            current
+                .inspiration
+                .base_lucky_damage_dependency
+                .is_current_authority(),
+            "the sealed base Luck dependency receipt must validate"
+        );
         assert!(current.validate().is_ok());
         assert_eq!(
             current.promotion_blockers(),
@@ -1842,6 +1961,32 @@ mod tests {
                 .recipient_dependency
                 .is_current_authority()
         );
+        assert!(
+            current
+                .inspiration
+                .base_lucky_damage_dependency_runtime_transfer_enabled
+        );
+        assert!(
+            current
+                .inspiration
+                .base_lucky_damage_dependency
+                .is_current_authority()
+        );
+        assert_eq!(
+            current
+                .inspiration
+                .base_lucky_damage_dependency
+                .lucky_damage_raw_delta(650, 150),
+            Some(37)
+        );
+        assert_eq!(
+            current
+                .inspiration
+                .base_lucky_damage_dependency
+                .lucky_damage_raw_delta(800, 150),
+            Some(38),
+            "integer floor remainder belongs to the recipient's exact current Luck state"
+        );
         assert!(!current.inspiration.runtime_transfer_enabled);
         assert!(current.inspiration.chance_proof.is_current_authority());
         assert!(current.inspiration.chance_replay.is_current_authority());
@@ -1874,7 +2019,7 @@ mod tests {
             serde_json::Value::Bool(true);
         assert!(runtime_from_value(guessed_combined).validate().is_err());
 
-        let mut guessed_dependency = base;
+        let mut guessed_dependency = base.clone();
         guessed_dependency["inspiration"]["recipient_dependency"]["proof_content_sha256"] =
             serde_json::Value::String("unreviewed".into());
         assert!(runtime_from_value(guessed_dependency).validate().is_err());
@@ -1884,6 +2029,24 @@ mod tests {
             serde_json::json!(7_546_367);
         assert!(
             runtime_from_value(altered_dependency_replay)
+                .validate()
+                .is_err()
+        );
+
+        let mut altered_base_luck_proof = base.clone();
+        altered_base_luck_proof["inspiration"]["base_lucky_damage_dependency"]["exact_marginal_comparisons"] =
+            serde_json::json!(10);
+        assert!(
+            runtime_from_value(altered_base_luck_proof)
+                .validate()
+                .is_err()
+        );
+
+        let mut altered_base_luck_replay = base;
+        altered_base_luck_replay["inspiration"]["base_lucky_damage_dependency"]["replay"]["dependency_increment"] =
+            serde_json::json!(1_114);
+        assert!(
+            runtime_from_value(altered_base_luck_replay)
                 .validate()
                 .is_err()
         );

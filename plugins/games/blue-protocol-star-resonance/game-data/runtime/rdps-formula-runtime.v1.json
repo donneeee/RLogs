@@ -468,10 +468,41 @@
         "all_conserved": true
       }
     },
+    "base_lucky_damage_dependency": {
+      "lucky_chance_attribute_id": 11780,
+      "lucky_damage_attribute_id": 12530,
+      "chance_to_lucky_damage_numerator": 1,
+      "chance_to_lucky_damage_denominator": 4,
+      "rounding": "mathematical_floor",
+      "exact_build_game_file_semantic_authority": true,
+      "exact_build_packet_formula_authority": true,
+      "proof_content_sha256": "da51a9c254ed4acb23844c2ae445b70d0742c1f54d066d59894b7af422dab63e",
+      "proof_content_bytes": 12177,
+      "proof_exact_build_rlogs": 26,
+      "packet_lucky_damage_updates_evaluated": 348,
+      "informative_additive_strata": 2,
+      "informative_strata_observations": 278,
+      "exact_marginal_comparisons": 11,
+      "marginal_mismatches": 0,
+      "replay": {
+        "content_sha256": "f4243f9f877f998980f2cccddb63569b73622e64d1197aa4bdadbf5ce1d3168d",
+        "content_bytes": 134022165,
+        "exact_build_rlogs": 26,
+        "total_canonical_events": 6411565,
+        "emitted_contribution_events": 13618,
+        "sessions_with_emissions": 6,
+        "dependency_affected_sessions": 5,
+        "projected_credit": 40570593,
+        "dependency_increment": 1115,
+        "all_runtime_target_match": true,
+        "all_conserved": true
+      }
+    },
     "critical_chance_runtime_transfer_enabled": true,
     "lucky_chance_runtime_transfer_enabled": true,
     "combined_critical_lucky_runtime_transfer_enabled": false,
     "recipient_dependency_runtime_transfer_enabled": true,
+    "base_lucky_damage_dependency_runtime_transfer_enabled": true,
     "runtime_transfer_enabled": false
   },
   "highland_blood": {
