@@ -14,7 +14,7 @@ use serde::Deserialize;
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 11;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 12;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -258,6 +258,11 @@ pub(crate) struct HarmonyGraceRuntimeConfig {
     /// the exact packet-proven Attack-stage body. This is deliberately not a
     /// claim about the server's hidden counterfactual integer boundary.
     pub class_11_exact_rational_attribution_authority: bool,
+    /// Names the rDPS accounting contract independently from the server's
+    /// hidden per-hit counterfactual implementation. The observed final
+    /// damage remains authoritative and the provider owns only its adjacent,
+    /// packet-proven stage marginal.
+    accounting_method: String,
     pub server_integer_counterfactual_authority: bool,
     rational_integer_projection: String,
     pub unresolved_overlap_fails_closed: bool,
@@ -717,7 +722,8 @@ impl RdpsRuntimeConfig {
         let harmony = &self.harmony_grace;
         let harmony_runtime_authority = harmony.class_11_current_pack_lifecycle_authority
             && harmony.class_11_exact_rational_attribution_authority
-            && harmony.server_integer_counterfactual_authority
+            && harmony.accounting_method == "observed-final-damage-proportional-stage-share"
+            && !harmony.server_integer_counterfactual_authority
             && harmony.rational_integer_projection
                 == "sum-exact-then-half-up-per-effect-provider-recipient"
             && harmony.unresolved_overlap_fails_closed;
@@ -1239,7 +1245,7 @@ mod tests {
             "the independently promoted target-vulnerability rule keeps the partial runtime active"
         );
         assert!(!current.effect_runtime_transfer_enabled(current.functional_amp.effect_id));
-        assert!(!current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
+        assert!(current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
 
         let mut transfer_without_current_build_replay = base.clone();
         transfer_without_current_build_replay["functional_amp"]["attack_magic_runtime_transfer_enabled"] =
@@ -1380,20 +1386,33 @@ mod tests {
     }
 
     #[test]
-    fn harmony_grace_requires_corrected_formula_and_integer_proof_for_runtime() {
+    fn harmony_grace_uses_the_corrected_proportional_accounting_contract() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
         assert!(!current.runtime_promotion_allowed());
-        assert!(!current.harmony_grace.runtime_transfer_enabled);
-        assert!(current.harmony_grace.runtime_recipient_class_ids.is_empty());
+        assert!(current.harmony_grace.runtime_transfer_enabled);
+        assert_eq!(current.harmony_grace.runtime_recipient_class_ids, [11]);
+        let class_11 = current
+            .harmony_grace
+            .recipient_rules
+            .iter()
+            .find(|rule| rule.recipient_class_id == 11)
+            .unwrap();
+        assert_eq!(class_11.primary_percent_raw_delta, 200);
+        assert_eq!(class_11.primary_to_attack_numerator, 58);
+        assert_eq!(class_11.primary_to_attack_denominator, 100);
+        assert_eq!(
+            current.harmony_grace.accounting_method,
+            "observed-final-damage-proportional-stage-share"
+        );
         assert!(
             current
                 .harmony_grace
                 .class_11_current_pack_lifecycle_authority
         );
         assert!(
-            !current
+            current
                 .harmony_grace
                 .class_11_exact_rational_attribution_authority
         );
@@ -1403,28 +1422,33 @@ mod tests {
                 .server_integer_counterfactual_authority
         );
         assert!(current.harmony_grace.unresolved_overlap_fails_closed);
-        assert!(!current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
+        assert!(current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
 
-        let mut premature_transfer = base.clone();
-        premature_transfer["harmony_grace"]["runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
-        premature_transfer["harmony_grace"]["runtime_recipient_class_ids"] =
-            serde_json::json!([11]);
+        let mut missing_rational_authority = base.clone();
+        missing_rational_authority["harmony_grace"]["class_11_exact_rational_attribution_authority"] =
+            serde_json::Value::Bool(false);
         assert!(
-            runtime_from_value(premature_transfer.clone())
+            runtime_from_value(missing_rational_authority)
                 .validate()
                 .is_err()
         );
 
-        let mut complete_proof_contract = premature_transfer;
-        complete_proof_contract["harmony_grace"]["class_11_exact_rational_attribution_authority"] =
-            serde_json::Value::Bool(true);
-        complete_proof_contract["harmony_grace"]["server_integer_counterfactual_authority"] =
-            serde_json::Value::Bool(true);
+        let mut hidden_server_integer_stays_unclaimed = base.clone();
+        hidden_server_integer_stays_unclaimed["harmony_grace"]["server_integer_counterfactual_authority"] =
+            serde_json::Value::Bool(false);
         assert!(
-            runtime_from_value(complete_proof_contract)
+            runtime_from_value(hidden_server_integer_stays_unclaimed)
                 .validate()
                 .is_ok()
+        );
+
+        let mut wrong_accounting_method = base.clone();
+        wrong_accounting_method["harmony_grace"]["accounting_method"] =
+            serde_json::Value::String("server-counterfactual-guess".into());
+        assert!(
+            runtime_from_value(wrong_accounting_method)
+                .validate()
+                .is_err()
         );
 
         let mut guessed_overlap = base.clone();
@@ -1438,19 +1462,21 @@ mod tests {
         assert!(runtime_from_value(wrong_projection).validate().is_err());
 
         let mut disabled_with_class = base;
+        disabled_with_class["harmony_grace"]["runtime_transfer_enabled"] =
+            serde_json::Value::Bool(false);
         disabled_with_class["harmony_grace"]["runtime_recipient_class_ids"] =
             serde_json::json!([11]);
         assert!(runtime_from_value(disabled_with_class).validate().is_err());
     }
 
     #[test]
-    fn harmony_counterfactual_model_is_available_without_runtime_transfer() {
+    fn harmony_proportional_model_is_available_for_runtime_transfer() {
         assert_eq!(
             promoted_remote_effect_magnitude_model(3_003_052).unwrap(),
             Some(PromotedRemoteEffectMagnitudeModel::CounterfactualReplay)
         );
         assert!(
-            !rdps_runtime_config()
+            rdps_runtime_config()
                 .unwrap()
                 .harmony_grace
                 .runtime_transfer_enabled

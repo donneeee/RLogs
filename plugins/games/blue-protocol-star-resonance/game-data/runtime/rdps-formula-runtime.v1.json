@@ -1,5 +1,5 @@
 {
-  "schema_version": 11,
+  "schema_version": 12,
   "deployment_id": "global",
   "game_build": "24687926",
   "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
@@ -131,7 +131,8 @@
     "source_config_id": 3003053,
     "primary_family_rounding": "nearest_non_tie",
     "class_11_current_pack_lifecycle_authority": true,
-    "class_11_exact_rational_attribution_authority": false,
+    "class_11_exact_rational_attribution_authority": true,
+    "accounting_method": "observed-final-damage-proportional-stage-share",
     "server_integer_counterfactual_authority": false,
     "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
     "unresolved_overlap_fails_closed": true,
@@ -272,8 +273,8 @@
         "damage_scripts": ["MAttack"]
       }
     ],
-    "runtime_transfer_enabled": false,
-    "runtime_recipient_class_ids": []
+    "runtime_transfer_enabled": true,
+    "runtime_recipient_class_ids": [11]
   },
   "thunderwind": {
     "effect_id": 2110138,

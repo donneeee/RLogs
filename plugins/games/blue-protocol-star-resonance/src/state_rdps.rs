@@ -6799,8 +6799,8 @@ mod tests {
         assert!(unreported_critical_rule.runtime_eligible);
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
-            vec![55_228],
-            "only the context-scoped exact packet pair is production promoted"
+            vec![55_228, 3_003_052],
+            "the exact packet-pair vulnerability and class-scoped Harmony proportional rule are production promoted"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -7108,7 +7108,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_current_build_retains_formula_identity_but_transfers_no_unproven_credit() {
+    fn exact_current_build_retains_formula_identity_and_only_proven_partial_credit() {
         let projector = BpsrStateDamageContributionProjector {
             observed_deployment_id: Some(runtime().deployment_id.clone()),
             observed_client_build: Some(runtime().game_build.clone()),
@@ -7141,7 +7141,10 @@ mod tests {
             )
             .unwrap()
         );
-        assert!(proven_state_damage_contribution_effect_ids().unwrap() == vec![55_228]);
+        assert_eq!(
+            proven_state_damage_contribution_effect_ids().unwrap(),
+            vec![55_228, 3_003_052]
+        );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
         assert_eq!(
             runtime().promotion_blockers(),
