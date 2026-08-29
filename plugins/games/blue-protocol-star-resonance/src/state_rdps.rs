@@ -54,7 +54,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v19";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v20";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -191,6 +191,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.harmony_grace.effect_id) {
         effect_ids.push(runtime.harmony_grace.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.stat_resonance.effect_id) {
+        effect_ids.push(runtime.stat_resonance.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.highland_blood.effect_id) {
         effect_ids.push(runtime.highland_blood.effect_id);
@@ -731,7 +734,7 @@ struct FixedPointFamilyState {
     provider_basis_points: BTreeMap<u64, i64>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct AttackFamilyState {
     final_value: Option<i64>,
     intermediate_value: Option<i64>,
@@ -817,6 +820,34 @@ struct PrimaryStatTransitionWitness {
     active_raw_percent: i64,
     provider_raw_percent: i64,
     provider_primary_marginal: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ObservedAttackLane {
+    Physical,
+    Magical,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ExactAttackFamilySnapshot {
+    final_value: i64,
+    intermediate_value: i64,
+    base_add: i64,
+    extra_add: i64,
+    raw_percent: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StatResonanceTransition {
+    window: EffectWindowKey,
+    applied: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct StatResonanceAttackWitness {
+    lane: ObservedAttackLane,
+    active_family: ExactAttackFamilySnapshot,
+    final_attack_marginal: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1825,6 +1856,10 @@ pub struct BpsrStateDamageContributionProjector {
     harmony_grace_transition_wires: HashMap<u64, WireKey>,
     harmony_grace_primary_transition_witnesses:
         HashMap<EffectWindowKey, HashSet<PrimaryStatTransitionWitness>>,
+    stat_resonance_windows: HashSet<EffectWindowKey>,
+    stat_resonance_transition_wires: HashMap<u64, WireKey>,
+    stat_resonance_pending_transitions: HashMap<u64, Option<StatResonanceTransition>>,
+    stat_resonance_attack_witnesses: HashMap<EffectWindowKey, StatResonanceAttackWitness>,
     thunderwind_windows: HashMap<EffectWindowKey, ThunderwindWindow>,
     thunderwind_child_targets: HashSet<u64>,
     thunderwind_transition_wires: HashMap<u64, WireKey>,
@@ -1925,6 +1960,10 @@ impl Default for BpsrStateDamageContributionProjector {
             harmony_grace_windows: HashSet::new(),
             harmony_grace_transition_wires: HashMap::new(),
             harmony_grace_primary_transition_witnesses: HashMap::new(),
+            stat_resonance_windows: HashSet::new(),
+            stat_resonance_transition_wires: HashMap::new(),
+            stat_resonance_pending_transitions: HashMap::new(),
+            stat_resonance_attack_witnesses: HashMap::new(),
             thunderwind_windows: HashMap::new(),
             thunderwind_child_targets: HashSet::new(),
             thunderwind_transition_wires: HashMap::new(),
@@ -2559,7 +2598,10 @@ impl BpsrStateDamageContributionProjector {
             TimelineEventKind::UnresolvedStatus(status) => {
                 self.observe_unresolved_status(status);
             }
-            TimelineEventKind::DataGap(gap) => self.observe_fatal_spiral_data_gap(gap.kind),
+            TimelineEventKind::DataGap(gap) => {
+                self.observe_fatal_spiral_data_gap(gap.kind);
+                self.clear_stat_resonance_after_gap();
+            }
             TimelineEventKind::EntityAttributes(attributes) => self.observe_attributes(
                 attributes.actor.actor_id.0,
                 attributes.actor.entity_uuid.0,
@@ -2647,6 +2689,8 @@ impl BpsrStateDamageContributionProjector {
                     self.fatal_spiral_direct_contribution(envelope.time.observed_micros, damage);
                 let mechanical_power_contribution =
                     self.mechanical_power_contribution(envelope.time.observed_micros, damage);
+                let stat_resonance_contribution =
+                    self.stat_resonance_contribution(envelope.time.observed_micros, damage);
                 let mut inspiration_contribution =
                     self.inspiration_contribution(envelope.time.observed_micros, damage);
                 let inspiration_occurrence_contribution =
@@ -2711,37 +2755,61 @@ impl BpsrStateDamageContributionProjector {
                     mechanical_power_contribution.is_some(),
                     inspiration_contribution.is_some(),
                 );
-                let (attack_contributions, unresolved_attack_overlap) = match attack_overlap_policy
-                {
-                    AttackContributionOverlapPolicy::HarmonyFunctionalAmp => self
-                        .combined_harmony_functional_amp_contributions(
-                            envelope.time.observed_micros,
-                            damage,
-                            functional_amp_contribution
-                                .expect("overlap policy requires Functional Amp"),
-                            harmony_grace_contribution
-                                .expect("overlap policy requires Harmony Grace"),
-                        )
-                        .map(|contributions| (Vec::from(contributions), false))
-                        .unwrap_or_else(|| (Vec::new(), true)),
-                    AttackContributionOverlapPolicy::Single => (
-                        vec![
-                            functional_amp_contribution
-                                .or(harmony_grace_contribution)
-                                .or(mechanical_power_contribution)
-                                .or(inspiration_contribution)
-                                .expect("single overlap policy requires one contribution"),
-                        ],
-                        false,
-                    ),
-                    AttackContributionOverlapPolicy::None => (Vec::new(), false),
-                    // Mechanical Power changes the primary-stat/base-Add
-                    // stage. Until a capture proves an allocation order
-                    // for overlapping base-Add providers (or its ordered
-                    // cross-term with Functional Amp), retain damage but
-                    // emit no guessed transfer.
-                    AttackContributionOverlapPolicy::Suppress => (Vec::new(), true),
-                };
+                let (base_attack_contributions, base_attack_overlap_unresolved) =
+                    match attack_overlap_policy {
+                        AttackContributionOverlapPolicy::HarmonyFunctionalAmp => self
+                            .combined_harmony_functional_amp_contributions(
+                                envelope.time.observed_micros,
+                                damage,
+                                functional_amp_contribution
+                                    .expect("overlap policy requires Functional Amp"),
+                                harmony_grace_contribution
+                                    .expect("overlap policy requires Harmony Grace"),
+                            )
+                            .map(|contributions| (Vec::from(contributions), false))
+                            .unwrap_or_else(|| (Vec::new(), true)),
+                        AttackContributionOverlapPolicy::Single => (
+                            vec![
+                                functional_amp_contribution
+                                    .or(harmony_grace_contribution)
+                                    .or(mechanical_power_contribution)
+                                    .or(inspiration_contribution)
+                                    .expect("single overlap policy requires one contribution"),
+                            ],
+                            false,
+                        ),
+                        AttackContributionOverlapPolicy::None => (Vec::new(), false),
+                        // Mechanical Power changes the primary-stat/base-Add
+                        // stage. Until a capture proves an allocation order
+                        // for overlapping base-Add providers (or its ordered
+                        // cross-term with Functional Amp), retain damage but
+                        // emit no guessed transfer.
+                        AttackContributionOverlapPolicy::Suppress => (Vec::new(), true),
+                    };
+                let (attack_contributions, unresolved_attack_overlap) =
+                    if let Some(stat_resonance) = stat_resonance_contribution {
+                        if base_attack_overlap_unresolved {
+                            // The exact observed Stat Resonance transition
+                            // held every pre-existing Attack contributor
+                            // constant. Its marginal remains independently
+                            // auditable even when those older contributors do
+                            // not yet have a proved allocation among
+                            // themselves.
+                            (vec![stat_resonance], false)
+                        } else if base_attack_contributions.is_empty() {
+                            (vec![stat_resonance], false)
+                        } else {
+                            match allocate_ordered_rational_marginals(
+                                stat_resonance,
+                                base_attack_contributions,
+                            ) {
+                                Some(contributions) => (contributions, false),
+                                None => (Vec::new(), true),
+                            }
+                        }
+                    } else {
+                        (base_attack_contributions, base_attack_overlap_unresolved)
+                    };
                 let rational_candidate_count = usize::from(team_luck_contribution.is_some())
                     + attack_contributions.len()
                     + usize::from(remote_harmony_paired_output_contribution.is_some())
@@ -2994,11 +3062,13 @@ impl BpsrStateDamageContributionProjector {
             self.reconcile_inspiration_staged_states();
             self.reconcile_thunderwind_staged_states();
             self.reconcile_fatal_spiral_staged_states();
+            self.reconcile_stat_resonance_staged_states();
             self.states.extend(self.staged_states.drain());
             self.team_luck_transition_wires.clear();
             self.functional_amp_transition_wires.clear();
             self.mechanical_power_transition_wires.clear();
             self.harmony_grace_transition_wires.clear();
+            self.stat_resonance_transition_wires.clear();
             self.inspiration_transition_wires.clear();
             self.inspiration_snapshot_targets.clear();
             self.thunderwind_transition_wires.clear();
@@ -3016,6 +3086,13 @@ impl BpsrStateDamageContributionProjector {
             window.target_actor_id == damage.source.actor_id.0
                 || window.target_actor_id == damage.target.actor_id.0
         })
+    }
+
+    fn clear_stat_resonance_after_gap(&mut self) {
+        self.stat_resonance_windows.clear();
+        self.stat_resonance_transition_wires.clear();
+        self.stat_resonance_pending_transitions.clear();
+        self.stat_resonance_attack_witnesses.clear();
     }
 
     fn observe_unresolved_status(&mut self, status: &rlogs_events::UnresolvedStatusEvent) {
@@ -3107,6 +3184,18 @@ impl BpsrStateDamageContributionProjector {
             )
         {
             self.observe_harmony_grace_status(status);
+        }
+        if self.runtime.stat_resonance.runtime_transfer_enabled
+            && status.effect.0 == self.runtime.stat_resonance.effect_id
+            && status
+                .origin
+                .map(|origin| (origin.source_type_id, origin.source_config_id))
+                == Some((
+                    self.runtime.stat_resonance.source_type_id,
+                    self.runtime.stat_resonance.source_config_id,
+                ))
+        {
+            self.observe_stat_resonance_status(status);
         }
         if status.effect.0 == self.runtime.thunderwind.effect_id {
             self.observe_thunderwind_status(status, observed_micros);
@@ -3732,6 +3821,149 @@ impl BpsrStateDamageContributionProjector {
                 &current,
                 &desired,
             );
+        }
+    }
+
+    fn observe_stat_resonance_status(&mut self, status: &rlogs_events::StatusEvent) {
+        let target_actor_id = status.target.actor_id.0;
+        let Some(provider_actor_id) = status.source.map(|source| source.actor_id.0) else {
+            self.invalidate_stat_resonance_target(target_actor_id);
+            return;
+        };
+        if provider_actor_id == target_actor_id {
+            self.invalidate_stat_resonance_target(target_actor_id);
+            return;
+        }
+        let window = EffectWindowKey {
+            target_actor_id,
+            provider_actor_id,
+            instance_id: status.instance_id.map(|instance| instance.0),
+        };
+        let transition = match status.state {
+            StatusState::Applied => {
+                if !self.stat_resonance_windows.insert(window) {
+                    self.invalidate_stat_resonance_target(target_actor_id);
+                    return;
+                }
+                StatResonanceTransition {
+                    window,
+                    applied: true,
+                }
+            }
+            StatusState::Removed => {
+                if !self.stat_resonance_windows.remove(&window) {
+                    self.invalidate_stat_resonance_target(target_actor_id);
+                    return;
+                }
+                StatResonanceTransition {
+                    window,
+                    applied: false,
+                }
+            }
+            StatusState::Refreshed | StatusState::Stacked | StatusState::Consumed => {
+                self.invalidate_stat_resonance_target(target_actor_id);
+                return;
+            }
+        };
+        if self
+            .stat_resonance_pending_transitions
+            .insert(target_actor_id, Some(transition))
+            .is_some()
+        {
+            self.invalidate_stat_resonance_target(target_actor_id);
+            return;
+        }
+        if let Some(wire) = self.current_wire {
+            self.stat_resonance_transition_wires
+                .insert(target_actor_id, wire);
+        }
+    }
+
+    fn invalidate_stat_resonance_target(&mut self, target_actor_id: u64) {
+        self.stat_resonance_windows
+            .retain(|key| key.target_actor_id != target_actor_id);
+        self.stat_resonance_attack_witnesses
+            .retain(|key, _| key.target_actor_id != target_actor_id);
+        self.stat_resonance_pending_transitions
+            .insert(target_actor_id, None);
+        if let Some(wire) = self.current_wire {
+            self.stat_resonance_transition_wires
+                .insert(target_actor_id, wire);
+        }
+    }
+
+    fn reconcile_stat_resonance_staged_states(&mut self) {
+        let pending = std::mem::take(&mut self.stat_resonance_pending_transitions);
+        for (target_actor_id, transition) in pending {
+            let Some(transition) = transition else {
+                continue;
+            };
+            let has_status_confounder =
+                self.formula_status_prior_values_current_wire
+                    .keys()
+                    .any(|key| {
+                        key.target_actor_id == target_actor_id
+                            && key.effect_id != self.runtime.stat_resonance.effect_id
+                    });
+            let has_unresolved_confounder = self
+                .unresolved_status_windows
+                .iter()
+                .any(|key| key.target_actor_id == target_actor_id);
+            let exact_window_count = self
+                .stat_resonance_windows
+                .iter()
+                .filter(|key| key.target_actor_id == target_actor_id)
+                .count();
+            let expected_window_count = usize::from(transition.applied);
+            if has_status_confounder
+                || has_unresolved_confounder
+                || exact_window_count != expected_window_count
+                || !self
+                    .active_players
+                    .contains(&transition.window.provider_actor_id)
+            {
+                self.invalidate_stat_resonance_target(target_actor_id);
+                continue;
+            }
+            let Some(previous) = self.states.get(&target_actor_id) else {
+                self.invalidate_stat_resonance_target(target_actor_id);
+                continue;
+            };
+            let Some(current) = self.staged_states.get(&target_actor_id) else {
+                self.invalidate_stat_resonance_target(target_actor_id);
+                continue;
+            };
+            let Some((lane, inactive_family, active_family)) =
+                exact_single_attack_family_transition(previous, current, transition.applied)
+            else {
+                self.invalidate_stat_resonance_target(target_actor_id);
+                continue;
+            };
+            let Some(final_attack_marginal) = active_family
+                .final_value
+                .checked_sub(inactive_family.final_value)
+                .filter(|value| *value > 0)
+            else {
+                self.invalidate_stat_resonance_target(target_actor_id);
+                continue;
+            };
+            let witness = StatResonanceAttackWitness {
+                lane,
+                active_family,
+                final_attack_marginal,
+            };
+            if transition.applied {
+                self.stat_resonance_attack_witnesses
+                    .insert(transition.window, witness);
+            } else {
+                let removal_matches =
+                    self.stat_resonance_attack_witnesses.get(&transition.window) == Some(&witness);
+                self.stat_resonance_attack_witnesses
+                    .remove(&transition.window);
+                if !removal_matches {
+                    self.invalidate_stat_resonance_target(target_actor_id);
+                }
+            }
         }
     }
 
@@ -6324,6 +6556,111 @@ impl BpsrStateDamageContributionProjector {
         self.mechanical_power_decision(observed_micros, damage).ok()
     }
 
+    fn stat_resonance_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.stat_resonance_decision(observed_micros, damage).ok()
+    }
+
+    fn stat_resonance_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        if !self.runtime.stat_resonance.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        if self.damage_has_unresolved_status_confounder(damage) {
+            return Err("unresolved_status_confounder");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        if self.current_wire.is_some_and(|wire| {
+            self.stat_resonance_transition_wires
+                .get(&recipient_actor_id)
+                == Some(&wire)
+        }) {
+            return Err("same_wire_transition");
+        }
+        let matching = self
+            .stat_resonance_windows
+            .iter()
+            .filter(|key| key.target_actor_id == recipient_actor_id)
+            .copied()
+            .collect::<Vec<_>>();
+        let [window] = matching.as_slice() else {
+            return Err(if matching.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        };
+        if window.provider_actor_id == recipient_actor_id {
+            return Err("provider_is_recipient");
+        }
+        if !self.active_players.contains(&window.provider_actor_id) {
+            return Err("provider_inactive");
+        }
+        let witness = self
+            .stat_resonance_attack_witnesses
+            .get(window)
+            .ok_or("transition_witness_missing")?;
+        if witness.final_attack_marginal <= 0 {
+            return Err("provider_marginal_invalid");
+        }
+        let selected = select_damage_stage(
+            damage.ability.ok_or("ability_missing")?.0,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        )
+        .ok_or("damage_stage_missing")?;
+        let actor_state = self
+            .states
+            .get(&recipient_actor_id)
+            .ok_or("recipient_state_missing")?;
+        let family = match (witness.lane, selected.offensive_stat) {
+            (ObservedAttackLane::Physical, OffensiveStatKind::PhysicalAttack) => {
+                &actor_state.physical_attack
+            }
+            (ObservedAttackLane::Magical, OffensiveStatKind::MagicalAttack) => {
+                &actor_state.magical_attack
+            }
+            _ => return Err("attack_lane_mismatch"),
+        };
+        let active_family =
+            exact_attack_family_snapshot(family).ok_or("attack_family_incomplete")?;
+        if active_family != witness.active_family {
+            return Err("attack_family_state_changed");
+        }
+        let (numerator, denominator) = exact_external_attack_coefficient_stage_fraction(
+            damage.amount,
+            PacketDamageScriptFamily::StandardAttack,
+            active_family.final_value,
+            witness.final_attack_marginal,
+            selected.coefficient_basis_points,
+            selected.fixed_parameter,
+        )
+        .ok_or("damage_coefficient_counterfactual_unproven")?;
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: self.runtime.stat_resonance.effect_id,
+            provider_actor_id: window.provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component("stat-resonance-observed-final-attack"),
+            numerator,
+            denominator,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
     pub fn mechanical_power_audit_gate(&self, damage: &rlogs_events::DamageEvent) -> &'static str {
         if self.damage_has_unresolved_status_confounder(damage) {
             return "unresolved_status_confounder";
@@ -8051,6 +8388,12 @@ impl BpsrStateDamageContributionProjector {
         self.harmony_grace_transition_wires.remove(&actor_id);
         self.harmony_grace_primary_transition_witnesses
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.stat_resonance_windows
+            .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.stat_resonance_transition_wires.remove(&actor_id);
+        self.stat_resonance_pending_transitions.remove(&actor_id);
+        self.stat_resonance_attack_witnesses
+            .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.thunderwind_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.thunderwind_child_targets.remove(&actor_id);
@@ -8115,6 +8458,10 @@ impl BpsrStateDamageContributionProjector {
         self.harmony_grace_windows.clear();
         self.harmony_grace_transition_wires.clear();
         self.harmony_grace_primary_transition_witnesses.clear();
+        self.stat_resonance_windows.clear();
+        self.stat_resonance_transition_wires.clear();
+        self.stat_resonance_pending_transitions.clear();
+        self.stat_resonance_attack_witnesses.clear();
         self.thunderwind_windows.clear();
         self.thunderwind_child_targets.clear();
         self.thunderwind_transition_wires.clear();
@@ -8182,6 +8529,59 @@ fn attack_lane_matches(lane: PrimaryAttackLane, stat: OffensiveStatKind) -> bool
             OffensiveStatKind::MagicalAttack
         )
     )
+}
+
+fn exact_attack_family_snapshot(family: &AttackFamilyState) -> Option<ExactAttackFamilySnapshot> {
+    let snapshot = ExactAttackFamilySnapshot {
+        final_value: family.final_value?,
+        intermediate_value: family.intermediate_value?,
+        base_add: family.base_add?,
+        extra_add: family.extra_add?,
+        raw_percent: family.raw_percent?,
+    };
+    if packet_attribute_family_value(snapshot.base_add, snapshot.raw_percent, 0)?
+        != snapshot.intermediate_value
+        || packet_attribute_family_value(
+            snapshot.base_add,
+            snapshot.raw_percent,
+            snapshot.extra_add,
+        )? != snapshot.final_value
+    {
+        return None;
+    }
+    Some(snapshot)
+}
+
+fn exact_single_attack_family_transition(
+    previous: &ActorHpState,
+    current: &ActorHpState,
+    applied: bool,
+) -> Option<(
+    ObservedAttackLane,
+    ExactAttackFamilySnapshot,
+    ExactAttackFamilySnapshot,
+)> {
+    let physical_changed = previous.physical_attack != current.physical_attack;
+    let magical_changed = previous.magical_attack != current.magical_attack;
+    let (lane, before, after) = match (physical_changed, magical_changed) {
+        (true, false) => (
+            ObservedAttackLane::Physical,
+            exact_attack_family_snapshot(&previous.physical_attack)?,
+            exact_attack_family_snapshot(&current.physical_attack)?,
+        ),
+        (false, true) => (
+            ObservedAttackLane::Magical,
+            exact_attack_family_snapshot(&previous.magical_attack)?,
+            exact_attack_family_snapshot(&current.magical_attack)?,
+        ),
+        _ => return None,
+    };
+    let (inactive, active) = if applied {
+        (before, after)
+    } else {
+        (after, before)
+    };
+    Some((lane, inactive, active))
 }
 
 fn fixed_point_stage_term(value: i64, raw_percent: i64) -> Option<i64> {
@@ -8412,6 +8812,22 @@ fn scale_later_rational_marginal_after_many(
     later.numerator = numerator.checked_div(divisor)?;
     later.denominator = denominator.checked_div(divisor)?;
     Some(later)
+}
+
+fn allocate_ordered_rational_marginals(
+    first: ExactRationalDamageContributionEvent,
+    later: Vec<ExactRationalDamageContributionEvent>,
+) -> Option<Vec<ExactRationalDamageContributionEvent>> {
+    if first.numerator <= 0 || first.denominator <= 0 {
+        return None;
+    }
+    let mut allocated = Vec::with_capacity(later.len().checked_add(1)?);
+    allocated.push(first);
+    for contribution in later {
+        let contribution = scale_later_rational_marginal_after_many(&allocated, contribution)?;
+        allocated.push(contribution);
+    }
+    Some(allocated)
 }
 
 fn greatest_common_divisor(mut left: i128, mut right: i128) -> i128 {
@@ -10212,6 +10628,58 @@ mod tests {
         }
     }
 
+    fn stat_resonance_test_family(base_add: i64) -> AttackFamilyState {
+        let raw_percent = 1_000;
+        let extra_add = 100;
+        AttackFamilyState {
+            final_value: packet_attribute_family_value(base_add, raw_percent, extra_add),
+            intermediate_value: packet_attribute_family_value(base_add, raw_percent, 0),
+            base_add: Some(base_add),
+            extra_add: Some(extra_add),
+            raw_percent: Some(raw_percent),
+            raw_percent_packet_observed: true,
+            provider_raw_percent: BTreeMap::new(),
+        }
+    }
+
+    fn stat_resonance_test_status(state: StatusState) -> rlogs_events::StatusEvent {
+        rlogs_events::StatusEvent {
+            source: Some(test_entity(2, 20)),
+            target: test_entity(4, 40),
+            effect: rlogs_events::StatusEffectId(runtime().stat_resonance.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(77)),
+            origin: Some(rlogs_events::StatusOrigin {
+                source_type_id: runtime().stat_resonance.source_type_id,
+                source_config_id: runtime().stat_resonance.source_config_id,
+            }),
+            state,
+            stacks: Some(1),
+            level: Some(1),
+            part_id: None,
+            count: None,
+            created_at_millis: None,
+            duration_millis: Some(15_000),
+        }
+    }
+
+    fn stat_resonance_test_damage() -> rlogs_events::DamageEvent {
+        rlogs_events::DamageEvent {
+            source: test_entity(4, 40),
+            direct_source: None,
+            target: test_entity(17, 170),
+            ability: Some(rlogs_events::AbilityId(2_203_521)),
+            amount: 70_543,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(5),
+            damage_source: None,
+            damage_type: Some(2),
+            flags: rlogs_events::DamageFlags::default(),
+            packet: rlogs_events::DamagePacketDetail::default(),
+        }
+    }
+
     fn critical_test_damage(
         source: rlogs_events::EntityRef,
         amount: i64,
@@ -10368,9 +10836,10 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_302_121, 3_003_052
+                55_228, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252, 2_302_121,
+                3_003_052
             ],
-            "the exact packet-pair vulnerability, direct Highland observed-final component, observed Mechanical Power component, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
+            "the exact packet-pair vulnerability, direct Highland observed-final component, observed Mechanical Power component, exact observed Stat Resonance Attack delta, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -11206,7 +11675,8 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_302_121, 3_003_052
+                55_228, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252, 2_302_121,
+                3_003_052
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
@@ -14241,6 +14711,180 @@ mod tests {
         };
         complete_exact_extra_add(&mut omitted_zero);
         assert_eq!(omitted_zero.extra_add, Some(0));
+    }
+
+    #[test]
+    fn stat_resonance_learns_exact_apply_and_removal_attack_marginal() {
+        let inactive_family = stat_resonance_test_family(10_000);
+        let active_family = stat_resonance_test_family(10_500);
+        let first_wire = WireKey {
+            connection_id: 1,
+            stream_id: 2,
+            capture_sequence: 3,
+        };
+        let second_wire = WireKey {
+            capture_sequence: 4,
+            ..first_wire
+        };
+        let third_wire = WireKey {
+            capture_sequence: 5,
+            ..first_wire
+        };
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            current_wire: Some(first_wire),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: inactive_family.clone(),
+                    ..ActorHpState::default()
+                },
+            )]),
+            staged_states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: active_family.clone(),
+                    ..ActorHpState::default()
+                },
+            )]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let damage = stat_resonance_test_damage();
+        projector.observe_status(&stat_resonance_test_status(StatusState::Applied), 100);
+        assert_eq!(
+            projector.stat_resonance_decision(100, &damage),
+            Err("same_wire_transition")
+        );
+
+        projector.advance_wire(second_wire);
+        let window = EffectWindowKey {
+            target_actor_id: 4,
+            provider_actor_id: 2,
+            instance_id: Some(77),
+        };
+        let witness = projector.stat_resonance_attack_witnesses[&window];
+        assert_eq!(witness.lane, ObservedAttackLane::Physical);
+        assert_eq!(witness.final_attack_marginal, 550);
+
+        let contribution = projector
+            .stat_resonance_decision(101, &damage)
+            .expect("the exact observed marginal is eligible after its wire closes");
+        let selected = select_damage_stage(2_203_521, Some(5), None, None, None).unwrap();
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            exact_external_attack_coefficient_stage_fraction(
+                damage.amount,
+                PacketDamageScriptFamily::StandardAttack,
+                active_family.final_value.unwrap(),
+                550,
+                selected.coefficient_basis_points,
+                selected.fixed_parameter,
+            )
+            .unwrap()
+        );
+        assert_eq!(contribution.observed_damage, damage.amount);
+        assert!(
+            contribution.numerator
+                < i128::from(contribution.observed_damage) * contribution.denominator,
+            "provider transfer conserves and cannot rewrite ordinary packet damage"
+        );
+
+        projector.stat_resonance_attack_witnesses.remove(&window);
+        assert_eq!(
+            projector.stat_resonance_decision(102, &damage),
+            Err("transition_witness_missing")
+        );
+        projector
+            .stat_resonance_attack_witnesses
+            .insert(window, witness);
+        let ambiguous = EffectWindowKey {
+            provider_actor_id: 3,
+            instance_id: Some(78),
+            ..window
+        };
+        projector.stat_resonance_windows.insert(ambiguous);
+        projector.active_players.insert(3);
+        assert_eq!(
+            projector.stat_resonance_decision(103, &damage),
+            Err("provider_window_ambiguous")
+        );
+        projector.stat_resonance_windows.remove(&ambiguous);
+
+        projector
+            .states
+            .get_mut(&4)
+            .unwrap()
+            .physical_attack
+            .extra_add = Some(101);
+        assert_eq!(
+            projector.stat_resonance_decision(104, &damage),
+            Err("attack_family_incomplete")
+        );
+        projector.states.get_mut(&4).unwrap().physical_attack = active_family;
+
+        projector.staged_states.insert(
+            4,
+            ActorHpState {
+                physical_attack: inactive_family,
+                ..ActorHpState::default()
+            },
+        );
+        projector.observe_status(&stat_resonance_test_status(StatusState::Removed), 105);
+        projector.advance_wire(third_wire);
+        assert!(!projector.stat_resonance_windows.contains(&window));
+        assert!(
+            !projector
+                .stat_resonance_attack_witnesses
+                .contains_key(&window)
+        );
+        assert_eq!(
+            projector.stat_resonance_decision(106, &damage),
+            Err("provider_window_missing")
+        );
+    }
+
+    #[test]
+    fn stat_resonance_orders_simultaneous_proven_modifier_shares_once() {
+        let stat_resonance = ExactRationalDamageContributionEvent {
+            observed_micros: 1,
+            effect_id: runtime().stat_resonance.effect_id,
+            provider_actor_id: 2,
+            recipient_actor_id: 4,
+            scope: DamageContributionScope::Component("stat-resonance-observed-final-attack"),
+            numerator: 20,
+            denominator: 1,
+            observed_damage: 100,
+            included: true,
+            deferred_damage_context: None,
+        };
+        let functional_amp = ExactRationalDamageContributionEvent {
+            observed_micros: 1,
+            effect_id: runtime().functional_amp.effect_id,
+            provider_actor_id: 3,
+            recipient_actor_id: 4,
+            scope: DamageContributionScope::Component("functional-amp-attack-magic"),
+            numerator: 30,
+            denominator: 1,
+            observed_damage: 100,
+            included: true,
+            deferred_damage_context: None,
+        };
+
+        let allocated =
+            allocate_ordered_rational_marginals(stat_resonance, vec![functional_amp]).unwrap();
+        assert_eq!(allocated.len(), 2);
+        assert_eq!((allocated[0].numerator, allocated[0].denominator), (20, 1));
+        assert_eq!((allocated[1].numerator, allocated[1].denominator), (24, 1));
+        assert_eq!(
+            allocated.iter().map(|row| row.numerator).sum::<i128>(),
+            44,
+            "the six-point shared cross-term is assigned once, not credited twice"
+        );
+        assert!(
+            allocated.iter().map(|row| row.numerator).sum::<i128>()
+                <= i128::from(stat_resonance.observed_damage),
+            "simultaneous proven modifiers conserve packet damage"
+        );
     }
 
     #[test]

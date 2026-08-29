@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 17;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 18;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -526,6 +526,21 @@ impl HarmonyGraceRuntimeConfig {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StatResonanceRuntimeConfig {
+    pub effect_id: i64,
+    pub source_type_id: i32,
+    pub source_config_id: i64,
+    pub current_build_external_lifecycle_authority: bool,
+    pub exact_same_wire_final_attack_marginal_authority: bool,
+    accounting_method: String,
+    pub server_integer_counterfactual_authority: bool,
+    rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ThunderwindVectorRuntimeConfig {
@@ -950,6 +965,7 @@ pub(crate) struct RdpsRuntimeConfig {
     pub functional_amp: FunctionalAmpRuntimeConfig,
     pub mechanical_power: MechanicalPowerRuntimeConfig,
     pub harmony_grace: HarmonyGraceRuntimeConfig,
+    pub stat_resonance: StatResonanceRuntimeConfig,
     pub thunderwind: ThunderwindRuntimeConfig,
     pub inspiration: InspirationRuntimeConfig,
     pub highland_blood: HighlandBloodRuntimeConfig,
@@ -974,6 +990,7 @@ impl RdpsRuntimeConfig {
             || self.team_luck.lucky_damage_runtime_transfer_enabled
             || self.mechanical_power.runtime_transfer_enabled
             || self.harmony_grace.runtime_transfer_enabled
+            || self.stat_resonance.runtime_transfer_enabled
             || self.highland_blood.runtime_transfer_enabled
             || self
                 .highland_blood
@@ -999,6 +1016,8 @@ impl RdpsRuntimeConfig {
                 && self.mechanical_power.runtime_transfer_enabled)
             || (effect_id == self.harmony_grace.effect_id
                 && self.harmony_grace.runtime_transfer_enabled)
+            || (effect_id == self.stat_resonance.effect_id
+                && self.stat_resonance.runtime_transfer_enabled)
             || (effect_id == self.highland_blood.effect_id
                 && (self.highland_blood.runtime_transfer_enabled
                     || self
@@ -1383,6 +1402,26 @@ impl RdpsRuntimeConfig {
         {
             return Err(
                 "bundled BPSR Harmony Grace formula is not ready for runtime transfer".into(),
+            );
+        }
+
+        let stat_resonance = &self.stat_resonance;
+        let stat_resonance_runtime_authority = stat_resonance
+            .current_build_external_lifecycle_authority
+            && stat_resonance.exact_same_wire_final_attack_marginal_authority
+            && stat_resonance.accounting_method == "observed-final-damage-proportional-stage-share"
+            && !stat_resonance.server_integer_counterfactual_authority
+            && stat_resonance.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && stat_resonance.unresolved_overlap_fails_closed;
+        if stat_resonance.effect_id != 2_207_252
+            || stat_resonance.source_type_id != 1
+            || stat_resonance.source_config_id != 2_207_251
+            || (stat_resonance.runtime_transfer_enabled
+                && (!stat_resonance_runtime_authority || self.game_build != "24687926"))
+        {
+            return Err(
+                "bundled BPSR Stat Resonance formula is not ready for runtime transfer".into(),
             );
         }
 
@@ -2517,6 +2556,65 @@ mod tests {
         disabled_with_scope["mechanical_power"]["runtime_recipient_class_ids"] =
             serde_json::json!([11]);
         assert!(runtime_from_value(disabled_with_scope).validate().is_err());
+    }
+
+    #[test]
+    fn stat_resonance_requires_exact_current_build_observed_delta_authority() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert!(current.stat_resonance.runtime_transfer_enabled);
+        assert!(
+            current
+                .stat_resonance
+                .current_build_external_lifecycle_authority
+        );
+        assert!(
+            current
+                .stat_resonance
+                .exact_same_wire_final_attack_marginal_authority
+        );
+        assert!(
+            !current
+                .stat_resonance
+                .server_integer_counterfactual_authority
+        );
+        assert!(current.stat_resonance.unresolved_overlap_fails_closed);
+        assert!(current.effect_runtime_transfer_enabled(2_207_252));
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("the prior build remains replayable");
+        assert!(!historical.stat_resonance.runtime_transfer_enabled);
+        assert!(!historical.effect_runtime_transfer_enabled(2_207_252));
+
+        for authority in [
+            "current_build_external_lifecycle_authority",
+            "exact_same_wire_final_attack_marginal_authority",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["stat_resonance"][authority] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let mut invented_server_integer = base.clone();
+        invented_server_integer["stat_resonance"]["server_integer_counterfactual_authority"] =
+            serde_json::Value::Bool(true);
+        assert!(
+            runtime_from_value(invented_server_integer)
+                .validate()
+                .is_err()
+        );
+
+        let mut wrong_projection = base.clone();
+        wrong_projection["stat_resonance"]["rational_integer_projection"] =
+            serde_json::Value::String("per-hit-floor".into());
+        assert!(runtime_from_value(wrong_projection).validate().is_err());
+
+        let mut guessed_overlap = base;
+        guessed_overlap["stat_resonance"]["unresolved_overlap_fails_closed"] =
+            serde_json::Value::Bool(false);
+        assert!(runtime_from_value(guessed_overlap).validate().is_err());
     }
 
     #[test]

@@ -1,5 +1,5 @@
 {
-  "schema_version": 17,
+  "schema_version": 18,
   "deployment_id": "global",
   "builds": [
     {
@@ -84,6 +84,9 @@
           ],
           "runtime_transfer_enabled": false,
           "runtime_recipient_class_ids": []
+        },
+        "stat_resonance": {
+          "runtime_transfer_enabled": false
         },
         "highland_blood": {
           "runtime_transfer_enabled": false,

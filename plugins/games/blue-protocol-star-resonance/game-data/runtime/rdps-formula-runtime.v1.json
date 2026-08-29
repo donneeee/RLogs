@@ -1,5 +1,5 @@
 {
-  "schema_version": 17,
+  "schema_version": 18,
   "deployment_id": "global",
   "game_build": "24687926",
   "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
@@ -368,6 +368,18 @@
     "remote_paired_output_max_pair_gap_micros": 30000000,
     "remote_paired_output_max_provider_share_basis_points": 200,
     "remote_paired_output_min_distinct_targets": 2
+  },
+  "stat_resonance": {
+    "effect_id": 2207252,
+    "source_type_id": 1,
+    "source_config_id": 2207251,
+    "current_build_external_lifecycle_authority": true,
+    "exact_same_wire_final_attack_marginal_authority": true,
+    "accounting_method": "observed-final-damage-proportional-stage-share",
+    "server_integer_counterfactual_authority": false,
+    "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
+    "unresolved_overlap_fails_closed": true,
+    "runtime_transfer_enabled": true
   },
   "thunderwind": {
     "effect_id": 2110138,
