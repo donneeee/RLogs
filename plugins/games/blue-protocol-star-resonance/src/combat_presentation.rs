@@ -541,6 +541,7 @@ mod tests {
     #[test]
     fn all_promoted_rdps_effects_have_exact_id_english_presentation() {
         let cases = [
+            (31_602, "Inspire"),
             (55_228, "Luminary Bolt Vulnerability"),
             (55_333, "Encore"),
             (2_110_065, "Fiery Battle Will"),

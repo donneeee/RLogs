@@ -5,6 +5,11 @@
   "locale": "en-US",
   "effects": [
     {
+      "effect_id": 31602,
+      "name": "Inspire",
+      "resolution": "localized-status-effect"
+    },
+    {
       "effect_id": 55228,
       "name": "Luminary Bolt Vulnerability",
       "resolution": "reviewed-source-name"

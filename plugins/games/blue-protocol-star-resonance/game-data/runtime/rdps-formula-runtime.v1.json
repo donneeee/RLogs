@@ -201,14 +201,36 @@
     "damage_stage_operation_order_authority": false,
     "damage_stage_integer_rounding_authority": false,
     "class_11_tier_0_current_pack_lifecycle_authority": true,
-    "class_11_tier_0_exact_rational_attribution_authority": false,
+    "class_11_tier_0_exact_rational_attribution_authority": true,
+    "replay": {
+      "candidate_content_sha256": "66208338429276ee33effbf12ffa51be3701d8bc95a469c869c6d64de0a36f50",
+      "candidate_content_bytes": 127645137,
+      "production_content_sha256": "594b7129537f68768823737c5dd2d106c42ca2e28fdf4ace23d1ab1047c0f644",
+      "production_content_bytes": 150449431,
+      "replay_schema_version": 27,
+      "exact_build_rlogs": 26,
+      "total_canonical_events": 6411565,
+      "runtime_target_match_rlogs": 26,
+      "candidate_target_match_rlogs": 26,
+      "conserved_rlogs": 26,
+      "rational_projection_overflow_count": 0,
+      "emitted_contribution_events": 23672,
+      "sessions_with_emissions": 8,
+      "observed_damage": 3260149962,
+      "projected_rdmg": 138300062,
+      "relationship_rows": 21,
+      "provider_entity_uuids": 1,
+      "recipient_entity_uuids": 1,
+      "affected_ability_ids": 21,
+      "all_damage_context_complete": true
+    },
     "accounting_method": "observed-final-damage-proportional-stage-share",
     "server_integer_counterfactual_authority": false,
     "rational_integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
     "unresolved_overlap_fails_closed": true,
-    "runtime_transfer_enabled": false,
-    "runtime_recipient_class_ids": [],
-    "runtime_primary_percent_raw_deltas": []
+    "runtime_transfer_enabled": true,
+    "runtime_recipient_class_ids": [11],
+    "runtime_primary_percent_raw_deltas": [750]
   },
   "harmony_grace": {
     "effect_id": 3003052,
@@ -430,7 +452,9 @@
         "critical_chance_raw_delta": 1852,
         "critical_damage_raw_delta": 566
       }
-    ]
+    ],
+    "recipient_scope": "summon-owner-only",
+    "runtime_transfer_enabled": false
   },
   "inspiration": {
     "effect_id": 2202041,

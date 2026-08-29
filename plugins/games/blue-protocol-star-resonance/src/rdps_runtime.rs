@@ -400,6 +400,58 @@ impl PrimaryStatRecipientRule {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct MechanicalPowerReplayProof {
+    pub candidate_content_sha256: String,
+    pub candidate_content_bytes: u64,
+    pub production_content_sha256: String,
+    pub production_content_bytes: u64,
+    pub replay_schema_version: u16,
+    pub exact_build_rlogs: u32,
+    pub total_canonical_events: u64,
+    pub runtime_target_match_rlogs: u32,
+    pub candidate_target_match_rlogs: u32,
+    pub conserved_rlogs: u32,
+    pub rational_projection_overflow_count: u64,
+    pub emitted_contribution_events: u64,
+    pub sessions_with_emissions: u32,
+    pub observed_damage: u64,
+    pub projected_rdmg: i64,
+    pub relationship_rows: u32,
+    pub provider_entity_uuids: u32,
+    pub recipient_entity_uuids: u32,
+    pub affected_ability_ids: u32,
+    pub all_damage_context_complete: bool,
+}
+
+impl MechanicalPowerReplayProof {
+    fn is_current_authority(&self) -> bool {
+        self.candidate_content_sha256
+            == "66208338429276ee33effbf12ffa51be3701d8bc95a469c869c6d64de0a36f50"
+            && self.candidate_content_bytes == 127_645_137
+            && self.production_content_sha256
+                == "594b7129537f68768823737c5dd2d106c42ca2e28fdf4ace23d1ab1047c0f644"
+            && self.production_content_bytes == 150_449_431
+            && self.replay_schema_version == 27
+            && self.exact_build_rlogs == 26
+            && self.total_canonical_events == 6_411_565
+            && self.runtime_target_match_rlogs == 26
+            && self.candidate_target_match_rlogs == 26
+            && self.conserved_rlogs == 26
+            && self.rational_projection_overflow_count == 0
+            && self.emitted_contribution_events == 23_672
+            && self.sessions_with_emissions == 8
+            && self.observed_damage == 3_260_149_962
+            && self.projected_rdmg == 138_300_062
+            && self.relationship_rows == 21
+            && self.provider_entity_uuids == 1
+            && self.recipient_entity_uuids == 1
+            && self.affected_ability_ids == 21
+            && self.all_damage_context_complete
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct MechanicalPowerRuntimeConfig {
     pub effect_id: i64,
     pub source_config_id: i64,
@@ -423,6 +475,7 @@ pub(crate) struct MechanicalPowerRuntimeConfig {
     /// the exact packet-proven primary -> Attack stage body. This deliberately
     /// does not claim the server's hidden counterfactual integer boundary.
     pub class_11_tier_0_exact_rational_attribution_authority: bool,
+    pub replay: MechanicalPowerReplayProof,
     /// The observed-final-damage rDPS accounting policy used for the exact
     /// class-11 +750 transition. This remains distinct from any claim about
     /// the hidden server implementation.
@@ -613,6 +666,8 @@ pub(crate) struct ThunderwindRuntimeConfig {
     pub critical_chance_attribute_id: i32,
     pub critical_damage_attribute_id: i32,
     pub packet_proven_vectors: Vec<ThunderwindVectorRuntimeConfig>,
+    pub recipient_scope: String,
+    pub runtime_transfer_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -1466,6 +1521,10 @@ impl RdpsRuntimeConfig {
     /// Effect-scoped production authority. A false result never hides the
     /// canonical event or ordinary damage; it only blocks provider transfer.
     pub(crate) fn effect_runtime_transfer_enabled(&self, effect_id: i64) -> bool {
+        if effect_id == self.thunderwind.effect_id || effect_id == self.thunderwind.child_effect_id
+        {
+            return false;
+        }
         self.runtime_promotion_allowed()
             || self
                 .target_vulnerability
@@ -1765,6 +1824,7 @@ impl RdpsRuntimeConfig {
         let mechanical_runtime_authority = mechanical
             .class_11_tier_0_current_pack_lifecycle_authority
             && mechanical.class_11_tier_0_exact_rational_attribution_authority
+            && mechanical.replay.is_current_authority()
             && mechanical.accounting_method == "observed-final-damage-proportional-stage-share"
             && !mechanical.damage_stage_operation_order_authority
             && !mechanical.damage_stage_integer_rounding_authority
@@ -1965,6 +2025,8 @@ impl RdpsRuntimeConfig {
             i64::from(thunderwind.critical_damage_attribute_id),
         ];
         if thunderwind_ids.iter().any(|value| *value <= 0)
+            || thunderwind.recipient_scope != "summon-owner-only"
+            || thunderwind.runtime_transfer_enabled
             || thunderwind.packet_proven_vectors.is_empty()
             || thunderwind.packet_proven_vectors.iter().any(|vector| {
                 vector.source_level <= 0
@@ -3218,18 +3280,18 @@ mod tests {
     }
 
     #[test]
-    fn mechanical_power_retains_candidate_evidence_without_runtime_transfer() {
+    fn mechanical_power_runtime_is_bound_to_the_exact_conserving_replay() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
-        assert!(!current.mechanical_power.runtime_transfer_enabled);
+        assert!(current.mechanical_power.runtime_transfer_enabled);
         assert!(
             current
                 .mechanical_power
                 .class_11_tier_0_current_pack_lifecycle_authority
         );
         assert!(
-            !current
+            current
                 .mechanical_power
                 .class_11_tier_0_exact_rational_attribution_authority
         );
@@ -3253,23 +3315,13 @@ mod tests {
                 .server_integer_counterfactual_authority
         );
         assert!(current.mechanical_power.unresolved_overlap_fails_closed);
-        assert!(
-            current
-                .mechanical_power
-                .runtime_recipient_class_ids
-                .is_empty()
-        );
-        assert!(
-            current
-                .mechanical_power
-                .runtime_primary_percent_raw_deltas
-                .is_empty()
-        );
+        assert!(current.mechanical_power.runtime_recipient_class_ids == [11]);
+        assert!(current.mechanical_power.runtime_primary_percent_raw_deltas == [750]);
         assert_eq!(
             current
                 .mechanical_power
                 .production_primary_percent_raw_delta(11),
-            None
+            Some(750)
         );
         assert_eq!(
             current
@@ -3277,15 +3329,11 @@ mod tests {
                 .production_primary_percent_raw_delta(9),
             None
         );
-        assert!(!current.effect_runtime_transfer_enabled(current.mechanical_power.effect_id));
+        assert!(current.effect_runtime_transfer_enabled(current.mechanical_power.effect_id));
 
         let mut missing_rational_authority = base.clone();
-        missing_rational_authority["mechanical_power"]["runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
-        missing_rational_authority["mechanical_power"]["runtime_recipient_class_ids"] =
-            serde_json::json!([11]);
-        missing_rational_authority["mechanical_power"]["runtime_primary_percent_raw_deltas"] =
-            serde_json::json!([750]);
+        missing_rational_authority["mechanical_power"]["class_11_tier_0_exact_rational_attribution_authority"] =
+            serde_json::Value::Bool(false);
         assert!(
             runtime_from_value(missing_rational_authority)
                 .validate()
@@ -3294,19 +3342,13 @@ mod tests {
         );
 
         let mut exact_rational_reenable = base.clone();
-        exact_rational_reenable["mechanical_power"]["class_11_tier_0_exact_rational_attribution_authority"] =
-            serde_json::Value::Bool(true);
-        exact_rational_reenable["mechanical_power"]["runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
-        exact_rational_reenable["mechanical_power"]["runtime_recipient_class_ids"] =
-            serde_json::json!([11]);
-        exact_rational_reenable["mechanical_power"]["runtime_primary_percent_raw_deltas"] =
-            serde_json::json!([750]);
+        exact_rational_reenable["mechanical_power"]["replay"]["production_content_sha256"] =
+            serde_json::Value::String("0".repeat(64));
         assert!(
             runtime_from_value(exact_rational_reenable)
                 .validate()
-                .is_ok(),
-            "exact-rational packet-final attribution must not require hidden server integer authority",
+                .is_err(),
+            "production transfer must remain bound to the exact conserving replay",
         );
 
         let mut wrong_accounting_method = base.clone();
@@ -3348,6 +3390,29 @@ mod tests {
         disabled_with_scope["mechanical_power"]["runtime_recipient_class_ids"] =
             serde_json::json!([11]);
         assert!(runtime_from_value(disabled_with_scope).validate().is_err());
+    }
+
+    #[test]
+    fn thunderwind_power_remains_owner_only_when_the_whole_pack_is_approved() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert_eq!(current.thunderwind.recipient_scope, "summon-owner-only");
+        assert!(!current.thunderwind.runtime_transfer_enabled);
+        assert!(!current.effect_runtime_transfer_enabled(current.thunderwind.effect_id));
+        assert!(!current.effect_runtime_transfer_enabled(current.thunderwind.child_effect_id));
+
+        let mut approved = base;
+        approved["promotion_state"] = serde_json::Value::String("approved".into());
+        approved["promotion_blockers"] = serde_json::json!([]);
+        approved["policy"]["party_support_formula_frontier_complete"] =
+            serde_json::Value::Bool(true);
+        approved["policy"]["runtime_promotion_allowed"] = serde_json::Value::Bool(true);
+        let approved = runtime_from_value(approved);
+        assert!(approved.validate().is_ok());
+        assert!(approved.runtime_promotion_allowed());
+        assert!(!approved.effect_runtime_transfer_enabled(approved.thunderwind.effect_id));
+        assert!(!approved.effect_runtime_transfer_enabled(approved.thunderwind.child_effect_id));
     }
 
     #[test]

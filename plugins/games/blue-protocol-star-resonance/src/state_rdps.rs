@@ -59,7 +59,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v24";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v25";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -176,7 +176,6 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
                 .map(|rule| rule.effect_id),
         );
         effect_ids.push(runtime.team_luck.effect_id);
-        effect_ids.push(runtime.thunderwind.effect_id);
         effect_ids.extend(
             target_vulnerability_rdps_catalog()?
                 .rules
@@ -219,6 +218,10 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
         effect_ids.push(runtime.inspire.effect_id);
     }
     effect_ids.sort_unstable();
+    effect_ids.retain(|effect_id| {
+        *effect_id != runtime.thunderwind.effect_id
+            && *effect_id != runtime.thunderwind.child_effect_id
+    });
     effect_ids.dedup();
     Ok(effect_ids)
 }
@@ -3360,7 +3363,12 @@ impl BpsrStateDamageContributionProjector {
                 self.buffer_deferred_remote_harmony_damage(candidate);
             }
         }
-        if !self.runtime_applicable && offline_candidate_audit_applicable {
+        if offline_candidate_audit_applicable {
+            // Candidate audits are an explicit alternate output mode even
+            // when this exact build also has independently promoted effects.
+            // Retain only the selected candidate rows; otherwise the normal
+            // component gate below would discard the candidate merely because
+            // another effect made `runtime_applicable` true.
             let exact_candidate_effect_ids = &target_vulnerability_rdps_catalog()
                 .expect("catalog was validated when the projector was built")
                 .effect_ids;
@@ -13146,10 +13154,10 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                31_602, 55_228, 55_333, 2_110_065, 2_110_125, 2_110_143, 2_202_041, 2_204_471,
-                2_207_252, 2_302_121, 3_003_052
+                31_602, 55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041,
+                2_204_471, 2_207_252, 2_302_121, 3_003_052
             ],
-            "only effects with current production authority are exposed; Inspire uses packet-final rational authority while Mechanical Power remains candidate evidence"
+            "only effects with current production authority are exposed; Thunderwind Power remains owner-only and Mechanical Power is limited to its exact class-11 tier-0 route"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -13985,8 +13993,8 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                31_602, 55_228, 55_333, 2_110_065, 2_110_125, 2_110_143, 2_202_041, 2_204_471,
-                2_207_252, 2_302_121, 3_003_052
+                31_602, 55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041,
+                2_204_471, 2_207_252, 2_302_121, 3_003_052
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
@@ -15164,7 +15172,7 @@ mod tests {
     }
 
     #[test]
-    fn mechanical_power_tier0_candidate_uses_only_the_observed_750_delta() {
+    fn mechanical_power_production_and_audit_use_only_the_observed_750_delta() {
         let production = BpsrStateDamageContributionProjector::new().unwrap();
         assert_eq!(
             production.mechanical_power_candidate_primary_percent_override,
@@ -15179,8 +15187,8 @@ mod tests {
                 .runtime
                 .mechanical_power
                 .production_primary_percent_raw_delta(11),
-            None,
-            "candidate evidence must not expose a production delta"
+            Some(750),
+            "production is restricted to the exact packet-observed tier-0 delta"
         );
 
         let candidate =

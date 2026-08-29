@@ -2179,7 +2179,17 @@ impl CombatTimelinePlugin {
         let actors = self
             .actors
             .iter()
-            .filter(|(_, actor)| !active_actors_only || has_live_meter_activity(actor))
+            .filter(|(actor_id, actor)| {
+                !active_actors_only
+                    || has_live_meter_activity(actor)
+                    || contribution_summary
+                        .actors
+                        .get(actor_id)
+                        .is_some_and(|contribution| {
+                            contribution.contribution_given != 0
+                                || contribution.contribution_received != 0
+                        })
+            })
             .map(|(actor_id, actor)| {
                 let contribution = contribution_summary.actors.get(actor_id);
                 let rdps_incomplete = incomplete_rdps_actor_ids.contains(actor_id);
@@ -5593,7 +5603,6 @@ mod tests {
             (300_000, actor(target, ActorKind::Monster, "Target")),
             (1_000_000, status(StatusState::Applied)),
             (2_000_000, damage(recipient, 1_100)),
-            (3_000_000, damage(provider, 550)),
             (4_000_000, status(StatusState::Removed)),
             (5_000_000, damage(recipient, 1_100)),
         ] {
@@ -5622,8 +5631,8 @@ mod tests {
             .iter()
             .find(|actor| actor.actor_id == "2")
             .unwrap();
-        assert_eq!(provider.reported_damage, 550);
-        assert_eq!(provider.rdps_damage, Some(650));
+        assert_eq!(provider.reported_damage, 0);
+        assert_eq!(provider.rdps_damage, Some(100));
         assert_eq!(provider.rdps_contribution_given, Some(100));
         assert_eq!(provider.rdps_contribution_received, Some(0));
         assert_eq!(recipient.reported_damage, 2_200);
@@ -5641,6 +5650,29 @@ mod tests {
                 .iter()
                 .map(|actor| actor.rdps_damage.unwrap_or_default())
                 .sum::<i64>()
+        );
+
+        let overlay = plugin.live_overlay_snapshot().unwrap();
+        let overlay_provider = overlay
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .expect("a support-only rDPS provider must remain visible in the live overlay");
+        assert_eq!(overlay_provider.reported_damage, 0);
+        assert_eq!(overlay_provider.rdps_damage, Some(100));
+        assert_eq!(overlay_provider.rdps_contribution_given, Some(100));
+        assert_eq!(
+            overlay
+                .actors
+                .iter()
+                .map(|actor| actor.reported_damage)
+                .sum::<i64>(),
+            overlay
+                .actors
+                .iter()
+                .map(|actor| actor.rdps_damage.unwrap_or_default())
+                .sum::<i64>(),
+            "visible live-overlay rows must conserve raw damage and rDMG"
         );
 
         let history = plugin.build_history_view(&HistoryViewSpec {
@@ -5663,7 +5695,7 @@ mod tests {
             .iter()
             .find(|actor| actor.actor_id == "2")
             .unwrap();
-        assert_eq!(history_provider.rdps_damage, Some(650));
+        assert_eq!(history_provider.rdps_damage, Some(100));
         assert_eq!(history_provider.rdps_contribution_given, Some(100));
         assert_eq!(history_recipient.rdps_damage, Some(2_100));
         assert_eq!(history_recipient.rdps_contribution_received, Some(100));
