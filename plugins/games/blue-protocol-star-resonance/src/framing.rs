@@ -27,19 +27,14 @@ pub enum BpsrReturnLayout {
     Opaque,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BpsrFrameUpLayout {
     /// Preserve the wrapper for a region/build protocol pack.
+    #[default]
     Opaque,
     /// Four-byte wrapper prefix followed by ordinary nested BPSR frames.
     NestedAfterFourBytes,
-}
-
-impl Default for BpsrFrameUpLayout {
-    fn default() -> Self {
-        Self::Opaque
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
