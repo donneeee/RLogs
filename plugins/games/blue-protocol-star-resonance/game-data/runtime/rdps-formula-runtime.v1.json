@@ -396,6 +396,24 @@
     "unresolved_overlap_fails_closed": true,
     "runtime_transfer_enabled": true
   },
+  "encore": {
+    "effect_id": 55333,
+    "damage_action_ids": [230401, 230501],
+    "excluded_healing_action_id": 55314,
+    "current_build_lifecycle_authority": true,
+    "current_build_provider_ownership_authority": true,
+    "exact_packet_final_integer_authority": true,
+    "same_provider_instances_coalesced": true,
+    "external_provider_only": true,
+    "ordinary_damage_unchanged": true,
+    "accounting_method": "standalone-generated-output-whole-packet-final-integer",
+    "proof_content_sha256": "6dd132454bbef3f56f800bdc3aae9b2455bb65c24db48a09c38e99eaf8f4137f",
+    "proof_exact_build_rlogs": 26,
+    "proof_attributed_events": 2746,
+    "proof_attributed_rdmg": 55685346,
+    "locale_evidence": "English Encore verified in build 24252055; numeric effect ID 55333 observed in build 24687926; current-build English locale not independently extracted",
+    "runtime_transfer_enabled": true
+  },
   "thunderwind": {
     "effect_id": 2110138,
     "child_effect_id": 2110154,

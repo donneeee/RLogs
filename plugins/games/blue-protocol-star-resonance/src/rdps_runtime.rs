@@ -559,6 +559,39 @@ pub(crate) struct FieryBattleWillRuntimeConfig {
     pub runtime_transfer_enabled: bool,
 }
 
+/// Exact standalone output owned by Encore (55333).
+///
+/// The English name "Encore" is verified in build 24252055. Numeric effect ID
+/// 55333 is observed in current build 24687926; the current-build English
+/// locale has not been independently extracted, so numeric identity remains
+/// authoritative at runtime.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct EncoreDirectOutputRuntimeConfig {
+    pub effect_id: i64,
+    pub damage_action_ids: [i64; 2],
+    pub excluded_healing_action_id: i64,
+    current_build_lifecycle_authority: bool,
+    current_build_provider_ownership_authority: bool,
+    exact_packet_final_integer_authority: bool,
+    same_provider_instances_coalesced: bool,
+    external_provider_only: bool,
+    ordinary_damage_unchanged: bool,
+    accounting_method: String,
+    proof_content_sha256: String,
+    proof_exact_build_rlogs: u32,
+    proof_attributed_events: u64,
+    proof_attributed_rdmg: i64,
+    locale_evidence: String,
+    pub runtime_transfer_enabled: bool,
+}
+
+impl EncoreDirectOutputRuntimeConfig {
+    pub(crate) fn is_damage_action_id(&self, action_id: i64) -> bool {
+        self.damage_action_ids.contains(&action_id)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ThunderwindVectorRuntimeConfig {
@@ -985,6 +1018,7 @@ pub(crate) struct RdpsRuntimeConfig {
     pub harmony_grace: HarmonyGraceRuntimeConfig,
     pub stat_resonance: StatResonanceRuntimeConfig,
     pub fiery_battle_will: FieryBattleWillRuntimeConfig,
+    pub encore: EncoreDirectOutputRuntimeConfig,
     pub thunderwind: ThunderwindRuntimeConfig,
     pub inspiration: InspirationRuntimeConfig,
     pub highland_blood: HighlandBloodRuntimeConfig,
@@ -993,6 +1027,10 @@ pub(crate) struct RdpsRuntimeConfig {
 impl RdpsRuntimeConfig {
     pub(crate) fn runtime_promotion_allowed(&self) -> bool {
         self.policy.runtime_promotion_allowed
+    }
+
+    pub(crate) fn encore_runtime_transfer_enabled(&self) -> bool {
+        self.encore.runtime_transfer_enabled && self.game_build == "24687926"
     }
 
     /// Whether this exact build has at least one production attribution path.
@@ -1011,6 +1049,7 @@ impl RdpsRuntimeConfig {
             || self.harmony_grace.runtime_transfer_enabled
             || self.stat_resonance.runtime_transfer_enabled
             || self.fiery_battle_will.runtime_transfer_enabled
+            || self.encore_runtime_transfer_enabled()
             || self.highland_blood.runtime_transfer_enabled
             || self
                 .highland_blood
@@ -1040,6 +1079,7 @@ impl RdpsRuntimeConfig {
                 && self.stat_resonance.runtime_transfer_enabled)
             || (effect_id == self.fiery_battle_will.effect_id
                 && self.fiery_battle_will.runtime_transfer_enabled)
+            || (effect_id == self.encore.effect_id && self.encore_runtime_transfer_enabled())
             || (effect_id == self.highland_blood.effect_id
                 && (self.highland_blood.runtime_transfer_enabled
                     || self
@@ -1466,6 +1506,32 @@ impl RdpsRuntimeConfig {
         {
             return Err(
                 "bundled BPSR Fiery Battle Will formula is not ready for runtime transfer".into(),
+            );
+        }
+
+        let encore = &self.encore;
+        let encore_runtime_authority = encore.current_build_lifecycle_authority
+            && encore.current_build_provider_ownership_authority
+            && encore.exact_packet_final_integer_authority
+            && encore.same_provider_instances_coalesced
+            && encore.external_provider_only
+            && encore.ordinary_damage_unchanged
+            && encore.accounting_method == "standalone-generated-output-whole-packet-final-integer"
+            && encore.proof_content_sha256
+                == "6dd132454bbef3f56f800bdc3aae9b2455bb65c24db48a09c38e99eaf8f4137f"
+            && encore.proof_exact_build_rlogs == 26
+            && encore.proof_attributed_events == 2_746
+            && encore.proof_attributed_rdmg == 55_685_346
+            && encore.locale_evidence
+                == "English Encore verified in build 24252055; numeric effect ID 55333 observed in build 24687926; current-build English locale not independently extracted";
+        if encore.effect_id != 55_333
+            || encore.damage_action_ids != [230_401, 230_501]
+            || encore.excluded_healing_action_id != 55_314
+            || (self.encore_runtime_transfer_enabled() && !encore_runtime_authority)
+        {
+            return Err(
+                "bundled BPSR Encore (55333) direct-output rule is not ready for runtime transfer"
+                    .into(),
             );
         }
 
@@ -2659,6 +2725,62 @@ mod tests {
         guessed_overlap["stat_resonance"]["unresolved_overlap_fails_closed"] =
             serde_json::Value::Bool(false);
         assert!(runtime_from_value(guessed_overlap).validate().is_err());
+    }
+
+    #[test]
+    fn encore_55333_direct_output_requires_the_sealed_current_build_receipt() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert_eq!(current.encore.effect_id, 55_333);
+        assert_eq!(current.encore.damage_action_ids, [230_401, 230_501]);
+        assert_eq!(current.encore.excluded_healing_action_id, 55_314);
+        assert!(current.encore_runtime_transfer_enabled());
+        assert!(current.effect_runtime_transfer_enabled(55_333));
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("the prior build remains replayable");
+        assert!(!historical.encore_runtime_transfer_enabled());
+        assert!(!historical.effect_runtime_transfer_enabled(55_333));
+
+        for authority in [
+            "current_build_lifecycle_authority",
+            "current_build_provider_ownership_authority",
+            "exact_packet_final_integer_authority",
+            "same_provider_instances_coalesced",
+            "external_provider_only",
+            "ordinary_damage_unchanged",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["encore"][authority] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        for (field, value) in [
+            ("proof_exact_build_rlogs", serde_json::json!(25)),
+            ("proof_attributed_events", serde_json::json!(2_745)),
+            ("proof_attributed_rdmg", serde_json::json!(55_685_345)),
+        ] {
+            let mut altered_receipt = base.clone();
+            altered_receipt["encore"][field] = value;
+            assert!(runtime_from_value(altered_receipt).validate().is_err());
+        }
+
+        let mut healing_promoted_as_damage = base.clone();
+        healing_promoted_as_damage["encore"]["damage_action_ids"] =
+            serde_json::json!([55_314, 230_401]);
+        assert!(
+            runtime_from_value(healing_promoted_as_damage)
+                .validate()
+                .is_err()
+        );
+
+        let mut locale_overclaimed = base;
+        locale_overclaimed["encore"]["locale_evidence"] = serde_json::Value::String(
+            "English Encore independently verified in current build 24687926".into(),
+        );
+        assert!(runtime_from_value(locale_overclaimed).validate().is_err());
     }
 
     #[test]

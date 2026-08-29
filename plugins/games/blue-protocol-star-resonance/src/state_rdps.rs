@@ -54,7 +54,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v21";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v22";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -197,6 +197,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.fiery_battle_will.effect_id) {
         effect_ids.push(runtime.fiery_battle_will.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.encore.effect_id) {
+        effect_ids.push(runtime.encore.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.highland_blood.effect_id) {
         effect_ids.push(runtime.highland_blood.effect_id);
@@ -881,6 +884,19 @@ struct FatalSpiralWindowKey {
     provider_actor_id: u64,
     provider_entity_uuid: i64,
     instance_id: Option<i64>,
+}
+
+/// One exact Encore (55333) provider/recipient lifecycle instance. The English
+/// name is verified in build 24252055; current-build 24687926 authority comes
+/// from numeric effect ID 55333 because its English locale was not independently
+/// extracted for that build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct EncoreWindowKey {
+    target_actor_id: u64,
+    target_entity_uuid: i64,
+    provider_actor_id: u64,
+    provider_entity_uuid: i64,
+    instance_id: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1888,6 +1904,7 @@ pub struct BpsrStateDamageContributionProjector {
     fiery_battle_will_transition_wires: HashMap<u64, WireKey>,
     fiery_battle_will_pending_transitions: HashMap<u64, FieryBattleWillPendingTransition>,
     fiery_battle_will_attack_witnesses: HashSet<ObservedAttackProviderKey>,
+    encore_windows: HashSet<EncoreWindowKey>,
     thunderwind_windows: HashMap<EffectWindowKey, ThunderwindWindow>,
     thunderwind_child_targets: HashSet<u64>,
     thunderwind_transition_wires: HashMap<u64, WireKey>,
@@ -1996,6 +2013,7 @@ impl Default for BpsrStateDamageContributionProjector {
             fiery_battle_will_transition_wires: HashMap::new(),
             fiery_battle_will_pending_transitions: HashMap::new(),
             fiery_battle_will_attack_witnesses: HashSet::new(),
+            encore_windows: HashSet::new(),
             thunderwind_windows: HashMap::new(),
             thunderwind_child_targets: HashSet::new(),
             thunderwind_transition_wires: HashMap::new(),
@@ -2634,6 +2652,7 @@ impl BpsrStateDamageContributionProjector {
                 self.observe_fatal_spiral_data_gap(gap.kind);
                 self.clear_stat_resonance_after_gap();
                 self.clear_fiery_battle_will_after_gap();
+                self.clear_encore_after_gap(gap.kind);
             }
             TimelineEventKind::EntityAttributes(attributes) => self.observe_attributes(
                 attributes.actor.actor_id.0,
@@ -2651,6 +2670,24 @@ impl BpsrStateDamageContributionProjector {
                         .entry(damage.source.actor_id.0)
                         .or_default()
                         .insert(ability.0);
+                }
+                if self.runtime.encore_runtime_transfer_enabled()
+                    && damage
+                        .ability
+                        .is_some_and(|ability| self.runtime.encore.is_damage_action_id(ability.0))
+                {
+                    // Encore (55333) actions 230401 and 230501 are standalone
+                    // generated outputs. Their packet-final integer belongs
+                    // wholly to one proven external provider; running the
+                    // general stat formula pipeline as well would double-credit
+                    // the same ordinary damage row. No active, self, unresolved,
+                    // or multiple-provider lifecycle is ever guessed.
+                    if let Some(contribution) =
+                        self.encore_direct_contribution(envelope.time.observed_micros, damage)
+                    {
+                        output.push(contribution);
+                    }
+                    return;
                 }
                 if self.damage_has_unresolved_status_confounder(damage) {
                     rational_output.extend(
@@ -3156,6 +3193,73 @@ impl BpsrStateDamageContributionProjector {
         })
     }
 
+    fn encore_direct_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactDamageContributionEvent> {
+        let action_id = damage.ability?.0;
+        if !self.runtime.encore_runtime_transfer_enabled()
+            || !self.runtime.encore.is_damage_action_id(action_id)
+            || damage.amount <= 0
+        {
+            return None;
+        }
+
+        let raw_recipient_actor_id = damage.source.actor_id.0;
+        let recipient_actor_id = self.resolve_owner_actor_id(raw_recipient_actor_id);
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let recipient_identity = if recipient_entity_uuid != 0 {
+            (0_u8, i128::from(recipient_entity_uuid))
+        } else {
+            (1_u8, i128::from(recipient_actor_id))
+        };
+        let mut providers = BTreeMap::new();
+        for window in self.encore_windows.iter().filter(|window| {
+            window.target_actor_id == raw_recipient_actor_id
+                || self.resolve_owner_actor_id(window.target_actor_id) == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && window.target_entity_uuid == recipient_entity_uuid)
+        }) {
+            let entity_actor_id = (window.provider_entity_uuid != 0)
+                .then(|| {
+                    self.actor_ancestry
+                        .actor_for_entity(window.provider_entity_uuid)
+                })
+                .flatten()
+                .unwrap_or(window.provider_actor_id);
+            let provider_actor_id = self.resolve_owner_actor_id(entity_actor_id);
+            let provider_identity = if window.provider_entity_uuid != 0 {
+                (0_u8, i128::from(window.provider_entity_uuid))
+            } else {
+                (1_u8, i128::from(provider_actor_id))
+            };
+            providers
+                .entry(provider_identity)
+                .or_insert(provider_actor_id);
+        }
+        if providers.len() != 1 {
+            return None;
+        }
+        let (provider_identity, provider_actor_id) = providers.iter().next()?;
+        if *provider_identity == recipient_identity || *provider_actor_id == recipient_actor_id {
+            return None;
+        }
+
+        Some(ExactDamageContributionEvent {
+            observed_micros,
+            effect_id: self.runtime.encore.effect_id,
+            provider_actor_id: *provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(
+                "Encore (55333) standalone generated damage (actions 230401/230501)",
+            ),
+            amount: damage.amount,
+            observed_damage: damage.amount,
+            included: true,
+        })
+    }
+
     fn clear_stat_resonance_after_gap(&mut self) {
         self.stat_resonance_windows.clear();
         self.stat_resonance_transition_wires.clear();
@@ -3168,6 +3272,14 @@ impl BpsrStateDamageContributionProjector {
         self.fiery_battle_will_transition_wires.clear();
         self.fiery_battle_will_pending_transitions.clear();
         self.fiery_battle_will_attack_witnesses.clear();
+    }
+
+    fn clear_encore_after_gap(&mut self, kind: DataGapKind) {
+        if kind == DataGapKind::TcpGap {
+            // A missing transport range can hide an Encore (55333) terminal.
+            // Clear every window rather than carrying stale provider credit.
+            self.encore_windows.clear();
+        }
     }
 
     fn observe_unresolved_status(&mut self, status: &rlogs_events::UnresolvedStatusEvent) {
@@ -3284,6 +3396,11 @@ impl BpsrStateDamageContributionProjector {
         {
             self.observe_fiery_battle_will_status(status);
         }
+        if self.runtime.encore_runtime_transfer_enabled()
+            && status.effect.0 == self.runtime.encore.effect_id
+        {
+            self.observe_encore_status(status);
+        }
         if status.effect.0 == self.runtime.thunderwind.effect_id {
             self.observe_thunderwind_status(status, observed_micros);
         }
@@ -3329,6 +3446,53 @@ impl BpsrStateDamageContributionProjector {
         };
         self.effect_windows
             .insert(key, EffectWindow { desired_stacks });
+    }
+
+    fn observe_encore_status(&mut self, status: &rlogs_events::StatusEvent) {
+        let target_actor_id = status.target.actor_id.0;
+        let target_entity_uuid = status.target.entity_uuid.0;
+        let active = matches!(
+            status.state,
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+        ) || (status.state == StatusState::Consumed
+            && status.stacks.unwrap_or_default() > 0);
+
+        if active {
+            let (Some(provider), Some(instance_id)) =
+                (status.source, status.instance_id.map(|instance| instance.0))
+            else {
+                // Without both exact ownership and instance identity, an old
+                // lifecycle cannot safely remain eligible.
+                self.encore_windows.retain(|window| {
+                    window.target_actor_id != target_actor_id
+                        && (target_entity_uuid == 0
+                            || window.target_entity_uuid != target_entity_uuid)
+                });
+                return;
+            };
+            self.encore_windows.insert(EncoreWindowKey {
+                target_actor_id,
+                target_entity_uuid,
+                provider_actor_id: provider.actor_id.0,
+                provider_entity_uuid: provider.entity_uuid.0,
+                instance_id,
+            });
+            return;
+        }
+
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        self.encore_windows.retain(|window| {
+            let target_matches = window.target_actor_id == target_actor_id
+                || (target_entity_uuid != 0 && window.target_entity_uuid == target_entity_uuid);
+            let instance_matches =
+                instance_id.is_none_or(|instance| window.instance_id == instance);
+            let provider_matches = status.source.is_none_or(|provider| {
+                window.provider_actor_id == provider.actor_id.0
+                    || (provider.entity_uuid.0 != 0
+                        && window.provider_entity_uuid == provider.entity_uuid.0)
+            });
+            !(target_matches && instance_matches && provider_matches)
+        });
     }
 
     fn observe_formula_status(&mut self, status: &rlogs_events::StatusEvent) {
@@ -8842,6 +9006,13 @@ impl BpsrStateDamageContributionProjector {
         self.fiery_battle_will_pending_transitions.remove(&actor_id);
         self.fiery_battle_will_attack_witnesses
             .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.encore_windows.retain(|key| {
+            // Encore (55333) lives on the recipient. A provider actor despawn
+            // does not terminate that server-owned status or erase the stable
+            // provider entity captured at application time. Recipient despawn,
+            // an exact status terminal, or a TCP gap still fails closed.
+            key.target_actor_id != actor_id
+        });
         self.thunderwind_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.thunderwind_child_targets.remove(&actor_id);
@@ -8914,6 +9085,7 @@ impl BpsrStateDamageContributionProjector {
         self.fiery_battle_will_transition_wires.clear();
         self.fiery_battle_will_pending_transitions.clear();
         self.fiery_battle_will_attack_witnesses.clear();
+        self.encore_windows.clear();
         self.thunderwind_windows.clear();
         self.thunderwind_child_targets.clear();
         self.thunderwind_transition_wires.clear();
@@ -11287,6 +11459,52 @@ mod tests {
         }
     }
 
+    fn encore_test_status(
+        provider_actor_id: u64,
+        recipient_actor_id: u64,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        rlogs_events::StatusEvent {
+            source: Some(test_entity(
+                provider_actor_id,
+                i64::try_from(provider_actor_id).unwrap() * 10,
+            )),
+            target: test_entity(
+                recipient_actor_id,
+                i64::try_from(recipient_actor_id).unwrap() * 10,
+            ),
+            effect: rlogs_events::StatusEffectId(runtime().encore.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(1),
+            level: Some(1),
+            part_id: None,
+            count: None,
+            created_at_millis: None,
+            duration_millis: Some(10_000),
+        }
+    }
+
+    fn encore_test_damage(action_id: i64, amount: i64) -> rlogs_events::DamageEvent {
+        rlogs_events::DamageEvent {
+            source: test_entity(4, 40),
+            direct_source: None,
+            target: test_entity(17, 170),
+            ability: Some(rlogs_events::AbilityId(action_id)),
+            amount,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(1),
+            damage_source: None,
+            damage_type: Some(2),
+            flags: rlogs_events::DamageFlags::default(),
+            packet: rlogs_events::DamagePacketDetail::default(),
+        }
+    }
+
     fn critical_test_damage(
         source: rlogs_events::EntityRef,
         amount: i64,
@@ -11443,10 +11661,10 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252,
+                55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252,
                 2_302_121, 3_003_052
             ],
-            "the exact packet-pair vulnerability, observed Fiery Battle Will Attack-percent component, direct Highland observed-final component, observed Mechanical Power component, exact observed Stat Resonance Attack delta, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
+            "the exact packet-pair vulnerability, Encore (55333) standalone output, observed Fiery Battle Will Attack-percent component, direct Highland observed-final component, observed Mechanical Power component, exact observed Stat Resonance Attack delta, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -12282,7 +12500,7 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252,
+                55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252,
                 2_302_121, 3_003_052
             ]
         );
@@ -15448,6 +15666,154 @@ mod tests {
             projector.stat_resonance_decision(106, &damage),
             Err("provider_window_missing")
         );
+    }
+
+    #[test]
+    fn encore_55333_transfers_each_exact_packet_final_damage_integer_once_and_conserves_rdmg() {
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40)]),
+            latest_observed_micros: 100,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_encore_status(&encore_test_status(2, 4, 77, StatusState::Applied));
+        projector.observe_encore_status(&encore_test_status(2, 4, 78, StatusState::Refreshed));
+
+        for action_id in [230_401, 230_501] {
+            let ordinary_damage = 123_457;
+            let contribution = projector
+                .encore_direct_contribution(101, &encore_test_damage(action_id, ordinary_damage))
+                .expect("one external Encore (55333) provider owns the standalone output");
+            assert_eq!(contribution.effect_id, 55_333);
+            assert_eq!(contribution.provider_actor_id, 2);
+            assert_eq!(contribution.recipient_actor_id, 4);
+            assert_eq!(contribution.amount, ordinary_damage);
+            assert_eq!(contribution.observed_damage, ordinary_damage);
+            assert!(contribution.included);
+            assert_eq!(
+                contribution.scope,
+                DamageContributionScope::Component(
+                    "Encore (55333) standalone generated damage (actions 230401/230501)"
+                )
+            );
+
+            let recipient_rdmg_delta = -contribution.amount;
+            let provider_rdmg_delta = contribution.amount;
+            assert_eq!(recipient_rdmg_delta + provider_rdmg_delta, 0);
+            assert_eq!(ordinary_damage, 123_457, "ordinary damage is never mutated");
+        }
+
+        projector.observe_encore_status(&encore_test_status(2, 4, 77, StatusState::Removed));
+        assert!(
+            projector
+                .encore_direct_contribution(102, &encore_test_damage(230_401, 9))
+                .is_some(),
+            "coalesced same-provider instance 78 remains active"
+        );
+        projector.observe_encore_status(&encore_test_status(2, 4, 78, StatusState::Removed));
+        assert!(
+            projector
+                .encore_direct_contribution(103, &encore_test_damage(230_401, 9))
+                .is_none(),
+            "the last exact instance terminal closes the provider window"
+        );
+    }
+
+    #[test]
+    fn encore_55333_provider_despawn_preserves_recipient_status_but_recipient_despawn_closes_it() {
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40)]),
+            latest_observed_micros: 100,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_encore_status(&encore_test_status(2, 4, 77, StatusState::Applied));
+
+        projector.clear_actor(2);
+        let contribution = projector
+            .encore_direct_contribution(101, &encore_test_damage(230_401, 31_337))
+            .expect("provider despawn does not terminate Encore (55333) on the recipient");
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(contribution.amount, 31_337);
+
+        projector.clear_actor(4);
+        assert!(projector.encore_windows.is_empty());
+        assert!(
+            projector
+                .encore_direct_contribution(102, &encore_test_damage(230_501, 31_337))
+                .is_none(),
+            "recipient despawn fails closed"
+        );
+    }
+
+    #[test]
+    fn encore_55333_fails_closed_for_self_missing_multiple_healing_and_gap_cases() {
+        let damage = encore_test_damage(230_401, 77);
+        let projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4, 6]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (6, 60)]),
+            latest_observed_micros: 100,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        assert!(projector.encore_direct_contribution(100, &damage).is_none());
+
+        let mut self_provider = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([4]),
+            actor_ancestry: test_ancestry(&[(4, 40)]),
+            latest_observed_micros: 100,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        self_provider.observe_encore_status(&encore_test_status(4, 4, 1, StatusState::Applied));
+        assert!(
+            self_provider
+                .encore_direct_contribution(100, &damage)
+                .is_none()
+        );
+
+        let mut multiple = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4, 6]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (6, 60)]),
+            latest_observed_micros: 100,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        multiple.observe_encore_status(&encore_test_status(2, 4, 1, StatusState::Applied));
+        multiple.observe_encore_status(&encore_test_status(6, 4, 2, StatusState::Applied));
+        assert!(multiple.encore_direct_contribution(100, &damage).is_none());
+
+        let mut missing_instance = encore_test_status(2, 4, 1, StatusState::Applied);
+        missing_instance.instance_id = None;
+        multiple.observe_encore_status(&missing_instance);
+        assert!(multiple.encore_windows.is_empty());
+
+        multiple.observe_encore_status(&encore_test_status(2, 4, 1, StatusState::Applied));
+        let mut missing_provider = encore_test_status(2, 4, 2, StatusState::Applied);
+        missing_provider.source = None;
+        multiple.observe_encore_status(&missing_provider);
+        assert!(multiple.encore_windows.is_empty());
+
+        assert!(
+            projector
+                .encore_direct_contribution(100, &encore_test_damage(55_314, 77))
+                .is_none(),
+            "Encore Strings healing action 55314 never creates rDPS"
+        );
+        assert!(
+            projector
+                .encore_direct_contribution(100, &encore_test_damage(230_401, 0))
+                .is_none()
+        );
+
+        let mut gap = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40)]),
+            latest_observed_micros: 100,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        gap.observe_encore_status(&encore_test_status(2, 4, 1, StatusState::Applied));
+        gap.clear_encore_after_gap(DataGapKind::TcpGap);
+        assert!(gap.encore_windows.is_empty());
+        assert!(gap.encore_direct_contribution(100, &damage).is_none());
     }
 
     #[test]
