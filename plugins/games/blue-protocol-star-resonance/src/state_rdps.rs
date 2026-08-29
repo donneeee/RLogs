@@ -16,7 +16,7 @@ use rlogs_combat::{
     ExactDamageContributionProjector, ExactRationalDamageContributionEvent,
 };
 use rlogs_events::{
-    ActorKind, ActorState, CanonicalEvent, EncounterState, EntityAttribute,
+    ActorKind, ActorState, CanonicalEvent, DataGapKind, EncounterState, EntityAttribute,
     EntityAttributeUpdateKind, EntityAttributeValue, EntityRef, EventEnvelope, EvidenceSource,
     RunState, StatusState, TimelineEventKind,
 };
@@ -34,7 +34,8 @@ use crate::{
     exact_additive_fixed_point_marginal_from_observed_output,
     exact_external_attack_and_factors_fraction, exact_external_attack_coefficient_stage_fraction,
     exact_external_attack_ordered_stage_fraction,
-    exact_external_combined_critical_lucky_chance_fraction,
+    exact_external_combined_critical_lucky_chance_and_damage_fraction,
+    exact_external_combined_critical_lucky_damage_fraction,
     exact_external_critical_chance_and_damage_fraction, exact_external_critical_chance_fraction,
     exact_external_critical_damage_fraction, exact_external_lucky_chance_and_damage_fraction,
     exact_external_lucky_chance_fraction, exact_external_lucky_damage_fraction,
@@ -53,7 +54,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v18";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v19";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -190,6 +191,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.harmony_grace.effect_id) {
         effect_ids.push(runtime.harmony_grace.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.highland_blood.effect_id) {
+        effect_ids.push(runtime.highland_blood.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.inspiration.effect_id) {
         effect_ids.push(runtime.inspiration.effect_id);
@@ -710,6 +714,10 @@ struct ActorHpState {
     /// decomposition is retained only after the same wire proves the status
     /// owner and the exact six-component recipient transition.
     all_element: FixedPointFamilyState,
+    /// Exact packet-observed final property bonus keyed by DamageInfo.property.
+    /// Only the eight current-build FightAttr final IDs are decoded; omitted
+    /// snapshot members stay missing and can never be treated as zero.
+    element_damage_by_property: BTreeMap<i32, i64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1829,6 +1837,7 @@ pub struct BpsrStateDamageContributionProjector {
     inspiration_transition_wires: HashMap<u64, WireKey>,
     inspiration_snapshot_targets: HashSet<u64>,
     fatal_spiral_windows: HashSet<FatalSpiralWindowKey>,
+    fatal_spiral_transition_wires: HashMap<u64, WireKey>,
     fatal_spiral_transitions: HashMap<u64, Vec<FixedPointFamilyTransition>>,
     fatal_spiral_snapshot_targets: HashSet<u64>,
     /// Latest exact actor-loadout tier for Fatal Spiral's Imagine, keyed by
@@ -1925,6 +1934,7 @@ impl Default for BpsrStateDamageContributionProjector {
             inspiration_transition_wires: HashMap::new(),
             inspiration_snapshot_targets: HashSet::new(),
             fatal_spiral_windows: HashSet::new(),
+            fatal_spiral_transition_wires: HashMap::new(),
             fatal_spiral_transitions: HashMap::new(),
             fatal_spiral_snapshot_targets: HashSet::new(),
             fatal_spiral_equipped_basis_points_by_entity_uuid: HashMap::new(),
@@ -2122,10 +2132,22 @@ impl BpsrStateDamageContributionProjector {
                     target_entity_uuid: damage.target_entity_uuid,
                 });
                 let scope = match damage.effect_id {
-                    effect_id if effect_id == self.runtime.harmony_grace.effect_id => {
+                    effect_id
+                        if effect_id == self.runtime.harmony_grace.effect_id
+                            && self
+                                .runtime
+                                .harmony_grace
+                                .remote_paired_output_runtime_transfer_enabled =>
+                    {
                         "harmony-grace-remote-paired-output"
                     }
-                    effect_id if effect_id == self.runtime.highland_blood.effect_id => {
+                    effect_id
+                        if effect_id == self.runtime.highland_blood.effect_id
+                            && self
+                                .runtime
+                                .highland_blood
+                                .remote_paired_output_runtime_transfer_enabled =>
+                    {
                         "fatal-spiral-remote-paired-output"
                     }
                     _ => continue,
@@ -2537,6 +2559,7 @@ impl BpsrStateDamageContributionProjector {
             TimelineEventKind::UnresolvedStatus(status) => {
                 self.observe_unresolved_status(status);
             }
+            TimelineEventKind::DataGap(gap) => self.observe_fatal_spiral_data_gap(gap.kind),
             TimelineEventKind::EntityAttributes(attributes) => self.observe_attributes(
                 attributes.actor.actor_id.0,
                 attributes.actor.entity_uuid.0,
@@ -2620,6 +2643,8 @@ impl BpsrStateDamageContributionProjector {
                     self.harmony_grace_contribution(envelope.time.observed_micros, damage);
                 let remote_harmony_paired_output_contribution =
                     self.remote_harmony_paired_output_contribution(envelope, damage);
+                let fatal_spiral_direct_contribution =
+                    self.fatal_spiral_direct_contribution(envelope.time.observed_micros, damage);
                 let mechanical_power_contribution =
                     self.mechanical_power_contribution(envelope.time.observed_micros, damage);
                 let mut inspiration_contribution =
@@ -2720,6 +2745,7 @@ impl BpsrStateDamageContributionProjector {
                 let rational_candidate_count = usize::from(team_luck_contribution.is_some())
                     + attack_contributions.len()
                     + usize::from(remote_harmony_paired_output_contribution.is_some())
+                    + usize::from(fatal_spiral_direct_contribution.is_some())
                     + usize::from(inspiration_occurrence_contribution.is_some())
                     + usize::from(thunderwind_contribution.is_some())
                     + target_vulnerability_rational_contributions.len();
@@ -2802,6 +2828,27 @@ impl BpsrStateDamageContributionProjector {
                                 rational_output.push(later);
                             } else {
                                 rational_output.push(remote_harmony);
+                            }
+                        }
+                        return;
+                    }
+                    if let Some(fatal_spiral) = fatal_spiral_direct_contribution {
+                        // Highland Blood is removed from the observed final
+                        // damage by an exact all-plus-property element-bucket
+                        // ratio. Same/earlier-stage candidates still need a
+                        // proved allocation order; a unique later-stage share
+                        // is scaled from the damage remaining after Highland.
+                        if attack_contributions.is_empty() {
+                            if let Some(later) = later_contribution.and_then(|later| {
+                                scale_later_rational_marginal_after_many(
+                                    std::slice::from_ref(&fatal_spiral),
+                                    later,
+                                )
+                            }) {
+                                rational_output.push(fatal_spiral);
+                                rational_output.push(later);
+                            } else {
+                                rational_output.push(fatal_spiral);
                             }
                         }
                         return;
@@ -2955,6 +3002,7 @@ impl BpsrStateDamageContributionProjector {
             self.inspiration_transition_wires.clear();
             self.inspiration_snapshot_targets.clear();
             self.thunderwind_transition_wires.clear();
+            self.fatal_spiral_transition_wires.clear();
             self.fatal_spiral_transitions.clear();
             self.fatal_spiral_snapshot_targets.clear();
             self.target_vulnerability_transitions.clear();
@@ -3161,6 +3209,10 @@ impl BpsrStateDamageContributionProjector {
 
     fn observe_fatal_spiral_status(&mut self, status: &rlogs_events::StatusEvent) {
         let target_actor_id = status.target.actor_id.0;
+        if let Some(wire) = self.current_wire {
+            self.fatal_spiral_transition_wires
+                .insert(target_actor_id, wire);
+        }
         let instance_id = status.instance_id.map(|instance| instance.0);
         let active = matches!(
             status.state,
@@ -3222,6 +3274,26 @@ impl BpsrStateDamageContributionProjector {
                     active: false,
                 },
             ));
+    }
+
+    fn observe_fatal_spiral_data_gap(&mut self, kind: DataGapKind) {
+        if kind != DataGapKind::TcpGap {
+            return;
+        }
+        // A real TCP gap can hide a status removal or provider transition.
+        // Truncate every active lifecycle at the first such gap. Parser and
+        // route failures do not prove missing transport bytes and therefore
+        // do not invalidate an otherwise exact lifecycle.
+        self.fatal_spiral_windows.clear();
+        self.fatal_spiral_transition_wires.clear();
+        self.fatal_spiral_transitions.clear();
+        self.fatal_spiral_snapshot_targets.clear();
+        for state in self.states.values_mut() {
+            state.all_element.provider_basis_points.clear();
+        }
+        for state in self.staged_states.values_mut() {
+            state.all_element.provider_basis_points.clear();
+        }
     }
 
     fn observe_full_bloom_status(&mut self, status: &rlogs_events::StatusEvent) {
@@ -3894,6 +3966,9 @@ impl BpsrStateDamageContributionProjector {
             let Some(value) = integer_attribute(attribute) else {
                 continue;
             };
+            if let Some(property) = property_for_damage_final_attribute_id(attribute.attribute_id) {
+                next.element_damage_by_property.insert(property, value);
+            }
             for recipient_rule in &self.runtime.mechanical_power.recipient_rules {
                 update_attack_family_attribute(
                     next.mechanical_primary_by_class
@@ -5149,7 +5224,9 @@ impl BpsrStateDamageContributionProjector {
             effect_id: self.runtime.team_luck.effect_id,
             provider_actor_id,
             recipient_actor_id,
-            scope: DamageContributionScope::Component(if critical_factor_reconstructed {
+            scope: DamageContributionScope::Component(if critical && lucky {
+                "team-luck-critical-and-lucky-damage"
+            } else if critical_factor_reconstructed {
                 "team-luck-critical-damage-reconstructed"
             } else if critical {
                 "team-luck-critical-damage"
@@ -6736,7 +6813,6 @@ impl BpsrStateDamageContributionProjector {
             );
         }
         if !self.inspiration_candidate_audit_enabled
-            && !critical
             && lucky
             && self
                 .runtime
@@ -6821,7 +6897,16 @@ impl BpsrStateDamageContributionProjector {
                 (false, true, _, None) => {
                     DamageContributionScope::Component("inspiration-lucky-chance")
                 }
-                (true, true, _, _) => {
+                (true, true, Some(_), Some(_)) => DamageContributionScope::Component(
+                    "inspiration-critical-lucky-chance-and-recipient-and-base-conversions",
+                ),
+                (true, true, Some(_), None) => DamageContributionScope::Component(
+                    "inspiration-critical-lucky-chance-and-recipient-conversion",
+                ),
+                (true, true, None, Some(_)) => DamageContributionScope::Component(
+                    "inspiration-critical-lucky-chance-and-base-lucky-damage",
+                ),
+                (true, true, None, None) => {
                     DamageContributionScope::Component("inspiration-critical-lucky-chance")
                 }
                 (false, false, _, _) => unreachable!("an Inspiration occurrence is required"),
@@ -7561,11 +7646,156 @@ impl BpsrStateDamageContributionProjector {
         )
     }
 
-    /// Analysis-only gate for Arcane! Fatal Spiral's packet-proven external
-    /// all-element state. This deliberately stops before attribution: the
-    /// provider, recipient, tier delta, and affected elemental hit are proven,
-    /// but the client's integer damage-stage inversion is not yet proven.
+    fn fatal_spiral_direct_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.fatal_spiral_direct_decision(observed_micros, damage)
+            .ok()
+    }
+
+    fn fatal_spiral_direct_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        let runtime = &self.runtime.highland_blood;
+        if !self.runtime_applicable || !runtime.runtime_transfer_enabled {
+            return Err("runtime_mismatch");
+        }
+        if damage.amount <= 0 {
+            return Err("nonpositive_damage");
+        }
+        let Some(ability_id) = damage.ability.map(|ability| ability.0) else {
+            return Err("missing_damage_id");
+        };
+        if runtime
+            .excluded_provider_owned_damage_ids
+            .contains(&ability_id)
+        {
+            return Err("excluded_provider_owned_damage");
+        }
+        let Some(property) = damage.packet.property else {
+            return Err("missing_damage_property");
+        };
+        if property_damage_final_attribute_id(property).is_none() {
+            return Err("non_elemental_damage_property");
+        }
+
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        if !self.active_players.contains(&recipient_actor_id) {
+            return Err("recipient_inactive");
+        }
+        let Some(state_actor_id) = self.fatal_spiral_state_actor_id(damage) else {
+            return Err("recipient_state_never_observed");
+        };
+        if self.current_wire.is_some_and(|wire| {
+            self.fatal_spiral_transition_wires
+                .get(&recipient_actor_id)
+                .or_else(|| self.fatal_spiral_transition_wires.get(&state_actor_id))
+                == Some(&wire)
+        }) {
+            return Err("same_wire_transition");
+        }
+
+        let providers = self.fatal_spiral_provider_windows_for_recipient(
+            recipient_actor_id,
+            recipient_entity_uuid,
+            Some(state_actor_id),
+        );
+        if providers.is_empty() {
+            return Err("no_external_active_provider");
+        }
+        if providers.len() != 1 {
+            return Err("multiple_external_active_providers");
+        }
+        let (provider_actor_id, provider_entity_uuid) = providers[0];
+        if self
+            .fatal_spiral_ambiguous_provider_entities
+            .contains(&provider_entity_uuid)
+        {
+            return Err("ambiguous_provider_magnitude");
+        }
+        let Some(&provider_basis_points) = self
+            .fatal_spiral_equipped_basis_points_by_entity_uuid
+            .get(&provider_entity_uuid)
+        else {
+            return Err("missing_exact_provider_tier");
+        };
+        if !runtime
+            .packet_proven_raw_deltas
+            .contains(&provider_basis_points)
+        {
+            return Err("unproven_recipient_delta");
+        }
+
+        let state = self
+            .states
+            .get(&state_actor_id)
+            .ok_or("recipient_state_never_observed")?;
+        if state.all_element.provider_basis_points.len() != 1
+            || state
+                .all_element
+                .provider_basis_points
+                .get(&provider_actor_id)
+                != Some(&provider_basis_points)
+        {
+            return Err("recipient_transition_unproven");
+        }
+        let current_all_element = state
+            .all_element
+            .current_value
+            .ok_or("missing_current_all_element_state")?;
+        let current_property_bonus = state
+            .element_damage_by_property
+            .get(&property)
+            .copied()
+            .ok_or("missing_current_property_element_state")?;
+        let denominator = 10_000_i128
+            .checked_add(i128::from(current_all_element))
+            .and_then(|value| value.checked_add(i128::from(current_property_bonus)))
+            .ok_or("invalid_element_bucket")?;
+        let numerator = i128::from(damage.amount)
+            .checked_mul(i128::from(provider_basis_points))
+            .ok_or("invalid_element_bucket")?;
+        if denominator <= 0
+            || numerator <= 0
+            || numerator
+                > i128::from(damage.amount)
+                    .checked_mul(denominator)
+                    .ok_or("invalid_element_bucket")?
+        {
+            return Err("invalid_element_bucket");
+        }
+        let divisor = greatest_common_divisor(numerator, denominator);
+
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: runtime.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(
+                "fatal-spiral-all-plus-property-observed-final",
+            ),
+            numerator: numerator / divisor,
+            denominator: denominator / divisor,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    /// Explain whether Fatal Spiral can use the current-build direct observed-
+    /// final ratio, or the disabled paired-output audit lane.
     pub fn fatal_spiral_audit_gate(&self, damage: &rlogs_events::DamageEvent) -> &'static str {
+        if self.runtime.highland_blood.runtime_transfer_enabled {
+            return match self.fatal_spiral_direct_decision(self.latest_observed_micros, damage) {
+                Ok(_) => "emitted",
+                Err(gate) => gate,
+            };
+        }
         if !self.runtime_applicable {
             return "runtime_mismatch";
         }
@@ -7836,6 +8066,7 @@ impl BpsrStateDamageContributionProjector {
         self.inspiration_snapshot_targets.remove(&actor_id);
         self.fatal_spiral_windows
             .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.fatal_spiral_transition_wires.remove(&actor_id);
         self.fatal_spiral_transitions.remove(&actor_id);
         self.fatal_spiral_snapshot_targets.remove(&actor_id);
         self.target_vulnerability_windows
@@ -7893,6 +8124,7 @@ impl BpsrStateDamageContributionProjector {
         self.inspiration_transition_wires.clear();
         self.inspiration_snapshot_targets.clear();
         self.fatal_spiral_windows.clear();
+        self.fatal_spiral_transition_wires.clear();
         self.fatal_spiral_transitions.clear();
         self.fatal_spiral_snapshot_targets.clear();
         self.fatal_spiral_provider_basis_points_by_entity_uuid = self
@@ -8113,17 +8345,21 @@ fn exact_team_luck_accounting_fraction(
     if observed_damage <= 0 || (!critical && !lucky) {
         return None;
     }
-    // A combined critical+Lucky packet requires a proven ordering for the two
-    // integer floor stages. No externally supplied Team Luck sample currently
-    // exercises that path, so retain the damage without projecting it.
+    // Combined packets remain closed unless the exact-build runtime receipt
+    // authorizes the dedicated Lucky component and observed-final rational
+    // cross-term formula. This does not claim a hidden server integer inverse.
     if critical && lucky && !combined_critical_lucky_enabled {
         return None;
     }
-    // No combined-outcome algorithm is present in the runtime pack yet. The
-    // validation gate rejects `true`, so reaching this branch is impossible
-    // until a future generic ordered-stage implementation is promoted.
     if critical && lucky {
-        return None;
+        return exact_external_combined_critical_lucky_damage_fraction(
+            observed_damage,
+            critical_damage_raw,
+            critical_raw_delta,
+            lucky_damage_raw,
+            lucky_raw_delta,
+            critical_damage_factor_interpretation,
+        );
     }
     if critical {
         exact_external_critical_damage_fraction(
@@ -8187,6 +8423,34 @@ fn greatest_common_divisor(mut left: i128, mut right: i128) -> i128 {
         right = remainder;
     }
     left.max(1)
+}
+
+fn property_damage_final_attribute_id(property: i32) -> Option<i32> {
+    match property {
+        1 => Some(13_110), // Fire
+        2 => Some(13_120), // Water
+        3 => Some(13_140), // Electricity
+        4 => Some(13_130), // Wood
+        5 => Some(13_150), // Wind
+        6 => Some(13_160), // Rock
+        7 => Some(13_170), // Light
+        8 => Some(13_180), // Dark
+        _ => None,
+    }
+}
+
+fn property_for_damage_final_attribute_id(attribute_id: i32) -> Option<i32> {
+    match attribute_id {
+        13_110 => Some(1),
+        13_120 => Some(2),
+        13_140 => Some(3),
+        13_130 => Some(4),
+        13_150 => Some(5),
+        13_160 => Some(6),
+        13_170 => Some(7),
+        13_180 => Some(8),
+        _ => None,
+    }
 }
 
 fn checked_positive_floor_ratio(value: i64, numerator: i64, denominator: i64) -> Option<i64> {
@@ -9097,24 +9361,18 @@ fn exact_inspiration_occurrence_fraction(
             current_lucky_damage_raw?,
             provider_lucky_damage_raw_delta?,
         ),
-        (true, true)
-            if provider_critical_damage_raw_delta.is_none()
-                && provider_lucky_damage_raw_delta.is_none() =>
-        {
-            exact_external_combined_critical_lucky_chance_fraction(
-                observed_damage,
-                current_critical_chance_raw,
-                provider_chance_raw_delta,
-                current_lucky_chance_raw,
-                provider_chance_raw_delta,
-                current_critical_damage_raw,
-                critical_damage_factor_interpretation,
-            )
-        }
-        // Combined Critical+Lucky dependency order requires its own exact
-        // joint formula. Retain the observed damage and emit no partial
-        // provider credit until that path is proven.
-        (true, true) => None,
+        (true, true) => exact_external_combined_critical_lucky_chance_and_damage_fraction(
+            observed_damage,
+            current_critical_chance_raw,
+            provider_chance_raw_delta,
+            current_lucky_chance_raw,
+            provider_chance_raw_delta,
+            current_critical_damage_raw,
+            provider_critical_damage_raw_delta.unwrap_or_default(),
+            current_lucky_damage_raw?,
+            provider_lucky_damage_raw_delta.unwrap_or_default(),
+            critical_damage_factor_interpretation,
+        ),
         (false, false) => None,
     }
 }
@@ -9426,7 +9684,7 @@ mod tests {
     }
 
     #[test]
-    fn fatal_spiral_paired_output_emits_the_six_target_exact_delta_and_conserves() {
+    fn fatal_spiral_paired_output_candidate_math_conserves_before_runtime_gating() {
         let mut learner = BpsrRemoteFactorLearner::default();
         for index in 0_u64..6 {
             learner.harmony_groups.insert(
@@ -9542,7 +9800,7 @@ mod tests {
     }
 
     #[test]
-    fn live_fatal_spiral_deferred_receipt_keeps_effect_and_scope() {
+    fn disabled_fatal_spiral_deferred_receipt_is_not_emitted() {
         let mut projector = BpsrStateDamageContributionProjector {
             remote_factor_timeline: Some(BpsrRemoteFactorTimeline {
                 remote_harmony_by_event_sequence: HashMap::from([(
@@ -9585,18 +9843,8 @@ mod tests {
         });
 
         let output = projector.drain_ready_deferred_remote_harmony(1_090_432_757, false);
-        assert_eq!(output.len(), 1);
-        assert_eq!(output[0].effect_id, 2_110_125);
-        assert_eq!(output[0].provider_actor_id, 30);
-        assert_eq!(output[0].recipient_actor_id, 31);
-        assert_eq!(output[0].numerator, 1_012);
-        assert_eq!(output[0].denominator, 1);
-        assert_eq!(output[0].observed_damage, 26_348);
-        assert_eq!(
-            output[0].scope,
-            DamageContributionScope::Component("fatal-spiral-remote-paired-output")
-        );
-        assert_eq!(26_348 - 1_012 + 1_012, 26_348);
+        assert!(output.is_empty());
+        assert!(projector.deferred_remote_harmony_damage.is_empty());
     }
 
     #[test]
@@ -10120,9 +10368,9 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 2_110_140, 2_110_143, 2_202_041, 2_302_121, 3_003_052
+                55_228, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_302_121, 3_003_052
             ],
-            "the exact packet-pair vulnerability, observed Mechanical Power component, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
+            "the exact packet-pair vulnerability, direct Highland observed-final component, observed Mechanical Power component, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -10210,7 +10458,7 @@ mod tests {
     }
 
     #[test]
-    fn team_luck_live_projection_accepts_exact_single_outcome_routes_and_keeps_combined_closed() {
+    fn team_luck_live_projection_accepts_exact_single_and_combined_routes() {
         let current_wire = WireKey {
             connection_id: 1,
             stream_id: 2,
@@ -10307,8 +10555,19 @@ mod tests {
         damage.flags.lucky = Some(true);
         assert_eq!(
             projector.team_luck_decision(123, &damage),
-            Err("damage_counterfactual_unproven"),
-            "combined Crit+Lucky ordering remains fail-closed"
+            Ok(ExactRationalDamageContributionEvent {
+                observed_micros: 123,
+                effect_id: runtime().team_luck.effect_id,
+                provider_actor_id: 2,
+                recipient_actor_id: 4,
+                scope: DamageContributionScope::Component("team-luck-critical-and-lucky-damage",),
+                numerator: 13_977_259_348,
+                denominator: 2_450_011,
+                observed_damage: 58_708,
+                included: true,
+                deferred_damage_context: None,
+            }),
+            "the dedicated Lucky packet component uses one joint observed-final share"
         );
 
         damage.flags.lucky = Some(false);
@@ -10625,7 +10884,7 @@ mod tests {
     }
 
     #[test]
-    fn fatal_spiral_remote_recipient_reuses_packet_proven_provider_magnitude() {
+    fn fatal_spiral_learned_magnitude_alone_does_not_authorize_direct_runtime() {
         let mut projector = BpsrStateDamageContributionProjector {
             fatal_spiral_windows: HashSet::from([FatalSpiralWindowKey {
                 target_actor_id: 4,
@@ -10645,13 +10904,185 @@ mod tests {
 
         assert_eq!(
             projector.fatal_spiral_audit_gate(&damage),
-            "missing_damage_stage"
+            "recipient_state_never_observed"
         );
         assert!(
             projector
                 .fatal_spiral_audit_detail(&damage)
                 .contains("(3, 30, Some(1000), false)")
         );
+    }
+
+    #[test]
+    fn fatal_spiral_direct_uses_all_plus_matching_property_observed_final_ratio() {
+        let wire = WireKey {
+            connection_id: 1,
+            stream_id: 2,
+            capture_sequence: 3,
+        };
+        let mut projector = BpsrStateDamageContributionProjector {
+            runtime_applicable: true,
+            current_wire: Some(wire),
+            states: HashMap::from([(
+                6,
+                ActorHpState {
+                    all_element: FixedPointFamilyState {
+                        current_value: Some(1_016),
+                        provider_basis_points: BTreeMap::from([(3, 700)]),
+                        ..FixedPointFamilyState::default()
+                    },
+                    element_damage_by_property: BTreeMap::from([(7, 4_236)]),
+                    ..ActorHpState::default()
+                },
+            )]),
+            fatal_spiral_windows: HashSet::from([FatalSpiralWindowKey {
+                target_actor_id: 6,
+                target_entity_uuid: 60,
+                provider_actor_id: 3,
+                provider_entity_uuid: 30,
+                instance_id: Some(11),
+            }]),
+            fatal_spiral_equipped_basis_points_by_entity_uuid: HashMap::from([(30, 700)]),
+            active_players: HashSet::from([3, 6]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let mut damage = critical_test_damage(test_entity(6, 60), 47_957_539);
+        damage.ability = Some(rlogs_events::AbilityId(2_233));
+        damage.packet.property = Some(7);
+
+        let contribution = projector
+            .fatal_spiral_direct_decision(123, &damage)
+            .expect("exact current all-element, Light, tier, and transition state should emit");
+        let raw_numerator = i128::from(damage.amount) * 700;
+        let raw_denominator = 10_000_i128 + 1_016 + 4_236;
+        assert_eq!(
+            contribution.numerator * raw_denominator,
+            raw_numerator * contribution.denominator
+        );
+        assert_eq!(contribution.observed_damage, damage.amount);
+        assert_eq!(contribution.provider_actor_id, 3);
+        assert_eq!(contribution.recipient_actor_id, 6);
+        assert_eq!(
+            contribution.scope,
+            DamageContributionScope::Component("fatal-spiral-all-plus-property-observed-final")
+        );
+        assert!(contribution.numerator < i128::from(damage.amount) * contribution.denominator);
+        let rounded_share = ((contribution.numerator + contribution.denominator / 2)
+            / contribution.denominator) as i64;
+        assert_eq!(
+            damage.amount - rounded_share + rounded_share,
+            damage.amount,
+            "ordinary damage remains exactly conserved"
+        );
+
+        projector.fatal_spiral_transition_wires.insert(6, wire);
+        assert_eq!(
+            projector.fatal_spiral_direct_decision(123, &damage),
+            Err("same_wire_transition")
+        );
+    }
+
+    #[test]
+    fn fatal_spiral_direct_rejects_unknown_or_missing_property_state_and_tier() {
+        let mut projector = BpsrStateDamageContributionProjector {
+            runtime_applicable: true,
+            states: HashMap::from([(
+                6,
+                ActorHpState {
+                    all_element: FixedPointFamilyState {
+                        current_value: Some(1_016),
+                        provider_basis_points: BTreeMap::from([(3, 700)]),
+                        ..FixedPointFamilyState::default()
+                    },
+                    ..ActorHpState::default()
+                },
+            )]),
+            fatal_spiral_windows: HashSet::from([FatalSpiralWindowKey {
+                target_actor_id: 6,
+                target_entity_uuid: 60,
+                provider_actor_id: 3,
+                provider_entity_uuid: 30,
+                instance_id: Some(11),
+            }]),
+            fatal_spiral_equipped_basis_points_by_entity_uuid: HashMap::from([(30, 700)]),
+            active_players: HashSet::from([3, 6]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let mut damage = critical_test_damage(test_entity(6, 60), 1_000_000);
+        damage.ability = Some(rlogs_events::AbilityId(2_233));
+        damage.packet.property = Some(0);
+        assert_eq!(
+            projector.fatal_spiral_direct_decision(123, &damage),
+            Err("non_elemental_damage_property")
+        );
+
+        damage.packet.property = Some(7);
+        assert_eq!(
+            projector.fatal_spiral_direct_decision(123, &damage),
+            Err("missing_current_property_element_state")
+        );
+        projector
+            .states
+            .get_mut(&6)
+            .expect("state exists")
+            .element_damage_by_property
+            .insert(7, 4_236);
+        projector
+            .fatal_spiral_equipped_basis_points_by_entity_uuid
+            .clear();
+        assert_eq!(
+            projector.fatal_spiral_direct_decision(123, &damage),
+            Err("missing_exact_provider_tier"),
+            "status level or a learned delta can never replace exact loadout tier"
+        );
+    }
+
+    #[test]
+    fn fatal_spiral_lifecycle_truncates_only_at_real_tcp_loss() {
+        let mut projector = BpsrStateDamageContributionProjector {
+            fatal_spiral_windows: HashSet::from([FatalSpiralWindowKey {
+                target_actor_id: 6,
+                target_entity_uuid: 60,
+                provider_actor_id: 3,
+                provider_entity_uuid: 30,
+                instance_id: Some(11),
+            }]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+
+        projector.observe_fatal_spiral_data_gap(DataGapKind::DecodeFailure);
+        assert_eq!(projector.fatal_spiral_windows.len(), 1);
+        projector.observe_fatal_spiral_data_gap(DataGapKind::TcpGap);
+        assert!(projector.fatal_spiral_windows.is_empty());
+    }
+
+    #[test]
+    fn damage_property_maps_to_exact_current_build_final_attribute() {
+        assert_eq!(
+            (1..=8)
+                .map(|property| (property, property_damage_final_attribute_id(property)))
+                .collect::<Vec<_>>(),
+            vec![
+                (1, Some(13_110)),
+                (2, Some(13_120)),
+                (3, Some(13_140)),
+                (4, Some(13_130)),
+                (5, Some(13_150)),
+                (6, Some(13_160)),
+                (7, Some(13_170)),
+                (8, Some(13_180)),
+            ]
+        );
+        assert_eq!(property_damage_final_attribute_id(0), None);
+        assert_eq!(property_damage_final_attribute_id(9), None);
+        for property in 1..=8 {
+            assert_eq!(
+                property_for_damage_final_attribute_id(
+                    property_damage_final_attribute_id(property).expect("mapped property")
+                ),
+                Some(property)
+            );
+        }
     }
 
     #[test]
@@ -10775,7 +11206,7 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 2_110_140, 2_110_143, 2_202_041, 2_302_121, 3_003_052
+                55_228, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_302_121, 3_003_052
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
@@ -12625,6 +13056,34 @@ mod tests {
         assert_eq!(
             exact_inspiration_occurrence_fraction(
                 observed_damage,
+                true,
+                true,
+                critical_chance,
+                lucky_chance,
+                provider_delta,
+                critical_damage,
+                Some(150),
+                Some(4_200),
+                Some(75),
+                CriticalDamageFactorInterpretation::AdditiveBonus,
+            ),
+            exact_external_combined_critical_lucky_chance_and_damage_fraction(
+                observed_damage,
+                critical_chance,
+                provider_delta,
+                lucky_chance,
+                provider_delta,
+                critical_damage,
+                150,
+                4_200,
+                75,
+                CriticalDamageFactorInterpretation::AdditiveBonus,
+            ),
+            "combined rows must remove chance, Crit-DMG, and Lucky-DMG cross-terms exactly once",
+        );
+        assert_eq!(
+            exact_inspiration_occurrence_fraction(
+                observed_damage,
                 false,
                 true,
                 critical_chance,
@@ -12632,7 +13091,7 @@ mod tests {
                 provider_delta,
                 critical_damage,
                 None,
-                None,
+                Some(4_200),
                 None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
@@ -12671,11 +13130,11 @@ mod tests {
                 provider_delta,
                 critical_damage,
                 None,
-                None,
+                Some(4_200),
                 None,
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
-            exact_external_combined_critical_lucky_chance_fraction(
+            crate::exact_external_combined_critical_lucky_chance_fraction(
                 observed_damage,
                 critical_chance,
                 provider_delta,
@@ -13785,7 +14244,7 @@ mod tests {
     }
 
     #[test]
-    fn team_luck_fraction_retains_every_proven_single_outcome_hit() {
+    fn team_luck_fraction_retains_every_proven_single_and_combined_outcome_hit() {
         assert_eq!(
             team_luck_fraction(46_908, true, false, 10_128, 4_540),
             Some((762_255, 629))
@@ -13802,8 +14261,8 @@ mod tests {
         );
         assert_eq!(
             team_luck_fraction(46_908, true, true, 10_128, 4_540),
-            None,
-            "combined critical and Lucky floor ordering is not yet proven"
+            Some((661_660_794, 142_783)),
+            "combined critical and Lucky removes the shared factor cross-term once"
         );
     }
 

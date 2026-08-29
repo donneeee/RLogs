@@ -36,6 +36,12 @@ pub enum BpsrFrameUpLayout {
     NestedAfterFourBytes,
 }
 
+impl Default for BpsrFrameUpLayout {
+    fn default() -> Self {
+        Self::Opaque
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BpsrFramingConfig {
     pub max_frame_bytes: usize,

@@ -5169,7 +5169,14 @@ fn decode_attribute_value(id: i32, raw: &[u8]) -> Option<EntityAttributeValue> {
         | 11952
         | 12510
         | 12530
+        | 13110
+        | 13120
+        | 13130
+        | 13140
+        | 13150
+        | 13160
         | 13170
+        | 13180
         // Packet-observed all-element final/total/add/extra-add/percent/
         // extra-percent family. Fatal Spiral changes the first three together
         // (for example 237 -> 1237) while the remaining components stay
@@ -5617,6 +5624,7 @@ mod tests {
                 build_id: "build-1".into(),
                 executable_version: None,
             },
+            acquisition: Default::default(),
             provenance: Vec::new(),
             routes: vec![
                 route_for(WORLD_LOGIN_SERVICE, 3, DecoderKind::NotifyEnterWorldV1),
@@ -5740,6 +5748,7 @@ mod tests {
                 build_id: crate::BPSR_USE_SKILL_ATTR_BUILD.into(),
                 executable_version: None,
             },
+            acquisition: Default::default(),
             provenance: Vec::new(),
             routes: vec![
                 route(0x2e, DecoderKind::SyncToMeDeltaV1),
@@ -9128,6 +9137,20 @@ mod tests {
         assert_eq!(decode_attribute_value(11711, &[0xa0, 0x06]), None);
         assert_eq!(decode_attribute_value(11781, &[0xa0, 0x06]), None);
         assert_eq!(decode_attribute_value(13171, &[0xa0, 0x06]), None);
+    }
+
+    #[test]
+    fn elemental_damage_final_attributes_decode_without_opening_sibling_components() {
+        for attribute_id in [13110, 13120, 13130, 13140, 13150, 13160, 13170, 13180] {
+            assert_eq!(
+                decode_attribute_value(attribute_id, &[0xd2, 0x1c]),
+                Some(EntityAttributeValue::Integer(3_666))
+            );
+            assert_eq!(
+                decode_attribute_value(attribute_id + 1, &[0xd2, 0x1c]),
+                None
+            );
+        }
     }
 
     #[test]

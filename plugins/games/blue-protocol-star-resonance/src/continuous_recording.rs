@@ -18,23 +18,19 @@ use rlogs_events::{
 use thiserror::Error;
 
 use crate::{
-    CaptureAdapter, CaptureRecord, CaptureRecordDraft, CaptureRecordKind, CaptureSession,
-    GameBuild, JsonlJournalError, JsonlJournalWriter, ProtocolPack, ProtocolRuntime,
-    ProtocolRuntimeConfig, ProtocolRuntimeError, ResearchPipeline, SealedDungeonRunLog,
-    SegmentedDungeonLogWriter, SegmentedRecordingError,
+    BpsrFramerSetConfig, BpsrFramerSetConfigError, CaptureAdapter, CaptureRecord,
+    CaptureRecordDraft, CaptureRecordKind, CaptureSession, GameBuild, JsonlJournalError,
+    JsonlJournalWriter, ProtocolPack, ProtocolRuntime, ProtocolRuntimeConfig, ProtocolRuntimeError,
+    ResearchPipeline, RouteKey, SealedDungeonRunLog, SegmentedDungeonLogWriter,
+    SegmentedRecordingError,
 };
 
 #[derive(Debug, Clone)]
 pub struct ContinuousResearchJournalConfig {
     pub path: PathBuf,
-    /// Only packet records for these gameplay service IDs are retained. Gaps
-    /// are always retained. Login/account services must never be added here.
-    pub allowed_service_ids: BTreeSet<u64>,
-    /// Retain an unrouted client FrameUp wrapper only after the same TCP
-    /// connection has emitted a routed packet for an allowed gameplay service.
-    /// This preserves acquisition evidence for nested client calls without
-    /// broadening the journal to login/account connections.
-    pub retain_opaque_client_frame_up: bool,
+    /// Only these exact gameplay routes are retained. Gaps are always retained;
+    /// unknown and prohibited login/account routes must never be added here.
+    pub retained_routes: BTreeSet<RouteKey>,
 }
 
 #[derive(Debug, Clone)]
@@ -70,6 +66,7 @@ pub struct ContinuousRecordingMetrics {
 pub struct ContinuousBpsrRecorder<'a> {
     runtime: ProtocolRuntime<'a>,
     pipeline: Option<ResearchPipeline>,
+    framing: BpsrFramerSetConfig,
     connections: HashSet<GameConnection>,
     segments: Option<AsyncSegmentedDungeonLogWriter>,
     research_journal: Option<ResearchJournal>,
@@ -83,6 +80,8 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         pack: &'a ProtocolPack,
         config: ContinuousRecordingConfig,
     ) -> Result<Self, ContinuousRecordingError> {
+        let mut framing = BpsrFramerSetConfig::default();
+        framing.stream.frame_up_layout = pack.definition().acquisition.frame_up_layout;
         let runtime = ProtocolRuntime::new(
             pack,
             config.base_session_id.clone(),
@@ -125,6 +124,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         Ok(Self {
             runtime,
             pipeline: None,
+            framing,
             connections: HashSet::new(),
             segments,
             research_journal,
@@ -161,7 +161,10 @@ impl<'a> ContinuousBpsrRecorder<'a> {
                 }
                 None => {
                     let filter = GameConnectionFilter::try_new(vec![connection])?;
-                    self.pipeline = Some(ResearchPipeline::new(filter));
+                    self.pipeline = Some(ResearchPipeline::try_with_framing_config(
+                        filter,
+                        self.framing,
+                    )?);
                 }
             }
             self.connections.insert(connection);
@@ -289,9 +292,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
 
 struct ResearchJournal {
     writer: JsonlJournalWriter<BufWriter<File>>,
-    allowed_service_ids: BTreeSet<u64>,
-    retain_opaque_client_frame_up: bool,
-    gameplay_connection_ids: BTreeSet<u64>,
+    retained_routes: BTreeSet<RouteKey>,
 }
 
 impl ResearchJournal {
@@ -299,7 +300,7 @@ impl ResearchJournal {
         config: ContinuousResearchJournalConfig,
         session: CaptureSession,
     ) -> Result<Self, ContinuousRecordingError> {
-        if config.allowed_service_ids.is_empty() {
+        if config.retained_routes.is_empty() {
             return Err(ContinuousRecordingError::EmptyResearchServiceAllowlist);
         }
         if let Some(parent) = config.path.parent() {
@@ -312,43 +313,22 @@ impl ResearchJournal {
             .map_err(ContinuousRecordingError::ResearchJournalIo)?;
         Ok(Self {
             writer: JsonlJournalWriter::new(BufWriter::new(file), session)?,
-            allowed_service_ids: config.allowed_service_ids,
-            retain_opaque_client_frame_up: config.retain_opaque_client_frame_up,
-            gameplay_connection_ids: BTreeSet::new(),
+            retained_routes: config.retained_routes,
         })
     }
 
     fn retains(&mut self, record: &CaptureRecord) -> bool {
-        retains_research_record(
-            record,
-            &self.allowed_service_ids,
-            self.retain_opaque_client_frame_up,
-            &mut self.gameplay_connection_ids,
-        )
+        retains_research_record(record, &self.retained_routes)
     }
 }
 
-fn retains_research_record(
-    record: &CaptureRecord,
-    allowed_service_ids: &BTreeSet<u64>,
-    retain_opaque_client_frame_up: bool,
-    gameplay_connection_ids: &mut BTreeSet<u64>,
-) -> bool {
+fn retains_research_record(record: &CaptureRecord, retained_routes: &BTreeSet<RouteKey>) -> bool {
     let CaptureRecordKind::Packet(packet) = &record.kind else {
         return true;
     };
-    if packet
+    packet
         .route
-        .is_some_and(|route| allowed_service_ids.contains(&route.key.service_id))
-    {
-        gameplay_connection_ids.insert(packet.connection_id);
-        return true;
-    }
-    retain_opaque_client_frame_up
-        && packet.direction == crate::PacketDirection::ClientToServer
-        && packet.fragment == Some(crate::FragmentKind::FrameUp)
-        && packet.route.is_none()
-        && gameplay_connection_ids.contains(&packet.connection_id)
+        .is_some_and(|route| retained_routes.contains(&route.key))
 }
 
 fn unix_micros() -> Option<i64> {
@@ -564,7 +544,7 @@ pub enum ContinuousRecordingError {
     #[error("the bounded BPSR archive worker panicked")]
     ArchiveWorkerPanicked,
 
-    #[error("research journal service allowlist cannot be empty")]
+    #[error("research journal route allowlist cannot be empty")]
     EmptyResearchServiceAllowlist,
 
     #[error("could not create or write the research journal: {0}")]
@@ -572,6 +552,9 @@ pub enum ContinuousRecordingError {
 
     #[error(transparent)]
     Connection(#[from] ConnectionFilterError),
+
+    #[error(transparent)]
+    Framing(#[from] BpsrFramerSetConfigError),
 
     #[error(transparent)]
     Protocol(#[from] ProtocolRuntimeError),
@@ -585,10 +568,20 @@ pub enum ContinuousRecordingError {
 
 #[cfg(test)]
 mod tests {
+    use std::io::BufReader;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use bytes::Bytes;
+    use etherparse::{PacketBuilder, TcpHeader};
+    use prost::Message;
+    use rlogs_capture::{CaptureLinkType, TimestampNormalization};
     use rlogs_events::{
         CanonicalEventDraft, CanonicalEventDraftKind, DungeonEvent, EventEnvelopeFactory,
-        EventProvenance, EventSensitivity, EventTime, RegionContext,
+        EventProvenance, EventSensitivity, EventTime, RegionContext, TimelineEventKind,
     };
+    use rlogs_network::IpEndpoint;
+
+    use crate::game_schema_v1 as schema;
 
     use super::*;
 
@@ -623,68 +616,369 @@ mod tests {
         }
     }
 
-    #[test]
-    fn research_journal_retains_opaque_client_frame_up_only_on_a_proven_gameplay_connection() {
-        let allowed_service_ids = BTreeSet::from([10]);
-        let mut gameplay_connection_ids = BTreeSet::new();
+    fn endpoint(last: u8, port: u16) -> IpEndpoint {
+        IpEndpoint::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, last)), port)
+    }
 
-        let before_proof = packet_record(
-            7,
-            crate::PacketDirection::ClientToServer,
-            crate::FragmentKind::FrameUp,
-            None,
+    fn bpsr_frame(fragment: u16, payload: &[u8]) -> Vec<u8> {
+        let length = 6 + payload.len();
+        let mut bytes = Vec::with_capacity(length);
+        bytes.extend_from_slice(&(length as u32).to_be_bytes());
+        bytes.extend_from_slice(&fragment.to_be_bytes());
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    fn routed_payload(
+        service_id: u64,
+        method_id: u32,
+        call_id: Option<u32>,
+        body: &[u8],
+    ) -> Vec<u8> {
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&service_id.to_be_bytes());
+        payload.extend_from_slice(&0_u32.to_be_bytes());
+        if let Some(call_id) = call_id {
+            payload.extend_from_slice(&call_id.to_be_bytes());
+        }
+        payload.extend_from_slice(&method_id.to_be_bytes());
+        payload.extend_from_slice(body);
+        payload
+    }
+
+    fn nested_frame_up(service_id: u64, method_id: u32, call_id: u32, body: &[u8]) -> Vec<u8> {
+        let nested = bpsr_frame(
+            1,
+            &routed_payload(service_id, method_id, Some(call_id), body),
         );
-        assert!(!retains_research_record(
-            &before_proof,
-            &allowed_service_ids,
-            true,
-            &mut gameplay_connection_ids,
-        ));
+        let mut payload = Vec::with_capacity(4 + nested.len());
+        payload.extend_from_slice(&1_u32.to_be_bytes());
+        payload.extend_from_slice(&nested);
+        bpsr_frame(5, &payload)
+    }
 
-        let gameplay_proof = packet_record(
+    fn captured_frame(
+        sequence: u64,
+        observed_micros: u64,
+        source: IpEndpoint,
+        destination: IpEndpoint,
+        tcp_sequence: u32,
+        payload: &[u8],
+    ) -> CapturedFrame {
+        let tcp = TcpHeader::new(source.port, destination.port, tcp_sequence, 16_384);
+        let builder = PacketBuilder::ipv4(
+            match source.address {
+                IpAddr::V4(address) => address.octets(),
+                IpAddr::V6(_) => unreachable!(),
+            },
+            match destination.address {
+                IpAddr::V4(address) => address.octets(),
+                IpAddr::V6(_) => unreachable!(),
+            },
+            64,
+        )
+        .tcp_header(tcp);
+        let mut packet = Vec::with_capacity(builder.size(payload.len()));
+        builder.write(&mut packet, payload).unwrap();
+        CapturedFrame {
+            sequence,
+            observed_micros,
+            source_timestamp_nanos: Some(1_000_000 + observed_micros as i64 * 1_000),
+            timestamp_normalization: TimestampNormalization::Exact,
+            interface_id: Some(0),
+            link_type: CaptureLinkType::RawIpv4,
+            original_length: packet.len() as u32,
+            bytes: Bytes::from(packet),
+        }
+    }
+
+    fn route(
+        key: RouteKey,
+        service_name: &str,
+        method_name: &str,
+        disposition: crate::ProtocolPackRouteDisposition,
+    ) -> crate::ProtocolPackRoute {
+        crate::ProtocolPackRoute {
+            route: key,
+            service_name: service_name.into(),
+            method_name: method_name.into(),
+            message_name: None,
+            confidence: crate::MappingConfidence::Verified,
+            provenance: Vec::new(),
+            features: vec![crate::ProtocolFeature::Skill],
+            disposition,
+        }
+    }
+
+    #[test]
+    fn research_journal_retains_only_exact_routes_and_gaps() {
+        let retained_route = crate::RouteKey::new(
+            crate::PacketDirection::ServerToClient,
+            crate::FragmentKind::Notify,
+            10,
+            1,
+        );
+        let retained_routes = BTreeSet::from([retained_route]);
+        let exact_gameplay = packet_record(
             7,
             crate::PacketDirection::ServerToClient,
             crate::FragmentKind::Notify,
             Some(10),
         );
-        assert!(retains_research_record(
-            &gameplay_proof,
-            &allowed_service_ids,
-            true,
-            &mut gameplay_connection_ids,
-        ));
-        assert!(retains_research_record(
-            &before_proof,
-            &allowed_service_ids,
-            true,
-            &mut gameplay_connection_ids,
-        ));
+        assert!(retains_research_record(&exact_gameplay, &retained_routes));
 
-        let other_connection = packet_record(
-            8,
+        let opaque_frame_up = packet_record(
+            7,
             crate::PacketDirection::ClientToServer,
             crate::FragmentKind::FrameUp,
             None,
         );
-        assert!(!retains_research_record(
-            &other_connection,
-            &allowed_service_ids,
-            true,
-            &mut gameplay_connection_ids,
-        ));
+        assert!(!retains_research_record(&opaque_frame_up, &retained_routes));
 
-        let disallowed_direct_route = packet_record(
+        let same_service_unknown_route = packet_record(
             7,
             crate::PacketDirection::ClientToServer,
             crate::FragmentKind::Call,
-            Some(99),
+            Some(10),
         );
         assert!(!retains_research_record(
-            &disallowed_direct_route,
-            &allowed_service_ids,
-            true,
-            &mut gameplay_connection_ids,
+            &same_service_unknown_route,
+            &retained_routes,
         ));
+
+        let gap = CaptureRecord {
+            sequence: 2,
+            observed_micros: 2,
+            wall_clock_unix_micros: None,
+            kind: CaptureRecordKind::Gap(crate::CaptureGap {
+                kind: crate::CaptureGapKind::TcpGap,
+                connection_id: Some(7),
+                stream_id: Some(1),
+                lost_bytes: Some(1),
+                detail: "fixture".into(),
+            }),
+        };
+        assert!(retains_research_record(&gap, &retained_routes));
+    }
+
+    #[test]
+    fn nested_use_slot_is_journaled_and_replays_to_exact_canonical_cast() {
+        const WORLD: u64 = 103_198_054;
+        const WORLD_NTF: u64 = 1_664_308_034;
+        const USE_SLOT: u32 = 249_858;
+        const PROHIBITED: u32 = 4_098;
+        const UNKNOWN: u32 = 999_999;
+        let use_slot_route = RouteKey::new(
+            crate::PacketDirection::ClientToServer,
+            crate::FragmentKind::Call,
+            WORLD,
+            USE_SLOT,
+        );
+        let prohibited_route = RouteKey::new(
+            crate::PacketDirection::ClientToServer,
+            crate::FragmentKind::Call,
+            WORLD,
+            PROHIBITED,
+        );
+        let self_delta_route = RouteKey::new(
+            crate::PacketDirection::ServerToClient,
+            crate::FragmentKind::Notify,
+            WORLD_NTF,
+            46,
+        );
+        let pack = ProtocolPack::build(crate::ProtocolPackDefinition {
+            schema_version: crate::PROTOCOL_PACK_SCHEMA_VERSION,
+            pack_id: "nested-use-slot-acquisition-fixture".into(),
+            target: crate::ProtocolPackTarget {
+                deployment_id: "global".into(),
+                region_id: None,
+                channel: "steam".into(),
+                build_id: crate::BPSR_USE_SKILL_ATTR_BUILD.into(),
+                executable_version: None,
+            },
+            acquisition: crate::ProtocolPackAcquisition {
+                frame_up_layout: crate::BpsrFrameUpLayout::NestedAfterFourBytes,
+            },
+            provenance: Vec::new(),
+            routes: vec![
+                route(
+                    self_delta_route,
+                    "WorldNtf",
+                    "SyncToMeDeltaInfo",
+                    crate::ProtocolPackRouteDisposition::Allowed {
+                        domain: crate::DecoderKind::SyncToMeDeltaV1.domain(),
+                        decoder: crate::DecoderKind::SyncToMeDeltaV1,
+                    },
+                ),
+                route(
+                    use_slot_route,
+                    "World",
+                    "UseSlot",
+                    crate::ProtocolPackRouteDisposition::Allowed {
+                        domain: crate::DecoderKind::WorldUseSlotV1.domain(),
+                        decoder: crate::DecoderKind::WorldUseSlotV1,
+                    },
+                ),
+                route(
+                    prohibited_route,
+                    "World",
+                    "Authenticate",
+                    crate::ProtocolPackRouteDisposition::Prohibited {
+                        class: crate::ProhibitedDataClass::AuthenticationToken,
+                    },
+                ),
+            ],
+        })
+        .unwrap();
+        let directory = std::env::temp_dir().join(format!(
+            "rlogs-nested-use-slot-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let journal_path = directory.join("capture.protocol.jsonl");
+        let region = RegionIdentity {
+            deployment_id: "global".into(),
+            region_id: "global".into(),
+            realm_id: None,
+            world_id: None,
+        };
+        let build = GameBuild {
+            deployment_id: "global".into(),
+            region_id: None,
+            channel: "steam".into(),
+            build_id: crate::BPSR_USE_SKILL_ATTR_BUILD.into(),
+            executable_version: None,
+        };
+        let mut recorder = ContinuousBpsrRecorder::new(
+            &pack,
+            ContinuousRecordingConfig {
+                base_session_id: "nested-use-slot".into(),
+                producer: "test".into(),
+                build: build.clone(),
+                region: region.clone(),
+                region_evidence: Vec::new(),
+                decoder: ProtocolRuntimeConfig::default(),
+                output_directory: directory.clone(),
+                persist_dungeon_logs: false,
+                research_journal: Some(ContinuousResearchJournalConfig {
+                    path: journal_path.clone(),
+                    retained_routes: BTreeSet::from([self_delta_route, use_slot_route]),
+                }),
+            },
+        )
+        .unwrap();
+        let client = endpoint(1, 31_000);
+        let server = endpoint(2, 32_000);
+        recorder
+            .add_connections([GameConnection { client, server }])
+            .unwrap();
+
+        let self_delta_body = schema::SyncToMeDeltaInfo {
+            delta: Some(schema::AoiSyncToMeDelta {
+                base_delta: None,
+                hate_ids: Vec::new(),
+                cooldowns: Vec::new(),
+                fight_resource_cooldowns: Vec::new(),
+                uuid: Some(216_009_015_936),
+            }),
+        }
+        .encode_to_vec();
+        let self_delta_wire = bpsr_frame(2, &routed_payload(WORLD_NTF, 46, None, &self_delta_body));
+        recorder
+            .process_frame(captured_frame(
+                1,
+                100,
+                server,
+                client,
+                100,
+                &self_delta_wire,
+            ))
+            .unwrap();
+
+        let use_slot_wire = nested_frame_up(
+            WORLD,
+            USE_SLOT,
+            1,
+            &crate::use_skill_attr::tests::world_skill_use_payload(),
+        );
+        recorder
+            .process_frame(captured_frame(2, 200, client, server, 100, &use_slot_wire))
+            .unwrap();
+        let prohibited_wire = nested_frame_up(WORLD, PROHIBITED, 2, &[1, 2, 3]);
+        recorder
+            .process_frame(captured_frame(
+                3,
+                300,
+                client,
+                server,
+                100 + use_slot_wire.len() as u32,
+                &prohibited_wire,
+            ))
+            .unwrap();
+        let unknown_wire = nested_frame_up(WORLD, UNKNOWN, 3, &[4, 5, 6]);
+        recorder
+            .process_frame(captured_frame(
+                4,
+                400,
+                client,
+                server,
+                100 + use_slot_wire.len() as u32 + prohibited_wire.len() as u32,
+                &unknown_wire,
+            ))
+            .unwrap();
+        recorder.finish().unwrap();
+        drop(recorder);
+
+        let journal =
+            crate::JsonlJournalReader::new(BufReader::new(File::open(&journal_path).unwrap()))
+                .read()
+                .unwrap();
+        let recorded_routes = journal
+            .records()
+            .iter()
+            .filter_map(|record| match &record.kind {
+                CaptureRecordKind::Packet(packet) => packet.route.map(|route| route.key),
+                CaptureRecordKind::Gap(_) => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(recorded_routes, vec![self_delta_route, use_slot_route]);
+        assert!(!recorded_routes.contains(&prohibited_route));
+        assert!(
+            !recorded_routes
+                .iter()
+                .any(|route| route.method_id == UNKNOWN)
+        );
+
+        let mut runtime = ProtocolRuntime::new(
+            &pack,
+            "nested-use-slot-replay",
+            &build,
+            region,
+            Vec::new(),
+            ProtocolRuntimeConfig::default(),
+        )
+        .unwrap();
+        let mut cast = None;
+        for record in journal.records() {
+            for event in runtime.process(record).unwrap().events {
+                if let rlogs_events::CanonicalEvent::Timeline(timeline) = event.event
+                    && let TimelineEventKind::Cast(observed) = timeline.kind
+                {
+                    cast = Some(observed);
+                }
+            }
+        }
+        let cast = cast.expect("nested World.UseSlot must replay to a canonical cast");
+        let timing = cast.action_timing.expect("exact action timing");
+        assert_eq!(timing.action_instance_id, 9_001);
+        assert_eq!(timing.base_ability.0, 2_233);
+        assert_eq!(timing.slot_id, 21);
+
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

@@ -910,6 +910,7 @@ mod transition_tests {
                 build_id: "24687926".to_owned(),
                 executable_version: None,
             },
+            acquisition: Default::default(),
             provenance: vec![MappingProvenance {
                 source: "test".to_owned(),
                 reference: if pack_id.ends_with("v2") {

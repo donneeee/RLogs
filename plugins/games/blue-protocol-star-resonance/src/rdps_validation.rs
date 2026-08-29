@@ -5974,6 +5974,7 @@ mod tests {
                 build_id: build.into(),
                 executable_version: None,
             },
+            acquisition: Default::default(),
             provenance: Vec::new(),
             routes: decoders
                 .iter()

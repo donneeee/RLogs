@@ -580,6 +580,130 @@ pub fn exact_external_combined_critical_lucky_chance_fraction(
     reduce_positive_fraction(numerator, denominator)
 }
 
+/// Returns one exact, non-overlapping provider share for a packet Lucky
+/// component which also received the critical outcome flag when the same
+/// provider can change both occurrence chances and their damage multipliers.
+///
+/// Let `L*M` be the active Lucky occurrence/magnitude composite and `C*F` the
+/// active Critical occurrence/factor composite. Removing the provider yields
+/// `(L-dL)*(M-dM)` and subtracts the already-proven Critical marginal
+/// `dC*B + (C-dC)*dB` from `C*F`. Subtracting the complete provider-removed
+/// product from the active product assigns every chance/damage cross-term
+/// exactly once. Zero damage deltas reduce to the chance-only joint formula.
+#[allow(clippy::too_many_arguments)]
+pub fn exact_external_combined_critical_lucky_chance_and_damage_fraction(
+    observed_lucky_component_damage: i64,
+    current_critical_chance_raw: i64,
+    provider_critical_chance_raw_delta: i64,
+    current_lucky_chance_raw: i64,
+    provider_lucky_chance_raw_delta: i64,
+    current_critical_damage_raw: i64,
+    provider_critical_damage_raw_delta: i64,
+    current_lucky_damage_raw: i64,
+    provider_lucky_damage_raw_delta: i64,
+    interpretation: CriticalDamageFactorInterpretation,
+) -> Option<(i128, i128)> {
+    if observed_lucky_component_damage <= 0
+        || current_critical_chance_raw <= 0
+        || provider_critical_chance_raw_delta <= 0
+        || provider_critical_chance_raw_delta > current_critical_chance_raw
+        || current_lucky_chance_raw <= 0
+        || provider_lucky_chance_raw_delta <= 0
+        || provider_lucky_chance_raw_delta > current_lucky_chance_raw
+        || provider_critical_damage_raw_delta < 0
+        || current_lucky_damage_raw <= 0
+        || provider_lucky_damage_raw_delta < 0
+        || provider_lucky_damage_raw_delta >= current_lucky_damage_raw
+    {
+        return None;
+    }
+
+    let (current_critical_factor, current_critical_bonus) =
+        interpretation.factor_and_bonus(current_critical_damage_raw)?;
+    if provider_critical_damage_raw_delta > current_critical_bonus {
+        return None;
+    }
+
+    let remaining_critical_chance =
+        current_critical_chance_raw.checked_sub(provider_critical_chance_raw_delta)?;
+    let critical_marginal = i128::from(provider_critical_chance_raw_delta)
+        .checked_mul(i128::from(current_critical_bonus))?
+        .checked_add(
+            i128::from(remaining_critical_chance)
+                .checked_mul(i128::from(provider_critical_damage_raw_delta))?,
+        )?;
+    let active_critical_composite =
+        i128::from(current_critical_chance_raw).checked_mul(i128::from(current_critical_factor))?;
+    let provider_removed_critical_composite =
+        active_critical_composite.checked_sub(critical_marginal)?;
+
+    let active_lucky_composite =
+        i128::from(current_lucky_chance_raw).checked_mul(i128::from(current_lucky_damage_raw))?;
+    let provider_removed_lucky_composite =
+        i128::from(current_lucky_chance_raw.checked_sub(provider_lucky_chance_raw_delta)?)
+            .checked_mul(i128::from(
+                current_lucky_damage_raw.checked_sub(provider_lucky_damage_raw_delta)?,
+            ))?;
+
+    let active_composite = active_lucky_composite.checked_mul(active_critical_composite)?;
+    let provider_removed_composite =
+        provider_removed_lucky_composite.checked_mul(provider_removed_critical_composite)?;
+    let provider_marginal = active_composite.checked_sub(provider_removed_composite)?;
+    if provider_marginal <= 0 {
+        return None;
+    }
+    let numerator = i128::from(observed_lucky_component_damage).checked_mul(provider_marginal)?;
+    reduce_positive_fraction(numerator, active_composite)
+}
+
+/// Returns one exact, non-overlapping provider share when a packet's dedicated
+/// Lucky component is also critical and the same external effect contributes
+/// both Critical-DMG and Lucky-DMG.
+///
+/// For current critical factor `C`, Lucky factor `L`, and provider deltas
+/// `dC`/`dL`, the active composite is `C*L` and the provider-removed composite
+/// is `(C-dC)*(L-dL)`. Subtracting the composites before applying the observed
+/// packet component assigns their shared cross-term exactly once. This is an
+/// observed-final rational share; it deliberately does not claim the server's
+/// hidden per-hit integer operation order.
+pub fn exact_external_combined_critical_lucky_damage_fraction(
+    observed_lucky_component_damage: i64,
+    current_critical_damage_raw: i64,
+    provider_critical_damage_raw_delta: i64,
+    current_lucky_damage_raw: i64,
+    provider_lucky_damage_raw_delta: i64,
+    interpretation: CriticalDamageFactorInterpretation,
+) -> Option<(i128, i128)> {
+    if observed_lucky_component_damage <= 0
+        || provider_critical_damage_raw_delta <= 0
+        || current_lucky_damage_raw <= 0
+        || provider_lucky_damage_raw_delta <= 0
+        || provider_lucky_damage_raw_delta >= current_lucky_damage_raw
+    {
+        return None;
+    }
+
+    let (current_critical_factor, current_critical_bonus) =
+        interpretation.factor_and_bonus(current_critical_damage_raw)?;
+    if provider_critical_damage_raw_delta > current_critical_bonus {
+        return None;
+    }
+    let provider_removed_critical_factor =
+        current_critical_factor.checked_sub(provider_critical_damage_raw_delta)?;
+    let provider_removed_lucky_factor =
+        current_lucky_damage_raw.checked_sub(provider_lucky_damage_raw_delta)?;
+    let active_composite =
+        i128::from(current_critical_factor).checked_mul(i128::from(current_lucky_damage_raw))?;
+    let provider_removed_composite = i128::from(provider_removed_critical_factor)
+        .checked_mul(i128::from(provider_removed_lucky_factor))?;
+    let provider_marginal = active_composite.checked_sub(provider_removed_composite)?;
+    if provider_marginal <= 0 {
+        return None;
+    }
+    let numerator = i128::from(observed_lucky_component_damage).checked_mul(provider_marginal)?;
+    reduce_positive_fraction(numerator, active_composite)
+}
+
 /// Returns the exact conserved provider share of a critical damage multiplier.
 ///
 /// `interpretation` converts attribute 12510 into the exact current factor.
@@ -1252,6 +1376,134 @@ mod tests {
     }
 
     #[test]
+    fn combined_critical_lucky_dependencies_remove_every_cross_term_once() {
+        let observed_damage = 987_654;
+        let critical_chance = 7_416;
+        let critical_chance_delta = 300;
+        let lucky_chance = 800;
+        let lucky_chance_delta = 300;
+        let critical_damage = 15_000;
+        let critical_damage_delta = 150;
+        let lucky_damage = 4_200;
+        let lucky_damage_delta = 75;
+        let interpretation = CriticalDamageFactorInterpretation::AdditiveBonus;
+        let (numerator, denominator) =
+            exact_external_combined_critical_lucky_chance_and_damage_fraction(
+                observed_damage,
+                critical_chance,
+                critical_chance_delta,
+                lucky_chance,
+                lucky_chance_delta,
+                critical_damage,
+                critical_damage_delta,
+                lucky_damage,
+                lucky_damage_delta,
+                interpretation,
+            )
+            .expect("the dependency-inclusive counterfactual should be representable");
+
+        let (critical_factor, critical_bonus) =
+            interpretation.factor_and_bonus(critical_damage).unwrap();
+        let active_critical = i128::from(critical_chance) * i128::from(critical_factor);
+        let critical_marginal = i128::from(critical_chance_delta) * i128::from(critical_bonus)
+            + i128::from(critical_chance - critical_chance_delta)
+                * i128::from(critical_damage_delta);
+        let removed_critical = active_critical - critical_marginal;
+        let active_lucky = i128::from(lucky_chance) * i128::from(lucky_damage);
+        let removed_lucky = i128::from(lucky_chance - lucky_chance_delta)
+            * i128::from(lucky_damage - lucky_damage_delta);
+        let active = active_critical * active_lucky;
+        let removed = removed_critical * removed_lucky;
+        assert_eq!(
+            numerator * active,
+            i128::from(observed_damage) * denominator * (active - removed),
+        );
+
+        assert_eq!(
+            exact_external_combined_critical_lucky_chance_and_damage_fraction(
+                observed_damage,
+                critical_chance,
+                critical_chance_delta,
+                lucky_chance,
+                lucky_chance_delta,
+                critical_damage,
+                0,
+                lucky_damage,
+                0,
+                interpretation,
+            ),
+            exact_external_combined_critical_lucky_chance_fraction(
+                observed_damage,
+                critical_chance,
+                critical_chance_delta,
+                lucky_chance,
+                lucky_chance_delta,
+                critical_damage,
+                interpretation,
+            ),
+            "zero dependency deltas must reduce to the already-proven chance-only formula",
+        );
+    }
+
+    #[test]
+    fn combined_critical_lucky_damage_removes_shared_cross_term_once() {
+        let observed_damage = 100_000;
+        let critical_damage = 10_128;
+        let critical_delta = 520;
+        let lucky_damage = 4_540;
+        let lucky_delta = 340;
+        let interpretation = CriticalDamageFactorInterpretation::AdditiveBonus;
+        let combined = exact_external_combined_critical_lucky_damage_fraction(
+            observed_damage,
+            critical_damage,
+            critical_delta,
+            lucky_damage,
+            lucky_delta,
+            interpretation,
+        )
+        .expect("the exact Team Luck combined factors should be representable");
+
+        let active =
+            i128::from(BPSR_FIXED_POINT_SCALE + critical_damage) * i128::from(lucky_damage);
+        let removed = i128::from(BPSR_FIXED_POINT_SCALE + critical_damage - critical_delta)
+            * i128::from(lucky_damage - lucky_delta);
+        assert_eq!(
+            combined.0 * active,
+            i128::from(observed_damage) * combined.1 * (active - removed),
+        );
+
+        let critical = exact_external_critical_damage_fraction(
+            observed_damage,
+            critical_damage,
+            critical_delta,
+            interpretation,
+        )
+        .unwrap();
+        let lucky =
+            exact_external_lucky_damage_fraction(observed_damage, lucky_damage, lucky_delta)
+                .unwrap();
+        assert!(
+            combined.0 * critical.1 * lucky.1
+                < combined.1 * (critical.0 * lucky.1 + lucky.0 * critical.1),
+            "independent shares double-count the shared multiplier cross-term",
+        );
+
+        assert_eq!(
+            combined,
+            exact_external_combined_critical_lucky_damage_fraction(
+                observed_damage,
+                BPSR_FIXED_POINT_SCALE + critical_damage,
+                critical_delta,
+                lucky_damage,
+                lucky_delta,
+                CriticalDamageFactorInterpretation::DirectTotal,
+            )
+            .unwrap(),
+            "factor normalization must not change the conserved share",
+        );
+    }
+
+    #[test]
     fn critical_damage_interpretation_is_explicit_and_candidate_arithmetic_conserves() {
         let unresolved = CriticalDamageFactorInterpretation::Unresolved;
         assert!(!unresolved.is_resolved());
@@ -1292,6 +1544,14 @@ mod tests {
             ),
             exact_external_combined_critical_lucky_chance_fraction(
                 15_000, 3_000, 300, 1_500, 300, 20_128, direct,
+            ),
+        );
+        assert_eq!(
+            exact_external_combined_critical_lucky_chance_and_damage_fraction(
+                15_000, 3_000, 300, 1_500, 300, 10_128, 520, 4_200, 75, additive,
+            ),
+            exact_external_combined_critical_lucky_chance_and_damage_fraction(
+                15_000, 3_000, 300, 1_500, 300, 20_128, 520, 4_200, 75, direct,
             ),
         );
     }

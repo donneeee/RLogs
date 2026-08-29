@@ -186,6 +186,73 @@ impl TeamLuckCriticalDamageRatioProof {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct TeamLuckCombinedDamageProof {
+    runtime_diff_sha256: String,
+    packet_component_audit_sha256: String,
+    conservation_replay_sha256: String,
+    exact_build_rlogs: usize,
+    exact_build_sessions: usize,
+    combined_eligible_events: usize,
+    combined_emitted_events: usize,
+    combined_suppressed_overlap_events: usize,
+    combined_emitted_outside_lifecycle_events: usize,
+    invalid_factor_events: usize,
+    conservation_replay_schema_version: u16,
+    conservation_replay_rlogs: usize,
+    conservation_replay_events: u64,
+    conserved_rlogs: usize,
+    runtime_target_match_rlogs: usize,
+    team_luck_emitted_events: u64,
+    team_luck_projected_rdmg: u64,
+    rational_projection_overflow_count: u64,
+    packet_audit_rows: usize,
+    packet_audit_damage_rows: usize,
+    packet_audit_source_linked_damage_rows: usize,
+    combined_packet_rows: usize,
+    combined_packet_rows_approved_route: usize,
+    combined_packet_rows_lucky_component_only: usize,
+    combined_packet_rows_reported_amount_match: usize,
+    combined_packet_rows_with_normal_value: usize,
+}
+
+impl TeamLuckCombinedDamageProof {
+    fn is_valid(&self) -> bool {
+        self.runtime_diff_sha256
+            == "5496fdacaca45af42e72cc825b195d86552229c6166bcf4775ce9890e55b2d58"
+            && self.packet_component_audit_sha256
+                == "a31f207d55a5d75ecbdcd38c6b4df7cce72ab5abdba53b5fc6eeb8dd697fe38d"
+            && self.conservation_replay_sha256
+                == "976632bcf673e0fd23238ab621e7e1d9309d87ca5a4de1c03932706b275ca740"
+            && self.exact_build_rlogs == 26
+            && self.exact_build_sessions == 20
+            && self.combined_eligible_events == 977
+            && self.combined_emitted_events == 973
+            && self.combined_suppressed_overlap_events == 4
+            && self.combined_emitted_events + self.combined_suppressed_overlap_events
+                == self.combined_eligible_events
+            && self.combined_emitted_outside_lifecycle_events == 0
+            && self.invalid_factor_events == 0
+            && self.conservation_replay_schema_version == 27
+            && self.conservation_replay_rlogs == 26
+            && self.conservation_replay_events == 6_411_565
+            && self.conserved_rlogs == self.conservation_replay_rlogs
+            && self.runtime_target_match_rlogs == self.conservation_replay_rlogs
+            && self.team_luck_emitted_events == 204_067
+            && self.team_luck_projected_rdmg == 683_146_042
+            && self.rational_projection_overflow_count == 0
+            && self.packet_audit_rows == 56_090
+            && self.packet_audit_damage_rows == 52_465
+            && self.packet_audit_source_linked_damage_rows == 51_581
+            && self.combined_packet_rows == 5_017
+            && self.combined_packet_rows_approved_route == self.combined_packet_rows
+            && self.combined_packet_rows_lucky_component_only == self.combined_packet_rows
+            && self.combined_packet_rows_reported_amount_match == self.combined_packet_rows
+            && self.combined_packet_rows_with_normal_value == 0
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct TeamLuckRuntimeConfig {
     pub effect_id: i64,
     pub source_type_id: i32,
@@ -195,6 +262,11 @@ pub(crate) struct TeamLuckRuntimeConfig {
     pub critical_raw_delta: i64,
     pub lucky_raw_delta: i64,
     pub combined_critical_lucky_enabled: bool,
+    combined_damage_current_build_packet_component_authority: bool,
+    combined_damage_exact_rational_cross_term_authority: bool,
+    combined_damage_protocol_pack_migration_authority: bool,
+    combined_damage_formula_authority_basis: String,
+    combined_damage_proof: TeamLuckCombinedDamageProof,
     pub critical_damage_current_build_lifecycle_authority: bool,
     pub critical_damage_current_build_executor_authority: bool,
     pub critical_damage_exact_rational_attribution_authority: bool,
@@ -902,6 +974,7 @@ impl RdpsRuntimeConfig {
             || self.team_luck.lucky_damage_runtime_transfer_enabled
             || self.mechanical_power.runtime_transfer_enabled
             || self.harmony_grace.runtime_transfer_enabled
+            || self.highland_blood.runtime_transfer_enabled
             || self
                 .highland_blood
                 .remote_paired_output_runtime_transfer_enabled
@@ -927,9 +1000,10 @@ impl RdpsRuntimeConfig {
             || (effect_id == self.harmony_grace.effect_id
                 && self.harmony_grace.runtime_transfer_enabled)
             || (effect_id == self.highland_blood.effect_id
-                && self
-                    .highland_blood
-                    .remote_paired_output_runtime_transfer_enabled)
+                && (self.highland_blood.runtime_transfer_enabled
+                    || self
+                        .highland_blood
+                        .remote_paired_output_runtime_transfer_enabled))
             || (effect_id == self.inspiration.effect_id
                 && (self.inspiration.critical_chance_runtime_transfer_enabled
                     || self.inspiration.lucky_chance_runtime_transfer_enabled))
@@ -1119,6 +1193,14 @@ impl RdpsRuntimeConfig {
             && team_luck.rational_integer_projection
                 == "sum-exact-then-half-up-per-effect-provider-recipient"
             && team_luck.unresolved_overlap_fails_closed;
+        let team_luck_combined_runtime_authority = team_luck_critical_runtime_authority
+            && team_luck_lucky_runtime_authority
+            && team_luck.combined_damage_current_build_packet_component_authority
+            && team_luck.combined_damage_exact_rational_cross_term_authority
+            && team_luck.combined_damage_protocol_pack_migration_authority
+            && team_luck.combined_damage_formula_authority_basis
+                == "current-build-dedicated-lucky-component-plus-observed-final-rational-cross-term"
+            && team_luck.combined_damage_proof.is_valid();
         if team_luck.effect_id <= 0
             || team_luck.source_type_id <= 0
             || team_luck.source_config_id <= 0
@@ -1127,7 +1209,7 @@ impl RdpsRuntimeConfig {
             || team_luck.critical_damage_attribute_id == team_luck.lucky_damage_attribute_id
             || team_luck.critical_raw_delta <= 0
             || team_luck.lucky_raw_delta <= 0
-            || team_luck.combined_critical_lucky_enabled
+            || team_luck.combined_critical_lucky_enabled != team_luck_combined_runtime_authority
             || !team_luck_routes_are_valid
             || (team_luck.critical_damage_runtime_transfer_enabled
                 && !team_luck_critical_runtime_authority)
@@ -1492,8 +1574,8 @@ impl RdpsRuntimeConfig {
                     highland.excluded_provider_owned_damage_ids[..index].contains(value)
                 })
             || !highland.requires_recipient_packet_transition
-            || highland.runtime_transfer_enabled
-            || !highland.remote_paired_output_runtime_transfer_enabled
+            || highland.runtime_transfer_enabled != (self.game_build == "24687926")
+            || highland.remote_paired_output_runtime_transfer_enabled
             || highland.remote_paired_output_ignored_effect_ids != [55_301, 55_304]
             || highland.remote_paired_output_max_pair_gap_micros != 30_000_000
             || highland.remote_paired_output_min_distinct_targets != 2
@@ -1848,13 +1930,30 @@ mod tests {
     }
 
     #[test]
-    fn team_luck_promotes_current_build_critical_and_lucky_components_separately() {
+    fn team_luck_promotes_single_and_combined_current_build_components() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
         assert!(!current.runtime_promotion_allowed());
         assert!(current.team_luck.critical_damage_runtime_transfer_enabled);
         assert!(current.team_luck.lucky_damage_runtime_transfer_enabled);
+        assert!(current.team_luck.combined_critical_lucky_enabled);
+        assert!(
+            current
+                .team_luck
+                .combined_damage_current_build_packet_component_authority
+        );
+        assert!(
+            current
+                .team_luck
+                .combined_damage_exact_rational_cross_term_authority
+        );
+        assert!(
+            current
+                .team_luck
+                .combined_damage_protocol_pack_migration_authority
+        );
+        assert!(current.team_luck.combined_damage_proof.is_valid());
         assert!(
             current
                 .team_luck
@@ -1968,6 +2067,29 @@ mod tests {
             serde_json::Value::Bool(true);
         assert!(
             runtime_from_value(invented_server_authority)
+                .validate()
+                .is_err()
+        );
+
+        let mut disabled_combined = base.clone();
+        disabled_combined["team_luck"]["combined_critical_lucky_enabled"] =
+            serde_json::Value::Bool(false);
+        assert!(runtime_from_value(disabled_combined).validate().is_err());
+
+        let mut missing_combined_authority = base.clone();
+        missing_combined_authority["team_luck"]["combined_damage_exact_rational_cross_term_authority"] =
+            serde_json::Value::Bool(false);
+        assert!(
+            runtime_from_value(missing_combined_authority)
+                .validate()
+                .is_err()
+        );
+
+        let mut wrong_combined_receipt = base.clone();
+        wrong_combined_receipt["team_luck"]["combined_damage_proof"]["combined_emitted_events"] =
+            serde_json::json!(972);
+        assert!(
+            runtime_from_value(wrong_combined_receipt)
                 .validate()
                 .is_err()
         );
@@ -2133,6 +2255,67 @@ mod tests {
                 .protocol_pack_digest,
             current_digest,
         );
+    }
+
+    #[test]
+    fn highland_blood_direct_lane_is_current_build_only_and_paired_output_stays_closed() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert!(current.highland_blood.runtime_transfer_enabled);
+        assert!(
+            !current
+                .highland_blood
+                .remote_paired_output_runtime_transfer_enabled
+        );
+        assert!(current.effect_runtime_transfer_enabled(current.highland_blood.effect_id));
+
+        let registry = rdps_runtime_registry().expect("bundled identities should validate");
+        assert!(registry.by_identity.len() >= 3);
+        for digest in [
+            "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+            "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+        ] {
+            let runtime = rdps_runtime_config_for_identity("global", "24687926", digest)
+                .expect("registry lookup should succeed")
+                .expect("both exact current-build decoder identities must remain replayable");
+            assert!(runtime.validate().is_ok());
+            assert!(runtime.highland_blood.runtime_transfer_enabled);
+            assert!(
+                !runtime
+                    .highland_blood
+                    .remote_paired_output_runtime_transfer_enabled
+            );
+        }
+        for runtime in registry.by_identity.values() {
+            assert!(
+                !runtime
+                    .highland_blood
+                    .remote_paired_output_runtime_transfer_enabled,
+                "Highland Blood paired output must remain disabled for build {} protocol {}",
+                runtime.game_build,
+                runtime.protocol_pack_digest
+            );
+            assert_eq!(
+                runtime.highland_blood.runtime_transfer_enabled,
+                runtime.game_build == "24687926",
+                "Highland Blood direct authority is exact-current-build only"
+            );
+            assert_eq!(
+                runtime.effect_runtime_transfer_enabled(runtime.highland_blood.effect_id),
+                runtime.game_build == "24687926"
+            );
+        }
+
+        let mut incorrectly_enabled = base;
+        incorrectly_enabled["highland_blood"]["remote_paired_output_runtime_transfer_enabled"] =
+            serde_json::Value::Bool(true);
+        assert!(runtime_from_value(incorrectly_enabled).validate().is_err());
+
+        let mut incorrectly_disabled = bundled_runtime_value();
+        incorrectly_disabled["highland_blood"]["runtime_transfer_enabled"] =
+            serde_json::Value::Bool(false);
+        assert!(runtime_from_value(incorrectly_disabled).validate().is_err());
     }
 
     #[test]

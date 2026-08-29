@@ -59,15 +59,15 @@ use rlogs_game_bpsr::{
     BpsrStateDamageContributionProjector, ContinuousBpsrRecorder, ContinuousRecordingConfig,
     ContinuousResearchJournalConfig, GameBuild, LiveProtocolPackKind, NetworkEndpoint,
     OfflineRecordingConfig, OfflineRecordingLimits, OfflineRecordingReport, ProtocolPack,
-    ProtocolRuntimeConfig, RDPS_VALIDATION_REPORT_SCHEMA_VERSION, RdpsValidationAnalyzer,
-    RdpsValidationProgress, RdpsValidationReport, RegionResolverError, ResolvedRegion,
-    SealedDungeonRunLog, ServerRealmCatalog, auxiliary_action_presentation,
-    battle_imagine_presentation, bundled_run_reducer_config, bundled_scene_run_identities,
-    character_id_from_entity_uuid, combat_action_presentation, confirmed_damage_contribution_rules,
-    is_boss_monster, is_localized_class_name, localized_auxiliary_action_name,
-    localized_battle_imagine_name, localized_class_identities, localized_combat_action_name,
-    localized_monster_name, localized_recount_group_name, localized_scene_name,
-    localized_specialization_identities, localized_status_effect_name,
+    ProtocolPackRouteDisposition, ProtocolRuntimeConfig, RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
+    RdpsValidationAnalyzer, RdpsValidationProgress, RdpsValidationReport, RegionResolverError,
+    ResolvedRegion, RouteKey, SealedDungeonRunLog, ServerRealmCatalog,
+    auxiliary_action_presentation, battle_imagine_presentation, bundled_run_reducer_config,
+    bundled_scene_run_identities, character_id_from_entity_uuid, combat_action_presentation,
+    confirmed_damage_contribution_rules, is_boss_monster, is_localized_class_name,
+    localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
+    localized_combat_action_name, localized_monster_name, localized_recount_group_name,
+    localized_scene_name, localized_specialization_identities, localized_status_effect_name,
     project_local_profile_packages, record_offline_capture, resolve_actor_combat_identity,
     resolve_actor_combat_presentation, resolve_live_steam_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
@@ -125,12 +125,18 @@ const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 const MAX_OVERLAY_BACKGROUND_BYTES: usize = 8 * 1024 * 1024;
 const PROVISIONAL_RESEARCH_SERVICE_NAMES: [&str; 3] = ["World", "WorldNtf", "GrpcTeamNtf"];
 
-fn provisional_research_service_ids(pack: &ProtocolPack) -> BTreeSet<u64> {
+fn provisional_research_routes(pack: &ProtocolPack) -> BTreeSet<RouteKey> {
     pack.definition()
         .routes
         .iter()
-        .filter(|route| PROVISIONAL_RESEARCH_SERVICE_NAMES.contains(&route.service_name.as_str()))
-        .map(|route| route.route.service_id)
+        .filter(|route| {
+            PROVISIONAL_RESEARCH_SERVICE_NAMES.contains(&route.service_name.as_str())
+                && !matches!(
+                    route.disposition,
+                    ProtocolPackRouteDisposition::Prohibited { .. }
+                )
+        })
+        .map(|route| route.route)
         .collect()
 }
 const MAX_CONCURRENT_LOCAL_REQUESTS: usize = 16;
@@ -4526,8 +4532,7 @@ impl RuntimeController {
                 pack_source_build, target.build_id,
             )),
         };
-        let research_service_ids =
-            provisional_pack.then(|| provisional_research_service_ids(&pack));
+        let research_routes = provisional_pack.then(|| provisional_research_routes(&pack));
         let region_id = request
             .region_id
             .clone()
@@ -4820,9 +4825,8 @@ impl RuntimeController {
                             research_journal: research_journal_path.map(|path| {
                                 ContinuousResearchJournalConfig {
                                     path,
-                                    allowed_service_ids: research_service_ids
-                                        .expect("research service IDs accompany journal path"),
-                                    retain_opaque_client_frame_up: true,
+                                    retained_routes: research_routes
+                                        .expect("research routes accompany journal path"),
                                 }
                             }),
                         },
@@ -8770,19 +8774,23 @@ mod tests {
     use rlogs_network::IpEndpoint;
 
     #[test]
-    fn provisional_research_journal_retains_team_lifecycle_service() {
+    fn provisional_research_journal_retains_exact_non_prohibited_gameplay_routes() {
         let pack = ProtocolPack::from_json(include_bytes!(
             "../../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json"
         ))
         .expect("bundled protocol pack");
-        let service_ids = provisional_research_service_ids(&pack);
+        let routes = provisional_research_routes(&pack);
 
-        assert_eq!(
-            service_ids,
-            BTreeSet::from([103_198_054, 966_773_353, 1_664_308_034])
+        assert!(routes.iter().any(|route| route.service_id == 103_198_054));
+        assert!(routes.iter().any(|route| route.service_id == 966_773_353));
+        assert!(routes.iter().any(|route| route.service_id == 1_664_308_034));
+        assert!(!routes.iter().any(|route| route.service_id == 78_136_601));
+        assert!(!routes.iter().any(|route| route.service_id == 164_931_432));
+        assert!(
+            !routes
+                .iter()
+                .any(|route| { route.service_id == 103_198_054 && route.method_id == 4_098 })
         );
-        assert!(!service_ids.contains(&78_136_601));
-        assert!(!service_ids.contains(&164_931_432));
     }
 
     #[test]

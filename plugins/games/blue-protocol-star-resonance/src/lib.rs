@@ -178,9 +178,9 @@ pub use offline_recording::{
     record_offline_journal_transition_with_tail_policy, record_offline_journal_with_tail_policy,
 };
 pub use pack::{
-    PROTOCOL_PACK_SCHEMA_VERSION, ProtocolFeature, ProtocolPack, ProtocolPackDefinition,
-    ProtocolPackError, ProtocolPackRegistry, ProtocolPackRegistryError, ProtocolPackRoute,
-    ProtocolPackRouteDisposition, ProtocolPackTarget,
+    PROTOCOL_PACK_SCHEMA_VERSION, ProtocolFeature, ProtocolPack, ProtocolPackAcquisition,
+    ProtocolPackDefinition, ProtocolPackError, ProtocolPackRegistry, ProtocolPackRegistryError,
+    ProtocolPackRoute, ProtocolPackRouteDisposition, ProtocolPackTarget,
 };
 pub use packet::{
     CaptureAdapter, CaptureGap, CaptureGapKind, CaptureRecord, CaptureRecordDraft,
@@ -266,7 +266,9 @@ pub use state_formula::{
     exact_additive_fixed_point_marginal_from_observed_output,
     exact_external_attack_and_damage_bonus_fraction, exact_external_attack_and_factors_fraction,
     exact_external_attack_coefficient_stage_fraction, exact_external_attack_ordered_stage_fraction,
+    exact_external_combined_critical_lucky_chance_and_damage_fraction,
     exact_external_combined_critical_lucky_chance_fraction,
+    exact_external_combined_critical_lucky_damage_fraction,
     exact_external_composite_damage_fraction, exact_external_critical_chance_and_damage_fraction,
     exact_external_critical_chance_fraction, exact_external_critical_damage_fraction,
     exact_external_damage_bonus_fraction, exact_external_lucky_chance_and_damage_fraction,

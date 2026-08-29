@@ -5,9 +5,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    AllowedDataDomain, DecodeDisposition, DecoderKind, GameBuild, MappingConfidence,
-    MappingProvenance, PrivacyPolicyError, ProhibitedDataClass, ProtocolPrivacyPolicy,
-    RouteCatalog, RouteCatalogError, RouteDefinition, RouteKey,
+    AllowedDataDomain, BpsrFrameUpLayout, DecodeDisposition, DecoderKind, GameBuild,
+    MappingConfidence, MappingProvenance, PrivacyPolicyError, ProhibitedDataClass,
+    ProtocolPrivacyPolicy, RouteCatalog, RouteCatalogError, RouteDefinition, RouteKey,
 };
 
 pub const PROTOCOL_PACK_SCHEMA_VERSION: u16 = 1;
@@ -17,9 +17,31 @@ pub struct ProtocolPackDefinition {
     pub schema_version: u16,
     pub pack_id: String,
     pub target: ProtocolPackTarget,
+    /// Exact-build acquisition framing. Older packs default to preserving
+    /// client FrameUp wrappers opaquely until their layout is reviewed.
+    #[serde(default)]
+    pub acquisition: ProtocolPackAcquisition,
     #[serde(default)]
     pub provenance: Vec<MappingProvenance>,
     pub routes: Vec<ProtocolPackRoute>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProtocolPackAcquisition {
+    #[serde(default)]
+    pub frame_up_layout: BpsrFrameUpLayout,
+}
+
+/// The established protocol-pack digest covers route mappings and decoders.
+/// Acquisition is exact-build metadata, but it must not rotate reviewed rDPS
+/// identities when the decoded protocol contract itself is unchanged.
+#[derive(Serialize)]
+struct ProtocolPackDigestDefinition<'a> {
+    schema_version: u16,
+    pack_id: &'a str,
+    target: &'a ProtocolPackTarget,
+    provenance: &'a [MappingProvenance],
+    routes: &'a [ProtocolPackRoute],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -136,7 +158,14 @@ impl ProtocolPack {
     pub fn build(definition: ProtocolPackDefinition) -> Result<Self, ProtocolPackError> {
         validate_definition(&definition)?;
 
-        let encoded = serde_json::to_vec(&definition)
+        let digest_definition = ProtocolPackDigestDefinition {
+            schema_version: definition.schema_version,
+            pack_id: &definition.pack_id,
+            target: &definition.target,
+            provenance: &definition.provenance,
+            routes: &definition.routes,
+        };
+        let encoded = serde_json::to_vec(&digest_definition)
             .map_err(|error| ProtocolPackError::Serialization(error.to_string()))?;
         let digest = format!("sha256:{:x}", Sha256::digest(encoded));
         let mut catalog = RouteCatalog::new();
@@ -398,6 +427,7 @@ mod tests {
                 build_id: "build-1".into(),
                 executable_version: None,
             },
+            acquisition: ProtocolPackAcquisition::default(),
             provenance: Vec::new(),
             routes: vec![route(3)],
         }
@@ -843,6 +873,31 @@ mod tests {
         let mut nearby = exact;
         nearby.build_id = "24252056".into();
         assert!(!pack.matches(&nearby));
+    }
+
+    #[test]
+    fn frame_up_acquisition_layout_is_exact_pack_versioned_with_opaque_compatibility() {
+        let historical = ProtocolPack::from_json(include_bytes!(
+            "../protocol-packs/global/steam-24252055/pack.json"
+        ))
+        .unwrap();
+        let current = ProtocolPack::from_json(include_bytes!(
+            "../protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .unwrap();
+
+        assert_eq!(
+            historical.definition().acquisition.frame_up_layout,
+            BpsrFrameUpLayout::Opaque
+        );
+        assert_eq!(
+            current.definition().acquisition.frame_up_layout,
+            BpsrFrameUpLayout::NestedAfterFourBytes
+        );
+        assert_eq!(
+            current.digest(),
+            "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395"
+        );
     }
 
     #[test]
