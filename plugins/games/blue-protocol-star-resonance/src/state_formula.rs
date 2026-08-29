@@ -782,6 +782,125 @@ pub fn exact_external_critical_chance_and_damage_fraction(
     reduce_positive_fraction(numerator, denominator)
 }
 
+/// Returns the exact conserved share of a critical-only packet row supplied
+/// by one capped Crit-chance component and its recipient-owned Crit-DMG
+/// conversion.
+///
+/// Critical Cold (talent 250) applies child status `2204471` (authoritative
+/// design name `暴击之寒_队友暴击`) as `+300` raw Crit. Crit occurrences cap at
+/// `10000`, while Lightfall (talent 1122), status `2203220` (authoritative
+/// design name `暴击双生`), converts the full provider delta to `+150` raw
+/// Crit-DMG. Capping before removing the provider is therefore required: an
+/// active raw value of `10096` has only `204` points of Crit-occurrence
+/// marginal, but still carries the complete recipient conversion.
+///
+/// With capped active chance `C`, provider-removed capped chance `C0`,
+/// effective occurrence delta `dC`, current Crit bonus `B`, and provider
+/// conversion `dB`, the non-overlapping marginal is `dC*B + C0*dB`. The
+/// normal-hit body remains recipient-owned. This is an exact rational share
+/// of packet-final damage and deliberately makes no hidden server-integer
+/// counterfactual claim.
+pub fn exact_external_capped_critical_chance_and_damage_fraction(
+    observed_damage: i64,
+    current_critical_chance_raw: i64,
+    provider_critical_chance_raw_delta: i64,
+    critical_chance_cap_raw: i64,
+    current_critical_damage_raw: i64,
+    provider_critical_damage_raw_delta: i64,
+    interpretation: CriticalDamageFactorInterpretation,
+) -> Option<(i128, i128)> {
+    if observed_damage <= 0
+        || current_critical_chance_raw <= 0
+        || provider_critical_chance_raw_delta <= 0
+        || provider_critical_chance_raw_delta > current_critical_chance_raw
+        || critical_chance_cap_raw <= 0
+        || provider_critical_damage_raw_delta < 0
+    {
+        return None;
+    }
+
+    let (current_critical_factor, current_critical_bonus) =
+        interpretation.factor_and_bonus(current_critical_damage_raw)?;
+    if provider_critical_damage_raw_delta > current_critical_bonus {
+        return None;
+    }
+    let current_capped_chance = current_critical_chance_raw.min(critical_chance_cap_raw);
+    let provider_removed_raw =
+        current_critical_chance_raw.checked_sub(provider_critical_chance_raw_delta)?;
+    let provider_removed_capped_chance = provider_removed_raw.min(critical_chance_cap_raw);
+    let effective_chance_delta =
+        current_capped_chance.checked_sub(provider_removed_capped_chance)?;
+    let combined_marginal = i128::from(effective_chance_delta)
+        .checked_mul(i128::from(current_critical_bonus))?
+        .checked_add(
+            i128::from(provider_removed_capped_chance)
+                .checked_mul(i128::from(provider_critical_damage_raw_delta))?,
+        )?;
+    if combined_marginal <= 0 {
+        return None;
+    }
+    let numerator = i128::from(observed_damage).checked_mul(combined_marginal)?;
+    let denominator =
+        i128::from(current_capped_chance).checked_mul(i128::from(current_critical_factor))?;
+    reduce_positive_fraction(numerator, denominator)
+}
+
+/// Splits the exact joint critical-stage marginal of Critical Cold (talent
+/// 250; child effect `2204471`, design name `暴击之寒_队友暴击`) and Team Luck
+/// and Crit (effect `2302121`) in mechanical operation order. Critical Cold
+/// owns the critical occurrences created by its chance delta with every
+/// active Crit-DMG component; Team Luck owns its Crit-DMG only across the
+/// provider-removed chance `C0`. This sums to the exact joint both-removed
+/// counterfactual without imposing a fairness convention.
+#[allow(clippy::too_many_arguments)]
+pub fn exact_joint_critical_cold_team_luck_fractions(
+    observed_damage: i64,
+    current_critical_chance_raw: i64,
+    critical_cold_chance_raw_delta: i64,
+    critical_chance_cap_raw: i64,
+    current_critical_damage_raw: i64,
+    critical_cold_damage_raw_delta: i64,
+    team_luck_damage_raw_delta: i64,
+    interpretation: CriticalDamageFactorInterpretation,
+) -> Option<[(i128, i128); 2]> {
+    if observed_damage <= 0
+        || current_critical_chance_raw <= 0
+        || critical_cold_chance_raw_delta <= 0
+        || critical_cold_chance_raw_delta > current_critical_chance_raw
+        || critical_chance_cap_raw <= 0
+        || critical_cold_damage_raw_delta < 0
+        || team_luck_damage_raw_delta <= 0
+    {
+        return None;
+    }
+    let (critical_factor, critical_bonus) =
+        interpretation.factor_and_bonus(current_critical_damage_raw)?;
+    if critical_cold_damage_raw_delta.checked_add(team_luck_damage_raw_delta)? > critical_bonus {
+        return None;
+    }
+    let current_chance = current_critical_chance_raw.min(critical_chance_cap_raw);
+    let removed_chance = current_critical_chance_raw
+        .checked_sub(critical_cold_chance_raw_delta)?
+        .min(critical_chance_cap_raw);
+    let effective_chance_delta = current_chance.checked_sub(removed_chance)?;
+    let denominator = i128::from(current_chance).checked_mul(i128::from(critical_factor))?;
+    let critical_cold_margin = i128::from(effective_chance_delta)
+        .checked_mul(i128::from(critical_bonus))?
+        .checked_add(
+            i128::from(removed_chance).checked_mul(i128::from(critical_cold_damage_raw_delta))?,
+        )?;
+    let team_luck_margin =
+        i128::from(removed_chance).checked_mul(i128::from(team_luck_damage_raw_delta))?;
+    if critical_cold_margin <= 0 || team_luck_margin <= 0 {
+        return None;
+    }
+    let damage = i128::from(observed_damage);
+    Some([
+        reduce_positive_fraction(damage.checked_mul(critical_cold_margin)?, denominator)?,
+        reduce_positive_fraction(damage.checked_mul(team_luck_margin)?, denominator)?,
+    ])
+}
+
 /// Returns the exact conserved provider share of the packet-observed External
 /// Damage bonus (attribute 11840).
 ///
@@ -1372,6 +1491,114 @@ mod tests {
                 < chance_only.0 * denominator * damage_only.1
                     + damage_only.0 * denominator * chance_only.1,
             "independent removal must be larger because it double-counts the shared term"
+        );
+    }
+
+    #[test]
+    fn capped_critical_support_preserves_full_and_partial_occurrence_deltas() {
+        let observed_damage = 1_000_000;
+        let critical_damage = 22_206;
+        let interpretation = CriticalDamageFactorInterpretation::AdditiveBonus;
+
+        let full = exact_external_capped_critical_chance_and_damage_fraction(
+            observed_damage,
+            9_696,
+            300,
+            10_000,
+            critical_damage,
+            0,
+            interpretation,
+        )
+        .unwrap();
+        assert_eq!(
+            full,
+            exact_external_critical_chance_fraction(
+                observed_damage,
+                9_696,
+                300,
+                critical_damage,
+                interpretation,
+            )
+            .unwrap()
+        );
+
+        let partial = exact_external_capped_critical_chance_and_damage_fraction(
+            observed_damage,
+            10_096,
+            300,
+            10_000,
+            critical_damage,
+            0,
+            interpretation,
+        )
+        .unwrap();
+        let expected = reduce_positive_fraction(
+            i128::from(observed_damage) * 204 * i128::from(critical_damage),
+            10_000 * i128::from(10_000 + critical_damage),
+        )
+        .unwrap();
+        assert_eq!(partial, expected);
+    }
+
+    #[test]
+    fn capped_critical_support_keeps_lightfall_conversion_above_cap() {
+        let observed_damage = 1_000_000;
+        let critical_damage = 22_206;
+        let contribution = exact_external_capped_critical_chance_and_damage_fraction(
+            observed_damage,
+            10_400,
+            300,
+            10_000,
+            critical_damage,
+            150,
+            CriticalDamageFactorInterpretation::AdditiveBonus,
+        )
+        .unwrap();
+        assert_eq!(
+            contribution,
+            reduce_positive_fraction(
+                i128::from(observed_damage) * 10_000 * 150,
+                10_000 * i128::from(10_000 + critical_damage),
+            )
+            .unwrap()
+        );
+        assert_eq!(
+            exact_external_capped_critical_chance_and_damage_fraction(
+                observed_damage,
+                10_400,
+                300,
+                10_000,
+                critical_damage,
+                0,
+                CriticalDamageFactorInterpretation::AdditiveBonus,
+            ),
+            None,
+            "a fully capped provider has no occurrence marginal without a proven conversion"
+        );
+    }
+
+    #[test]
+    fn ordered_critical_cold_team_luck_split_sums_to_joint_counterfactual() {
+        let damage = 1_000_000;
+        let [critical_cold, team_luck] = exact_joint_critical_cold_team_luck_fractions(
+            damage,
+            10_096,
+            300,
+            10_000,
+            22_206,
+            150,
+            520,
+            CriticalDamageFactorInterpretation::AdditiveBonus,
+        )
+        .unwrap();
+        let joint = reduce_positive_fraction(
+            i128::from(damage) * (204 * 22_206 + 9_796 * (150 + 520)),
+            10_000 * (10_000 + 22_206),
+        )
+        .unwrap();
+        assert_eq!(
+            (critical_cold.0 * team_luck.1 + team_luck.0 * critical_cold.1) * joint.1,
+            joint.0 * critical_cold.1 * team_luck.1
         );
     }
 

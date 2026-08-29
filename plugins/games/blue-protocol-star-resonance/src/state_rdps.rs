@@ -34,13 +34,14 @@ use crate::{
     exact_additive_fixed_point_marginal_from_observed_output,
     exact_external_attack_and_factors_fraction, exact_external_attack_coefficient_stage_fraction,
     exact_external_attack_ordered_stage_fraction,
+    exact_external_capped_critical_chance_and_damage_fraction,
     exact_external_combined_critical_lucky_chance_and_damage_fraction,
     exact_external_combined_critical_lucky_damage_fraction,
     exact_external_critical_chance_and_damage_fraction, exact_external_critical_chance_fraction,
     exact_external_critical_damage_fraction, exact_external_lucky_chance_and_damage_fraction,
     exact_external_lucky_chance_fraction, exact_external_lucky_damage_fraction,
-    linear_state_scaled_damage_marginal, packet_attribute_family_provider_marginal,
-    packet_attribute_family_value,
+    exact_joint_critical_cold_team_luck_fractions, linear_state_scaled_damage_marginal,
+    packet_attribute_family_provider_marginal, packet_attribute_family_value,
     rdps_runtime::{
         AttackFamilyRuntimeConfig, AttributeFamilyRounding, InspirationVectorRuntimeConfig,
         PrimaryAttackLane, PrimaryStatRecipientRule, RdpsRuntimeConfig,
@@ -54,7 +55,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v22";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v23";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -206,6 +207,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.inspiration.effect_id) {
         effect_ids.push(runtime.inspiration.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.critical_cold.effect_id) {
+        effect_ids.push(runtime.critical_cold.effect_id);
     }
     effect_ids.sort_unstable();
     effect_ids.dedup();
@@ -787,6 +791,12 @@ struct InspirationWindow {
     origin_source_type_id: Option<i32>,
     origin_source_config_id: Option<i64>,
     expires_at_observed_micros: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CriticalColdWindow {
+    target_entity_uuid: i64,
+    provider_entity_uuid: i64,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -1910,6 +1920,12 @@ pub struct BpsrStateDamageContributionProjector {
     thunderwind_transition_wires: HashMap<u64, WireKey>,
     full_bloom_targets: HashSet<u64>,
     inspiration_windows: HashMap<EffectWindowKey, InspirationWindow>,
+    /// Exact external party lifecycle for Critical Cold (talent 250). The
+    /// child status `2204471` has no en-US locale; its authoritative design
+    /// name is `暴击之寒_队友暴击`. Runtime identity is numeric and requires
+    /// origin `1:2204470`, level 1, and one stack.
+    critical_cold_windows: HashMap<EffectWindowKey, CriticalColdWindow>,
+    critical_cold_transition_wires: HashMap<u64, WireKey>,
     /// Exact self-sourced recipient passive status that converts externally
     /// supplied Crit into Crit DMG. Entity UUID survives actor-id rotation and
     /// is cleared only by its own terminal lifecycle or a run boundary.
@@ -1964,6 +1980,7 @@ pub struct BpsrStateDamageContributionProjector {
     active_players: HashSet<u64>,
     observed_ability_ids_by_actor: HashMap<u64, HashSet<i64>>,
     last_target_vulnerability_audit: Option<TargetVulnerabilityAudit>,
+    last_critical_cold_pipeline_audit: Option<String>,
 }
 
 impl Default for BpsrStateDamageContributionProjector {
@@ -2019,6 +2036,8 @@ impl Default for BpsrStateDamageContributionProjector {
             thunderwind_transition_wires: HashMap::new(),
             full_bloom_targets: HashSet::new(),
             inspiration_windows: HashMap::new(),
+            critical_cold_windows: HashMap::new(),
+            critical_cold_transition_wires: HashMap::new(),
             inspiration_recipient_dependency_entities: HashSet::new(),
             inspiration_transition_wires: HashMap::new(),
             inspiration_snapshot_targets: HashSet::new(),
@@ -2044,6 +2063,7 @@ impl Default for BpsrStateDamageContributionProjector {
             active_players: HashSet::new(),
             observed_ability_ids_by_actor: HashMap::new(),
             last_target_vulnerability_audit: None,
+            last_critical_cold_pipeline_audit: None,
         }
     }
 }
@@ -2513,6 +2533,7 @@ impl BpsrStateDamageContributionProjector {
         let exact_output_start = output.len();
         let rational_output_start = rational_output.len();
         self.last_target_vulnerability_audit = None;
+        self.last_critical_cold_pipeline_audit = None;
         self.latest_observed_micros = envelope.time.observed_micros;
         let selected_runtime = rdps_runtime_config_for_identity(
             &envelope.region.identity.deployment_id,
@@ -2608,7 +2629,7 @@ impl BpsrStateDamageContributionProjector {
                 rational_output.extend(
                     self.drain_ready_deferred_team_luck(envelope.time.observed_micros, true),
                 );
-                self.clear_run_state();
+                self.clear_wiped_state();
             }
             TimelineEventKind::Actor(actor) => {
                 let actor_id = actor.actor.actor_id.0;
@@ -2653,6 +2674,7 @@ impl BpsrStateDamageContributionProjector {
                 self.clear_stat_resonance_after_gap();
                 self.clear_fiery_battle_will_after_gap();
                 self.clear_encore_after_gap(gap.kind);
+                self.clear_critical_cold_after_gap(gap.kind);
             }
             TimelineEventKind::EntityAttributes(attributes) => self.observe_attributes(
                 attributes.actor.actor_id.0,
@@ -2767,6 +2789,8 @@ impl BpsrStateDamageContributionProjector {
                     self.inspiration_contribution(envelope.time.observed_micros, damage);
                 let inspiration_occurrence_contribution =
                     self.inspiration_occurrence_contribution(envelope.time.observed_micros, damage);
+                let critical_cold_occurrence_contribution = self
+                    .critical_cold_occurrence_contribution(envelope.time.observed_micros, damage);
                 if inspiration_contribution.is_some()
                     && (damage.flags.critical == Some(true) || damage.flags.lucky == Some(true))
                     && inspiration_occurrence_contribution.is_none()
@@ -2897,8 +2921,26 @@ impl BpsrStateDamageContributionProjector {
                     + usize::from(remote_harmony_paired_output_contribution.is_some())
                     + usize::from(fatal_spiral_direct_contribution.is_some())
                     + usize::from(inspiration_occurrence_contribution.is_some())
+                    + usize::from(critical_cold_occurrence_contribution.is_some())
                     + usize::from(thunderwind_contribution.is_some())
                     + target_vulnerability_rational_contributions.len();
+                if team_luck_contribution.is_some()
+                    && critical_cold_occurrence_contribution.is_some()
+                {
+                    let attack_candidates = attack_contributions
+                        .iter()
+                        .map(|contribution| {
+                            format!("{}:{:?}", contribution.effect_id, contribution.scope)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" | ");
+                    self.last_critical_cold_pipeline_audit = Some(format!(
+                        "attack_policy={attack_overlap_policy:?}; base_attack_overlap_unresolved={base_attack_overlap_unresolved}; observed_attack_overlap_unresolved={observed_attack_overlap_unresolved}; attack_candidates=[{attack_candidates}]; remote_harmony_paired={}; remote_harmony_deferred={}; fatal_spiral={}; exact_candidate_count={exact_candidate_count}; rational_candidate_count={rational_candidate_count}",
+                        remote_harmony_paired_output_contribution.is_some(),
+                        deferred_remote_harmony_candidate.is_some(),
+                        fatal_spiral_direct_contribution.is_some(),
+                    ));
+                }
                 let vulnerability_gate = self.target_vulnerability_audit_gate(damage);
                 let has_target_vulnerability_candidate = !target_vulnerability_contributions
                     .is_empty()
@@ -2924,6 +2966,7 @@ impl BpsrStateDamageContributionProjector {
                     unresolved_attack_overlap,
                 });
                 if exact_candidate_count == 1 && rational_candidate_count == 0 {
+                    self.finish_critical_cold_pipeline_audit("exact_candidate_only");
                     if let Some(contribution) = state_contribution {
                         output.push(contribution);
                     }
@@ -2933,24 +2976,46 @@ impl BpsrStateDamageContributionProjector {
                         // Both windows exist, but their exact adjacent Attack
                         // counterfactuals were not reproducible from this
                         // packet state. Retain the damage without guessing.
+                        self.finish_critical_cold_pipeline_audit(
+                            "unresolved_attack_overlap_return",
+                        );
                         return;
                     }
                     let later_contribution = match (
                         team_luck_contribution,
                         inspiration_occurrence_contribution,
+                        critical_cold_occurrence_contribution,
                         thunderwind_contribution,
                         target_vulnerability_rational_contributions.as_slice(),
                     ) {
-                        (Some(team_luck), None, None, []) => Some(team_luck),
-                        (None, Some(inspiration), None, []) => Some(inspiration),
-                        (None, None, Some(thunderwind), []) => Some(thunderwind),
-                        (None, None, None, [target_vulnerability]) => Some(*target_vulnerability),
-                        (None, None, None, []) => None,
+                        (Some(team_luck), None, None, None, []) => Some(team_luck),
+                        (None, Some(inspiration), None, None, []) => Some(inspiration),
+                        (None, None, Some(critical_cold), None, []) => Some(critical_cold),
+                        (None, None, None, Some(thunderwind), []) => Some(thunderwind),
+                        (None, None, None, None, [target_vulnerability]) => {
+                            Some(*target_vulnerability)
+                        }
+                        (None, None, None, None, []) => None,
                         // Multiple later-stage providers need a separately
                         // proven allocation order. The paired Harmony delta is
                         // still exact because every other context was held
                         // constant, so retain it while suppressing only the
                         // ambiguous later-stage allocation.
+                        _ => None,
+                    };
+                    let joint_critical_cold_team_luck = match (
+                        team_luck_contribution,
+                        inspiration_occurrence_contribution,
+                        critical_cold_occurrence_contribution,
+                        thunderwind_contribution,
+                        target_vulnerability_rational_contributions.as_slice(),
+                    ) {
+                        (Some(team_luck), None, Some(critical_cold), None, []) => self
+                            .joint_critical_cold_team_luck_contributions(
+                                damage,
+                                critical_cold,
+                                team_luck,
+                            ),
                         _ => None,
                     };
                     if deferred_remote_harmony_candidate.is_some()
@@ -2968,7 +3033,20 @@ impl BpsrStateDamageContributionProjector {
                         // attack-before-critical/vulnerability accounting
                         // order.
                         if attack_contributions.is_empty() {
-                            if let Some(later) = later_contribution.and_then(|later| {
+                            if let Some(joint) = joint_critical_cold_team_luck.and_then(|joint| {
+                                joint
+                                    .into_iter()
+                                    .map(|later| {
+                                        scale_later_rational_marginal_after_many(
+                                            std::slice::from_ref(&remote_harmony),
+                                            later,
+                                        )
+                                    })
+                                    .collect::<Option<Vec<_>>>()
+                            }) {
+                                rational_output.push(remote_harmony);
+                                rational_output.extend(joint);
+                            } else if let Some(later) = later_contribution.and_then(|later| {
                                 scale_later_rational_marginal_after_many(
                                     std::slice::from_ref(&remote_harmony),
                                     later,
@@ -2980,6 +3058,9 @@ impl BpsrStateDamageContributionProjector {
                                 rational_output.push(remote_harmony);
                             }
                         }
+                        self.finish_critical_cold_pipeline_audit(
+                            "remote_harmony_paired_output_return",
+                        );
                         return;
                     }
                     if let Some(fatal_spiral) = fatal_spiral_direct_contribution {
@@ -2989,7 +3070,20 @@ impl BpsrStateDamageContributionProjector {
                         // proved allocation order; a unique later-stage share
                         // is scaled from the damage remaining after Highland.
                         if attack_contributions.is_empty() {
-                            if let Some(later) = later_contribution.and_then(|later| {
+                            if let Some(joint) = joint_critical_cold_team_luck.and_then(|joint| {
+                                joint
+                                    .into_iter()
+                                    .map(|later| {
+                                        scale_later_rational_marginal_after_many(
+                                            std::slice::from_ref(&fatal_spiral),
+                                            later,
+                                        )
+                                    })
+                                    .collect::<Option<Vec<_>>>()
+                            }) {
+                                rational_output.push(fatal_spiral);
+                                rational_output.extend(joint);
+                            } else if let Some(later) = later_contribution.and_then(|later| {
                                 scale_later_rational_marginal_after_many(
                                     std::slice::from_ref(&fatal_spiral),
                                     later,
@@ -3001,11 +3095,14 @@ impl BpsrStateDamageContributionProjector {
                                 rational_output.push(fatal_spiral);
                             }
                         }
+                        self.finish_critical_cold_pipeline_audit("fatal_spiral_direct_return");
                         return;
                     }
                     if later_contribution.is_none()
+                        && joint_critical_cold_team_luck.is_none()
                         && (usize::from(team_luck_contribution.is_some())
                             + usize::from(inspiration_occurrence_contribution.is_some())
+                            + usize::from(critical_cold_occurrence_contribution.is_some())
                             + usize::from(thunderwind_contribution.is_some())
                             + target_vulnerability_rational_contributions.len())
                             > 1
@@ -3024,6 +3121,7 @@ impl BpsrStateDamageContributionProjector {
                                 attack_contributions,
                                 usize::from(team_luck_contribution.is_some())
                                     + usize::from(inspiration_occurrence_contribution.is_some())
+                                    + usize::from(critical_cold_occurrence_contribution.is_some())
                                     + usize::from(thunderwind_contribution.is_some())
                                     + target_vulnerability_rational_contributions.len(),
                                 self.runtime.fiery_battle_will.effect_id,
@@ -3039,11 +3137,17 @@ impl BpsrStateDamageContributionProjector {
                             // critical-damage family, so neither downstream
                             // share is guessed or emitted.
                             rational_output.extend(proven_attack_contributions);
+                            self.finish_critical_cold_pipeline_audit(
+                                "unresolved_later_overlap_attack_only_return",
+                            );
                             return;
                         } else {
                             // Without a deferred exact paired-output candidate,
                             // no attribution in this overlap is independently
                             // safe to emit.
+                            self.finish_critical_cold_pipeline_audit(
+                                "unresolved_later_overlap_return",
+                            );
                             return;
                         }
                     }
@@ -3052,12 +3156,32 @@ impl BpsrStateDamageContributionProjector {
                             // The exact Harmony delta will be emitted when its
                             // bounded receipt arrives. Do not queue or emit any
                             // member of the unresolved later-stage overlap.
+                        } else if let Some(joint) = joint_critical_cold_team_luck {
+                            rational_output.extend(joint);
+                            self.finish_critical_cold_pipeline_audit("joint_emitted_no_attack");
                         } else if let Some(later) = later_contribution {
                             rational_output.push(later);
                         } else if let Some(candidate) =
                             self.deferred_team_luck_critical_candidate(envelope, damage)
                         {
                             self.buffer_deferred_team_luck_critical_damage(candidate);
+                        }
+                    } else if let Some(joint) = joint_critical_cold_team_luck {
+                        if let Some(joint_after_attack) = joint
+                            .into_iter()
+                            .map(|later| {
+                                scale_later_rational_marginal_after_many(
+                                    &attack_contributions,
+                                    later,
+                                )
+                            })
+                            .collect::<Option<Vec<_>>>()
+                        {
+                            rational_output.extend(attack_contributions);
+                            rational_output.extend(joint_after_attack);
+                            self.finish_critical_cold_pipeline_audit("joint_emitted_after_attack");
+                        } else {
+                            self.finish_critical_cold_pipeline_audit("joint_attack_scaling_failed");
                         }
                     } else if let Some(later) = later_contribution {
                         if let Some(later_after_attack) =
@@ -3331,6 +3455,9 @@ impl BpsrStateDamageContributionProjector {
                 == Some(self.runtime.inspiration.source_config_id)
         {
             self.observe_inspiration_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.critical_cold.effect_id {
+            self.observe_critical_cold_status(status);
         }
         if status.effect.0 == self.runtime.inspiration.recipient_dependency.effect_id {
             self.observe_inspiration_recipient_dependency_status(status);
@@ -3713,6 +3840,79 @@ impl BpsrStateDamageContributionProjector {
         if let Some(wire) = self.current_wire {
             self.inspiration_transition_wires
                 .insert(target_actor_id, wire);
+        }
+    }
+
+    fn observe_critical_cold_status(&mut self, status: &rlogs_events::StatusEvent) {
+        let target_actor_id = status.target.actor_id.0;
+        let target_entity_uuid = status.target.entity_uuid.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        let provider_actor_id = status.source.map(|source| source.actor_id.0);
+        let active = matches!(
+            status.state,
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+        ) || (status.state == StatusState::Consumed
+            && status.stacks.unwrap_or_default() > 0);
+        let exact_identity = status.level == Some(self.runtime.critical_cold.required_level)
+            && status.stacks == Some(self.runtime.critical_cold.required_stacks)
+            && status
+                .origin
+                .map(|origin| (origin.source_type_id, origin.source_config_id))
+                == Some((
+                    self.runtime.critical_cold.source_type_id,
+                    self.runtime.critical_cold.source_config_id,
+                ));
+
+        if active && exact_identity {
+            if let Some(provider) = status.source
+                && provider != status.target
+            {
+                self.critical_cold_windows.insert(
+                    EffectWindowKey {
+                        target_actor_id,
+                        provider_actor_id: provider.actor_id.0,
+                        instance_id,
+                    },
+                    CriticalColdWindow {
+                        target_entity_uuid,
+                        provider_entity_uuid: provider.entity_uuid.0,
+                    },
+                );
+            } else {
+                // An active row without exact external ownership cannot keep
+                // an older window eligible for the same recipient/instance.
+                self.critical_cold_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || (instance_id.is_some() && key.instance_id != instance_id)
+                });
+            }
+        } else {
+            self.critical_cold_windows.retain(|key, _| {
+                if key.target_actor_id != target_actor_id {
+                    return true;
+                }
+                if instance_id.is_some() && key.instance_id != instance_id {
+                    return true;
+                }
+                if let Some(provider_actor_id) = provider_actor_id
+                    && key.provider_actor_id != provider_actor_id
+                {
+                    return true;
+                }
+                false
+            });
+        }
+        if let Some(wire) = self.current_wire {
+            self.critical_cold_transition_wires
+                .insert(target_actor_id, wire);
+        }
+    }
+
+    fn clear_critical_cold_after_gap(&mut self, kind: DataGapKind) {
+        if kind == DataGapKind::TcpGap {
+            self.critical_cold_windows.clear();
+            self.critical_cold_transition_wires.clear();
+            self.inspiration_recipient_dependency_entities.clear();
         }
     }
 
@@ -4570,7 +4770,7 @@ impl BpsrStateDamageContributionProjector {
             StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
         ) || (status.state == StatusState::Consumed
             && status.stacks.unwrap_or_default() > 0);
-        let exact_self_status = status.source == Some(status.target)
+        let exact_recipient_status = status.source == Some(status.target)
             && status.level
                 == Some(
                     self.runtime
@@ -4579,7 +4779,7 @@ impl BpsrStateDamageContributionProjector {
                         .required_status_level,
                 )
             && status.stacks == Some(1);
-        if active && exact_self_status {
+        if active && exact_recipient_status {
             self.inspiration_recipient_dependency_entities
                 .insert(target_entity_uuid);
         } else {
@@ -6028,6 +6228,27 @@ impl BpsrStateDamageContributionProjector {
             == Some(&recipient_entity_uuid)
             && states.contains_key(&alias_actor_id))
         .then_some(alias_actor_id)
+    }
+
+    /// Resolves the exact Crit chance and Crit-DMG inputs used by Critical Cold.
+    /// Prefer a complete same-wire staged snapshot, then fall back to the last
+    /// complete committed snapshot for the same stable recipient entity.
+    fn critical_cold_formula_state(
+        &self,
+        recipient_actor_id: u64,
+        recipient_entity_uuid: i64,
+    ) -> Option<&ActorHpState> {
+        let has_inputs = |state: &&ActorHpState| {
+            state.critical_chance_raw.is_some() && state.critical_damage_raw.is_some()
+        };
+        self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, true)
+            .and_then(|actor_id| self.staged_states.get(&actor_id))
+            .filter(has_inputs)
+            .or_else(|| {
+                self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+                    .and_then(|actor_id| self.states.get(&actor_id))
+                    .filter(has_inputs)
+            })
     }
 
     fn team_luck_missing_state_gate(
@@ -7862,6 +8083,329 @@ impl BpsrStateDamageContributionProjector {
         })
     }
 
+    fn critical_cold_occurrence_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.critical_cold_occurrence_decision(observed_micros, damage)
+            .ok()
+    }
+
+    pub fn critical_cold_occurrence_audit_gate(
+        &self,
+        damage: &rlogs_events::DamageEvent,
+    ) -> &'static str {
+        match self.critical_cold_occurrence_decision(self.latest_observed_micros, damage) {
+            Ok(_) => "emitted",
+            Err(gate) => gate,
+        }
+    }
+
+    pub fn critical_cold_occurrence_audit_contribution(
+        &self,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.critical_cold_occurrence_decision(self.latest_observed_micros, damage)
+            .ok()
+    }
+
+    pub fn critical_cold_simultaneous_later_candidate_signature(
+        &self,
+        envelope: &EventEnvelope,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<String> {
+        let critical_cold = self
+            .critical_cold_occurrence_decision(envelope.time.observed_micros, damage)
+            .ok()?;
+        let mut candidates = vec![format!(
+            "{}:{}:{:?}",
+            critical_cold.effect_id, critical_cold.provider_actor_id, critical_cold.scope
+        )];
+        if let Ok(contribution) = self.team_luck_decision(envelope.time.observed_micros, damage) {
+            candidates.push(format!(
+                "{}:{}:{:?}",
+                contribution.effect_id, contribution.provider_actor_id, contribution.scope
+            ));
+        }
+        if let Some(contribution) =
+            self.inspiration_occurrence_contribution(envelope.time.observed_micros, damage)
+        {
+            candidates.push(format!(
+                "{}:{}:{:?}",
+                contribution.effect_id, contribution.provider_actor_id, contribution.scope
+            ));
+        }
+        if let Some(contribution) =
+            self.thunderwind_contribution(envelope.time.observed_micros, damage)
+        {
+            candidates.push(format!(
+                "{}:{}:{:?}",
+                contribution.effect_id, contribution.provider_actor_id, contribution.scope
+            ));
+        }
+        let target_catalog = target_vulnerability_rdps_catalog().ok()?;
+        for index in damage
+            .ability
+            .map(|ability| ability.0)
+            .into_iter()
+            .flat_map(|ability_id| {
+                target_catalog.rule_indices_for_damage(
+                    ability_id,
+                    damage.hit_event_id,
+                    damage.flags.critical,
+                    damage.flags.lucky,
+                )
+            })
+            .copied()
+        {
+            let rule = &target_catalog.rules[index];
+            if !rule.runtime_eligible && !self.target_vulnerability_candidate_audit_enabled {
+                continue;
+            }
+            if let Some(contribution) =
+                self.target_vulnerability_rational_contribution(envelope, damage, rule)
+            {
+                candidates.push(format!(
+                    "{}:{}:{:?}",
+                    contribution.effect_id, contribution.provider_actor_id, contribution.scope
+                ));
+            }
+            if let Some(contribution) =
+                self.target_vulnerability_exact_contribution(envelope, damage, rule)
+            {
+                candidates.push(format!(
+                    "{}:{}:{:?}",
+                    contribution.effect_id, contribution.provider_actor_id, contribution.scope
+                ));
+            }
+        }
+        candidates.sort_unstable();
+        Some(candidates.join(" | "))
+    }
+
+    fn critical_cold_occurrence_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        if !self.runtime.critical_cold.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        if damage.flags.critical != Some(true) {
+            return Err("critical_occurrence_missing");
+        }
+        if damage.flags.lucky != Some(false) {
+            return Err("lucky_or_unknown_outcome");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        if self.current_wire.is_some_and(|wire| {
+            self.critical_cold_transition_wires.get(&recipient_actor_id) == Some(&wire)
+        }) {
+            return Err("same_wire_transition");
+        }
+        let exact_windows = self
+            .critical_cold_windows
+            .iter()
+            .filter(|(key, window)| {
+                key.target_actor_id == recipient_actor_id
+                    || (recipient_entity_uuid != 0
+                        && window.target_entity_uuid == recipient_entity_uuid)
+            })
+            .collect::<Vec<_>>();
+        if exact_windows.len() != 1 {
+            return Err(if exact_windows.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        }
+        let (key, window) = exact_windows[0];
+        let provider_actor_id = self
+            .actor_ancestry
+            .actor_for_entity(window.provider_entity_uuid)
+            .unwrap_or(key.provider_actor_id);
+        if window.provider_entity_uuid == 0
+            || provider_actor_id == recipient_actor_id
+            || window.provider_entity_uuid == recipient_entity_uuid
+        {
+            return Err("provider_is_recipient");
+        }
+
+        let state = self
+            .critical_cold_formula_state(recipient_actor_id, recipient_entity_uuid)
+            .ok_or("recipient_state_missing")?;
+        let provider_critical_damage_raw_delta = if self
+            .inspiration_recipient_dependency_entities
+            .contains(&recipient_entity_uuid)
+        {
+            self.runtime
+                .critical_cold
+                .recipient_dependency_critical_damage_raw_delta
+        } else {
+            0
+        };
+        let (numerator, denominator) = exact_external_capped_critical_chance_and_damage_fraction(
+            damage.amount,
+            state
+                .critical_chance_raw
+                .ok_or("critical_chance_state_missing")?,
+            self.runtime.critical_cold.critical_chance_raw_delta,
+            self.runtime.critical_cold.critical_chance_cap_raw,
+            state
+                .critical_damage_raw
+                .ok_or("critical_damage_state_missing")?,
+            provider_critical_damage_raw_delta,
+            self.runtime.critical_damage_factor_interpretation,
+        )
+        .ok_or("damage_counterfactual_unproven")?;
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: self.runtime.critical_cold.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: if provider_critical_damage_raw_delta > 0 {
+                DamageContributionScope::Component(
+                    "critical-cold-critical-chance-and-lightfall-conversion",
+                )
+            } else {
+                DamageContributionScope::Component("critical-cold-critical-chance")
+            },
+            numerator,
+            denominator,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn joint_critical_cold_team_luck_contributions(
+        &self,
+        damage: &rlogs_events::DamageEvent,
+        critical_cold: ExactRationalDamageContributionEvent,
+        team_luck: ExactRationalDamageContributionEvent,
+    ) -> Option<[ExactRationalDamageContributionEvent; 2]> {
+        self.joint_critical_cold_team_luck_decision(damage, critical_cold, team_luck)
+            .ok()
+    }
+
+    pub fn critical_cold_team_luck_joint_audit_gate(
+        &self,
+        damage: &rlogs_events::DamageEvent,
+    ) -> &'static str {
+        let Ok(critical_cold) =
+            self.critical_cold_occurrence_decision(self.latest_observed_micros, damage)
+        else {
+            return "critical_cold_candidate_missing";
+        };
+        let Ok(team_luck) = self.team_luck_decision(self.latest_observed_micros, damage) else {
+            return "team_luck_candidate_missing";
+        };
+        match self.joint_critical_cold_team_luck_decision(damage, critical_cold, team_luck) {
+            Ok(_) => "joint_emittable",
+            Err(gate) => gate,
+        }
+    }
+
+    fn joint_critical_cold_team_luck_decision(
+        &self,
+        damage: &rlogs_events::DamageEvent,
+        mut critical_cold: ExactRationalDamageContributionEvent,
+        mut team_luck: ExactRationalDamageContributionEvent,
+    ) -> Result<[ExactRationalDamageContributionEvent; 2], &'static str> {
+        if damage.flags.critical != Some(true) {
+            return Err("joint_critical_outcome_missing");
+        }
+        if damage.flags.lucky != Some(false) {
+            return Err("joint_lucky_or_unknown_outcome");
+        }
+        if critical_cold.effect_id != self.runtime.critical_cold.effect_id {
+            return Err("joint_critical_cold_effect_mismatch");
+        }
+        if team_luck.effect_id != self.runtime.team_luck.effect_id {
+            return Err("joint_team_luck_effect_mismatch");
+        }
+        if team_luck.scope != DamageContributionScope::Component("team-luck-critical-damage") {
+            return Err("joint_team_luck_scope_mismatch");
+        }
+        if critical_cold.recipient_actor_id != team_luck.recipient_actor_id {
+            return Err("joint_recipient_mismatch");
+        }
+        if critical_cold.observed_damage != team_luck.observed_damage {
+            return Err("joint_observed_damage_mismatch");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let state = self
+            .critical_cold_formula_state(recipient_actor_id, recipient_entity_uuid)
+            .ok_or("joint_recipient_state_missing")?;
+        let critical_chance_raw = state
+            .critical_chance_raw
+            .ok_or("joint_critical_chance_state_missing")?;
+        let critical_damage_raw = state
+            .critical_damage_raw
+            .ok_or("joint_critical_damage_state_missing")?;
+        let critical_cold_damage_raw_delta = if self
+            .inspiration_recipient_dependency_entities
+            .contains(&recipient_entity_uuid)
+        {
+            self.runtime
+                .critical_cold
+                .recipient_dependency_critical_damage_raw_delta
+        } else {
+            0
+        };
+        if critical_chance_raw < self.runtime.critical_cold.critical_chance_raw_delta {
+            return Err("joint_critical_cold_delta_exceeds_chance");
+        }
+        let critical_bonus = match self.runtime.critical_damage_factor_interpretation {
+            CriticalDamageFactorInterpretation::Unresolved => {
+                return Err("joint_critical_damage_factor_unresolved");
+            }
+            CriticalDamageFactorInterpretation::AdditiveBonus => critical_damage_raw,
+            CriticalDamageFactorInterpretation::DirectTotal => critical_damage_raw
+                .checked_sub(BPSR_FIXED_POINT_SCALE)
+                .ok_or("joint_critical_damage_factor_invalid")?,
+        };
+        if critical_bonus <= 0 {
+            return Err("joint_critical_damage_factor_invalid");
+        }
+        let combined_damage_delta = critical_cold_damage_raw_delta
+            .checked_add(self.runtime.team_luck.critical_raw_delta)
+            .ok_or("joint_critical_damage_delta_overflow")?;
+        if combined_damage_delta > critical_bonus {
+            return Err("joint_critical_damage_deltas_exceed_bonus");
+        }
+        let [critical_cold_fraction, team_luck_fraction] =
+            exact_joint_critical_cold_team_luck_fractions(
+                damage.amount,
+                critical_chance_raw,
+                self.runtime.critical_cold.critical_chance_raw_delta,
+                self.runtime.critical_cold.critical_chance_cap_raw,
+                critical_damage_raw,
+                critical_cold_damage_raw_delta,
+                self.runtime.team_luck.critical_raw_delta,
+                self.runtime.critical_damage_factor_interpretation,
+            )
+            .ok_or("joint_counterfactual_math_failure")?;
+        (critical_cold.numerator, critical_cold.denominator) = critical_cold_fraction;
+        critical_cold.scope =
+            DamageContributionScope::Component(if critical_cold_damage_raw_delta > 0 {
+                "critical-cold-critical-chance-and-lightfall-conversion-joint-team-luck-ordered"
+            } else {
+                "critical-cold-critical-chance-joint-team-luck-ordered"
+            });
+        (team_luck.numerator, team_luck.denominator) = team_luck_fraction;
+        team_luck.scope = DamageContributionScope::Component(
+            "team-luck-critical-damage-joint-critical-cold-ordered",
+        );
+        Ok([critical_cold, team_luck])
+    }
+
     fn combined_harmony_functional_amp_contributions(
         &self,
         observed_micros: u64,
@@ -8527,6 +9071,17 @@ impl BpsrStateDamageContributionProjector {
         self.last_target_vulnerability_audit
     }
 
+    fn finish_critical_cold_pipeline_audit(&mut self, branch: &'static str) {
+        if let Some(detail) = self.last_critical_cold_pipeline_audit.as_mut() {
+            detail.push_str("; branch=");
+            detail.push_str(branch);
+        }
+    }
+
+    pub fn critical_cold_pipeline_audit_detail(&self) -> Option<&str> {
+        self.last_critical_cold_pipeline_audit.as_deref()
+    }
+
     /// Analysis-only detail for the replay audit. The live projector keeps the
     /// same constant-time attribution path; this merely exposes the retained
     /// target/provider identities when a strict packet candidate is rejected.
@@ -9020,10 +9575,15 @@ impl BpsrStateDamageContributionProjector {
         self.full_bloom_targets.remove(&actor_id);
         self.inspiration_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
-        if let Some(entity_uuid) = self.actor_ancestry.entity_for_actor(actor_id) {
-            self.inspiration_recipient_dependency_entities
-                .remove(&entity_uuid);
-        }
+        // Critical Cold (talent 250; child status 2204471, design name
+        // 暴击之寒_队友暴击) is keyed by stable provider and recipient entity
+        // UUIDs. Actor-id rotation on either side does not terminate the
+        // exact recipient-held lifecycle; terminal status, TCP gap, or run
+        // boundary does.
+        self.critical_cold_transition_wires.remove(&actor_id);
+        // Lightfall (talent 1122), status 2203220 (`暴击双生`), is keyed by
+        // stable recipient entity UUID and survives actor-id rotation. Its
+        // own terminal lifecycle, TCP gap, or run boundary clears it.
         self.inspiration_transition_wires.remove(&actor_id);
         self.inspiration_snapshot_targets.remove(&actor_id);
         self.fatal_spiral_windows
@@ -9091,6 +9651,8 @@ impl BpsrStateDamageContributionProjector {
         self.thunderwind_transition_wires.clear();
         self.full_bloom_targets.clear();
         self.inspiration_windows.clear();
+        self.critical_cold_windows.clear();
+        self.critical_cold_transition_wires.clear();
         self.inspiration_recipient_dependency_entities.clear();
         self.inspiration_transition_wires.clear();
         self.inspiration_snapshot_targets.clear();
@@ -9118,6 +9680,19 @@ impl BpsrStateDamageContributionProjector {
         self.entity_type_by_actor.clear();
         self.summon_config_by_actor.clear();
         self.observed_ability_ids_by_actor.clear();
+    }
+
+    /// A wipe restarts encounter-local combat state, but Lightfall talent 1122
+    /// status 2203220 (`暴击双生`) is a permanent recipient talent status whose
+    /// catalog lifecycle explicitly has `delete_on_death = false`. Preserve only
+    /// the exact self-sourced level-1/stack-1 entities already admitted by the
+    /// status observer; run entry/end, exact terminals, and TCP gaps still clear
+    /// the dependency through their normal paths.
+    fn clear_wiped_state(&mut self) {
+        let inspiration_recipient_dependency_entities =
+            std::mem::take(&mut self.inspiration_recipient_dependency_entities);
+        self.clear_run_state();
+        self.inspiration_recipient_dependency_entities = inspiration_recipient_dependency_entities;
     }
 
     fn clear_state(&mut self) {
@@ -11533,6 +12108,58 @@ mod tests {
         }
     }
 
+    fn critical_cold_test_status(
+        provider: EntityRef,
+        recipient: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        rlogs_events::StatusEvent {
+            source: Some(provider),
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(runtime().critical_cold.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: Some(rlogs_events::StatusOrigin {
+                source_type_id: runtime().critical_cold.source_type_id,
+                source_config_id: runtime().critical_cold.source_config_id,
+            }),
+            state,
+            stacks: Some(runtime().critical_cold.required_stacks),
+            level: Some(runtime().critical_cold.required_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+            duration_millis: None,
+        }
+    }
+
+    fn critical_cold_test_projector(
+        current_critical_chance_raw: i64,
+        current_critical_damage_raw: i64,
+    ) -> BpsrStateDamageContributionProjector {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    critical_chance_raw: Some(current_critical_chance_raw),
+                    critical_damage_raw: Some(current_critical_damage_raw),
+                    ..ActorHpState::default()
+                },
+            )]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_critical_cold_status(&critical_cold_test_status(
+            provider,
+            recipient,
+            77,
+            StatusState::Applied,
+        ));
+        projector
+    }
+
     fn team_luck_fraction(
         observed_damage: i64,
         critical: bool,
@@ -11661,8 +12288,8 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252,
-                2_302_121, 3_003_052
+                55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_204_471,
+                2_207_252, 2_302_121, 3_003_052
             ],
             "the exact packet-pair vulnerability, Encore (55333) standalone output, observed Fiery Battle Will Attack-percent component, direct Highland observed-final component, observed Mechanical Power component, exact observed Stat Resonance Attack delta, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
         );
@@ -12500,8 +13127,8 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252,
-                2_302_121, 3_003_052
+                55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_204_471,
+                2_207_252, 2_302_121, 3_003_052
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
@@ -14482,6 +15109,312 @@ mod tests {
     }
 
     #[test]
+    fn critical_cold_uses_full_and_capped_crit_marginals() {
+        let recipient = test_entity(4, 40);
+        let damage = critical_test_damage(recipient, 1_000_000);
+        let full = critical_cold_test_projector(9_696, 22_206)
+            .critical_cold_occurrence_decision(123, &damage)
+            .unwrap();
+        assert_eq!(
+            (full.numerator, full.denominator),
+            exact_external_capped_critical_chance_and_damage_fraction(
+                damage.amount,
+                9_696,
+                300,
+                10_000,
+                22_206,
+                0,
+                CriticalDamageFactorInterpretation::AdditiveBonus,
+            )
+            .unwrap()
+        );
+
+        let partial = critical_cold_test_projector(10_096, 22_206)
+            .critical_cold_occurrence_decision(124, &damage)
+            .unwrap();
+        assert_eq!(
+            (partial.numerator, partial.denominator),
+            exact_external_capped_critical_chance_and_damage_fraction(
+                damage.amount,
+                10_096,
+                300,
+                10_000,
+                22_206,
+                0,
+                CriticalDamageFactorInterpretation::AdditiveBonus,
+            )
+            .unwrap()
+        );
+        assert!(partial.numerator * full.denominator < full.numerator * partial.denominator);
+    }
+
+    #[test]
+    fn critical_cold_composes_exact_lightfall_conversion_and_conserves() {
+        let recipient = test_entity(4, 40);
+        let damage = critical_test_damage(recipient, 1_000_000);
+        let mut projector = critical_cold_test_projector(10_096, 22_206);
+        projector
+            .inspiration_recipient_dependency_entities
+            .insert(recipient.entity_uuid.0);
+        let contribution = projector
+            .critical_cold_occurrence_decision(123, &damage)
+            .unwrap();
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            exact_external_capped_critical_chance_and_damage_fraction(
+                damage.amount,
+                10_096,
+                300,
+                10_000,
+                22_206,
+                150,
+                CriticalDamageFactorInterpretation::AdditiveBonus,
+            )
+            .unwrap()
+        );
+        assert_eq!(contribution.effect_id, 2_204_471);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert!(contribution.numerator > 0);
+        assert!(contribution.numerator < contribution.denominator * i128::from(damage.amount));
+        assert_eq!(
+            contribution.scope,
+            DamageContributionScope::Component(
+                "critical-cold-critical-chance-and-lightfall-conversion"
+            )
+        );
+    }
+
+    #[test]
+    fn critical_cold_lifecycle_self_lucky_gap_and_overlap_fail_closed() {
+        let provider = test_entity(2, 20);
+        let second_provider = test_entity(3, 30);
+        let recipient = test_entity(4, 40);
+        let mut projector = critical_cold_test_projector(9_696, 22_206);
+        let damage = critical_test_damage(recipient, 1_000_000);
+
+        let mut lucky = damage.clone();
+        lucky.flags.lucky = Some(true);
+        assert_eq!(
+            projector.critical_cold_occurrence_decision(123, &lucky),
+            Err("lucky_or_unknown_outcome")
+        );
+
+        projector.observe_critical_cold_status(&critical_cold_test_status(
+            second_provider,
+            recipient,
+            78,
+            StatusState::Applied,
+        ));
+        projector.active_players.insert(3);
+        assert_eq!(
+            projector.critical_cold_occurrence_decision(123, &damage),
+            Err("provider_window_ambiguous")
+        );
+
+        projector.clear_critical_cold_after_gap(DataGapKind::DecodeFailure);
+        assert_eq!(projector.critical_cold_windows.len(), 2);
+        projector.clear_critical_cold_after_gap(DataGapKind::TcpGap);
+        assert!(projector.critical_cold_windows.is_empty());
+
+        projector.observe_critical_cold_status(&critical_cold_test_status(
+            recipient,
+            recipient,
+            79,
+            StatusState::Applied,
+        ));
+        assert!(projector.critical_cold_windows.is_empty());
+        assert_eq!(
+            projector.critical_cold_occurrence_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        projector.observe_critical_cold_status(&critical_cold_test_status(
+            provider,
+            recipient,
+            80,
+            StatusState::Applied,
+        ));
+        let removed = critical_cold_test_status(provider, recipient, 80, StatusState::Removed);
+        projector.observe_critical_cold_status(&removed);
+        assert!(projector.critical_cold_windows.is_empty());
+    }
+
+    #[test]
+    fn critical_cold_provider_rotation_and_lightfall_recipient_rotation_preserve_entity_lifecycle()
+    {
+        let recipient = test_entity(4, 40);
+        let mut projector = critical_cold_test_projector(9_696, 22_206);
+        projector
+            .inspiration_recipient_dependency_entities
+            .insert(recipient.entity_uuid.0);
+        projector.clear_actor(2);
+        projector.active_players.remove(&2);
+        assert_eq!(
+            projector
+                .critical_cold_occurrence_decision(
+                    122,
+                    &critical_test_damage(recipient, 1_000_000),
+                )
+                .unwrap()
+                .provider_actor_id,
+            2,
+            "the exact stable provider entity remains authoritative while its actor id is absent"
+        );
+        projector.actor_ancestry.observe_entity(test_entity(5, 20));
+        projector.active_players.insert(5);
+        assert_eq!(projector.critical_cold_windows.len(), 1);
+        assert_eq!(
+            projector
+                .critical_cold_occurrence_decision(
+                    123,
+                    &critical_test_damage(recipient, 1_000_000),
+                )
+                .unwrap()
+                .provider_actor_id,
+            5
+        );
+        projector.clear_actor(4);
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .contains(&recipient.entity_uuid.0)
+        );
+        projector.actor_ancestry.observe_entity(test_entity(6, 40));
+        projector.states.insert(
+            6,
+            ActorHpState {
+                critical_chance_raw: Some(9_696),
+                critical_damage_raw: Some(22_206),
+                ..ActorHpState::default()
+            },
+        );
+        projector.active_players.insert(6);
+        let rotated = projector
+            .critical_cold_occurrence_decision(
+                124,
+                &critical_test_damage(test_entity(6, 40), 1_000_000),
+            )
+            .unwrap();
+        assert_eq!(rotated.recipient_actor_id, 6);
+        assert_eq!(rotated.provider_actor_id, 5);
+    }
+
+    #[test]
+    fn critical_cold_tcp_gap_clears_lightfall_but_decode_failure_preserves_it() {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = critical_cold_test_projector(9_696, 22_206);
+        let mut lightfall =
+            critical_cold_test_status(recipient, recipient, 94, StatusState::Applied);
+        lightfall.effect = rlogs_events::StatusEffectId(
+            projector.runtime.inspiration.recipient_dependency.effect_id,
+        );
+        lightfall.origin = None;
+        lightfall.level = Some(
+            projector
+                .runtime
+                .inspiration
+                .recipient_dependency
+                .required_status_level,
+        );
+        projector.observe_inspiration_recipient_dependency_status(&lightfall);
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .contains(&recipient.entity_uuid.0)
+        );
+        projector.clear_critical_cold_after_gap(DataGapKind::DecodeFailure);
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .contains(&recipient.entity_uuid.0)
+        );
+        projector.clear_critical_cold_after_gap(DataGapKind::TcpGap);
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .is_empty()
+        );
+        projector.observe_critical_cold_status(&critical_cold_test_status(
+            provider,
+            recipient,
+            95,
+            StatusState::Applied,
+        ));
+        let contribution = projector
+            .critical_cold_occurrence_decision(125, &critical_test_damage(recipient, 1_000_000))
+            .unwrap();
+        assert_eq!(
+            contribution.scope,
+            DamageContributionScope::Component("critical-cold-critical-chance")
+        );
+    }
+
+    #[test]
+    fn critical_cold_team_luck_joint_allocation_is_provider_order_invariant_and_conserved() {
+        let recipient = test_entity(4, 40);
+        let damage = critical_test_damage(recipient, 1_000_000);
+        let projector = critical_cold_test_projector(10_096, 22_206);
+        let event = |effect_id, provider_actor_id, scope| ExactRationalDamageContributionEvent {
+            observed_micros: 123,
+            effect_id,
+            provider_actor_id,
+            recipient_actor_id: 4,
+            scope: DamageContributionScope::Component(scope),
+            numerator: 1,
+            denominator: 2,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        };
+        let allocate = |cold_provider, luck_provider| {
+            projector
+                .joint_critical_cold_team_luck_contributions(
+                    &damage,
+                    event(2_204_471, cold_provider, "critical-cold-critical-chance"),
+                    event(2_302_121, luck_provider, "team-luck-critical-damage"),
+                )
+                .unwrap()
+        };
+        let first = allocate(2, 3);
+        let swapped = allocate(3, 2);
+        assert_eq!(
+            (first[0].numerator, first[0].denominator),
+            (swapped[0].numerator, swapped[0].denominator)
+        );
+        assert_eq!(
+            (first[1].numerator, first[1].denominator),
+            (swapped[1].numerator, swapped[1].denominator)
+        );
+        assert_eq!(first[0].provider_actor_id, 2);
+        assert_eq!(first[1].provider_actor_id, 3);
+        assert!(
+            first[0].numerator * first[1].denominator + first[1].numerator * first[0].denominator
+                < i128::from(damage.amount) * first[0].denominator * first[1].denominator
+        );
+
+        let mut staged_projector = critical_cold_test_projector(10_096, 22_206);
+        let staged_state = staged_projector.states.remove(&4).unwrap();
+        staged_projector.staged_states.insert(4, staged_state);
+        let staged = staged_projector
+            .joint_critical_cold_team_luck_contributions(
+                &damage,
+                event(2_204_471, 2, "critical-cold-critical-chance"),
+                event(2_302_121, 3, "team-luck-critical-damage"),
+            )
+            .expect("a complete same-wire staged snapshot is authoritative");
+        assert_eq!(
+            (staged[0].numerator, staged[0].denominator),
+            (first[0].numerator, first[0].denominator)
+        );
+        assert_eq!(
+            (staged[1].numerator, staged[1].denominator),
+            (first[1].numerator, first[1].denominator)
+        );
+    }
+
+    #[test]
     fn inspiration_live_projection_composes_only_the_exact_recipient_dependency() {
         let provider = InspirationProviderState {
             provider_full_bloom: false,
@@ -14648,6 +15581,89 @@ mod tests {
             !projector
                 .inspiration_recipient_dependency_entities
                 .contains(&40)
+        );
+    }
+
+    #[test]
+    fn lightfall_permanent_dependency_survives_only_wipe_and_other_boundaries_clear() {
+        let recipient = test_entity(4, 40);
+        let config = &runtime().inspiration.recipient_dependency;
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        let mut status = rlogs_events::StatusEvent {
+            source: Some(recipient),
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(101)),
+            origin: None,
+            state: StatusState::Refreshed,
+            stacks: Some(1),
+            duration_millis: None,
+            level: Some(config.required_status_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+        };
+
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        projector.clear_wiped_state();
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .contains(&40),
+            "Lightfall 2203220 has delete_on_death=false and survives a wipe"
+        );
+
+        status.level = Some(config.required_status_level.saturating_add(1));
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .is_empty()
+        );
+        status.level = Some(config.required_status_level);
+        status.stacks = Some(2);
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .is_empty()
+        );
+        status.stacks = Some(1);
+        status.source = Some(test_entity(2, 20));
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .is_empty()
+        );
+
+        status.source = Some(recipient);
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        status.state = StatusState::Removed;
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .is_empty()
+        );
+
+        status.state = StatusState::Refreshed;
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        projector.clear_run_state();
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .is_empty(),
+            "run entry/end must not carry a dependency into another run"
+        );
+
+        projector.observe_inspiration_recipient_dependency_status(&status);
+        projector.clear_critical_cold_after_gap(DataGapKind::TcpGap);
+        assert!(
+            projector
+                .inspiration_recipient_dependency_entities
+                .is_empty(),
+            "a TCP gap can hide the exact terminal and must fail closed"
         );
     }
 

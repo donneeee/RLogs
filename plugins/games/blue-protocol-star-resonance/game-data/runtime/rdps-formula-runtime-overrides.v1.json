@@ -1,5 +1,5 @@
 {
-  "schema_version": 19,
+  "schema_version": 21,
   "deployment_id": "global",
   "builds": [
     {
@@ -94,6 +94,12 @@
         "highland_blood": {
           "runtime_transfer_enabled": false,
           "remote_paired_output_runtime_transfer_enabled": false
+        },
+        "critical_cold": {
+          "current_build_lifecycle_authority": false,
+          "current_build_provider_ownership_authority": false,
+          "current_build_magnitude_authority": false,
+          "runtime_transfer_enabled": false
         },
         "inspiration": {
           "current_build_lifecycle_authority": false,

@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 19;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 21;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -933,6 +933,83 @@ impl InspirationRuntimeConfig {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CriticalColdReplayProof {
+    pub content_sha256: String,
+    pub content_hash_method: String,
+    pub content_bytes: u64,
+    pub replay_schema_version: u16,
+    pub exact_build_rlogs: u32,
+    pub total_canonical_events: u64,
+    pub runtime_target_match_rlogs: u32,
+    pub conserved_rlogs: u32,
+    pub rational_projection_overflow_count: u64,
+    pub direct_ready_events: u64,
+    pub direct_ready_projected_rdmg: i64,
+    pub gap_safe_lightfall_conversion_events: u64,
+    pub post_tcp_gap_no_conversion_events: u64,
+    pub emitted_contribution_events: u64,
+    pub emitted_projected_rdmg: i64,
+    pub joint_team_luck_emitted_events: u64,
+    pub standalone_emitted_events: u64,
+    pub deliberate_encore_exclusion_events: u64,
+    pub unresolved_stat_resonance_highland_critical_stage_order_events: u64,
+    pub team_luck_emitted_events: u64,
+    pub team_luck_projected_rdmg: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CriticalColdOfflineOracleProof {
+    pub content_sha256: String,
+    pub exact_build_rlogs: u32,
+    pub eligible_critical_only_samples: u64,
+    pub projected_rdmg: i64,
+    pub runtime_authority: bool,
+    pub authority_boundary: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CriticalColdRuntimeConfig {
+    pub effect_id: i64,
+    pub root_effect_id: i64,
+    pub source_talent_id: i64,
+    pub official_en_us_source_name: String,
+    pub child_en_us_name: Option<String>,
+    pub child_design_name: String,
+    pub source_type_id: i32,
+    pub source_config_id: i64,
+    pub required_level: i32,
+    pub required_stacks: u32,
+    pub critical_chance_attribute_id: i32,
+    pub critical_damage_attribute_id: i32,
+    pub critical_chance_raw_delta: i64,
+    pub critical_chance_cap_raw: i64,
+    pub recipient_dependency_effect_id: i64,
+    pub recipient_dependency_talent_id: i64,
+    pub recipient_dependency_critical_damage_raw_delta: i64,
+    pub current_build_lifecycle_authority: bool,
+    pub current_build_provider_ownership_authority: bool,
+    pub current_build_magnitude_authority: bool,
+    pub reuses_inspiration_critical_stage_authority: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub proof_content_sha256: String,
+    pub proof_exact_build_rlogs: u32,
+    pub proof_status_events: u64,
+    pub proof_windows: u64,
+    pub proof_external_player_windows: u64,
+    pub proof_packet_final_samples: u64,
+    pub proof_eligible_critical_only_samples: u64,
+    pub replay: CriticalColdReplayProof,
+    pub offline_oracle: CriticalColdOfflineOracleProof,
+    pub runtime_transfer_enabled: bool,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FixedPointFamilyRuntimeConfig {
@@ -1021,6 +1098,7 @@ pub(crate) struct RdpsRuntimeConfig {
     pub encore: EncoreDirectOutputRuntimeConfig,
     pub thunderwind: ThunderwindRuntimeConfig,
     pub inspiration: InspirationRuntimeConfig,
+    pub critical_cold: CriticalColdRuntimeConfig,
     pub highland_blood: HighlandBloodRuntimeConfig,
 }
 
@@ -1056,6 +1134,7 @@ impl RdpsRuntimeConfig {
                 .remote_paired_output_runtime_transfer_enabled
             || self.inspiration.critical_chance_runtime_transfer_enabled
             || self.inspiration.lucky_chance_runtime_transfer_enabled
+            || self.critical_cold.runtime_transfer_enabled
     }
 
     /// Effect-scoped production authority. A false result never hides the
@@ -1088,6 +1167,8 @@ impl RdpsRuntimeConfig {
             || (effect_id == self.inspiration.effect_id
                 && (self.inspiration.critical_chance_runtime_transfer_enabled
                     || self.inspiration.lucky_chance_runtime_transfer_enabled))
+            || (effect_id == self.critical_cold.effect_id
+                && self.critical_cold.runtime_transfer_enabled)
     }
 
     pub(crate) fn target_vulnerability_runtime_transfer_effect_ids(&self) -> &[i64] {
@@ -1691,6 +1772,116 @@ impl RdpsRuntimeConfig {
         {
             return Err(
                 "bundled BPSR Inspiration formula is not ready for runtime transfer".into(),
+            );
+        }
+
+        let critical_cold = &self.critical_cold;
+        let critical_cold_replay = &critical_cold.replay;
+        let critical_cold_replay_authority = critical_cold_replay.content_sha256
+            == "0c66f83d449898a0323bdbf55e21815c65c78fb83ee7b0f0e47ae8ee36e2b32f"
+            && critical_cold_replay.content_hash_method
+                == "sha256-concatenated-sorted-shard-file-bytes"
+            && critical_cold_replay.content_bytes == 151_717_449
+            && critical_cold_replay.replay_schema_version == 27
+            && critical_cold_replay.exact_build_rlogs == 26
+            && critical_cold_replay.total_canonical_events == 6_411_565
+            && critical_cold_replay.runtime_target_match_rlogs == 26
+            && critical_cold_replay.conserved_rlogs == 26
+            && critical_cold_replay.rational_projection_overflow_count == 0
+            && critical_cold_replay.direct_ready_events == 39_822
+            && critical_cold_replay.direct_ready_projected_rdmg == 145_988_935
+            && critical_cold_replay.gap_safe_lightfall_conversion_events == 15_011
+            && critical_cold_replay.post_tcp_gap_no_conversion_events == 24_811
+            && critical_cold_replay.emitted_contribution_events == 39_560
+            && critical_cold_replay.emitted_projected_rdmg == 142_729_617
+            && critical_cold_replay.joint_team_luck_emitted_events == 39_036
+            && critical_cold_replay.standalone_emitted_events == 524
+            && critical_cold_replay.deliberate_encore_exclusion_events == 194
+            && critical_cold_replay.unresolved_stat_resonance_highland_critical_stage_order_events
+                == 68
+            && critical_cold_replay.team_luck_emitted_events == 202_740
+            && critical_cold_replay.team_luck_projected_rdmg == 676_489_800
+            && critical_cold_replay
+                .gap_safe_lightfall_conversion_events
+                .checked_add(critical_cold_replay.post_tcp_gap_no_conversion_events)
+                == Some(critical_cold_replay.direct_ready_events)
+            && critical_cold_replay
+                .joint_team_luck_emitted_events
+                .checked_add(critical_cold_replay.standalone_emitted_events)
+                == Some(critical_cold_replay.emitted_contribution_events)
+            && critical_cold_replay
+                .emitted_contribution_events
+                .checked_add(critical_cold_replay.deliberate_encore_exclusion_events)
+                .and_then(|value| {
+                    value.checked_add(
+                        critical_cold_replay
+                            .unresolved_stat_resonance_highland_critical_stage_order_events,
+                    )
+                })
+                == Some(critical_cold_replay.direct_ready_events);
+        let critical_cold_offline_oracle_is_diagnostic_only =
+            critical_cold.offline_oracle.content_sha256
+                == "cdcb81de166ef2651b401984a16f2c57398c8b0d6fd8e1cf2c4e31e314b34bfa"
+                && critical_cold.offline_oracle.exact_build_rlogs == 26
+                && critical_cold.offline_oracle.eligible_critical_only_samples == 39_125
+                && critical_cold.offline_oracle.projected_rdmg == 165_939_233
+                && !critical_cold.offline_oracle.runtime_authority
+                && critical_cold.offline_oracle.authority_boundary
+                    == "diagnostic-only-no-tcp-gap-or-unresolved-overlap-runtime-gates";
+        let critical_cold_runtime_authority = critical_cold.current_build_lifecycle_authority
+            && critical_cold.current_build_provider_ownership_authority
+            && critical_cold.current_build_magnitude_authority
+            && critical_cold.reuses_inspiration_critical_stage_authority
+            && inspiration_critical_runtime_authority
+            && inspiration.critical_chance_runtime_transfer_enabled
+            && inspiration.recipient_dependency_runtime_transfer_enabled
+            && inspiration.recipient_dependency.is_current_authority()
+            && critical_cold.accounting_method == "observed-final-damage-proportional-stage-share"
+            && critical_cold.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && critical_cold.unresolved_overlap_fails_closed
+            && critical_cold.ordinary_damage_unchanged
+            && critical_cold.proof_content_sha256
+                == "c03da85aab6de7211fd2a0046ed13b7d80b0d26a37bf4258bb2d4a2ecc59ac7e"
+            && critical_cold.proof_exact_build_rlogs == 26
+            && critical_cold.proof_status_events == 5_500
+            && critical_cold.proof_windows == 2_775
+            && critical_cold.proof_external_player_windows == 2_203
+            && critical_cold.proof_packet_final_samples == 41_078
+            && critical_cold.proof_eligible_critical_only_samples == 39_125
+            && critical_cold_replay_authority
+            && critical_cold_offline_oracle_is_diagnostic_only;
+        if critical_cold.effect_id != 2_204_471
+            || critical_cold.root_effect_id != 2_204_470
+            || critical_cold.source_talent_id != 250
+            || critical_cold.official_en_us_source_name != "Critical Cold"
+            || critical_cold.child_en_us_name.is_some()
+            || critical_cold.child_design_name != "暴击之寒_队友暴击"
+            || critical_cold.source_type_id != 1
+            || critical_cold.source_config_id != critical_cold.root_effect_id
+            || critical_cold.required_level != 1
+            || critical_cold.required_stacks != 1
+            || critical_cold.critical_chance_attribute_id
+                != inspiration.critical_chance_attribute_id
+            || critical_cold.critical_damage_attribute_id
+                != self.team_luck.critical_damage_attribute_id
+            || critical_cold.critical_chance_raw_delta != 300
+            || critical_cold.critical_chance_cap_raw != 10_000
+            || critical_cold.recipient_dependency_effect_id
+                != inspiration.recipient_dependency.effect_id
+            || critical_cold.recipient_dependency_talent_id
+                != inspiration.recipient_dependency.talent_id
+            || critical_cold.recipient_dependency_critical_damage_raw_delta
+                != inspiration
+                    .recipient_dependency
+                    .critical_damage_raw_delta(critical_cold.critical_chance_raw_delta)
+                    .unwrap_or_default()
+            || (critical_cold.runtime_transfer_enabled && !critical_cold_runtime_authority)
+            || critical_cold.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Critical Cold (talent 250; child effect 2204471, design name 暴击之寒_队友暴击) formula is not ready for runtime transfer"
+                    .into(),
             );
         }
 
@@ -2370,6 +2561,55 @@ mod tests {
                 .validate()
                 .is_err()
         );
+    }
+
+    #[test]
+    fn critical_cold_requires_exact_identity_authority_and_stays_closed_on_historical_build() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert_eq!(current.critical_cold.effect_id, 2_204_471);
+        assert_eq!(current.critical_cold.root_effect_id, 2_204_470);
+        assert_eq!(
+            current.critical_cold.official_en_us_source_name,
+            "Critical Cold"
+        );
+        assert!(current.critical_cold.child_en_us_name.is_none());
+        assert_eq!(current.critical_cold.child_design_name, "暴击之寒_队友暴击");
+        assert!(current.effect_runtime_transfer_enabled(current.critical_cold.effect_id));
+
+        for field in [
+            "current_build_lifecycle_authority",
+            "current_build_provider_ownership_authority",
+            "current_build_magnitude_authority",
+            "reuses_inspiration_critical_stage_authority",
+            "unresolved_overlap_fails_closed",
+            "ordinary_damage_unchanged",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["critical_cold"][field] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let mut altered_replay = base.clone();
+        altered_replay["critical_cold"]["replay"]["emitted_contribution_events"] =
+            serde_json::json!(39_561);
+        assert!(runtime_from_value(altered_replay).validate().is_err());
+
+        let mut promoted_offline_oracle = base.clone();
+        promoted_offline_oracle["critical_cold"]["offline_oracle"]["runtime_authority"] =
+            serde_json::Value::Bool(true);
+        assert!(
+            runtime_from_value(promoted_offline_oracle)
+                .validate()
+                .is_err()
+        );
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("historical formula identity should remain registered");
+        assert!(!historical.critical_cold.runtime_transfer_enabled);
+        assert!(!historical.effect_runtime_transfer_enabled(historical.critical_cold.effect_id));
     }
 
     #[test]
