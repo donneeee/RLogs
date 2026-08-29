@@ -3567,8 +3567,8 @@ function historyPartyColumnLabel(column: HistoryPartyColumnId): string {
     hps: "HPS",
     tps: "TPS",
     rdps: "rDPS",
-    rdpsGiven: "rDPS granted",
-    rdpsReceived: "rDPS received",
+    rdpsGiven: "rDMG granted",
+    rdpsReceived: "rDMG received",
     apm: "APM",
     deaths: "Deaths",
   }[column];

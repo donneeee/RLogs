@@ -100,11 +100,11 @@ export function describeRdpsStatus(status: string): RdpsStatusPresentation {
   if (status.startsWith("formula_refresh_queued:")) {
     return {
       state: "refreshing",
-      providerCreditEnabled: false,
+      providerCreditEnabled: true,
       blockerCodes: [],
-      compactLabel: "Saving updated rDPS for this archived run",
+      compactLabel: "Showing saved rDPS · update in progress",
       historyMessage:
-        "This saved run opened immediately using its existing combat summary. Because you opened this run, its stale rDPS projection is being recalculated once and saved back to history after conservation checks pass. Later opens will use that saved result immediately; rLogs does not scan or replay the rest of history at startup. Live capture always has priority.",
+        "This saved run opened immediately using its last validated, packet-proven rDPS projection. Because you opened it after the formula identity changed, rDPS is being recalculated once and will replace the saved projection only after conservation checks pass. Later opens will use that saved result immediately; rLogs does not scan or replay the rest of history at startup. Live capture always has priority.",
     };
   }
 

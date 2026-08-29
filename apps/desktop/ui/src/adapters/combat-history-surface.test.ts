@@ -414,6 +414,13 @@ describe("Combat History ability sorting", () => {
     effectiveHealing: healing,
     shielding: 0,
     hps: healing / 2,
+    receivedRdmgExact: null as string | null,
+    receivedRdmg: null as number | null,
+    receivedRdps: null as number | null,
+    rdpsSources: [],
+    rdpsDamageEventCount: 0,
+    rdpsUnresolvedRelationshipCount: 0,
+    hasRdpsRelationship: false,
   });
 
   it("sorts every skill metric in either direction", () => {
@@ -429,6 +436,12 @@ describe("Combat History ability sorting", () => {
     expect(sortDisplayedAbilities(abilities, "ability", "ascending").map((entry) => entry.abilityId))
       .toEqual(["10", "20"]);
     expect(sortDisplayedAbilities(abilities, "healing", "descending").map((entry) => entry.abilityId))
+      .toEqual(["10", "20"]);
+    const withRdps = [
+      { ...abilities[0]!, receivedRdmg: 50, receivedRdps: 25 },
+      { ...abilities[1]!, receivedRdmg: 75, receivedRdps: 37.5 },
+    ];
+    expect(sortDisplayedAbilities(withRdps, "rdmgReceived", "descending").map((entry) => entry.abilityId))
       .toEqual(["10", "20"]);
   });
 
@@ -449,11 +462,39 @@ describe("Combat History ability sorting", () => {
       ...ability("2203311", "Explosive Arrow", 200, 10),
       recountGroupId: "106",
       recountGroupName: "Explosive Arrow",
+      receivedRdmgExact: "40",
+      receivedRdmg: 40,
+      receivedRdps: 20,
+      rdpsDamageEventCount: 2,
+      hasRdpsRelationship: true,
+      rdpsSources: [{
+        providerActorId: "30",
+        providerEntityUuid: "1",
+        effectId: "2302121",
+        attributionComponent: "team-luck-critical-damage",
+        attributedRdps: "40",
+        damageEventCount: 2,
+        unresolvedRelationshipCount: 0,
+      }],
     };
     const second = {
       ...ability("2203312", "Explosive Arrow follow-up", 100, 20),
       recountGroupId: "106",
       recountGroupName: "Explosive Arrow",
+      receivedRdmgExact: "10",
+      receivedRdmg: 10,
+      receivedRdps: 5,
+      rdpsDamageEventCount: 1,
+      hasRdpsRelationship: true,
+      rdpsSources: [{
+        providerActorId: "30",
+        providerEntityUuid: "1",
+        effectId: "2302121",
+        attributionComponent: "team-luck-critical-damage",
+        attributedRdps: "10",
+        damageEventCount: 1,
+        unresolvedRelationshipCount: 0,
+      }],
     };
     const standalone = ability("2233", "Powerdraw", 250, 0);
     const rows = groupDisplayedAbilities(
@@ -470,6 +511,9 @@ describe("Combat History ability sorting", () => {
     ]);
     expect(rows[0]?.ability.damage).toBe(300);
     expect(rows[0]?.ability.healing).toBe(30);
+    expect(rows[0]?.ability.receivedRdmgExact).toBe("50");
+    expect(rows[0]?.ability.receivedRdps).toBe(25);
+    expect(rows[0]?.ability.rdpsSources).toMatchObject([{ attributedRdps: "50" }]);
     expect(rows[0]?.childCount).toBe(2);
     expect(rows[2]?.isLastChild).toBe(true);
   });

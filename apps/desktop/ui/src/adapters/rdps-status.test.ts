@@ -35,14 +35,15 @@ describe("describeRdpsStatus", () => {
     );
   });
 
-  it("keeps stale provider credit hidden during its one-time saved history refresh", () => {
+  it("keeps the last validated provider credit visible during its saved history refresh", () => {
     const presentation = describeRdpsStatus(
       "formula_refresh_queued: recalculating archived rDPS in the background",
     );
 
     expect(presentation.state).toBe("refreshing");
-    expect(presentation.providerCreditEnabled).toBe(false);
-    expect(presentation.compactLabel).toContain("Saving updated rDPS");
+    expect(presentation.providerCreditEnabled).toBe(true);
+    expect(presentation.compactLabel).toContain("Showing saved rDPS");
+    expect(presentation.historyMessage).toContain("last validated, packet-proven rDPS");
     expect(presentation.historyMessage).toContain("Later opens will use that saved result immediately");
     expect(presentation.historyMessage).toContain("does not scan or replay the rest of history at startup");
     expect(presentation.historyMessage).toContain("opened immediately");

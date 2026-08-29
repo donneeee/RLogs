@@ -4590,7 +4590,13 @@ body {
 }
 
 .combat-history-skill-table {
-  min-width: 900px;
+  min-width: 1080px;
+}
+
+.combat-history-relative-damage-cell {
+  cursor: help;
+  text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 3px;
 }
 
 .combat-history-skill-table tbody tr {
@@ -5131,6 +5137,15 @@ body {
 
 .combat-history-influence-table {
   min-width: 1180px;
+}
+
+.combat-history-influence-summary {
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.combat-history-influence-summary::marker {
+  color: var(--accent);
 }
 
 .combat-history-rdps-breakdown-card {

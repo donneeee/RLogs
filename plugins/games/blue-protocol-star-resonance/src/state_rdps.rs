@@ -62,7 +62,10 @@ const LIVE_REMOTE_FACTOR_EVIDENCE_HORIZON_MICROS: u64 =
     REMOTE_FACTOR_BUCKET_MICROS * REMOTE_FACTOR_NEAREST_BUCKET_LIMIT;
 const LIVE_DEFERRED_TEAM_LUCK_LIMIT: usize = 4_096;
 const LIVE_DEFERRED_REMOTE_HARMONY_LIMIT: usize = 4_096;
-const REMOTE_HARMONY_MAX_MECHANIC_GROUPS: usize = 8_192;
+// Kept per effect so unrelated paired-output rules cannot starve one another.
+// This remains a hard memory bound; one observation can belong only to a
+// runtime-enabled effect and each group retains at most the bounded rows below.
+const REMOTE_PAIRED_OUTPUT_MAX_MECHANIC_GROUPS_PER_EFFECT: usize = 65_536;
 const REMOTE_HARMONY_MAX_OBSERVATIONS_PER_STATE: usize = 64;
 
 static STATE_RDPS_FORMULA_IDENTITY: OnceLock<String> = OnceLock::new();
@@ -667,9 +670,10 @@ struct ActorHpState {
     lucky_damage_raw: Option<i64>,
     physical_attack: AttackFamilyState,
     magical_attack: AttackFamilyState,
-    /// Complete packet-observed primary-stat families used by Harmony Grace.
-    /// Each class route is isolated and provider decomposition is invalidated
-    /// whenever the exact +200 status transition does not explain the packet.
+    /// Complete packet-observed primary-stat families affected by Harmony
+    /// Grace. The effect applies its listed +200 raw percent to every primary
+    /// family without a class gate. Class identity is consulted only later,
+    /// when the recipient's own primary-to-Attack route is selected.
     harmony_primary_by_class: BTreeMap<i32, AttackFamilyState>,
     /// Packet-observed primary-stat families used by promoted Mechanical Power
     /// recipient rules. Each class is isolated so adding a future proven rule
@@ -859,6 +863,7 @@ struct RemoteFactorOutcomeGroup {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct RemoteHarmonyMechanicKey {
+    effect_id: i64,
     run_epoch: u64,
     source_actor_id: u64,
     source_entity_uuid: i64,
@@ -866,15 +871,8 @@ struct RemoteHarmonyMechanicKey {
     target_entity_uuid: i64,
     ability_id: i64,
     hit_event_id: i32,
-    damage_source: Option<i32>,
-    damage_type: Option<i32>,
     critical: Option<bool>,
     lucky: Option<bool>,
-    blocked: Option<bool>,
-    periodic: Option<bool>,
-    owner_id: Option<i32>,
-    owner_level: Option<i32>,
-    owner_stage: Option<i32>,
     damage_mode: Option<i32>,
     property: Option<i32>,
     coefficient_basis_points: i64,
@@ -888,6 +886,8 @@ struct RemoteHarmonyDamageObservation {
     observed_micros: u64,
     amount: i64,
     provider_actor_id: Option<u64>,
+    provider_entity_uuid: Option<i64>,
+    provider_basis_points: Option<i64>,
 }
 
 #[derive(Debug)]
@@ -907,7 +907,9 @@ struct RemoteHarmonyOutcomeGroup {
 struct DeferredRemoteHarmonyDamage {
     observed_micros: u64,
     event_sequence: u64,
+    effect_id: i64,
     provider_actor_id: u64,
+    provider_entity_uuid: Option<i64>,
     recipient_actor_id: u64,
     recipient_entity_uuid: i64,
     affected_ability_id: i64,
@@ -920,7 +922,10 @@ struct DeferredRemoteHarmonyDamage {
 
 #[derive(Debug, Clone)]
 struct RemoteHarmonyPairedContribution {
+    effect_id: i64,
     provider_actor_id: u64,
+    provider_entity_uuid: Option<i64>,
+    provider_basis_points: i64,
     recipient_actor_id: u64,
     recipient_entity_uuid: i64,
     target_actor_id: u64,
@@ -935,19 +940,16 @@ struct RemoteHarmonyPairedContribution {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct RemoteHarmonyActionKey {
+    effect_id: i64,
     run_epoch: u64,
     source_actor_id: u64,
     source_entity_uuid: i64,
     provider_actor_id: u64,
+    provider_entity_uuid: Option<i64>,
+    provider_basis_points: i64,
+    active_observed_micros: u64,
     ability_id: i64,
     hit_event_id: i32,
-    damage_source: Option<i32>,
-    damage_type: Option<i32>,
-    blocked: Option<bool>,
-    periodic: Option<bool>,
-    owner_id: Option<i32>,
-    owner_level: Option<i32>,
-    owner_stage: Option<i32>,
     damage_mode: Option<i32>,
     property: Option<i32>,
     coefficient_basis_points: i64,
@@ -1069,6 +1071,7 @@ pub struct BpsrRemoteFactorLearner {
     harmony_probe: Option<Box<BpsrStateDamageContributionProjector>>,
     harmony_run_epoch: u64,
     harmony_groups: HashMap<RemoteHarmonyMechanicKey, RemoteHarmonyOutcomeGroup>,
+    harmony_group_counts_by_effect: HashMap<i64, usize>,
     harmony_receipts_dirty: bool,
 }
 
@@ -1089,10 +1092,13 @@ impl BpsrRemoteFactorLearner {
         ) else {
             return;
         };
-        let mut harmony_observation = None;
-        if runtime
+        let mut paired_output_observations = Vec::new();
+        if (runtime
             .harmony_grace
             .remote_paired_output_runtime_transfer_enabled
+            || runtime
+                .highland_blood
+                .remote_paired_output_runtime_transfer_enabled)
             && let Some(probe) = self.harmony_probe.as_mut()
         {
             let mut discarded_exact = Vec::new();
@@ -1101,14 +1107,14 @@ impl BpsrRemoteFactorLearner {
             if let CanonicalEvent::Timeline(timeline) = &envelope.event
                 && let TimelineEventKind::Damage(damage) = &timeline.kind
             {
-                harmony_observation = probe.remote_harmony_probe_observation(
+                paired_output_observations = probe.remote_paired_output_probe_observations(
                     self.harmony_run_epoch,
                     envelope,
                     damage,
                 );
             }
         }
-        if let Some(observation) = harmony_observation {
+        for observation in paired_output_observations {
             self.observe_remote_harmony_damage(observation);
         }
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
@@ -1216,10 +1222,15 @@ impl BpsrRemoteFactorLearner {
     }
 
     fn observe_remote_harmony_damage(&mut self, observed: RemoteHarmonyProbeObservation) {
-        if !self.harmony_groups.contains_key(&observed.key)
-            && self.harmony_groups.len() >= REMOTE_HARMONY_MAX_MECHANIC_GROUPS
-        {
-            return;
+        if !self.harmony_groups.contains_key(&observed.key) {
+            let effect_group_count = self
+                .harmony_group_counts_by_effect
+                .entry(observed.key.effect_id)
+                .or_default();
+            if *effect_group_count >= REMOTE_PAIRED_OUTPUT_MAX_MECHANIC_GROUPS_PER_EFFECT {
+                return;
+            }
+            *effect_group_count += 1;
         }
         let group = self.harmony_groups.entry(observed.key).or_default();
         let observations = if observed.observation.provider_actor_id.is_some() {
@@ -1239,9 +1250,9 @@ impl BpsrRemoteFactorLearner {
 
     fn remote_harmony_receipts(&self) -> HashMap<u64, RemoteHarmonyPairedContribution> {
         let mut receipts = HashMap::new();
-        let harmony = &rdps_runtime_config()
-            .expect("remote learner was constructed from a valid runtime")
-            .harmony_grace;
+        let mut ambiguous_event_sequences = HashSet::new();
+        let runtime =
+            rdps_runtime_config().expect("remote learner was constructed from a valid runtime");
         let mut action_groups =
             HashMap::<RemoteHarmonyActionKey, Vec<RemoteHarmonyPairedRow>>::new();
         for (key, group) in &self.harmony_groups {
@@ -1252,6 +1263,27 @@ impl BpsrRemoteFactorLearner {
                 let Some(provider_actor_id) = active.provider_actor_id else {
                     continue;
                 };
+                let provider_basis_points = active.provider_basis_points.or_else(|| {
+                    (key.effect_id == runtime.highland_blood.effect_id)
+                        .then_some(active.provider_entity_uuid)
+                        .flatten()
+                        .and_then(|provider_entity_uuid| {
+                            let probe = self.harmony_probe.as_ref()?;
+                            (!probe
+                                .fatal_spiral_ambiguous_provider_entities
+                                .contains(&provider_entity_uuid))
+                            .then(|| {
+                                probe
+                                    .fatal_spiral_provider_basis_points_by_entity_uuid
+                                    .get(&provider_entity_uuid)
+                                    .copied()
+                            })
+                            .flatten()
+                        })
+                });
+                let Some(provider_basis_points) = provider_basis_points else {
+                    continue;
+                };
                 if provider_actor_id == key.source_actor_id {
                     continue;
                 }
@@ -1260,26 +1292,33 @@ impl BpsrRemoteFactorLearner {
                 }) else {
                     continue;
                 };
-                if inactive.observed_micros.abs_diff(active.observed_micros)
-                    > harmony.remote_paired_output_max_pair_gap_micros
+                let max_pair_gap_micros = if key.effect_id == runtime.harmony_grace.effect_id {
+                    runtime
+                        .harmony_grace
+                        .remote_paired_output_max_pair_gap_micros
+                } else if key.effect_id == runtime.highland_blood.effect_id {
+                    runtime
+                        .highland_blood
+                        .remote_paired_output_max_pair_gap_micros
+                } else {
+                    continue;
+                };
+                if inactive.observed_micros.abs_diff(active.observed_micros) > max_pair_gap_micros
                     || active.amount <= inactive.amount
                 {
                     continue;
                 }
                 let action_key = RemoteHarmonyActionKey {
+                    effect_id: key.effect_id,
                     run_epoch: key.run_epoch,
                     source_actor_id: key.source_actor_id,
                     source_entity_uuid: key.source_entity_uuid,
                     provider_actor_id,
+                    provider_entity_uuid: active.provider_entity_uuid,
+                    provider_basis_points,
+                    active_observed_micros: active.observed_micros,
                     ability_id: key.ability_id,
                     hit_event_id: key.hit_event_id,
-                    damage_source: key.damage_source,
-                    damage_type: key.damage_type,
-                    blocked: key.blocked,
-                    periodic: key.periodic,
-                    owner_id: key.owner_id,
-                    owner_level: key.owner_level,
-                    owner_stage: key.owner_stage,
                     damage_mode: key.damage_mode,
                     property: key.property,
                     coefficient_basis_points: key.coefficient_basis_points,
@@ -1301,16 +1340,26 @@ impl BpsrRemoteFactorLearner {
             }
         }
         for (key, rows) in action_groups {
+            let min_distinct_targets = if key.effect_id == runtime.harmony_grace.effect_id {
+                runtime
+                    .harmony_grace
+                    .remote_paired_output_min_distinct_targets
+            } else if key.effect_id == runtime.highland_blood.effect_id {
+                u32::from(
+                    runtime
+                        .highland_blood
+                        .remote_paired_output_min_distinct_targets,
+                )
+            } else {
+                continue;
+            };
             let distinct_targets = rows
                 .iter()
                 .map(|row| (row.target_actor_id, row.target_entity_uuid))
                 .collect::<BTreeSet<_>>()
                 .len();
-            if distinct_targets < harmony.remote_paired_output_min_distinct_targets as usize
-                || !remote_harmony_rows_fit_effect_magnitude(
-                    &rows,
-                    harmony.remote_paired_output_max_provider_share_basis_points,
-                )
+            if distinct_targets < min_distinct_targets as usize
+                || !remote_harmony_rows_fit_effect_magnitude(&rows, key.provider_basis_points)
             {
                 continue;
             }
@@ -1318,22 +1367,34 @@ impl BpsrRemoteFactorLearner {
                 let Some(contribution) = row.active_damage.checked_sub(row.inactive_damage) else {
                     continue;
                 };
-                receipts.insert(
-                    row.active_event_sequence,
-                    RemoteHarmonyPairedContribution {
-                        provider_actor_id: key.provider_actor_id,
-                        recipient_actor_id: row.recipient_actor_id,
-                        recipient_entity_uuid: row.recipient_entity_uuid,
-                        target_actor_id: row.target_actor_id,
-                        target_entity_uuid: row.target_entity_uuid,
-                        ability_id: key.ability_id,
-                        hit_event_id: key.hit_event_id,
-                        observed_damage: row.active_damage,
-                        contribution,
-                        source_formula_context_sha256: key.source_formula_context_sha256.clone(),
-                        target_formula_context_sha256: row.target_formula_context_sha256,
-                    },
-                );
+                let receipt = RemoteHarmonyPairedContribution {
+                    effect_id: key.effect_id,
+                    provider_actor_id: key.provider_actor_id,
+                    provider_entity_uuid: key.provider_entity_uuid,
+                    provider_basis_points: key.provider_basis_points,
+                    recipient_actor_id: row.recipient_actor_id,
+                    recipient_entity_uuid: row.recipient_entity_uuid,
+                    target_actor_id: row.target_actor_id,
+                    target_entity_uuid: row.target_entity_uuid,
+                    ability_id: key.ability_id,
+                    hit_event_id: key.hit_event_id,
+                    observed_damage: row.active_damage,
+                    contribution,
+                    source_formula_context_sha256: key.source_formula_context_sha256.clone(),
+                    target_formula_context_sha256: row.target_formula_context_sha256,
+                };
+                if ambiguous_event_sequences.contains(&row.active_event_sequence) {
+                    continue;
+                }
+                match receipts.entry(row.active_event_sequence) {
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert(receipt);
+                    }
+                    std::collections::hash_map::Entry::Occupied(entry) => {
+                        entry.remove();
+                        ambiguous_event_sequences.insert(row.active_event_sequence);
+                    }
+                }
             }
         }
         receipts
@@ -1770,6 +1831,12 @@ pub struct BpsrStateDamageContributionProjector {
     fatal_spiral_windows: HashSet<FatalSpiralWindowKey>,
     fatal_spiral_transitions: HashMap<u64, Vec<FixedPointFamilyTransition>>,
     fatal_spiral_snapshot_targets: HashSet<u64>,
+    /// Latest exact actor-loadout tier for Fatal Spiral's Imagine, keyed by
+    /// runtime entity. Actor loadouts can arrive immediately before the run
+    /// boundary, so this identity state survives run-state resets while the
+    /// entity remains alive; each damage observation stores the then-current
+    /// magnitude and can never be rewritten by a later snapshot.
+    fatal_spiral_equipped_basis_points_by_entity_uuid: HashMap<i64, i64>,
     /// Exact provider magnitudes learned from a recipient's complete packet
     /// transition. Entity UUID is used because actor IDs are lifetime-local.
     fatal_spiral_provider_basis_points_by_entity_uuid: HashMap<i64, i64>,
@@ -1860,6 +1927,7 @@ impl Default for BpsrStateDamageContributionProjector {
             fatal_spiral_windows: HashSet::new(),
             fatal_spiral_transitions: HashMap::new(),
             fatal_spiral_snapshot_targets: HashSet::new(),
+            fatal_spiral_equipped_basis_points_by_entity_uuid: HashMap::new(),
             fatal_spiral_provider_basis_points_by_entity_uuid: HashMap::new(),
             fatal_spiral_ambiguous_provider_entities: HashSet::new(),
             target_vulnerability_windows: HashMap::new(),
@@ -1986,11 +2054,20 @@ impl BpsrStateDamageContributionProjector {
         {
             return None;
         }
-        let observation = self.remote_harmony_probe_observation(0, envelope, damage)?;
+        let mut observations = self
+            .remote_paired_output_probe_observations(0, envelope, damage)
+            .into_iter()
+            .filter(|observation| observation.observation.provider_actor_id.is_some());
+        let observation = observations.next()?;
+        if observations.next().is_some() {
+            return None;
+        }
         Some(DeferredRemoteHarmonyDamage {
             observed_micros: envelope.time.observed_micros,
             event_sequence: envelope.sequence,
+            effect_id: observation.key.effect_id,
             provider_actor_id: observation.observation.provider_actor_id?,
+            provider_entity_uuid: observation.observation.provider_entity_uuid,
             recipient_actor_id: observation.key.source_actor_id,
             recipient_entity_uuid: observation.key.source_entity_uuid,
             affected_ability_id: observation.key.ability_id,
@@ -2024,7 +2101,9 @@ impl BpsrStateDamageContributionProjector {
                     .get(&damage.event_sequence)
             });
             if let Some(receipt) = receipt
+                && receipt.effect_id == damage.effect_id
                 && receipt.provider_actor_id == damage.provider_actor_id
+                && receipt.provider_entity_uuid == damage.provider_entity_uuid
                 && receipt.recipient_actor_id == damage.recipient_actor_id
                 && receipt.recipient_entity_uuid == damage.recipient_entity_uuid
                 && receipt.ability_id == damage.affected_ability_id
@@ -2042,12 +2121,21 @@ impl BpsrStateDamageContributionProjector {
                     target_actor_id: damage.target_actor_id,
                     target_entity_uuid: damage.target_entity_uuid,
                 });
+                let scope = match damage.effect_id {
+                    effect_id if effect_id == self.runtime.harmony_grace.effect_id => {
+                        "harmony-grace-remote-paired-output"
+                    }
+                    effect_id if effect_id == self.runtime.highland_blood.effect_id => {
+                        "fatal-spiral-remote-paired-output"
+                    }
+                    _ => continue,
+                };
                 let remote_harmony = ExactRationalDamageContributionEvent {
                     observed_micros: damage.observed_micros,
-                    effect_id: self.runtime.harmony_grace.effect_id,
+                    effect_id: damage.effect_id,
                     provider_actor_id: damage.provider_actor_id,
                     recipient_actor_id: damage.recipient_actor_id,
-                    scope: DamageContributionScope::Component("harmony-grace-remote-paired-output"),
+                    scope: DamageContributionScope::Component(scope),
                     numerator: i128::from(receipt.contribution),
                     denominator: 1,
                     observed_damage: damage.observed_damage,
@@ -2070,11 +2158,18 @@ impl BpsrStateDamageContributionProjector {
                 }
                 continue;
             }
-            let ready_at = damage.observed_micros.saturating_add(
+            let max_pair_gap_micros = if damage.effect_id == self.runtime.harmony_grace.effect_id {
                 self.runtime
                     .harmony_grace
-                    .remote_paired_output_max_pair_gap_micros,
-            );
+                    .remote_paired_output_max_pair_gap_micros
+            } else if damage.effect_id == self.runtime.highland_blood.effect_id {
+                self.runtime
+                    .highland_blood
+                    .remote_paired_output_max_pair_gap_micros
+            } else {
+                0
+            };
+            let ready_at = damage.observed_micros.saturating_add(max_pair_gap_micros);
             if !force && observed_micros < ready_at {
                 retained.push_back(damage);
             } else if let Some(mut later) = damage.later_contribution {
@@ -2424,8 +2519,16 @@ impl BpsrStateDamageContributionProjector {
                 }
                 if actor.state != ActorState::Despawned && actor.kind == ActorKind::Player {
                     self.active_players.insert(actor_id);
+                    self.observe_fatal_spiral_provider_loadout(actor);
                 } else if actor.state == ActorState::Despawned {
                     self.active_players.remove(&actor_id);
+                    let entity_uuid = actor.actor.entity_uuid.0;
+                    self.fatal_spiral_equipped_basis_points_by_entity_uuid
+                        .remove(&entity_uuid);
+                    self.fatal_spiral_provider_basis_points_by_entity_uuid
+                        .remove(&entity_uuid);
+                    self.fatal_spiral_ambiguous_provider_entities
+                        .remove(&entity_uuid);
                 }
             }
             TimelineEventKind::Status(status) => {
@@ -3520,50 +3623,44 @@ impl BpsrStateDamageContributionProjector {
     }
 
     fn reconcile_harmony_grace_staged_state(&mut self, target_actor_id: u64) {
-        let Some(class_id) = self.recipient_class_id_for_actor(
-            target_actor_id,
-            &self.runtime.harmony_grace.recipient_rules,
-        ) else {
-            return;
-        };
-        let Some(recipient_rule) = self
-            .runtime
-            .harmony_grace
-            .recipient_rules
-            .iter()
-            .find(|rule| rule.recipient_class_id == class_id)
-            .cloned()
-        else {
-            return;
-        };
-        let desired =
-            self.desired_harmony_grace_provider_percentages(target_actor_id, &recipient_rule);
-        let Some(previous) = self
-            .states
-            .get(&target_actor_id)
-            .and_then(|state| state.harmony_primary_by_class.get(&class_id))
-            .cloned()
-        else {
-            return;
-        };
-        let Some(current) = self
-            .staged_states
-            .get_mut(&target_actor_id)
-            .and_then(|state| state.harmony_primary_by_class.get_mut(&class_id))
-        else {
-            return;
-        };
+        // The status description has no recipient-class condition. Reconcile
+        // every listed primary family even when the recipient's class is not
+        // yet known; class identity is needed only when damage later chooses
+        // its own primary-to-Attack route.
+        let recipient_rules = self.runtime.harmony_grace.recipient_rules.clone();
+        let mut transition_candidates = Vec::new();
+        for recipient_rule in recipient_rules {
+            let class_id = recipient_rule.recipient_class_id;
+            let desired =
+                self.desired_harmony_grace_provider_percentages(target_actor_id, &recipient_rule);
+            let Some(previous) = self
+                .states
+                .get(&target_actor_id)
+                .and_then(|state| state.harmony_primary_by_class.get(&class_id))
+                .cloned()
+            else {
+                continue;
+            };
+            let Some(current) = self
+                .staged_states
+                .get_mut(&target_actor_id)
+                .and_then(|state| state.harmony_primary_by_class.get_mut(&class_id))
+            else {
+                continue;
+            };
 
-        debug_assert_eq!(recipient_rule.recipient_class_id, class_id);
-        reconcile_external_percent_family(previous.raw_percent, current, &desired);
-        reconcile_external_percent_family_from_exact_prior(&previous, current, &desired);
-        let current = current.clone();
-        self.record_harmony_grace_primary_transition_witness(
-            target_actor_id,
-            &previous,
-            &current,
-            &desired,
-        );
+            reconcile_external_percent_family(previous.raw_percent, current, &desired);
+            reconcile_external_percent_family_from_exact_prior(&previous, current, &desired);
+            transition_candidates.push((previous, current.clone(), desired));
+        }
+        for (previous, current, desired) in transition_candidates {
+            self.record_harmony_grace_primary_transition_witness(
+                target_actor_id,
+                &previous,
+                &current,
+                &desired,
+            );
+        }
     }
 
     fn observe_thunderwind_status(
@@ -3791,8 +3888,6 @@ impl BpsrStateDamageContributionProjector {
         let previous_magical_attack_percent = next.magical_attack.raw_percent;
         let previous_harmony_primary = next.harmony_primary_by_class.clone();
         let previous_mechanical_primary = next.mechanical_primary_by_class.clone();
-        let harmony_actor_class_id = self
-            .recipient_class_id_for_actor(actor_id, &self.runtime.harmony_grace.recipient_rules);
         let mechanical_actor_class_id = self
             .recipient_class_id_for_actor(actor_id, &self.runtime.mechanical_power.recipient_rules);
         for attribute in attributes {
@@ -4079,11 +4174,11 @@ impl BpsrStateDamageContributionProjector {
         );
         let mut harmony_transition_candidates = Vec::new();
         for recipient_rule in &self.runtime.harmony_grace.recipient_rules {
-            let desired = if harmony_actor_class_id == Some(recipient_rule.recipient_class_id) {
-                self.desired_harmony_grace_provider_percentages(actor_id, recipient_rule)
-            } else {
-                BTreeMap::new()
-            };
+            // Harmony Grace is universal: the status applies every listed
+            // primary-stat increase to every recipient. The rule's class id
+            // identifies only the downstream damage-conversion route; it is
+            // not an application condition for this provider decomposition.
+            let desired = self.desired_harmony_grace_provider_percentages(actor_id, recipient_rule);
             let family = next
                 .harmony_primary_by_class
                 .entry(recipient_rule.recipient_class_id)
@@ -4711,6 +4806,45 @@ impl BpsrStateDamageContributionProjector {
         (providers.len() == 1).then(|| providers[0])
     }
 
+    fn observe_fatal_spiral_provider_loadout(&mut self, actor: &rlogs_events::ActorEvent) {
+        let imagine_ability_id = self.runtime.highland_blood.provider_imagine_ability_id;
+        let mut basis_points = actor
+            .primary_loadout
+            .iter()
+            .filter(|slot| slot.ability_id == Some(imagine_ability_id))
+            .filter_map(|slot| {
+                let tier_index = usize::try_from(slot.tier?.checked_sub(1)?).ok()?;
+                self.runtime
+                    .highland_blood
+                    .packet_proven_raw_deltas
+                    .get(tier_index)
+                    .copied()
+            })
+            .collect::<Vec<_>>();
+        basis_points.sort_unstable();
+        basis_points.dedup();
+        let entity_uuid = actor.actor.entity_uuid.0;
+        match basis_points.as_slice() {
+            [] => {}
+            [value] => {
+                self.fatal_spiral_equipped_basis_points_by_entity_uuid
+                    .insert(entity_uuid, *value);
+                self.fatal_spiral_ambiguous_provider_entities
+                    .remove(&entity_uuid);
+                self.fatal_spiral_provider_basis_points_by_entity_uuid
+                    .insert(entity_uuid, *value);
+            }
+            _ => {
+                self.fatal_spiral_equipped_basis_points_by_entity_uuid
+                    .remove(&entity_uuid);
+                self.fatal_spiral_provider_basis_points_by_entity_uuid
+                    .remove(&entity_uuid);
+                self.fatal_spiral_ambiguous_provider_entities
+                    .insert(entity_uuid);
+            }
+        }
+    }
+
     fn learn_fatal_spiral_provider_basis_points(
         &mut self,
         provider_entity_uuid: i64,
@@ -5326,6 +5460,26 @@ impl BpsrStateDamageContributionProjector {
         self.harmony_grace_decision(observed_micros, damage).ok()
     }
 
+    fn remote_paired_output_probe_observations(
+        &self,
+        run_epoch: u64,
+        envelope: &EventEnvelope,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Vec<RemoteHarmonyProbeObservation> {
+        let mut observations = Vec::with_capacity(2);
+        if let Some(observation) =
+            self.remote_harmony_probe_observation(run_epoch, envelope, damage)
+        {
+            observations.push(observation);
+        }
+        if let Some(observation) =
+            self.remote_fatal_spiral_probe_observation(run_epoch, envelope, damage)
+        {
+            observations.push(observation);
+        }
+        observations
+    }
+
     fn remote_harmony_probe_observation(
         &self,
         run_epoch: u64,
@@ -5333,9 +5487,7 @@ impl BpsrStateDamageContributionProjector {
         damage: &rlogs_events::DamageEvent,
     ) -> Option<RemoteHarmonyProbeObservation> {
         let runtime = &self.runtime.harmony_grace;
-        if !runtime.remote_paired_output_runtime_transfer_enabled
-            || damage.amount <= 0
-        {
+        if !runtime.remote_paired_output_runtime_transfer_enabled || damage.amount <= 0 {
             return None;
         }
         let source_actor_id = damage.source.actor_id.0;
@@ -5343,12 +5495,8 @@ impl BpsrStateDamageContributionProjector {
         if !self.active_players.contains(&source_actor_id) {
             return None;
         }
-        let Some(ability_id) = damage.ability.map(|ability| ability.0) else {
-            return None;
-        };
-        let Some(hit_event_id) = damage.hit_event_id else {
-            return None;
-        };
+        let ability_id = damage.ability.map(|ability| ability.0)?;
+        let hit_event_id = damage.hit_event_id?;
         let selected = select_damage_stage(
             ability_id,
             damage.hit_event_id,
@@ -5378,6 +5526,7 @@ impl BpsrStateDamageContributionProjector {
 
         Some(RemoteHarmonyProbeObservation {
             key: RemoteHarmonyMechanicKey {
+                effect_id: runtime.effect_id,
                 run_epoch,
                 source_actor_id,
                 source_entity_uuid: damage.source.entity_uuid.0,
@@ -5385,15 +5534,8 @@ impl BpsrStateDamageContributionProjector {
                 target_entity_uuid: damage.target.entity_uuid.0,
                 ability_id,
                 hit_event_id,
-                damage_source: damage.damage_source,
-                damage_type: damage.damage_type,
                 critical: damage.flags.critical,
                 lucky: damage.flags.lucky,
-                blocked: damage.flags.blocked,
-                periodic: damage.flags.periodic,
-                owner_id: damage.packet.owner_id,
-                owner_level: damage.packet.owner_level,
-                owner_stage: damage.packet.owner_stage,
                 damage_mode: damage.packet.damage_mode,
                 property: damage.packet.property,
                 coefficient_basis_points: selected.coefficient_basis_points,
@@ -5405,6 +5547,127 @@ impl BpsrStateDamageContributionProjector {
                 observed_micros: envelope.time.observed_micros,
                 amount: damage.amount,
                 provider_actor_id,
+                provider_entity_uuid: None,
+                provider_basis_points: provider_actor_id
+                    .map(|_| runtime.remote_paired_output_max_provider_share_basis_points),
+            },
+        })
+    }
+
+    fn remote_fatal_spiral_probe_observation(
+        &self,
+        run_epoch: u64,
+        envelope: &EventEnvelope,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<RemoteHarmonyProbeObservation> {
+        let runtime = &self.runtime.highland_blood;
+        if !runtime.remote_paired_output_runtime_transfer_enabled || damage.amount <= 0 {
+            return None;
+        }
+        let source_actor_id = damage.source.actor_id.0;
+        let target_actor_id = damage.target.actor_id.0;
+        if !self.active_players.contains(&source_actor_id) {
+            return None;
+        }
+        let ability_id = damage.ability.map(|ability| ability.0)?;
+        if runtime
+            .excluded_provider_owned_damage_ids
+            .contains(&ability_id)
+        {
+            return None;
+        }
+        let hit_event_id = damage.hit_event_id?;
+        let property = damage.packet.property?;
+        if !(1..=8).contains(&property) {
+            return None;
+        }
+        let selected = select_damage_stage(
+            ability_id,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        );
+        let selected = selected?;
+        let state_actor_id = self.fatal_spiral_state_actor_id(damage);
+        let providers = self.fatal_spiral_provider_windows_for_recipient(
+            source_actor_id,
+            damage.source.entity_uuid.0,
+            state_actor_id,
+        );
+        if providers.len() > 1 {
+            return None;
+        }
+        let (provider_actor_id, provider_entity_uuid, provider_basis_points) =
+            if let Some((provider_actor_id, provider_entity_uuid)) = providers.first().copied() {
+                if provider_actor_id == source_actor_id
+                    || !self.active_players.contains(&provider_actor_id)
+                    || self
+                        .fatal_spiral_ambiguous_provider_entities
+                        .contains(&provider_entity_uuid)
+                {
+                    return None;
+                }
+                let state_basis_points = state_actor_id
+                    .and_then(|actor_id| self.states.get(&actor_id))
+                    .and_then(|state| {
+                        (state.all_element.provider_basis_points.len() == 1)
+                            .then(|| state.all_element.provider_basis_points.iter().next())
+                            .flatten()
+                    })
+                    .and_then(|(&state_provider, &basis_points)| {
+                        (state_provider == provider_actor_id).then_some(basis_points)
+                    });
+                let basis_points = state_basis_points.or_else(|| {
+                    self.fatal_spiral_provider_basis_points_by_entity_uuid
+                        .get(&provider_entity_uuid)
+                        .copied()
+                });
+                if basis_points.is_some_and(|basis_points| {
+                    !runtime.packet_proven_raw_deltas.contains(&basis_points)
+                }) {
+                    return None;
+                }
+                (
+                    Some(provider_actor_id),
+                    Some(provider_entity_uuid),
+                    basis_points,
+                )
+            } else {
+                (None, None, None)
+            };
+        let source_formula_context_sha256 =
+            self.remote_fatal_spiral_source_damage_context_sha256(source_actor_id);
+        let target_formula_context_sha256 =
+            self.remote_fatal_spiral_target_context_sha256(target_actor_id);
+        let source_formula_context_sha256 = source_formula_context_sha256?;
+        let target_formula_context_sha256 = target_formula_context_sha256?;
+
+        Some(RemoteHarmonyProbeObservation {
+            key: RemoteHarmonyMechanicKey {
+                effect_id: runtime.effect_id,
+                run_epoch,
+                source_actor_id,
+                source_entity_uuid: damage.source.entity_uuid.0,
+                target_actor_id,
+                target_entity_uuid: damage.target.entity_uuid.0,
+                ability_id,
+                hit_event_id,
+                critical: damage.flags.critical,
+                lucky: damage.flags.lucky,
+                damage_mode: damage.packet.damage_mode,
+                property: Some(property),
+                coefficient_basis_points: selected.coefficient_basis_points,
+                source_formula_context_sha256,
+                target_formula_context_sha256,
+            },
+            observation: RemoteHarmonyDamageObservation {
+                event_sequence: envelope.sequence,
+                observed_micros: envelope.time.observed_micros,
+                amount: damage.amount,
+                provider_actor_id,
+                provider_entity_uuid,
+                provider_basis_points,
             },
         })
     }
@@ -5414,10 +5677,7 @@ impl BpsrStateDamageContributionProjector {
         envelope: &EventEnvelope,
         damage: &rlogs_events::DamageEvent,
     ) -> Option<ExactRationalDamageContributionEvent> {
-        let runtime = &self.runtime.harmony_grace;
-        if !runtime.remote_paired_output_runtime_transfer_enabled
-            || damage.amount <= 0
-        {
+        if damage.amount <= 0 {
             return None;
         }
         let receipt = self
@@ -5446,38 +5706,91 @@ impl BpsrStateDamageContributionProjector {
             damage.packet.owner_stage,
             damage.packet.owner_level,
         )?;
-        if self
-            .remote_harmony_source_damage_context_sha256(recipient_actor_id)
+        let scope = if receipt.effect_id == self.runtime.harmony_grace.effect_id
+            && self
+                .runtime
+                .harmony_grace
+                .remote_paired_output_runtime_transfer_enabled
+        {
+            if self
+                .remote_harmony_source_damage_context_sha256(recipient_actor_id)
                 .as_deref()
                 != Some(receipt.source_formula_context_sha256.as_str())
-            || self
-                .remote_harmony_target_context_sha256(target_actor_id)
+                || self
+                    .remote_harmony_target_context_sha256(target_actor_id)
+                    .as_deref()
+                    != Some(receipt.target_formula_context_sha256.as_str())
+            {
+                return None;
+            }
+            let mut providers = self
+                .harmony_grace_windows
+                .iter()
+                .filter(|window| window.target_actor_id == recipient_actor_id)
+                .map(|window| window.provider_actor_id)
+                .collect::<BTreeSet<_>>()
+                .into_iter();
+            if providers.next() != Some(receipt.provider_actor_id)
+                || providers.next().is_some()
+                || receipt.provider_actor_id == recipient_actor_id
+                || !self.active_players.contains(&receipt.provider_actor_id)
+            {
+                return None;
+            }
+            "harmony-grace-remote-paired-output"
+        } else if receipt.effect_id == self.runtime.highland_blood.effect_id
+            && self
+                .runtime
+                .highland_blood
+                .remote_paired_output_runtime_transfer_enabled
+        {
+            if self
+                .remote_fatal_spiral_source_damage_context_sha256(recipient_actor_id)
                 .as_deref()
-                != Some(receipt.target_formula_context_sha256.as_str())
-        {
+                != Some(receipt.source_formula_context_sha256.as_str())
+                || self
+                    .remote_fatal_spiral_target_context_sha256(target_actor_id)
+                    .as_deref()
+                    != Some(receipt.target_formula_context_sha256.as_str())
+            {
+                return None;
+            }
+            let state_actor_id = self.fatal_spiral_state_actor_id(damage);
+            let providers = self.fatal_spiral_provider_windows_for_recipient(
+                recipient_actor_id,
+                damage.source.entity_uuid.0,
+                state_actor_id,
+            );
+            if providers.len() != 1
+                || providers[0].0 != receipt.provider_actor_id
+                || receipt.provider_actor_id == recipient_actor_id
+                || !self.active_players.contains(&receipt.provider_actor_id)
+            {
+                return None;
+            }
+            let provider_entity_uuid = providers[0].1;
+            if receipt.provider_entity_uuid != Some(provider_entity_uuid)
+                || self
+                    .fatal_spiral_ambiguous_provider_entities
+                    .contains(&provider_entity_uuid)
+                || self
+                    .fatal_spiral_provider_basis_points_by_entity_uuid
+                    .get(&provider_entity_uuid)
+                    .is_some_and(|basis_points| *basis_points != receipt.provider_basis_points)
+            {
+                return None;
+            }
+            "fatal-spiral-remote-paired-output"
+        } else {
             return None;
-        }
-        let mut providers = self
-            .harmony_grace_windows
-            .iter()
-            .filter(|window| window.target_actor_id == recipient_actor_id)
-            .map(|window| window.provider_actor_id)
-            .collect::<BTreeSet<_>>()
-            .into_iter();
-        if providers.next() != Some(receipt.provider_actor_id)
-            || providers.next().is_some()
-            || receipt.provider_actor_id == recipient_actor_id
-            || !self.active_players.contains(&receipt.provider_actor_id)
-        {
-            return None;
-        }
+        };
 
         Some(ExactRationalDamageContributionEvent {
             observed_micros: envelope.time.observed_micros,
-            effect_id: runtime.effect_id,
+            effect_id: receipt.effect_id,
             provider_actor_id: receipt.provider_actor_id,
             recipient_actor_id,
-            scope: DamageContributionScope::Component("harmony-grace-remote-paired-output"),
+            scope: DamageContributionScope::Component(scope),
             numerator: i128::from(receipt.contribution),
             denominator: 1,
             observed_damage: damage.amount,
@@ -6816,6 +7129,8 @@ impl BpsrStateDamageContributionProjector {
         self.remote_harmony_context_sha256(
             actor_id,
             true,
+            true,
+            false,
             |attribute_id| {
                 // Harmony changes the recipient's main-stat package and its
                 // Vitality-derived health family. Season strength, attack
@@ -6841,7 +7156,56 @@ impl BpsrStateDamageContributionProjector {
         self.remote_harmony_context_sha256(
             actor_id,
             false,
+            true,
+            false,
             |attribute_id| attribute_id != ATTR_CURRENT_HP,
+            |effect_id| effect_id != runtime.effect_id,
+        )
+    }
+
+    fn remote_fatal_spiral_source_damage_context_sha256(&self, actor_id: u64) -> Option<String> {
+        let runtime = &self.runtime.highland_blood;
+        let family = &runtime.all_element_family;
+        self.remote_harmony_context_sha256(
+            actor_id,
+            true,
+            false,
+            true,
+            |attribute_id| {
+                retained_formula_cohort_attribute(attribute_id)
+                    && !matches!(
+                        attribute_id,
+                        11_310..=11_325 | 11_440 | 11_450 | 11_720 | 11_730
+                    )
+                    && ![
+                        family.current_attribute_id,
+                        family.total_attribute_id,
+                        family.add_attribute_id,
+                        family.extra_add_attribute_id,
+                        family.percent_attribute_id,
+                        family.extra_percent_attribute_id,
+                    ]
+                    .contains(&attribute_id)
+            },
+            |effect_id| {
+                effect_id != runtime.effect_id
+                    && !runtime
+                        .remote_paired_output_ignored_effect_ids
+                        .contains(&effect_id)
+            },
+        )
+    }
+
+    fn remote_fatal_spiral_target_context_sha256(&self, actor_id: u64) -> Option<String> {
+        let runtime = &self.runtime.highland_blood;
+        self.remote_harmony_context_sha256(
+            actor_id,
+            false,
+            false,
+            true,
+            |attribute_id| {
+                retained_formula_cohort_attribute(attribute_id) && attribute_id != ATTR_CURRENT_HP
+            },
             |effect_id| effect_id != runtime.effect_id,
         )
     }
@@ -6850,6 +7214,8 @@ impl BpsrStateDamageContributionProjector {
         &self,
         actor_id: u64,
         attributes_required: bool,
+        include_unresolved_status_generation: bool,
+        deduplicate_status_values: bool,
         include_attribute: impl Fn(i32) -> bool,
         include_effect: impl Fn(i64) -> bool,
     ) -> Option<String> {
@@ -6881,6 +7247,13 @@ impl BpsrStateDamageContributionProjector {
                 .filter_map(|(_, prior)| *prior),
         );
         statuses.sort_unstable();
+        if deduplicate_status_values {
+            // The sealed proof cohort represents status context as a set of
+            // logical values. Repeated wire instances with the same effect,
+            // owner, stacks, level, and origin therefore must not split an
+            // otherwise identical Fatal Spiral counterfactual group.
+            statuses.dedup();
+        }
 
         let mut hasher = Sha256::new();
         hasher.update(b"rlogs-bpsr-remote-harmony-context-v1\0");
@@ -6916,14 +7289,16 @@ impl BpsrStateDamageContributionProjector {
             hasher.update(b"U");
             hasher.update(instance_id.to_le_bytes());
         }
-        hasher.update(b"G");
-        hasher.update(
-            self.unresolved_status_generation_by_actor
-                .get(&actor_id)
-                .copied()
-                .unwrap_or_default()
-                .to_le_bytes(),
-        );
+        if include_unresolved_status_generation {
+            hasher.update(b"G");
+            hasher.update(
+                self.unresolved_status_generation_by_actor
+                    .get(&actor_id)
+                    .copied()
+                    .unwrap_or_default()
+                    .to_le_bytes(),
+            );
+        }
         Some(format!("sha256:{:x}", hasher.finalize()))
     }
 
@@ -7263,6 +7638,43 @@ impl BpsrStateDamageContributionProjector {
             return "unproven_recipient_delta";
         }
 
+        if self
+            .runtime
+            .highland_blood
+            .remote_paired_output_runtime_transfer_enabled
+        {
+            if !self.active_players.contains(&recipient_actor_id) {
+                return "recipient_inactive";
+            }
+            if !self.active_players.contains(&provider_actor_id) {
+                return "provider_inactive";
+            }
+            if select_damage_stage(
+                ability_id,
+                damage.hit_event_id,
+                damage.damage_source,
+                damage.packet.owner_stage,
+                damage.packet.owner_level,
+            )
+            .is_none()
+            {
+                return "missing_damage_stage";
+            }
+            if self
+                .remote_fatal_spiral_source_damage_context_sha256(recipient_actor_id)
+                .is_none()
+            {
+                return "missing_source_formula_context";
+            }
+            if self
+                .remote_fatal_spiral_target_context_sha256(damage.target.actor_id.0)
+                .is_none()
+            {
+                return "missing_target_formula_context";
+            }
+            return "paired_output_eligible";
+        }
+
         "damage_stage_unproven"
     }
 
@@ -7483,9 +7895,15 @@ impl BpsrStateDamageContributionProjector {
         self.fatal_spiral_windows.clear();
         self.fatal_spiral_transitions.clear();
         self.fatal_spiral_snapshot_targets.clear();
-        self.fatal_spiral_provider_basis_points_by_entity_uuid
-            .clear();
-        self.fatal_spiral_ambiguous_provider_entities.clear();
+        self.fatal_spiral_provider_basis_points_by_entity_uuid = self
+            .fatal_spiral_equipped_basis_points_by_entity_uuid
+            .clone();
+        self.fatal_spiral_ambiguous_provider_entities
+            .retain(|entity_uuid| {
+                !self
+                    .fatal_spiral_equipped_basis_points_by_entity_uuid
+                    .contains_key(entity_uuid)
+            });
         self.target_vulnerability_windows.clear();
         self.target_vulnerability_transitions.clear();
         self.formula_attributes_by_actor.clear();
@@ -7501,6 +7919,11 @@ impl BpsrStateDamageContributionProjector {
 
     fn clear_state(&mut self) {
         self.clear_run_state();
+        self.fatal_spiral_equipped_basis_points_by_entity_uuid
+            .clear();
+        self.fatal_spiral_provider_basis_points_by_entity_uuid
+            .clear();
+        self.fatal_spiral_ambiguous_provider_entities.clear();
         self.class_id_by_actor.clear();
         self.active_players.clear();
     }
@@ -8731,6 +9154,10 @@ fn integer_attribute(attribute: &EntityAttribute) -> Option<i64> {
     }
 }
 
+fn retained_formula_cohort_attribute(attribute_id: i32) -> bool {
+    attribute_id == 10 || (10_000..=39_999).contains(&attribute_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -8829,6 +9256,39 @@ mod tests {
     }
 
     #[test]
+    fn fatal_spiral_context_ignores_opaque_low_ids_but_retains_fight_attributes() {
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        projector
+            .formula_attributes_by_actor
+            .insert(61, BTreeMap::from([(10, 33_911), (11_320, 39_070_384)]));
+        let original = projector
+            .remote_fatal_spiral_target_context_sha256(61)
+            .expect("Fatal Spiral target context should hash");
+
+        projector
+            .formula_attributes_by_actor
+            .get_mut(&61)
+            .unwrap()
+            .insert(455, 1);
+        assert_eq!(
+            projector.remote_fatal_spiral_target_context_sha256(61),
+            Some(original.clone()),
+            "arbitrary low-ID protobuf fields are not damage-formula attributes"
+        );
+
+        projector
+            .formula_attributes_by_actor
+            .get_mut(&61)
+            .unwrap()
+            .insert(20_120, 276);
+        assert_ne!(
+            projector.remote_fatal_spiral_target_context_sha256(61),
+            Some(original),
+            "a changed retained fight attribute must still fail closed"
+        );
+    }
+
+    #[test]
     fn remote_harmony_learner_emits_only_multi_target_exact_rows() {
         let mut learner = BpsrRemoteFactorLearner::default();
         for (index, active_damage, inactive_damage) in
@@ -8836,6 +9296,7 @@ mod tests {
         {
             learner.harmony_groups.insert(
                 RemoteHarmonyMechanicKey {
+                    effect_id: 3_003_052,
                     run_epoch: 0,
                     source_actor_id: 2,
                     source_entity_uuid: 20,
@@ -8843,15 +9304,8 @@ mod tests {
                     target_entity_uuid: 100 + index as i64,
                     ability_id: 7_998,
                     hit_event_id: 1,
-                    damage_source: Some(1),
-                    damage_type: Some(1),
                     critical: Some(false),
                     lucky: Some(false),
-                    blocked: Some(false),
-                    periodic: Some(false),
-                    owner_id: None,
-                    owner_level: None,
-                    owner_stage: None,
                     damage_mode: None,
                     property: None,
                     coefficient_basis_points: 10_000,
@@ -8861,17 +9315,21 @@ mod tests {
                 RemoteHarmonyOutcomeGroup {
                     inactive: vec![RemoteHarmonyDamageObservation {
                         event_sequence: 10 + index,
-                        // Replicated proof can come from separate actions. The
-                        // effect has no same-timestamp or multi-target gate.
-                        observed_micros: 100 + index * 1_000_000,
+                        // Both targets belong to one exact action. Repeated
+                        // casts must remain separate proof groups.
+                        observed_micros: 100,
                         amount: inactive_damage,
                         provider_actor_id: None,
+                        provider_entity_uuid: None,
+                        provider_basis_points: None,
                     }],
                     active: vec![RemoteHarmonyDamageObservation {
                         event_sequence: 20 + index,
-                        observed_micros: 200 + index * 1_000_000,
+                        observed_micros: 200,
                         amount: active_damage,
                         provider_actor_id: Some(3),
+                        provider_entity_uuid: None,
+                        provider_basis_points: Some(200),
                     }],
                     saturated: false,
                 },
@@ -8898,7 +9356,7 @@ mod tests {
         let mut insufficient = BpsrRemoteFactorLearner::default();
         insufficient
             .harmony_groups
-            .extend(learner_fixture_single_remote_harmony_group().into_iter());
+            .extend(learner_fixture_single_remote_harmony_group());
         assert!(
             insufficient
                 .finish()
@@ -8917,6 +9375,7 @@ mod tests {
         ] {
             learner.harmony_groups.insert(
                 RemoteHarmonyMechanicKey {
+                    effect_id: 3_003_052,
                     run_epoch: 0,
                     source_actor_id: 4,
                     source_entity_uuid: 40,
@@ -8924,15 +9383,8 @@ mod tests {
                     target_entity_uuid: 200 + index as i64,
                     ability_id: 1_259,
                     hit_event_id: 1,
-                    damage_source: None,
-                    damage_type: None,
                     critical,
                     lucky: Some(false),
-                    blocked: Some(false),
-                    periodic: None,
-                    owner_id: Some(1_259),
-                    owner_level: Some(1),
-                    owner_stage: None,
                     damage_mode: Some(2),
                     property: Some(2),
                     coefficient_basis_points: 10_000,
@@ -8945,12 +9397,16 @@ mod tests {
                         observed_micros: 200,
                         amount: inactive_damage,
                         provider_actor_id: None,
+                        provider_entity_uuid: None,
+                        provider_basis_points: None,
                     }],
                     active: vec![RemoteHarmonyDamageObservation {
                         event_sequence: 200 + index,
                         observed_micros: 100,
                         amount: active_damage,
                         provider_actor_id: Some(1),
+                        provider_entity_uuid: None,
+                        provider_basis_points: Some(200),
                     }],
                     saturated: false,
                 },
@@ -8967,6 +9423,180 @@ mod tests {
                 .sum::<i64>(),
             1_374
         );
+    }
+
+    #[test]
+    fn fatal_spiral_paired_output_emits_the_six_target_exact_delta_and_conserves() {
+        let mut learner = BpsrRemoteFactorLearner::default();
+        for index in 0_u64..6 {
+            learner.harmony_groups.insert(
+                RemoteHarmonyMechanicKey {
+                    effect_id: 2_110_125,
+                    run_epoch: 0,
+                    source_actor_id: 31,
+                    source_entity_uuid: 162_179_383_936,
+                    target_actor_id: 100 + index,
+                    target_entity_uuid: 7_105_609_792 + index as i64,
+                    ability_id: 1_262,
+                    hit_event_id: 5,
+                    critical: Some(false),
+                    lucky: Some(false),
+                    damage_mode: None,
+                    property: Some(2),
+                    coefficient_basis_points: 10_000,
+                    source_formula_context_sha256: "fatal-source-context".into(),
+                    target_formula_context_sha256: format!("fatal-target-context-{index}"),
+                },
+                RemoteHarmonyOutcomeGroup {
+                    inactive: vec![RemoteHarmonyDamageObservation {
+                        event_sequence: 1_000 + index,
+                        observed_micros: 1_090_913_729,
+                        amount: 25_336,
+                        provider_actor_id: None,
+                        provider_entity_uuid: None,
+                        provider_basis_points: None,
+                    }],
+                    active: vec![RemoteHarmonyDamageObservation {
+                        event_sequence: 2_000 + index,
+                        observed_micros: 1_090_432_756,
+                        amount: 26_348,
+                        provider_actor_id: Some(30),
+                        provider_entity_uuid: Some(5_288_320_959_104),
+                        provider_basis_points: None,
+                    }],
+                    saturated: false,
+                },
+            );
+        }
+        learner.harmony_probe = Some(Box::new(BpsrStateDamageContributionProjector {
+            fatal_spiral_provider_basis_points_by_entity_uuid: HashMap::from([(
+                5_288_320_959_104,
+                1_000,
+            )]),
+            ..BpsrStateDamageContributionProjector::default()
+        }));
+
+        let timeline = learner.finish();
+        assert_eq!(timeline.remote_harmony_by_event_sequence.len(), 6);
+        for receipt in timeline.remote_harmony_by_event_sequence.values() {
+            assert_eq!(receipt.effect_id, 2_110_125);
+            assert_eq!(receipt.provider_actor_id, 30);
+            assert_eq!(receipt.provider_basis_points, 1_000);
+            assert_eq!(receipt.observed_damage, 26_348);
+            assert_eq!(receipt.contribution, 1_012);
+            let recipient_rdps = receipt.observed_damage - receipt.contribution;
+            let provider_rdps = receipt.contribution;
+            assert_eq!(recipient_rdps, 25_336);
+            assert_eq!(recipient_rdps + provider_rdps, receipt.observed_damage);
+        }
+    }
+
+    #[test]
+    fn fatal_spiral_provider_tier_comes_from_run_local_equipped_imagine() {
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        let actor = rlogs_events::ActorEvent {
+            actor: test_entity(30, 5_288_320_959_104),
+            state: ActorState::Spawned,
+            entity_type_id: 10,
+            kind: ActorKind::Player,
+            monster_id: None,
+            character_id: Some("80693374".into()),
+            display_name: Some("Rhem".into()),
+            class_id: Some(13),
+            specialization_id: Some(120),
+            level: Some(60),
+            ability_score: Some(65_304),
+            weapon_item_id: Some(2_001_518),
+            weapon_breakthrough_count: None,
+            seasonal_score: Some(4_675),
+            primary_loadout: vec![rlogs_events::ActorLoadoutSlot {
+                slot_id: 8,
+                ability_id: Some(3_957),
+                item_id: Some(3_000_106),
+                tier: Some(5),
+            }],
+            auxiliary_loadout: Vec::new(),
+            loadout_observation: rlogs_events::ActorLoadoutObservation::default(),
+        };
+
+        projector.observe_fatal_spiral_provider_loadout(&actor);
+
+        assert_eq!(
+            projector
+                .fatal_spiral_provider_basis_points_by_entity_uuid
+                .get(&5_288_320_959_104),
+            Some(&1_000)
+        );
+        projector.clear_run_state();
+        assert_eq!(
+            projector
+                .fatal_spiral_provider_basis_points_by_entity_uuid
+                .get(&5_288_320_959_104),
+            Some(&1_000)
+        );
+        assert!(
+            projector
+                .fatal_spiral_ambiguous_provider_entities
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn live_fatal_spiral_deferred_receipt_keeps_effect_and_scope() {
+        let mut projector = BpsrStateDamageContributionProjector {
+            remote_factor_timeline: Some(BpsrRemoteFactorTimeline {
+                remote_harmony_by_event_sequence: HashMap::from([(
+                    77,
+                    RemoteHarmonyPairedContribution {
+                        effect_id: 2_110_125,
+                        provider_actor_id: 30,
+                        provider_entity_uuid: Some(5_288_320_959_104),
+                        provider_basis_points: 1_000,
+                        recipient_actor_id: 31,
+                        recipient_entity_uuid: 162_179_383_936,
+                        target_actor_id: 100,
+                        target_entity_uuid: 7_105_609_792,
+                        ability_id: 1_262,
+                        hit_event_id: 5,
+                        observed_damage: 26_348,
+                        contribution: 1_012,
+                        source_formula_context_sha256: "source-context".into(),
+                        target_formula_context_sha256: "target-context".into(),
+                    },
+                )]),
+                ..BpsrRemoteFactorTimeline::default()
+            }),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.buffer_deferred_remote_harmony_damage(DeferredRemoteHarmonyDamage {
+            observed_micros: 1_090_432_756,
+            event_sequence: 77,
+            effect_id: 2_110_125,
+            provider_actor_id: 30,
+            provider_entity_uuid: Some(5_288_320_959_104),
+            recipient_actor_id: 31,
+            recipient_entity_uuid: 162_179_383_936,
+            affected_ability_id: 1_262,
+            hit_event_id: 5,
+            target_actor_id: 100,
+            target_entity_uuid: 7_105_609_792,
+            observed_damage: 26_348,
+            later_contribution: None,
+        });
+
+        let output = projector.drain_ready_deferred_remote_harmony(1_090_432_757, false);
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0].effect_id, 2_110_125);
+        assert_eq!(output[0].provider_actor_id, 30);
+        assert_eq!(output[0].recipient_actor_id, 31);
+        assert_eq!(output[0].numerator, 1_012);
+        assert_eq!(output[0].denominator, 1);
+        assert_eq!(output[0].observed_damage, 26_348);
+        assert_eq!(
+            output[0].scope,
+            DamageContributionScope::Component("fatal-spiral-remote-paired-output")
+        );
+        assert_eq!(26_348 - 1_012 + 1_012, 26_348);
     }
 
     #[test]
@@ -9011,30 +9641,37 @@ mod tests {
 
     #[test]
     fn live_remote_harmony_deferred_receipt_preserves_original_damage_identity() {
-        let mut projector = BpsrStateDamageContributionProjector::default();
-        projector.remote_factor_timeline = Some(BpsrRemoteFactorTimeline {
-            remote_harmony_by_event_sequence: HashMap::from([(
-                77,
-                RemoteHarmonyPairedContribution {
-                    provider_actor_id: 3,
-                    recipient_actor_id: 2,
-                    recipient_entity_uuid: 20,
-                    target_actor_id: 10,
-                    target_entity_uuid: 100,
-                    ability_id: 7_998,
-                    hit_event_id: 1,
-                    observed_damage: 870_541,
-                    contribution: 7_620,
-                    source_formula_context_sha256: "source-context".into(),
-                    target_formula_context_sha256: "target-context".into(),
-                },
-            )]),
-            ..BpsrRemoteFactorTimeline::default()
-        });
+        let mut projector = BpsrStateDamageContributionProjector {
+            remote_factor_timeline: Some(BpsrRemoteFactorTimeline {
+                remote_harmony_by_event_sequence: HashMap::from([(
+                    77,
+                    RemoteHarmonyPairedContribution {
+                        effect_id: 3_003_052,
+                        provider_actor_id: 3,
+                        provider_entity_uuid: None,
+                        provider_basis_points: 200,
+                        recipient_actor_id: 2,
+                        recipient_entity_uuid: 20,
+                        target_actor_id: 10,
+                        target_entity_uuid: 100,
+                        ability_id: 7_998,
+                        hit_event_id: 1,
+                        observed_damage: 870_541,
+                        contribution: 7_620,
+                        source_formula_context_sha256: "source-context".into(),
+                        target_formula_context_sha256: "target-context".into(),
+                    },
+                )]),
+                ..BpsrRemoteFactorTimeline::default()
+            }),
+            ..BpsrStateDamageContributionProjector::default()
+        };
         projector.buffer_deferred_remote_harmony_damage(DeferredRemoteHarmonyDamage {
             observed_micros: 1_000,
             event_sequence: 77,
+            effect_id: 3_003_052,
             provider_actor_id: 3,
+            provider_entity_uuid: None,
             recipient_actor_id: 2,
             recipient_entity_uuid: 20,
             affected_ability_id: 7_998,
@@ -9066,6 +9703,7 @@ mod tests {
     -> HashMap<RemoteHarmonyMechanicKey, RemoteHarmonyOutcomeGroup> {
         HashMap::from([(
             RemoteHarmonyMechanicKey {
+                effect_id: 3_003_052,
                 run_epoch: 0,
                 source_actor_id: 2,
                 source_entity_uuid: 20,
@@ -9073,15 +9711,8 @@ mod tests {
                 target_entity_uuid: 100,
                 ability_id: 7_998,
                 hit_event_id: 1,
-                damage_source: Some(1),
-                damage_type: Some(1),
                 critical: Some(false),
                 lucky: Some(false),
-                blocked: Some(false),
-                periodic: Some(false),
-                owner_id: None,
-                owner_level: None,
-                owner_stage: None,
                 damage_mode: None,
                 property: None,
                 coefficient_basis_points: 10_000,
@@ -9094,12 +9725,16 @@ mod tests {
                     observed_micros: 100,
                     amount: 862_921,
                     provider_actor_id: None,
+                    provider_entity_uuid: None,
+                    provider_basis_points: None,
                 }],
                 active: vec![RemoteHarmonyDamageObservation {
                     event_sequence: 20,
                     observed_micros: 200,
                     amount: 870_541,
                     provider_actor_id: Some(3),
+                    provider_entity_uuid: None,
+                    provider_basis_points: Some(200),
                 }],
                 saturated: false,
             },
@@ -9487,7 +10122,7 @@ mod tests {
             vec![
                 55_228, 2_110_140, 2_110_143, 2_202_041, 2_302_121, 3_003_052
             ],
-            "the exact packet-pair vulnerability, observed Mechanical Power component, dormant Functional Amp component, Team Luck components, Inspiration chance components, and class-scoped Harmony proportional rule are production promoted"
+            "the exact packet-pair vulnerability, observed Mechanical Power component, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -10010,7 +10645,7 @@ mod tests {
 
         assert_eq!(
             projector.fatal_spiral_audit_gate(&damage),
-            "damage_stage_unproven"
+            "missing_damage_stage"
         );
         assert!(
             projector
@@ -12814,6 +13449,87 @@ mod tests {
                 .contains_key(&window),
             "closing the lifecycle must remove its transition witness"
         );
+    }
+
+    #[test]
+    fn harmony_grace_reconciles_every_listed_primary_family_without_a_class_gate() {
+        let runtime = rdps_runtime_config().expect("current runtime should validate");
+        let physical_rule = runtime
+            .harmony_grace
+            .recipient_rules
+            .iter()
+            .find(|rule| rule.recipient_class_id == 11)
+            .cloned()
+            .expect("physical recipient route");
+        let magical_rule = runtime
+            .harmony_grace
+            .recipient_rules
+            .iter()
+            .find(|rule| rule.recipient_class_id == 2)
+            .cloned()
+            .expect("magical recipient route");
+        let previous_family = AttackFamilyState {
+            raw_percent: Some(1_500),
+            ..AttackFamilyState::default()
+        };
+        let current_family = AttackFamilyState {
+            raw_percent: Some(1_700),
+            ..AttackFamilyState::default()
+        };
+        let previous = ActorHpState {
+            harmony_primary_by_class: BTreeMap::from([
+                (physical_rule.recipient_class_id, previous_family.clone()),
+                (magical_rule.recipient_class_id, previous_family),
+            ]),
+            ..ActorHpState::default()
+        };
+        let staged = ActorHpState {
+            harmony_primary_by_class: BTreeMap::from([
+                (physical_rule.recipient_class_id, current_family.clone()),
+                (magical_rule.recipient_class_id, current_family),
+            ]),
+            ..ActorHpState::default()
+        };
+        let mut projector = BpsrStateDamageContributionProjector {
+            states: HashMap::from([(4, previous)]),
+            staged_states: HashMap::from([(4, staged)]),
+            // Intentionally omit class identity. Harmony's application has no
+            // class condition; only later damage conversion needs this.
+            class_id_by_actor: HashMap::new(),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let status = rlogs_events::StatusEvent {
+            source: Some(rlogs_events::EntityRef {
+                actor_id: rlogs_events::ActorId(2),
+                entity_uuid: rlogs_events::EntityUuid(20),
+            }),
+            target: rlogs_events::EntityRef {
+                actor_id: rlogs_events::ActorId(4),
+                entity_uuid: rlogs_events::EntityUuid(40),
+            },
+            effect: rlogs_events::StatusEffectId(runtime.harmony_grace.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(11)),
+            origin: None,
+            state: StatusState::Applied,
+            stacks: Some(1),
+            level: None,
+            part_id: None,
+            count: None,
+            created_at_millis: None,
+            duration_millis: Some(8_000),
+        };
+
+        projector.observe_harmony_grace_status(&status);
+
+        for recipient_rule in [&physical_rule, &magical_rule] {
+            assert_eq!(
+                projector.staged_states[&4].harmony_primary_by_class
+                    [&recipient_rule.recipient_class_id]
+                    .provider_raw_percent,
+                BTreeMap::from([(2, recipient_rule.primary_percent_raw_delta)]),
+                "Harmony must apply to every listed primary family before class selection"
+            );
+        }
     }
 
     #[test]

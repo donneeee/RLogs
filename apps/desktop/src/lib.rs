@@ -3601,7 +3601,7 @@ impl RuntimeController {
             {
                 self.combat_history_feed.publish_progress();
             }
-            clear_history_rdps_projection(
+            mark_history_rdps_projection_refreshing(
                 &mut snapshot,
                 "formula_refresh_queued: recalculating archived rDPS in the background",
             );
@@ -6579,6 +6579,44 @@ fn replay_bpsr_combat_history(path: &Path) -> Result<CombatHistorySnapshot, Stri
     })
 }
 
+#[cfg(test)]
+fn replay_bpsr_combat_history_live_one_pass(path: &Path) -> Result<CombatHistorySnapshot, String> {
+    let file = File::open(path).map_err(|error| {
+        format!(
+            "could not open sealed combat log {}: {error}",
+            path.display()
+        )
+    })?;
+    let mut reader = RlogReader::new(BufReader::new(file), RlogLimits::default())
+        .map_err(|error| format!("could not validate combat log header: {error}"))?;
+    let header = reader.header().clone();
+    let mut meter = bpsr_combat_timeline_plugin()?;
+    meter.begin_live(&header);
+    let mut encounter = EncounterRecorderPlugin::new(
+        bundled_run_reducer_config()
+            .map_err(|error| format!("could not load BPSR run rules: {error}"))?,
+    );
+    encounter.begin_live(&header);
+    while let Some(event) = reader
+        .next_event()
+        .map_err(|error| format!("sealed one-pass live replay failed: {error}"))?
+    {
+        meter.observe_live(&event);
+        encounter
+            .observe_live(&event)
+            .map_err(|error| format!("encounter replay failed: {error}"))?;
+    }
+    if reader.summary().is_none() {
+        return Err("sealed combat log has no validated integrity summary".into());
+    }
+    let run_projection = encounter
+        .live_snapshot()
+        .map_err(|error| format!("could not project replayed runs: {error}"))?;
+    meter
+        .history_snapshot(&run_projection.runs)
+        .map_err(|error| format!("could not project one-pass live combat history: {error}"))
+}
+
 struct ProgressTrackingBufRead<R> {
     inner: R,
     consumed: Arc<AtomicU64>,
@@ -6747,6 +6785,17 @@ fn clear_history_rdps_projection(snapshot: &mut CombatHistorySnapshot, status: &
                 actor.rdps_incomplete = false;
             }
         }
+    }
+}
+
+fn mark_history_rdps_projection_refreshing(snapshot: &mut CombatHistorySnapshot, status: &str) {
+    // A saved projection was already conservation-validated before it was
+    // committed to history. Keep that packet-proven subtotal visible while a
+    // newer formula identity is replayed, then replace it atomically after the
+    // new projection passes the same validation. An absent projection remains
+    // absent because its formula identity and rDPS fields are already null.
+    for run in &mut snapshot.runs {
+        run.rdps_status = status.into();
     }
 }
 
@@ -9549,7 +9598,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_history_returns_immediately_and_queues_background_rdps_without_raw_log() {
+    fn stale_history_returns_cached_rdps_and_queues_background_refresh_without_raw_log() {
         let root = temporary_root();
         let controller = RuntimeController::new(root.clone()).unwrap();
         let mut snapshot = captured_marksman_history();
@@ -9561,6 +9610,11 @@ mod tests {
         snapshot.rdps_formula_identity = Some("sha256:stale".into());
         snapshot.runs[0].rdps_status = "partial_packet_proven_rules".into();
         let ordinary_damage = snapshot.runs[0].views[0].actors[0].damage;
+        let actor = &mut snapshot.runs[0].views[0].actors[0];
+        actor.rdps = Some(2.0);
+        actor.rdps_damage = Some(2);
+        actor.rdps_contribution_given = Some(1);
+        actor.rdps_contribution_received = Some(1);
         controller
             .combat_history
             .lock()
@@ -9577,12 +9631,19 @@ mod tests {
             .unwrap();
 
         assert_eq!(returned.runs[0].views[0].actors[0].damage, ordinary_damage);
-        assert_eq!(returned.rdps_formula_identity, None);
+        assert_eq!(
+            returned.rdps_formula_identity.as_deref(),
+            Some("sha256:stale")
+        );
         assert_eq!(
             returned.runs[0].rdps_status,
             "formula_refresh_queued: recalculating archived rDPS in the background"
         );
-        assert_eq!(returned.runs[0].views[0].actors[0].rdps, None);
+        let actor = &returned.runs[0].views[0].actors[0];
+        assert_eq!(actor.rdps, Some(2.0));
+        assert_eq!(actor.rdps_damage, Some(2));
+        assert_eq!(actor.rdps_contribution_given, Some(1));
+        assert_eq!(actor.rdps_contribution_received, Some(1));
         let progress = controller.history_rdps_backfill.progress_snapshot();
         assert_eq!(progress.len(), 1);
         assert_eq!(progress[0].session_id, snapshot.session_id);
@@ -9626,6 +9687,8 @@ mod tests {
         ))
         .expect("saved history detail should decode");
         let projection = replay_bpsr_combat_history(&rlog).expect("sealed replay should project");
+        let live_projection = replay_bpsr_combat_history_live_one_pass(&rlog)
+            .expect("one-pass live replay should project");
         let refreshed = combat_history::merge_rdps_projection(&saved, &projection)
             .expect("current formula projection should match the saved ordinary combat cube");
 
@@ -9684,6 +9747,23 @@ mod tests {
                     view.id,
                     view.actors.len()
                 );
+                for influence in view.damage_influences.iter().filter(|influence| {
+                    influence.effect_id == "3003052"
+                        && influence.attribution_component.as_deref()
+                            == Some("harmony-grace-remote-paired-output")
+                }) {
+                    eprintln!(
+                        "remote_harmony provider={} recipient={} ability={:?} target={:?} events={} observed_damage={} exact_delta={} attributed_rdps={:?}",
+                        influence.provider_actor_id,
+                        influence.recipient_actor_id,
+                        influence.affected_ability_id,
+                        influence.target_actor_id,
+                        influence.damage_event_count,
+                        influence.observed_damage,
+                        influence.exact_integer_delta,
+                        influence.attributed_rdps,
+                    );
+                }
                 if view.id == "all" {
                     for actor in view.actors.iter().filter(|actor| {
                         actor.damage > 0 && actor.actor_kind.as_deref() == Some("player")
@@ -9705,6 +9785,57 @@ mod tests {
         eprintln!(
             "formula_identity={}",
             refreshed.rdps_formula_identity.as_deref().unwrap()
+        );
+        let history_remote_harmony = refreshed
+            .runs
+            .iter()
+            .flat_map(|run| run.views.iter())
+            .filter(|view| view.id == "all")
+            .flat_map(|view| view.damage_influences.iter())
+            .filter(|influence| {
+                influence.effect_id == "3003052"
+                    && influence.attribution_component.as_deref()
+                        == Some("harmony-grace-remote-paired-output")
+            })
+            .map(|influence| {
+                influence
+                    .attributed_rdps
+                    .as_deref()
+                    .unwrap_or("0")
+                    .parse::<i128>()
+                    .expect("history remote Harmony amount should be exact")
+            })
+            .sum::<i128>();
+        let live_remote_harmony = live_projection
+            .runs
+            .iter()
+            .flat_map(|run| run.views.iter())
+            .find(|view| view.id == "all")
+            .expect("live replay should include the all view")
+            .damage_influences
+            .iter()
+            .filter(|influence| {
+                influence.effect_id == "3003052"
+                    && influence.attribution_component.as_deref()
+                        == Some("harmony-grace-remote-paired-output")
+            })
+            .map(|influence| {
+                influence
+                    .attributed_rdps
+                    .as_deref()
+                    .unwrap_or("0")
+                    .parse::<i128>()
+                    .expect("live remote Harmony amount should be exact")
+            })
+            .sum::<i128>();
+        eprintln!("live_one_pass_remote_harmony={live_remote_harmony}");
+        assert!(
+            live_remote_harmony > 0,
+            "the live projector should attribute at least one proven remote Harmony row"
+        );
+        assert_eq!(
+            live_remote_harmony, history_remote_harmony,
+            "one-pass live and sealed two-pass history must transfer the same remote Harmony amount"
         );
     }
 

@@ -244,6 +244,19 @@ mod tests {
     }
 
     #[test]
+    fn fatal_spiral_controlled_pair_action_selects_its_exact_stage() {
+        assert_eq!(
+            select_damage_stage(1_262, Some(5), None, None, Some(30)),
+            Some(SelectedDamageStage {
+                damage_attr_id: 112_620_105,
+                offensive_stat: OffensiveStatKind::MagicalAttack,
+                coefficient_basis_points: 7_333,
+                fixed_parameter: 540,
+            })
+        );
+    }
+
+    #[test]
     fn missing_packet_level_or_out_of_range_stage_never_guesses() {
         assert_eq!(
             select_damage_stage(2_203_291, Some(7), None, Some(1), None),

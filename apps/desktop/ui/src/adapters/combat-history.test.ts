@@ -278,6 +278,74 @@ describe("combat history contracts", () => {
     expect(view.damage_influences).toEqual([]);
   });
 
+  it("keeps the last validated remote attribution visible while history refreshes", () => {
+    const snapshot = parseCombatHistorySnapshot({
+      schema_version: 1,
+      session_id: "refreshing-run",
+      deployment_id: "global",
+      region_id: "north-america",
+      world_id: "asteria",
+      client_build: "24687926",
+      protocol_pack_digest: "sha256:test",
+      rdps_formula_identity: "sha256:previous-validated-formula",
+      runs: [{
+        run_index: 0,
+        rdps_status:
+          "formula_refresh_queued: recalculating archived rDPS in the background",
+        views: [{
+          id: "all",
+          label: "Entire run",
+          elapsed_micros: 10_000_000,
+          active_combat_micros: 10_000_000,
+          actors: [{
+            actor_id: "31",
+            damage: 10_000,
+            rdps: 950,
+            rdps_damage: 9_500,
+            rdps_contribution_given: 0,
+            rdps_contribution_received: 500,
+          }],
+          targets: [],
+          damage_influences: [{
+            effect_id: "2302121",
+            attribution_component: "team-luck-critical-damage",
+            provider_actor_id: "30",
+            provider_entity_uuid: "1",
+            recipient_actor_id: "31",
+            recipient_entity_uuid: "2",
+            affected_ability_id: "1222",
+            target_actor_id: "41",
+            target_entity_uuid: "3",
+            first_observed_micros: 1,
+            last_observed_micros: 2,
+            damage_event_count: 1,
+            observed_damage: "10000",
+            exact_integer_delta: "500",
+            exact_rational_deltas: [],
+            attributed_rdps: "500",
+            damage_context_complete: true,
+          }],
+        }],
+      }],
+    });
+
+    const view = snapshot.runs[0]!.views[0]!;
+    expect(view.actors[0]).toMatchObject({
+      damage: 10_000,
+      rdps: 950,
+      rdps_damage: 9_500,
+      rdps_contribution_given: 0,
+      rdps_contribution_received: 500,
+    });
+    expect(view.damage_influences).toHaveLength(1);
+    expect(view.damage_influences[0]).toMatchObject({
+      provider_actor_id: "30",
+      recipient_actor_id: "31",
+      affected_ability_id: "1222",
+      attributed_rdps: "500",
+    });
+  });
+
   it("validates a safe bulk-deletion result", () => {
     const result = parseCombatHistoryDeleteResult({
       requested_count: 3,

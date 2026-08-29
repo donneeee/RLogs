@@ -828,6 +828,7 @@ impl FixedPointFamilyRuntimeConfig {
 #[serde(deny_unknown_fields)]
 pub(crate) struct HighlandBloodRuntimeConfig {
     pub effect_id: i64,
+    pub provider_imagine_ability_id: i64,
     pub provider_marker_effect_id: i64,
     pub companion_lockout_effect_id: i64,
     pub all_element_family: FixedPointFamilyRuntimeConfig,
@@ -837,6 +838,10 @@ pub(crate) struct HighlandBloodRuntimeConfig {
     pub excluded_provider_owned_damage_ids: Vec<i64>,
     pub requires_recipient_packet_transition: bool,
     pub runtime_transfer_enabled: bool,
+    pub remote_paired_output_runtime_transfer_enabled: bool,
+    pub remote_paired_output_ignored_effect_ids: Vec<i64>,
+    pub remote_paired_output_max_pair_gap_micros: u64,
+    pub remote_paired_output_min_distinct_targets: u16,
 }
 
 #[derive(Debug, Deserialize)]
@@ -897,6 +902,9 @@ impl RdpsRuntimeConfig {
             || self.team_luck.lucky_damage_runtime_transfer_enabled
             || self.mechanical_power.runtime_transfer_enabled
             || self.harmony_grace.runtime_transfer_enabled
+            || self
+                .highland_blood
+                .remote_paired_output_runtime_transfer_enabled
             || self.inspiration.critical_chance_runtime_transfer_enabled
             || self.inspiration.lucky_chance_runtime_transfer_enabled
     }
@@ -918,6 +926,10 @@ impl RdpsRuntimeConfig {
                 && self.mechanical_power.runtime_transfer_enabled)
             || (effect_id == self.harmony_grace.effect_id
                 && self.harmony_grace.runtime_transfer_enabled)
+            || (effect_id == self.highland_blood.effect_id
+                && self
+                    .highland_blood
+                    .remote_paired_output_runtime_transfer_enabled)
             || (effect_id == self.inspiration.effect_id
                 && (self.inspiration.critical_chance_runtime_transfer_enabled
                     || self.inspiration.lucky_chance_runtime_transfer_enabled))
@@ -1466,6 +1478,7 @@ impl RdpsRuntimeConfig {
             || highland.duration_millis == 0
             || highland.lockout_duration_millis <= highland.duration_millis
             || highland.packet_proven_raw_deltas != [600, 700, 800, 900, 1_000]
+            || highland.provider_imagine_ability_id != 3_957
             || highland.excluded_provider_owned_damage_ids.is_empty()
             || highland
                 .excluded_provider_owned_damage_ids
@@ -1480,6 +1493,10 @@ impl RdpsRuntimeConfig {
                 })
             || !highland.requires_recipient_packet_transition
             || highland.runtime_transfer_enabled
+            || !highland.remote_paired_output_runtime_transfer_enabled
+            || highland.remote_paired_output_ignored_effect_ids != [55_301, 55_304]
+            || highland.remote_paired_output_max_pair_gap_micros != 30_000_000
+            || highland.remote_paired_output_min_distinct_targets != 2
         {
             return Err(
                 "bundled BPSR Highland Blood formula is not ready for runtime transfer".into(),

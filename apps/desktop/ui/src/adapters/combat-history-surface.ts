@@ -32,7 +32,7 @@ export type GraphMetric = "damage" | "effective_healing" | "damage_taken";
 type HistorySort = "newest" | "oldest" | "fastest" | "team_dps" | "team_edps";
 type PartySortKey = HistoryPartyColumnId;
 type PartySortDirection = "ascending" | "descending";
-type AbilitySortKey = "ability" | "damage" | "hits" | "casts" | "criticals" | "dps" | "encounterDps" | "healing" | "effectiveHealing" | "shielding" | "hps";
+type AbilitySortKey = "ability" | "damage" | "rdmgReceived" | "rdpsReceived" | "hits" | "casts" | "criticals" | "dps" | "encounterDps" | "healing" | "effectiveHealing" | "shielding" | "hps";
 type AbilitySortDirection = "ascending" | "descending";
 const HISTORY_PAGE_SIZE = 50;
 
@@ -55,8 +55,8 @@ const PARTY_SORT_COLUMNS: ReadonlyArray<{
   { key: "hps", label: "HPS", numeric: true },
   { key: "tps", label: "TPS", numeric: true },
   { key: "rdps", label: "rDPS", numeric: true },
-  { key: "rdpsGiven", label: "rDPS granted", numeric: true },
-  { key: "rdpsReceived", label: "rDPS received", numeric: true },
+  { key: "rdpsGiven", label: "rDMG granted", numeric: true },
+  { key: "rdpsReceived", label: "rDMG received", numeric: true },
   { key: "apm", label: "APM", numeric: true },
   { key: "deaths", label: "Deaths", numeric: true },
 ];
@@ -68,6 +68,8 @@ const ABILITY_SORT_COLUMNS: ReadonlyArray<{
 }> = [
   { key: "ability", label: "Ability", numeric: false },
   { key: "damage", label: "Damage", numeric: true },
+  { key: "rdmgReceived", label: "rDMG gained", numeric: true },
+  { key: "rdpsReceived", label: "rDPS gained", numeric: true },
   { key: "hits", label: "Hits", numeric: true },
   { key: "casts", label: "Casts", numeric: true },
   { key: "criticals", label: "Crits", numeric: true },
@@ -460,6 +462,7 @@ export function mountCombatHistorySurface(
   let abilitySortKey: AbilitySortKey = "damage";
   let abilitySortDirection: AbilitySortDirection = "descending";
   let influenceQuery = "";
+  let expandedInfluenceActorId: string | null = null;
   let collapsedRecountGroups = new Set<string>();
   let loadInFlight: Promise<void> | null = null;
   let reloadAfterCurrent = false;
@@ -1637,11 +1640,11 @@ export function mountCombatHistorySurface(
       [rdpsDisplay(actor.rdps, false, actor.rdps_incomplete), "rDPS"],
       [
         rdpsDisplay(actor.rdps_contribution_given, true, actor.rdps_incomplete),
-        "rDPS granted",
+        "rDMG granted",
       ],
       [
         rdpsDisplay(actor.rdps_contribution_received, true, actor.rdps_incomplete),
-        "rDPS received",
+        "rDMG received",
       ],
       [NUMBER.format(actorMetrics.hps), "HPS"],
       [NUMBER.format(actorMetrics.tps), "TPS"],
@@ -1714,8 +1717,19 @@ export function mountCombatHistorySurface(
       heading.append(cell);
     }
     head.append(heading);
+    const rdpsBreakdown = actorRdpsBreakdown(view, actor.actor_id, targetActorId);
+    const rdpsByAbilityId = new Map(
+      rdpsBreakdown.receivedSkills.flatMap((skill) =>
+        skill.abilityId === null ? [] : [[skill.abilityId, skill] as const]
+      ),
+    );
     const displayedAbilities = actor.abilities
-      .map((ability) => displayedAbility(ability, view, targetActorId));
+      .map((ability) => displayedAbility(
+        ability,
+        view,
+        targetActorId,
+        rdpsByAbilityId.get(ability.ability_id),
+      ));
     const abilities = groupDisplayedAbilities(
       displayedAbilities,
       abilitySortKey,
@@ -1785,6 +1799,8 @@ export function mountCombatHistorySurface(
         switch (column.key) {
           case "ability": row.append(presentationCell); break;
           case "damage": row.append(numeric(ability.damage, true)); break;
+          case "rdmgReceived": row.append(relativeDamageSkillCell(ability, view, "damage")); break;
+          case "rdpsReceived": row.append(relativeDamageSkillCell(ability, view, "rate")); break;
           case "hits": row.append(numeric(ability.hits, true)); break;
           case "casts": row.append(numeric(ability.casts, true)); break;
           case "criticals": row.append(numeric(ability.criticals, true)); break;
@@ -1802,10 +1818,10 @@ export function mountCombatHistorySurface(
     scroller.append(table);
     card.append(scroller);
 
-    const rdpsBreakdown = renderRdpsBreakdown(view, actor);
+    const rdpsSummary = renderRdpsBreakdown(view, actor);
     const influences = renderDamageInfluences(view, actor);
     const effects = renderEffects(actor);
-    dialog.append(dialogHeader, overview, card, rdpsBreakdown, influences, effects);
+    dialog.append(dialogHeader, overview, card, rdpsSummary, influences, effects);
     const pendingFeatures: string[] = [];
     const rdpsStatus = describeRdpsStatus(run.rdps_status);
     if (rdpsStatus.historyMessage !== null) {
@@ -1943,7 +1959,7 @@ export function mountCombatHistorySurface(
       element(
         "div",
         "card-heading",
-        element("h2", "", "rDPS breakdown"),
+        element("h2", "", "Relative damage sources"),
         element(
           "span",
           "",
@@ -1966,90 +1982,13 @@ export function mountCombatHistorySurface(
     }
 
     if (breakdown.receivedSkills.length > 0) {
-      const section = element("section", "combat-history-rdps-summary-section");
-      section.append(
-        element("h3", "", "Received by damage skill"),
+      card.append(
         element(
           "p",
           "card-copy",
-          "Each row is rDPS removed from this player's total and credited to the listed support source. Ordinary damage is unchanged.",
+          "Received rDMG and rDPS are nested into the normal skill table. Hover either value to see the contributing players, effects, components, and event totals.",
         ),
       );
-      const scroller = element("div", "meter-table-scroll");
-      const table = document.createElement("table");
-      table.className = "meter-table combat-history-rdps-summary-table";
-      const head = document.createElement("thead");
-      const heading = document.createElement("tr");
-      for (const label of ["Damage skill", "rDPS received", "Events", "Sources"]) {
-        const cell = document.createElement("th");
-        if (["rDPS received", "Events"].includes(label)) cell.className = "meter-number";
-        cell.textContent = label;
-        heading.append(cell);
-      }
-      head.append(heading);
-      const body = document.createElement("tbody");
-      for (const skill of breakdown.receivedSkills) {
-        const ability = actor.abilities.find(
-          (candidate) => candidate.ability_id === skill.abilityId,
-        );
-        const row = document.createElement("tr");
-        const abilityCell = document.createElement("td");
-        if (skill.abilityId !== null) {
-          abilityCell.append(
-            combatPresentationIdentity(
-              skill.abilityId,
-              ability?.presentation_name ?? null,
-              ability?.presentation_kind ?? null,
-              ability?.presentation_resolution ?? null,
-              ability?.icon_asset_path ?? null,
-              "ability",
-            ),
-          );
-        } else {
-          abilityCell.textContent = "Damage skill unresolved";
-          abilityCell.dataset.contextComplete = "false";
-        }
-        const sourceCell = document.createElement("td");
-        sourceCell.className = "combat-history-rdps-sources";
-        for (const source of skill.sources) {
-          const provider = view.actors.find(
-            (candidate) => candidate.actor_id === source.providerActorId,
-          );
-          const effect = view.actors
-            .flatMap((candidate) => candidate.effects)
-            .find((candidate) => candidate.effect_id === source.effectId);
-          const providerName = provider ? actorLabel(provider) : `Actor ${source.providerActorId}`;
-          const providerUid = provider?.character_id ? ` · UID ${provider.character_id}` : "";
-          const effectName = effect?.presentation_name?.trim() || `Effect ${source.effectId}`;
-          const component = source.attributionComponent
-            ? ` · ${attributionComponentLabel(source.attributionComponent)}`
-            : "";
-          const amount = source.attributedRdps === null
-            ? "Unresolved"
-            : formatExactInteger(source.attributedRdps);
-          const unresolved = source.unresolvedRelationshipCount > 0
-            ? ` · ${source.unresolvedRelationshipCount} unresolved relationship${source.unresolvedRelationshipCount === 1 ? "" : "s"}`
-            : "";
-          sourceCell.append(
-            element(
-              "div",
-              "combat-history-rdps-source",
-              `${providerName}${providerUid} · ${effectName} (${source.effectId})${component}: ${amount}${unresolved}`,
-            ),
-          );
-        }
-        row.append(
-          abilityCell,
-          rdpsSummaryExactCell(skill.attributedRdps, skill.unresolvedRelationshipCount),
-          numeric(skill.damageEventCount, true),
-          sourceCell,
-        );
-        body.append(row);
-      }
-      table.append(head, body);
-      scroller.append(table);
-      section.append(scroller);
-      card.append(section);
     }
 
     if (breakdown.grantedEffects.length > 0) {
@@ -2059,7 +1998,7 @@ export function mountCombatHistorySurface(
         element(
           "p",
           "card-copy",
-          "Outgoing rDPS is grouped by the support effect that earned the credit.",
+          "Outgoing relative damage is grouped by the support effect that earned the credit.",
         ),
       );
       const scroller = element("div", "meter-table-scroll");
@@ -2067,9 +2006,9 @@ export function mountCombatHistorySurface(
       table.className = "meter-table combat-history-rdps-summary-table";
       const head = document.createElement("thead");
       const heading = document.createElement("tr");
-      for (const label of ["Support effect", "Component", "rDPS granted", "Events"]) {
+      for (const label of ["Support effect", "Component", "rDMG granted", "rDPS granted", "Events"]) {
         const cell = document.createElement("th");
-        if (["rDPS granted", "Events"].includes(label)) cell.className = "meter-number";
+        if (["rDMG granted", "rDPS granted", "Events"].includes(label)) cell.className = "meter-number";
         cell.textContent = label;
         heading.append(cell);
       }
@@ -2099,6 +2038,7 @@ export function mountCombatHistorySurface(
               : "Complete effect",
           ),
           rdpsSummaryExactCell(granted.attributedRdps, granted.unresolvedRelationshipCount),
+          relativeDamageRateCell(granted.attributedRdps, view.elapsed_micros),
           numeric(granted.damageEventCount, true),
         );
         body.append(row);
@@ -2115,7 +2055,9 @@ export function mountCombatHistorySurface(
     view: CombatHistoryView,
     actor: HistoryActorSummary,
   ): HTMLElement => {
-    const card = element("section", "content-card combat-history-influence-card");
+    const card = document.createElement("details");
+    card.className = "content-card combat-history-influence-card";
+    card.open = expandedInfluenceActorId === actor.actor_id;
     const actorInfluences = (view.damage_influences ?? []).filter((influence) =>
       (influence.provider_actor_id === actor.actor_id ||
         influence.recipient_actor_id === actor.actor_id) &&
@@ -2126,9 +2068,9 @@ export function mountCombatHistorySurface(
     );
     card.append(
       element(
-        "div",
-        "card-heading",
-        element("h2", "", "Damage influences"),
+        "summary",
+        "card-heading combat-history-influence-summary",
+        element("h2", "", "Exact influence audit ledger"),
         element(
           "span",
           "",
@@ -2138,6 +2080,13 @@ export function mountCombatHistorySurface(
         ),
       ),
     );
+    card.addEventListener("toggle", () => {
+      const next = card.open ? actor.actor_id : null;
+      if (expandedInfluenceActorId === next) return;
+      expandedInfluenceActorId = next;
+      render();
+    });
+    if (!card.open) return card;
     const toolbar = element("div", "combat-history-influence-toolbar");
     const search = document.createElement("input");
     search.type = "search";
@@ -2183,10 +2132,10 @@ export function mountCombatHistorySurface(
       "Target",
       "Events",
       "Observed damage",
-      "Attributed rDPS",
+      "Attributed rDMG",
     ]) {
       const cell = document.createElement("th");
-      if (["Events", "Observed damage", "Attributed rDPS"].includes(label)) {
+      if (["Events", "Observed damage", "Attributed rDMG"].includes(label)) {
         cell.className = "meter-number";
       }
       cell.textContent = label;
@@ -2498,7 +2447,23 @@ function displayedAbility(
   ability: HistoryAbilitySummary,
   view: CombatHistoryView,
   targetActorId: string | null,
+  rdps?: RdpsReceivedSkillSummary,
 ) {
+  const receivedRdmgExact = rdps?.attributedRdps ?? null;
+  const receivedRdmg = receivedRdmgExact === null ? null : Number(receivedRdmgExact);
+  const relativeDamage = {
+    receivedRdmgExact,
+    receivedRdmg: receivedRdmg !== null && Number.isFinite(receivedRdmg)
+      ? receivedRdmg
+      : null,
+    receivedRdps: receivedRdmg !== null && Number.isFinite(receivedRdmg)
+      ? perSecond(receivedRdmg, view.elapsed_micros)
+      : null,
+    rdpsSources: rdps?.sources ?? [],
+    rdpsDamageEventCount: rdps?.damageEventCount ?? 0,
+    rdpsUnresolvedRelationshipCount: rdps?.unresolvedRelationshipCount ?? 0,
+    hasRdpsRelationship: rdps !== undefined,
+  };
   if (targetActorId === null) {
     return {
       abilityId: ability.ability_id,
@@ -2518,6 +2483,7 @@ function displayedAbility(
       effectiveHealing: ability.effective_healing,
       shielding: ability.shielding,
       hps: ability.hps,
+      ...relativeDamage,
     };
   }
   const target = ability.targets.find((target) => target.actor_id === targetActorId);
@@ -2543,10 +2509,76 @@ function displayedAbility(
     effectiveHealing,
     shielding,
     hps: perSecond(effectiveHealing, view.elapsed_micros),
+    ...relativeDamage,
   };
 }
 
 export type DisplayedAbility = ReturnType<typeof displayedAbility>;
+
+function sumExactRelativeDamage(
+  abilities: readonly DisplayedAbility[],
+): string | null {
+  const values = abilities.flatMap((ability) =>
+    ability.receivedRdmgExact === null ? [] : [BigInt(ability.receivedRdmgExact)]
+  );
+  return values.length === 0
+    ? null
+    : values.reduce((sum, value) => sum + value, 0n).toString();
+}
+
+function combineRelativeDamageSources(
+  abilities: readonly DisplayedAbility[],
+): RdpsReceivedSourceSummary[] {
+  type SourceAccumulator = RdpsReceivedSourceSummary & {
+    exactTotal: bigint;
+    hasExact: boolean;
+  };
+  const combined = new Map<string, SourceAccumulator>();
+  for (const ability of abilities) {
+    for (const source of ability.rdpsSources) {
+      const key = [
+        source.providerActorId,
+        source.providerEntityUuid,
+        source.effectId,
+        source.attributionComponent ?? "",
+      ].join("\u001f");
+      let accumulator = combined.get(key);
+      if (!accumulator) {
+        accumulator = {
+          ...source,
+          attributedRdps: null,
+          damageEventCount: 0,
+          unresolvedRelationshipCount: 0,
+          exactTotal: 0n,
+          hasExact: false,
+        };
+        combined.set(key, accumulator);
+      }
+      accumulator.damageEventCount += source.damageEventCount;
+      accumulator.unresolvedRelationshipCount += source.unresolvedRelationshipCount;
+      if (source.attributedRdps !== null) {
+        accumulator.exactTotal += BigInt(source.attributedRdps);
+        accumulator.hasExact = true;
+      }
+    }
+  }
+  return [...combined.values()]
+    .sort((left, right) => {
+      if (left.hasExact !== right.hasExact) return left.hasExact ? -1 : 1;
+      if (left.exactTotal !== right.exactTotal) {
+        return left.exactTotal > right.exactTotal ? -1 : 1;
+      }
+      return left.providerActorId.localeCompare(
+        right.providerActorId,
+        undefined,
+        { numeric: true },
+      );
+    })
+    .map(({ exactTotal, hasExact, ...source }) => ({
+      ...source,
+      attributedRdps: hasExact ? exactTotal.toString() : null,
+    }));
+}
 
 export interface DisplayedAbilityRow {
   ability: DisplayedAbility;
@@ -2561,8 +2593,17 @@ function recountParentAbility(
 ): DisplayedAbility {
   const total = (select: (ability: DisplayedAbility) => number) =>
     children.reduce((sum, ability) => sum + select(ability), 0);
+  const totalNullable = (select: (ability: DisplayedAbility) => number | null) => {
+    const values = children.flatMap((ability) => {
+      const value = select(ability);
+      return value === null ? [] : [value];
+    });
+    return values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0);
+  };
   const groupName = children.find((ability) => ability.recountGroupName?.trim())
     ?.recountGroupName?.trim() ?? null;
+  const receivedRdmgExact = sumExactRelativeDamage(children);
+  const receivedRdmg = receivedRdmgExact === null ? null : Number(receivedRdmgExact);
   return {
     abilityId: groupId,
     presentationName: groupName ?? `Recount group ${groupId}`,
@@ -2581,6 +2622,17 @@ function recountParentAbility(
     effectiveHealing: total((ability) => ability.effectiveHealing),
     shielding: total((ability) => ability.shielding),
     hps: total((ability) => ability.hps),
+    receivedRdmgExact,
+    receivedRdmg: receivedRdmg !== null && Number.isFinite(receivedRdmg)
+      ? receivedRdmg
+      : null,
+    receivedRdps: totalNullable((ability) => ability.receivedRdps),
+    rdpsSources: combineRelativeDamageSources(children),
+    rdpsDamageEventCount: total((ability) => ability.rdpsDamageEventCount),
+    rdpsUnresolvedRelationshipCount: total(
+      (ability) => ability.rdpsUnresolvedRelationshipCount,
+    ),
+    hasRdpsRelationship: children.some((ability) => ability.hasRdpsRelationship),
   };
 }
 
@@ -2646,6 +2698,8 @@ function abilitySortValue(
   switch (key) {
     case "ability": return ability.presentationName?.trim() || ability.abilityId;
     case "damage": return ability.damage;
+    case "rdmgReceived": return ability.receivedRdmg;
+    case "rdpsReceived": return ability.receivedRdps;
     case "hits": return ability.hits;
     case "casts": return ability.casts;
     case "criticals": return ability.criticals;
@@ -3801,6 +3855,70 @@ function rdpsDisplay(value: number | null, integer: boolean, incomplete: boolean
   return incomplete ? `≈${formatted}` : formatted;
 }
 
+function relativeDamageSkillCell(
+  ability: DisplayedAbility,
+  view: CombatHistoryView,
+  metric: "damage" | "rate",
+): HTMLTableCellElement {
+  const cell = document.createElement("td");
+  cell.className = "meter-number combat-history-relative-damage-cell";
+  if (!ability.hasRdpsRelationship) {
+    cell.textContent = "—";
+    cell.title = "No conserved rDPS relationship has been calculated for this skill.";
+    return cell;
+  }
+  if (ability.receivedRdmgExact === null) {
+    cell.textContent = "Unresolved";
+    cell.title = "A support relationship was observed, but its exact relative damage is unresolved.";
+    return cell;
+  }
+
+  cell.textContent = metric === "damage"
+    ? formatExactInteger(ability.receivedRdmgExact)
+    : ability.receivedRdps === null ? "Unresolved" : NUMBER.format(ability.receivedRdps);
+  const totalRate = ability.receivedRdps === null
+    ? "Unresolved"
+    : NUMBER.format(ability.receivedRdps);
+  const lines = [
+    `rDMG gained: ${formatExactInteger(ability.receivedRdmgExact)}`,
+    `rDPS gained: ${totalRate}`,
+    `${INTEGER.format(ability.rdpsDamageEventCount)} attributed damage event${ability.rdpsDamageEventCount === 1 ? "" : "s"}`,
+  ];
+  for (const source of ability.rdpsSources) {
+    const provider = view.actors.find(
+      (candidate) => candidate.actor_id === source.providerActorId,
+    );
+    const effect = view.actors
+      .flatMap((candidate) => candidate.effects)
+      .find((candidate) => candidate.effect_id === source.effectId);
+    const providerName = provider ? actorLabel(provider) : `Actor ${source.providerActorId}`;
+    const effectName = effect?.presentation_name?.trim() || `Effect ${source.effectId}`;
+    const component = source.attributionComponent
+      ? ` · ${attributionComponentLabel(source.attributionComponent)}`
+      : "";
+    const sourceDamage = source.attributedRdps === null
+      ? "Unresolved"
+      : formatExactInteger(source.attributedRdps);
+    const sourceDamageNumber = source.attributedRdps === null
+      ? null
+      : Number(source.attributedRdps);
+    const sourceRate = sourceDamageNumber === null || !Number.isFinite(sourceDamageNumber)
+      ? "Unresolved"
+      : NUMBER.format(perSecond(sourceDamageNumber, view.elapsed_micros));
+    lines.push(
+      `${providerName} → ${effectName} (${source.effectId})${component}: ${sourceDamage} rDMG · ${sourceRate} rDPS · ${INTEGER.format(source.damageEventCount)} events`,
+    );
+  }
+  if (ability.rdpsUnresolvedRelationshipCount > 0) {
+    lines.push(
+      `${INTEGER.format(ability.rdpsUnresolvedRelationshipCount)} additional relationship${ability.rdpsUnresolvedRelationshipCount === 1 ? " is" : "s are"} unresolved`,
+    );
+  }
+  cell.title = lines.join("\n");
+  cell.setAttribute("aria-label", lines.join(". "));
+  return cell;
+}
+
 function percentageCell(value: number | null): HTMLTableCellElement {
   const cell = document.createElement("td");
   cell.className = "meter-number";
@@ -3840,6 +3958,28 @@ function rdpsSummaryExactCell(
   return cell;
 }
 
+function relativeDamageRateCell(
+  attributedDamage: string | null,
+  elapsedMicros: number,
+): HTMLTableCellElement {
+  const cell = document.createElement("td");
+  cell.className = "meter-number";
+  if (attributedDamage === null) {
+    cell.textContent = "Unresolved";
+    return cell;
+  }
+  const damage = Number(attributedDamage);
+  if (!Number.isFinite(damage)) {
+    cell.textContent = "Unresolved";
+    cell.title = "The exact rDMG is retained, but its display rate exceeds the numeric UI range.";
+    return cell;
+  }
+  const rate = perSecond(damage, elapsedMicros);
+  cell.textContent = NUMBER.format(rate);
+  cell.title = `${attributedDamage} rDMG over ${formatDuration(elapsedMicros)} = ${rate} rDPS`;
+  return cell;
+}
+
 function attributionComponentLabel(value: string): string {
   return value
     .split("-")
@@ -3871,7 +4011,7 @@ function exactInfluenceCell(
   cell.title = [
     attributedRdps === null
       ? "No conserved integer allocation is available for this row"
-      : `conserved integer attribution ${attributedRdps}`,
+      : `conserved integer rDMG attribution ${attributedRdps}`,
     integerDelta !== "0" ? `integer ${integerDelta}` : null,
     ...rationalDeltas.map((term) =>
       `rational ${term.numerator}/${term.denominator} across ${term.contribution_count} event${term.contribution_count === 1 ? "" : "s"}`
