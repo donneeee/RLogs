@@ -356,9 +356,50 @@ struct ActiveValidationStatusWindow {
     obligations: Vec<usize>,
     dreamscope_effect_id: Option<i64>,
     provider_actor: Option<u64>,
+    /// Canonical observation point for the apply/refresh/stack transition
+    /// which opened this exact window. Damage observed at the same timestamp
+    /// cannot be ordered against that transition and therefore remains
+    /// unresolved rather than being assigned to the window.
+    opened_sequence: u64,
+    opened_observed_micros: u64,
+    /// Packet-carried duration for this exact transition. `None` remains an
+    /// unbounded/unknown window until an explicit terminal event; it is never
+    /// replaced with a catalog or guessed duration.
+    duration_millis: Option<u64>,
     /// Exact current stack count carried by the canonical status lifecycle.
     /// `None` is retained as unknown evidence and must never be guessed.
     current_stacks: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ValidationStatusWindowMembership {
+    Proven,
+    UnresolvedOrder,
+    Expired,
+}
+
+fn validation_status_window_membership(
+    window: &ActiveValidationStatusWindow,
+    damage_sequence: u64,
+    damage_observed_micros: u64,
+) -> ValidationStatusWindowMembership {
+    if damage_observed_micros >= window.opened_observed_micros {
+        let elapsed_micros = damage_observed_micros - window.opened_observed_micros;
+        if window.duration_millis.is_some_and(|duration_millis| {
+            u128::from(elapsed_micros) >= u128::from(duration_millis) * 1_000
+        }) {
+            return ValidationStatusWindowMembership::Expired;
+        }
+    }
+    // Sequence order is a canonical serialization fact, not server operation
+    // order. Require both a later sequence and a later observation timestamp;
+    // equal-time rows remain available as unresolved evidence.
+    if damage_sequence <= window.opened_sequence
+        || damage_observed_micros <= window.opened_observed_micros
+    {
+        return ValidationStatusWindowMembership::UnresolvedOrder;
+    }
+    ValidationStatusWindowMembership::Proven
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -687,8 +728,11 @@ struct ObligationState {
     direct_damage: i128,
     recipient_window_damage_events: u64,
     recipient_window_damage: i128,
+    unresolved_recipient_window_damage_events: u64,
     target_window_damage_events: u64,
     target_window_damage: i128,
+    unresolved_target_window_damage_events: u64,
+    expired_status_windows: u64,
     single_provider_window_damage_events: u64,
     single_provider_window_damage: i128,
     ambiguous_provider_window_damage_events: u64,
@@ -727,12 +771,18 @@ struct DreamscopeTerminalEffectState {
     maximum_concurrent_instances: u32,
     maximum_concurrent_providers: u32,
     ambiguous_status_removals: u64,
+    /// Active windows whose apply/refresh packet carried no duration and
+    /// which have not yet received a matching terminal/refresh boundary.
+    open_unbounded_status_windows: u64,
     recipient_window_damage_events: u64,
     recipient_window_damage: i128,
+    unresolved_recipient_window_damage_events: u64,
     external_provider_window_damage_events: u64,
     external_provider_window_damage: i128,
     target_window_damage_events: u64,
     target_window_damage: i128,
+    unresolved_target_window_damage_events: u64,
+    expired_status_windows: u64,
     single_provider_window_damage_events: u64,
     single_provider_window_damage: i128,
     ambiguous_provider_window_damage_events: u64,
@@ -799,19 +849,36 @@ fn dreamscope_remote_calculation_readiness(
             .source_observations
             .keys()
             .all(|source| source.provider_actor_id.is_some());
-    let lifecycle_exact = state.ambiguous_status_removals == 0
-        && ["applied", "refreshed", "stacked"]
-            .iter()
-            .any(|state_name| state.status_states.contains_key(*state_name))
-        && ["removed", "consumed"]
-            .iter()
-            .any(|state_name| state.status_states.contains_key(*state_name));
     let promoted_scalar_resolution = match promoted_remote_effect_magnitude_model(effect_id) {
         Ok(Some(PromotedRemoteEffectMagnitudeModel::CounterfactualReplay)) => {
             RdpsValidationRemoteScalarResolution::CounterfactualReplay
         }
         Ok(None) | Err(_) => RdpsValidationRemoteScalarResolution::Unresolved,
     };
+    let requires_recipient_damage_lane = matches!(
+        promoted_scalar_resolution,
+        RdpsValidationRemoteScalarResolution::CounterfactualReplay
+    );
+    let has_recipient_window_evidence = state.recipient_window_damage_events > 0
+        || state.unresolved_recipient_window_damage_events > 0;
+    let has_target_window_evidence =
+        state.target_window_damage_events > 0 || state.unresolved_target_window_damage_events > 0;
+    let recipient_window_lifecycle_exact = has_recipient_window_evidence
+        && state.unresolved_recipient_window_damage_events == 0
+        && state.ambiguous_status_removals == 0
+        && state.open_unbounded_status_windows == 0;
+    let target_window_lifecycle_exact = has_target_window_evidence
+        && state.unresolved_target_window_damage_events == 0
+        && state.ambiguous_status_removals == 0
+        && state.open_unbounded_status_windows == 0;
+    // Lifecycle readiness is damage-lane scoped. A terminal observed
+    // elsewhere for the same numeric effect is not proof that a recipient or
+    // target damage row belonged to the effect window. Every observed lane
+    // must have at least one retained row and no unresolved membership.
+    let lifecycle_exact = (!requires_recipient_damage_lane || recipient_window_lifecycle_exact)
+        && (has_recipient_window_evidence || has_target_window_evidence)
+        && (!has_recipient_window_evidence || recipient_window_lifecycle_exact)
+        && (!has_target_window_evidence || target_window_lifecycle_exact);
     let scalar_resolution =
         strongest_remote_scalar_resolution(state.scalar_resolution, promoted_scalar_resolution);
     let scalar_exact = scalar_resolution != RdpsValidationRemoteScalarResolution::Unresolved;
@@ -828,7 +895,17 @@ fn dreamscope_remote_calculation_readiness(
             blockers.push("exact_provider_recipient".to_owned());
         }
         if !lifecycle_exact {
-            blockers.push("exact_status_lifecycle".to_owned());
+            if (requires_recipient_damage_lane || has_recipient_window_evidence)
+                && !recipient_window_lifecycle_exact
+            {
+                blockers.push("exact_recipient_window_lifecycle".to_owned());
+            }
+            if has_target_window_evidence && !target_window_lifecycle_exact {
+                blockers.push("exact_target_window_lifecycle".to_owned());
+            }
+            if !has_recipient_window_evidence && !has_target_window_evidence {
+                blockers.push("exact_status_window_membership".to_owned());
+            }
         }
         if !scalar_exact {
             blockers.push("runtime_applied_magnitude".to_owned());
@@ -844,6 +921,8 @@ fn dreamscope_remote_calculation_readiness(
         external_attribution_candidate,
         route_exact,
         provider_recipient_exact,
+        recipient_window_lifecycle_exact,
+        target_window_lifecycle_exact,
         lifecycle_exact,
         scalar_resolution,
         calculation_ready: external_attribution_candidate && blockers.is_empty(),
@@ -979,6 +1058,8 @@ fn remote_rdps_readiness_ledger(
             external_attribution_candidate: readiness.external_attribution_candidate,
             route_exact: readiness.route_exact,
             provider_recipient_exact: readiness.provider_recipient_exact,
+            recipient_window_lifecycle_exact: readiness.recipient_window_lifecycle_exact,
+            target_window_lifecycle_exact: readiness.target_window_lifecycle_exact,
             lifecycle_exact: readiness.lifecycle_exact,
             scalar_resolution: readiness.scalar_resolution,
             calculation_ready: readiness.calculation_ready,
@@ -1184,6 +1265,10 @@ pub struct RdpsValidationRemoteEffectReadiness {
     pub external_attribution_candidate: bool,
     pub route_exact: bool,
     pub provider_recipient_exact: bool,
+    #[serde(default)]
+    pub recipient_window_lifecycle_exact: bool,
+    #[serde(default)]
+    pub target_window_lifecycle_exact: bool,
     pub lifecycle_exact: bool,
     pub scalar_resolution: RdpsValidationRemoteScalarResolution,
     pub calculation_ready: bool,
@@ -1278,14 +1363,22 @@ pub struct RdpsValidationDreamscopeTerminalEffectReport {
     pub maximum_concurrent_instances: u32,
     pub maximum_concurrent_providers: u32,
     pub ambiguous_status_removals: u64,
+    #[serde(default)]
+    pub open_unbounded_status_windows: u64,
     pub recipient_window_damage_events: u64,
     pub recipient_window_damage: String,
+    #[serde(default)]
+    pub unresolved_recipient_window_damage_events: u64,
     #[serde(default)]
     pub external_provider_window_damage_events: u64,
     #[serde(default = "default_report_number")]
     pub external_provider_window_damage: String,
     pub target_window_damage_events: u64,
     pub target_window_damage: String,
+    #[serde(default)]
+    pub unresolved_target_window_damage_events: u64,
+    #[serde(default)]
+    pub expired_status_windows: u64,
     pub single_provider_window_damage_events: u64,
     pub single_provider_window_damage: String,
     pub ambiguous_provider_window_damage_events: u64,
@@ -1343,6 +1436,14 @@ pub struct RdpsValidationRemoteCalculationReadiness {
     pub external_attribution_candidate: bool,
     pub route_exact: bool,
     pub provider_recipient_exact: bool,
+    /// Whether every observed recipient-outgoing row had provable membership
+    /// in the exact status window at its canonical observation timestamp.
+    #[serde(default)]
+    pub recipient_window_lifecycle_exact: bool,
+    /// Whether every observed target-incoming row had provable membership in
+    /// the exact status window at its canonical observation timestamp.
+    #[serde(default)]
+    pub target_window_lifecycle_exact: bool,
     pub lifecycle_exact: bool,
     pub scalar_resolution: RdpsValidationRemoteScalarResolution,
     pub calculation_ready: bool,
@@ -1452,8 +1553,14 @@ pub struct RdpsValidationObligationReport {
     pub direct_damage: String,
     pub recipient_window_damage_events: u64,
     pub recipient_window_damage: String,
+    #[serde(default)]
+    pub unresolved_recipient_window_damage_events: u64,
     pub target_window_damage_events: u64,
     pub target_window_damage: String,
+    #[serde(default)]
+    pub unresolved_target_window_damage_events: u64,
+    #[serde(default)]
+    pub expired_status_windows: u64,
     pub single_provider_window_damage_events: u64,
     pub single_provider_window_damage: String,
     pub ambiguous_provider_window_damage_events: u64,
@@ -3115,7 +3222,14 @@ impl RdpsValidationAnalyzer {
             false,
             Some(status_state_name(event)),
         );
-        self.update_status_window(event, direct_obligations, dreamscope_effect_id);
+        self.expire_status_windows(event.target.actor_id.0, sequence, observed_micros);
+        self.update_status_window(
+            sequence,
+            observed_micros,
+            event,
+            direct_obligations,
+            dreamscope_effect_id,
+        );
         self.observe_status_concurrency(event.target.actor_id.0);
     }
 
@@ -3715,9 +3829,28 @@ impl RdpsValidationAnalyzer {
         amount: i128,
         outgoing: bool,
     ) {
+        self.expire_status_windows(actor_id, sequence, observed_micros);
         if let Some(active) = self.status_active_counts.get(&actor_id) {
             let obligations = active.keys().copied().collect::<Vec<_>>();
             for obligation in obligations {
+                if !self.obligation_window_membership_is_exact(
+                    actor_id,
+                    obligation,
+                    sequence,
+                    observed_micros,
+                ) {
+                    let state = &mut self.states[obligation];
+                    if outgoing {
+                        state.unresolved_recipient_window_damage_events = state
+                            .unresolved_recipient_window_damage_events
+                            .saturating_add(1);
+                    } else {
+                        state.unresolved_target_window_damage_events = state
+                            .unresolved_target_window_damage_events
+                            .saturating_add(1);
+                    }
+                    continue;
+                }
                 let stack_windows = self.stack_windows_for_obligation(actor_id, obligation);
                 let provider_counts = self.status_providers.get(&(actor_id, obligation));
                 let external_providers = provider_counts
@@ -3769,6 +3902,27 @@ impl RdpsValidationAnalyzer {
         if let Some(active) = self.dreamscope_active_counts.get(&actor_id) {
             let effect_ids = active.keys().copied().collect::<Vec<_>>();
             for effect_id in effect_ids {
+                if !self.dreamscope_window_membership_is_exact(
+                    actor_id,
+                    effect_id,
+                    sequence,
+                    observed_micros,
+                ) {
+                    let state = self
+                        .dreamscope_terminal_effects
+                        .entry(effect_id)
+                        .or_default();
+                    if outgoing {
+                        state.unresolved_recipient_window_damage_events = state
+                            .unresolved_recipient_window_damage_events
+                            .saturating_add(1);
+                    } else {
+                        state.unresolved_target_window_damage_events = state
+                            .unresolved_target_window_damage_events
+                            .saturating_add(1);
+                    }
+                    continue;
+                }
                 let stack_windows = self.stack_windows_for_dreamscope(actor_id, effect_id);
                 let external_providers = self
                     .dreamscope_providers
@@ -3817,6 +3971,84 @@ impl RdpsValidationAnalyzer {
                     state.target_window_damage = state.target_window_damage.saturating_add(amount);
                 }
             }
+        }
+    }
+
+    fn obligation_window_membership_is_exact(
+        &self,
+        actor_id: u64,
+        obligation: usize,
+        sequence: u64,
+        observed_micros: u64,
+    ) -> bool {
+        let mut saw_window = false;
+        for (key, window) in &self.status_windows {
+            if key.target_actor != actor_id || !window.obligations.contains(&obligation) {
+                continue;
+            }
+            saw_window = true;
+            if validation_status_window_membership(window, sequence, observed_micros)
+                != ValidationStatusWindowMembership::Proven
+            {
+                return false;
+            }
+        }
+        saw_window
+    }
+
+    fn dreamscope_window_membership_is_exact(
+        &self,
+        actor_id: u64,
+        effect_id: i64,
+        sequence: u64,
+        observed_micros: u64,
+    ) -> bool {
+        let mut saw_window = false;
+        for (key, window) in &self.status_windows {
+            if key.target_actor != actor_id || window.dreamscope_effect_id != Some(effect_id) {
+                continue;
+            }
+            saw_window = true;
+            if validation_status_window_membership(window, sequence, observed_micros)
+                != ValidationStatusWindowMembership::Proven
+            {
+                return false;
+            }
+        }
+        saw_window
+    }
+
+    fn expire_status_windows(&mut self, actor_id: u64, sequence: u64, observed_micros: u64) {
+        let expired = self
+            .status_windows
+            .iter()
+            .filter(|(key, window)| {
+                key.target_actor == actor_id
+                    && validation_status_window_membership(window, sequence, observed_micros)
+                        == ValidationStatusWindowMembership::Expired
+            })
+            .map(|(key, window)| {
+                (
+                    *key,
+                    window.obligations.clone(),
+                    window.dreamscope_effect_id,
+                )
+            })
+            .collect::<Vec<_>>();
+        for (key, obligations, dreamscope_effect_id) in expired {
+            for obligation in obligations {
+                self.states[obligation].expired_status_windows = self.states[obligation]
+                    .expired_status_windows
+                    .saturating_add(1);
+            }
+            if let Some(effect_id) = dreamscope_effect_id {
+                let state = self
+                    .dreamscope_terminal_effects
+                    .entry(effect_id)
+                    .or_default();
+                state.expired_status_windows = state.expired_status_windows.saturating_add(1);
+            }
+            self.remove_status_window(key);
         }
     }
 
@@ -4083,6 +4315,8 @@ impl RdpsValidationAnalyzer {
 
     fn update_status_window(
         &mut self,
+        sequence: u64,
+        observed_micros: u64,
         event: &StatusEvent,
         obligations: Vec<usize>,
         dreamscope_effect_id: Option<i64>,
@@ -4116,26 +4350,37 @@ impl RdpsValidationAnalyzer {
                 }
                 let provider_actor = event.source.map(|source| source.actor_id.0);
                 for &obligation in &obligations {
-                    *self
+                    let count = self
                         .status_providers
                         .entry((key.target_actor, obligation))
                         .or_default()
                         .entry(provider_actor)
-                        .or_default() += 1;
+                        .or_default();
+                    *count = count.saturating_add(1);
                 }
                 if let Some(effect_id) = dreamscope_effect_id {
-                    *self
+                    let active_count = self
                         .dreamscope_active_counts
                         .entry(key.target_actor)
                         .or_default()
                         .entry(effect_id)
-                        .or_default() += 1;
-                    *self
+                        .or_default();
+                    *active_count = active_count.saturating_add(1);
+                    let provider_count = self
                         .dreamscope_providers
                         .entry((key.target_actor, effect_id))
                         .or_default()
                         .entry(provider_actor)
-                        .or_default() += 1;
+                        .or_default();
+                    *provider_count = provider_count.saturating_add(1);
+                    if event.duration_millis.is_none() {
+                        let state = self
+                            .dreamscope_terminal_effects
+                            .entry(effect_id)
+                            .or_default();
+                        state.open_unbounded_status_windows =
+                            state.open_unbounded_status_windows.saturating_add(1);
+                    }
                 }
                 self.status_windows.insert(
                     key,
@@ -4143,6 +4388,9 @@ impl RdpsValidationAnalyzer {
                         obligations,
                         dreamscope_effect_id,
                         provider_actor,
+                        opened_sequence: sequence,
+                        opened_observed_micros: observed_micros,
+                        duration_millis: event.duration_millis,
                         current_stacks: event.stacks,
                     },
                 );
@@ -4167,8 +4415,19 @@ impl RdpsValidationAnalyzer {
             obligations,
             dreamscope_effect_id,
             provider_actor,
+            duration_millis,
             ..
         } = window;
+        if let Some(effect_id) = dreamscope_effect_id
+            && duration_millis.is_none()
+        {
+            let state = self
+                .dreamscope_terminal_effects
+                .entry(effect_id)
+                .or_default();
+            state.open_unbounded_status_windows =
+                state.open_unbounded_status_windows.saturating_sub(1);
+        }
         let mut remove_actor = false;
         if let Some(active) = self.status_active_counts.get_mut(&key.target_actor) {
             for obligation in obligations {
@@ -4572,8 +4831,13 @@ impl RdpsValidationAnalyzer {
                 direct_damage: state.direct_damage.to_string(),
                 recipient_window_damage_events: state.recipient_window_damage_events,
                 recipient_window_damage: state.recipient_window_damage.to_string(),
+                unresolved_recipient_window_damage_events: state
+                    .unresolved_recipient_window_damage_events,
                 target_window_damage_events: state.target_window_damage_events,
                 target_window_damage: state.target_window_damage.to_string(),
+                unresolved_target_window_damage_events: state
+                    .unresolved_target_window_damage_events,
+                expired_status_windows: state.expired_status_windows,
                 single_provider_window_damage_events: state.single_provider_window_damage_events,
                 single_provider_window_damage: state.single_provider_window_damage.to_string(),
                 ambiguous_provider_window_damage_events: state
@@ -4707,8 +4971,11 @@ impl RdpsValidationAnalyzer {
                     maximum_concurrent_instances: state.maximum_concurrent_instances,
                     maximum_concurrent_providers: state.maximum_concurrent_providers,
                     ambiguous_status_removals: state.ambiguous_status_removals,
+                    open_unbounded_status_windows: state.open_unbounded_status_windows,
                     recipient_window_damage_events: state.recipient_window_damage_events,
                     recipient_window_damage: state.recipient_window_damage.to_string(),
+                    unresolved_recipient_window_damage_events: state
+                        .unresolved_recipient_window_damage_events,
                     external_provider_window_damage_events: state
                         .external_provider_window_damage_events,
                     external_provider_window_damage: state
@@ -4716,6 +4983,9 @@ impl RdpsValidationAnalyzer {
                         .to_string(),
                     target_window_damage_events: state.target_window_damage_events,
                     target_window_damage: state.target_window_damage.to_string(),
+                    unresolved_target_window_damage_events: state
+                        .unresolved_target_window_damage_events,
+                    expired_status_windows: state.expired_status_windows,
                     single_provider_window_damage_events: state
                         .single_provider_window_damage_events,
                     single_provider_window_damage: state.single_provider_window_damage.to_string(),
@@ -5026,6 +5296,9 @@ fn merge_obligation_report(
                 "obligations.recipient_window_damage",
                 &source.recipient_window_damage,
             )?);
+    state.unresolved_recipient_window_damage_events = state
+        .unresolved_recipient_window_damage_events
+        .saturating_add(source.unresolved_recipient_window_damage_events);
     state.target_window_damage_events = state
         .target_window_damage_events
         .saturating_add(source.target_window_damage_events);
@@ -5035,6 +5308,12 @@ fn merge_obligation_report(
             "obligations.target_window_damage",
             &source.target_window_damage,
         )?);
+    state.unresolved_target_window_damage_events = state
+        .unresolved_target_window_damage_events
+        .saturating_add(source.unresolved_target_window_damage_events);
+    state.expired_status_windows = state
+        .expired_status_windows
+        .saturating_add(source.expired_status_windows);
     state.single_provider_window_damage_events = state
         .single_provider_window_damage_events
         .saturating_add(source.single_provider_window_damage_events);
@@ -5326,6 +5605,9 @@ fn merge_dreamscope_terminal_effect_report(
     state.ambiguous_status_removals = state
         .ambiguous_status_removals
         .saturating_add(source.ambiguous_status_removals);
+    state.open_unbounded_status_windows = state
+        .open_unbounded_status_windows
+        .saturating_add(source.open_unbounded_status_windows);
     state.recipient_window_damage_events = state
         .recipient_window_damage_events
         .saturating_add(source.recipient_window_damage_events);
@@ -5336,6 +5618,9 @@ fn merge_dreamscope_terminal_effect_report(
                 "dreamscope recipient_window_damage",
                 &source.recipient_window_damage,
             )?);
+    state.unresolved_recipient_window_damage_events = state
+        .unresolved_recipient_window_damage_events
+        .saturating_add(source.unresolved_recipient_window_damage_events);
     state.external_provider_window_damage_events = state
         .external_provider_window_damage_events
         .saturating_add(source.external_provider_window_damage_events);
@@ -5355,6 +5640,12 @@ fn merge_dreamscope_terminal_effect_report(
             "dreamscope target_window_damage",
             &source.target_window_damage,
         )?);
+    state.unresolved_target_window_damage_events = state
+        .unresolved_target_window_damage_events
+        .saturating_add(source.unresolved_target_window_damage_events);
+    state.expired_status_windows = state
+        .expired_status_windows
+        .saturating_add(source.expired_status_windows);
     state.single_provider_window_damage_events = state
         .single_provider_window_damage_events
         .saturating_add(source.single_provider_window_damage_events);
@@ -5753,9 +6044,10 @@ mod tests {
     };
 
     use super::{
-        DreamscopeEvidenceResolution, EffectFingerprintResolution,
+        DreamscopeEvidenceResolution, DreamscopeTerminalEffectState, EffectFingerprintResolution,
         RDPS_VALIDATION_REPORT_SCHEMA_VERSION, RdpsValidationAnalyzer, RdpsValidationError,
         RdpsValidationRemoteScalarResolution, dreamscope_observed_effect_match,
+        dreamscope_remote_calculation_readiness,
     };
 
     const MANIFEST: &str = r#"{
@@ -6041,6 +6333,21 @@ mod tests {
                 kind,
             }),
         }
+    }
+
+    fn envelope_at(
+        build: &str,
+        sequence: u64,
+        observed_micros: u64,
+        kind: TimelineEventKind,
+    ) -> EventEnvelope {
+        let mut envelope = envelope(build, sequence, kind);
+        envelope.time.observed_micros = observed_micros;
+        let CanonicalEvent::Timeline(timeline) = &mut envelope.event else {
+            unreachable!();
+        };
+        timeline.time.observed_micros = observed_micros;
+        envelope
     }
 
     fn profile_envelope(sequence: u64, character_id: &str, item_id: i64) -> EventEnvelope {
@@ -7570,6 +7877,253 @@ mod tests {
     }
 
     #[test]
+    fn duration_bound_status_window_expires_at_the_packet_duration_boundary() {
+        const TERMINAL_EFFECT_ID: i64 = 3_003_052;
+        let mut analyzer = RdpsValidationAnalyzer::from_manifest_json(MANIFEST).unwrap();
+        let mut applied = status_event_for_effect(
+            7,
+            8,
+            TERMINAL_EFFECT_ID,
+            Some(55),
+            StatusState::Applied,
+            Some(1),
+        );
+        let TimelineEventKind::Status(status) = &mut applied else {
+            unreachable!();
+        };
+        status.duration_millis = Some(1);
+
+        analyzer.observe(&envelope_at("24609362", 1, 1_000, applied));
+        analyzer.observe(&envelope_at("24609362", 2, 1_999, damage_event(8, 9, 125)));
+        analyzer.observe(&envelope_at("24609362", 3, 2_000, damage_event(8, 9, 75)));
+
+        let terminal = &analyzer.report().dreamscope_terminal_effects[0];
+        assert_eq!(terminal.recipient_window_damage_events, 1);
+        assert_eq!(terminal.recipient_window_damage, "125");
+        assert_eq!(terminal.unresolved_recipient_window_damage_events, 0);
+        assert_eq!(terminal.expired_status_windows, 1);
+        assert!(terminal.remote_calculation.recipient_window_lifecycle_exact);
+        assert!(!terminal.remote_calculation.target_window_lifecycle_exact);
+        assert!(terminal.remote_calculation.lifecycle_exact);
+    }
+
+    #[test]
+    fn harmony_readiness_requires_its_recipient_damage_lane() {
+        const HARMONY_GRACE_EFFECT_ID: i64 = 3_003_052;
+        let state = DreamscopeTerminalEffectState {
+            provider_recipient_observations: BTreeMap::from([((Some(7), 8), 1)]),
+            target_window_damage_events: 1,
+            target_window_damage: 125,
+            ..DreamscopeTerminalEffectState::default()
+        };
+
+        let readiness = dreamscope_remote_calculation_readiness(HARMONY_GRACE_EFFECT_ID, &state);
+
+        assert!(!readiness.recipient_window_lifecycle_exact);
+        assert!(readiness.target_window_lifecycle_exact);
+        assert!(!readiness.lifecycle_exact);
+        assert!(!readiness.calculation_ready);
+        assert!(
+            readiness
+                .blockers
+                .contains(&"exact_recipient_window_lifecycle".to_owned())
+        );
+    }
+
+    #[test]
+    fn missing_duration_stays_unresolved_until_an_exact_terminal() {
+        const HARMONY_GRACE_EFFECT_ID: i64 = 3_003_052;
+        let mut analyzer = RdpsValidationAnalyzer::from_manifest_json(MANIFEST).unwrap();
+        let mut applied = status_event_for_effect(
+            7,
+            8,
+            HARMONY_GRACE_EFFECT_ID,
+            Some(55),
+            StatusState::Applied,
+            Some(1),
+        );
+        let TimelineEventKind::Status(status) = &mut applied else {
+            unreachable!();
+        };
+        status.duration_millis = None;
+
+        analyzer.observe(&envelope_at("24609362", 1, 1_000, applied));
+        analyzer.observe(&envelope_at("24609362", 2, 2_000, damage_event(8, 9, 125)));
+
+        let report = analyzer.report();
+        let terminal = &report.dreamscope_terminal_effects[0];
+        assert_eq!(terminal.recipient_window_damage_events, 1);
+        assert_eq!(terminal.open_unbounded_status_windows, 1);
+        assert!(!terminal.remote_calculation.recipient_window_lifecycle_exact);
+        assert!(!terminal.remote_calculation.calculation_ready);
+
+        analyzer.observe(&envelope_at(
+            "24609362",
+            3,
+            3_000,
+            status_event_for_effect(
+                7,
+                8,
+                HARMONY_GRACE_EFFECT_ID,
+                Some(55),
+                StatusState::Removed,
+                Some(0),
+            ),
+        ));
+        let closed = analyzer.report();
+        let terminal = &closed.dreamscope_terminal_effects[0];
+        assert_eq!(terminal.open_unbounded_status_windows, 0);
+        assert!(terminal.remote_calculation.recipient_window_lifecycle_exact);
+    }
+
+    #[test]
+    fn status_apply_expires_old_instances_before_concurrency_is_observed() {
+        const HARMONY_GRACE_EFFECT_ID: i64 = 3_003_052;
+        let mut analyzer = RdpsValidationAnalyzer::from_manifest_json(MANIFEST).unwrap();
+        let mut first = status_event_for_effect(
+            7,
+            8,
+            HARMONY_GRACE_EFFECT_ID,
+            Some(55),
+            StatusState::Applied,
+            Some(1),
+        );
+        let TimelineEventKind::Status(status) = &mut first else {
+            unreachable!();
+        };
+        status.duration_millis = Some(1);
+        let mut second = status_event_for_effect(
+            7,
+            8,
+            HARMONY_GRACE_EFFECT_ID,
+            Some(56),
+            StatusState::Applied,
+            Some(1),
+        );
+        let TimelineEventKind::Status(status) = &mut second else {
+            unreachable!();
+        };
+        status.duration_millis = Some(1);
+
+        analyzer.observe(&envelope_at("24609362", 1, 1_000, first));
+        analyzer.observe(&envelope_at("24609362", 2, 2_000, second));
+
+        let report = analyzer.report();
+        let terminal = &report.dreamscope_terminal_effects[0];
+        assert_eq!(terminal.expired_status_windows, 1);
+        assert_eq!(terminal.maximum_concurrent_instances, 1);
+        assert_eq!(terminal.maximum_concurrent_providers, 1);
+    }
+
+    #[test]
+    fn equal_time_damage_is_unresolved_even_when_serialized_after_apply() {
+        const TERMINAL_EFFECT_ID: i64 = 3_003_052;
+        let mut analyzer = RdpsValidationAnalyzer::from_manifest_json(MANIFEST).unwrap();
+        analyzer.observe(&envelope_at(
+            "24609362",
+            1,
+            1_000,
+            status_event_for_effect(
+                7,
+                8,
+                TERMINAL_EFFECT_ID,
+                Some(55),
+                StatusState::Applied,
+                Some(1),
+            ),
+        ));
+        analyzer.observe(&envelope_at("24609362", 2, 1_000, damage_event(8, 9, 125)));
+        analyzer.observe(&envelope_at(
+            "24609362",
+            3,
+            2_000,
+            status_event_for_effect(
+                7,
+                8,
+                TERMINAL_EFFECT_ID,
+                Some(55),
+                StatusState::Removed,
+                Some(0),
+            ),
+        ));
+
+        let terminal = &analyzer.report().dreamscope_terminal_effects[0];
+        assert_eq!(terminal.recipient_window_damage_events, 0);
+        assert_eq!(terminal.recipient_window_damage, "0");
+        assert_eq!(terminal.unresolved_recipient_window_damage_events, 1);
+        assert!(!terminal.remote_calculation.recipient_window_lifecycle_exact);
+        assert!(!terminal.remote_calculation.lifecycle_exact);
+        assert!(
+            terminal
+                .remote_calculation
+                .blockers
+                .contains(&"exact_recipient_window_lifecycle".to_owned())
+        );
+    }
+
+    #[test]
+    fn target_lane_unresolved_rows_cannot_borrow_recipient_or_terminal_proof() {
+        const TERMINAL_EFFECT_ID: i64 = 3_003_052;
+        let mut analyzer = RdpsValidationAnalyzer::from_manifest_json(MANIFEST).unwrap();
+        analyzer.observe(&envelope_at(
+            "24609362",
+            1,
+            1_000,
+            status_event_for_effect(
+                7,
+                8,
+                TERMINAL_EFFECT_ID,
+                Some(55),
+                StatusState::Applied,
+                Some(1),
+            ),
+        ));
+        analyzer.observe(&envelope_at("24609362", 2, 2_000, damage_event(8, 9, 125)));
+        analyzer.observe(&envelope_at(
+            "24609362",
+            3,
+            3_000,
+            status_event_for_effect(
+                7,
+                8,
+                TERMINAL_EFFECT_ID,
+                Some(55),
+                StatusState::Refreshed,
+                Some(1),
+            ),
+        ));
+        analyzer.observe(&envelope_at("24609362", 4, 3_000, damage_event(9, 8, 300)));
+        analyzer.observe(&envelope_at(
+            "24609362",
+            5,
+            4_000,
+            status_event_for_effect(
+                7,
+                8,
+                TERMINAL_EFFECT_ID,
+                Some(55),
+                StatusState::Removed,
+                Some(0),
+            ),
+        ));
+
+        let terminal = &analyzer.report().dreamscope_terminal_effects[0];
+        assert_eq!(terminal.recipient_window_damage_events, 1);
+        assert_eq!(terminal.unresolved_recipient_window_damage_events, 0);
+        assert_eq!(terminal.target_window_damage_events, 0);
+        assert_eq!(terminal.unresolved_target_window_damage_events, 1);
+        assert!(terminal.remote_calculation.recipient_window_lifecycle_exact);
+        assert!(!terminal.remote_calculation.target_window_lifecycle_exact);
+        assert!(!terminal.remote_calculation.lifecycle_exact);
+        assert!(
+            terminal
+                .remote_calculation
+                .blockers
+                .contains(&"exact_target_window_lifecycle".to_owned())
+        );
+    }
+
+    #[test]
     fn observed_self_only_terminal_effects_remain_visible_without_becoming_rdps_blockers() {
         const TERMINAL_EFFECT_ID: i64 = 3_003_052;
         let mut analyzer = RdpsValidationAnalyzer::from_manifest_json(MANIFEST).unwrap();
@@ -7778,7 +8332,9 @@ mod tests {
         assert!(!terminal.remote_calculation.build_metadata_required);
         assert!(terminal.remote_calculation.route_exact);
         assert!(terminal.remote_calculation.provider_recipient_exact);
-        assert!(terminal.remote_calculation.lifecycle_exact);
+        assert!(!terminal.remote_calculation.recipient_window_lifecycle_exact);
+        assert!(!terminal.remote_calculation.target_window_lifecycle_exact);
+        assert!(!terminal.remote_calculation.lifecycle_exact);
         assert_eq!(
             terminal.remote_calculation.scalar_resolution,
             RdpsValidationRemoteScalarResolution::Unresolved
@@ -7786,7 +8342,10 @@ mod tests {
         assert!(!terminal.remote_calculation.calculation_ready);
         assert_eq!(
             terminal.remote_calculation.blockers,
-            vec!["runtime_applied_magnitude"]
+            vec![
+                "exact_status_window_membership",
+                "runtime_applied_magnitude"
+            ]
         );
         let ledger = &report.remote_rdps_readiness;
         assert_eq!(ledger.summary.observed_effects, 1);
@@ -7802,7 +8361,10 @@ mod tests {
         );
         assert_eq!(
             ledger.effects[0].blockers,
-            vec!["runtime_applied_magnitude"]
+            vec![
+                "exact_status_window_membership",
+                "runtime_applied_magnitude"
+            ]
         );
 
         let mut cumulative = RdpsValidationAnalyzer::from_manifest_json(MANIFEST).unwrap();
@@ -7881,7 +8443,9 @@ mod tests {
         assert!(!terminal.remote_calculation.build_metadata_required);
         assert!(terminal.remote_calculation.route_exact);
         assert!(terminal.remote_calculation.provider_recipient_exact);
-        assert!(terminal.remote_calculation.lifecycle_exact);
+        assert!(!terminal.remote_calculation.recipient_window_lifecycle_exact);
+        assert!(!terminal.remote_calculation.target_window_lifecycle_exact);
+        assert!(!terminal.remote_calculation.lifecycle_exact);
         assert_eq!(
             terminal.remote_calculation.scalar_resolution,
             RdpsValidationRemoteScalarResolution::Unresolved
@@ -7889,7 +8453,10 @@ mod tests {
         assert!(!terminal.remote_calculation.calculation_ready);
         assert_eq!(
             terminal.remote_calculation.blockers,
-            vec!["runtime_applied_magnitude"]
+            vec![
+                "exact_status_window_membership",
+                "runtime_applied_magnitude"
+            ]
         );
     }
 

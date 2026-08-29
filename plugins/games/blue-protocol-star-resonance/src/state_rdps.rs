@@ -817,6 +817,12 @@ struct EffectWindowKey {
     instance_id: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct HarmonyGraceWindowTiming {
+    opened_observed_micros: u64,
+    duration_millis: Option<u64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct UnresolvedStatusWindowKey {
     target_actor_id: u64,
@@ -1903,6 +1909,10 @@ pub struct BpsrStateDamageContributionProjector {
     mechanical_power_primary_transition_witnesses:
         HashMap<EffectWindowKey, HashSet<PrimaryStatTransitionWitness>>,
     harmony_grace_windows: HashSet<EffectWindowKey>,
+    /// Packet-time membership authority for Harmony Grace only. Keeping this
+    /// separate from the shared key set avoids changing any of the other ten
+    /// enabled effect routes.
+    harmony_grace_window_timing: HashMap<EffectWindowKey, HarmonyGraceWindowTiming>,
     harmony_grace_transition_wires: HashMap<u64, WireKey>,
     harmony_grace_primary_transition_witnesses:
         HashMap<EffectWindowKey, HashSet<PrimaryStatTransitionWitness>>,
@@ -2020,6 +2030,7 @@ impl Default for BpsrStateDamageContributionProjector {
             mechanical_power_transition_wires: HashMap::new(),
             mechanical_power_primary_transition_witnesses: HashMap::new(),
             harmony_grace_windows: HashSet::new(),
+            harmony_grace_window_timing: HashMap::new(),
             harmony_grace_transition_wires: HashMap::new(),
             harmony_grace_primary_transition_witnesses: HashMap::new(),
             stat_resonance_windows: HashSet::new(),
@@ -2594,6 +2605,7 @@ impl BpsrStateDamageContributionProjector {
         };
         self.advance_wire(wire);
         self.expire_target_vulnerability_windows(envelope.time.observed_micros);
+        self.expire_harmony_grace_windows(envelope.time.observed_micros);
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
             return;
         };
@@ -2773,8 +2785,17 @@ impl BpsrStateDamageContributionProjector {
                 let team_luck_contribution = self.team_luck_contribution(envelope, damage);
                 let functional_amp_contribution =
                     self.functional_amp_contribution(envelope.time.observed_micros, damage);
-                let harmony_grace_contribution =
-                    self.harmony_grace_contribution(envelope.time.observed_micros, damage);
+                let harmony_grace_decision =
+                    self.harmony_grace_decision(envelope.time.observed_micros, damage);
+                if matches!(
+                    harmony_grace_decision,
+                    Err("harmony_lifecycle_order_unresolved"
+                        | "harmony_lifecycle_timestamp_missing"
+                        | "harmony_lifecycle_duration_missing")
+                ) {
+                    self.mark_harmony_grace_incomplete(damage);
+                }
+                let harmony_grace_contribution = harmony_grace_decision.ok();
                 let remote_harmony_paired_output_contribution =
                     self.remote_harmony_paired_output_contribution(envelope, damage);
                 let fatal_spiral_direct_contribution =
@@ -3497,7 +3518,7 @@ impl BpsrStateDamageContributionProjector {
                     .map(|origin| (origin.source_type_id, origin.source_config_id)),
             )
         {
-            self.observe_harmony_grace_status(status);
+            self.observe_harmony_grace_status(status, observed_micros);
         }
         if self.runtime.stat_resonance.runtime_transfer_enabled
             && status.effect.0 == self.runtime.stat_resonance.effect_id
@@ -4150,7 +4171,11 @@ impl BpsrStateDamageContributionProjector {
         );
     }
 
-    fn observe_harmony_grace_status(&mut self, status: &rlogs_events::StatusEvent) {
+    fn observe_harmony_grace_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
         let target_actor_id = status.target.actor_id.0;
         let instance_id = status.instance_id.map(|instance| instance.0);
         let provider_actor_id = status.source.map(|source| source.actor_id.0);
@@ -4175,6 +4200,16 @@ impl BpsrStateDamageContributionProjector {
                 self.harmony_grace_primary_transition_witnesses
                     .remove(&window);
             }
+            // A refresh starts a new packet-carried membership interval even
+            // when the exact instance key is unchanged. Damage at this same
+            // timestamp cannot be ordered against the refresh.
+            self.harmony_grace_window_timing.insert(
+                window,
+                HarmonyGraceWindowTiming {
+                    opened_observed_micros: observed_micros,
+                    duration_millis: status.duration_millis,
+                },
+            );
         } else {
             let provider_targets = (status.state == StatusState::Consumed)
                 .then(|| {
@@ -4220,6 +4255,8 @@ impl BpsrStateDamageContributionProjector {
                 }
             }
             self.harmony_grace_primary_transition_witnesses
+                .retain(|key, _| self.harmony_grace_windows.contains(key));
+            self.harmony_grace_window_timing
                 .retain(|key, _| self.harmony_grace_windows.contains(key));
         }
         // Attribute deltas and their status lifecycle can share a wire frame.
@@ -6500,12 +6537,26 @@ impl BpsrStateDamageContributionProjector {
         .ok_or("damage_counterfactual_unproven")
     }
 
-    fn harmony_grace_contribution(
-        &self,
-        observed_micros: u64,
-        damage: &rlogs_events::DamageEvent,
-    ) -> Option<ExactRationalDamageContributionEvent> {
-        self.harmony_grace_decision(observed_micros, damage).ok()
+    fn mark_harmony_grace_incomplete(&mut self, damage: &rlogs_events::DamageEvent) {
+        let recipient_actor_id = damage.source.actor_id.0;
+        if !self.active_players.contains(&recipient_actor_id) {
+            return;
+        }
+        let providers = self
+            .harmony_grace_windows
+            .iter()
+            .filter(|window| window.target_actor_id == recipient_actor_id)
+            .filter(|window| {
+                window.provider_actor_id != recipient_actor_id
+                    && self.active_players.contains(&window.provider_actor_id)
+            })
+            .map(|window| window.provider_actor_id)
+            .collect::<HashSet<_>>();
+        if providers.len() != 1 {
+            return;
+        }
+        self.incomplete_rdps_actor_ids.insert(recipient_actor_id);
+        self.incomplete_rdps_actor_ids.extend(providers);
     }
 
     fn remote_paired_output_probe_observations(
@@ -6552,6 +6603,17 @@ impl BpsrStateDamageContributionProjector {
             damage.packet.owner_stage,
             damage.packet.owner_level,
         )?;
+        if self
+            .harmony_grace_windows
+            .iter()
+            .filter(|window| window.target_actor_id == source_actor_id)
+            .any(|window| {
+                self.harmony_grace_window_gate(window, envelope.time.observed_micros)
+                    .is_err()
+            })
+        {
+            return None;
+        }
         let mut providers = self
             .harmony_grace_windows
             .iter()
@@ -6768,6 +6830,17 @@ impl BpsrStateDamageContributionProjector {
                     .remote_harmony_target_context_sha256(target_actor_id)
                     .as_deref()
                     != Some(receipt.target_formula_context_sha256.as_str())
+            {
+                return None;
+            }
+            if self
+                .harmony_grace_windows
+                .iter()
+                .filter(|window| window.target_actor_id == recipient_actor_id)
+                .any(|window| {
+                    self.harmony_grace_window_gate(window, envelope.time.observed_micros)
+                        .is_err()
+                })
             {
                 return None;
             }
@@ -7140,6 +7213,14 @@ impl BpsrStateDamageContributionProjector {
         if damage.amount <= 0 {
             return Err("non_positive_damage");
         }
+        let recipient_actor_id = damage.source.actor_id.0;
+        for window in self
+            .harmony_grace_windows
+            .iter()
+            .filter(|window| window.target_actor_id == recipient_actor_id)
+        {
+            self.harmony_grace_window_gate(window, observed_micros)?;
+        }
         if self.current_wire.is_some_and(|wire| {
             self.harmony_grace_transition_wires
                 .get(&damage.source.actor_id.0)
@@ -7182,7 +7263,6 @@ impl BpsrStateDamageContributionProjector {
             return Err("attack_lane_mismatch");
         }
 
-        let recipient_actor_id = damage.source.actor_id.0;
         let desired =
             self.desired_harmony_grace_provider_percentages(recipient_actor_id, recipient_rule);
         if desired.len() != 1 {
@@ -9513,6 +9593,69 @@ impl BpsrStateDamageContributionProjector {
         });
     }
 
+    fn harmony_grace_window_gate(
+        &self,
+        key: &EffectWindowKey,
+        observed_micros: u64,
+    ) -> Result<(), &'static str> {
+        let timing = self
+            .harmony_grace_window_timing
+            .get(key)
+            .ok_or("harmony_lifecycle_timestamp_missing")?;
+        if observed_micros <= timing.opened_observed_micros {
+            return Err("harmony_lifecycle_order_unresolved");
+        }
+        let duration_millis = timing
+            .duration_millis
+            .ok_or("harmony_lifecycle_duration_missing")?;
+        let elapsed_micros = observed_micros - timing.opened_observed_micros;
+        if u128::from(elapsed_micros) >= u128::from(duration_millis) * 1_000 {
+            return Err("harmony_lifecycle_expired");
+        }
+        Ok(())
+    }
+
+    fn expire_harmony_grace_windows(&mut self, observed_micros: u64) {
+        let expired = self
+            .harmony_grace_window_timing
+            .iter()
+            .filter(|(_, timing)| {
+                observed_micros >= timing.opened_observed_micros
+                    && timing.duration_millis.is_some_and(|duration_millis| {
+                        u128::from(observed_micros - timing.opened_observed_micros)
+                            >= u128::from(duration_millis) * 1_000
+                    })
+            })
+            .map(|(key, _)| *key)
+            .collect::<Vec<_>>();
+        let mut expired_targets = HashSet::new();
+        for key in expired {
+            self.harmony_grace_windows.remove(&key);
+            self.harmony_grace_window_timing.remove(&key);
+            self.harmony_grace_primary_transition_witnesses.remove(&key);
+            expired_targets.insert(key.target_actor_id);
+        }
+        for target_actor_id in expired_targets {
+            // Duration expiry is authoritative lifecycle closure, but unlike
+            // an explicit terminal packet it may not carry the reverse
+            // attribute vector. Reconcile any packet transition available on
+            // this wire, then discard stale provider ownership rather than
+            // letting it contaminate a later application or provider rotation.
+            self.reconcile_harmony_grace_staged_state(target_actor_id);
+            for state in [&mut self.states, &mut self.staged_states] {
+                if let Some(state) = state.get_mut(&target_actor_id) {
+                    for family in state.harmony_primary_by_class.values_mut() {
+                        family.provider_raw_percent.clear();
+                    }
+                }
+            }
+            if let Some(wire) = self.current_wire {
+                self.harmony_grace_transition_wires
+                    .insert(target_actor_id, wire);
+            }
+        }
+    }
+
     fn clear_actor(&mut self, actor_id: u64) {
         self.unresolved_status_windows
             .retain(|window| window.target_actor_id != actor_id);
@@ -9546,6 +9689,8 @@ impl BpsrStateDamageContributionProjector {
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.harmony_grace_windows
             .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.harmony_grace_window_timing
+            .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.harmony_grace_transition_wires.remove(&actor_id);
         self.harmony_grace_primary_transition_witnesses
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
@@ -9635,6 +9780,7 @@ impl BpsrStateDamageContributionProjector {
         self.mechanical_power_transition_wires.clear();
         self.mechanical_power_primary_transition_witnesses.clear();
         self.harmony_grace_windows.clear();
+        self.harmony_grace_window_timing.clear();
         self.harmony_grace_transition_wires.clear();
         self.harmony_grace_primary_transition_witnesses.clear();
         self.stat_resonance_windows.clear();
@@ -11155,6 +11301,136 @@ mod tests {
 
     fn runtime() -> &'static RdpsRuntimeConfig {
         rdps_runtime_config().expect("bundled rDPS runtime pack should validate")
+    }
+
+    fn seed_harmony_grace_window_timing(
+        projector: &mut BpsrStateDamageContributionProjector,
+        opened_observed_micros: u64,
+        duration_millis: Option<u64>,
+    ) {
+        projector.harmony_grace_window_timing = projector
+            .harmony_grace_windows
+            .iter()
+            .copied()
+            .map(|window| {
+                (
+                    window,
+                    HarmonyGraceWindowTiming {
+                        opened_observed_micros,
+                        duration_millis,
+                    },
+                )
+            })
+            .collect();
+    }
+
+    fn harmony_grace_wire_envelope(
+        sequence: u64,
+        observed_micros: u64,
+        kind: TimelineEventKind,
+    ) -> EventEnvelope {
+        let time = rlogs_events::EventTime {
+            observed_micros,
+            game_time_millis: None,
+        };
+        let provenance = rlogs_events::EventProvenance::wire(sequence, 1, 2);
+        EventEnvelope {
+            schema_version: rlogs_events::EVENT_SCHEMA_VERSION,
+            session_id: "harmony-grace-runtime-lifecycle-test".into(),
+            sequence,
+            region: rlogs_events::RegionContext {
+                identity: rlogs_events::RegionIdentity {
+                    deployment_id: runtime().deployment_id.clone(),
+                    region_id: runtime().deployment_id.clone(),
+                    realm_id: None,
+                    world_id: None,
+                },
+                client_build: runtime().game_build.clone(),
+                protocol_pack_digest: runtime().protocol_pack_digest.clone(),
+                evidence: Vec::new(),
+            },
+            time,
+            provenance: provenance.clone(),
+            sensitivity: rlogs_events::EventSensitivity::PublicGameplay,
+            event: CanonicalEvent::Timeline(rlogs_events::TimelineEvent {
+                sequence,
+                time,
+                provenance,
+                kind,
+            }),
+        }
+    }
+
+    fn harmony_grace_status_event(
+        provider_actor_id: u64,
+        recipient_actor_id: u64,
+        instance_id: i64,
+        state: StatusState,
+        duration_millis: Option<u64>,
+    ) -> TimelineEventKind {
+        TimelineEventKind::Status(rlogs_events::StatusEvent {
+            source: Some(rlogs_events::EntityRef {
+                actor_id: rlogs_events::ActorId(provider_actor_id),
+                entity_uuid: rlogs_events::EntityUuid(
+                    i64::try_from(provider_actor_id * 10).unwrap(),
+                ),
+            }),
+            target: rlogs_events::EntityRef {
+                actor_id: rlogs_events::ActorId(recipient_actor_id),
+                entity_uuid: rlogs_events::EntityUuid(
+                    i64::try_from(recipient_actor_id * 10).unwrap(),
+                ),
+            },
+            effect: rlogs_events::StatusEffectId(runtime().harmony_grace.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: Some(rlogs_events::StatusOrigin {
+                source_type_id: runtime().harmony_grace.source_type_id.unwrap(),
+                source_config_id: runtime().harmony_grace.source_config_id.unwrap(),
+            }),
+            state,
+            stacks: Some(1),
+            level: None,
+            part_id: None,
+            count: None,
+            created_at_millis: None,
+            duration_millis,
+        })
+    }
+
+    fn harmony_grace_damage_event(recipient_actor_id: u64) -> TimelineEventKind {
+        TimelineEventKind::Damage(rlogs_events::DamageEvent {
+            source: rlogs_events::EntityRef {
+                actor_id: rlogs_events::ActorId(recipient_actor_id),
+                entity_uuid: rlogs_events::EntityUuid(
+                    i64::try_from(recipient_actor_id * 10).unwrap(),
+                ),
+            },
+            direct_source: None,
+            target: rlogs_events::EntityRef {
+                actor_id: rlogs_events::ActorId(17),
+                entity_uuid: rlogs_events::EntityUuid(170),
+            },
+            ability: Some(rlogs_events::AbilityId(2_203_521)),
+            amount: 70_543,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(5),
+            damage_source: None,
+            damage_type: Some(2),
+            flags: rlogs_events::DamageFlags::default(),
+            packet: rlogs_events::DamagePacketDetail::default(),
+        })
+    }
+
+    fn observe_harmony_grace_test_envelope(
+        projector: &mut BpsrStateDamageContributionProjector,
+        envelope: &EventEnvelope,
+    ) -> Vec<ExactRationalDamageContributionEvent> {
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+        ExactDamageContributionProjector::observe(projector, envelope, &mut exact, &mut rational);
+        rational
     }
 
     #[test]
@@ -14209,8 +14485,10 @@ mod tests {
             )]),
             active_players: HashSet::from([2, 4]),
             observed_ability_ids_by_actor: HashMap::from([(4, HashSet::from([2_233]))]),
+            latest_observed_micros: 123,
             ..BpsrStateDamageContributionProjector::default()
         };
+        seed_harmony_grace_window_timing(&mut projector, 1, Some(8_000));
         let damage = rlogs_events::DamageEvent {
             source: rlogs_events::EntityRef {
                 actor_id: rlogs_events::ActorId(4),
@@ -14234,7 +14512,22 @@ mod tests {
         };
 
         assert_eq!(
-            projector.harmony_grace_contribution(123, &damage),
+            projector.harmony_grace_decision(1, &damage),
+            Err("harmony_lifecycle_order_unresolved"),
+            "damage at the application timestamp has no authoritative event order"
+        );
+        assert_eq!(
+            projector.harmony_grace_decision(0, &damage),
+            Err("harmony_lifecycle_order_unresolved"),
+            "an out-of-order replay row must not inherit a later application"
+        );
+        assert_eq!(
+            damage.amount, 70_543,
+            "lifecycle gating cannot alter damage"
+        );
+
+        assert_eq!(
+            projector.harmony_grace_decision(123, &damage).ok(),
             Some(ExactRationalDamageContributionEvent {
                 observed_micros: 123,
                 effect_id: runtime().harmony_grace.effect_id,
@@ -14277,7 +14570,15 @@ mod tests {
             "primary_transition_witness_missing",
             "an otherwise complete damage row must fail closed without its exact lifecycle transition"
         );
-        assert_eq!(projector.harmony_grace_contribution(123, &damage), None);
+        assert_eq!(projector.harmony_grace_decision(123, &damage).ok(), None);
+
+        projector.expire_harmony_grace_windows(8_000_001);
+        assert!(
+            projector.harmony_grace_windows.is_empty(),
+            "the packet-carried 8 second membership ends at the exact duration boundary"
+        );
+        assert!(projector.harmony_grace_window_timing.is_empty());
+        assert_eq!(damage.amount, 70_543, "expiry cannot alter ordinary damage");
     }
 
     #[test]
@@ -14600,7 +14901,7 @@ mod tests {
         let harmony_desired = BTreeMap::from([(2, recipient_rule.primary_percent_raw_delta)]);
         let functional_desired =
             BTreeMap::from([(3, runtime().functional_amp.attack_percent_raw_delta)]);
-        let projector = BpsrStateDamageContributionProjector {
+        let mut projector = BpsrStateDamageContributionProjector {
             harmony_grace_candidate_audit_enabled: true,
             states: HashMap::from([(
                 4,
@@ -14666,6 +14967,7 @@ mod tests {
             observed_ability_ids_by_actor: HashMap::from([(4, HashSet::from([2_233]))]),
             ..BpsrStateDamageContributionProjector::default()
         };
+        seed_harmony_grace_window_timing(&mut projector, 1, Some(8_000));
         let damage = rlogs_events::DamageEvent {
             source: rlogs_events::EntityRef {
                 actor_id: rlogs_events::ActorId(4),
@@ -14691,7 +14993,8 @@ mod tests {
             .functional_amp_contribution(123, &damage)
             .expect("packet-proven Functional Amp");
         let harmony = projector
-            .harmony_grace_contribution(123, &damage)
+            .harmony_grace_decision(123, &damage)
+            .ok()
             .expect("packet-proven Harmony Grace");
         let combined = projector
             .combined_harmony_functional_amp_contributions(123, &damage, functional, harmony)
@@ -14803,6 +15106,7 @@ mod tests {
             observed_ability_ids_by_actor: HashMap::from([(4, HashSet::from([2_233]))]),
             ..BpsrStateDamageContributionProjector::default()
         };
+        seed_harmony_grace_window_timing(&mut projector, 1, Some(8_000));
         let mut damage = rlogs_events::DamageEvent {
             source: rlogs_events::EntityRef {
                 actor_id: rlogs_events::ActorId(4),
@@ -14824,7 +15128,7 @@ mod tests {
             flags: rlogs_events::DamageFlags::default(),
             packet: rlogs_events::DamagePacketDetail::default(),
         };
-        assert_eq!(projector.harmony_grace_contribution(123, &damage), None);
+        assert_eq!(projector.harmony_grace_decision(123, &damage).ok(), None);
 
         projector
             .states
@@ -14839,6 +15143,7 @@ mod tests {
             provider_actor_id: 4,
             instance_id: Some(11),
         }]);
+        seed_harmony_grace_window_timing(&mut projector, 1, Some(8_000));
         projector
             .states
             .get_mut(&4)
@@ -14847,7 +15152,7 @@ mod tests {
             .get_mut(&recipient_rule.recipient_class_id)
             .unwrap()
             .provider_raw_percent = BTreeMap::from([(4, 200)]);
-        assert_eq!(projector.harmony_grace_contribution(123, &damage), None);
+        assert_eq!(projector.harmony_grace_decision(123, &damage).ok(), None);
 
         damage.ability = Some(rlogs_events::AbilityId(1_607));
         projector
@@ -14858,6 +15163,7 @@ mod tests {
             provider_actor_id: 2,
             instance_id: Some(11),
         }]);
+        seed_harmony_grace_window_timing(&mut projector, 1, Some(8_000));
         projector
             .states
             .get_mut(&4)
@@ -14866,7 +15172,7 @@ mod tests {
             .get_mut(&recipient_rule.recipient_class_id)
             .unwrap()
             .provider_raw_percent = BTreeMap::from([(2, 200)]);
-        assert_eq!(projector.harmony_grace_contribution(123, &damage), None);
+        assert_eq!(projector.harmony_grace_decision(123, &damage).ok(), None);
     }
 
     #[test]
@@ -16081,6 +16387,143 @@ mod tests {
     }
 
     #[test]
+    fn harmony_grace_missing_duration_is_retained_unresolved_on_the_shared_runtime_path() {
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        projector.active_players.extend([2, 4]);
+        let applied = harmony_grace_wire_envelope(
+            1,
+            1_000,
+            harmony_grace_status_event(2, 4, 11, StatusState::Applied, None),
+        );
+        assert!(observe_harmony_grace_test_envelope(&mut projector, &applied).is_empty());
+        let window = EffectWindowKey {
+            target_actor_id: 4,
+            provider_actor_id: 2,
+            instance_id: Some(11),
+        };
+        assert!(projector.harmony_grace_windows.contains(&window));
+        assert_eq!(
+            projector
+                .harmony_grace_window_timing
+                .get(&window)
+                .and_then(|timing| timing.duration_millis),
+            None
+        );
+
+        let damage = harmony_grace_wire_envelope(2, 2_000, harmony_grace_damage_event(4));
+        assert!(observe_harmony_grace_test_envelope(&mut projector, &damage).is_empty());
+        assert!(
+            projector.harmony_grace_windows.contains(&window),
+            "duration-less evidence remains available for a later explicit terminal"
+        );
+        assert!(projector.incomplete_rdps_actor_ids.contains(&2));
+        assert!(projector.incomplete_rdps_actor_ids.contains(&4));
+    }
+
+    #[test]
+    fn harmony_grace_equal_time_refresh_damage_is_unresolved_on_the_shared_runtime_path() {
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        projector.active_players.extend([2, 4]);
+        for envelope in [
+            harmony_grace_wire_envelope(
+                1,
+                1_000,
+                harmony_grace_status_event(2, 4, 11, StatusState::Applied, Some(8_000)),
+            ),
+            harmony_grace_wire_envelope(
+                2,
+                2_000,
+                harmony_grace_status_event(2, 4, 11, StatusState::Refreshed, Some(8_000)),
+            ),
+        ] {
+            assert!(observe_harmony_grace_test_envelope(&mut projector, &envelope).is_empty());
+        }
+
+        let damage = harmony_grace_wire_envelope(3, 2_000, harmony_grace_damage_event(4));
+        assert!(observe_harmony_grace_test_envelope(&mut projector, &damage).is_empty());
+        assert!(projector.incomplete_rdps_actor_ids.contains(&2));
+        assert!(projector.incomplete_rdps_actor_ids.contains(&4));
+        assert_eq!(
+            projector
+                .harmony_grace_window_timing
+                .values()
+                .next()
+                .map(|timing| timing.opened_observed_micros),
+            Some(2_000)
+        );
+    }
+
+    #[test]
+    fn harmony_grace_expiry_cleans_provider_state_before_rotation_on_the_shared_runtime_path() {
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        let applied = harmony_grace_wire_envelope(
+            1,
+            1_000,
+            harmony_grace_status_event(2, 4, 11, StatusState::Applied, Some(1)),
+        );
+        assert!(observe_harmony_grace_test_envelope(&mut projector, &applied).is_empty());
+        let recipient_rule = runtime()
+            .harmony_grace
+            .recipient_rules
+            .iter()
+            .find(|rule| rule.recipient_class_id == 11)
+            .unwrap();
+        let attributed_family = AttackFamilyState {
+            raw_percent: Some(1_700),
+            provider_raw_percent: BTreeMap::from([(2, recipient_rule.primary_percent_raw_delta)]),
+            ..AttackFamilyState::default()
+        };
+        let attributed_state = ActorHpState {
+            harmony_primary_by_class: BTreeMap::from([(
+                recipient_rule.recipient_class_id,
+                attributed_family,
+            )]),
+            ..ActorHpState::default()
+        };
+        projector.states.insert(4, attributed_state.clone());
+        projector.staged_states.insert(4, attributed_state);
+
+        let damage = harmony_grace_wire_envelope(2, 2_000, harmony_grace_damage_event(4));
+        assert!(observe_harmony_grace_test_envelope(&mut projector, &damage).is_empty());
+        assert!(projector.harmony_grace_windows.is_empty());
+        assert!(projector.harmony_grace_window_timing.is_empty());
+        assert!(projector.states.contains_key(&4));
+        assert!(
+            projector
+                .states
+                .get(&4)
+                .into_iter()
+                .chain(projector.staged_states.get(&4))
+                .flat_map(|state| state.harmony_primary_by_class.values())
+                .all(|family| family.provider_raw_percent.is_empty()),
+            "duration expiry must invalidate stale provider decomposition"
+        );
+
+        let rotated = harmony_grace_wire_envelope(
+            3,
+            3_000,
+            harmony_grace_status_event(3, 4, 12, StatusState::Applied, Some(1)),
+        );
+        assert!(observe_harmony_grace_test_envelope(&mut projector, &rotated).is_empty());
+        assert_eq!(projector.harmony_grace_windows.len(), 1);
+        assert!(
+            projector
+                .harmony_grace_windows
+                .iter()
+                .all(|window| { window.provider_actor_id == 3 && window.target_actor_id == 4 })
+        );
+        assert!(
+            projector
+                .states
+                .get(&4)
+                .into_iter()
+                .chain(projector.staged_states.get(&4))
+                .flat_map(|state| state.harmony_primary_by_class.values())
+                .all(|family| !family.provider_raw_percent.contains_key(&2))
+        );
+    }
+
+    #[test]
     fn mechanical_power_reconciles_attributes_that_precede_status_on_the_same_wire() {
         let recipient_rule = runtime()
             .mechanical_power
@@ -16289,7 +16732,7 @@ mod tests {
             duration_millis: Some(8_000),
         };
 
-        projector.observe_harmony_grace_status(&status);
+        projector.observe_harmony_grace_status(&status, 1);
 
         for recipient_rule in [&physical_rule, &magical_rule] {
             assert_eq!(
@@ -16372,7 +16815,7 @@ mod tests {
             duration_millis: Some(8_000),
         };
 
-        projector.observe_harmony_grace_status(&status);
+        projector.observe_harmony_grace_status(&status, 1);
         assert_eq!(
             projector.staged_states[&4].harmony_primary_by_class
                 [&recipient_rule.recipient_class_id]
@@ -16410,7 +16853,7 @@ mod tests {
         );
         status.state = StatusState::Removed;
         status.stacks = Some(0);
-        projector.observe_harmony_grace_status(&status);
+        projector.observe_harmony_grace_status(&status, 2);
         assert!(
             projector.staged_states[&4].harmony_primary_by_class
                 [&recipient_rule.recipient_class_id]
@@ -16503,7 +16946,7 @@ mod tests {
             duration_millis: Some(8_000),
         };
 
-        projector.observe_harmony_grace_status(&status);
+        projector.observe_harmony_grace_status(&status, 1);
 
         assert!(projector.harmony_grace_windows.is_empty());
         assert!(
