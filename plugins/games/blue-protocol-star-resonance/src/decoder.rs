@@ -236,6 +236,7 @@ pub struct ProtocolRuntime<'a> {
     status_effects: StatusEffectRegistry,
     dungeon: DungeonTracker,
     profile: ProfileTracker,
+    state_deduplicator: CanonicalStateDeduplicator,
     envelopes: EventEnvelopeFactory,
     server_clock: Option<ServerClockAnchor>,
     objective_catalog: Option<Arc<dyn ObjectiveCatalogResolver>>,
@@ -287,6 +288,7 @@ impl<'a> ProtocolRuntime<'a> {
             ),
             dungeon: DungeonTracker::default(),
             profile: ProfileTracker::default(),
+            state_deduplicator: CanonicalStateDeduplicator::new(config.max_entities),
             envelopes: EventEnvelopeFactory::new(session_id, region_context),
             server_clock: None,
             objective_catalog: None,
@@ -470,6 +472,7 @@ impl<'a> ProtocolRuntime<'a> {
         for draft in &mut drafts {
             self.attach_objective_catalog(draft);
         }
+        drafts.retain(|draft| self.state_deduplicator.retain(draft));
         let events = drafts
             .into_iter()
             .map(|draft| self.envelopes.emit(draft))
@@ -605,6 +608,94 @@ struct ProfileTracker {
     last_social_profile: Option<CharacterProfilePatch>,
     last_social_world: Option<WorldContext>,
     last_team_profiles: BTreeMap<i64, CharacterProfilePatch>,
+}
+
+/// Removes only exact, unchanged state echoes before envelope sequence numbers
+/// are assigned. Damage, healing, attributes, resources, positions, casts, and
+/// every status lifecycle remain byte-for-byte observable. Any run boundary,
+/// world transition, or data gap clears the cache so a later state assertion
+/// is retained even when an unobserved transition could have occurred.
+#[derive(Debug)]
+struct CanonicalStateDeduplicator {
+    actors: BTreeMap<u64, ActorEvent>,
+    cooldowns: BTreeMap<(u64, i64), CooldownEvent>,
+    cooldown_limit: usize,
+}
+
+impl CanonicalStateDeduplicator {
+    fn new(max_entities: usize) -> Self {
+        Self {
+            actors: BTreeMap::new(),
+            cooldowns: BTreeMap::new(),
+            cooldown_limit: max_entities.saturating_mul(16).clamp(1_024, 262_144),
+        }
+    }
+
+    fn clear(&mut self) {
+        self.actors.clear();
+        self.cooldowns.clear();
+    }
+
+    fn clear_actor(&mut self, actor_id: u64) {
+        self.actors.remove(&actor_id);
+        self.cooldowns
+            .retain(|(cached_actor_id, _), _| *cached_actor_id != actor_id);
+    }
+
+    fn retain(&mut self, draft: &CanonicalEventDraft) -> bool {
+        match &draft.kind {
+            CanonicalEventDraftKind::WorldChanged(_) => {
+                self.clear();
+                true
+            }
+            CanonicalEventDraftKind::Timeline(TimelineEventKind::RunBoundary { .. })
+            | CanonicalEventDraftKind::Timeline(TimelineEventKind::DataGap(_)) => {
+                self.clear();
+                true
+            }
+            CanonicalEventDraftKind::Timeline(TimelineEventKind::Actor(actor)) => {
+                let actor_id = actor.actor.actor_id.0;
+                match actor.state {
+                    ActorState::Despawned => {
+                        self.clear_actor(actor_id);
+                        true
+                    }
+                    ActorState::Spawned => {
+                        self.clear_actor(actor_id);
+                        self.actors.insert(actor_id, actor.clone());
+                        true
+                    }
+                    ActorState::Transformed => {
+                        self.actors.insert(actor_id, actor.clone());
+                        true
+                    }
+                    ActorState::Updated => {
+                        if self.actors.get(&actor_id) == Some(actor) {
+                            false
+                        } else {
+                            self.actors.insert(actor_id, actor.clone());
+                            true
+                        }
+                    }
+                }
+            }
+            CanonicalEventDraftKind::Timeline(TimelineEventKind::Cooldown(cooldown)) => {
+                let key = (cooldown.actor.actor_id.0, cooldown.ability.0);
+                if self.cooldowns.get(&key) == Some(cooldown) {
+                    return false;
+                }
+                if !self.cooldowns.contains_key(&key) && self.cooldowns.len() >= self.cooldown_limit
+                {
+                    // Capacity pressure may reduce deduplication efficiency but
+                    // never evidence: clearing makes subsequent echoes emit.
+                    self.cooldowns.clear();
+                }
+                self.cooldowns.insert(key, cooldown.clone());
+                true
+            }
+            _ => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -5825,6 +5916,120 @@ mod tests {
         bytes.extend(body);
         bytes.extend(blob_i32(-3));
         bytes
+    }
+
+    #[test]
+    fn unchanged_actor_and_cooldown_echoes_are_bounded_and_gap_aware() {
+        let metadata = DecodeMetadata {
+            time: EventTime {
+                observed_micros: 10,
+                game_time_millis: Some(20),
+            },
+            provenance: EventProvenance::wire(1, 2, 3),
+            region: RegionIdentity {
+                deployment_id: "global".into(),
+                region_id: "north-america".into(),
+                realm_id: None,
+                world_id: None,
+            },
+        };
+        let actor = EntityRef {
+            actor_id: ActorId(7),
+            entity_uuid: EntityUuid(70),
+        };
+        let actor_event = ActorEvent {
+            actor,
+            state: ActorState::Updated,
+            entity_type_id: ENTITY_PLAYER,
+            kind: ActorKind::Player,
+            monster_id: None,
+            character_id: Some("70".into()),
+            display_name: Some("Recorder".into()),
+            class_id: Some(5),
+            specialization_id: Some(110),
+            level: Some(60),
+            ability_score: Some(65_000),
+            weapon_item_id: Some(123),
+            weapon_breakthrough_count: Some(4),
+            seasonal_score: Some(4_825),
+            primary_loadout: Vec::new(),
+            auxiliary_loadout: Vec::new(),
+            loadout_observation: ActorLoadoutObservation::default(),
+        };
+        let cooldown_event = CooldownEvent {
+            actor,
+            ability: AbilityId(2_903_521),
+            begin_time_millis: Some(100),
+            duration_millis: Some(5_000),
+            valid_duration_millis: Some(4_500),
+            cooldown_type: Some(1),
+            profession_hold_begin_time_millis: None,
+            charge_count: Some(1),
+            valid_cooldown_time_millis: Some(4_500),
+            sub_cooldown_ratio_raw: None,
+            sub_cooldown_fixed_raw: None,
+            accelerate_cooldown_ratio_raw: None,
+        };
+        let actor_draft = timeline_draft(&metadata, TimelineEventKind::Actor(actor_event.clone()));
+        let cooldown_draft = timeline_draft(
+            &metadata,
+            TimelineEventKind::Cooldown(cooldown_event.clone()),
+        );
+        let mut deduplicator = CanonicalStateDeduplicator::new(1);
+
+        assert!(deduplicator.retain(&actor_draft));
+        assert!(!deduplicator.retain(&actor_draft));
+        assert!(deduplicator.retain(&cooldown_draft));
+        assert!(!deduplicator.retain(&cooldown_draft));
+
+        let status_draft = timeline_draft(
+            &metadata,
+            TimelineEventKind::Status(StatusEvent {
+                source: Some(actor),
+                target: actor,
+                effect: StatusEffectId(3_003_052),
+                instance_id: Some(StatusEffectInstanceId(42)),
+                origin: None,
+                state: StatusState::Applied,
+                stacks: Some(1),
+                duration_millis: Some(10_000),
+                level: Some(1),
+                part_id: None,
+                count: None,
+                created_at_millis: Some(20),
+            }),
+        );
+        assert!(deduplicator.retain(&status_draft));
+        assert!(deduplicator.retain(&status_draft));
+
+        let mut changed_cooldown = cooldown_event.clone();
+        changed_cooldown.begin_time_millis = Some(200);
+        assert!(deduplicator.retain(&timeline_draft(
+            &metadata,
+            TimelineEventKind::Cooldown(changed_cooldown),
+        )));
+
+        let gap = timeline_draft(
+            &metadata,
+            TimelineEventKind::DataGap(DataGapEvent {
+                kind: DataGapKind::TcpGap,
+                connection_id: Some(2),
+                stream_id: Some(3),
+                detail: "test gap".into(),
+            }),
+        );
+        assert!(deduplicator.retain(&gap));
+        assert!(deduplicator.retain(&actor_draft));
+        assert!(deduplicator.retain(&cooldown_draft));
+
+        let mut despawned = actor_event;
+        despawned.state = ActorState::Despawned;
+        assert!(deduplicator.retain(&timeline_draft(
+            &metadata,
+            TimelineEventKind::Actor(despawned),
+        )));
+        assert!(deduplicator.retain(&actor_draft));
+        assert!(deduplicator.retain(&cooldown_draft));
     }
 
     #[test]

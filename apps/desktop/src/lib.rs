@@ -9777,7 +9777,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_history_clears_revoked_effect_credit_before_background_refresh() {
+    fn stale_history_clears_unauthorized_effect_credit_before_background_refresh() {
         let root = temporary_root();
         let controller = RuntimeController::new(root.clone()).unwrap();
         let mut snapshot = captured_marksman_history();
@@ -9794,7 +9794,10 @@ mod tests {
         actor.rdps_damage = Some(2);
         actor.rdps_contribution_given = Some(1);
         actor.rdps_contribution_received = Some(1);
-        add_history_damage_influence(&mut snapshot, 3_003_052);
+        // Use an impossible catalog identity so promoting another reviewed
+        // effect cannot silently turn this fail-closed fixture into an
+        // authorized stale projection.
+        add_history_damage_influence(&mut snapshot, i64::MAX);
         controller
             .combat_history
             .lock()
