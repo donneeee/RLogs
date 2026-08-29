@@ -272,9 +272,7 @@ export function historyDamageInfluenceMatchesQuery(
   const target = view.targets.find(
     (candidate) => candidate.actor_id === influence.target_actor_id,
   );
-  const effect = view.actors
-    .flatMap((candidate) => candidate.effects)
-    .find((candidate) => candidate.effect_id === influence.effect_id);
+  const effect = historyRdpsEffectPresentation(view, influence.effect_id);
   const ability = recipient?.abilities.find(
     (candidate) => candidate.ability_id === influence.affected_ability_id,
   );
@@ -313,6 +311,17 @@ export function historyDamageInfluenceMatchesQuery(
     .join(" ")
     .toLocaleLowerCase();
   return terms.every((term) => searchable.includes(term));
+}
+
+export function historyRdpsEffectPresentation(
+  view: CombatHistoryView,
+  effectId: string,
+) {
+  return view.rdps_effect_presentations?.find(
+    (candidate) => candidate.effect_id === effectId,
+  ) ?? view.actors
+    .flatMap((candidate) => candidate.effects)
+    .find((candidate) => candidate.effect_id === effectId);
 }
 
 export function actorRdpsBreakdown(
@@ -2040,9 +2049,7 @@ export function mountCombatHistorySurface(
       head.append(heading);
       const body = document.createElement("tbody");
       for (const granted of breakdown.grantedEffects) {
-        const effect = view.actors
-          .flatMap((candidate) => candidate.effects)
-          .find((candidate) => candidate.effect_id === granted.effectId);
+        const effect = historyRdpsEffectPresentation(view, granted.effectId);
         const row = document.createElement("tr");
         const effectCell = document.createElement("td");
         effectCell.append(
@@ -2182,9 +2189,7 @@ export function mountCombatHistorySurface(
       const target = view.targets.find(
         (candidate) => candidate.actor_id === influence.target_actor_id,
       );
-      const effect = view.actors
-        .flatMap((candidate) => candidate.effects)
-        .find((candidate) => candidate.effect_id === influence.effect_id);
+      const effect = historyRdpsEffectPresentation(view, influence.effect_id);
       const ability = recipient?.abilities.find(
         (candidate) => candidate.ability_id === influence.affected_ability_id,
       );
@@ -3963,9 +3968,7 @@ function relativeDamageSkillCell(
       source.providerActorId,
       source.providerEntityUuid,
     );
-    const effect = view.actors
-      .flatMap((candidate) => candidate.effects)
-      .find((candidate) => candidate.effect_id === source.effectId);
+    const effect = historyRdpsEffectPresentation(view, source.effectId);
     const providerName = provider ? actorLabel(provider) : `Actor ${source.providerActorId}`;
     const effectName = effect?.presentation_name?.trim() || `Effect ${source.effectId}`;
     const component = source.attributionComponent

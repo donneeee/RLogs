@@ -117,6 +117,20 @@ pub struct CombatHistoryView {
     /// "what affected this damage and by how much" without replaying packets.
     #[serde(default)]
     pub damage_influences: Vec<HistoryDamageInfluenceSummary>,
+    /// Display-only identities for rDPS effects referenced by this view.
+    /// Exact numeric effect IDs remain the join and attribution authority.
+    #[serde(default)]
+    pub rdps_effect_presentations: Vec<HistoryRdpsEffectPresentation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HistoryRdpsEffectPresentation {
+    pub effect_id: String,
+    pub presentation_name: String,
+    pub presentation_kind: String,
+    pub presentation_resolution: String,
+    #[serde(default)]
+    pub icon_asset_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -3099,6 +3113,7 @@ impl CombatTimelinePlugin {
             actors,
             targets,
             damage_influences,
+            rdps_effect_presentations: Vec::new(),
         }
     }
 

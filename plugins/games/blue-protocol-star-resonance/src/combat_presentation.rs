@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 const MAXIMUM_COMBAT_ACTIONS: usize = 50_000;
 const MAXIMUM_STATUS_EFFECTS: usize = 20_000;
+const MAXIMUM_RDPS_ATTRIBUTION_EFFECTS: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -27,6 +28,19 @@ pub struct StatusEffectPresentation {
     pub icon: Option<String>,
 }
 
+/// Presentation-only identity for a production rDPS attribution endpoint.
+///
+/// Numeric effect and exact-build identity remain the runtime authority. These
+/// reviewed names are deliberately kept outside every formula digest and must
+/// never be used to select or enable an attribution rule.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RdpsAttributionEffectPresentation {
+    pub effect_id: i64,
+    pub name: String,
+    pub resolution: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CombatActionPresentationCatalog {
@@ -39,6 +53,16 @@ struct CombatActionPresentationCatalog {
 struct StatusEffectPresentationCatalog {
     schema_version: u16,
     effects: Vec<StatusEffectPresentation>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RdpsAttributionEffectPresentationCatalog {
+    schema_version: u16,
+    deployment_id: String,
+    game_build: String,
+    locale: String,
+    effects: Vec<RdpsAttributionEffectPresentation>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +87,9 @@ static REVIEWED_ACTION_PRESENTATION: OnceLock<Result<CombatActionPresentationCat
     OnceLock::new();
 static EFFECT_PRESENTATION: OnceLock<Result<StatusEffectPresentationCatalog, String>> =
     OnceLock::new();
+static RDPS_ATTRIBUTION_EFFECT_PRESENTATION: OnceLock<
+    Result<RdpsAttributionEffectPresentationCatalog, String>,
+> = OnceLock::new();
 
 fn action_presentation_catalog() -> Result<&'static CombatActionPresentationCatalog, String> {
     ACTION_PRESENTATION
@@ -113,6 +140,23 @@ fn effect_presentation_catalog() -> Result<&'static StatusEffectPresentationCata
         .map_err(Clone::clone)
 }
 
+fn rdps_attribution_effect_presentation_catalog()
+-> Result<&'static RdpsAttributionEffectPresentationCatalog, String> {
+    RDPS_ATTRIBUTION_EFFECT_PRESENTATION
+        .get_or_init(|| {
+            let catalog: RdpsAttributionEffectPresentationCatalog = serde_json::from_str(
+                include_str!("../game-data/runtime/rdps-attribution-effect-presentation.v1.json"),
+            )
+            .map_err(|error| {
+                format!("bundled BPSR rDPS attribution presentation is invalid: {error}")
+            })?;
+            validate_rdps_attribution_effect_presentation(&catalog)?;
+            Ok(catalog)
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
 fn validate_action_presentation(catalog: &CombatActionPresentationCatalog) -> Result<(), String> {
     if catalog.schema_version != 1
         || catalog.actions.is_empty()
@@ -155,6 +199,34 @@ fn validate_effect_presentation(catalog: &StatusEffectPresentationCatalog) -> Re
         })
     {
         return Err("bundled BPSR status effect presentation has an unsupported shape".into());
+    }
+    Ok(())
+}
+
+fn validate_rdps_attribution_effect_presentation(
+    catalog: &RdpsAttributionEffectPresentationCatalog,
+) -> Result<(), String> {
+    if catalog.schema_version != 1
+        || catalog.deployment_id != "global"
+        || catalog.game_build != "24687926"
+        || catalog.locale != "en-US"
+        || catalog.effects.is_empty()
+        || catalog.effects.len() > MAXIMUM_RDPS_ATTRIBUTION_EFFECTS
+        || catalog
+            .effects
+            .windows(2)
+            .any(|pair| pair[0].effect_id >= pair[1].effect_id)
+        || catalog.effects.iter().any(|effect| {
+            effect.effect_id <= 0
+                || effect.name.trim().is_empty()
+                || effect.name.contains('\u{fffd}')
+                || !matches!(
+                    effect.resolution.as_str(),
+                    "localized-status-effect" | "reviewed-source-name"
+                )
+        })
+    {
+        return Err("bundled BPSR rDPS attribution presentation has an unsupported shape".into());
     }
     Ok(())
 }
@@ -387,6 +459,21 @@ pub fn status_effect_presentation(
         .map(|index| &catalog.effects[index]))
 }
 
+pub fn rdps_attribution_effect_presentation(
+    effect_id: i64,
+    locale: &str,
+) -> Result<Option<&'static RdpsAttributionEffectPresentation>, String> {
+    let catalog = rdps_attribution_effect_presentation_catalog()?;
+    if locale != catalog.locale {
+        return Ok(None);
+    }
+    Ok(catalog
+        .effects
+        .binary_search_by_key(&effect_id, |effect| effect.effect_id)
+        .ok()
+        .map(|index| &catalog.effects[index]))
+}
+
 pub fn localized_combat_action_name(
     ability_id: i64,
     locale: &str,
@@ -450,6 +537,40 @@ pub fn localized_status_effect_name(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_promoted_rdps_effects_have_exact_id_english_presentation() {
+        let cases = [
+            (55_228, "Luminary Bolt Vulnerability"),
+            (55_333, "Encore"),
+            (2_110_065, "Fiery Battle Will"),
+            (2_110_125, "Highland Blood"),
+            (2_110_140, "Mechanical Power"),
+            (2_110_143, "Functional Amp"),
+            (2_202_041, "Inspiration"),
+            (2_204_471, "Critical Cold"),
+            (2_207_252, "Stat Resonance"),
+            (2_302_121, "Team Luck & Crit"),
+            (3_003_052, "Harmony Grace"),
+        ];
+
+        for (effect_id, expected_name) in cases {
+            let presentation = rdps_attribution_effect_presentation(effect_id, "en-US")
+                .unwrap()
+                .unwrap_or_else(|| panic!("promoted rDPS effect {effect_id} is absent"));
+            assert_eq!(presentation.name, expected_name);
+        }
+        assert!(
+            rdps_attribution_effect_presentation(9_999_999, "en-US")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            rdps_attribution_effect_presentation(2_204_471, "ja-JP")
+                .unwrap()
+                .is_none()
+        );
+    }
 
     #[test]
     fn resolves_current_capture_skill_and_effect_source_actions() {

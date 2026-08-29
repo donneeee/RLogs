@@ -20,6 +20,7 @@ import {
   graphScaleMaximum,
   groupDisplayedAbilities,
   historyDamageInfluenceMatchesQuery,
+  historyRdpsEffectPresentation,
   historyRdpsProgressPresentation,
   historyActorColor,
   historyTargetLabel,
@@ -72,7 +73,7 @@ describe("Combat History rDPS influence filtering", () => {
     presentation_class_name: "Shield Knight",
     presentation_specialization_name: "Recovery",
     abilities: [],
-    effects: [{ effect_id: "2302121", presentation_name: "Team Luck" }],
+    effects: [{ effect_id: "2302121", presentation_name: "Team Luck & Crit" }],
   } as unknown as HistoryActorSummary;
   const recipient = {
     actor_id: "recipient-actor",
@@ -113,7 +114,7 @@ describe("Combat History rDPS influence filtering", () => {
   });
 
   it("matches effect and affected skill identities together", () => {
-    expect(historyDamageInfluenceMatchesQuery(view, influence, "Team Luck 2031109")).toBe(true);
+    expect(historyDamageInfluenceMatchesQuery(view, influence, "Team Luck & Crit 2031109")).toBe(true);
     expect(historyDamageInfluenceMatchesQuery(view, influence, "2302121 Falconry hit")).toBe(true);
   });
 
@@ -140,6 +141,36 @@ describe("Combat History rDPS influence filtering", () => {
 
     expect(historyDamageInfluenceMatchesQuery(rotatedView, influence, "1002003")).toBe(true);
     expect(historyDamageInfluenceMatchesQuery(rotatedView, influence, "retired-provider-uid")).toBe(false);
+  });
+
+  it.each([
+    ["55228", "Luminary Bolt Vulnerability"],
+    ["55333", "Encore"],
+    ["2110065", "Fiery Battle Will"],
+    ["2110125", "Highland Blood"],
+    ["2110140", "Mechanical Power"],
+    ["2110143", "Functional Amp"],
+    ["2202041", "Inspiration"],
+    ["2204471", "Critical Cold"],
+    ["2207252", "Stat Resonance"],
+    ["2302121", "Team Luck & Crit"],
+    ["3003052", "Harmony Grace"],
+  ])("uses the exact-ID rDPS presentation registry for %s %s", (effectId, name) => {
+    const registryView = {
+      ...view,
+      actors: [{ ...provider, effects: [] }, recipient],
+      rdps_effect_presentations: [{
+        effect_id: effectId,
+        presentation_name: name,
+        presentation_kind: "status-effect",
+        presentation_resolution: "reviewed-source-name",
+        icon_asset_path: null,
+      }],
+    } as CombatHistoryView;
+    const registryInfluence = { ...influence, effect_id: effectId };
+
+    expect(historyRdpsEffectPresentation(registryView, effectId)?.presentation_name).toBe(name);
+    expect(historyDamageInfluenceMatchesQuery(registryView, registryInfluence, name)).toBe(true);
   });
 });
 

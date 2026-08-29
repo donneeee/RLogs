@@ -92,9 +92,9 @@ pub use class_localization::{
     specialization_class_id, specialization_icon_path, specialization_role,
 };
 pub use combat_presentation::{
-    CombatActionPresentation, StatusEffectPresentation, combat_action_presentation,
-    localized_combat_action_name, localized_recount_group_name, localized_status_effect_name,
-    status_effect_presentation,
+    CombatActionPresentation, RdpsAttributionEffectPresentation, StatusEffectPresentation,
+    combat_action_presentation, localized_combat_action_name, localized_recount_group_name,
+    localized_status_effect_name, rdps_attribution_effect_presentation, status_effect_presentation,
 };
 pub use continuous_recording::{
     ContinuousBpsrRecorder, ContinuousRecordingConfig, ContinuousRecordingError,

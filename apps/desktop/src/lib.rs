@@ -68,8 +68,9 @@ use rlogs_game_bpsr::{
     localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
     localized_combat_action_name, localized_monster_name, localized_recount_group_name,
     localized_scene_name, localized_specialization_identities, localized_status_effect_name,
-    project_local_profile_packages, record_offline_capture, resolve_actor_combat_identity,
-    resolve_actor_combat_presentation, resolve_live_steam_protocol_pack, scene_boss_monster_ids,
+    project_local_profile_packages, rdps_attribution_effect_presentation, record_offline_capture,
+    resolve_actor_combat_identity, resolve_actor_combat_presentation,
+    resolve_live_steam_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
     status_effect_presentation, weapon_level_presentation, weapon_presentation,
 };
@@ -78,7 +79,7 @@ use rlogs_plugin_api::{PluginCapability, PluginDependency, PluginRuntime, Plugin
 use rlogs_plugin_combat_meter::{
     COMBAT_SNAPSHOT_SCHEMA_ID, COMBAT_SNAPSHOT_SCHEMA_VERSION, CombatHistorySnapshot,
     CombatRunHistory, CombatTimelinePlugin, CombatTimelineSnapshot, HistoryLoadoutSlot,
-    LiveHealthAttributeMapping,
+    HistoryRdpsEffectPresentation, LiveHealthAttributeMapping,
 };
 use rlogs_plugin_encounter_recorder::{
     EncounterRecorderPlugin, RUN_PROJECTION_SCHEMA_ID, RUN_PROJECTION_SCHEMA_VERSION,
@@ -6781,6 +6782,7 @@ fn clear_history_rdps_projection(snapshot: &mut CombatHistorySnapshot, status: &
         run.rdps_status = status.into();
         for view in &mut run.views {
             view.damage_influences.clear();
+            view.rdps_effect_presentations.clear();
             for actor in &mut view.actors {
                 actor.rdps = None;
                 actor.rdps_damage = None;
@@ -7369,6 +7371,31 @@ fn enrich_bpsr_history_presentation(
             .flatten()
             .map(str::to_owned);
         for view in &mut run.views {
+            let referenced_rdps_effect_ids = view
+                .damage_influences
+                .iter()
+                .filter_map(|influence| influence.effect_id.parse::<i64>().ok())
+                .collect::<BTreeSet<_>>();
+            let mut rdps_effect_presentations = Vec::new();
+            for effect_id in referenced_rdps_effect_ids {
+                let Some(attribution) = rdps_attribution_effect_presentation(effect_id, locale)?
+                else {
+                    continue;
+                };
+                let status = status_effect_presentation(effect_id)?;
+                rdps_effect_presentations.push(HistoryRdpsEffectPresentation {
+                    effect_id: effect_id.to_string(),
+                    presentation_name: attribution.name.clone(),
+                    presentation_kind: status
+                        .map(|presentation| presentation.kind.clone())
+                        .unwrap_or_else(|| "status-effect".into()),
+                    presentation_resolution: attribution.resolution.clone(),
+                    icon_asset_path: bpsr_game_asset_path(
+                        status.and_then(|presentation| presentation.icon.clone()),
+                    ),
+                });
+            }
+            view.rdps_effect_presentations = rdps_effect_presentations;
             for actor in &mut view.actors {
                 let ability_ids = actor
                     .abilities

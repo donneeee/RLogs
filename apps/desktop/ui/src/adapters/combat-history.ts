@@ -131,6 +131,15 @@ export interface CombatHistoryView {
   actors: HistoryActorSummary[];
   targets: HistoryTargetIdentity[];
   damage_influences: HistoryDamageInfluenceSummary[];
+  rdps_effect_presentations: HistoryRdpsEffectPresentation[];
+}
+
+export interface HistoryRdpsEffectPresentation {
+  effect_id: string;
+  presentation_name: string;
+  presentation_kind: string;
+  presentation_resolution: string;
+  icon_asset_path: string | null;
 }
 
 export interface HistoryRationalDamageDelta {
@@ -606,6 +615,30 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
           parsedTarget.actor_kind !== "training_dummy"
         );
       });
+      if (parsed.rdps_effect_presentations === undefined) {
+        parsed.rdps_effect_presentations = [];
+      }
+      array(
+        parsed.rdps_effect_presentations,
+        "view rDPS effect presentations",
+        2_000,
+      ).forEach((presentation, presentationIndex) => {
+        const parsedPresentation = record(
+          presentation,
+          `run ${runIndex} view ${viewIndex} rDPS effect presentation ${presentationIndex}`,
+        );
+        text(parsedPresentation.effect_id, "rDPS effect presentation ID");
+        text(parsedPresentation.presentation_name, "rDPS effect presentation name");
+        text(parsedPresentation.presentation_kind, "rDPS effect presentation kind");
+        text(
+          parsedPresentation.presentation_resolution,
+          "rDPS effect presentation resolution",
+        );
+        if (parsedPresentation.icon_asset_path === undefined) {
+          parsedPresentation.icon_asset_path = null;
+        }
+        optionalText(parsedPresentation.icon_asset_path, "rDPS effect presentation icon");
+      });
       if (parsed.damage_influences === undefined) parsed.damage_influences = [];
       array(parsed.damage_influences, "view damage influences", 1_000_000).forEach(
         (influence, influenceIndex) => {
@@ -654,7 +687,10 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
           });
         },
       );
-      if (!providerCreditEnabled) parsed.damage_influences = [];
+      if (!providerCreditEnabled) {
+        parsed.damage_influences = [];
+        parsed.rdps_effect_presentations = [];
+      }
     });
   }
   return snapshot as unknown as CombatHistorySnapshot;

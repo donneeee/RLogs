@@ -1147,6 +1147,7 @@ mod tests {
                         actors: Vec::new(),
                         targets: Vec::new(),
                         damage_influences: Vec::new(),
+                        rdps_effect_presentations: Vec::new(),
                     }],
                 })
                 .collect(),
@@ -1332,6 +1333,7 @@ mod tests {
                     actors: Vec::new(),
                     targets: Vec::new(),
                     damage_influences: Vec::new(),
+                    rdps_effect_presentations: Vec::new(),
                 }],
             }],
         };

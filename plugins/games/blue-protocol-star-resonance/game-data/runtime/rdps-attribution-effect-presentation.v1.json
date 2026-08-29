@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "deployment_id": "global",
+  "game_build": "24687926",
+  "locale": "en-US",
+  "effects": [
+    {
+      "effect_id": 55228,
+      "name": "Luminary Bolt Vulnerability",
+      "resolution": "reviewed-source-name"
+    },
+    {
+      "effect_id": 55333,
+      "name": "Encore",
+      "resolution": "localized-status-effect"
+    },
+    {
+      "effect_id": 2110065,
+      "name": "Fiery Battle Will",
+      "resolution": "localized-status-effect"
+    },
+    {
+      "effect_id": 2110125,
+      "name": "Highland Blood",
+      "resolution": "localized-status-effect"
+    },
+    {
+      "effect_id": 2110140,
+      "name": "Mechanical Power",
+      "resolution": "localized-status-effect"
+    },
+    {
+      "effect_id": 2110143,
+      "name": "Functional Amp",
+      "resolution": "localized-status-effect"
+    },
+    {
+      "effect_id": 2202041,
+      "name": "Inspiration",
+      "resolution": "localized-status-effect"
+    },
+    {
+      "effect_id": 2204471,
+      "name": "Critical Cold",
+      "resolution": "reviewed-source-name"
+    },
+    {
+      "effect_id": 2207252,
+      "name": "Stat Resonance",
+      "resolution": "reviewed-source-name"
+    },
+    {
+      "effect_id": 2302121,
+      "name": "Team Luck & Crit",
+      "resolution": "reviewed-source-name"
+    },
+    {
+      "effect_id": 3003052,
+      "name": "Harmony Grace",
+      "resolution": "localized-status-effect"
+    }
+  ]
+}
