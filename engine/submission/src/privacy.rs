@@ -1,7 +1,9 @@
 use std::io::{BufRead, Write};
 
 use rlogs_events::{CanonicalEvent, EventEnvelope, EventSensitivity};
-use rlogs_log_format::{RlogError, RlogLimits, RlogReader, RlogSeal, RlogWriter};
+use rlogs_log_format::{
+    RLOG_SCHEMA_VERSION, RlogError, RlogLimits, RlogReader, RlogSeal, RlogWriter,
+};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -67,6 +69,12 @@ pub fn write_privacy_filtered_submission_log<R: BufRead, W: Write>(
     let mut reader = RlogReader::new(input, limits)?;
     let source_header = reader.header().clone();
     let mut header = source_header.clone();
+    // Submission exports are newly written artifacts, so always use the
+    // current compact container even when the immutable local source is a
+    // legacy JSON-lines rlog. The canonical events are streamed, validated,
+    // privacy-filtered, and resealed below; only their container encoding is
+    // upgraded.
+    header.schema_version = RLOG_SCHEMA_VERSION;
     let stripped_region_evidence_entries = header.region.evidence.len() as u64;
     header.region.evidence.clear();
     header.producer = format!(
@@ -296,6 +304,34 @@ mod tests {
             event.event,
             CanonicalEvent::CharacterProfileObserved { .. }
         ));
+        assert!(reader.next_event().unwrap().is_none());
+    }
+
+    #[test]
+    fn export_upgrades_legacy_sources_to_the_compact_submission_container() {
+        let mut header = RlogHeader::new("privacy-test", region(), "fixture");
+        header.schema_version = rlogs_log_format::LEGACY_RLOG_SCHEMA_VERSION;
+        let mut writer = RlogWriter::new(Vec::new(), header).unwrap();
+        writer
+            .push(&envelope(
+                1,
+                profile(json!({"display_name":"MarieRose","character_id":"3296036"})),
+                EventSensitivity::PersonalGameplay,
+            ))
+            .unwrap();
+        let legacy_input = writer.finish().unwrap();
+
+        let (output, _, summary) = write_privacy_filtered_submission_log(
+            Cursor::new(legacy_input),
+            Vec::new(),
+            RlogLimits::default(),
+        )
+        .unwrap();
+
+        assert_eq!(summary.retained_events, 1);
+        let mut reader = RlogReader::new(Cursor::new(output), RlogLimits::default()).unwrap();
+        assert_eq!(reader.header().schema_version, RLOG_SCHEMA_VERSION);
+        assert!(reader.next_event().unwrap().is_some());
         assert!(reader.next_event().unwrap().is_none());
     }
 
