@@ -305,16 +305,19 @@ pub fn packet_attack_coefficient_stage_provider_marginal(
 ///
 /// The audit candidate stage body is
 /// `floor(attack * coefficient / 10000) + fixed_parameter`. Current-build
-/// evidence proves the coefficient and fixed-parameter relation, but not this
-/// server rounding boundary or its downstream operation order. The provider
-/// owns only the difference between the active and provider-removed candidate
-/// terms; the fixed parameter remains entirely with the recipient. The share
+/// evidence proves the coefficient and fixed-parameter relation, but not the
+/// complete provider-sensitive stage body or its downstream operation order.
+/// The provider owns only the difference between the active and
+/// provider-removed candidate terms; the fixed parameter remains entirely with
+/// the recipient. The share
 /// is carried through observed damage as an exact rational so offline audits
 /// neither floor away nor manufacture damage while later stages are rebuilt.
 ///
-/// This is an audit-only accounting projection, not an authoritative integer
-/// game counterfactual. Nonstandard scripts remain ineligible until their own
-/// coefficient semantics are proven.
+/// The packet-final integer is authoritative and a hidden server intermediate
+/// is not required by exact-rational accounting. This remains audit-only until
+/// the complete provider-sensitive stage body and ordering are proven.
+/// Nonstandard scripts remain ineligible until their own coefficient semantics
+/// are proven.
 pub fn exact_external_attack_coefficient_stage_fraction(
     observed_damage: i64,
     family: PacketDamageScriptFamily,

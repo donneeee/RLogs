@@ -1438,6 +1438,16 @@ impl RdpsRuntimeConfig {
         }
 
         let mechanical = &self.mechanical_power;
+        let mechanical_runtime_authority = mechanical
+            .class_11_tier_0_current_pack_lifecycle_authority
+            && mechanical.class_11_tier_0_exact_rational_attribution_authority
+            && mechanical.accounting_method == "observed-final-damage-proportional-stage-share"
+            && !mechanical.damage_stage_operation_order_authority
+            && !mechanical.damage_stage_integer_rounding_authority
+            && !mechanical.server_integer_counterfactual_authority
+            && mechanical.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && mechanical.unresolved_overlap_fails_closed;
         let mechanical_runtime_classes_are_valid = mechanical
             .runtime_recipient_class_ids
             .iter()
@@ -1467,7 +1477,6 @@ impl RdpsRuntimeConfig {
             || !mechanical.requires_recipient_packet_transition
             || !mechanical.haste_is_action_opportunity
             || mechanical.universal_tier_formula_enabled
-            || mechanical.class_11_tier_0_exact_rational_attribution_authority
             || mechanical.accounting_method != "observed-final-damage-proportional-stage-share"
             || mechanical.damage_stage_operation_order_authority
             || mechanical.damage_stage_integer_rounding_authority
@@ -1477,7 +1486,10 @@ impl RdpsRuntimeConfig {
             || !mechanical.unresolved_overlap_fails_closed
             || !mechanical_runtime_classes_are_valid
             || !mechanical_runtime_deltas_are_valid
-            || mechanical.runtime_transfer_enabled
+            || (mechanical.runtime_transfer_enabled
+                && (!mechanical_runtime_authority
+                    || mechanical.runtime_recipient_class_ids != [11]
+                    || mechanical.runtime_primary_percent_raw_deltas != [750]))
             || (!mechanical.runtime_transfer_enabled
                 && (!mechanical.runtime_recipient_class_ids.is_empty()
                     || !mechanical.runtime_primary_percent_raw_deltas.is_empty()))
@@ -1488,6 +1500,13 @@ impl RdpsRuntimeConfig {
         }
 
         let harmony = &self.harmony_grace;
+        let harmony_runtime_authority = harmony.class_11_current_pack_lifecycle_authority
+            && harmony.class_11_exact_rational_attribution_authority
+            && harmony.accounting_method == "observed-final-damage-proportional-stage-share"
+            && !harmony.server_integer_counterfactual_authority
+            && harmony.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && harmony.unresolved_overlap_fails_closed;
         let harmony_runtime_classes_are_valid = harmony
             .runtime_recipient_class_ids
             .iter()
@@ -1523,7 +1542,6 @@ impl RdpsRuntimeConfig {
             || harmony.effect_id == harmony.source_terminal_effect_id
             || !harmony.has_valid_source_origin_rule()
             || !rules_are_valid_and_unique(&harmony.recipient_rules)
-            || harmony.class_11_exact_rational_attribution_authority
             || harmony.accounting_method != "observed-final-damage-proportional-stage-share"
             || harmony.server_integer_counterfactual_authority
             || harmony.rational_integer_projection
@@ -1531,7 +1549,8 @@ impl RdpsRuntimeConfig {
             || !harmony.unresolved_overlap_fails_closed
             || !harmony_runtime_classes_are_valid
             || !harmony_remote_paired_output_evidence_is_valid
-            || harmony.runtime_transfer_enabled
+            || (harmony.runtime_transfer_enabled
+                && (!harmony_runtime_authority || harmony.runtime_recipient_class_ids != [11]))
             || (!harmony.runtime_transfer_enabled
                 && !harmony.runtime_recipient_class_ids.is_empty())
         {
@@ -2856,18 +2875,34 @@ mod tests {
         );
         assert!(!current.effect_runtime_transfer_enabled(current.mechanical_power.effect_id));
 
-        let mut unsafe_reenable = base.clone();
-        unsafe_reenable["mechanical_power"]["class_11_tier_0_exact_rational_attribution_authority"] =
+        let mut missing_rational_authority = base.clone();
+        missing_rational_authority["mechanical_power"]["runtime_transfer_enabled"] =
             serde_json::Value::Bool(true);
-        unsafe_reenable["mechanical_power"]["runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
-        unsafe_reenable["mechanical_power"]["runtime_recipient_class_ids"] =
+        missing_rational_authority["mechanical_power"]["runtime_recipient_class_ids"] =
             serde_json::json!([11]);
-        unsafe_reenable["mechanical_power"]["runtime_primary_percent_raw_deltas"] =
+        missing_rational_authority["mechanical_power"]["runtime_primary_percent_raw_deltas"] =
             serde_json::json!([750]);
         assert!(
-            runtime_from_value(unsafe_reenable).validate().is_err(),
-            "candidate proportional evidence cannot re-enable production transfer",
+            runtime_from_value(missing_rational_authority)
+                .validate()
+                .is_err(),
+            "runtime transfer still requires exact-rational authority",
+        );
+
+        let mut exact_rational_reenable = base.clone();
+        exact_rational_reenable["mechanical_power"]["class_11_tier_0_exact_rational_attribution_authority"] =
+            serde_json::Value::Bool(true);
+        exact_rational_reenable["mechanical_power"]["runtime_transfer_enabled"] =
+            serde_json::Value::Bool(true);
+        exact_rational_reenable["mechanical_power"]["runtime_recipient_class_ids"] =
+            serde_json::json!([11]);
+        exact_rational_reenable["mechanical_power"]["runtime_primary_percent_raw_deltas"] =
+            serde_json::json!([750]);
+        assert!(
+            runtime_from_value(exact_rational_reenable)
+                .validate()
+                .is_ok(),
+            "exact-rational packet-final attribution must not require hidden server integer authority",
         );
 
         let mut wrong_accounting_method = base.clone();
@@ -3118,15 +3153,30 @@ mod tests {
         assert!(current.harmony_grace.unresolved_overlap_fails_closed);
         assert!(current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
 
-        let mut unsafe_reenable = base.clone();
-        unsafe_reenable["harmony_grace"]["class_11_exact_rational_attribution_authority"] =
+        let mut missing_rational_authority = base.clone();
+        missing_rational_authority["harmony_grace"]["runtime_transfer_enabled"] =
             serde_json::Value::Bool(true);
-        unsafe_reenable["harmony_grace"]["runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
-        unsafe_reenable["harmony_grace"]["runtime_recipient_class_ids"] = serde_json::json!([11]);
+        missing_rational_authority["harmony_grace"]["runtime_recipient_class_ids"] =
+            serde_json::json!([11]);
         assert!(
-            runtime_from_value(unsafe_reenable).validate().is_err(),
-            "candidate proportional evidence cannot re-enable production transfer",
+            runtime_from_value(missing_rational_authority)
+                .validate()
+                .is_err(),
+            "runtime transfer still requires exact-rational authority",
+        );
+
+        let mut exact_rational_reenable = base.clone();
+        exact_rational_reenable["harmony_grace"]["class_11_exact_rational_attribution_authority"] =
+            serde_json::Value::Bool(true);
+        exact_rational_reenable["harmony_grace"]["runtime_transfer_enabled"] =
+            serde_json::Value::Bool(true);
+        exact_rational_reenable["harmony_grace"]["runtime_recipient_class_ids"] =
+            serde_json::json!([11]);
+        assert!(
+            runtime_from_value(exact_rational_reenable)
+                .validate()
+                .is_ok(),
+            "exact-rational packet-final attribution must not require hidden server integer authority",
         );
 
         let mut hidden_server_integer_stays_unclaimed = base.clone();
