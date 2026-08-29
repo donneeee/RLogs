@@ -619,6 +619,7 @@ struct ProfileTracker {
 struct CanonicalStateDeduplicator {
     actors: BTreeMap<u64, ActorEvent>,
     cooldowns: BTreeMap<(u64, i64), CooldownEvent>,
+    actor_limit: usize,
     cooldown_limit: usize,
 }
 
@@ -627,6 +628,7 @@ impl CanonicalStateDeduplicator {
         Self {
             actors: BTreeMap::new(),
             cooldowns: BTreeMap::new(),
+            actor_limit: max_entities.max(1),
             cooldown_limit: max_entities.saturating_mul(16).clamp(1_024, 262_144),
         }
     }
@@ -640,6 +642,15 @@ impl CanonicalStateDeduplicator {
         self.actors.remove(&actor_id);
         self.cooldowns
             .retain(|(cached_actor_id, _), _| *cached_actor_id != actor_id);
+    }
+
+    fn insert_actor(&mut self, actor_id: u64, actor: ActorEvent) {
+        if !self.actors.contains_key(&actor_id) && self.actors.len() >= self.actor_limit {
+            // Missing despawns cannot make this optimization unbounded. As
+            // with cooldown pressure, clearing emits more evidence, not less.
+            self.actors.clear();
+        }
+        self.actors.insert(actor_id, actor);
     }
 
     fn retain(&mut self, draft: &CanonicalEventDraft) -> bool {
@@ -662,18 +673,18 @@ impl CanonicalStateDeduplicator {
                     }
                     ActorState::Spawned => {
                         self.clear_actor(actor_id);
-                        self.actors.insert(actor_id, actor.clone());
+                        self.insert_actor(actor_id, actor.clone());
                         true
                     }
                     ActorState::Transformed => {
-                        self.actors.insert(actor_id, actor.clone());
+                        self.insert_actor(actor_id, actor.clone());
                         true
                     }
                     ActorState::Updated => {
                         if self.actors.get(&actor_id) == Some(actor) {
                             false
                         } else {
-                            self.actors.insert(actor_id, actor.clone());
+                            self.insert_actor(actor_id, actor.clone());
                             true
                         }
                     }
@@ -6001,6 +6012,20 @@ mod tests {
         );
         assert!(deduplicator.retain(&status_draft));
         assert!(deduplicator.retain(&status_draft));
+
+        let mut second_actor = actor_event.clone();
+        second_actor.actor = EntityRef {
+            actor_id: ActorId(8),
+            entity_uuid: EntityUuid(80),
+        };
+        assert!(deduplicator.retain(&timeline_draft(
+            &metadata,
+            TimelineEventKind::Actor(second_actor),
+        )));
+        // Capacity pressure clears the optimization cache, so the evicted
+        // assertion is emitted again instead of risking lost evidence.
+        assert!(deduplicator.retain(&actor_draft));
+        assert!(!deduplicator.retain(&actor_draft));
 
         let mut changed_cooldown = cooldown_event.clone();
         changed_cooldown.begin_time_millis = Some(200);
