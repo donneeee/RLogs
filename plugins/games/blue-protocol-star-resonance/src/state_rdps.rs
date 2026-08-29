@@ -59,7 +59,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v25";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v26";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -15116,20 +15116,27 @@ mod tests {
             "lifecycle gating cannot alter damage"
         );
 
+        let expected = ExactRationalDamageContributionEvent {
+            observed_micros: 123,
+            effect_id: runtime().harmony_grace.effect_id,
+            provider_actor_id: 2,
+            recipient_actor_id: 4,
+            scope: DamageContributionScope::Component("harmony-grace-primary-attack"),
+            numerator: 211_629,
+            denominator: 295,
+            observed_damage: 70_543,
+            included: true,
+            deferred_damage_context: None,
+        };
         assert_eq!(
             projector.harmony_grace_decision(123, &damage).ok(),
-            Some(ExactRationalDamageContributionEvent {
-                observed_micros: 123,
-                effect_id: runtime().harmony_grace.effect_id,
-                provider_actor_id: 2,
-                recipient_actor_id: 4,
-                scope: DamageContributionScope::Component("harmony-grace-primary-attack"),
-                numerator: 211_629,
-                denominator: 295,
-                observed_damage: 70_543,
-                included: true,
-                deferred_damage_context: None,
-            })
+            Some(expected)
+        );
+        projector.harmony_grace_candidate_audit_enabled = false;
+        assert_eq!(
+            projector.harmony_grace_decision(123, &damage).ok(),
+            Some(expected),
+            "the exact class-11 route must be available without the audit override"
         );
         let trace = projector
             .harmony_grace_formula_trace(&damage)

@@ -506,6 +506,72 @@ impl MechanicalPowerRuntimeConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct HarmonyGraceDirectReplayProof {
+    pub candidate_content_sha256: String,
+    pub candidate_content_bytes: u64,
+    pub production_content_sha256: String,
+    pub production_content_bytes: u64,
+    pub replay_schema_version: u16,
+    pub exact_build_rlogs: u32,
+    pub total_canonical_events: u64,
+    pub runtime_target_match_rlogs: u32,
+    pub candidate_target_match_rlogs: u32,
+    pub conserved_rlogs: u32,
+    pub rational_projection_overflow_count: u64,
+    pub paired_output_baseline_events: u64,
+    pub paired_output_baseline_rdmg: i64,
+    pub production_harmony_events: u64,
+    pub production_harmony_rdmg: i64,
+    pub direct_increment_events: u64,
+    pub direct_increment_sessions: u32,
+    pub direct_increment_observed_damage: u64,
+    pub direct_increment_rdmg: i64,
+    pub direct_relationship_rows: u32,
+    pub direct_provider_entity_uuids: u32,
+    pub direct_recipient_entity_uuids: u32,
+    pub direct_affected_ability_ids: u32,
+    pub all_damage_context_complete: bool,
+    pub ordinary_damage: u64,
+    pub production_contribution_given: i64,
+    pub production_contribution_received: i64,
+}
+
+impl HarmonyGraceDirectReplayProof {
+    fn is_current_authority(&self) -> bool {
+        self.candidate_content_sha256
+            == "b3bcc7e78a327d09953ea61baed553d42f81ec83f7a1829890bc5589fa8dc76d"
+            && self.candidate_content_bytes == 125_956_982
+            && self.production_content_sha256
+                == "0dc5899f99589795a78a345c1dd24c049a36e0da85fe0c3c1db370d5770d4803"
+            && self.production_content_bytes == 150_655_567
+            && self.replay_schema_version == 27
+            && self.exact_build_rlogs == 26
+            && self.total_canonical_events == 6_411_565
+            && self.runtime_target_match_rlogs == 26
+            && self.candidate_target_match_rlogs == 26
+            && self.conserved_rlogs == 26
+            && self.rational_projection_overflow_count == 0
+            && self.paired_output_baseline_events == 57
+            && self.paired_output_baseline_rdmg == 99_124
+            && self.production_harmony_events == 70
+            && self.production_harmony_rdmg == 106_089
+            && self.direct_increment_events == 13
+            && self.direct_increment_sessions == 2
+            && self.direct_increment_observed_damage == 597_972
+            && self.direct_increment_rdmg == 6_965
+            && self.direct_relationship_rows == 6
+            && self.direct_provider_entity_uuids == 1
+            && self.direct_recipient_entity_uuids == 1
+            && self.direct_affected_ability_ids == 6
+            && self.all_damage_context_complete
+            && self.ordinary_damage == 96_705_532_690
+            && self.production_contribution_given == 1_207_303_316
+            && self.production_contribution_received == 1_207_303_316
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct HarmonyGraceRuntimeConfig {
     pub effect_id: i64,
     pub source_terminal_effect_id: i64,
@@ -520,6 +586,9 @@ pub(crate) struct HarmonyGraceRuntimeConfig {
     /// the exact packet-proven Attack-stage body. This is deliberately not a
     /// claim about the server's hidden counterfactual integer boundary.
     pub class_11_exact_rational_attribution_authority: bool,
+    /// Exact 26-log candidate/production delta proving that the direct route
+    /// adds only rows not already owned by the paired-output route.
+    pub direct_replay: HarmonyGraceDirectReplayProof,
     /// Names the rDPS accounting contract independently from the server's
     /// hidden per-hit counterfactual implementation. The observed final
     /// damage remains authoritative and the provider owns only its adjacent,
@@ -1886,6 +1955,7 @@ impl RdpsRuntimeConfig {
         let harmony = &self.harmony_grace;
         let harmony_runtime_authority = harmony.class_11_current_pack_lifecycle_authority
             && harmony.class_11_exact_rational_attribution_authority
+            && harmony.direct_replay.is_current_authority()
             && harmony.accounting_method == "observed-final-damage-proportional-stage-share"
             && !harmony.server_integer_counterfactual_authority
             && harmony.rational_integer_projection
@@ -3579,13 +3649,13 @@ mod tests {
     }
 
     #[test]
-    fn harmony_grace_retains_corrected_candidate_model_without_runtime_transfer() {
+    fn harmony_grace_promotes_the_exact_class_11_packet_final_route() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
         assert!(!current.runtime_promotion_allowed());
-        assert!(!current.harmony_grace.runtime_transfer_enabled);
-        assert!(current.harmony_grace.runtime_recipient_class_ids.is_empty());
+        assert!(current.harmony_grace.runtime_transfer_enabled);
+        assert_eq!(current.harmony_grace.runtime_recipient_class_ids, [11]);
         assert!(
             current
                 .harmony_grace
@@ -3610,7 +3680,7 @@ mod tests {
                 .class_11_current_pack_lifecycle_authority
         );
         assert!(
-            !current
+            current
                 .harmony_grace
                 .class_11_exact_rational_attribution_authority
         );
@@ -3621,8 +3691,20 @@ mod tests {
         );
         assert!(current.harmony_grace.unresolved_overlap_fails_closed);
         assert!(current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
+        assert!(current.harmony_grace.direct_replay.is_current_authority());
+
+        let mut altered_direct_replay = base.clone();
+        altered_direct_replay["harmony_grace"]["direct_replay"]["direct_increment_rdmg"] =
+            serde_json::json!(6966);
+        assert!(
+            runtime_from_value(altered_direct_replay)
+                .validate()
+                .is_err()
+        );
 
         let mut missing_rational_authority = base.clone();
+        missing_rational_authority["harmony_grace"]["class_11_exact_rational_attribution_authority"] =
+            serde_json::Value::Bool(false);
         missing_rational_authority["harmony_grace"]["runtime_transfer_enabled"] =
             serde_json::Value::Bool(true);
         missing_rational_authority["harmony_grace"]["runtime_recipient_class_ids"] =
@@ -3712,17 +3794,14 @@ mod tests {
     }
 
     #[test]
-    fn harmony_counterfactual_model_remains_available_for_candidate_replay() {
+    fn harmony_counterfactual_model_is_shared_by_candidate_and_production_replay() {
         assert_eq!(
             promoted_remote_effect_magnitude_model(3_003_052).unwrap(),
             Some(PromotedRemoteEffectMagnitudeModel::CounterfactualReplay)
         );
-        assert!(
-            !rdps_runtime_config()
-                .unwrap()
-                .harmony_grace
-                .runtime_transfer_enabled
-        );
+        let harmony = &rdps_runtime_config().unwrap().harmony_grace;
+        assert!(harmony.runtime_transfer_enabled);
+        assert_eq!(harmony.runtime_recipient_class_ids, [11]);
     }
 
     #[test]
