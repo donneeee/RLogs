@@ -24,6 +24,7 @@ import {
   historyTargetLabel,
   incomingDamageSourceGroups,
   loadoutTierForPresentation,
+  participantRows,
   partyBarPercentage,
   sortDisplayedAbilities,
   supplementalDifficultyLabel,
@@ -392,6 +393,31 @@ describe("Combat History party sorting", () => {
     expect(partyBarPercentage(50, 100)).toBe(50);
     expect(partyBarPercentage(200, 100)).toBe(100);
     expect(partyBarPercentage(null, 100)).toBe(0);
+  });
+
+  it("keeps a support-only player visible when their rDPS relationship is nonzero", () => {
+    const support = {
+      actor_id: "support",
+      actor_kind: "player",
+      presentation_kind: "player",
+      presentation_name: "Support",
+      damage: 0,
+      healing: 0,
+      damage_taken: 0,
+      deaths: 0,
+      encounter_dps: 0,
+      rdps_contribution_given: 500,
+      rdps_contribution_received: 0,
+    } as HistoryActorSummary;
+    const inactive = {
+      ...support,
+      actor_id: "inactive",
+      presentation_name: "Inactive",
+      rdps_contribution_given: 0,
+    };
+
+    expect(participantRows({ actors: [support, inactive] } as CombatHistoryView))
+      .toEqual([support]);
   });
 });
 

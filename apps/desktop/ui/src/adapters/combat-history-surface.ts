@@ -2274,7 +2274,7 @@ export function mountCombatHistorySurface(
   };
 }
 
-function participantRows(view: CombatHistoryView): HistoryActorSummary[] {
+export function participantRows(view: CombatHistoryView): HistoryActorSummary[] {
   return view.actors
     .filter((actor) =>
       actor.actor_kind === "player" ||
@@ -2282,7 +2282,12 @@ function participantRows(view: CombatHistoryView): HistoryActorSummary[] {
       actor.presentation_kind === "party_npc",
     )
     .filter((actor) =>
-      actor.damage > 0 || actor.healing > 0 || actor.damage_taken > 0 || actor.deaths > 0,
+      actor.damage > 0 ||
+      actor.healing > 0 ||
+      actor.damage_taken > 0 ||
+      actor.deaths > 0 ||
+      (actor.rdps_contribution_given !== null && actor.rdps_contribution_given !== 0) ||
+      (actor.rdps_contribution_received !== null && actor.rdps_contribution_received !== 0),
     )
     .sort((left, right) => right.encounter_dps - left.encounter_dps || actorLabel(left).localeCompare(actorLabel(right)));
 }

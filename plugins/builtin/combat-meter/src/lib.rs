@@ -3008,11 +3008,16 @@ impl CombatTimelinePlugin {
         let damage_influences = if self.rdps_enabled() {
             let contribution = attribution.summary();
             debug_assert!(contribution.is_conserved());
-            for (actor_id, actor) in &contribution.actors {
-                let value = values.entry(*actor_id).or_default();
-                value.rdps_damage = Some(actor.rdps_damage);
-                value.rdps_contribution_given = Some(actor.contribution_given);
-                value.rdps_contribution_received = Some(actor.contribution_received);
+            for actor_id in contribution.actors.keys() {
+                values.entry(*actor_id).or_default();
+            }
+            for (actor_id, value) in &mut values {
+                let actor = contribution.actors.get(actor_id);
+                value.rdps_damage = Some(actor.map_or(value.damage, |actor| actor.rdps_damage));
+                value.rdps_contribution_given =
+                    Some(actor.map_or(0, |actor| actor.contribution_given));
+                value.rdps_contribution_received =
+                    Some(actor.map_or(0, |actor| actor.contribution_received));
             }
             if let Some(projector) = self.exact_contribution_projector.as_ref() {
                 for actor_id in projector.incomplete_rdps_actor_ids() {
@@ -4145,6 +4150,27 @@ mod tests {
         assert_eq!(actor.effective_damage, 2_737_001);
         assert_eq!(actor.hp_damage, 2_737_001);
         assert_eq!(actor.rdps_damage, Some(2_737_001));
+        assert_eq!(actor.rdps_contribution_given, Some(0));
+        assert_eq!(actor.rdps_contribution_received, Some(0));
+
+        let history = plugin.build_history_view(&HistoryViewSpec {
+            id: "all".into(),
+            label: "Entire run".into(),
+            kind: "all".into(),
+            segment_indices: vec![0],
+            intervals: vec![(0, 2_000_000)],
+            elapsed_micros: 2_000_000,
+            active_combat_micros: 1_000_000,
+            compress_intervals: false,
+        });
+        let actor = history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(actor.damage, 2_737_001);
+        assert_eq!(actor.rdps_damage, Some(2_737_001));
+        assert_eq!(actor.rdps, Some(1_368_500.5));
         assert_eq!(actor.rdps_contribution_given, Some(0));
         assert_eq!(actor.rdps_contribution_received, Some(0));
     }
