@@ -1125,6 +1125,9 @@ impl RdpsRuntimeConfig {
             || self.team_luck.lucky_damage_runtime_transfer_enabled
             || self.mechanical_power.runtime_transfer_enabled
             || self.harmony_grace.runtime_transfer_enabled
+            || self
+                .harmony_grace
+                .remote_paired_output_runtime_transfer_enabled
             || self.stat_resonance.runtime_transfer_enabled
             || self.fiery_battle_will.runtime_transfer_enabled
             || self.encore_runtime_transfer_enabled()
@@ -1153,7 +1156,10 @@ impl RdpsRuntimeConfig {
             || (effect_id == self.mechanical_power.effect_id
                 && self.mechanical_power.runtime_transfer_enabled)
             || (effect_id == self.harmony_grace.effect_id
-                && self.harmony_grace.runtime_transfer_enabled)
+                && (self.harmony_grace.runtime_transfer_enabled
+                    || self
+                        .harmony_grace
+                        .remote_paired_output_runtime_transfer_enabled))
             || (effect_id == self.stat_resonance.effect_id
                 && self.stat_resonance.runtime_transfer_enabled)
             || (effect_id == self.fiery_battle_will.effect_id
@@ -1526,7 +1532,6 @@ impl RdpsRuntimeConfig {
             || !harmony_runtime_classes_are_valid
             || !harmony_remote_paired_output_evidence_is_valid
             || harmony.runtime_transfer_enabled
-            || harmony.remote_paired_output_runtime_transfer_enabled
             || (!harmony.runtime_transfer_enabled
                 && !harmony.runtime_recipient_class_ids.is_empty())
         {
@@ -2747,7 +2752,7 @@ mod tests {
             "the independently promoted target-vulnerability rule keeps the partial runtime active"
         );
         assert!(current.effect_runtime_transfer_enabled(current.functional_amp.effect_id));
-        assert!(!current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
+        assert!(current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
 
         let mut transfer_without_migration_authority = base.clone();
         transfer_without_migration_authority["functional_amp"]["attack_magic_target_build_formula_authority"] =
@@ -3078,7 +3083,7 @@ mod tests {
         assert!(!current.harmony_grace.runtime_transfer_enabled);
         assert!(current.harmony_grace.runtime_recipient_class_ids.is_empty());
         assert!(
-            !current
+            current
                 .harmony_grace
                 .remote_paired_output_runtime_transfer_enabled
         );
@@ -3111,7 +3116,7 @@ mod tests {
                 .server_integer_counterfactual_authority
         );
         assert!(current.harmony_grace.unresolved_overlap_fails_closed);
-        assert!(!current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
+        assert!(current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
 
         let mut unsafe_reenable = base.clone();
         unsafe_reenable["harmony_grace"]["class_11_exact_rational_attribution_authority"] =
@@ -3159,14 +3164,13 @@ mod tests {
             serde_json::json!([11]);
         assert!(runtime_from_value(disabled_with_class).validate().is_err());
 
-        let mut unsafe_remote_reenable = bundled_runtime_value();
-        unsafe_remote_reenable["harmony_grace"]["remote_paired_output_runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
+        let mut disabled_remote_transfer = bundled_runtime_value();
+        disabled_remote_transfer["harmony_grace"]["remote_paired_output_runtime_transfer_enabled"] =
+            serde_json::Value::Bool(false);
         assert!(
-            runtime_from_value(unsafe_remote_reenable)
+            runtime_from_value(disabled_remote_transfer)
                 .validate()
-                .is_err(),
-            "diagnostic paired-output evidence cannot re-enable production transfer",
+                .is_ok()
         );
 
         let mut altered_remote_context = bundled_runtime_value();

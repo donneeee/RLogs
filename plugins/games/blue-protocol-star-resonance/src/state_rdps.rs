@@ -11957,12 +11957,10 @@ mod tests {
             ..BpsrStateDamageContributionProjector::default()
         };
         production.buffer_deferred_remote_harmony_damage(pending.clone());
-        assert!(
-            production
-                .drain_ready_deferred_remote_harmony(2_000, false)
-                .is_empty(),
-            "production must not emit the diagnostic paired-output receipt"
-        );
+        let production_output = production.drain_ready_deferred_remote_harmony(2_000, false);
+        assert_eq!(production_output.len(), 1);
+        assert_eq!(production_output[0].numerator, 7_620);
+        assert_eq!(production_output[0].denominator, 1);
 
         let mut projector =
             BpsrStateDamageContributionProjector::new_harmony_grace_candidate_audit()
@@ -12596,9 +12594,9 @@ mod tests {
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
                 55_228, 55_333, 2_110_065, 2_110_125, 2_110_143, 2_202_041, 2_204_471, 2_207_252,
-                2_302_121
+                2_302_121, 3_003_052
             ],
-            "only effects with current production authority are exposed; Mechanical Power and Harmony Grace remain candidate evidence"
+            "only effects with current production authority are exposed; Mechanical Power remains candidate evidence"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -13435,7 +13433,7 @@ mod tests {
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
                 55_228, 55_333, 2_110_065, 2_110_125, 2_110_143, 2_202_041, 2_204_471, 2_207_252,
-                2_302_121
+                2_302_121, 3_003_052
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
