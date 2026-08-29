@@ -266,6 +266,7 @@ pub use state_formula::{
     exact_additive_fixed_point_marginal_from_observed_output,
     exact_external_attack_and_damage_bonus_fraction, exact_external_attack_and_factors_fraction,
     exact_external_attack_coefficient_stage_fraction, exact_external_attack_ordered_stage_fraction,
+    exact_external_capped_critical_chance_and_damage_fraction,
     exact_external_combined_critical_lucky_chance_and_damage_fraction,
     exact_external_combined_critical_lucky_chance_fraction,
     exact_external_combined_critical_lucky_damage_fraction,
@@ -273,10 +274,10 @@ pub use state_formula::{
     exact_external_critical_chance_fraction, exact_external_critical_damage_fraction,
     exact_external_damage_bonus_fraction, exact_external_lucky_chance_and_damage_fraction,
     exact_external_lucky_chance_fraction, exact_external_lucky_damage_fraction,
-    exact_positive_linear_conversion_delta, fixed_point_percent_input_marginal,
-    linear_state_scaled_damage_marginal, packet_attack_coefficient_stage_provider_marginal,
-    packet_attribute_family_provider_marginal, packet_attribute_family_value,
-    two_stage_percent_input_marginal,
+    exact_joint_critical_cold_team_luck_fractions, exact_positive_linear_conversion_delta,
+    fixed_point_percent_input_marginal, linear_state_scaled_damage_marginal,
+    packet_attack_coefficient_stage_provider_marginal, packet_attribute_family_provider_marginal,
+    packet_attribute_family_value, two_stage_percent_input_marginal,
 };
 pub use state_rdps::{
     BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline, BpsrStateDamageContributionProjector,
