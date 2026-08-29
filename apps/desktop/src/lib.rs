@@ -68,9 +68,9 @@ use rlogs_game_bpsr::{
     localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
     localized_combat_action_name, localized_monster_name, localized_recount_group_name,
     localized_scene_name, localized_specialization_identities, localized_status_effect_name,
-    project_local_profile_packages, rdps_attribution_effect_presentation, record_offline_capture,
-    resolve_actor_combat_identity, resolve_actor_combat_presentation,
-    resolve_live_steam_protocol_pack, scene_boss_monster_ids,
+    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
+    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
+    resolve_actor_combat_presentation, resolve_live_steam_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
     status_effect_presentation, weapon_level_presentation, weapon_presentation,
 };
@@ -3608,10 +3608,21 @@ impl RuntimeController {
             {
                 self.combat_history_feed.publish_progress();
             }
-            mark_history_rdps_projection_refreshing(
-                &mut snapshot,
-                "formula_refresh_queued: recalculating archived rDPS in the background",
-            );
+            let proven_effect_ids = proven_state_damage_contribution_effect_ids()
+                .map(|effect_ids| effect_ids.into_iter().collect::<BTreeSet<_>>());
+            if proven_effect_ids.as_ref().map_or(true, |effect_ids| {
+                history_rdps_projection_requires_clear(&snapshot, effect_ids)
+            }) {
+                clear_history_rdps_projection(
+                    &mut snapshot,
+                    "formula_refresh_queued: stale rDPS includes attribution not authorized by the current formula and was cleared before replay",
+                );
+            } else {
+                mark_history_rdps_projection_refreshing(
+                    &mut snapshot,
+                    "formula_refresh_queued: recalculating archived rDPS in the background",
+                );
+            }
         }
         // A public character name may be learned before or after the saved
         // run. Resolve that label by exact UID, but never borrow the current
@@ -6794,6 +6805,48 @@ fn clear_history_rdps_projection(snapshot: &mut CombatHistorySnapshot, status: &
     }
 }
 
+fn history_rdps_projection_requires_clear(
+    snapshot: &CombatHistorySnapshot,
+    proven_effect_ids: &BTreeSet<i64>,
+) -> bool {
+    let mut has_influence_rows = false;
+    for influence in snapshot
+        .runs
+        .iter()
+        .flat_map(|run| run.views.iter())
+        .flat_map(|view| view.damage_influences.iter())
+    {
+        has_influence_rows = true;
+        let Ok(effect_id) = influence.effect_id.parse::<i64>() else {
+            return true;
+        };
+        if !proven_effect_ids.contains(&effect_id) {
+            return true;
+        }
+    }
+    if has_influence_rows {
+        return false;
+    }
+
+    // Legacy projections can contain actor totals without the effect rows that
+    // prove their source. A zero-transfer tuple remains safe to display, but
+    // any material unattributed delta must be cleared until sealed replay can
+    // reconstruct its exact provider/effect/recipient chain.
+    snapshot
+        .runs
+        .iter()
+        .flat_map(|run| run.views.iter())
+        .flat_map(|view| view.actors.iter())
+        .any(|actor| {
+            actor.rdps_contribution_given.unwrap_or_default() != 0
+                || actor.rdps_contribution_received.unwrap_or_default() != 0
+                || actor
+                    .rdps_damage
+                    .is_some_and(|rdps_damage| rdps_damage != actor.damage)
+                || (actor.rdps.is_some() && actor.rdps_damage.is_none())
+        })
+}
+
 fn mark_history_rdps_projection_refreshing(snapshot: &mut CombatHistorySnapshot, status: &str) {
     // A saved projection was already conservation-validated before it was
     // committed to history. Keep that packet-proven subtotal visible while a
@@ -9601,6 +9654,32 @@ mod tests {
         .unwrap()
     }
 
+    fn add_history_damage_influence(snapshot: &mut CombatHistorySnapshot, effect_id: i64) {
+        snapshot.runs[0].views[0].damage_influences.push(
+            serde_json::from_value(serde_json::json!({
+                "effect_id": effect_id.to_string(),
+                "attribution_component": "test-proven-component",
+                "complete_effect": true,
+                "provider_actor_id": "player:provider",
+                "provider_entity_uuid": "100",
+                "recipient_actor_id": "player:marierose",
+                "recipient_entity_uuid": "216009015936",
+                "affected_ability_id": "2233",
+                "target_actor_id": "monster:target",
+                "target_entity_uuid": "200",
+                "first_observed_micros": 3,
+                "last_observed_micros": 3,
+                "damage_event_count": 1,
+                "observed_damage": "1",
+                "exact_integer_delta": "1",
+                "exact_rational_deltas": [],
+                "attributed_rdps": "1",
+                "damage_context_complete": true
+            }))
+            .unwrap(),
+        );
+    }
+
     #[test]
     fn blocked_formula_runtime_clears_saved_history_rdps_without_touching_damage() {
         let mut snapshot = captured_marksman_history();
@@ -9650,6 +9729,7 @@ mod tests {
         actor.rdps_damage = Some(2);
         actor.rdps_contribution_given = Some(1);
         actor.rdps_contribution_received = Some(1);
+        add_history_damage_influence(&mut snapshot, 55_228);
         controller
             .combat_history
             .lock()
@@ -9692,6 +9772,58 @@ mod tests {
                 .history_rdps_backfill
                 .enqueue(snapshot.session_id.clone())
         );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn stale_history_clears_revoked_effect_credit_before_background_refresh() {
+        let root = temporary_root();
+        let controller = RuntimeController::new(root.clone()).unwrap();
+        let mut snapshot = captured_marksman_history();
+        snapshot.session_id = "history-revoked-rdps".into();
+        snapshot.client_build = state_damage_contribution_game_build().unwrap().into();
+        snapshot.protocol_pack_digest = state_damage_contribution_protocol_pack_digest()
+            .unwrap()
+            .into();
+        snapshot.rdps_formula_identity = Some("sha256:stale".into());
+        snapshot.runs[0].rdps_status = "partial_packet_proven_rules".into();
+        let ordinary_damage = snapshot.runs[0].views[0].actors[0].damage;
+        let actor = &mut snapshot.runs[0].views[0].actors[0];
+        actor.rdps = Some(2.0);
+        actor.rdps_damage = Some(2);
+        actor.rdps_contribution_given = Some(1);
+        actor.rdps_contribution_received = Some(1);
+        add_history_damage_influence(&mut snapshot, 3_003_052);
+        controller
+            .combat_history
+            .lock()
+            .unwrap()
+            .record(&snapshot, 1)
+            .unwrap();
+
+        let returned = controller
+            .combat_history_detail(CombatHistoryDetailRequest {
+                session_id: snapshot.session_id.clone(),
+            })
+            .unwrap();
+
+        assert_eq!(returned.runs[0].views[0].actors[0].damage, ordinary_damage);
+        assert_eq!(returned.rdps_formula_identity, None);
+        assert_eq!(
+            returned.runs[0].rdps_status,
+            "formula_refresh_queued: stale rDPS includes attribution not authorized by the current formula and was cleared before replay"
+        );
+        assert!(returned.runs[0].views[0].damage_influences.is_empty());
+        let actor = &returned.runs[0].views[0].actors[0];
+        assert_eq!(actor.rdps, None);
+        assert_eq!(actor.rdps_damage, None);
+        assert_eq!(actor.rdps_contribution_given, None);
+        assert_eq!(actor.rdps_contribution_received, None);
+        let progress = controller.history_rdps_backfill.progress_snapshot();
+        assert_eq!(progress.len(), 1);
+        assert_eq!(progress[0].session_id, snapshot.session_id);
+        assert_eq!(progress[0].stage, HistoryRdpsRefreshStage::Queued);
 
         std::fs::remove_dir_all(root).unwrap();
     }

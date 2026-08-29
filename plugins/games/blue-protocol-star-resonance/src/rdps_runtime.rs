@@ -1432,16 +1432,6 @@ impl RdpsRuntimeConfig {
         }
 
         let mechanical = &self.mechanical_power;
-        let mechanical_runtime_authority = mechanical
-            .class_11_tier_0_current_pack_lifecycle_authority
-            && mechanical.class_11_tier_0_exact_rational_attribution_authority
-            && mechanical.accounting_method == "observed-final-damage-proportional-stage-share"
-            && !mechanical.damage_stage_operation_order_authority
-            && !mechanical.damage_stage_integer_rounding_authority
-            && !mechanical.server_integer_counterfactual_authority
-            && mechanical.rational_integer_projection
-                == "sum-exact-then-half-up-per-effect-provider-recipient"
-            && mechanical.unresolved_overlap_fails_closed;
         let mechanical_runtime_classes_are_valid = mechanical
             .runtime_recipient_class_ids
             .iter()
@@ -1471,15 +1461,17 @@ impl RdpsRuntimeConfig {
             || !mechanical.requires_recipient_packet_transition
             || !mechanical.haste_is_action_opportunity
             || mechanical.universal_tier_formula_enabled
+            || mechanical.class_11_tier_0_exact_rational_attribution_authority
+            || mechanical.accounting_method != "observed-final-damage-proportional-stage-share"
+            || mechanical.damage_stage_operation_order_authority
+            || mechanical.damage_stage_integer_rounding_authority
+            || mechanical.server_integer_counterfactual_authority
             || mechanical.rational_integer_projection
                 != "sum-exact-then-half-up-per-effect-provider-recipient"
             || !mechanical.unresolved_overlap_fails_closed
             || !mechanical_runtime_classes_are_valid
             || !mechanical_runtime_deltas_are_valid
-            || (mechanical.runtime_transfer_enabled
-                && (!mechanical_runtime_authority
-                    || mechanical.runtime_recipient_class_ids != [11]
-                    || mechanical.runtime_primary_percent_raw_deltas != [750]))
+            || mechanical.runtime_transfer_enabled
             || (!mechanical.runtime_transfer_enabled
                 && (!mechanical.runtime_recipient_class_ids.is_empty()
                     || !mechanical.runtime_primary_percent_raw_deltas.is_empty()))
@@ -1490,13 +1482,6 @@ impl RdpsRuntimeConfig {
         }
 
         let harmony = &self.harmony_grace;
-        let harmony_runtime_authority = harmony.class_11_current_pack_lifecycle_authority
-            && harmony.class_11_exact_rational_attribution_authority
-            && harmony.accounting_method == "observed-final-damage-proportional-stage-share"
-            && !harmony.server_integer_counterfactual_authority
-            && harmony.rational_integer_projection
-                == "sum-exact-then-half-up-per-effect-provider-recipient"
-            && harmony.unresolved_overlap_fails_closed;
         let harmony_runtime_classes_are_valid = harmony
             .runtime_recipient_class_ids
             .iter()
@@ -1509,37 +1494,39 @@ impl RdpsRuntimeConfig {
                         .iter()
                         .any(|rule| rule.recipient_class_id == *class_id)
             });
-        let harmony_remote_paired_output_is_valid = harmony
-            .remote_paired_output_runtime_transfer_enabled
-            && harmony.remote_paired_output_ignored_effect_ids == [27_016, 55_301, 3_002_011]
-            && harmony.remote_paired_output_formula_effect_ids.len() == 583
-            && harmony
-                .remote_paired_output_formula_effect_ids
-                .windows(2)
-                .all(|pair| pair[0] < pair[1])
-            && {
-                let mut hasher = Sha256::new();
-                for effect_id in &harmony.remote_paired_output_formula_effect_ids {
-                    hasher.update(effect_id.to_le_bytes());
+        let harmony_remote_paired_output_evidence_is_valid =
+            harmony.remote_paired_output_ignored_effect_ids == [27_016, 55_301, 3_002_011]
+                && harmony.remote_paired_output_formula_effect_ids.len() == 583
+                && harmony
+                    .remote_paired_output_formula_effect_ids
+                    .windows(2)
+                    .all(|pair| pair[0] < pair[1])
+                && {
+                    let mut hasher = Sha256::new();
+                    for effect_id in &harmony.remote_paired_output_formula_effect_ids {
+                        hasher.update(effect_id.to_le_bytes());
+                    }
+                    format!("{:x}", hasher.finalize())
+                        == "da6bc3f98a3c8c38105bc9ff17eb8fd3be50f905481046c919969d34c86a44de"
                 }
-                format!("{:x}", hasher.finalize())
-                    == "da6bc3f98a3c8c38105bc9ff17eb8fd3be50f905481046c919969d34c86a44de"
-            }
-            && harmony.remote_paired_output_max_pair_gap_micros == 30_000_000
-            && harmony.remote_paired_output_max_provider_share_basis_points == 200
-            && harmony.remote_paired_output_min_distinct_targets >= 2;
+                && harmony.remote_paired_output_max_pair_gap_micros == 30_000_000
+                && harmony.remote_paired_output_max_provider_share_basis_points == 200
+                && harmony.remote_paired_output_min_distinct_targets >= 2;
         if harmony.effect_id <= 0
             || harmony.source_terminal_effect_id <= 0
             || harmony.effect_id == harmony.source_terminal_effect_id
             || !harmony.has_valid_source_origin_rule()
             || !rules_are_valid_and_unique(&harmony.recipient_rules)
+            || harmony.class_11_exact_rational_attribution_authority
+            || harmony.accounting_method != "observed-final-damage-proportional-stage-share"
+            || harmony.server_integer_counterfactual_authority
             || harmony.rational_integer_projection
                 != "sum-exact-then-half-up-per-effect-provider-recipient"
             || !harmony.unresolved_overlap_fails_closed
             || !harmony_runtime_classes_are_valid
-            || !harmony_remote_paired_output_is_valid
-            || (harmony.runtime_transfer_enabled
-                && (!harmony_runtime_authority || harmony.runtime_recipient_class_ids != [11]))
+            || !harmony_remote_paired_output_evidence_is_valid
+            || harmony.runtime_transfer_enabled
+            || harmony.remote_paired_output_runtime_transfer_enabled
             || (!harmony.runtime_transfer_enabled
                 && !harmony.runtime_recipient_class_ids.is_empty())
         {
@@ -2760,7 +2747,7 @@ mod tests {
             "the independently promoted target-vulnerability rule keeps the partial runtime active"
         );
         assert!(current.effect_runtime_transfer_enabled(current.functional_amp.effect_id));
-        assert!(current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
+        assert!(!current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
 
         let mut transfer_without_migration_authority = base.clone();
         transfer_without_migration_authority["functional_amp"]["attack_magic_target_build_formula_authority"] =
@@ -2803,18 +2790,18 @@ mod tests {
     }
 
     #[test]
-    fn mechanical_power_uses_only_the_observed_class_11_proportional_component() {
+    fn mechanical_power_retains_candidate_evidence_without_runtime_transfer() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
-        assert!(current.mechanical_power.runtime_transfer_enabled);
+        assert!(!current.mechanical_power.runtime_transfer_enabled);
         assert!(
             current
                 .mechanical_power
                 .class_11_tier_0_current_pack_lifecycle_authority
         );
         assert!(
-            current
+            !current
                 .mechanical_power
                 .class_11_tier_0_exact_rational_attribution_authority
         );
@@ -2838,16 +2825,23 @@ mod tests {
                 .server_integer_counterfactual_authority
         );
         assert!(current.mechanical_power.unresolved_overlap_fails_closed);
-        assert_eq!(current.mechanical_power.runtime_recipient_class_ids, [11]);
-        assert_eq!(
-            current.mechanical_power.runtime_primary_percent_raw_deltas,
-            [750]
+        assert!(
+            current
+                .mechanical_power
+                .runtime_recipient_class_ids
+                .is_empty()
+        );
+        assert!(
+            current
+                .mechanical_power
+                .runtime_primary_percent_raw_deltas
+                .is_empty()
         );
         assert_eq!(
             current
                 .mechanical_power
                 .production_primary_percent_raw_delta(11),
-            Some(750)
+            None
         );
         assert_eq!(
             current
@@ -2855,16 +2849,20 @@ mod tests {
                 .production_primary_percent_raw_delta(9),
             None
         );
-        assert!(current.effect_runtime_transfer_enabled(current.mechanical_power.effect_id));
+        assert!(!current.effect_runtime_transfer_enabled(current.mechanical_power.effect_id));
 
-        let mut missing_rational_authority = base.clone();
-        missing_rational_authority["mechanical_power"]["class_11_tier_0_exact_rational_attribution_authority"] =
-            serde_json::Value::Bool(false);
+        let mut unsafe_reenable = base.clone();
+        unsafe_reenable["mechanical_power"]["class_11_tier_0_exact_rational_attribution_authority"] =
+            serde_json::Value::Bool(true);
+        unsafe_reenable["mechanical_power"]["runtime_transfer_enabled"] =
+            serde_json::Value::Bool(true);
+        unsafe_reenable["mechanical_power"]["runtime_recipient_class_ids"] =
+            serde_json::json!([11]);
+        unsafe_reenable["mechanical_power"]["runtime_primary_percent_raw_deltas"] =
+            serde_json::json!([750]);
         assert!(
-            runtime_from_value(missing_rational_authority)
-                .validate()
-                .is_err(),
-            "runtime transfer requires the exact observed-damage stage-share proof",
+            runtime_from_value(unsafe_reenable).validate().is_err(),
+            "candidate proportional evidence cannot re-enable production transfer",
         );
 
         let mut wrong_accounting_method = base.clone();
@@ -3072,15 +3070,15 @@ mod tests {
     }
 
     #[test]
-    fn harmony_grace_uses_the_corrected_proportional_accounting_contract() {
+    fn harmony_grace_retains_corrected_candidate_model_without_runtime_transfer() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
         assert!(!current.runtime_promotion_allowed());
-        assert!(current.harmony_grace.runtime_transfer_enabled);
-        assert_eq!(current.harmony_grace.runtime_recipient_class_ids, [11]);
+        assert!(!current.harmony_grace.runtime_transfer_enabled);
+        assert!(current.harmony_grace.runtime_recipient_class_ids.is_empty());
         assert!(
-            current
+            !current
                 .harmony_grace
                 .remote_paired_output_runtime_transfer_enabled
         );
@@ -3103,7 +3101,7 @@ mod tests {
                 .class_11_current_pack_lifecycle_authority
         );
         assert!(
-            current
+            !current
                 .harmony_grace
                 .class_11_exact_rational_attribution_authority
         );
@@ -3113,15 +3111,17 @@ mod tests {
                 .server_integer_counterfactual_authority
         );
         assert!(current.harmony_grace.unresolved_overlap_fails_closed);
-        assert!(current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
+        assert!(!current.effect_runtime_transfer_enabled(current.harmony_grace.effect_id));
 
-        let mut missing_rational_authority = base.clone();
-        missing_rational_authority["harmony_grace"]["class_11_exact_rational_attribution_authority"] =
-            serde_json::Value::Bool(false);
+        let mut unsafe_reenable = base.clone();
+        unsafe_reenable["harmony_grace"]["class_11_exact_rational_attribution_authority"] =
+            serde_json::Value::Bool(true);
+        unsafe_reenable["harmony_grace"]["runtime_transfer_enabled"] =
+            serde_json::Value::Bool(true);
+        unsafe_reenable["harmony_grace"]["runtime_recipient_class_ids"] = serde_json::json!([11]);
         assert!(
-            runtime_from_value(missing_rational_authority)
-                .validate()
-                .is_err()
+            runtime_from_value(unsafe_reenable).validate().is_err(),
+            "candidate proportional evidence cannot re-enable production transfer",
         );
 
         let mut hidden_server_integer_stays_unclaimed = base.clone();
@@ -3159,6 +3159,16 @@ mod tests {
             serde_json::json!([11]);
         assert!(runtime_from_value(disabled_with_class).validate().is_err());
 
+        let mut unsafe_remote_reenable = bundled_runtime_value();
+        unsafe_remote_reenable["harmony_grace"]["remote_paired_output_runtime_transfer_enabled"] =
+            serde_json::Value::Bool(true);
+        assert!(
+            runtime_from_value(unsafe_remote_reenable)
+                .validate()
+                .is_err(),
+            "diagnostic paired-output evidence cannot re-enable production transfer",
+        );
+
         let mut altered_remote_context = bundled_runtime_value();
         altered_remote_context["harmony_grace"]["remote_paired_output_ignored_effect_ids"] =
             serde_json::json!([27016, 55301]);
@@ -3179,13 +3189,13 @@ mod tests {
     }
 
     #[test]
-    fn harmony_proportional_model_is_available_for_runtime_transfer() {
+    fn harmony_counterfactual_model_remains_available_for_candidate_replay() {
         assert_eq!(
             promoted_remote_effect_magnitude_model(3_003_052).unwrap(),
             Some(PromotedRemoteEffectMagnitudeModel::CounterfactualReplay)
         );
         assert!(
-            rdps_runtime_config()
+            !rdps_runtime_config()
                 .unwrap()
                 .harmony_grace
                 .runtime_transfer_enabled

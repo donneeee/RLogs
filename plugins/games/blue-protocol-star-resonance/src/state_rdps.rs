@@ -2254,10 +2254,11 @@ impl BpsrStateDamageContributionProjector {
                 let scope = match damage.effect_id {
                     effect_id
                         if effect_id == self.runtime.harmony_grace.effect_id
-                            && self
+                            && (self
                                 .runtime
                                 .harmony_grace
-                                .remote_paired_output_runtime_transfer_enabled =>
+                                .remote_paired_output_runtime_transfer_enabled
+                                || self.harmony_grace_candidate_audit_enabled) =>
                     {
                         "harmony-grace-remote-paired-output"
                     }
@@ -2483,6 +2484,13 @@ impl BpsrStateDamageContributionProjector {
     /// Production reducers never call this constructor.
     pub fn new_harmony_grace_candidate_audit() -> Result<Self, String> {
         let mut projector = Self::new()?;
+        if !projector
+            .runtime
+            .harmony_grace
+            .class_11_current_pack_lifecycle_authority
+        {
+            return Err("Harmony Grace candidate lifecycle authority is missing".into());
+        }
         projector.harmony_grace_candidate_audit_enabled = true;
         Ok(projector)
     }
@@ -2492,6 +2500,13 @@ impl BpsrStateDamageContributionProjector {
     /// damage-stage chain. Production reducers never call this constructor.
     pub fn new_mechanical_power_candidate_audit() -> Result<Self, String> {
         let mut projector = Self::new()?;
+        if !projector
+            .runtime
+            .mechanical_power
+            .class_11_tier_0_current_pack_lifecycle_authority
+        {
+            return Err("Mechanical Power candidate lifecycle authority is missing".into());
+        }
         projector.mechanical_power_candidate_audit_enabled = true;
         Ok(projector)
     }
@@ -6817,10 +6832,11 @@ impl BpsrStateDamageContributionProjector {
             damage.packet.owner_level,
         )?;
         let scope = if receipt.effect_id == self.runtime.harmony_grace.effect_id
-            && self
+            && (self
                 .runtime
                 .harmony_grace
                 .remote_paired_output_runtime_transfer_enabled
+                || self.harmony_grace_candidate_audit_enabled)
         {
             if self
                 .remote_harmony_source_damage_context_sha256(recipient_actor_id)
@@ -11898,32 +11914,29 @@ mod tests {
 
     #[test]
     fn live_remote_harmony_deferred_receipt_preserves_original_damage_identity() {
-        let mut projector = BpsrStateDamageContributionProjector {
-            remote_factor_timeline: Some(BpsrRemoteFactorTimeline {
-                remote_harmony_by_event_sequence: HashMap::from([(
-                    77,
-                    RemoteHarmonyPairedContribution {
-                        effect_id: 3_003_052,
-                        provider_actor_id: 3,
-                        provider_entity_uuid: None,
-                        provider_basis_points: 200,
-                        recipient_actor_id: 2,
-                        recipient_entity_uuid: 20,
-                        target_actor_id: 10,
-                        target_entity_uuid: 100,
-                        ability_id: 7_998,
-                        hit_event_id: 1,
-                        observed_damage: 870_541,
-                        contribution: 7_620,
-                        source_formula_context_sha256: "source-context".into(),
-                        target_formula_context_sha256: "target-context".into(),
-                    },
-                )]),
-                ..BpsrRemoteFactorTimeline::default()
-            }),
-            ..BpsrStateDamageContributionProjector::default()
+        let timeline = BpsrRemoteFactorTimeline {
+            remote_harmony_by_event_sequence: HashMap::from([(
+                77,
+                RemoteHarmonyPairedContribution {
+                    effect_id: 3_003_052,
+                    provider_actor_id: 3,
+                    provider_entity_uuid: None,
+                    provider_basis_points: 200,
+                    recipient_actor_id: 2,
+                    recipient_entity_uuid: 20,
+                    target_actor_id: 10,
+                    target_entity_uuid: 100,
+                    ability_id: 7_998,
+                    hit_event_id: 1,
+                    observed_damage: 870_541,
+                    contribution: 7_620,
+                    source_formula_context_sha256: "source-context".into(),
+                    target_formula_context_sha256: "target-context".into(),
+                },
+            )]),
+            ..BpsrRemoteFactorTimeline::default()
         };
-        projector.buffer_deferred_remote_harmony_damage(DeferredRemoteHarmonyDamage {
+        let pending = DeferredRemoteHarmonyDamage {
             observed_micros: 1_000,
             event_sequence: 77,
             effect_id: 3_003_052,
@@ -11937,7 +11950,25 @@ mod tests {
             target_entity_uuid: 100,
             observed_damage: 870_541,
             later_contribution: None,
-        });
+        };
+
+        let mut production = BpsrStateDamageContributionProjector {
+            remote_factor_timeline: Some(timeline.clone()),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        production.buffer_deferred_remote_harmony_damage(pending.clone());
+        assert!(
+            production
+                .drain_ready_deferred_remote_harmony(2_000, false)
+                .is_empty(),
+            "production must not emit the diagnostic paired-output receipt"
+        );
+
+        let mut projector =
+            BpsrStateDamageContributionProjector::new_harmony_grace_candidate_audit()
+                .expect("Harmony Grace candidate audit should validate");
+        projector.remote_factor_timeline = Some(timeline);
+        projector.buffer_deferred_remote_harmony_damage(pending);
 
         let output = projector.drain_ready_deferred_remote_harmony(2_000, false);
         assert_eq!(output.len(), 1);
@@ -12564,10 +12595,10 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_204_471,
-                2_207_252, 2_302_121, 3_003_052
+                55_228, 55_333, 2_110_065, 2_110_125, 2_110_143, 2_202_041, 2_204_471, 2_207_252,
+                2_302_121
             ],
-            "the exact packet-pair vulnerability, Encore (55333) standalone output, observed Fiery Battle Will Attack-percent component, direct Highland observed-final component, observed Mechanical Power component, exact observed Stat Resonance Attack delta, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
+            "only effects with current production authority are exposed; Mechanical Power and Harmony Grace remain candidate evidence"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -13403,8 +13434,8 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_204_471,
-                2_207_252, 2_302_121, 3_003_052
+                55_228, 55_333, 2_110_065, 2_110_125, 2_110_143, 2_202_041, 2_204_471, 2_207_252,
+                2_302_121
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
@@ -14597,8 +14628,8 @@ mod tests {
                 .runtime
                 .mechanical_power
                 .production_primary_percent_raw_delta(11),
-            Some(750),
-            "production must use only the exact packet-observed tier-0 transition"
+            None,
+            "candidate evidence must not expose a production delta"
         );
 
         let candidate =
@@ -16387,7 +16418,9 @@ mod tests {
 
     #[test]
     fn harmony_grace_missing_duration_is_retained_unresolved_on_the_shared_runtime_path() {
-        let mut projector = BpsrStateDamageContributionProjector::default();
+        let mut projector =
+            BpsrStateDamageContributionProjector::new_harmony_grace_candidate_audit()
+                .expect("Harmony Grace candidate audit should validate");
         projector.active_players.extend([2, 4]);
         let applied = harmony_grace_wire_envelope(
             1,
@@ -16421,7 +16454,9 @@ mod tests {
 
     #[test]
     fn harmony_grace_equal_time_refresh_damage_is_unresolved_on_the_shared_runtime_path() {
-        let mut projector = BpsrStateDamageContributionProjector::default();
+        let mut projector =
+            BpsrStateDamageContributionProjector::new_harmony_grace_candidate_audit()
+                .expect("Harmony Grace candidate audit should validate");
         projector.active_players.extend([2, 4]);
         for envelope in [
             harmony_grace_wire_envelope(

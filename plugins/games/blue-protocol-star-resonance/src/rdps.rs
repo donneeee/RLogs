@@ -359,7 +359,7 @@ mod tests {
     }
 
     #[test]
-    fn mechanical_power_uses_the_scoped_state_runtime_not_the_review_catalog() {
+    fn mechanical_power_review_evidence_does_not_enable_the_state_runtime() {
         assert_eq!(
             classify_rdps_effect(2_110_140).unwrap(),
             RdpsEffectLookup::RetainedMappedUnclassified {
@@ -368,10 +368,10 @@ mod tests {
         );
         assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
         assert!(
-            crate::proven_state_damage_contribution_effect_ids()
+            !crate::proven_state_damage_contribution_effect_ids()
                 .unwrap()
                 .contains(&2_110_140),
-            "only the observed class-11 +750 proportional component is production enabled; other tiers, classes, haste, and overlaps remain uncredited"
+            "the observed class-11 +750 proportional component remains candidate-only until server operation order and integer rounding are proven"
         );
     }
 
