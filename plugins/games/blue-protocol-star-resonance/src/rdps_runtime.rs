@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 18;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 19;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -541,6 +541,24 @@ pub(crate) struct StatResonanceRuntimeConfig {
     pub runtime_transfer_enabled: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FieryBattleWillRuntimeConfig {
+    pub effect_id: i64,
+    pub source_type_id: i32,
+    pub source_config_id: i64,
+    pub provider_raw_percent_delta: i64,
+    pub current_build_external_lifecycle_authority: bool,
+    pub current_build_provider_ownership_authority: bool,
+    pub exact_mirrored_attack_raw_percent_transition_authority: bool,
+    pub local_recipient_only: bool,
+    accounting_method: String,
+    pub server_integer_counterfactual_authority: bool,
+    rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ThunderwindVectorRuntimeConfig {
@@ -966,6 +984,7 @@ pub(crate) struct RdpsRuntimeConfig {
     pub mechanical_power: MechanicalPowerRuntimeConfig,
     pub harmony_grace: HarmonyGraceRuntimeConfig,
     pub stat_resonance: StatResonanceRuntimeConfig,
+    pub fiery_battle_will: FieryBattleWillRuntimeConfig,
     pub thunderwind: ThunderwindRuntimeConfig,
     pub inspiration: InspirationRuntimeConfig,
     pub highland_blood: HighlandBloodRuntimeConfig,
@@ -991,6 +1010,7 @@ impl RdpsRuntimeConfig {
             || self.mechanical_power.runtime_transfer_enabled
             || self.harmony_grace.runtime_transfer_enabled
             || self.stat_resonance.runtime_transfer_enabled
+            || self.fiery_battle_will.runtime_transfer_enabled
             || self.highland_blood.runtime_transfer_enabled
             || self
                 .highland_blood
@@ -1018,6 +1038,8 @@ impl RdpsRuntimeConfig {
                 && self.harmony_grace.runtime_transfer_enabled)
             || (effect_id == self.stat_resonance.effect_id
                 && self.stat_resonance.runtime_transfer_enabled)
+            || (effect_id == self.fiery_battle_will.effect_id
+                && self.fiery_battle_will.runtime_transfer_enabled)
             || (effect_id == self.highland_blood.effect_id
                 && (self.highland_blood.runtime_transfer_enabled
                     || self
@@ -1422,6 +1444,28 @@ impl RdpsRuntimeConfig {
         {
             return Err(
                 "bundled BPSR Stat Resonance formula is not ready for runtime transfer".into(),
+            );
+        }
+
+        let fiery = &self.fiery_battle_will;
+        let fiery_runtime_authority = fiery.current_build_external_lifecycle_authority
+            && fiery.current_build_provider_ownership_authority
+            && fiery.exact_mirrored_attack_raw_percent_transition_authority
+            && fiery.local_recipient_only
+            && fiery.accounting_method == "observed-final-damage-proportional-stage-share"
+            && !fiery.server_integer_counterfactual_authority
+            && fiery.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && fiery.unresolved_overlap_fails_closed;
+        if fiery.effect_id != 2_110_065
+            || fiery.source_type_id != 1
+            || fiery.source_config_id != 2_110_064
+            || fiery.provider_raw_percent_delta != 1_000
+            || (fiery.runtime_transfer_enabled
+                && (!fiery_runtime_authority || self.game_build != "24687926"))
+        {
+            return Err(
+                "bundled BPSR Fiery Battle Will formula is not ready for runtime transfer".into(),
             );
         }
 
@@ -2613,6 +2657,54 @@ mod tests {
 
         let mut guessed_overlap = base;
         guessed_overlap["stat_resonance"]["unresolved_overlap_fails_closed"] =
+            serde_json::Value::Bool(false);
+        assert!(runtime_from_value(guessed_overlap).validate().is_err());
+    }
+
+    #[test]
+    fn fiery_battle_will_requires_exact_local_observed_attack_authority() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert!(current.fiery_battle_will.runtime_transfer_enabled);
+        assert_eq!(current.fiery_battle_will.effect_id, 2_110_065);
+        assert_eq!(current.fiery_battle_will.source_config_id, 2_110_064);
+        assert_eq!(current.fiery_battle_will.provider_raw_percent_delta, 1_000);
+        assert!(current.fiery_battle_will.local_recipient_only);
+        assert!(current.effect_runtime_transfer_enabled(2_110_065));
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("the prior build remains replayable");
+        assert!(!historical.fiery_battle_will.runtime_transfer_enabled);
+        assert!(!historical.effect_runtime_transfer_enabled(2_110_065));
+
+        for authority in [
+            "current_build_external_lifecycle_authority",
+            "current_build_provider_ownership_authority",
+            "exact_mirrored_attack_raw_percent_transition_authority",
+            "local_recipient_only",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["fiery_battle_will"][authority] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let mut wrong_delta = base.clone();
+        wrong_delta["fiery_battle_will"]["provider_raw_percent_delta"] = serde_json::json!(999);
+        assert!(runtime_from_value(wrong_delta).validate().is_err());
+
+        let mut invented_server_integer = base.clone();
+        invented_server_integer["fiery_battle_will"]["server_integer_counterfactual_authority"] =
+            serde_json::Value::Bool(true);
+        assert!(
+            runtime_from_value(invented_server_integer)
+                .validate()
+                .is_err()
+        );
+
+        let mut guessed_overlap = base;
+        guessed_overlap["fiery_battle_will"]["unresolved_overlap_fails_closed"] =
             serde_json::Value::Bool(false);
         assert!(runtime_from_value(guessed_overlap).validate().is_err());
     }

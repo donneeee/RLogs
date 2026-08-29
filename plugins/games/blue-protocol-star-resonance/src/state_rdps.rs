@@ -54,7 +54,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v20";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v21";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -194,6 +194,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.stat_resonance.effect_id) {
         effect_ids.push(runtime.stat_resonance.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.fiery_battle_will.effect_id) {
+        effect_ids.push(runtime.fiery_battle_will.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.highland_blood.effect_id) {
         effect_ids.push(runtime.highland_blood.effect_id);
@@ -848,6 +851,27 @@ struct StatResonanceAttackWitness {
     lane: ObservedAttackLane,
     active_family: ExactAttackFamilySnapshot,
     final_attack_marginal: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExactObservedProvider {
+    None,
+    One(u64),
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FieryBattleWillPendingTransition {
+    before_provider: ExactObservedProvider,
+    event_provider: ExactObservedProvider,
+    saw_applied: bool,
+    invalid: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ObservedAttackProviderKey {
+    target_actor_id: u64,
+    provider_actor_id: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1860,6 +1884,10 @@ pub struct BpsrStateDamageContributionProjector {
     stat_resonance_transition_wires: HashMap<u64, WireKey>,
     stat_resonance_pending_transitions: HashMap<u64, Option<StatResonanceTransition>>,
     stat_resonance_attack_witnesses: HashMap<EffectWindowKey, StatResonanceAttackWitness>,
+    fiery_battle_will_windows: HashSet<EffectWindowKey>,
+    fiery_battle_will_transition_wires: HashMap<u64, WireKey>,
+    fiery_battle_will_pending_transitions: HashMap<u64, FieryBattleWillPendingTransition>,
+    fiery_battle_will_attack_witnesses: HashSet<ObservedAttackProviderKey>,
     thunderwind_windows: HashMap<EffectWindowKey, ThunderwindWindow>,
     thunderwind_child_targets: HashSet<u64>,
     thunderwind_transition_wires: HashMap<u64, WireKey>,
@@ -1964,6 +1992,10 @@ impl Default for BpsrStateDamageContributionProjector {
             stat_resonance_transition_wires: HashMap::new(),
             stat_resonance_pending_transitions: HashMap::new(),
             stat_resonance_attack_witnesses: HashMap::new(),
+            fiery_battle_will_windows: HashSet::new(),
+            fiery_battle_will_transition_wires: HashMap::new(),
+            fiery_battle_will_pending_transitions: HashMap::new(),
+            fiery_battle_will_attack_witnesses: HashSet::new(),
             thunderwind_windows: HashMap::new(),
             thunderwind_child_targets: HashSet::new(),
             thunderwind_transition_wires: HashMap::new(),
@@ -2601,6 +2633,7 @@ impl BpsrStateDamageContributionProjector {
             TimelineEventKind::DataGap(gap) => {
                 self.observe_fatal_spiral_data_gap(gap.kind);
                 self.clear_stat_resonance_after_gap();
+                self.clear_fiery_battle_will_after_gap();
             }
             TimelineEventKind::EntityAttributes(attributes) => self.observe_attributes(
                 attributes.actor.actor_id.0,
@@ -2691,6 +2724,8 @@ impl BpsrStateDamageContributionProjector {
                     self.mechanical_power_contribution(envelope.time.observed_micros, damage);
                 let stat_resonance_contribution =
                     self.stat_resonance_contribution(envelope.time.observed_micros, damage);
+                let fiery_battle_will_contribution =
+                    self.fiery_battle_will_contribution(envelope.time.observed_micros, damage);
                 let mut inspiration_contribution =
                     self.inspiration_contribution(envelope.time.observed_micros, damage);
                 let inspiration_occurrence_contribution =
@@ -2786,21 +2821,31 @@ impl BpsrStateDamageContributionProjector {
                         // emit no guessed transfer.
                         AttackContributionOverlapPolicy::Suppress => (Vec::new(), true),
                     };
+                let (observed_attack_contributions, observed_attack_overlap_unresolved) =
+                    select_ordered_observed_attack_contributions(
+                        stat_resonance_contribution,
+                        fiery_battle_will_contribution,
+                    );
                 let (attack_contributions, unresolved_attack_overlap) =
-                    if let Some(stat_resonance) = stat_resonance_contribution {
+                    if observed_attack_overlap_unresolved {
+                        // The candidate stages or their rational allocation
+                        // could not be reconciled exactly. Preserve ordinary
+                        // damage and transfer neither.
+                        (Vec::new(), true)
+                    } else if !observed_attack_contributions.is_empty() {
                         if base_attack_overlap_unresolved {
-                            // The exact observed Stat Resonance transition
+                            // The exact observed Attack transition
                             // held every pre-existing Attack contributor
                             // constant. Its marginal remains independently
                             // auditable even when those older contributors do
                             // not yet have a proved allocation among
                             // themselves.
-                            (vec![stat_resonance], false)
+                            (observed_attack_contributions, false)
                         } else if base_attack_contributions.is_empty() {
-                            (vec![stat_resonance], false)
+                            (observed_attack_contributions, false)
                         } else {
-                            match allocate_ordered_rational_marginals(
-                                stat_resonance,
+                            match extend_ordered_rational_marginals(
+                                observed_attack_contributions,
                                 base_attack_contributions,
                             ) {
                                 Some(contributions) => (contributions, false),
@@ -2937,6 +2982,27 @@ impl BpsrStateDamageContributionProjector {
                             // candidate, while suppressing the ambiguous split
                             // among the simultaneous later-stage providers.
                             deferred_remote_harmony_suppresses_later_overlap = true;
+                        } else if let Some(proven_attack_contributions) =
+                            retain_proven_attack_stage_across_unresolved_later_overlap(
+                                attack_contributions,
+                                usize::from(team_luck_contribution.is_some())
+                                    + usize::from(inspiration_occurrence_contribution.is_some())
+                                    + usize::from(thunderwind_contribution.is_some())
+                                    + target_vulnerability_rational_contributions.len(),
+                                self.runtime.fiery_battle_will.effect_id,
+                            )
+                        {
+                            // Every Attack-stage candidate here was derived
+                            // from this exact packet row while downstream
+                            // outcome state was held constant. Preserve that
+                            // proven ordered Attack allocation even when two
+                            // later candidates cannot be ordered against each
+                            // other. In particular, Inspiration's recipient
+                            // conversion and Team Luck both occupy the
+                            // critical-damage family, so neither downstream
+                            // share is guessed or emitted.
+                            rational_output.extend(proven_attack_contributions);
+                            return;
                         } else {
                             // Without a deferred exact paired-output candidate,
                             // no attribution in this overlap is independently
@@ -3063,12 +3129,14 @@ impl BpsrStateDamageContributionProjector {
             self.reconcile_thunderwind_staged_states();
             self.reconcile_fatal_spiral_staged_states();
             self.reconcile_stat_resonance_staged_states();
+            self.reconcile_fiery_battle_will_staged_states();
             self.states.extend(self.staged_states.drain());
             self.team_luck_transition_wires.clear();
             self.functional_amp_transition_wires.clear();
             self.mechanical_power_transition_wires.clear();
             self.harmony_grace_transition_wires.clear();
             self.stat_resonance_transition_wires.clear();
+            self.fiery_battle_will_transition_wires.clear();
             self.inspiration_transition_wires.clear();
             self.inspiration_snapshot_targets.clear();
             self.thunderwind_transition_wires.clear();
@@ -3093,6 +3161,13 @@ impl BpsrStateDamageContributionProjector {
         self.stat_resonance_transition_wires.clear();
         self.stat_resonance_pending_transitions.clear();
         self.stat_resonance_attack_witnesses.clear();
+    }
+
+    fn clear_fiery_battle_will_after_gap(&mut self) {
+        self.fiery_battle_will_windows.clear();
+        self.fiery_battle_will_transition_wires.clear();
+        self.fiery_battle_will_pending_transitions.clear();
+        self.fiery_battle_will_attack_witnesses.clear();
     }
 
     fn observe_unresolved_status(&mut self, status: &rlogs_events::UnresolvedStatusEvent) {
@@ -3196,6 +3271,18 @@ impl BpsrStateDamageContributionProjector {
                 ))
         {
             self.observe_stat_resonance_status(status);
+        }
+        if self.runtime.fiery_battle_will.runtime_transfer_enabled
+            && status.effect.0 == self.runtime.fiery_battle_will.effect_id
+            && status
+                .origin
+                .map(|origin| (origin.source_type_id, origin.source_config_id))
+                == Some((
+                    self.runtime.fiery_battle_will.source_type_id,
+                    self.runtime.fiery_battle_will.source_config_id,
+                ))
+        {
+            self.observe_fiery_battle_will_status(status);
         }
         if status.effect.0 == self.runtime.thunderwind.effect_id {
             self.observe_thunderwind_status(status, observed_micros);
@@ -3965,6 +4052,273 @@ impl BpsrStateDamageContributionProjector {
                 }
             }
         }
+    }
+
+    fn exact_fiery_battle_will_provider(&self, target_actor_id: u64) -> ExactObservedProvider {
+        let mut providers = self
+            .fiery_battle_will_windows
+            .iter()
+            .filter(|key| key.target_actor_id == target_actor_id)
+            .map(|key| key.provider_actor_id)
+            .collect::<Vec<_>>();
+        providers.sort_unstable();
+        providers.dedup();
+        match providers.as_slice() {
+            [] => ExactObservedProvider::None,
+            [provider_actor_id] => ExactObservedProvider::One(*provider_actor_id),
+            _ => ExactObservedProvider::Ambiguous,
+        }
+    }
+
+    fn observe_fiery_battle_will_status(&mut self, status: &rlogs_events::StatusEvent) {
+        let target_actor_id = status.target.actor_id.0;
+        let before_provider = self.exact_fiery_battle_will_provider(target_actor_id);
+        self.fiery_battle_will_pending_transitions
+            .entry(target_actor_id)
+            .or_insert(FieryBattleWillPendingTransition {
+                before_provider,
+                event_provider: ExactObservedProvider::None,
+                saw_applied: false,
+                invalid: false,
+            });
+        if let Some(wire) = self.current_wire {
+            self.fiery_battle_will_transition_wires
+                .insert(target_actor_id, wire);
+        }
+
+        let Some(raw_source_actor_id) = status.source.map(|source| source.actor_id.0) else {
+            self.invalidate_fiery_battle_will_target(target_actor_id);
+            return;
+        };
+        let provider_actor_id = self.resolve_owner_actor_id(raw_source_actor_id);
+        let pending = self
+            .fiery_battle_will_pending_transitions
+            .get_mut(&target_actor_id)
+            .expect("the current Fiery Battle Will wire was initialized above");
+        pending.event_provider = match pending.event_provider {
+            ExactObservedProvider::None => ExactObservedProvider::One(provider_actor_id),
+            ExactObservedProvider::One(previous) if previous == provider_actor_id => {
+                ExactObservedProvider::One(previous)
+            }
+            ExactObservedProvider::One(_) | ExactObservedProvider::Ambiguous => {
+                ExactObservedProvider::Ambiguous
+            }
+        };
+        let window = EffectWindowKey {
+            target_actor_id,
+            provider_actor_id,
+            instance_id: status.instance_id.map(|instance| instance.0),
+        };
+        match status.state {
+            StatusState::Applied => {
+                if !pending.saw_applied {
+                    // The child aura is a 1.1-second replacement snapshot.
+                    // The first exact apply in a wire supersedes earlier
+                    // instances; terminal rows for those older instances may
+                    // follow later in the same wire.
+                    self.fiery_battle_will_windows
+                        .retain(|key| key.target_actor_id != target_actor_id);
+                    pending.saw_applied = true;
+                }
+                self.fiery_battle_will_windows.insert(window);
+            }
+            StatusState::Removed => {
+                if pending.saw_applied {
+                    self.fiery_battle_will_windows.remove(&window);
+                } else {
+                    // A terminal-only wire ends this resolved provider's aura
+                    // even when capture began after the short child instance
+                    // was created and its exact instance was never retained.
+                    self.fiery_battle_will_windows.retain(|key| {
+                        key.target_actor_id != target_actor_id
+                            || key.provider_actor_id != provider_actor_id
+                    });
+                }
+            }
+            StatusState::Refreshed | StatusState::Stacked | StatusState::Consumed => {
+                self.invalidate_fiery_battle_will_target(target_actor_id);
+            }
+        }
+    }
+
+    fn invalidate_fiery_battle_will_target(&mut self, target_actor_id: u64) {
+        self.fiery_battle_will_windows
+            .retain(|key| key.target_actor_id != target_actor_id);
+        self.fiery_battle_will_attack_witnesses
+            .retain(|key| key.target_actor_id != target_actor_id);
+        if let Some(pending) = self
+            .fiery_battle_will_pending_transitions
+            .get_mut(&target_actor_id)
+        {
+            pending.invalid = true;
+        }
+        if let Some(wire) = self.current_wire {
+            self.fiery_battle_will_transition_wires
+                .insert(target_actor_id, wire);
+        }
+    }
+
+    fn reconcile_fiery_battle_will_staged_states(&mut self) {
+        let pending = std::mem::take(&mut self.fiery_battle_will_pending_transitions);
+        for (target_actor_id, transition) in pending {
+            if transition.invalid {
+                continue;
+            }
+            let after_provider = self.exact_fiery_battle_will_provider(target_actor_id);
+            let exact_event_provider = match transition.event_provider {
+                ExactObservedProvider::One(provider_actor_id) => provider_actor_id,
+                ExactObservedProvider::None | ExactObservedProvider::Ambiguous => {
+                    self.invalidate_fiery_battle_will_target(target_actor_id);
+                    continue;
+                }
+            };
+            let has_status_confounder = self.formula_status_semantically_changed_on_wire(
+                target_actor_id,
+                self.runtime.fiery_battle_will.effect_id,
+            );
+            let has_unresolved_confounder = self
+                .unresolved_status_windows
+                .iter()
+                .any(|key| key.target_actor_id == target_actor_id);
+            if has_status_confounder || has_unresolved_confounder {
+                self.invalidate_fiery_battle_will_target(target_actor_id);
+                continue;
+            }
+            match (transition.before_provider, after_provider) {
+                (ExactObservedProvider::None, ExactObservedProvider::One(provider_actor_id)) => {
+                    if exact_event_provider != provider_actor_id
+                        || provider_actor_id == target_actor_id
+                        || !self.active_players.contains(&provider_actor_id)
+                        || !self.fiery_battle_will_mirrored_raw_percent_transition(
+                            target_actor_id,
+                            self.runtime.fiery_battle_will.provider_raw_percent_delta,
+                        )
+                    {
+                        self.invalidate_fiery_battle_will_target(target_actor_id);
+                        continue;
+                    }
+                    self.fiery_battle_will_attack_witnesses
+                        .insert(ObservedAttackProviderKey {
+                            target_actor_id,
+                            provider_actor_id,
+                        });
+                }
+                (
+                    ExactObservedProvider::One(before_provider_actor_id),
+                    ExactObservedProvider::One(after_provider_actor_id),
+                ) if before_provider_actor_id == after_provider_actor_id => {
+                    // The 1.1-second child aura rotates instance IDs. A remove
+                    // plus apply from the same resolved player is a lifecycle
+                    // refresh, not another +10% Attack application.
+                    let key = ObservedAttackProviderKey {
+                        target_actor_id,
+                        provider_actor_id: after_provider_actor_id,
+                    };
+                    if exact_event_provider != after_provider_actor_id {
+                        self.invalidate_fiery_battle_will_target(target_actor_id);
+                    } else if !self.fiery_battle_will_attack_witnesses.contains(&key) {
+                        // Capture may begin inside the short aura heartbeat,
+                        // leaving an exact same-owner window without its
+                        // onset. A later isolated mirrored +1000 packet
+                        // transition is sufficient to establish the same
+                        // narrow observed marginal; no residual is assigned.
+                        if self.fiery_battle_will_mirrored_raw_percent_transition(
+                            target_actor_id,
+                            self.runtime.fiery_battle_will.provider_raw_percent_delta,
+                        ) {
+                            self.fiery_battle_will_attack_witnesses.insert(key);
+                        } else {
+                            self.invalidate_fiery_battle_will_target(target_actor_id);
+                        }
+                    }
+                }
+                (ExactObservedProvider::One(provider_actor_id), ExactObservedProvider::None) => {
+                    let key = ObservedAttackProviderKey {
+                        target_actor_id,
+                        provider_actor_id,
+                    };
+                    if exact_event_provider != provider_actor_id
+                        || !self.fiery_battle_will_attack_witnesses.remove(&key)
+                        || !self.fiery_battle_will_mirrored_raw_percent_transition(
+                            target_actor_id,
+                            -self.runtime.fiery_battle_will.provider_raw_percent_delta,
+                        )
+                    {
+                        self.invalidate_fiery_battle_will_target(target_actor_id);
+                    }
+                }
+                _ => self.invalidate_fiery_battle_will_target(target_actor_id),
+            }
+        }
+    }
+
+    fn formula_status_semantically_changed_on_wire(
+        &self,
+        target_actor_id: u64,
+        excluded_effect_id: i64,
+    ) -> bool {
+        let changed_effect_ids = self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .filter(|key| {
+                key.target_actor_id == target_actor_id && key.effect_id != excluded_effect_id
+            })
+            .map(|key| key.effect_id)
+            .collect::<HashSet<_>>();
+        changed_effect_ids.into_iter().any(|effect_id| {
+            let keys = self
+                .formula_statuses
+                .keys()
+                .chain(self.formula_status_prior_values_current_wire.keys())
+                .filter(|key| key.target_actor_id == target_actor_id && key.effect_id == effect_id)
+                .copied()
+                .collect::<HashSet<_>>();
+            let mut before = BTreeMap::<FormulaStatusValue, u64>::new();
+            let mut after = BTreeMap::<FormulaStatusValue, u64>::new();
+            for key in keys {
+                let after_value = self.formula_statuses.get(&key).copied();
+                let before_value = self
+                    .formula_status_prior_values_current_wire
+                    .get(&key)
+                    .copied()
+                    .unwrap_or(after_value);
+                if let Some(value) = before_value {
+                    *before.entry(value).or_default() += 1;
+                }
+                if let Some(value) = after_value {
+                    *after.entry(value).or_default() += 1;
+                }
+            }
+            before != after
+        })
+    }
+
+    fn fiery_battle_will_mirrored_raw_percent_transition(
+        &self,
+        target_actor_id: u64,
+        expected_delta: i64,
+    ) -> bool {
+        let Some(previous) = self.states.get(&target_actor_id) else {
+            return false;
+        };
+        let Some(current) = self.staged_states.get(&target_actor_id) else {
+            return false;
+        };
+        [
+            (&previous.physical_attack, &current.physical_attack),
+            (&previous.magical_attack, &current.magical_attack),
+        ]
+        .into_iter()
+        .all(|(before, after)| {
+            before.raw_percent_packet_observed
+                && after.raw_percent_packet_observed
+                && before
+                    .raw_percent
+                    .zip(after.raw_percent)
+                    .is_some_and(|(before, after)| {
+                        after.checked_sub(before) == Some(expected_delta)
+                    })
+        })
     }
 
     fn observe_thunderwind_status(
@@ -6638,27 +6992,115 @@ impl BpsrStateDamageContributionProjector {
         if active_family != witness.active_family {
             return Err("attack_family_state_changed");
         }
-        let (numerator, denominator) = exact_external_attack_coefficient_stage_fraction(
+        exact_observed_final_attack_stage_contribution(
+            observed_micros,
+            self.runtime.stat_resonance.effect_id,
+            DamageContributionScope::Component("stat-resonance-observed-final-attack"),
+            window.provider_actor_id,
+            recipient_actor_id,
             damage.amount,
-            PacketDamageScriptFamily::StandardAttack,
             active_family.final_value,
             witness.final_attack_marginal,
-            selected.coefficient_basis_points,
-            selected.fixed_parameter,
+            selected,
         )
-        .ok_or("damage_coefficient_counterfactual_unproven")?;
-        Ok(ExactRationalDamageContributionEvent {
+        .ok_or("damage_coefficient_counterfactual_unproven")
+    }
+
+    fn fiery_battle_will_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.fiery_battle_will_decision(observed_micros, damage)
+            .ok()
+    }
+
+    pub fn fiery_battle_will_audit_gate(&self, damage: &rlogs_events::DamageEvent) -> &'static str {
+        match self.fiery_battle_will_decision(self.latest_observed_micros, damage) {
+            Ok(_) => "emitted",
+            Err(gate) => gate,
+        }
+    }
+
+    fn fiery_battle_will_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        if !self.runtime.fiery_battle_will.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        if self.damage_has_unresolved_status_confounder(damage) {
+            return Err("unresolved_status_confounder");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        if self.current_wire.is_some_and(|wire| {
+            self.fiery_battle_will_transition_wires
+                .get(&recipient_actor_id)
+                == Some(&wire)
+        }) {
+            return Err("same_wire_transition");
+        }
+        let provider_actor_id = match self.exact_fiery_battle_will_provider(recipient_actor_id) {
+            ExactObservedProvider::None => return Err("provider_window_missing"),
+            ExactObservedProvider::One(provider_actor_id) => provider_actor_id,
+            ExactObservedProvider::Ambiguous => return Err("provider_window_ambiguous"),
+        };
+        if provider_actor_id == recipient_actor_id {
+            return Err("provider_is_recipient");
+        }
+        if !self.active_players.contains(&provider_actor_id) {
+            return Err("provider_inactive");
+        }
+        if !self
+            .fiery_battle_will_attack_witnesses
+            .contains(&ObservedAttackProviderKey {
+                target_actor_id: recipient_actor_id,
+                provider_actor_id,
+            })
+        {
+            return Err("transition_witness_missing");
+        }
+        let selected = select_damage_stage(
+            damage.ability.ok_or("ability_missing")?.0,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        )
+        .ok_or("damage_stage_missing")?;
+        let actor_state = self
+            .states
+            .get(&recipient_actor_id)
+            .ok_or("recipient_state_missing")?;
+        let family = match selected.offensive_stat {
+            OffensiveStatKind::PhysicalAttack => &actor_state.physical_attack,
+            OffensiveStatKind::MagicalAttack => &actor_state.magical_attack,
+        };
+        if !family.raw_percent_packet_observed {
+            return Err("recipient_attack_not_packet_observed");
+        }
+        let current_attack = family.final_value.ok_or("attack_family_incomplete")?;
+        let provider_attack_marginal = exact_signed_attack_raw_percent_provider_marginal(
+            family,
+            self.runtime.fiery_battle_will.provider_raw_percent_delta,
+        )
+        .ok_or("attack_family_formula_mismatch")?;
+        exact_observed_final_attack_stage_contribution(
             observed_micros,
-            effect_id: self.runtime.stat_resonance.effect_id,
-            provider_actor_id: window.provider_actor_id,
+            self.runtime.fiery_battle_will.effect_id,
+            DamageContributionScope::Component("fiery-battle-will-observed-final-attack"),
+            provider_actor_id,
             recipient_actor_id,
-            scope: DamageContributionScope::Component("stat-resonance-observed-final-attack"),
-            numerator,
-            denominator,
-            observed_damage: damage.amount,
-            included: true,
-            deferred_damage_context: None,
-        })
+            damage.amount,
+            current_attack,
+            provider_attack_marginal,
+            selected,
+        )
+        .ok_or("damage_counterfactual_unproven")
     }
 
     pub fn mechanical_power_audit_gate(&self, damage: &rlogs_events::DamageEvent) -> &'static str {
@@ -8394,6 +8836,12 @@ impl BpsrStateDamageContributionProjector {
         self.stat_resonance_pending_transitions.remove(&actor_id);
         self.stat_resonance_attack_witnesses
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.fiery_battle_will_windows
+            .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.fiery_battle_will_transition_wires.remove(&actor_id);
+        self.fiery_battle_will_pending_transitions.remove(&actor_id);
+        self.fiery_battle_will_attack_witnesses
+            .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.thunderwind_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.thunderwind_child_targets.remove(&actor_id);
@@ -8462,6 +8910,10 @@ impl BpsrStateDamageContributionProjector {
         self.stat_resonance_transition_wires.clear();
         self.stat_resonance_pending_transitions.clear();
         self.stat_resonance_attack_witnesses.clear();
+        self.fiery_battle_will_windows.clear();
+        self.fiery_battle_will_transition_wires.clear();
+        self.fiery_battle_will_pending_transitions.clear();
+        self.fiery_battle_will_attack_witnesses.clear();
         self.thunderwind_windows.clear();
         self.thunderwind_child_targets.clear();
         self.thunderwind_transition_wires.clear();
@@ -8650,6 +9102,39 @@ fn exact_attack_family_stage_contribution(
     let current_attack = family.final_value?;
     let provider_attack_marginal =
         exact_packet_attack_provider_marginal(family, provider_base_add, provider_raw_percent)?;
+    exact_observed_final_attack_stage_contribution(
+        observed_micros,
+        effect_id,
+        scope,
+        provider_actor_id,
+        recipient_actor_id,
+        observed_damage,
+        current_attack,
+        provider_attack_marginal,
+        selected,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn exact_observed_final_attack_stage_contribution(
+    observed_micros: u64,
+    effect_id: i64,
+    scope: DamageContributionScope,
+    provider_actor_id: u64,
+    recipient_actor_id: u64,
+    observed_damage: i64,
+    current_attack: i64,
+    provider_attack_marginal: i64,
+    selected: SelectedDamageStage,
+) -> Option<ExactRationalDamageContributionEvent> {
+    if observed_damage <= 0
+        || effect_id <= 0
+        || provider_actor_id == recipient_actor_id
+        || current_attack <= 0
+        || provider_attack_marginal <= 0
+    {
+        return None;
+    }
     let (numerator, denominator) = exact_external_attack_coefficient_stage_fraction(
         observed_damage,
         PacketDamageScriptFamily::StandardAttack,
@@ -8698,6 +9183,65 @@ fn exact_packet_attack_provider_marginal(
         provider_raw_percent,
         0,
     )
+}
+
+fn exact_signed_attack_raw_percent_provider_marginal(
+    family: &AttackFamilyState,
+    provider_raw_percent: i64,
+) -> Option<i64> {
+    if provider_raw_percent <= 0 {
+        return None;
+    }
+    let current_attack = family.final_value?;
+    let intermediate = family.intermediate_value?;
+    let base_add = family.base_add?;
+    let extra_add = family.extra_add?;
+    let raw_percent = family.raw_percent?;
+    let signed_family_value = |raw_percent: i64, extra_add: i64| {
+        if base_add < 0 || extra_add < 0 {
+            return None;
+        }
+        let factor = BPSR_FIXED_POINT_SCALE.checked_add(raw_percent)?;
+        if factor <= 0 {
+            return None;
+        }
+        let intermediate = i128::from(base_add)
+            .checked_mul(i128::from(factor))?
+            .checked_div(i128::from(BPSR_FIXED_POINT_SCALE))?;
+        i64::try_from(intermediate).ok()?.checked_add(extra_add)
+    };
+    if signed_family_value(raw_percent, 0)? != intermediate
+        || signed_family_value(raw_percent, extra_add)? != current_attack
+    {
+        return None;
+    }
+    let without_provider =
+        signed_family_value(raw_percent.checked_sub(provider_raw_percent)?, extra_add)?;
+    current_attack
+        .checked_sub(without_provider)
+        .filter(|marginal| *marginal > 0)
+}
+
+fn select_ordered_observed_attack_contributions(
+    stat_resonance: Option<ExactRationalDamageContributionEvent>,
+    fiery_battle_will: Option<ExactRationalDamageContributionEvent>,
+) -> (Vec<ExactRationalDamageContributionEvent>, bool) {
+    match (stat_resonance, fiery_battle_will) {
+        (Some(stat_resonance), Some(fiery_battle_will)) => {
+            // Each candidate was derived from this damage row's selected
+            // Attack lane and current packet-observed final Attack. Fiery's
+            // raw-percent stage is later than Stat Resonance's base-Add stage,
+            // so it owns its active marginal (including the cross-term) first.
+            // Stat Resonance is scaled against the remaining observed damage;
+            // no unexplained packet residual is assigned to either provider.
+            match allocate_ordered_rational_marginals(fiery_battle_will, vec![stat_resonance]) {
+                Some(contributions) => (contributions, false),
+                None => (Vec::new(), true),
+            }
+        }
+        (Some(contribution), None) | (None, Some(contribution)) => (vec![contribution], false),
+        (None, None) => (Vec::new(), false),
+    }
 }
 
 fn exact_primary_to_attack_provider_base_add_from_witness(
@@ -8828,6 +9372,32 @@ fn allocate_ordered_rational_marginals(
         allocated.push(contribution);
     }
     Some(allocated)
+}
+
+fn extend_ordered_rational_marginals(
+    mut allocated: Vec<ExactRationalDamageContributionEvent>,
+    later: Vec<ExactRationalDamageContributionEvent>,
+) -> Option<Vec<ExactRationalDamageContributionEvent>> {
+    if allocated.is_empty() {
+        return None;
+    }
+    for contribution in later {
+        let contribution = scale_later_rational_marginal_after_many(&allocated, contribution)?;
+        allocated.push(contribution);
+    }
+    Some(allocated)
+}
+
+fn retain_proven_attack_stage_across_unresolved_later_overlap(
+    attack_contributions: Vec<ExactRationalDamageContributionEvent>,
+    later_candidate_count: usize,
+    required_effect_id: i64,
+) -> Option<Vec<ExactRationalDamageContributionEvent>> {
+    (later_candidate_count > 1
+        && attack_contributions
+            .iter()
+            .any(|contribution| contribution.effect_id == required_effect_id))
+    .then_some(attack_contributions)
 }
 
 fn greatest_common_divisor(mut left: i128, mut right: i128) -> i128 {
@@ -10680,6 +11250,43 @@ mod tests {
         }
     }
 
+    fn fiery_battle_will_test_family(raw_percent: i64) -> AttackFamilyState {
+        let base_add = 10_000;
+        let extra_add = 100;
+        AttackFamilyState {
+            final_value: packet_attribute_family_value(base_add, raw_percent, extra_add),
+            intermediate_value: packet_attribute_family_value(base_add, raw_percent, 0),
+            base_add: Some(base_add),
+            extra_add: Some(extra_add),
+            raw_percent: Some(raw_percent),
+            raw_percent_packet_observed: true,
+            provider_raw_percent: BTreeMap::new(),
+        }
+    }
+
+    fn fiery_battle_will_test_status(
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        rlogs_events::StatusEvent {
+            source: Some(test_entity(21, 210)),
+            target: test_entity(4, 40),
+            effect: rlogs_events::StatusEffectId(runtime().fiery_battle_will.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: Some(rlogs_events::StatusOrigin {
+                source_type_id: runtime().fiery_battle_will.source_type_id,
+                source_config_id: runtime().fiery_battle_will.source_config_id,
+            }),
+            state,
+            stacks: Some(1),
+            level: Some(1),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+            duration_millis: Some(1_100),
+        }
+    }
+
     fn critical_test_damage(
         source: rlogs_events::EntityRef,
         amount: i64,
@@ -10836,10 +11443,10 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252, 2_302_121,
-                3_003_052
+                55_228, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252,
+                2_302_121, 3_003_052
             ],
-            "the exact packet-pair vulnerability, direct Highland observed-final component, observed Mechanical Power component, exact observed Stat Resonance Attack delta, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
+            "the exact packet-pair vulnerability, observed Fiery Battle Will Attack-percent component, direct Highland observed-final component, observed Mechanical Power component, exact observed Stat Resonance Attack delta, dormant Functional Amp component, Team Luck components, Inspiration chance components, universal Harmony application, and proven downstream Harmony proportional routes are production promoted"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -11675,8 +12282,8 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252, 2_302_121,
-                3_003_052
+                55_228, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041, 2_207_252,
+                2_302_121, 3_003_052
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
@@ -14840,6 +15447,301 @@ mod tests {
         assert_eq!(
             projector.stat_resonance_decision(106, &damage),
             Err("provider_window_missing")
+        );
+    }
+
+    #[test]
+    fn fiery_battle_will_coalesces_refreshes_and_requires_mirrored_observed_delta() {
+        let signed_active_family = AttackFamilyState {
+            final_value: Some(9_100),
+            intermediate_value: Some(9_000),
+            base_add: Some(10_000),
+            extra_add: Some(100),
+            raw_percent: Some(-1_000),
+            raw_percent_packet_observed: true,
+            provider_raw_percent: BTreeMap::new(),
+        };
+        assert_eq!(
+            exact_signed_attack_raw_percent_provider_marginal(&signed_active_family, 1_000,),
+            Some(1_000),
+            "a packet-observed signed raw-percent family remains exact while its total factor is positive"
+        );
+        let inactive_family = fiery_battle_will_test_family(1_000);
+        let active_family = fiery_battle_will_test_family(2_000);
+        let first_wire = WireKey {
+            connection_id: 1,
+            stream_id: 2,
+            capture_sequence: 30,
+        };
+        let second_wire = WireKey {
+            capture_sequence: 31,
+            ..first_wire
+        };
+        let third_wire = WireKey {
+            capture_sequence: 32,
+            ..first_wire
+        };
+        let fourth_wire = WireKey {
+            capture_sequence: 33,
+            ..first_wire
+        };
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            current_wire: Some(first_wire),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: inactive_family.clone(),
+                    magical_attack: inactive_family.clone(),
+                    ..ActorHpState::default()
+                },
+            )]),
+            staged_states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: active_family.clone(),
+                    magical_attack: active_family.clone(),
+                    ..ActorHpState::default()
+                },
+            )]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (21, 210)]),
+            latest_observed_micros: 1,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.actor_ancestry.observe_relation(
+            1,
+            test_entity(21, 210),
+            test_entity(2, 20),
+            ActorOwnershipEvidence::ConfirmedEntityAttributes,
+        );
+        let damage = stat_resonance_test_damage();
+        projector.observe_status(
+            &fiery_battle_will_test_status(77, StatusState::Applied),
+            100,
+        );
+        assert_eq!(
+            projector.fiery_battle_will_decision(100, &damage),
+            Err("same_wire_transition")
+        );
+
+        projector.advance_wire(second_wire);
+        let provider_key = ObservedAttackProviderKey {
+            target_actor_id: 4,
+            provider_actor_id: 2,
+        };
+        assert!(
+            projector
+                .fiery_battle_will_attack_witnesses
+                .contains(&provider_key)
+        );
+        let contribution = projector
+            .fiery_battle_will_decision(101, &damage)
+            .expect("the clean local +1000 Attack boundary is eligible");
+        assert_eq!(contribution.effect_id, 2_110_065);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert!(
+            contribution.numerator
+                < i128::from(contribution.observed_damage) * contribution.denominator,
+            "rDPS transfer remains a conserved subset of packet-final damage"
+        );
+
+        projector.staged_states.insert(
+            4,
+            ActorHpState {
+                physical_attack: active_family.clone(),
+                magical_attack: active_family.clone(),
+                ..ActorHpState::default()
+            },
+        );
+        projector.observe_status(
+            &fiery_battle_will_test_status(78, StatusState::Applied),
+            102,
+        );
+        projector.observe_status(
+            &fiery_battle_will_test_status(77, StatusState::Removed),
+            102,
+        );
+        projector.advance_wire(third_wire);
+        assert!(
+            projector
+                .fiery_battle_will_attack_witnesses
+                .contains(&provider_key),
+            "same-owner aura instance rotation preserves the proven boundary"
+        );
+        assert!(projector.fiery_battle_will_decision(103, &damage).is_ok());
+
+        projector.staged_states.insert(
+            4,
+            ActorHpState {
+                physical_attack: inactive_family.clone(),
+                magical_attack: inactive_family.clone(),
+                ..ActorHpState::default()
+            },
+        );
+        projector.observe_status(
+            &fiery_battle_will_test_status(78, StatusState::Removed),
+            104,
+        );
+        projector.advance_wire(fourth_wire);
+        assert!(
+            !projector
+                .fiery_battle_will_attack_witnesses
+                .contains(&provider_key)
+        );
+        assert_eq!(
+            projector.fiery_battle_will_decision(105, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut mismatched = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            current_wire: Some(first_wire),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: inactive_family.clone(),
+                    magical_attack: inactive_family.clone(),
+                    ..ActorHpState::default()
+                },
+            )]),
+            staged_states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: active_family,
+                    magical_attack: fiery_battle_will_test_family(1_999),
+                    ..ActorHpState::default()
+                },
+            )]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (21, 210)]),
+            latest_observed_micros: 1,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        mismatched.actor_ancestry.observe_relation(
+            1,
+            test_entity(21, 210),
+            test_entity(2, 20),
+            ActorOwnershipEvidence::ConfirmedEntityAttributes,
+        );
+        mismatched.observe_status(
+            &fiery_battle_will_test_status(90, StatusState::Applied),
+            200,
+        );
+        mismatched.advance_wire(second_wire);
+        assert_eq!(
+            mismatched.fiery_battle_will_decision(201, &damage),
+            Err("provider_window_missing"),
+            "a non-mirrored or guessed Attack delta never creates a witness"
+        );
+    }
+
+    #[test]
+    fn fiery_battle_will_rejects_status_confounders_and_orders_stat_overlap() {
+        let inactive_family = fiery_battle_will_test_family(1_000);
+        let active_family = fiery_battle_will_test_family(2_000);
+        let first_wire = WireKey {
+            connection_id: 1,
+            stream_id: 2,
+            capture_sequence: 40,
+        };
+        let second_wire = WireKey {
+            capture_sequence: 41,
+            ..first_wire
+        };
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            current_wire: Some(first_wire),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: inactive_family.clone(),
+                    magical_attack: inactive_family,
+                    ..ActorHpState::default()
+                },
+            )]),
+            staged_states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: active_family.clone(),
+                    magical_attack: active_family,
+                    ..ActorHpState::default()
+                },
+            )]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (21, 210)]),
+            latest_observed_micros: 1,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.actor_ancestry.observe_relation(
+            1,
+            test_entity(21, 210),
+            test_entity(2, 20),
+            ActorOwnershipEvidence::ConfirmedEntityAttributes,
+        );
+        let mut confounder = fiery_battle_will_test_status(900, StatusState::Applied);
+        confounder.effect = rlogs_events::StatusEffectId(9_999_999);
+        confounder.origin = None;
+        projector.observe_status(&confounder, 300);
+        projector.observe_status(
+            &fiery_battle_will_test_status(91, StatusState::Applied),
+            300,
+        );
+        projector.advance_wire(second_wire);
+        assert_eq!(
+            projector.fiery_battle_will_decision(301, &stat_resonance_test_damage()),
+            Err("provider_window_missing")
+        );
+
+        let event = |effect_id| ExactRationalDamageContributionEvent {
+            observed_micros: 1,
+            effect_id,
+            provider_actor_id: 2,
+            recipient_actor_id: 4,
+            scope: DamageContributionScope::Component("test"),
+            numerator: 10,
+            denominator: 1,
+            observed_damage: 100,
+            included: true,
+            deferred_damage_context: None,
+        };
+        let (selected, unresolved) = select_ordered_observed_attack_contributions(
+            Some(event(runtime().stat_resonance.effect_id)),
+            Some(event(runtime().fiery_battle_will.effect_id)),
+        );
+        assert!(!unresolved);
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[0].effect_id, runtime().fiery_battle_will.effect_id);
+        assert_eq!((selected[0].numerator, selected[0].denominator), (10, 1));
+        assert_eq!(selected[1].effect_id, runtime().stat_resonance.effect_id);
+        assert_eq!((selected[1].numerator, selected[1].denominator), (9, 1));
+        assert_eq!(
+            selected.iter().map(|row| row.numerator).sum::<i128>(),
+            19,
+            "the raw-percent/base-Add cross-term is assigned once to the later Fiery stage"
+        );
+        assert!(
+            selected.iter().map(|row| row.numerator).sum::<i128>()
+                <= i128::from(selected[0].observed_damage),
+            "ordered overlap conserves packet-final damage without allocating residual"
+        );
+
+        let retained = retain_proven_attack_stage_across_unresolved_later_overlap(
+            selected.clone(),
+            2,
+            runtime().fiery_battle_will.effect_id,
+        )
+        .expect("the exact same-row Attack allocation survives ambiguous later stages");
+        assert_eq!(retained, selected);
+        assert!(
+            retain_proven_attack_stage_across_unresolved_later_overlap(
+                retained.clone(),
+                1,
+                runtime().fiery_battle_will.effect_id,
+            )
+            .is_none()
+        );
+        assert!(
+            retain_proven_attack_stage_across_unresolved_later_overlap(retained, 2, 9_999_999,)
+                .is_none()
         );
     }
 
