@@ -23,7 +23,18 @@ const SORT_COLUMNS: ReadonlyArray<{
   { key: "dps", label: "DPS", className: "meter-number" },
   { key: "hps", label: "HPS", className: "meter-number" },
   { key: "tps", label: "TPS", className: "meter-number" },
+  { key: "rdps_damage", label: "rDMG", className: "meter-number" },
   { key: "rdps", label: "rDPS", className: "meter-number" },
+  {
+    key: "rdps_contribution_given",
+    label: "rDMG granted",
+    className: "meter-number",
+  },
+  {
+    key: "rdps_contribution_received",
+    label: "rDMG received",
+    className: "meter-number",
+  },
   {
     key: "reported_damage",
     label: "Damage",
@@ -214,21 +225,15 @@ export function mountCombatMeterSurface(
           ),
         );
         identity.title = `Entity UUID ${actor.entity_uuid}`;
-        row.append(
-          identity,
-          numericCell(NUMBER_FORMAT.format(actor.dps)),
-          numericCell(actor.rdps === null ? "—" : NUMBER_FORMAT.format(actor.rdps)),
-          numericCell(INTEGER_FORMAT.format(actor.reported_damage)),
-          numericCell(
-            INTEGER_FORMAT.format(actor.effective_damage),
-            "meter-secondary-column",
-          ),
-          numericCell(
-            INTEGER_FORMAT.format(actor.effective_healing),
-            "meter-secondary-column",
-          ),
-          numericCell(INTEGER_FORMAT.format(actor.deaths)),
-        );
+        row.append(identity);
+        for (const column of SORT_COLUMNS) {
+          row.append(
+            numericCell(
+              combatMeterActorColumnText(actor, column.key),
+              column.className.replace("meter-number", "").trim(),
+            ),
+          );
+        }
         body.append(row);
       }
       table.append(tableHeader, body);
@@ -321,6 +326,32 @@ export function mountCombatMeterSurface(
       }
     },
   };
+}
+
+export function combatMeterActorColumnText(
+  actor: CombatTimelineSnapshot["actors"][number],
+  key: CombatActorSortKey,
+): string {
+  switch (key) {
+    case "dps":
+    case "hps":
+    case "tps":
+    case "rdps": {
+      const value = actor[key];
+      return value === null ? "—" : NUMBER_FORMAT.format(value);
+    }
+    case "rdps_damage":
+    case "rdps_contribution_given":
+    case "rdps_contribution_received": {
+      const value = actor[key];
+      return value === null ? "—" : INTEGER_FORMAT.format(value);
+    }
+    case "reported_damage":
+    case "effective_damage":
+    case "effective_healing":
+    case "deaths":
+      return INTEGER_FORMAT.format(actor[key]);
+  }
 }
 
 function hasMeterActivity(actor: CombatTimelineSnapshot["actors"][number]): boolean {
