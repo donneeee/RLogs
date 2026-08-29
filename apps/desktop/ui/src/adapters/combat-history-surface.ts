@@ -54,6 +54,7 @@ const PARTY_SORT_COLUMNS: ReadonlyArray<{
   { key: "encounterDps", label: "eDPS", numeric: true },
   { key: "hps", label: "HPS", numeric: true },
   { key: "tps", label: "TPS", numeric: true },
+  { key: "rdmg", label: "rDMG", numeric: true },
   { key: "rdps", label: "rDPS", numeric: true },
   { key: "rdpsGiven", label: "rDMG granted", numeric: true },
   { key: "rdpsReceived", label: "rDMG received", numeric: true },
@@ -204,6 +205,19 @@ export interface ActorRdpsBreakdown {
   grantedEffects: RdpsGrantedEffectSummary[];
 }
 
+function historyActorByIdentity(
+  view: CombatHistoryView,
+  actorId: string,
+  entityUuid: string,
+): HistoryActorSummary | undefined {
+  const exact = view.actors.find(
+    (candidate) => candidate.actor_id === actorId && candidate.entity_uuid === entityUuid,
+  );
+  if (exact) return exact;
+  const actorIdMatches = view.actors.filter((candidate) => candidate.actor_id === actorId);
+  return actorIdMatches.length === 1 ? actorIdMatches[0] : undefined;
+}
+
 export function incomingDamageSourceGroups(
   view: CombatHistoryView,
   victim: HistoryActorSummary,
@@ -245,11 +259,15 @@ export function historyDamageInfluenceMatchesQuery(
   const terms = query.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
   if (terms.length === 0) return true;
 
-  const provider = view.actors.find(
-    (candidate) => candidate.actor_id === influence.provider_actor_id,
+  const provider = historyActorByIdentity(
+    view,
+    influence.provider_actor_id,
+    influence.provider_entity_uuid,
   );
-  const recipient = view.actors.find(
-    (candidate) => candidate.actor_id === influence.recipient_actor_id,
+  const recipient = historyActorByIdentity(
+    view,
+    influence.recipient_actor_id,
+    influence.recipient_entity_uuid,
   );
   const target = view.targets.find(
     (candidate) => candidate.actor_id === influence.target_actor_id,
@@ -1372,6 +1390,9 @@ export function mountCombatHistorySurface(
           case "tps":
             row.append(numeric(metrics.tps));
             break;
+          case "rdmg":
+            row.append(rdpsNumeric(actor.rdps_damage, true, targetActorId === null, actor.rdps_incomplete));
+            break;
           case "rdps":
             row.append(rdpsNumeric(actor.rdps, false, targetActorId === null, actor.rdps_incomplete));
             break;
@@ -1637,6 +1658,7 @@ export function mountCombatHistorySurface(
       [INTEGER.format(actorMetrics.damage), "Damage"],
       [NUMBER.format(actorMetrics.dps), "DPS"],
       [NUMBER.format(actorMetrics.encounterDps), "eDPS"],
+      [rdpsDisplay(actor.rdps_damage, true, actor.rdps_incomplete), "rDMG"],
       [rdpsDisplay(actor.rdps, false, actor.rdps_incomplete), "rDPS"],
       [
         rdpsDisplay(actor.rdps_contribution_given, true, actor.rdps_incomplete),
@@ -1723,13 +1745,16 @@ export function mountCombatHistorySurface(
         skill.abilityId === null ? [] : [[skill.abilityId, skill] as const]
       ),
     );
-    const displayedAbilities = actor.abilities
-      .map((ability) => displayedAbility(
+    const unmappedRdps = rdpsBreakdown.receivedSkills.find((skill) => skill.abilityId === null);
+    const displayedAbilities = [
+      ...actor.abilities.map((ability) => displayedAbility(
         ability,
         view,
         targetActorId,
         rdpsByAbilityId.get(ability.ability_id),
-      ));
+      )),
+      ...(unmappedRdps ? [displayedUnmappedRdpsSkill(unmappedRdps, view)] : []),
+    ];
     const abilities = groupDisplayedAbilities(
       displayedAbilities,
       abilitySortKey,
@@ -2144,11 +2169,15 @@ export function mountCombatHistorySurface(
     head.append(heading);
     const body = document.createElement("tbody");
     for (const influence of influences) {
-      const provider = view.actors.find(
-        (candidate) => candidate.actor_id === influence.provider_actor_id,
+      const provider = historyActorByIdentity(
+        view,
+        influence.provider_actor_id,
+        influence.provider_entity_uuid,
       );
-      const recipient = view.actors.find(
-        (candidate) => candidate.actor_id === influence.recipient_actor_id,
+      const recipient = historyActorByIdentity(
+        view,
+        influence.recipient_actor_id,
+        influence.recipient_entity_uuid,
       );
       const target = view.targets.find(
         (candidate) => candidate.actor_id === influence.target_actor_id,
@@ -2387,6 +2416,7 @@ function partySortValue(
     case "encounterDps": return metrics.encounterDps;
     case "hps": return metrics.hps;
     case "tps": return metrics.tps;
+    case "rdmg": return targetActorId === null ? actor.rdps_damage : null;
     case "rdps": return targetActorId === null ? actor.rdps : null;
     case "rdpsGiven": return targetActorId === null ? actor.rdps_contribution_given : null;
     case "rdpsReceived": return targetActorId === null ? actor.rdps_contribution_received : null;
@@ -2519,6 +2549,44 @@ function displayedAbility(
 }
 
 export type DisplayedAbility = ReturnType<typeof displayedAbility>;
+
+export function displayedUnmappedRdpsSkill(
+  rdps: RdpsReceivedSkillSummary,
+  view: CombatHistoryView,
+): DisplayedAbility {
+  const receivedRdmgExact = rdps.attributedRdps;
+  const receivedRdmg = receivedRdmgExact === null ? null : Number(receivedRdmgExact);
+  return {
+    abilityId: "not observed",
+    presentationName: "Unmapped damage actions",
+    presentationKind: "unresolved",
+    presentationResolution: "unresolved",
+    iconAssetPath: null,
+    recountGroupId: null,
+    recountGroupName: null,
+    damage: 0,
+    hits: 0,
+    casts: 0,
+    criticals: 0,
+    dps: 0,
+    encounterDps: 0,
+    healing: 0,
+    effectiveHealing: 0,
+    shielding: 0,
+    hps: 0,
+    receivedRdmgExact,
+    receivedRdmg: receivedRdmg !== null && Number.isFinite(receivedRdmg)
+      ? receivedRdmg
+      : null,
+    receivedRdps: receivedRdmg !== null && Number.isFinite(receivedRdmg)
+      ? perSecond(receivedRdmg, view.elapsed_micros)
+      : null,
+    rdpsSources: rdps.sources,
+    rdpsDamageEventCount: rdps.damageEventCount,
+    rdpsUnresolvedRelationshipCount: rdps.unresolvedRelationshipCount,
+    hasRdpsRelationship: true,
+  };
+}
 
 function sumExactRelativeDamage(
   abilities: readonly DisplayedAbility[],
@@ -3890,8 +3958,10 @@ function relativeDamageSkillCell(
     `${INTEGER.format(ability.rdpsDamageEventCount)} attributed damage event${ability.rdpsDamageEventCount === 1 ? "" : "s"}`,
   ];
   for (const source of ability.rdpsSources) {
-    const provider = view.actors.find(
-      (candidate) => candidate.actor_id === source.providerActorId,
+    const provider = historyActorByIdentity(
+      view,
+      source.providerActorId,
+      source.providerEntityUuid,
     );
     const effect = view.actors
       .flatMap((candidate) => candidate.effects)

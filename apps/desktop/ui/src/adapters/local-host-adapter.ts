@@ -3566,6 +3566,7 @@ function historyPartyColumnLabel(column: HistoryPartyColumnId): string {
     encounterDps: "eDPS",
     hps: "HPS",
     tps: "TPS",
+    rdmg: "rDMG",
     rdps: "rDPS",
     rdpsGiven: "rDMG granted",
     rdpsReceived: "rDMG received",
@@ -3576,7 +3577,7 @@ function historyPartyColumnLabel(column: HistoryPartyColumnId): string {
 
 function historyPartyDefaultWidth(column: HistoryPartyColumnId): number {
   if (column === "player") return 360;
-  if (["effectiveDamage", "effectiveHealing", "damageTaken", "rdpsReceived", "rdpsGiven"].includes(column)) return 135;
+  if (["effectiveDamage", "effectiveHealing", "damageTaken", "rdmg", "rdpsReceived", "rdpsGiven"].includes(column)) return 135;
   if (column === "deaths" || column === "criticalRate") return 82;
   return 105;
 }

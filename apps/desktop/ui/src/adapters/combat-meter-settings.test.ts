@@ -57,6 +57,14 @@ describe("Combat Meter settings", () => {
       "Healing",
       "Defense",
     ]);
+    expect(settings.historyPartyViews[1]?.columns).toEqual([
+      "player",
+      "damage",
+      "rdmg",
+      "rdps",
+      "rdpsGiven",
+      "rdpsReceived",
+    ]);
   });
 
   it("parses stable per-specialization History colors", () => {

@@ -15,6 +15,7 @@ import {
   catalogParticipantTooltip,
   comparePartySortValues,
   compactSpecializationName,
+  displayedUnmappedRdpsSkill,
   filterAndSortHistoryEntries,
   graphScaleMaximum,
   groupDisplayedAbilities,
@@ -125,13 +126,28 @@ describe("Combat History rDPS influence filtering", () => {
     expect(historyDamageInfluenceMatchesQuery(view, influence, "MarieRose Training Dummy")).toBe(true);
     expect(historyDamageInfluenceMatchesQuery(view, influence, "unrelated-player")).toBe(false);
   });
+
+  it("uses the retained entity UUID when an actor ID rotates", () => {
+    const rotatedView = {
+      ...view,
+      actors: [{
+        ...provider,
+        entity_uuid: "retired-provider-entity",
+        character_id: "retired-provider-uid",
+        presentation_name: "Retired Support",
+      }, provider, recipient],
+    } as CombatHistoryView;
+
+    expect(historyDamageInfluenceMatchesQuery(rotatedView, influence, "1002003")).toBe(true);
+    expect(historyDamageInfluenceMatchesQuery(rotatedView, influence, "retired-provider-uid")).toBe(false);
+  });
 });
 
 describe("Combat History rDPS breakdown", () => {
   const influence = (
     providerActorId: string,
     recipientActorId: string,
-    abilityId: string,
+    abilityId: string | null,
     component: string,
     attributedRdps: string | null,
   ) => ({
@@ -213,6 +229,25 @@ describe("Combat History rDPS breakdown", () => {
         damageEventCount: 3,
       }),
     ]);
+  });
+
+  it("keeps attributed damage whose packet action has no mapped ability ID visible", () => {
+    const view = {
+      elapsed_micros: 2_000_000,
+      damage_influences: [
+        influence("provider-a", "recipient", null, "critical-damage", "75"),
+      ],
+    } as CombatHistoryView;
+    const unmapped = actorRdpsBreakdown(view, "recipient").receivedSkills[0]!;
+
+    expect(unmapped.abilityId).toBeNull();
+    expect(displayedUnmappedRdpsSkill(unmapped, view)).toMatchObject({
+      abilityId: "not observed",
+      presentationName: "Unmapped damage actions",
+      receivedRdmgExact: "75",
+      receivedRdps: 37.5,
+      hasRdpsRelationship: true,
+    });
   });
 });
 

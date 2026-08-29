@@ -4352,9 +4352,9 @@ function fieldLabel(field: OverlayHeaderField): string {
     casts: "Casts",
     deaths: "Deaths",
     revives: "Revives",
-    rdps_damage: "rDPS damage",
-    contribution_given: "Contribution given",
-    contribution_received: "Contribution received",
+    rdps_damage: "rDMG",
+    contribution_given: "rDMG granted",
+    contribution_received: "rDMG received",
     value: "Value",
     percent: "DMG%",
   } as const)[field];

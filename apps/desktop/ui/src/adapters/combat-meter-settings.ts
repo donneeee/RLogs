@@ -14,6 +14,7 @@ export type HistoryPartyColumnId =
   | "encounterDps"
   | "hps"
   | "tps"
+  | "rdmg"
   | "rdps"
   | "rdpsGiven"
   | "rdpsReceived"
@@ -35,7 +36,7 @@ export interface HistoryPartyViewSettings {
 export const HISTORY_PARTY_COLUMN_IDS: readonly HistoryPartyColumnId[] = [
   "player", "damage", "effectiveDamage", "damageTaken", "healing",
   "effectiveHealing", "shielding", "hits", "criticalRate", "dps",
-  "encounterDps", "hps", "tps", "rdps", "rdpsGiven", "rdpsReceived",
+  "encounterDps", "hps", "tps", "rdmg", "rdps", "rdpsGiven", "rdpsReceived",
   "apm", "deaths",
 ] as const;
 
@@ -52,10 +53,11 @@ export const DEFAULT_HISTORY_PARTY_VIEWS: readonly HistoryPartyViewSettings[] = 
   {
     id: "rdps",
     label: "rDPS",
-    columns: ["player", "damage", "rdps", "rdpsGiven", "rdpsReceived"],
+    columns: ["player", "damage", "rdmg", "rdps", "rdpsGiven", "rdpsReceived"],
     widths: {
       player: 360,
       damage: 120,
+      rdmg: 120,
       rdps: 110,
       rdpsGiven: 130,
       rdpsReceived: 135,
