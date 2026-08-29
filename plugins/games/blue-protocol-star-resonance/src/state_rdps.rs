@@ -14994,7 +14994,6 @@ mod tests {
             .expect("packet-proven Functional Amp");
         let harmony = projector
             .harmony_grace_decision(123, &damage)
-            .ok()
             .expect("packet-proven Harmony Grace");
         let combined = projector
             .combined_harmony_functional_amp_contributions(123, &damage, functional, harmony)
