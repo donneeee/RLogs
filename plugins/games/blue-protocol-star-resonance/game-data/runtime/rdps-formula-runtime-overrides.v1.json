@@ -1,5 +1,5 @@
 {
-  "schema_version": 21,
+  "schema_version": 22,
   "deployment_id": "global",
   "builds": [
     {
@@ -135,6 +135,31 @@
           "combined_critical_lucky_runtime_transfer_enabled": false,
           "recipient_dependency_runtime_transfer_enabled": false,
           "base_lucky_damage_dependency_runtime_transfer_enabled": false,
+          "runtime_transfer_enabled": false
+        },
+        "inspire": {
+          "current_build_lifecycle_authority": false,
+          "current_build_provider_ownership_authority": false,
+          "observed_single_stack_no_overlap_authority": false,
+          "exact_recipient_speed_transition_authority": false,
+          "exact_native_speed_formula_authority": false,
+          "exact_action_route_authority": false,
+          "temporary_speed_term_zero_authority": false,
+          "damage_resolution_window_accounting_authority": false,
+          "provider_ownership_proof_sha256": "",
+          "stacking_proof_sha256": "",
+          "damage_time_state_proof_sha256": "",
+          "temporary_lane_proof_sha256": "",
+          "action_timing_ancestry_proof_sha256": "",
+          "action_route_proof_sha256": "",
+          "capacity_proof_sha256": "",
+          "recipient_mode_proof_sha256": "",
+          "exact_build_rlogs": 0,
+          "observed_status_events": 0,
+          "observed_complete_windows": 0,
+          "observed_damage_memberships": 0,
+          "observed_external_damage_memberships": 0,
+          "observed_self_provider_exclusions": 0,
           "runtime_transfer_enabled": false
         }
       }

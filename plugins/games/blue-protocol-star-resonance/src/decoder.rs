@@ -5262,6 +5262,11 @@ fn decode_attribute_value(id: i32, raw: &[u8]) -> Option<EntityAttributeValue> {
         // explicit set rather than a neighboring-ID range.
         | 11710
         | 11712
+        // Current-build Inspire (31602) proof closes the exact final action-
+        // speed lanes consumed by its packet-final throughput projector:
+        // 11720 is normal action speed and 11730 is guide/cast speed.
+        | 11720
+        | 11730
         | 11780
         | 11782
         | 11840
@@ -9367,6 +9372,20 @@ mod tests {
         assert_eq!(decode_attribute_value(11711, &[0xa0, 0x06]), None);
         assert_eq!(decode_attribute_value(11781, &[0xa0, 0x06]), None);
         assert_eq!(decode_attribute_value(13171, &[0xa0, 0x06]), None);
+    }
+
+    #[test]
+    fn inspire_action_speed_attributes_decode_exact_packet_observed_varints() {
+        assert_eq!(
+            decode_attribute_value(11720, &[0xff, 0x21]),
+            Some(EntityAttributeValue::Integer(4_351))
+        );
+        assert_eq!(
+            decode_attribute_value(11730, &[0xf4, 0x66]),
+            Some(EntityAttributeValue::Integer(13_172))
+        );
+        assert_eq!(decode_attribute_value(11721, &[0xff, 0x21]), None);
+        assert_eq!(decode_attribute_value(11731, &[0xf4, 0x66]), None);
     }
 
     #[test]

@@ -44,9 +44,13 @@ use crate::{
     packet_attribute_family_provider_marginal, packet_attribute_family_value,
     rdps_runtime::{
         AttackFamilyRuntimeConfig, AttributeFamilyRounding, InspirationVectorRuntimeConfig,
-        PrimaryAttackLane, PrimaryStatRecipientRule, RdpsRuntimeConfig,
-        ThunderwindVectorRuntimeConfig, rdps_runtime_config, rdps_runtime_config_for,
-        rdps_runtime_config_for_identity,
+        InspireSpeedLaneRuntimeConfig, PrimaryAttackLane, PrimaryStatRecipientRule,
+        RdpsRuntimeConfig, ThunderwindVectorRuntimeConfig, rdps_runtime_config,
+        rdps_runtime_config_for, rdps_runtime_config_for_identity,
+    },
+    skill_speed::{
+        SkillStageSpeedFamily, SkillStageSpeedInputs, exact_external_speed_capacity_fraction,
+        skill_stage_speed,
     },
     specialization_identity_from_observed_abilities, two_stage_percent_input_marginal,
 };
@@ -55,7 +59,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v23";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v24";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -210,6 +214,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.critical_cold.effect_id) {
         effect_ids.push(runtime.critical_cold.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.inspire.effect_id) {
+        effect_ids.push(runtime.inspire.effect_id);
     }
     effect_ids.sort_unstable();
     effect_ids.dedup();
@@ -714,6 +721,13 @@ struct ActorHpState {
     /// Final packet-observed HastePct family (attribute 11930), in basis
     /// points. This is not the raw Haste rating family (attribute 11120).
     haste_percent_basis_points: Option<i64>,
+    /// Final packet-observed normal action-speed family (attribute 11720), in
+    /// basis points. Inspire (31602) is removed from this exact value for its
+    /// packet-final throughput share.
+    normal_action_speed_basis_points: Option<i64>,
+    /// Final packet-observed guide/cast-speed family (attribute 11730), in
+    /// basis points. This lane is independent from normal action speed.
+    guide_action_speed_basis_points: Option<i64>,
     /// Exact packet-transition contribution currently proven per Inspiration
     /// provider. These are inputs to later damage stages, never additional
     /// damage rows of their own.
@@ -791,6 +805,14 @@ struct InspirationWindow {
     origin_source_type_id: Option<i32>,
     origin_source_config_id: Option<i64>,
     expires_at_observed_micros: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InspireHasteWindow {
+    target_entity_uuid: i64,
+    provider_entity_uuid: i64,
+    opened_observed_micros: u64,
+    expires_at_observed_micros: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1930,6 +1952,10 @@ pub struct BpsrStateDamageContributionProjector {
     thunderwind_transition_wires: HashMap<u64, WireKey>,
     full_bloom_targets: HashSet<u64>,
     inspiration_windows: HashMap<EffectWindowKey, InspirationWindow>,
+    /// Exact provider -> recipient lifecycle for Inspire (31602). This is a
+    /// separate mechanic from Inspiration (2202041).
+    inspire_haste_windows: HashMap<EffectWindowKey, InspireHasteWindow>,
+    inspire_haste_transition_wires: HashMap<u64, WireKey>,
     /// Exact external party lifecycle for Critical Cold (talent 250). The
     /// child status `2204471` has no en-US locale; its authoritative design
     /// name is `暴击之寒_队友暴击`. Runtime identity is numeric and requires
@@ -1987,6 +2013,7 @@ pub struct BpsrStateDamageContributionProjector {
     /// the run projector prevents a later profile snapshot from rewriting an
     /// archived run's attribution classification.
     class_id_by_actor: HashMap<u64, i32>,
+    specialization_id_by_actor: HashMap<u64, i32>,
     active_players: HashSet<u64>,
     observed_ability_ids_by_actor: HashMap<u64, HashSet<i64>>,
     last_target_vulnerability_audit: Option<TargetVulnerabilityAudit>,
@@ -2047,6 +2074,8 @@ impl Default for BpsrStateDamageContributionProjector {
             thunderwind_transition_wires: HashMap::new(),
             full_bloom_targets: HashSet::new(),
             inspiration_windows: HashMap::new(),
+            inspire_haste_windows: HashMap::new(),
+            inspire_haste_transition_wires: HashMap::new(),
             critical_cold_windows: HashMap::new(),
             critical_cold_transition_wires: HashMap::new(),
             inspiration_recipient_dependency_entities: HashSet::new(),
@@ -2071,6 +2100,7 @@ impl Default for BpsrStateDamageContributionProjector {
             entity_type_by_actor: HashMap::new(),
             summon_config_by_actor: HashMap::new(),
             class_id_by_actor: HashMap::new(),
+            specialization_id_by_actor: HashMap::new(),
             active_players: HashSet::new(),
             observed_ability_ids_by_actor: HashMap::new(),
             last_target_vulnerability_audit: None,
@@ -2621,6 +2651,7 @@ impl BpsrStateDamageContributionProjector {
         self.advance_wire(wire);
         self.expire_target_vulnerability_windows(envelope.time.observed_micros);
         self.expire_harmony_grace_windows(envelope.time.observed_micros);
+        self.expire_inspire_haste_windows(envelope.time.observed_micros);
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
             return;
         };
@@ -2675,6 +2706,10 @@ impl BpsrStateDamageContributionProjector {
                     if let Some(class_id) = actor.class_id {
                         self.class_id_by_actor.insert(actor_id, class_id);
                     }
+                    if let Some(specialization_id) = actor.specialization_id {
+                        self.specialization_id_by_actor
+                            .insert(actor_id, specialization_id);
+                    }
                 }
                 if actor.state != ActorState::Despawned && actor.kind == ActorKind::Player {
                     self.active_players.insert(actor_id);
@@ -2702,6 +2737,7 @@ impl BpsrStateDamageContributionProjector {
                 self.clear_fiery_battle_will_after_gap();
                 self.clear_encore_after_gap(gap.kind);
                 self.clear_critical_cold_after_gap(gap.kind);
+                self.clear_inspire_haste_after_gap(gap.kind);
             }
             TimelineEventKind::EntityAttributes(attributes) => self.observe_attributes(
                 attributes.actor.actor_id.0,
@@ -2797,6 +2833,8 @@ impl BpsrStateDamageContributionProjector {
                         })
                         .flatten()
                 });
+                let inspire_haste_contribution =
+                    self.inspire_haste_contribution(envelope.time.observed_micros, damage);
                 let team_luck_contribution = self.team_luck_contribution(envelope, damage);
                 let functional_amp_contribution =
                     self.functional_amp_contribution(envelope.time.observed_micros, damage);
@@ -2923,7 +2961,7 @@ impl BpsrStateDamageContributionProjector {
                         stat_resonance_contribution,
                         fiery_battle_will_contribution,
                     );
-                let (attack_contributions, unresolved_attack_overlap) =
+                let (per_hit_attack_contributions, unresolved_per_hit_attack_overlap) =
                     if observed_attack_overlap_unresolved {
                         // The candidate stages or their rational allocation
                         // could not be reconciled exactly. Preserve ordinary
@@ -2952,6 +2990,31 @@ impl BpsrStateDamageContributionProjector {
                     } else {
                         (base_attack_contributions, base_attack_overlap_unresolved)
                     };
+                let (attack_contributions, unresolved_attack_overlap) = if let Some(inspire_haste) =
+                    inspire_haste_contribution
+                {
+                    if unresolved_per_hit_attack_overlap || per_hit_attack_contributions.is_empty()
+                    {
+                        // Inspire is the earliest independently exact
+                        // packet-final throughput share. An unresolved
+                        // later per-hit allocation suppresses only those
+                        // later rows, never this conserved share.
+                        (vec![inspire_haste], false)
+                    } else {
+                        match extend_ordered_rational_marginals(
+                            vec![inspire_haste],
+                            per_hit_attack_contributions,
+                        ) {
+                            Some(contributions) => (contributions, false),
+                            None => (vec![inspire_haste], false),
+                        }
+                    }
+                } else {
+                    (
+                        per_hit_attack_contributions,
+                        unresolved_per_hit_attack_overlap,
+                    )
+                };
                 let rational_candidate_count = usize::from(team_luck_contribution.is_some())
                     + attack_contributions.len()
                     + usize::from(remote_harmony_paired_output_contribution.is_some())
@@ -3001,7 +3064,19 @@ impl BpsrStateDamageContributionProjector {
                     rational_candidate_count,
                     unresolved_attack_overlap,
                 });
-                if exact_candidate_count == 1 && rational_candidate_count == 0 {
+                if exact_candidate_count > 0
+                    && let Some(inspire_haste) = inspire_haste_contribution
+                {
+                    // Exact-integer candidates are final packet components;
+                    // their order against the speed opportunity stage is not
+                    // yet reviewed. Preserve only the independently exact
+                    // earliest Inspire share instead of suppressing both.
+                    rational_output.push(inspire_haste);
+                    self.finish_critical_cold_pipeline_audit(
+                        "exact_candidate_overlap_inspire_only",
+                    );
+                    return;
+                } else if exact_candidate_count == 1 && rational_candidate_count == 0 {
                     self.finish_critical_cold_pipeline_audit("exact_candidate_only");
                     if let Some(contribution) = state_contribution {
                         output.push(contribution);
@@ -3093,6 +3168,12 @@ impl BpsrStateDamageContributionProjector {
                             } else {
                                 rational_output.push(remote_harmony);
                             }
+                        } else {
+                            rational_output.extend(attack_contributions.iter().copied().filter(
+                                |contribution| {
+                                    contribution.effect_id == self.runtime.inspire.effect_id
+                                },
+                            ));
                         }
                         self.finish_critical_cold_pipeline_audit(
                             "remote_harmony_paired_output_return",
@@ -3130,6 +3211,12 @@ impl BpsrStateDamageContributionProjector {
                             } else {
                                 rational_output.push(fatal_spiral);
                             }
+                        } else {
+                            rational_output.extend(attack_contributions.iter().copied().filter(
+                                |contribution| {
+                                    contribution.effect_id == self.runtime.inspire.effect_id
+                                },
+                            ));
                         }
                         self.finish_critical_cold_pipeline_audit("fatal_spiral_direct_return");
                         return;
@@ -3160,7 +3247,10 @@ impl BpsrStateDamageContributionProjector {
                                     + usize::from(critical_cold_occurrence_contribution.is_some())
                                     + usize::from(thunderwind_contribution.is_some())
                                     + target_vulnerability_rational_contributions.len(),
-                                self.runtime.fiery_battle_will.effect_id,
+                                &[
+                                    self.runtime.inspire.effect_id,
+                                    self.runtime.fiery_battle_will.effect_id,
+                                ],
                             )
                         {
                             // Every Attack-stage candidate here was derived
@@ -3334,6 +3424,7 @@ impl BpsrStateDamageContributionProjector {
             self.harmony_grace_transition_wires.clear();
             self.stat_resonance_transition_wires.clear();
             self.fiery_battle_will_transition_wires.clear();
+            self.inspire_haste_transition_wires.clear();
             self.inspiration_transition_wires.clear();
             self.inspiration_snapshot_targets.clear();
             self.thunderwind_transition_wires.clear();
@@ -3480,6 +3571,9 @@ impl BpsrStateDamageContributionProjector {
 
     fn observe_status(&mut self, status: &rlogs_events::StatusEvent, observed_micros: u64) {
         self.observe_formula_status(status);
+        if status.effect.0 == self.runtime.inspire.effect_id {
+            self.observe_inspire_haste_status(status, observed_micros);
+        }
         if status.effect.0 == self.runtime.inspiration.full_bloom_effect_id
             && status.origin.map(|origin| origin.source_config_id)
                 == Some(self.runtime.inspiration.full_bloom_source_config_id)
@@ -3609,6 +3703,87 @@ impl BpsrStateDamageContributionProjector {
         };
         self.effect_windows
             .insert(key, EffectWindow { desired_stacks });
+    }
+
+    fn observe_inspire_haste_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let target_actor_id = status.target.actor_id.0;
+        let target_entity_uuid = status.target.entity_uuid.0;
+        if let Some(wire) = self.current_wire {
+            self.inspire_haste_transition_wires
+                .insert(target_actor_id, wire);
+        }
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        let active = matches!(
+            status.state,
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+        );
+        if active {
+            let exact_origin = status
+                .origin
+                .map(|origin| (origin.source_type_id, origin.source_config_id))
+                == Some((
+                    self.runtime.inspire.source_type_id,
+                    self.runtime.inspire.source_config_id,
+                ));
+            let exact_shape = status.stacks == Some(self.runtime.inspire.required_stacks as u32)
+                && status.duration_millis == Some(self.runtime.inspire.duration_millis);
+            let (Some(provider), Some(instance_id)) = (status.source, instance_id) else {
+                self.inspire_haste_windows.retain(|key, window| {
+                    key.target_actor_id != target_actor_id
+                        && (target_entity_uuid == 0
+                            || window.target_entity_uuid != target_entity_uuid)
+                });
+                return;
+            };
+            if !exact_origin
+                || !exact_shape
+                || target_entity_uuid == 0
+                || provider.entity_uuid.0 == 0
+            {
+                self.inspire_haste_windows.retain(|key, window| {
+                    !((key.target_actor_id == target_actor_id
+                        || window.target_entity_uuid == target_entity_uuid)
+                        && key.instance_id == Some(instance_id))
+                });
+                return;
+            }
+            let Some(expires_at_observed_micros) = observed_micros
+                .checked_add(self.runtime.inspire.duration_millis.saturating_mul(1_000))
+            else {
+                return;
+            };
+            self.inspire_haste_windows.insert(
+                EffectWindowKey {
+                    target_actor_id,
+                    provider_actor_id: provider.actor_id.0,
+                    instance_id: Some(instance_id),
+                },
+                InspireHasteWindow {
+                    target_entity_uuid,
+                    provider_entity_uuid: provider.entity_uuid.0,
+                    opened_observed_micros: observed_micros,
+                    expires_at_observed_micros,
+                },
+            );
+            return;
+        }
+
+        self.inspire_haste_windows.retain(|key, window| {
+            let target_matches = key.target_actor_id == target_actor_id
+                || (target_entity_uuid != 0 && window.target_entity_uuid == target_entity_uuid);
+            let instance_matches =
+                instance_id.is_none_or(|instance| key.instance_id == Some(instance));
+            let provider_matches = status.source.is_none_or(|provider| {
+                key.provider_actor_id == provider.actor_id.0
+                    && (provider.entity_uuid.0 == 0
+                        || window.provider_entity_uuid == provider.entity_uuid.0)
+            });
+            !(target_matches && instance_matches && provider_matches)
+        });
     }
 
     fn observe_encore_status(&mut self, status: &rlogs_events::StatusEvent) {
@@ -5130,6 +5305,10 @@ impl BpsrStateDamageContributionProjector {
                 next.property_damage_raw = Some(value);
             } else if attribute.attribute_id == self.runtime.inspiration.haste_attribute_id {
                 next.haste_percent_basis_points = Some(value);
+            } else if attribute.attribute_id == self.runtime.inspire.normal_speed_attribute_id {
+                next.normal_action_speed_basis_points = Some(value);
+            } else if attribute.attribute_id == self.runtime.inspire.guide_speed_attribute_id {
+                next.guide_action_speed_basis_points = Some(value);
             } else if attribute.attribute_id
                 == self
                     .runtime
@@ -5323,6 +5502,39 @@ impl BpsrStateDamageContributionProjector {
                 // builds.
                 (recipient_rules.len() == 1).then_some(recipient_rules[0].recipient_class_id)
             })
+    }
+
+    fn recipient_class_and_specialization_for_actor(&self, actor_id: u64) -> Option<(i32, i32)> {
+        let direct_class_id = self.class_id_by_actor.get(&actor_id).copied();
+        let direct_specialization_id = self.specialization_id_by_actor.get(&actor_id).copied();
+        let observed_identity =
+            self.observed_ability_ids_by_actor
+                .get(&actor_id)
+                .and_then(|ability_ids| {
+                    specialization_identity_from_observed_abilities(ability_ids.iter().copied())
+                        .ok()
+                        .flatten()
+                });
+        match (direct_class_id, direct_specialization_id, observed_identity) {
+            (Some(class_id), Some(specialization_id), Some(observed))
+                if observed != (class_id, specialization_id) =>
+            {
+                None
+            }
+            (Some(class_id), Some(specialization_id), _) => Some((class_id, specialization_id)),
+            (
+                class_id,
+                specialization_id,
+                Some((observed_class_id, observed_specialization_id)),
+            ) if class_id.is_none_or(|class_id| class_id == observed_class_id)
+                && specialization_id.is_none_or(|specialization_id| {
+                    specialization_id == observed_specialization_id
+                }) =>
+            {
+                Some((observed_class_id, observed_specialization_id))
+            }
+            _ => None,
+        }
     }
 
     fn observe_thunderwind_proxy_attributes(
@@ -6444,6 +6656,166 @@ impl BpsrStateDamageContributionProjector {
             provider_actor_id,
             recipient_actor_id,
             scope: DamageContributionScope::Component("thunderwind-critical-chance-and-damage"),
+            numerator,
+            denominator,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn inspire_haste_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.inspire_haste_decision(observed_micros, damage).ok()
+    }
+
+    pub fn inspire_haste_audit_gate(&self, damage: &rlogs_events::DamageEvent) -> &'static str {
+        match self.inspire_haste_decision(self.latest_observed_micros, damage) {
+            Ok(_) => "emitted",
+            Err(gate) => gate,
+        }
+    }
+
+    fn inspire_haste_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        if !self.runtime.inspire.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        if recipient_entity_uuid == 0 || !self.active_players.contains(&recipient_actor_id) {
+            return Err("recipient_identity_missing");
+        }
+        if self.current_wire.is_some_and(|wire| {
+            self.inspire_haste_transition_wires.get(&recipient_actor_id) == Some(&wire)
+        }) {
+            return Err("same_wire_transition");
+        }
+        if self.actor_ancestry.actor_for_entity(recipient_entity_uuid) != Some(recipient_actor_id) {
+            return Err("recipient_ancestry_mismatch");
+        }
+        let ability_id = damage.ability.ok_or("ability_missing")?.0;
+        let owner_stage = damage.packet.owner_stage.ok_or("owner_stage_missing")?;
+        let lane = self
+            .runtime
+            .inspire
+            .action_lane(ability_id, owner_stage)
+            .ok_or("action_route_unreviewed")?;
+        let (class_id, specialization_id) = self
+            .recipient_class_and_specialization_for_actor(recipient_actor_id)
+            .ok_or("recipient_specialization_unproven")?;
+        let provider_speed_delta = self
+            .runtime
+            .inspire
+            .provider_speed_delta(class_id, specialization_id, lane)
+            .ok_or("recipient_mode_unreviewed")?;
+
+        let matching_windows = self
+            .inspire_haste_windows
+            .iter()
+            .filter(|(key, window)| {
+                (key.target_actor_id == recipient_actor_id
+                    || window.target_entity_uuid == recipient_entity_uuid)
+                    && observed_micros > window.opened_observed_micros
+                    && observed_micros < window.expires_at_observed_micros
+            })
+            .collect::<Vec<_>>();
+        let [(window_key, window)] = matching_windows.as_slice() else {
+            return Err(if matching_windows.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        };
+        let provider_actor_id = self
+            .actor_ancestry
+            .actor_for_entity(window.provider_entity_uuid)
+            .map(|actor_id| self.resolve_owner_actor_id(actor_id))
+            .ok_or("provider_ancestry_missing")?;
+        if provider_actor_id != self.resolve_owner_actor_id(window_key.provider_actor_id) {
+            return Err("provider_ancestry_mismatch");
+        }
+        if provider_actor_id == recipient_actor_id
+            || window.provider_entity_uuid == recipient_entity_uuid
+        {
+            return Err("provider_is_recipient");
+        }
+        if !self.active_players.contains(&provider_actor_id) {
+            return Err("provider_inactive");
+        }
+
+        let state_actor_id = self
+            .team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+            .ok_or("recipient_state_missing")?;
+        let state = self
+            .states
+            .get(&state_actor_id)
+            .ok_or("recipient_state_missing")?;
+        let speed_attribute_id = self.runtime.inspire.speed_attribute_id(lane);
+        let observed_speed_basis_points = match (lane, speed_attribute_id) {
+            (InspireSpeedLaneRuntimeConfig::Normal, attribute_id)
+                if attribute_id == self.runtime.inspire.normal_speed_attribute_id =>
+            {
+                state.normal_action_speed_basis_points
+            }
+            (InspireSpeedLaneRuntimeConfig::Guide, attribute_id)
+                if attribute_id == self.runtime.inspire.guide_speed_attribute_id =>
+            {
+                state.guide_action_speed_basis_points
+            }
+            _ => None,
+        }
+        .ok_or("recipient_speed_state_missing")?;
+        let without_provider_speed_basis_points = observed_speed_basis_points
+            .checked_sub(provider_speed_delta)
+            .filter(|value| *value >= 0)
+            .ok_or("provider_speed_delta_mismatch")?;
+        let inputs = |speed_basis_points| SkillStageSpeedInputs {
+            attack_speed_enabled: true,
+            attack_speed_basis_points: if lane == InspireSpeedLaneRuntimeConfig::Normal {
+                speed_basis_points
+            } else {
+                0
+            },
+            cast_speed_basis_points: if lane == InspireSpeedLaneRuntimeConfig::Guide {
+                speed_basis_points
+            } else {
+                0
+            },
+            ..SkillStageSpeedInputs::default()
+        };
+        let speed_family = match lane {
+            InspireSpeedLaneRuntimeConfig::Normal => SkillStageSpeedFamily::Normal,
+            InspireSpeedLaneRuntimeConfig::Guide => SkillStageSpeedFamily::Guide,
+        };
+        let observed_speed = skill_stage_speed(speed_family, inputs(observed_speed_basis_points))
+            .ok_or("observed_speed_formula_failed")?;
+        let without_provider_speed =
+            skill_stage_speed(speed_family, inputs(without_provider_speed_basis_points))
+                .ok_or("provider_removed_speed_formula_failed")?;
+        let (numerator, denominator) = exact_external_speed_capacity_fraction(
+            damage.amount,
+            observed_speed,
+            without_provider_speed,
+        )
+        .ok_or("packet_final_speed_capacity_unproven")?;
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: self.runtime.inspire.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(
+                "Inspire (31602) packet-final action-speed opportunity",
+            ),
             numerator,
             denominator,
             observed_damage: damage.amount,
@@ -9609,6 +9981,18 @@ impl BpsrStateDamageContributionProjector {
         });
     }
 
+    fn expire_inspire_haste_windows(&mut self, observed_micros: u64) {
+        self.inspire_haste_windows
+            .retain(|_, window| window.expires_at_observed_micros > observed_micros);
+    }
+
+    fn clear_inspire_haste_after_gap(&mut self, kind: DataGapKind) {
+        if kind == DataGapKind::TcpGap {
+            self.inspire_haste_windows.clear();
+            self.inspire_haste_transition_wires.clear();
+        }
+    }
+
     fn harmony_grace_window_gate(
         &self,
         key: &EffectWindowKey,
@@ -9736,6 +10120,9 @@ impl BpsrStateDamageContributionProjector {
         self.full_bloom_targets.remove(&actor_id);
         self.inspiration_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.inspire_haste_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.inspire_haste_transition_wires.remove(&actor_id);
         // Critical Cold (talent 250; child status 2204471, design name
         // 暴击之寒_队友暴击) is keyed by stable provider and recipient entity
         // UUIDs. Actor-id rotation on either side does not terminate the
@@ -9764,6 +10151,7 @@ impl BpsrStateDamageContributionProjector {
         self.entity_type_by_actor.remove(&actor_id);
         self.summon_config_by_actor.remove(&actor_id);
         self.class_id_by_actor.remove(&actor_id);
+        self.specialization_id_by_actor.remove(&actor_id);
         self.observed_ability_ids_by_actor.remove(&actor_id);
     }
 
@@ -9813,6 +10201,8 @@ impl BpsrStateDamageContributionProjector {
         self.thunderwind_transition_wires.clear();
         self.full_bloom_targets.clear();
         self.inspiration_windows.clear();
+        self.inspire_haste_windows.clear();
+        self.inspire_haste_transition_wires.clear();
         self.critical_cold_windows.clear();
         self.critical_cold_transition_wires.clear();
         self.inspiration_recipient_dependency_entities.clear();
@@ -9865,6 +10255,7 @@ impl BpsrStateDamageContributionProjector {
             .clear();
         self.fatal_spiral_ambiguous_provider_entities.clear();
         self.class_id_by_actor.clear();
+        self.specialization_id_by_actor.clear();
         self.active_players.clear();
     }
 }
@@ -10300,12 +10691,12 @@ fn extend_ordered_rational_marginals(
 fn retain_proven_attack_stage_across_unresolved_later_overlap(
     attack_contributions: Vec<ExactRationalDamageContributionEvent>,
     later_candidate_count: usize,
-    required_effect_id: i64,
+    independently_proven_effect_ids: &[i64],
 ) -> Option<Vec<ExactRationalDamageContributionEvent>> {
     (later_candidate_count > 1
         && attack_contributions
             .iter()
-            .any(|contribution| contribution.effect_id == required_effect_id))
+            .any(|contribution| independently_proven_effect_ids.contains(&contribution.effect_id)))
     .then_some(attack_contributions)
 }
 
@@ -12250,6 +12641,168 @@ mod tests {
         }
     }
 
+    fn inspire_haste_test_status(
+        provider_actor_id: u64,
+        recipient_actor_id: u64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        rlogs_events::StatusEvent {
+            source: Some(test_entity(
+                provider_actor_id,
+                i64::try_from(provider_actor_id * 10).unwrap(),
+            )),
+            target: test_entity(
+                recipient_actor_id,
+                i64::try_from(recipient_actor_id * 10).unwrap(),
+            ),
+            effect: rlogs_events::StatusEffectId(runtime().inspire.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(31_602_001)),
+            origin: Some(rlogs_events::StatusOrigin {
+                source_type_id: runtime().inspire.source_type_id,
+                source_config_id: runtime().inspire.source_config_id,
+            }),
+            state,
+            stacks: Some(runtime().inspire.required_stacks as u32),
+            duration_millis: Some(runtime().inspire.duration_millis),
+            level: None,
+            part_id: None,
+            count: None,
+            created_at_millis: None,
+        }
+    }
+
+    fn inspire_haste_test_damage() -> rlogs_events::DamageEvent {
+        rlogs_events::DamageEvent {
+            source: test_entity(4, 40),
+            direct_source: None,
+            target: test_entity(9, 90),
+            ability: Some(rlogs_events::AbilityId(1_419)),
+            amount: 120_000,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(1),
+            damage_source: Some(1),
+            damage_type: Some(1),
+            flags: rlogs_events::DamageFlags::default(),
+            packet: rlogs_events::DamagePacketDetail {
+                owner_stage: Some(2),
+                ..rlogs_events::DamagePacketDetail::default()
+            },
+        }
+    }
+
+    fn inspire_haste_test_projector() -> BpsrStateDamageContributionProjector {
+        let mut projector = BpsrStateDamageContributionProjector {
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (9, 90)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.active_players.extend([2, 4]);
+        projector.class_id_by_actor.insert(4, 5);
+        projector.specialization_id_by_actor.insert(4, 110);
+        projector.attribute_state_entity_uuid_by_actor.insert(4, 40);
+        projector.attribute_state_actor_by_entity_uuid.insert(40, 4);
+        projector.states.insert(
+            4,
+            ActorHpState {
+                normal_action_speed_basis_points: Some(1_200),
+                ..ActorHpState::default()
+            },
+        );
+        projector
+    }
+
+    #[test]
+    fn inspire_haste_uses_packet_final_rational_boundary_without_server_integer() {
+        let mut projector = inspire_haste_test_projector();
+        let first_wire = WireKey {
+            connection_id: 1,
+            stream_id: 2,
+            capture_sequence: 3,
+        };
+        projector.advance_wire(first_wire);
+        projector.observe_inspire_haste_status(
+            &inspire_haste_test_status(2, 4, StatusState::Applied),
+            100,
+        );
+        assert_eq!(
+            projector.inspire_haste_decision(101, &inspire_haste_test_damage()),
+            Err("same_wire_transition")
+        );
+
+        projector.advance_wire(WireKey {
+            capture_sequence: 4,
+            ..first_wire
+        });
+        let contribution = projector
+            .inspire_haste_decision(200, &inspire_haste_test_damage())
+            .expect("final packet damage and exact speed state authorize the rational share");
+        assert_eq!(contribution.effect_id, 31_602);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            (15_000, 7)
+        );
+        assert!(
+            contribution.numerator
+                <= i128::from(contribution.observed_damage) * contribution.denominator
+        );
+    }
+
+    #[test]
+    fn inspire_haste_fails_closed_for_self_unknown_route_expiry_and_tcp_gap() {
+        let first_wire = WireKey {
+            connection_id: 1,
+            stream_id: 2,
+            capture_sequence: 3,
+        };
+        let mut self_provider = inspire_haste_test_projector();
+        self_provider.advance_wire(first_wire);
+        self_provider.observe_inspire_haste_status(
+            &inspire_haste_test_status(4, 4, StatusState::Applied),
+            100,
+        );
+        self_provider.advance_wire(WireKey {
+            capture_sequence: 4,
+            ..first_wire
+        });
+        assert_eq!(
+            self_provider.inspire_haste_decision(200, &inspire_haste_test_damage()),
+            Err("provider_is_recipient")
+        );
+
+        let mut projector = inspire_haste_test_projector();
+        projector.advance_wire(first_wire);
+        projector.observe_inspire_haste_status(
+            &inspire_haste_test_status(2, 4, StatusState::Applied),
+            100,
+        );
+        projector.advance_wire(WireKey {
+            capture_sequence: 4,
+            ..first_wire
+        });
+        let mut unknown_route = inspire_haste_test_damage();
+        unknown_route.ability = Some(rlogs_events::AbilityId(9_999_999));
+        assert_eq!(
+            projector.inspire_haste_decision(200, &unknown_route),
+            Err("action_route_unreviewed")
+        );
+
+        projector.expire_inspire_haste_windows(10_000_100);
+        assert_eq!(
+            projector.inspire_haste_decision(10_000_100, &inspire_haste_test_damage()),
+            Err("provider_window_missing")
+        );
+
+        projector.observe_inspire_haste_status(
+            &inspire_haste_test_status(2, 4, StatusState::Applied),
+            20_000_000,
+        );
+        projector.clear_inspire_haste_after_gap(DataGapKind::TcpGap);
+        assert!(projector.inspire_haste_windows.is_empty());
+    }
+
     fn stat_resonance_test_family(base_add: i64) -> AttackFamilyState {
         let raw_percent = 1_000;
         let extra_add = 100;
@@ -12593,10 +13146,10 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 55_333, 2_110_065, 2_110_125, 2_110_143, 2_202_041, 2_204_471, 2_207_252,
-                2_302_121, 3_003_052
+                31_602, 55_228, 55_333, 2_110_065, 2_110_125, 2_110_143, 2_202_041, 2_204_471,
+                2_207_252, 2_302_121, 3_003_052
             ],
-            "only effects with current production authority are exposed; Mechanical Power remains candidate evidence"
+            "only effects with current production authority are exposed; Inspire uses packet-final rational authority while Mechanical Power remains candidate evidence"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -13432,8 +13985,8 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                55_228, 55_333, 2_110_065, 2_110_125, 2_110_143, 2_202_041, 2_204_471, 2_207_252,
-                2_302_121, 3_003_052
+                31_602, 55_228, 55_333, 2_110_065, 2_110_125, 2_110_143, 2_202_041, 2_204_471,
+                2_207_252, 2_302_121, 3_003_052
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
@@ -17584,7 +18137,7 @@ mod tests {
         let retained = retain_proven_attack_stage_across_unresolved_later_overlap(
             selected.clone(),
             2,
-            runtime().fiery_battle_will.effect_id,
+            &[runtime().fiery_battle_will.effect_id],
         )
         .expect("the exact same-row Attack allocation survives ambiguous later stages");
         assert_eq!(retained, selected);
@@ -17592,12 +18145,12 @@ mod tests {
             retain_proven_attack_stage_across_unresolved_later_overlap(
                 retained.clone(),
                 1,
-                runtime().fiery_battle_will.effect_id,
+                &[runtime().fiery_battle_will.effect_id],
             )
             .is_none()
         );
         assert!(
-            retain_proven_attack_stage_across_unresolved_later_overlap(retained, 2, 9_999_999,)
+            retain_proven_attack_stage_across_unresolved_later_overlap(retained, 2, &[9_999_999],)
                 .is_none()
         );
     }

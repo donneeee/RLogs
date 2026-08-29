@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 21;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 22;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -933,6 +933,327 @@ impl InspirationRuntimeConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum InspireSpeedLaneRuntimeConfig {
+    Normal,
+    Guide,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InspireActionRouteRuntimeConfig {
+    pub ability_id: i64,
+    pub owner_stage: i32,
+    pub lane: InspireSpeedLaneRuntimeConfig,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InspireRecipientModeRuntimeConfig {
+    pub class_id: i32,
+    pub specialization_id: i32,
+    pub normal_speed_delta: i64,
+    pub guide_speed_delta: i64,
+}
+
+const INSPIRE_CURRENT_ACTION_ROUTES: [InspireActionRouteRuntimeConfig; 36] = [
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_419,
+        owner_stage: 2,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_424,
+        owner_stage: 2,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_424,
+        owner_stage: 4,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_433,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_501,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_541,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_901,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_902,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_907,
+        owner_stage: 1,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_922,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_927,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_932,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_942,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_233,
+        owner_stage: 1,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_294,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_295,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_312,
+        owner_stage: 1,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_313,
+        owner_stage: 4,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_332,
+        owner_stage: 1,
+        lane: InspireSpeedLaneRuntimeConfig::Guide,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_352,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_352,
+        owner_stage: 1,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_362,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 7_997,
+        owner_stage: 10,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 7_998,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 150_101,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 199_902,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 220_301,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 230_801,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 230_901,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 231_001,
+        owner_stage: 0,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_121_508,
+        owner_stage: 1,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_121_508,
+        owner_stage: 2,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 1_121_508,
+        owner_stage: 3,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_900_840,
+        owner_stage: 1,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_900_840,
+        owner_stage: 2,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+    InspireActionRouteRuntimeConfig {
+        ability_id: 2_900_840,
+        owner_stage: 3,
+        lane: InspireSpeedLaneRuntimeConfig::Normal,
+    },
+];
+
+const INSPIRE_CURRENT_RECIPIENT_MODES: [InspireRecipientModeRuntimeConfig; 4] = [
+    InspireRecipientModeRuntimeConfig {
+        class_id: 5,
+        specialization_id: 110,
+        normal_speed_delta: 200,
+        guide_speed_delta: 2_000,
+    },
+    InspireRecipientModeRuntimeConfig {
+        class_id: 9,
+        specialization_id: 113,
+        normal_speed_delta: 600,
+        guide_speed_delta: 1_000,
+    },
+    InspireRecipientModeRuntimeConfig {
+        class_id: 11,
+        specialization_id: 117,
+        normal_speed_delta: 600,
+        guide_speed_delta: 1_000,
+    },
+    InspireRecipientModeRuntimeConfig {
+        class_id: 13,
+        specialization_id: 120,
+        normal_speed_delta: 600,
+        guide_speed_delta: 2_000,
+    },
+];
+
+/// Exact-build packet-final accounting for party status 31602 (Inspire).
+///
+/// Remote action-start packets are not observable on the reviewed transport.
+/// This component therefore uses the packet-observed damage-resolution
+/// window as its explicit throughput accounting boundary. It never claims a
+/// hidden server damage integer or rewrites ordinary damage.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InspireRuntimeConfig {
+    pub effect_id: i64,
+    pub source_type_id: i32,
+    pub source_config_id: i64,
+    pub required_stacks: i32,
+    pub duration_millis: u64,
+    pub normal_speed_attribute_id: i32,
+    pub guide_speed_attribute_id: i32,
+    pub action_routes: Vec<InspireActionRouteRuntimeConfig>,
+    pub recipient_modes: Vec<InspireRecipientModeRuntimeConfig>,
+    pub current_build_lifecycle_authority: bool,
+    pub current_build_provider_ownership_authority: bool,
+    pub observed_single_stack_no_overlap_authority: bool,
+    pub exact_recipient_speed_transition_authority: bool,
+    pub exact_native_speed_formula_authority: bool,
+    pub exact_action_route_authority: bool,
+    pub temporary_speed_term_zero_authority: bool,
+    pub damage_resolution_window_accounting_authority: bool,
+    pub server_integer_counterfactual_authority: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub unresolved_overlap_fails_closed: bool,
+    pub accounting_method: String,
+    pub allocation_order: String,
+    pub rational_integer_projection: String,
+    pub provider_ownership_proof_sha256: String,
+    pub stacking_proof_sha256: String,
+    pub damage_time_state_proof_sha256: String,
+    pub temporary_lane_proof_sha256: String,
+    pub action_timing_ancestry_proof_sha256: String,
+    pub action_route_proof_sha256: String,
+    pub capacity_proof_sha256: String,
+    pub recipient_mode_proof_sha256: String,
+    pub exact_build_rlogs: u32,
+    pub observed_status_events: u32,
+    pub observed_complete_windows: u32,
+    pub observed_damage_memberships: u32,
+    pub observed_external_damage_memberships: u32,
+    pub observed_self_provider_exclusions: u32,
+    pub runtime_transfer_enabled: bool,
+}
+
+impl InspireRuntimeConfig {
+    pub(crate) fn action_lane(
+        &self,
+        ability_id: i64,
+        owner_stage: i32,
+    ) -> Option<InspireSpeedLaneRuntimeConfig> {
+        self.action_routes
+            .binary_search_by_key(&(ability_id, owner_stage), |route| {
+                (route.ability_id, route.owner_stage)
+            })
+            .ok()
+            .map(|index| self.action_routes[index].lane)
+    }
+
+    pub(crate) fn provider_speed_delta(
+        &self,
+        class_id: i32,
+        specialization_id: i32,
+        lane: InspireSpeedLaneRuntimeConfig,
+    ) -> Option<i64> {
+        let mode = self.recipient_modes.iter().find(|mode| {
+            mode.class_id == class_id && mode.specialization_id == specialization_id
+        })?;
+        Some(match lane {
+            InspireSpeedLaneRuntimeConfig::Normal => mode.normal_speed_delta,
+            InspireSpeedLaneRuntimeConfig::Guide => mode.guide_speed_delta,
+        })
+        .filter(|delta| *delta > 0)
+    }
+
+    pub(crate) fn speed_attribute_id(&self, lane: InspireSpeedLaneRuntimeConfig) -> i32 {
+        match lane {
+            InspireSpeedLaneRuntimeConfig::Normal => self.normal_speed_attribute_id,
+            InspireSpeedLaneRuntimeConfig::Guide => self.guide_speed_attribute_id,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CriticalColdReplayProof {
@@ -1098,6 +1419,7 @@ pub(crate) struct RdpsRuntimeConfig {
     pub encore: EncoreDirectOutputRuntimeConfig,
     pub thunderwind: ThunderwindRuntimeConfig,
     pub inspiration: InspirationRuntimeConfig,
+    pub inspire: InspireRuntimeConfig,
     pub critical_cold: CriticalColdRuntimeConfig,
     pub highland_blood: HighlandBloodRuntimeConfig,
 }
@@ -1137,6 +1459,7 @@ impl RdpsRuntimeConfig {
                 .remote_paired_output_runtime_transfer_enabled
             || self.inspiration.critical_chance_runtime_transfer_enabled
             || self.inspiration.lucky_chance_runtime_transfer_enabled
+            || self.inspire.runtime_transfer_enabled
             || self.critical_cold.runtime_transfer_enabled
     }
 
@@ -1173,6 +1496,7 @@ impl RdpsRuntimeConfig {
             || (effect_id == self.inspiration.effect_id
                 && (self.inspiration.critical_chance_runtime_transfer_enabled
                     || self.inspiration.lucky_chance_runtime_transfer_enabled))
+            || (effect_id == self.inspire.effect_id && self.inspire.runtime_transfer_enabled)
             || (effect_id == self.critical_cold.effect_id
                 && self.critical_cold.runtime_transfer_enabled)
     }
@@ -1783,6 +2107,86 @@ impl RdpsRuntimeConfig {
         {
             return Err(
                 "bundled BPSR Inspiration formula is not ready for runtime transfer".into(),
+            );
+        }
+
+        let inspire = &self.inspire;
+        let inspire_current_authority = inspire.current_build_lifecycle_authority
+            && inspire.current_build_provider_ownership_authority
+            && inspire.observed_single_stack_no_overlap_authority
+            && inspire.exact_recipient_speed_transition_authority
+            && inspire.exact_native_speed_formula_authority
+            && inspire.exact_action_route_authority
+            && inspire.temporary_speed_term_zero_authority
+            && inspire.damage_resolution_window_accounting_authority
+            && !inspire.server_integer_counterfactual_authority
+            && inspire.ordinary_damage_unchanged
+            && inspire.unresolved_overlap_fails_closed
+            && inspire.accounting_method
+                == "packet-final-damage-resolution-window-speed-capacity-share"
+            && inspire.allocation_order == "speed-opportunity-before-per-hit-damage-modifiers"
+            && inspire.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && inspire.provider_ownership_proof_sha256
+                == "964c9b36de0ffae6cc47a85bbf06195219827225c5f04e278ae2fe88df521c6e"
+            && inspire.stacking_proof_sha256
+                == "37c38b31f52bd21bf071b4a0ef39f000059ecb0292a0a9a655515d163c454bca"
+            && inspire.damage_time_state_proof_sha256
+                == "1084c1a735bd39b4845b755c39b24c138c72f8d9f57774c650a18a4cce701518"
+            && inspire.temporary_lane_proof_sha256
+                == "18563c17c24aa36a342752f541ca8df48b88363076e6fb18b77dabb1de014049"
+            && inspire.action_timing_ancestry_proof_sha256
+                == "3922b8b3b340b7d9f53f3024d70eeb448df0612e8f19cdd3a284981284b77de0"
+            && inspire.action_route_proof_sha256
+                == "604601814ee87387c0433eef10ade28160a2f69653854cffcccfbbf8f343a502"
+            && inspire.capacity_proof_sha256
+                == "19acedc12102db945bdd6153fd363c11feb5548bd5b1e011b72533a4748a0a9b"
+            && inspire.recipient_mode_proof_sha256
+                == "36c4024d9b750eca634eddb367ca9f353e6b875f0dae0cff22cba283f3a962f9"
+            && inspire.exact_build_rlogs == 26
+            && inspire.observed_status_events == 130
+            && inspire.observed_complete_windows == 65
+            && inspire.observed_damage_memberships == 3_713
+            && inspire.observed_external_damage_memberships == 3_185
+            && inspire.observed_self_provider_exclusions == 528;
+        let inspire_historical_authority_is_clear = !inspire.current_build_lifecycle_authority
+            && !inspire.current_build_provider_ownership_authority
+            && !inspire.observed_single_stack_no_overlap_authority
+            && !inspire.exact_recipient_speed_transition_authority
+            && !inspire.exact_native_speed_formula_authority
+            && !inspire.exact_action_route_authority
+            && !inspire.temporary_speed_term_zero_authority
+            && !inspire.damage_resolution_window_accounting_authority
+            && inspire.provider_ownership_proof_sha256.is_empty()
+            && inspire.stacking_proof_sha256.is_empty()
+            && inspire.damage_time_state_proof_sha256.is_empty()
+            && inspire.temporary_lane_proof_sha256.is_empty()
+            && inspire.action_timing_ancestry_proof_sha256.is_empty()
+            && inspire.action_route_proof_sha256.is_empty()
+            && inspire.capacity_proof_sha256.is_empty()
+            && inspire.recipient_mode_proof_sha256.is_empty()
+            && inspire.exact_build_rlogs == 0
+            && inspire.observed_status_events == 0
+            && inspire.observed_complete_windows == 0
+            && inspire.observed_damage_memberships == 0
+            && inspire.observed_external_damage_memberships == 0
+            && inspire.observed_self_provider_exclusions == 0;
+        if inspire.effect_id != 31_602
+            || inspire.source_type_id != 1
+            || inspire.source_config_id != 31_601
+            || inspire.required_stacks != 1
+            || inspire.duration_millis != 10_000
+            || inspire.normal_speed_attribute_id != 11_720
+            || inspire.guide_speed_attribute_id != 11_730
+            || inspire.action_routes != INSPIRE_CURRENT_ACTION_ROUTES
+            || inspire.recipient_modes != INSPIRE_CURRENT_RECIPIENT_MODES
+            || (self.game_build == "24687926" && !inspire_current_authority)
+            || (self.game_build != "24687926" && !inspire_historical_authority_is_clear)
+            || inspire.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Inspire (effect 31602) formula is not ready for runtime transfer"
+                    .into(),
             );
         }
 
