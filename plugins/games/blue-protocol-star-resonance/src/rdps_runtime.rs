@@ -998,11 +998,78 @@ impl InspirationChanceReplayRuntimeConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct InspirationCombinedReconciliationRuntimeConfig {
+    content_sha256: String,
+    content_bytes: u64,
+    source_authority_sha256: String,
+    schema_version: u16,
+    exact_build_rlogs: u64,
+    total_canonical_events: u64,
+    authorized_event_count: u64,
+    newly_authorized_event_count: u64,
+    extended_authorized_event_count: u64,
+    new_route_decision_count: u64,
+    general_route_decision_count: u64,
+    decision_event_count: u64,
+    emitted_event_count: u64,
+    suppressed_event_count: u64,
+    formula_trace_complete_count: u64,
+    formula_trace_mismatch_count: u64,
+    all_route_formula_trace_complete_count: u64,
+    runtime_target_match_rlogs: u64,
+    conserved_rlogs: u64,
+    rational_projection_overflow_count: u64,
+    runtime_authority: bool,
+}
+
+impl InspirationCombinedReconciliationRuntimeConfig {
+    fn is_current_receipt(&self) -> bool {
+        self.content_sha256 == "ff509ddd07df0ff80806a318d253b6ecea2eb2ffafec1c65d5544ae3f646093a"
+            && self.content_bytes == 151_351_524
+            && self.source_authority_sha256
+                == "924f8945ca37963e0726358d7385d7e1ffe19e8caeba15b40d5ba644885aba26"
+            && self.schema_version == 1
+            && self.exact_build_rlogs == 26
+            && self.total_canonical_events == 6_411_565
+            && self.authorized_event_count == 61
+            && self.newly_authorized_event_count == 51
+            && self.extended_authorized_event_count == 112
+            && self.new_route_decision_count == 265
+            && self.general_route_decision_count == 326
+            && self.decision_event_count == 61
+            && self.emitted_event_count == 53
+            && self.suppressed_event_count == 273
+            && self.formula_trace_complete_count == 61
+            && self.formula_trace_mismatch_count == 0
+            && self.all_route_formula_trace_complete_count == 326
+            && self.runtime_target_match_rlogs == 26
+            && self.conserved_rlogs == 26
+            && self.rational_projection_overflow_count == 0
+            && self.runtime_authority
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct InspirationRuntimeConfig {
     pub effect_id: i64,
     pub source_config_id: i64,
     pub full_bloom_effect_id: i64,
+    pub full_bloom_full_name: String,
+    pub full_bloom_source_type_id: i32,
     pub full_bloom_source_config_id: i64,
+    pub full_bloom_required_level: i32,
+    pub full_bloom_required_stacks: u32,
+    pub full_bloom_duration_millis: u64,
+    pub full_bloom_potency_numerator: i64,
+    pub full_bloom_potency_denominator: i64,
+    pub full_bloom_external_windows: u64,
+    pub full_bloom_exact_build_rlogs: u32,
+    pub full_bloom_receipt_sha256: String,
+    pub full_bloom_receipt_bytes: u64,
+    pub full_bloom_emitted_contribution_events: u64,
+    pub full_bloom_projected_credit: u64,
+    pub full_bloom_increment_runtime_transfer_enabled: bool,
     pub primary_raw_add_attribute_ids: [i32; 4],
     pub critical_chance_attribute_id: i32,
     pub critical_chance_raw_add_attribute_id: i32,
@@ -1032,6 +1099,8 @@ pub(crate) struct InspirationRuntimeConfig {
     pub chance_proof: InspirationChanceProofRuntimeConfig,
     pub chance_replay: InspirationChanceReplayRuntimeConfig,
     pub chance_magnitudes: Vec<InspirationChanceMagnitudeRuntimeConfig>,
+    pub combined_critical_lucky_route: InspirationCombinedCriticalLuckyRouteRuntimeConfig,
+    pub combined_reconciliation: InspirationCombinedReconciliationRuntimeConfig,
     pub recipient_dependency: InspirationRecipientDependencyRuntimeConfig,
     pub base_lucky_damage_dependency: InspirationBaseLuckyDamageDependencyRuntimeConfig,
     pub critical_chance_runtime_transfer_enabled: bool,
@@ -1048,12 +1117,43 @@ pub(crate) struct InspirationRuntimeConfig {
     pub runtime_transfer_enabled: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct InspirationCombinedCriticalLuckyRouteRuntimeConfig {
+    pub ability_id: i64,
+    pub hit_event_id: i32,
+    pub damage_source: i32,
+    pub packet_type_flags: i32,
+    pub reported_critical_must_be_absent: bool,
+    pub normal_value_must_be_absent: bool,
+    pub lucky_value_must_equal_observed_damage: bool,
+    pub provider_origin_source_type_id: i32,
+    pub formula_identity: String,
+    pub exact_game_file_level_magnitude_authority: bool,
+    pub event_time_recipient_factor_authority: bool,
+    pub packet_final_rational_counterfactual: bool,
+}
+
 impl InspirationRuntimeConfig {
     pub(crate) fn chance_raw_delta_for_effect_level(&self, effect_level: i32) -> Option<i64> {
         self.chance_magnitudes
             .iter()
             .find(|entry| entry.effect_level == effect_level)
             .map(|entry| entry.chance_raw_delta)
+    }
+
+    pub(crate) fn chance_raw_delta_for_effect_level_and_mode(
+        &self,
+        effect_level: i32,
+        provider_full_bloom: bool,
+    ) -> Option<i64> {
+        let base = self.chance_raw_delta_for_effect_level(effect_level)?;
+        if !provider_full_bloom {
+            return Some(base);
+        }
+        let scaled = base.checked_mul(self.full_bloom_potency_numerator)?;
+        (scaled % self.full_bloom_potency_denominator == 0)
+            .then(|| scaled / self.full_bloom_potency_denominator)
     }
 }
 
@@ -1583,6 +1683,9 @@ impl RdpsRuntimeConfig {
                 .remote_paired_output_runtime_transfer_enabled
             || self.inspiration.critical_chance_runtime_transfer_enabled
             || self.inspiration.lucky_chance_runtime_transfer_enabled
+            || self
+                .inspiration
+                .full_bloom_increment_runtime_transfer_enabled
             || self.inspire.runtime_transfer_enabled
             || self.critical_cold.runtime_transfer_enabled
     }
@@ -1624,6 +1727,10 @@ impl RdpsRuntimeConfig {
             || (effect_id == self.inspiration.effect_id
                 && (self.inspiration.critical_chance_runtime_transfer_enabled
                     || self.inspiration.lucky_chance_runtime_transfer_enabled))
+            || (effect_id == self.inspiration.full_bloom_effect_id
+                && self
+                    .inspiration
+                    .full_bloom_increment_runtime_transfer_enabled)
             || (effect_id == self.inspire.effect_id && self.inspire.runtime_transfer_enabled)
             || (effect_id == self.critical_cold.effect_id
                 && self.critical_cold.runtime_transfer_enabled)
@@ -2160,6 +2267,21 @@ impl RdpsRuntimeConfig {
                     exact_removal_instances: 5,
                 },
             ];
+        let inspiration_combined_route = &inspiration.combined_critical_lucky_route;
+        let inspiration_combined_route_is_current_authority = inspiration_combined_route.ability_id
+            == 2_031_109
+            && inspiration_combined_route.hit_event_id == 3
+            && inspiration_combined_route.damage_source == 2
+            && inspiration_combined_route.packet_type_flags == 1
+            && inspiration_combined_route.reported_critical_must_be_absent
+            && inspiration_combined_route.normal_value_must_be_absent
+            && inspiration_combined_route.lucky_value_must_equal_observed_damage
+            && inspiration_combined_route.provider_origin_source_type_id == 1
+            && inspiration_combined_route.formula_identity
+                == "inspiration-2202041-ability-2031109-packet-final-critical-lucky-rational-v1"
+            && inspiration_combined_route.exact_game_file_level_magnitude_authority
+            && inspiration_combined_route.event_time_recipient_factor_authority
+            && inspiration_combined_route.packet_final_rational_counterfactual;
         let mut inspiration_attribute_ids = inspiration.primary_raw_add_attribute_ids.to_vec();
         inspiration_attribute_ids.extend([
             inspiration.critical_chance_attribute_id,
@@ -2177,7 +2299,21 @@ impl RdpsRuntimeConfig {
         if inspiration.effect_id <= 0
             || inspiration.source_config_id <= 0
             || inspiration.full_bloom_effect_id <= 0
+            || inspiration.full_bloom_full_name != "Full Bloom"
+            || inspiration.full_bloom_source_type_id != 1
             || inspiration.full_bloom_source_config_id <= 0
+            || inspiration.full_bloom_required_level != 1
+            || inspiration.full_bloom_required_stacks != 1
+            || inspiration.full_bloom_duration_millis != 10_000
+            || inspiration.full_bloom_potency_numerator != 6
+            || inspiration.full_bloom_potency_denominator != 5
+            || inspiration.full_bloom_external_windows != 83
+            || inspiration.full_bloom_exact_build_rlogs != 26
+            || inspiration.full_bloom_receipt_sha256
+                != "cad8b61eab03086e12a0ed0963303eb10eb82c7d611aba378b7d669d2c470176"
+            || inspiration.full_bloom_receipt_bytes != 2_866
+            || inspiration.full_bloom_emitted_contribution_events != 229
+            || inspiration.full_bloom_projected_credit != 217_407
             || inspiration.effect_id == inspiration.full_bloom_effect_id
             || inspiration_attribute_ids.iter().any(|value| *value <= 0)
             || inspiration_attribute_ids
@@ -2203,8 +2339,20 @@ impl RdpsRuntimeConfig {
                 != 1
             || inspiration.damage_scripts != ["Attack", "MAttack"]
             || inspiration.property_damage_property != 7
-            || inspiration.combined_critical_lucky_runtime_transfer_enabled
+            || (inspiration_chance_runtime_enabled
+                && (!inspiration_combined_route_is_current_authority
+                    || !inspiration.combined_reconciliation.is_current_receipt()
+                    || inspiration.combined_critical_lucky_runtime_transfer_enabled
+                        != inspiration.combined_reconciliation.runtime_authority))
+            || (!inspiration_chance_runtime_enabled
+                && inspiration.combined_critical_lucky_runtime_transfer_enabled)
             || inspiration.runtime_transfer_enabled
+            || (inspiration.full_bloom_increment_runtime_transfer_enabled
+                && (!inspiration_chance_runtime_enabled
+                    || !inspiration.current_build_lifecycle_authority
+                    || !inspiration.current_build_magnitude_authority
+                    || !inspiration.exact_rational_chance_attribution_authority
+                    || !inspiration.canonical_conservation_replay_authority))
             || (inspiration.recipient_dependency_runtime_transfer_enabled
                 && (!inspiration_critical_runtime_authority
                     || !inspiration.recipient_dependency.is_current_authority()))
@@ -2997,16 +3145,22 @@ mod tests {
     }
 
     #[test]
-    fn inspiration_promotes_single_outcome_chance_and_exact_recipient_dependency() {
+    fn inspiration_promotes_versioned_combined_route_and_exact_dependencies() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
         assert!(current.validate().is_ok());
         assert!(current.inspiration.critical_chance_runtime_transfer_enabled);
         assert!(current.inspiration.lucky_chance_runtime_transfer_enabled);
         assert!(
-            !current
+            current
                 .inspiration
                 .combined_critical_lucky_runtime_transfer_enabled
+        );
+        assert!(
+            current
+                .inspiration
+                .combined_reconciliation
+                .is_current_receipt()
         );
         assert!(
             current
@@ -3074,8 +3228,17 @@ mod tests {
 
         let mut guessed_combined = base.clone();
         guessed_combined["inspiration"]["combined_critical_lucky_runtime_transfer_enabled"] =
-            serde_json::Value::Bool(true);
+            serde_json::Value::Bool(false);
         assert!(runtime_from_value(guessed_combined).validate().is_err());
+
+        let mut altered_combined_receipt = base.clone();
+        altered_combined_receipt["inspiration"]["combined_reconciliation"]["general_route_decision_count"] =
+            serde_json::json!(325);
+        assert!(
+            runtime_from_value(altered_combined_receipt)
+                .validate()
+                .is_err()
+        );
 
         let mut guessed_dependency = base.clone();
         guessed_dependency["inspiration"]["recipient_dependency"]["proof_content_sha256"] =

@@ -552,6 +552,8 @@ mod tests {
             (2_204_471, "Critical Cold"),
             (2_207_252, "Stat Resonance"),
             (2_302_121, "Team Luck & Crit"),
+            (2_404_261, "Spring Breeze — Season 2 healer 2-piece"),
+            (2_404_271, "Full Bloom"),
             (3_003_052, "Harmony Grace"),
         ];
 

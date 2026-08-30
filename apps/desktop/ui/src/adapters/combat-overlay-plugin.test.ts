@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyOverlayRdpsSkillDetail,
   actorName,
   describeOverlayRdpsAvailability,
   formatOverlayNumber,
@@ -58,6 +59,141 @@ function editableSummarySettings() {
 }
 
 describe("Combat Overlay plug-in settings", () => {
+  it("groups live rDPS detail by affected skill and provider/effect/component", () => {
+    const actors = [{
+      actor_id: "18446744073709551615",
+      entity_uuid: "-9223372036854775808",
+      display_name: "Provider",
+      actor_kind: "player",
+      dps: 0,
+      hps: 0,
+      tps: 0,
+      rdps: 109,
+      reported_damage: 0,
+      abilities: [],
+    }, {
+      actor_id: "2",
+      entity_uuid: "102",
+      display_name: "Recipient",
+      actor_kind: "player",
+      dps: 1_200,
+      hps: 0,
+      tps: 0,
+      rdps: 1_091,
+      reported_damage: 1_200,
+      abilities: [{
+        ability_id: "2203521",
+        presentation_name: "Steel Beak",
+        casts: 1,
+        hits: 2,
+        critical_hits: 0,
+        reported_damage: 1_200,
+        effective_damage: 1_200,
+        reported_healing: 0,
+        effective_healing: 0,
+        shielding: 0,
+      }],
+    }];
+    const projected = applyOverlayRdpsSkillDetail(actors, [{
+      effect_id: "31602",
+      attribution_component: "packet-final action-speed opportunity",
+      provider_actor_id: "18446744073709551615",
+      recipient_actor_id: "2",
+      affected_ability_id: "2203521",
+      damage_event_count: 1,
+      attributed_rdps: "50",
+      damage_context_complete: true,
+    }, {
+      effect_id: "31602",
+      attribution_component: "packet-final action-speed opportunity",
+      provider_actor_id: "18446744073709551615",
+      recipient_actor_id: "2",
+      affected_ability_id: "2203521",
+      damage_event_count: 1,
+      attributed_rdps: "59",
+      damage_context_complete: true,
+    }], [{ effect_id: "31602", presentation_name: "Inspire" }], 1_000_000, false);
+
+    expect(projected[1]?.reported_damage).toBe(1_200);
+    expect(projected[1]?.abilities?.[0]).toMatchObject({
+      ability_id: "2203521",
+      reported_damage: 1_200,
+      rdps_received_damage: "109",
+      rdps_received_rate: 109,
+      rdps_unresolved_relationship_count: 0,
+      rdps_sources: [{
+        provider_actor_id: "18446744073709551615",
+        provider_name: "Provider",
+        effect_id: "31602",
+        effect_name: "Inspire",
+        attribution_component: "packet-final action-speed opportunity",
+        attributed_rdps: "109",
+        rdps: 109,
+        damage_event_count: 2,
+      }],
+    });
+    expect(projected[0]?.reported_damage).toBe(0);
+    expect(projected[0]?.abilities?.[0]).toMatchObject({
+      ability_id: "support-effect:31602:packet-final action-speed opportunity",
+      presentation_name: "Inspire",
+      reported_damage: 0,
+      rdps_support_effect: true,
+      rdps_effect_id: "31602",
+      rdps_given_damage: "109",
+      rdps_given_rate: 109,
+      rdps_grants: [{
+        effect_id: "31602",
+        effect_name: "Inspire",
+        attribution_component: "packet-final action-speed opportunity",
+        attributed_rdps: "109",
+        rdps: 109,
+        damage_event_count: 2,
+      }],
+    });
+  });
+
+  it("attaches outgoing credit to a proven provider skill instead of synthesizing a link", () => {
+    const actors = [{
+      actor_id: "1",
+      display_name: "Provider",
+      dps: 10,
+      hps: 0,
+      tps: 0,
+      rdps: 15,
+      abilities: [{
+        ability_id: "777",
+        presentation_name: "Proven support cast",
+        casts: 1,
+        hits: 0,
+        critical_hits: 0,
+        reported_damage: 0,
+        effective_damage: 0,
+        reported_healing: 0,
+        effective_healing: 0,
+        shielding: 0,
+      }],
+    }];
+
+    const projected = applyOverlayRdpsSkillDetail(actors, [{
+      effect_id: "31602",
+      provider_actor_id: "1",
+      provider_ability_id: "777",
+      recipient_actor_id: "2",
+      affected_ability_id: "55",
+      damage_event_count: 1,
+      attributed_rdps: "5",
+      damage_context_complete: true,
+    }], [{ effect_id: "31602", presentation_name: "Inspire" }], 1_000_000, false);
+
+    expect(projected[0]?.abilities).toHaveLength(1);
+    expect(projected[0]?.abilities?.[0]).toMatchObject({
+      ability_id: "777",
+      rdps_given_damage: "5",
+      rdps_given_rate: 5,
+    });
+    expect(projected[0]?.abilities?.[0]?.rdps_support_effect).toBeUndefined();
+  });
+
   it("keeps projected metrics while applying the live capture-time identity and loadout", () => {
     const projected = {
       actor_id: "77",

@@ -63,6 +63,60 @@ describe("Combat Meter snapshot contract", () => {
     });
     expect(value.actors[0]!.rdps_damage).not.toBeNull();
   });
+
+  it("accepts bounded live rDPS skill relationships with exact decimal-string IDs", () => {
+    const value: any = fixture();
+    value.rdps_damage_influences = [{
+      effect_id: "31602",
+      attribution_component: "packet-final action-speed opportunity",
+      complete_effect: false,
+      provider_actor_id: "18446744073709551615",
+      provider_entity_uuid: "-9223372036854775808",
+      recipient_actor_id: "2",
+      recipient_entity_uuid: "102",
+      affected_ability_id: "2203521",
+      target_actor_id: "3",
+      target_entity_uuid: "103",
+      first_observed_micros: 1_000,
+      last_observed_micros: 2_000,
+      damage_event_count: 2,
+      observed_damage: "2400",
+      exact_integer_delta: "0",
+      exact_rational_deltas: [{
+        numerator: "1200",
+        denominator: "11",
+        contribution_count: 2,
+      }],
+      attributed_rdps: "109",
+      damage_context_complete: true,
+    }];
+    value.rdps_damage_influences_truncated = false;
+    value.rdps_effect_presentations = [{
+      effect_id: "31602",
+      presentation_name: "Inspire",
+      presentation_kind: "status-effect",
+      presentation_resolution: "localized-status-effect",
+      icon_asset_path: null,
+    }];
+
+    const snapshot = parseCombatTimelineSnapshot(value);
+
+    expect(snapshot.rdps_damage_influences[0]).toMatchObject({
+      effect_id: "31602",
+      provider_actor_id: "18446744073709551615",
+      provider_entity_uuid: "-9223372036854775808",
+      affected_ability_id: "2203521",
+      attributed_rdps: "109",
+    });
+    expect(snapshot.rdps_effect_presentations[0]?.presentation_name).toBe("Inspire");
+  });
+
+  it("defaults additive live rDPS detail fields for older schema-v5 producers", () => {
+    const snapshot = parseCombatTimelineSnapshot(fixture());
+    expect(snapshot.rdps_damage_influences).toEqual([]);
+    expect(snapshot.rdps_damage_influences_truncated).toBe(false);
+    expect(snapshot.rdps_effect_presentations).toEqual([]);
+  });
 });
 
 function fixture() {

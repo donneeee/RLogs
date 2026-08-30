@@ -1,4 +1,8 @@
 import { describeRdpsStatus } from "./rdps-status";
+import type {
+  HistoryDamageInfluenceSummary,
+  HistoryRdpsEffectPresentation,
+} from "./combat-history";
 
 export const COMBAT_SNAPSHOT_SCHEMA_VERSION = 5;
 
@@ -72,6 +76,9 @@ export interface CombatTimelineSnapshot {
   game_time_micros: number | null;
   true_time_micros: number | null;
   closed_at_log_end: boolean;
+  rdps_damage_influences: readonly HistoryDamageInfluenceSummary[];
+  rdps_damage_influences_truncated: boolean;
+  rdps_effect_presentations: readonly HistoryRdpsEffectPresentation[];
   actors: readonly CombatActorSummary[];
 }
 
@@ -113,6 +120,16 @@ export function parseCombatTimelineSnapshot(
     !isOptionalCounter(value.game_time_micros) ||
     !isOptionalCounter(value.true_time_micros) ||
     typeof value.closed_at_log_end !== "boolean" ||
+    (value.rdps_damage_influences !== undefined &&
+      (!Array.isArray(value.rdps_damage_influences) ||
+        value.rdps_damage_influences.length > 4_096 ||
+        !value.rdps_damage_influences.every(isLiveDamageInfluence))) ||
+    (value.rdps_damage_influences_truncated !== undefined &&
+      typeof value.rdps_damage_influences_truncated !== "boolean") ||
+    (value.rdps_effect_presentations !== undefined &&
+      (!Array.isArray(value.rdps_effect_presentations) ||
+        value.rdps_effect_presentations.length > 4_096 ||
+        !value.rdps_effect_presentations.every(isLiveRdpsEffectPresentation))) ||
     !Array.isArray(value.actors) ||
     !value.actors.every(isCombatActor)
   ) {
@@ -122,6 +139,17 @@ export function parseCombatTimelineSnapshot(
   }
   const snapshot = {
     ...value,
+    rdps_damage_influences: (value.rdps_damage_influences ?? []).map(
+      (influence) => ({
+        ...influence,
+        attributed_rdps: influence.attributed_rdps ?? null,
+        attribution_component: influence.attribution_component ?? null,
+        complete_effect: influence.complete_effect !== false,
+      }),
+    ),
+    rdps_damage_influences_truncated:
+      value.rdps_damage_influences_truncated === true,
+    rdps_effect_presentations: value.rdps_effect_presentations ?? [],
     actors: value.actors.map((actor) => ({
       ...actor,
       rdps_incomplete: actor.rdps_incomplete === true,
@@ -132,6 +160,9 @@ export function parseCombatTimelineSnapshot(
   }
   return {
     ...snapshot,
+    rdps_damage_influences: [],
+    rdps_damage_influences_truncated: false,
+    rdps_effect_presentations: [],
     actors: snapshot.actors.map((actor) => ({
       ...actor,
       rdps_damage: null,
@@ -141,6 +172,53 @@ export function parseCombatTimelineSnapshot(
       rdps_incomplete: false,
     })),
   };
+}
+
+function isLiveRdpsEffectPresentation(
+  value: unknown,
+): value is HistoryRdpsEffectPresentation {
+  return (
+    isRecord(value) &&
+    isDecimalIdentifier(value.effect_id, true) &&
+    typeof value.presentation_name === "string" &&
+    typeof value.presentation_kind === "string" &&
+    typeof value.presentation_resolution === "string" &&
+    isOptionalString(value.icon_asset_path)
+  );
+}
+
+function isLiveDamageInfluence(value: unknown): value is HistoryDamageInfluenceSummary {
+  return (
+    isRecord(value) &&
+    isDecimalIdentifier(value.effect_id, true) &&
+    (value.attribution_component === undefined ||
+      isOptionalString(value.attribution_component)) &&
+    (value.complete_effect === undefined || typeof value.complete_effect === "boolean") &&
+    isDecimalIdentifier(value.provider_actor_id, false) &&
+    isDecimalIdentifier(value.provider_entity_uuid, true) &&
+    isDecimalIdentifier(value.recipient_actor_id, false) &&
+    isDecimalIdentifier(value.recipient_entity_uuid, true) &&
+    isOptionalDecimalIdentifier(value.affected_ability_id, true) &&
+    isOptionalDecimalIdentifier(value.target_actor_id, false) &&
+    isOptionalDecimalIdentifier(value.target_entity_uuid, true) &&
+    isSafeCounter(value.first_observed_micros) &&
+    isSafeCounter(value.last_observed_micros) &&
+    isSafeCounter(value.damage_event_count) &&
+    isDecimalIdentifier(value.observed_damage, true) &&
+    isDecimalIdentifier(value.exact_integer_delta, true) &&
+    Array.isArray(value.exact_rational_deltas) &&
+    value.exact_rational_deltas.every(
+      (delta) =>
+        isRecord(delta) &&
+        isDecimalIdentifier(delta.numerator, true) &&
+        isDecimalIdentifier(delta.denominator, false) &&
+        delta.denominator !== "0" &&
+        isSafeCounter(delta.contribution_count),
+    ) &&
+    (value.attributed_rdps === undefined ||
+      isOptionalDecimalIdentifier(value.attributed_rdps, true)) &&
+    typeof value.damage_context_complete === "boolean"
+  );
 }
 
 export function sortCombatActors(
@@ -256,6 +334,13 @@ function isDecimalIdentifier(value: unknown, signed: boolean): value is string {
   return signed
     ? /^(?:0|-?[1-9]\d*)$/.test(value)
     : /^(?:0|[1-9]\d*)$/.test(value);
+}
+
+function isOptionalDecimalIdentifier(
+  value: unknown,
+  signed: boolean,
+): value is string | null {
+  return value === null || isDecimalIdentifier(value, signed);
 }
 
 function compareDecimalIdentifiers(left: string, right: string): number {

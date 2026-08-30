@@ -129,8 +129,9 @@
             "all_runtime_target_match": false,
             "all_conserved": false
           },
-          "chance_magnitudes": [],
-          "critical_chance_runtime_transfer_enabled": false,
+            "chance_magnitudes": [],
+            "full_bloom_increment_runtime_transfer_enabled": false,
+            "critical_chance_runtime_transfer_enabled": false,
           "lucky_chance_runtime_transfer_enabled": false,
           "combined_critical_lucky_runtime_transfer_enabled": false,
           "recipient_dependency_runtime_transfer_enabled": false,

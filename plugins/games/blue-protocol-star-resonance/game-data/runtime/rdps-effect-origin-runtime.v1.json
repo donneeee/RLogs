@@ -11,8 +11,8 @@
   },
   "summary": {
     "effects": 1699,
-    "formula_endpoints": 1601,
-    "effects_without_formula_endpoint": 98,
+    "formula_endpoints": 1600,
+    "effects_without_formula_endpoint": 99,
     "effects_with_observed_origins": 525,
     "origin_fingerprints": 616,
     "exact_origin_endpoints": 350,
@@ -41,9 +41,10 @@
       "explicit_owner_only": 134,
       "external_complete": 1,
       "external_formula_lifecycle_missing": 64,
-      "external_lifecycle_formula_scope_unresolved": 58,
+      "external_lifecycle_formula_scope_unresolved": 57,
       "external_lifecycle_scalar_unresolved": 1,
       "no_formula_endpoint": 94,
+      "non_damage_internal_marker": 1,
       "scope_unproven": 1347
     },
     "zero_omission_audit": {
@@ -18405,15 +18406,15 @@
     },
     "2202113": {
       "display_name": "溢出CD",
-      "formula_endpoint_present": true,
-      "transfer_proof_state": "external_lifecycle_formula_scope_unresolved",
+      "formula_endpoint_present": false,
+      "transfer_proof_state": "non_damage_internal_marker",
       "fallback": {
         "endpoint_resolution": "exact",
         "owner_resolution": "exact",
         "candidate_sources": [
           {
             "source_id": "buff-source:21423",
-            "source_kind": "active-skill",
+            "source_kind": "buff",
             "source_name": "Symbiotic Mark",
             "source_entity_id": 21423,
             "equipment_suit_selector": null,
@@ -18429,7 +18430,7 @@
           "candidate_sources": [
             {
               "source_id": "buff-source:21423",
-              "source_kind": "active-skill",
+              "source_kind": "buff",
               "source_name": "Symbiotic Mark",
               "source_entity_id": 21423,
               "equipment_suit_selector": null,

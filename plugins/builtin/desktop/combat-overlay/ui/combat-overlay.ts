@@ -184,6 +184,7 @@ interface OverlayActor {
   critical_hits?: number;
   deaths?: number;
   revives?: number;
+  rdps_skill_detail_truncated?: boolean;
   abilities?: readonly OverlayAbility[];
   presentation?: OverlayActorPresentation;
 }
@@ -200,6 +201,52 @@ interface OverlayAbility {
   reported_healing: number;
   effective_healing: number;
   shielding: number;
+  rdps_received_damage?: string;
+  rdps_received_rate?: number;
+  rdps_sources?: readonly OverlayAbilityRdpsSource[];
+  rdps_unresolved_relationship_count?: number;
+  rdps_given_damage?: string;
+  rdps_given_rate?: number;
+  rdps_grants?: readonly OverlayAbilityRdpsGrant[];
+  rdps_support_effect?: boolean;
+  rdps_effect_id?: string;
+}
+
+export interface OverlayAbilityRdpsSource {
+  provider_actor_id: string;
+  provider_name: string;
+  effect_id: string;
+  effect_name: string;
+  attribution_component: string | null;
+  attributed_rdps: string;
+  rdps: number;
+  damage_event_count: number;
+}
+
+export interface OverlayAbilityRdpsGrant {
+  effect_id: string;
+  effect_name: string;
+  attribution_component: string | null;
+  attributed_rdps: string;
+  rdps: number;
+  damage_event_count: number;
+}
+
+export interface OverlayDamageInfluence {
+  effect_id: string;
+  attribution_component?: string | null;
+  provider_actor_id: string;
+  provider_ability_id?: string | null;
+  recipient_actor_id: string;
+  affected_ability_id: string | null;
+  damage_event_count: number;
+  attributed_rdps?: string | null;
+  damage_context_complete: boolean;
+}
+
+interface OverlayRdpsEffectPresentation {
+  effect_id: string;
+  presentation_name: string;
 }
 
 interface OverlaySnapshot {
@@ -214,6 +261,9 @@ interface OverlaySnapshot {
   last_hostile_micros?: number | null;
   latest_event_micros?: number | null;
   combat_inactivity_timeout_micros?: number;
+  rdps_damage_influences?: readonly OverlayDamageInfluence[];
+  rdps_damage_influences_truncated?: boolean;
+  rdps_effect_presentations?: readonly OverlayRdpsEffectPresentation[];
   actors: readonly OverlayActor[];
 }
 
@@ -250,6 +300,8 @@ interface OverlayHistoryView {
   elapsed_micros: number;
   active_combat_micros: number;
   actors: readonly (OverlayActor | OverlayHistoryActor)[];
+  damage_influences?: readonly OverlayDamageInfluence[];
+  rdps_effect_presentations?: readonly OverlayRdpsEffectPresentation[];
 }
 
 interface OverlayHistoryActor {
@@ -2298,7 +2350,14 @@ function resolveProjectedOverlayState(
 ): ProjectedOverlayState {
   const projection = presentation?.run_projection;
   if (projection === null || projection === undefined || projection.views.length === 0) {
-    return { actors: actorSource, snapshot, view: null };
+    const actors = applyOverlayRdpsSkillDetail(
+      actorSource,
+      snapshot?.rdps_damage_influences ?? [],
+      snapshot?.rdps_effect_presentations ?? [],
+      snapshot?.active_combat_micros ?? 0,
+      snapshot?.rdps_damage_influences_truncated === true,
+    );
+    return { actors, snapshot: snapshot === undefined || snapshot === null ? snapshot : { ...snapshot, actors }, view: null };
   }
   const view = projection.views.find((candidate) => candidate.id === selectedViewId)
     ?? projection.views.find((candidate) => candidate.id === "all")
@@ -2306,10 +2365,17 @@ function resolveProjectedOverlayState(
     ?? null;
   if (view === null) return { actors: actorSource, snapshot, view: null };
   const liveActorsById = new Map(actorSource.map((actor) => [actor.actor_id, actor]));
-  const actors = view.actors
+  const projectedActors = view.actors
     .map(projectedActorToOverlayActor)
     .map((actor) => mergeProjectedActorPresentation(actor, liveActorsById.get(actor.actor_id)))
     .filter(isOverlayRosterActor);
+  const actors = applyOverlayRdpsSkillDetail(
+    projectedActors,
+    view.damage_influences ?? [],
+    view.rdps_effect_presentations ?? [],
+    view.active_combat_micros,
+    false,
+  );
   return {
     actors,
     view,
@@ -2326,6 +2392,156 @@ function resolveProjectedOverlayState(
       actors,
     },
   };
+}
+
+/**
+ * Joins exact decimal-string influence rows to the affected recipient skill.
+ * This is presentation-only: actor totals and ordinary skill damage are never
+ * mutated, and unavailable/truncated attribution remains visibly unresolved.
+ */
+export function applyOverlayRdpsSkillDetail(
+  actors: readonly OverlayActor[],
+  influences: readonly OverlayDamageInfluence[],
+  effectPresentations: readonly OverlayRdpsEffectPresentation[],
+  activeCombatMicros: number,
+  truncated: boolean,
+): readonly OverlayActor[] {
+  const actorNames = new Map(actors.map((actor) => [actor.actor_id, actorName(actor)]));
+  const effectNames = new Map(
+    effectPresentations.map((effect) => [effect.effect_id, effect.presentation_name]),
+  );
+  const byRecipientAbility = new Map<string, OverlayDamageInfluence[]>();
+  const grantsByProvider = new Map<string, Map<string, OverlayAbilityRdpsGrant & {
+    providerAbilityId: string | null;
+  }>>();
+  for (const influence of influences) {
+    if (influence.affected_ability_id !== null) {
+      const key = `${influence.recipient_actor_id}\u0000${influence.affected_ability_id}`;
+      const rows = byRecipientAbility.get(key) ?? [];
+      rows.push(influence);
+      byRecipientAbility.set(key, rows);
+    }
+    if (influence.attributed_rdps === null || influence.attributed_rdps === undefined) continue;
+    const component = influence.attribution_component?.trim() || null;
+    const providerAbilityId = influence.provider_ability_id?.trim() || null;
+    const providerGrants = grantsByProvider.get(influence.provider_actor_id) ?? new Map();
+    const grantKey = `${providerAbilityId ?? ""}\u0000${influence.effect_id}\u0000${component ?? ""}`;
+    const previous = providerGrants.get(grantKey);
+    const amount = (previous === undefined ? 0n : BigInt(previous.attributed_rdps))
+      + BigInt(influence.attributed_rdps);
+    providerGrants.set(grantKey, {
+      providerAbilityId,
+      effect_id: influence.effect_id,
+      effect_name: effectNames.get(influence.effect_id) ?? `Effect ${influence.effect_id}`,
+      attribution_component: component,
+      attributed_rdps: amount.toString(),
+      rdps: 0,
+      damage_event_count: (previous?.damage_event_count ?? 0) + influence.damage_event_count,
+    });
+    grantsByProvider.set(influence.provider_actor_id, providerGrants);
+  }
+  const duration = influences.length > 0
+    ? Math.max(1_000_000, activeCombatMicros)
+    : Math.max(0, activeCombatMicros);
+  return actors.map((actor) => {
+    const abilities = (actor.abilities ?? []).map((ability) => {
+      const rows = byRecipientAbility.get(`${actor.actor_id}\u0000${ability.ability_id}`) ?? [];
+      const grouped = new Map<string, OverlayAbilityRdpsSource>();
+      let unresolved = 0;
+      for (const row of rows) {
+        if (!row.damage_context_complete || row.attributed_rdps === null || row.attributed_rdps === undefined) {
+          unresolved += 1;
+          continue;
+        }
+        const component = row.attribution_component?.trim() || null;
+        const key = `${row.provider_actor_id}\u0000${row.effect_id}\u0000${component ?? ""}`;
+        const previous = grouped.get(key);
+        const amount = (previous === undefined ? 0n : BigInt(previous.attributed_rdps))
+          + BigInt(row.attributed_rdps);
+        grouped.set(key, {
+          provider_actor_id: row.provider_actor_id,
+          provider_name: actorNames.get(row.provider_actor_id) ?? `Actor ID ${row.provider_actor_id}`,
+          effect_id: row.effect_id,
+          effect_name: effectNames.get(row.effect_id) ?? `Effect ${row.effect_id}`,
+          attribution_component: component,
+          attributed_rdps: amount.toString(),
+          rdps: duration === 0 ? 0 : Number(amount) * 1_000_000 / duration,
+          damage_event_count: (previous?.damage_event_count ?? 0) + row.damage_event_count,
+        });
+      }
+      const sources = [...grouped.values()].sort((left, right) => {
+        const leftAmount = BigInt(left.attributed_rdps);
+        const rightAmount = BigInt(right.attributed_rdps);
+        if (leftAmount !== rightAmount) return leftAmount > rightAmount ? -1 : 1;
+        return left.provider_actor_id.localeCompare(right.provider_actor_id);
+      });
+      const received = sources.reduce(
+        (sum, source) => sum + BigInt(source.attributed_rdps),
+        0n,
+      );
+      return {
+        ...ability,
+        rdps_received_damage: received.toString(),
+        rdps_received_rate: duration === 0 ? 0 : Number(received) * 1_000_000 / duration,
+        rdps_sources: sources,
+        rdps_unresolved_relationship_count: unresolved,
+      };
+    });
+    const grants = [...(grantsByProvider.get(actor.actor_id)?.values() ?? [])].map((grant) => ({
+      ...grant,
+      rdps: duration === 0 ? 0 : Number(BigInt(grant.attributed_rdps)) * 1_000_000 / duration,
+    }));
+    const supportGrants: OverlayAbilityRdpsGrant[] = [];
+    for (const grant of grants) {
+      const abilityIndex = grant.providerAbilityId === null
+        ? -1
+        : abilities.findIndex((ability) => ability.ability_id === grant.providerAbilityId);
+      if (abilityIndex < 0) {
+        supportGrants.push(grant);
+        continue;
+      }
+      const ability = abilities[abilityIndex]!;
+      const abilityGrants = [...(ability.rdps_grants ?? []), grant];
+      const given = abilityGrants.reduce(
+        (sum, entry) => sum + BigInt(entry.attributed_rdps),
+        0n,
+      );
+      abilities[abilityIndex] = {
+        ...ability,
+        rdps_given_damage: given.toString(),
+        rdps_given_rate: duration === 0 ? 0 : Number(given) * 1_000_000 / duration,
+        rdps_grants: abilityGrants,
+      };
+    }
+    for (const grant of supportGrants) {
+      abilities.push({
+        ability_id: `support-effect:${grant.effect_id}:${grant.attribution_component ?? "complete"}`,
+        presentation_name: grant.effect_name,
+        casts: 0,
+        hits: 0,
+        critical_hits: 0,
+        reported_damage: 0,
+        effective_damage: 0,
+        reported_healing: 0,
+        effective_healing: 0,
+        shielding: 0,
+        rdps_received_damage: "0",
+        rdps_received_rate: 0,
+        rdps_sources: [],
+        rdps_unresolved_relationship_count: 0,
+        rdps_given_damage: grant.attributed_rdps,
+        rdps_given_rate: grant.rdps,
+        rdps_grants: [grant],
+        rdps_support_effect: true,
+        rdps_effect_id: grant.effect_id,
+      });
+    }
+    return {
+      ...actor,
+      rdps_skill_detail_truncated: truncated,
+      abilities,
+    };
+  });
 }
 
 /**
@@ -3080,17 +3296,30 @@ function renderAbilityBreakdown(
     ? "Healing"
     : layer.metric === "tps"
       ? "Shielding"
-      : "Damage";
+      : layer.metric === "rdps"
+        ? "rDMG gained"
+        : "Damage";
   const abilities = [...(actor.abilities ?? [])]
     .filter((ability) => abilityMetricValue(ability, layer.metric) > 0 || ability.casts > 0 || ability.hits > 0)
     .sort((left, right) => abilityMetricValue(right, layer.metric) - abilityMetricValue(left, layer.metric))
     .slice(0, 12);
   const maximum = Math.max(1, ...abilities.map((ability) => abilityMetricValue(ability, layer.metric)));
-  const header = el("div", "combat-overlay-row combat-overlay-header-row combat-overlay-ability-grid");
-  header.append(text("span", "Ability"), text("span", valueLabel), text("span", "Hits"));
+  const rdpsDetail = layer.metric === "rdps";
+  const gridClass = rdpsDetail
+    ? "combat-overlay-row combat-overlay-header-row combat-overlay-ability-grid combat-overlay-rdps-ability-grid"
+    : "combat-overlay-row combat-overlay-header-row combat-overlay-ability-grid";
+  const header = el("div", gridClass);
+  header.append(text("span", "Ability"), text("span", rdpsDetail ? "rDMG R/G" : valueLabel));
+  if (rdpsDetail) header.append(text("span", "rDPS R/G"));
+  header.append(text("span", "Hits"));
   const rows = el("div", "combat-overlay-rows combat-overlay-ability-rows");
   for (const ability of abilities) {
-    const row = el("div", "combat-overlay-row combat-overlay-actor-row combat-overlay-ability-grid");
+    const row = el(
+      "div",
+      rdpsDetail
+        ? "combat-overlay-row combat-overlay-actor-row combat-overlay-ability-grid combat-overlay-rdps-ability-grid"
+        : "combat-overlay-row combat-overlay-actor-row combat-overlay-ability-grid",
+    );
     const value = abilityMetricValue(ability, layer.metric);
     row.style.setProperty("--meter-fill", `${Math.max(0, value / maximum) * 100}%`);
     const identity = el("span", "combat-overlay-ability-name");
@@ -3103,15 +3332,86 @@ function renderAbilityBreakdown(
     const labels = el("span");
     labels.append(
       text("strong", ability.presentation_name?.trim() || `Ability ${ability.ability_id}`),
-      text("small", `ID ${ability.ability_id}`),
+      text(
+        "small",
+        ability.rdps_support_effect
+          ? `Support effect ID ${ability.rdps_effect_id ?? "unknown"}`
+          : `ID ${ability.ability_id}`,
+      ),
     );
     identity.append(labels);
-    row.append(
-      identity,
-      text("span", formatOverlayNumber(value, numberFormats.skillValues)),
-      text("span", formatOverlayNumber(ability.hits, numberFormats.counts)),
-    );
+    row.append(identity);
+    if (rdpsDetail) {
+      const sources = ability.rdps_sources ?? [];
+      const grants = ability.rdps_grants ?? [];
+      const receivedTooltip = sources.map((source) => {
+        const component = source.attribution_component === null
+          ? "complete effect"
+          : source.attribution_component;
+        return `Received from ${source.provider_name} → ${source.effect_name} (ID ${source.effect_id}) · ${component}: ${formatDecimalAmount(source.attributed_rdps)} rDMG / ${formatOverlayNumber(source.rdps, numberFormats.skillValues)} rDPS · ${source.damage_event_count} events`;
+      });
+      const givenTooltip = grants.map((grant) => {
+        const component = grant.attribution_component === null
+          ? "complete effect"
+          : grant.attribution_component;
+        return `Given via ${grant.effect_name} (ID ${grant.effect_id}) · ${component}: ${formatDecimalAmount(grant.attributed_rdps)} rDMG / ${formatOverlayNumber(grant.rdps, numberFormats.skillValues)} rDPS · ${grant.damage_event_count} events`;
+      });
+      const tooltip = [...receivedTooltip, ...givenTooltip].join("\n");
+      const rdmg = text(
+        "span",
+        formatReceivedGivenAmounts(
+          ability.rdps_received_damage ?? "0",
+          ability.rdps_given_damage ?? "0",
+          formatDecimalAmount,
+        ),
+        "combat-overlay-rdps-detail-value",
+      );
+      const rdps = text(
+        "span",
+        formatReceivedGivenRates(
+          ability.rdps_received_rate ?? 0,
+          ability.rdps_given_rate ?? 0,
+          numberFormats.skillValues,
+        ),
+        "combat-overlay-rdps-detail-value",
+      );
+      if (tooltip) {
+        rdmg.title = tooltip;
+        rdps.title = tooltip;
+      }
+      row.append(rdmg, rdps);
+    } else {
+      row.append(text("span", formatOverlayNumber(value, numberFormats.skillValues)));
+    }
+    row.append(text("span", formatOverlayNumber(ability.hits, numberFormats.counts)));
     rows.append(row);
+    if (rdpsDetail && ((ability.rdps_sources?.length ?? 0) + (ability.rdps_grants?.length ?? 0) > 0)) {
+      const details = document.createElement("details");
+      details.className = "combat-overlay-rdps-sources";
+      const detailsSummary = document.createElement("summary");
+      const detailCount = (ability.rdps_sources?.length ?? 0) + (ability.rdps_grants?.length ?? 0);
+      detailsSummary.textContent = `${detailCount} contribution source${detailCount === 1 ? "" : "s"}`;
+      details.append(detailsSummary);
+      for (const source of ability.rdps_sources!) {
+        const component = source.attribution_component === null
+          ? "complete effect"
+          : source.attribution_component;
+        details.append(text(
+          "div",
+          `Received from ${source.provider_name} → ${source.effect_name} (ID ${source.effect_id}) · ${component} · ${formatDecimalAmount(source.attributed_rdps)} rDMG · ${formatOverlayNumber(source.rdps, numberFormats.skillValues)} rDPS · ${source.damage_event_count} events`,
+        ));
+      }
+      for (const grant of ability.rdps_grants ?? []) {
+        const component = grant.attribution_component === null
+          ? "complete effect"
+          : grant.attribution_component;
+        details.append(text(
+          "div",
+          `Given via ${grant.effect_name} (ID ${grant.effect_id}) · ${component} · ${formatDecimalAmount(grant.attributed_rdps)} rDMG · ${formatOverlayNumber(grant.rdps, numberFormats.skillValues)} rDPS · ${grant.damage_event_count} events`,
+        ));
+      }
+      rows.append(details);
+    }
   }
   if (abilities.length === 0) {
     rows.append(text("p", "No ability activity is available yet.", "combat-overlay-empty"));
@@ -3119,7 +3419,9 @@ function renderAbilityBreakdown(
   if (layer.metric === "rdps") {
     rows.append(text(
       "p",
-      "rDPS attribution is actor-level; these rows show observed skill damage.",
+      actor.rdps_skill_detail_truncated
+        ? "Live skill-source detail reached its safety cap. Actor and party rDPS totals remain exact; omitted rational detail is unavailable."
+        : "R/G means received/given. Received rDMG is grouped by the affected skill; outgoing credit uses a proven provider skill when available, otherwise an exact support-effect row.",
       "combat-overlay-breakdown-note",
     ));
   } else if (layer.metric === "tps") {
@@ -3352,7 +3654,43 @@ function sampleClassSpecPresentation(
 function abilityMetricValue(ability: OverlayAbility, metric: OverlayMetric): number {
   if (metric === "hps") return Math.max(0, ability.effective_healing);
   if (metric === "tps") return Math.max(0, ability.shielding);
+  if (metric === "rdps") {
+    return Math.max(
+      0,
+      Number(ability.rdps_received_damage ?? "0") + Number(ability.rdps_given_damage ?? "0"),
+    );
+  }
   return Math.max(0, ability.reported_damage);
+}
+
+function formatReceivedGivenAmounts(
+  received: string,
+  given: string,
+  formatter: (value: string) => string,
+): string {
+  const entries = [];
+  if (BigInt(received) !== 0n) entries.push(`R ${formatter(received)}`);
+  if (BigInt(given) !== 0n) entries.push(`G ${formatter(given)}`);
+  return entries.join(" · ") || "—";
+}
+
+function formatReceivedGivenRates(
+  received: number,
+  given: number,
+  format: OverlayNumberFormat,
+): string {
+  const entries = [];
+  if (received !== 0) entries.push(`R ${formatOverlayNumber(received, format)}`);
+  if (given !== 0) entries.push(`G ${formatOverlayNumber(given, format)}`);
+  return entries.join(" · ") || "—";
+}
+
+function formatDecimalAmount(value: string): string {
+  try {
+    return BigInt(value).toLocaleString("en-US");
+  } catch {
+    return "—";
+  }
 }
 
 export function actorName(actor: OverlayActor): string {
@@ -4789,11 +5127,16 @@ function installStyles(): void {
     .combat-overlay-actor-row { border-top:1px solid #8395ab1f; }
     .combat-overlay-actor-row::before { content:''; position:absolute; inset:0 auto 0 0; width:var(--meter-fill); background:color-mix(in srgb,var(--meter-color,#63e5d6) 55%,#0b1522); opacity:var(--bar-opacity, .25); }
     .combat-overlay-ability-grid { grid-template-columns:minmax(112px, 1fr) minmax(68px, auto) 34px !important; }
+    .combat-overlay-rdps-ability-grid { grid-template-columns:minmax(104px, 1fr) minmax(62px, auto) minmax(62px, auto) 34px !important; }
     .combat-overlay-ability-name { display:flex; align-items:center; gap:6px; text-align:left !important; }
     .combat-overlay-ability-name img { width:22px; height:22px; flex:0 0 22px; object-fit:contain; }
     .combat-overlay-ability-name > span { display:grid; min-width:0; gap:1px; overflow:hidden; }
     .combat-overlay-ability-name strong, .combat-overlay-ability-name small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .combat-overlay-ability-name small { color:#7f93aa; font-size:8px; }
+    .combat-overlay-rdps-detail-value { cursor:help; font-variant-numeric:tabular-nums; }
+    .combat-overlay-rdps-sources { margin:0; padding:5px 9px 7px 22px; border-top:1px solid #8395ab14; color:#91a4bd; font:9px/1.35 system-ui; }
+    .combat-overlay-rdps-sources summary { color:#9af4ea; cursor:pointer; user-select:none; }
+    .combat-overlay-rdps-sources div { padding:4px 0 0 10px; overflow-wrap:anywhere; }
     .combat-overlay-breakdown-note { margin:0; padding:7px 9px; border-top:1px solid #8395ab1f; color:#91a4bd; font:9px/1.3 system-ui; }
     .combat-overlay-empty { margin:0; padding:16px; color:#7f93aa; text-align:center; font:12px system-ui; }
     .combat-overlay-rdps-status { margin:0; padding:7px 9px; border-bottom:1px solid #91a4bd2e; color:#f2c879; background:#3a2b1266; font:600 9px/1.35 system-ui; }

@@ -567,6 +567,32 @@ mod tests {
     }
 
     #[test]
+    fn overhealing_cooldown_preserves_buff_origin_without_claiming_a_formula_endpoint() {
+        let resolved = resolve_status_effect_fingerprint(&status(2_202_113, Some((1, 21_423))));
+        assert_eq!(
+            resolved.match_kind,
+            EffectFingerprintMatchKind::ExactPacketOrigin
+        );
+        assert_eq!(
+            resolved.endpoint_resolution,
+            EffectFingerprintResolution::Exact
+        );
+        assert_eq!(
+            resolved.owner_resolution,
+            EffectFingerprintResolution::Exact
+        );
+        assert!(!resolved.formula_endpoint_present);
+        assert_eq!(resolved.transfer_proof_state, "non_damage_internal_marker");
+        assert_eq!(resolved.candidate_sources.len(), 1);
+        assert_eq!(resolved.candidate_sources[0].source_id, "buff-source:21423");
+        assert_eq!(resolved.candidate_sources[0].source_kind, "buff");
+        assert_eq!(
+            resolved.candidate_sources[0].source_name.as_deref(),
+            Some("Symbiotic Mark")
+        );
+    }
+
+    #[test]
     fn ambiguous_factor_owner_is_not_promoted_to_exact() {
         let resolved = resolve_status_effect_fingerprint(&status(9_901, None));
         assert_eq!(

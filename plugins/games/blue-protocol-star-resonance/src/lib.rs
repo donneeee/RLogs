@@ -281,7 +281,8 @@ pub use state_formula::{
 };
 pub use state_rdps::{
     BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline, BpsrStateDamageContributionProjector,
-    HarmonyGraceFamilyRoundingDiagnostic, HarmonyGraceFormulaTrace, RemoteRdpsEvidencePolicy,
+    HarmonyGraceFamilyRoundingDiagnostic, HarmonyGraceFormulaTrace,
+    InspirationCombinedFormulaTrace, InspirationCombinedPipelineAudit, RemoteRdpsEvidencePolicy,
     proven_state_damage_contribution_effect_ids, remote_rdps_evidence_policy,
     state_damage_contribution_deployment_id, state_damage_contribution_formula_identity,
     state_damage_contribution_formula_target_matches, state_damage_contribution_game_build,

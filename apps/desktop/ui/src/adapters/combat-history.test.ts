@@ -306,6 +306,13 @@ describe("combat history contracts", () => {
             rdps_contribution_received: 500,
           }],
           targets: [],
+          rdps_effect_presentations: [{
+            effect_id: "2302121",
+            presentation_name: "Team Luck & Crit",
+            presentation_kind: "status-effect",
+            presentation_resolution: "reviewed-source-name",
+            icon_asset_path: null,
+          }],
           damage_influences: [{
             effect_id: "2302121",
             attribution_component: "team-luck-critical-damage",
@@ -338,6 +345,13 @@ describe("combat history contracts", () => {
       rdps_contribution_received: 500,
     });
     expect(view.damage_influences).toHaveLength(1);
+    expect(view.rdps_effect_presentations).toEqual([{
+      effect_id: "2302121",
+      presentation_name: "Team Luck & Crit",
+      presentation_kind: "status-effect",
+      presentation_resolution: "reviewed-source-name",
+      icon_asset_path: null,
+    }]);
     expect(view.damage_influences[0]).toMatchObject({
       provider_actor_id: "30",
       recipient_actor_id: "31",

@@ -30,6 +30,10 @@ pub const COMBAT_HISTORY_SCHEMA_VERSION: u16 = 1;
 const COMBAT_INACTIVITY_TIMEOUT_MICROS: u64 = 8_000_000;
 const MINIMUM_PERSONAL_ACTIVE_MICROS: u64 = 1_000_000;
 const MAXIMUM_RUN_ENTRY_BOUNDARIES: usize = 256;
+/// Live hover/drilldown data is derived state and must stay bounded even when a
+/// capture runs for hours. History keeps its existing complete projection from
+/// compact facts; only the ephemeral overlay relationship ledger uses this cap.
+const MAXIMUM_LIVE_RDPS_INFLUENCE_RELATIONSHIPS: usize = 4_096;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CombatHistorySnapshot {
@@ -483,6 +487,20 @@ pub struct CombatTimelineSnapshot {
     #[serde(default)]
     pub true_time_micros: Option<u64>,
     pub closed_at_log_end: bool,
+    /// Bounded, ephemeral rDPS relationships for live skill drilldown. These
+    /// rows are never written into sealed `.rlog` capture payloads.
+    #[serde(default)]
+    pub rdps_damage_influences: Vec<HistoryDamageInfluenceSummary>,
+    /// True when additional live relationships were omitted by the hard cap.
+    /// Actor totals remain authoritative; consumers must treat omitted detail
+    /// as unavailable rather than redistribute the missing amount.
+    #[serde(default)]
+    pub rdps_damage_influences_truncated: bool,
+    /// Display-only names/icons for effects referenced by the ephemeral live
+    /// rows. The game-agnostic reducer leaves this empty for the desktop game
+    /// adapter to enrich without changing canonical capture data.
+    #[serde(default)]
+    pub rdps_effect_presentations: Vec<HistoryRdpsEffectPresentation>,
     pub actors: Vec<ActorCombatSummary>,
 }
 
@@ -1087,6 +1105,8 @@ pub struct CombatTimelinePlugin {
     latest_exact_contributions: Vec<ExactDamageContributionEvent>,
     latest_exact_rational_contributions: Vec<ExactRationalDamageContributionEvent>,
     live_attribution: DamageContributionReducer,
+    live_damage_influences: BTreeMap<HistoryDamageInfluenceKey, HistoryDamageInfluenceAccumulator>,
+    live_damage_influences_truncated: bool,
     event_count: u64,
     data_gap_count: u64,
     closed_at_log_end: bool,
@@ -1217,6 +1237,8 @@ impl CombatTimelinePlugin {
         self.projected_rational_contributions.clear();
         self.latest_exact_contributions.clear();
         self.latest_exact_rational_contributions.clear();
+        self.live_damage_influences.clear();
+        self.live_damage_influences_truncated = false;
         if let Some(projector) = self.exact_contribution_projector.as_mut() {
             projector.reset();
         }
@@ -1863,6 +1885,22 @@ impl CombatTimelinePlugin {
                     },
                     |actor| actor.entity_uuid,
                 );
+            self.observe_live_damage_influence(HistoryDamageInfluenceObservation {
+                observed_micros: contribution.observed_micros,
+                effect_id: contribution.effect_id,
+                scope: contribution.scope,
+                provider_actor_id: contribution.provider_actor_id,
+                provider_entity_uuid,
+                recipient_actor_id: contribution.recipient_actor_id,
+                recipient_entity_uuid,
+                damage_event_sequence: damage_context.map(|context| context.event_sequence),
+                affected_ability_id: damage_context.and_then(|context| context.affected_ability_id),
+                affected_target: damage_context
+                    .map(|context| (context.target_actor_id, context.target_entity_uuid)),
+                observed_damage: contribution.observed_damage,
+                exact_integer_delta: Some(contribution.amount),
+                exact_rational_delta: None,
+            });
             self.push_history_fact(CombatFact {
                 observed_micros: contribution.observed_micros,
                 source_actor_id: contribution.provider_actor_id,
@@ -1924,6 +1962,24 @@ impl CombatTimelinePlugin {
                     },
                     |actor| actor.entity_uuid,
                 );
+            self.observe_live_damage_influence(HistoryDamageInfluenceObservation {
+                observed_micros: contribution.observed_micros,
+                effect_id: contribution.effect_id,
+                scope: contribution.scope,
+                provider_actor_id: contribution.provider_actor_id,
+                provider_entity_uuid,
+                recipient_actor_id: contribution.recipient_actor_id,
+                recipient_entity_uuid,
+                damage_event_sequence: contribution_damage_context
+                    .map(|context| context.event_sequence),
+                affected_ability_id: contribution_damage_context
+                    .and_then(|context| context.affected_ability_id),
+                affected_target: contribution_damage_context
+                    .map(|context| (context.target_actor_id, context.target_entity_uuid)),
+                observed_damage: contribution.observed_damage,
+                exact_integer_delta: None,
+                exact_rational_delta: Some((contribution.numerator, contribution.denominator)),
+            });
             self.push_history_fact(CombatFact {
                 observed_micros: contribution.observed_micros,
                 source_actor_id: contribution.provider_actor_id,
@@ -1949,6 +2005,17 @@ impl CombatTimelinePlugin {
         }
         rational.clear();
         self.projected_rational_contributions = rational;
+    }
+
+    fn observe_live_damage_influence(&mut self, observation: HistoryDamageInfluenceObservation) {
+        let key = history_damage_influence_key(observation);
+        if !self.live_damage_influences.contains_key(&key)
+            && self.live_damage_influences.len() >= MAXIMUM_LIVE_RDPS_INFLUENCE_RELATIONSHIPS
+        {
+            self.live_damage_influences_truncated = true;
+            return;
+        }
+        observe_history_damage_influence(&mut self.live_damage_influences, observation);
     }
 
     fn rdps_enabled(&self) -> bool {
@@ -2169,6 +2236,17 @@ impl CombatTimelinePlugin {
             0
         };
         let contribution_summary = self.live_attribution.summary();
+        let mut rdps_damage_influences = finish_history_damage_influences(
+            self.live_damage_influences.clone(),
+            &contribution_summary.rational_effect_projections,
+        );
+        if self.live_damage_influences_truncated {
+            for influence in &mut rdps_damage_influences {
+                if !influence.exact_rational_deltas.is_empty() {
+                    influence.attributed_rdps = None;
+                }
+            }
+        }
         let rdps_enabled = self.rdps_enabled();
         let incomplete_rdps_actor_ids = self
             .exact_contribution_projector
@@ -2310,6 +2388,9 @@ impl CombatTimelinePlugin {
             game_time_micros: None,
             true_time_micros: None,
             closed_at_log_end: self.closed_at_log_end,
+            rdps_damage_influences,
+            rdps_damage_influences_truncated: self.live_damage_influences_truncated,
+            rdps_effect_presentations: Vec::new(),
             actors,
         })
     }
@@ -3359,19 +3440,7 @@ fn observe_history_damage_influence(
     influences: &mut BTreeMap<HistoryDamageInfluenceKey, HistoryDamageInfluenceAccumulator>,
     observation: HistoryDamageInfluenceObservation,
 ) {
-    let key = HistoryDamageInfluenceKey {
-        effect_id: observation.effect_id,
-        scope: observation.scope,
-        provider_actor_id: observation.provider_actor_id,
-        provider_entity_uuid: observation.provider_entity_uuid,
-        recipient_actor_id: observation.recipient_actor_id,
-        recipient_entity_uuid: observation.recipient_entity_uuid,
-        affected_ability_id: observation.affected_ability_id,
-        target_actor_id: observation.affected_target.map(|(actor_id, _)| actor_id),
-        target_entity_uuid: observation
-            .affected_target
-            .map(|(_, entity_uuid)| entity_uuid),
-    };
+    let key = history_damage_influence_key(observation);
     let context_complete =
         observation.damage_event_sequence.is_some() && observation.affected_target.is_some();
     let accumulator = influences.entry(key).or_default();
@@ -3411,6 +3480,24 @@ fn observe_history_damage_influence(
             .or_default();
         term.0 = term.0.saturating_add(numerator);
         term.1 = term.1.saturating_add(1);
+    }
+}
+
+fn history_damage_influence_key(
+    observation: HistoryDamageInfluenceObservation,
+) -> HistoryDamageInfluenceKey {
+    HistoryDamageInfluenceKey {
+        effect_id: observation.effect_id,
+        scope: observation.scope,
+        provider_actor_id: observation.provider_actor_id,
+        provider_entity_uuid: observation.provider_entity_uuid,
+        recipient_actor_id: observation.recipient_actor_id,
+        recipient_entity_uuid: observation.recipient_entity_uuid,
+        affected_ability_id: observation.affected_ability_id,
+        target_actor_id: observation.affected_target.map(|(actor_id, _)| actor_id),
+        target_entity_uuid: observation
+            .affected_target
+            .map(|(_, entity_uuid)| entity_uuid),
     }
 }
 
@@ -4452,6 +4539,25 @@ mod tests {
                 ..
             }
         ));
+        let live_detail = plugin.live_overlay_snapshot().unwrap();
+        assert!(!live_detail.rdps_damage_influences_truncated);
+        let integer_row = live_detail
+            .rdps_damage_influences
+            .iter()
+            .find(|row| row.attribution_component.as_deref() == Some("test-integer"))
+            .expect("integer contribution should flow to live skill detail");
+        assert_eq!(integer_row.effect_id, "9001");
+        assert_eq!(integer_row.provider_actor_id, "1");
+        assert_eq!(integer_row.recipient_actor_id, "2");
+        assert_eq!(integer_row.affected_ability_id.as_deref(), Some("55"));
+        assert_eq!(integer_row.attributed_rdps.as_deref(), Some("10"));
+        let rational_row = live_detail
+            .rdps_damage_influences
+            .iter()
+            .find(|row| row.attribution_component.as_deref() == Some("test-rational"))
+            .expect("rational contribution should flow to live skill detail");
+        assert_eq!(rational_row.affected_ability_id.as_deref(), Some("88"));
+        assert_eq!(rational_row.attributed_rdps.as_deref(), Some("1"));
 
         let movement = factory
             .emit(CanonicalEventDraft {
@@ -5699,6 +5805,38 @@ mod tests {
         assert_eq!(history_provider.rdps_contribution_given, Some(100));
         assert_eq!(history_recipient.rdps_damage, Some(2_100));
         assert_eq!(history_recipient.rdps_contribution_received, Some(100));
+    }
+
+    #[test]
+    fn live_rdps_influence_ledger_is_hard_capped() {
+        let mut plugin = CombatTimelinePlugin::new();
+        for effect_id in 1..=(MAXIMUM_LIVE_RDPS_INFLUENCE_RELATIONSHIPS as i64 + 1) {
+            plugin.observe_live_damage_influence(HistoryDamageInfluenceObservation {
+                observed_micros: effect_id as u64,
+                effect_id,
+                scope: DamageContributionScope::CompleteEffect,
+                provider_actor_id: 1,
+                provider_entity_uuid: 101,
+                recipient_actor_id: 2,
+                recipient_entity_uuid: 102,
+                damage_event_sequence: Some(effect_id as u64),
+                affected_ability_id: Some(55),
+                affected_target: Some((3, 103)),
+                observed_damage: 1,
+                exact_integer_delta: Some(1),
+                exact_rational_delta: None,
+            });
+        }
+
+        assert_eq!(
+            plugin.live_damage_influences.len(),
+            MAXIMUM_LIVE_RDPS_INFLUENCE_RELATIONSHIPS
+        );
+        assert!(plugin.live_damage_influences_truncated);
+
+        plugin.reset_live_attempt(10_000);
+        assert!(plugin.live_damage_influences.is_empty());
+        assert!(!plugin.live_damage_influences_truncated);
     }
 
     #[test]

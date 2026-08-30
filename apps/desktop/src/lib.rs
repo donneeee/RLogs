@@ -5031,6 +5031,17 @@ impl RuntimeController {
                                                     identities,
                                                 ) {
                                                     live_snapshot_error = Some(error);
+                                                } else if let Err(error) = history
+                                                    .runs
+                                                    .iter_mut()
+                                                    .try_for_each(|run| {
+                                                        enrich_bpsr_run_rdps_effect_presentations(
+                                                            run,
+                                                            "en-US",
+                                                        )
+                                                    })
+                                                {
+                                                    live_snapshot_error = Some(error);
                                                 } else {
                                                     live_run_projection = history.runs.last().cloned();
                                                     last_live_projection_refresh = Instant::now();
@@ -5059,6 +5070,14 @@ impl RuntimeController {
                                                 ),
                                                 LiveCharacterIdentityAuthority::PersistentFallback,
                                             );
+                                            if let Err(error) =
+                                                enrich_bpsr_live_rdps_effect_presentations(
+                                                    &mut snapshot,
+                                                    "en-US",
+                                                )
+                                            {
+                                                live_snapshot_error = Some(error);
+                                            }
                                             apply_live_run_projection_clocks(
                                                 &mut snapshot,
                                                 live_run_projection.as_ref(),
@@ -7423,32 +7442,8 @@ fn enrich_bpsr_history_presentation(
             .transpose()?
             .flatten()
             .map(str::to_owned);
+        enrich_bpsr_run_rdps_effect_presentations(run, locale)?;
         for view in &mut run.views {
-            let referenced_rdps_effect_ids = view
-                .damage_influences
-                .iter()
-                .filter_map(|influence| influence.effect_id.parse::<i64>().ok())
-                .collect::<BTreeSet<_>>();
-            let mut rdps_effect_presentations = Vec::new();
-            for effect_id in referenced_rdps_effect_ids {
-                let Some(attribution) = rdps_attribution_effect_presentation(effect_id, locale)?
-                else {
-                    continue;
-                };
-                let status = status_effect_presentation(effect_id)?;
-                rdps_effect_presentations.push(HistoryRdpsEffectPresentation {
-                    effect_id: effect_id.to_string(),
-                    presentation_name: attribution.name.clone(),
-                    presentation_kind: status
-                        .map(|presentation| presentation.kind.clone())
-                        .unwrap_or_else(|| "status-effect".into()),
-                    presentation_resolution: attribution.resolution.clone(),
-                    icon_asset_path: bpsr_game_asset_path(
-                        status.and_then(|presentation| presentation.icon.clone()),
-                    ),
-                });
-            }
-            view.rdps_effect_presentations = rdps_effect_presentations;
             for actor in &mut view.actors {
                 let ability_ids = actor
                     .abilities
@@ -7546,6 +7541,60 @@ fn enrich_bpsr_history_presentation(
         }
     }
     Ok(())
+}
+
+fn enrich_bpsr_run_rdps_effect_presentations(
+    run: &mut CombatRunHistory,
+    locale: &str,
+) -> Result<(), String> {
+    for view in &mut run.views {
+        let referenced_rdps_effect_ids = view
+            .damage_influences
+            .iter()
+            .filter_map(|influence| influence.effect_id.parse::<i64>().ok())
+            .collect::<BTreeSet<_>>();
+        view.rdps_effect_presentations =
+            bpsr_rdps_effect_presentations(referenced_rdps_effect_ids, locale)?;
+    }
+    Ok(())
+}
+
+fn enrich_bpsr_live_rdps_effect_presentations(
+    snapshot: &mut CombatTimelineSnapshot,
+    locale: &str,
+) -> Result<(), String> {
+    let effect_ids = snapshot
+        .rdps_damage_influences
+        .iter()
+        .filter_map(|influence| influence.effect_id.parse::<i64>().ok())
+        .collect::<BTreeSet<_>>();
+    snapshot.rdps_effect_presentations = bpsr_rdps_effect_presentations(effect_ids, locale)?;
+    Ok(())
+}
+
+fn bpsr_rdps_effect_presentations(
+    effect_ids: BTreeSet<i64>,
+    locale: &str,
+) -> Result<Vec<HistoryRdpsEffectPresentation>, String> {
+    let mut presentations = Vec::new();
+    for effect_id in effect_ids {
+        let Some(attribution) = rdps_attribution_effect_presentation(effect_id, locale)? else {
+            continue;
+        };
+        let status = status_effect_presentation(effect_id)?;
+        presentations.push(HistoryRdpsEffectPresentation {
+            effect_id: effect_id.to_string(),
+            presentation_name: attribution.name.clone(),
+            presentation_kind: status
+                .map(|presentation| presentation.kind.clone())
+                .unwrap_or_else(|| "status-effect".into()),
+            presentation_resolution: attribution.resolution.clone(),
+            icon_asset_path: bpsr_game_asset_path(
+                status.and_then(|presentation| presentation.icon.clone()),
+            ),
+        });
+    }
+    Ok(presentations)
 }
 
 fn freeze_bpsr_history_character_state(
@@ -9032,6 +9081,9 @@ mod tests {
             game_time_micros: None,
             true_time_micros: None,
             closed_at_log_end: false,
+            rdps_damage_influences: Vec::new(),
+            rdps_damage_influences_truncated: false,
+            rdps_effect_presentations: Vec::new(),
             actors: vec![actor],
         };
 
@@ -9712,6 +9764,27 @@ mod tests {
     }
 
     #[test]
+    fn full_bloom_saved_history_remains_authorized_during_formula_refresh() {
+        let mut snapshot = captured_marksman_history();
+        let actor = &mut snapshot.runs[0].views[0].actors[0];
+        actor.rdps = Some(2.0);
+        actor.rdps_damage = Some(2);
+        actor.rdps_contribution_given = Some(1);
+        actor.rdps_contribution_received = Some(1);
+        add_history_damage_influence(&mut snapshot, 2_404_271);
+
+        let proven_effect_ids = proven_state_damage_contribution_effect_ids()
+            .unwrap()
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        assert!(proven_effect_ids.contains(&2_404_271));
+        assert!(
+            !history_rdps_projection_requires_clear(&snapshot, &proven_effect_ids),
+            "Full Bloom is a production-emitted Inspiration component and must not be cleared as unauthorized",
+        );
+    }
+
+    #[test]
     fn stale_history_returns_cached_rdps_and_queues_background_refresh_without_raw_log() {
         let root = temporary_root();
         let controller = RuntimeController::new(root.clone()).unwrap();
@@ -10084,6 +10157,51 @@ mod tests {
         assert_eq!(actor.seasonal_score, None);
         assert!(actor.primary_loadout.is_empty());
         assert!(actor.auxiliary_loadout.is_empty());
+    }
+
+    #[test]
+    fn live_run_projection_resolves_inspire_effect_presentation() {
+        let mut snapshot = captured_marksman_history();
+        snapshot.runs[0].views[0].damage_influences.push(
+            rlogs_plugin_combat_meter::HistoryDamageInfluenceSummary {
+                effect_id: "31602".into(),
+                attribution_component: Some(
+                    "Inspire (31602) packet-final action-speed opportunity".into(),
+                ),
+                complete_effect: false,
+                provider_actor_id: "1".into(),
+                provider_entity_uuid: "101".into(),
+                recipient_actor_id: "2".into(),
+                recipient_entity_uuid: "102".into(),
+                affected_ability_id: Some("2203521".into()),
+                target_actor_id: Some("3".into()),
+                target_entity_uuid: Some("103".into()),
+                first_observed_micros: 1_000,
+                last_observed_micros: 2_000,
+                damage_event_count: 1,
+                observed_damage: "1200".into(),
+                exact_integer_delta: "0".into(),
+                exact_rational_deltas: Vec::new(),
+                attributed_rdps: Some("109".into()),
+                damage_context_complete: true,
+            },
+        );
+
+        enrich_bpsr_run_rdps_effect_presentations(&mut snapshot.runs[0], "en-US").unwrap();
+
+        assert_eq!(
+            snapshot.runs[0].views[0].rdps_effect_presentations,
+            vec![HistoryRdpsEffectPresentation {
+                effect_id: "31602".into(),
+                presentation_name: "Inspire".into(),
+                presentation_kind: "status-effect".into(),
+                presentation_resolution: "localized-status-effect".into(),
+                icon_asset_path: Some(
+                    "/game-assets/blue-protocol-star-resonance/shared/icons/combat/atlas/buff/buff_talent_skill_300001.png"
+                        .into(),
+                ),
+            }]
+        );
     }
 
     #[test]
