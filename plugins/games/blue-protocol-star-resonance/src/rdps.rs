@@ -449,6 +449,18 @@ mod tests {
         assert_eq!(rhapsody.source_scope, RdpsSourceScope::Owner);
         assert_eq!(rhapsody.target_scope, RdpsTargetScope::SelfOnly);
         assert!(!rhapsody.attribution_enabled);
+
+        for effect_id in [2_110_075, 2_110_077, 2_110_126, 2_110_128] {
+            let RdpsEffectLookup::Reviewed(effect) = classify_rdps_effect(effect_id).unwrap()
+            else {
+                panic!("expected reviewed owner-only Imagine effect {effect_id}");
+            };
+            assert_eq!(effect.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(effect.contribution_kind, RdpsContributionKind::SelfOnly);
+            assert_eq!(effect.source_scope, RdpsSourceScope::Owner);
+            assert_eq!(effect.target_scope, RdpsTargetScope::SelfOnly);
+            assert!(!effect.attribution_enabled);
+        }
     }
 
     #[test]

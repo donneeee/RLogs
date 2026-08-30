@@ -1423,6 +1423,26 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2110075,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2110077,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "stack_scaled",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2110078,
       "review_state": "candidate",
       "contribution_kind": "target_vulnerability",
@@ -1490,6 +1510,26 @@
       "target_scope": "party_members",
       "magnitude_basis_points": null,
       "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2110126,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2110128,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
       "attribution_enabled": false
     },
     {
