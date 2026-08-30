@@ -289,9 +289,14 @@ mod tests {
         ),
     ];
 
-    const REVIEW_BATCH_SOURCES: [&str; 1] = [include_str!(
-        "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-support-and-marker-batch.v1.json"
-    )];
+    const REVIEW_BATCH_SOURCES: [&str; 2] = [
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-support-and-marker-batch.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-owner-self-and-support-batch.v1.json"
+        ),
+    ];
 
     #[derive(Debug, Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -379,7 +384,9 @@ mod tests {
             assert_eq!(rule.contribution_kind, RdpsContributionKind::HealingSupport);
             assert!(!rule.attribution_enabled);
         }
-        for effect_id in [21_408, 55_226, 55_407, 2_201_452, 2_206_331, 3_003_071] {
+        for effect_id in [
+            21_408, 21_411, 21_413, 55_226, 55_407, 2_110_117, 2_201_452, 2_206_331, 3_003_071,
+        ] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed mitigation effect {effect_id}");
             };
@@ -387,7 +394,7 @@ mod tests {
             assert!(!rule.attribution_enabled);
         }
         for effect_id in [
-            2_110_050, 2_110_056, 2_110_057, 2_202_121, 2_202_261, 2_202_263,
+            2_110_050, 2_110_056, 2_110_057, 2_202_121, 2_202_261, 2_202_263, 3_057_111,
         ] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed internal marker {effect_id}");
@@ -415,6 +422,24 @@ mod tests {
         assert_eq!(owner_only.target_scope, RdpsTargetScope::Enemy);
         assert_eq!(owner_only.stacking_rule, RdpsStackingRule::StackScaled);
         assert!(!owner_only.attribution_enabled);
+        assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
+    }
+
+    #[test]
+    fn exact_owner_self_batch_never_becomes_transferred_rdps() {
+        for effect_id in [
+            2_200_601, 2_200_602, 2_201_201, 2_206_551, 2_406_150, 2_406_160, 3_003_410, 3_003_420,
+            3_003_480,
+        ] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed owner-self effect {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::SelfOnly);
+            assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+            assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+            assert!(!rule.attribution_enabled);
+        }
         assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
     }
 

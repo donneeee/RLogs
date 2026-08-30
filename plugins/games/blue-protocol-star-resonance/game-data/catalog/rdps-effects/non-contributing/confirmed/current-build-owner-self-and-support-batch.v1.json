@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":21411,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"unresolved","target_scope":"effect_target","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":21413,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"unresolved","target_scope":"effect_target","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2110117,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2200601,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2200602,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false},
+    {"effect_id":2201201,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2206551,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2406150,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2406160,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":3003410,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":3003420,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false},
+    {"effect_id":3003480,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":3057111,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"unresolved","target_scope":"effect_target","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Build-24687926 packet reconciliation proves zero cross-actor, external-player, monster-recipient, and unresolved-cross-actor windows for effects 2200601, 2200602, 2201201, 2206551, 2406150, 2406160, 3003410, 3003420, and 3003480. Their formula components are owner-scoped; direct proc outputs remain ordinary source-owned damage.",
+    "Effects 2200601 and 2200602 are Divine Sickle owner replacement/counter states from talent 158; 2201201 is the owner Shield Combo transformation from talent 919; 2206551 is Radiant Core's owner countdown, distinct from its explosion child 2206552.",
+    "Effects 2406150 and 2406160 are owner-held Season 2 set states. Their exact set selector remains ambiguous and heuristic owner/party percent splits have no source text, so neither status can authorize party transfer.",
+    "Effects 3003410, 3003420, and 3003480 are owner parent/enhancer states from exact tree nodes 1701, 1702, and 1710. External Endless Mind traffic belongs to child 3003411, whose Mastery scope and per-origin formula remain a separate blocked candidate.",
+    "Effect 2110117 is the external Caprahorn Shield mitigation/super-armor child with exact Fafala skill-3951 provider/recipient lifecycle and no outgoing-damage IDs. Its offensive sibling 2110118 remains distinct.",
+    "Effects 21411 and 21413 are recipient-held shield and elemental-mitigation uptime without an outgoing-damage route. Effect 3057111 is an overhealing detection marker; its apparent linked ID is a UID/name bridge with no damage rows or action identity.",
+    "All 13 rules retain canonical status evidence, set attribution_enabled false, and cannot alter ordinary damage or enter the rDPS reducer."
+  ]
+}
