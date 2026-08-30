@@ -379,14 +379,16 @@ mod tests {
             assert_eq!(rule.contribution_kind, RdpsContributionKind::HealingSupport);
             assert!(!rule.attribution_enabled);
         }
-        for effect_id in [21_408, 55_226, 2_206_331, 3_003_071] {
+        for effect_id in [21_408, 55_226, 55_407, 2_201_452, 2_206_331, 3_003_071] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed mitigation effect {effect_id}");
             };
             assert_eq!(rule.contribution_kind, RdpsContributionKind::Mitigation);
             assert!(!rule.attribution_enabled);
         }
-        for effect_id in [2_110_050, 2_110_056, 2_110_057, 2_202_261] {
+        for effect_id in [
+            2_110_050, 2_110_056, 2_110_057, 2_202_121, 2_202_261, 2_202_263,
+        ] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed internal marker {effect_id}");
             };
@@ -417,13 +419,12 @@ mod tests {
     }
 
     #[test]
-    fn name_only_mitigation_rows_remain_unclassified_and_fail_closed() {
-        for effect_id in [55_407, 2_110_032] {
-            assert_eq!(
-                classify_rdps_effect(effect_id).unwrap(),
-                RdpsEffectLookup::RetainedMappedUnclassified { effect_id }
-            );
-        }
+    fn unresolved_external_survival_status_remains_unclassified_and_fail_closed() {
+        let effect_id = 2_110_032;
+        assert_eq!(
+            classify_rdps_effect(effect_id).unwrap(),
+            RdpsEffectLookup::RetainedMappedUnclassified { effect_id }
+        );
     }
 
     #[test]
@@ -478,16 +479,52 @@ mod tests {
     }
 
     #[test]
-    fn older_build_target_reviews_do_not_leak_into_the_current_reducer() {
+    fn current_build_owner_only_wounding_curse_reviews_never_enter_the_reducer() {
         for effect_id in [2_203_031, 2_205_031] {
-            assert_eq!(
-                classify_rdps_effect(effect_id).unwrap(),
-                RdpsEffectLookup::RetainedMappedUnclassified { effect_id }
-            );
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed owner-only Wounding Curse {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::SelfOnly);
+            assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+            assert_eq!(rule.target_scope, RdpsTargetScope::Enemy);
+            assert_eq!(rule.magnitude_basis_points, Some(1_000));
+            assert_eq!(rule.stacking_rule, RdpsStackingRule::Fixed);
+            assert!(!rule.attribution_enabled);
         }
 
         let rules = confirmed_damage_contribution_rules().unwrap();
         assert!(rules.is_empty());
+    }
+
+    #[test]
+    fn current_build_damage_to_healing_and_ally_defense_never_enter_damage_attribution() {
+        let RdpsEffectLookup::Reviewed(symbiotic_mark) = classify_rdps_effect(21_423).unwrap()
+        else {
+            panic!("expected reviewed Symbiotic Mark 21423");
+        };
+        assert_eq!(
+            symbiotic_mark.review_state,
+            RdpsReviewState::NonContributing
+        );
+        assert_eq!(
+            symbiotic_mark.contribution_kind,
+            RdpsContributionKind::HealingSupport
+        );
+        assert!(!symbiotic_mark.attribution_enabled);
+
+        let RdpsEffectLookup::Reviewed(sandshroud) = classify_rdps_effect(2_201_452).unwrap()
+        else {
+            panic!("expected reviewed Sandshroud 2201452");
+        };
+        assert_eq!(sandshroud.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(
+            sandshroud.contribution_kind,
+            RdpsContributionKind::Mitigation
+        );
+        assert!(!sandshroud.attribution_enabled);
+
+        assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
     }
 
     #[test]

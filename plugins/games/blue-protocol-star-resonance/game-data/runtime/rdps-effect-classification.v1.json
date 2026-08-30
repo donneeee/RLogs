@@ -24,6 +24,16 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 21423,
+      "review_state": "non_contributing",
+      "contribution_kind": "healing_support",
+      "source_scope": "effect_source",
+      "target_scope": "effect_target",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 21427,
       "review_state": "non_contributing",
       "contribution_kind": "healing_support",
@@ -154,6 +164,16 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 55407,
+      "review_state": "non_contributing",
+      "contribution_kind": "mitigation",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 702003,
       "review_state": "non_contributing",
       "contribution_kind": "direct_damage_amplification",
@@ -234,6 +254,16 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2201452,
+      "review_state": "non_contributing",
+      "contribution_kind": "mitigation",
+      "source_scope": "effect_source",
+      "target_scope": "effect_target",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2202091,
       "review_state": "non_contributing",
       "contribution_kind": "healing_support",
@@ -245,6 +275,16 @@
     },
     {
       "effect_id": 2202113,
+      "review_state": "non_contributing",
+      "contribution_kind": "internal_marker",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2202121,
       "review_state": "non_contributing",
       "contribution_kind": "internal_marker",
       "source_scope": "effect_source",
@@ -270,6 +310,36 @@
       "source_scope": "effect_source",
       "target_scope": "effect_target",
       "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2202263,
+      "review_state": "non_contributing",
+      "contribution_kind": "internal_marker",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2203031,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "effect_source",
+      "target_scope": "enemy",
+      "magnitude_basis_points": 1000,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205031,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "effect_source",
+      "target_scope": "enemy",
+      "magnitude_basis_points": 1000,
       "stacking_rule": "fixed",
       "attribution_enabled": false
     },
