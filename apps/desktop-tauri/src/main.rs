@@ -34,8 +34,29 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("rLogs application failed: {error}");
+        let message = format!("rLogs application failed: {error}");
+        eprintln!("{message}");
+        #[cfg(windows)]
+        show_startup_error(&message);
         std::process::exit(1);
+    }
+}
+
+#[cfg(windows)]
+fn show_startup_error(message: &str) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+
+    let title = "rLogs startup error\0".encode_utf16().collect::<Vec<_>>();
+    let message = format!("{message}\0").encode_utf16().collect::<Vec<_>>();
+    // SAFETY: Both strings are explicitly NUL-terminated and remain alive for
+    // the duration of the synchronous Windows dialog call.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            message.as_ptr(),
+            title.as_ptr(),
+            MB_OK | MB_ICONERROR,
+        );
     }
 }
 
@@ -560,7 +581,6 @@ fn monitor_overlay_focus_policy(
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let install_root = development_install_root()?;
     tauri::Builder::default()
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -581,7 +601,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .build(),
         )
-        .setup(move |app| {
+        .setup(|app| {
+            let install_root = application_install_root(app)?;
             let host = start_embedded_local_host(&install_root)?;
             let url = format!("http://{}", host.address()).parse()?;
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
@@ -699,11 +720,14 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-fn development_install_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn application_install_root(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
     if let Some(path) = std::env::var_os("RLOGS_INSTALL_ROOT") {
         return Ok(std::fs::canonicalize(path)?);
     }
-    Ok(std::fs::canonicalize(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
-    )?)
+    if cfg!(debug_assertions) {
+        return Ok(std::fs::canonicalize(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+        )?);
+    }
+    Ok(std::fs::canonicalize(app.path().resource_dir()?)?)
 }
