@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2201220,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2201540,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2201570,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2203040,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2203220,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2203530,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2203540,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false},
+    {"effect_id":2208490,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2407290,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false},
+    {"effect_id":3003440,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Build-24687926 reconciliation resolves every listed status to owner/provider-recipient subdivision with zero cross-actor, external-player, monster-recipient, and unresolved-cross-actor windows. Exact source-component routing is owner/self-only; any produced proc rows remain ordinary damage owned by their source actor.",
+    "Effects 2203040 Wolf Pact, 2203530 Phantom Falcon, and 2208490 Raging Flame Sharpness II are owner talent states whose damage or cadence components are source-local. Effect 2203540 Focused Concentration is a stacking self Crit/Crit-DMG passive; its two percentages describe separate owner components rather than owner/party scope.",
+    "Effect 2203220 is Lightfall's owner Crit-to-Crit-DMG and energy dependency. It remains independently nontransferable while its exact recipient-local 1/2 Crit conversion continues to participate in the separately promoted Inspiration counterfactual; Lightfall never receives the external provider credit.",
+    "Effects 2201570 Rock Guard and 2201540 Bash Pursuit produce exact personal damage rows 2220157003 and 2220154005/137. Those outputs remain source-owned ordinary damage. Effect 2201220 Elemental Harmony is an owner Mastery and magic-mitigation state, not a party damage effect.",
+    "Effect 3003440 Swiftflow is exact tree node 1704 and modifies the owner's Expertise cooldown per Endless Mind stack. Effect 2407290 is an owner Season 2 four-piece state; its exact set selector remains ambiguous, but every routed Haste, damage, cooldown, and shield component is owner-only.",
+    "Effect 2407280 is deliberately excluded: its ambiguous two-piece set selector exposes a possible target-vulnerability component, but no distinct target-side or player-to-monster lifecycle proves that route. It remains retained and fail-closed pending selector and target-lifecycle acquisition.",
+    "The ten rules set attribution_enabled false and cannot transfer damage. Parser-inferred owner/party percent splits without source text are not accepted as scope authority."
+  ]
+}

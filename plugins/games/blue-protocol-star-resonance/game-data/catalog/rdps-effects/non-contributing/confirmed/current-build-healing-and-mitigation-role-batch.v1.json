@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":21404,"review_state":"non_contributing","contribution_kind":"healing_support","source_scope":"effect_source","target_scope":"effect_target","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false},
+    {"effect_id":21422,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"unresolved","target_scope":"effect_target","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":55315,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"unresolved","target_scope":"effect_target","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2100410,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2100411,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2202112,"review_state":"non_contributing","contribution_kind":"healing_support","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2202705,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Current-build DamageAttr decoding treats damage_type 2 as healing. Effect 21404 resolves to HP Recovery endpoints 22140403/22140404 and exact origin keys 1:2202230 or 1:2202630; the fallback provider remains ambiguous, so the effect is retained as healing support without selecting a talent when the origin key is absent.",
+    "Effect 2202112 is Symbiotic Mark's exact PHeal/overhealing lifecycle child. Current-build packet envelope 41052 applies 2202112 and envelope 41053 applies cooldown child 2202113 to the same provider, recipient, origin 1:21423, timestamp, level, and stacks. Symbiotic Mark heals the marked target and cannot uplift packet-final damage.",
+    "Effects 2100410 and 2100411 are the shield and damage-reduction siblings of Life Barrier. Current origin 1:2100409 identifies that source family. Effect 2202705 is the MAddShield child of Life Bloom with exact current origin 1:20301. Retained older-build external windows support presentation only; they are not claimed as same-build lifecycle authority.",
+    "Effects 21422 and 55315 are MAddShield or mitigation statuses without a current exact provider action. Their source scopes remain unresolved; this records only their non-damage role and does not invent provider nesting or magnitude.",
+    "All seven effects have attribution_enabled false. Missing same-build external lifecycle or provider identity cannot turn a healing, shield, or mitigation endpoint into damage rDPS, and ordinary damage remains unchanged."
+  ]
+}

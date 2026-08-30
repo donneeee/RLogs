@@ -289,12 +289,18 @@ mod tests {
         ),
     ];
 
-    const REVIEW_BATCH_SOURCES: [&str; 2] = [
+    const REVIEW_BATCH_SOURCES: [&str; 4] = [
         include_str!(
             "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-support-and-marker-batch.v1.json"
         ),
         include_str!(
             "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-owner-self-and-support-batch.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-owner-local-offense-batch.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-healing-and-mitigation-role-batch.v1.json"
         ),
     ];
 
@@ -374,8 +380,8 @@ mod tests {
     #[test]
     fn exact_support_and_marker_batch_never_enters_damage_attribution() {
         for effect_id in [
-            21_402, 21_427, 21_428, 55_301, 55_302, 55_304, 55_314, 55_339, 55_342, 55_344, 55_346,
-            55_361, 829_130, 2_100_412, 2_202_091, 2_202_262,
+            21_402, 21_404, 21_427, 21_428, 55_301, 55_302, 55_304, 55_314, 55_339, 55_342, 55_344,
+            55_346, 55_361, 829_130, 2_100_412, 2_202_091, 2_202_112, 2_202_262,
         ] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed healing-support effect {effect_id}");
@@ -385,7 +391,8 @@ mod tests {
             assert!(!rule.attribution_enabled);
         }
         for effect_id in [
-            21_408, 21_411, 21_413, 55_226, 55_407, 2_110_117, 2_201_452, 2_206_331, 3_003_071,
+            21_408, 21_411, 21_413, 21_422, 55_226, 55_315, 55_407, 2_100_410, 2_100_411,
+            2_110_117, 2_201_452, 2_202_705, 2_206_331, 3_003_071,
         ] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed mitigation effect {effect_id}");
@@ -428,8 +435,9 @@ mod tests {
     #[test]
     fn exact_owner_self_batch_never_becomes_transferred_rdps() {
         for effect_id in [
-            2_200_601, 2_200_602, 2_201_201, 2_206_551, 2_406_150, 2_406_160, 3_003_410, 3_003_420,
-            3_003_480,
+            2_200_601, 2_200_602, 2_201_201, 2_201_220, 2_201_540, 2_201_570, 2_203_040, 2_203_220,
+            2_203_530, 2_203_540, 2_206_551, 2_208_490, 2_406_150, 2_406_160, 2_407_290, 3_003_410,
+            3_003_420, 3_003_440, 3_003_480,
         ] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed owner-self effect {effect_id}");
