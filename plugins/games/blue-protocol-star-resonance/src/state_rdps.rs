@@ -25,7 +25,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     BPSR_FIXED_POINT_SCALE, CriticalDamageFactorInterpretation, PacketDamageScriptFamily,
-    PositiveFixedPointRounding,
+    PositiveFixedPointRounding, class_role,
     damage_stage::{
         OffensiveStatKind, SelectedDamageStage, damage_attr_id_for_action, select_damage_stage,
         validate_damage_stage_catalog,
@@ -60,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v30";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v39";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -227,6 +227,33 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.critical_cold.effect_id) {
         effect_ids.push(runtime.critical_cold.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.synergy_crit_field.effect_id) {
+        effect_ids.push(runtime.synergy_crit_field.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.element_sharing.effect_id) {
+        effect_ids.push(runtime.element_sharing.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.enhanced_synergy.effect_id) {
+        effect_ids.push(runtime.enhanced_synergy.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.blessing.effect_id) {
+        effect_ids.push(runtime.blessing.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.synergy_luck_field.effect_id) {
+        effect_ids.push(runtime.synergy_luck_field.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.coordinated_strike.effect_id) {
+        effect_ids.push(runtime.coordinated_strike.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.all_class_aura.effect_id) {
+        effect_ids.push(runtime.all_class_aura.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.tactical_blessing.effect_id) {
+        effect_ids.push(runtime.tactical_blessing.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.attribute_transfer.effect_id) {
+        effect_ids.push(runtime.attribute_transfer.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.inspire.effect_id) {
         effect_ids.push(runtime.inspire.effect_id);
@@ -767,6 +794,12 @@ struct ActorHpState {
     provider_raw_percent: BTreeMap<u64, i64>,
     critical_damage_raw: Option<i64>,
     lucky_damage_raw: Option<i64>,
+    physical_boost_raw: Option<i64>,
+    magical_boost_raw: Option<i64>,
+    /// Packet-final additive General Damage bucket (`AttrOtherDamInc`, 12670)
+    /// in ten-thousandths. Blessing contributes exactly 3000 raw while its
+    /// recipient status is active.
+    general_damage_raw: Option<i64>,
     physical_attack: AttackFamilyState,
     magical_attack: AttackFamilyState,
     /// Complete packet-observed primary-stat families affected by Harmony
@@ -1866,6 +1899,27 @@ struct FormulaStatusValue {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct FormulaStatusWindow {
+    opened_observed_micros: u64,
+    expires_at_observed_micros: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AttributeTransferLane {
+    CriticalChance,
+    LuckyChance,
+    Haste,
+    Mastery,
+    Versatility,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AttributeTransferWindow {
+    lifecycle: FormulaStatusWindow,
+    lane: Option<AttributeTransferLane>,
+}
+
+#[derive(Debug, Clone, Copy)]
 struct TargetVulnerabilityWindow {
     expires_at_observed_micros: Option<u64>,
 }
@@ -2215,6 +2269,45 @@ pub struct BpsrStateDamageContributionProjector {
     /// different remote build or overlapping status context.
     formula_attributes_by_actor: HashMap<u64, BTreeMap<i32, i64>>,
     formula_statuses: HashMap<FormulaStatusKey, FormulaStatusValue>,
+    /// The recipient child is a 1.1-second refreshed aura status. Generic
+    /// formula status state has no clock, so attribution must additionally
+    /// prove that this exact lifecycle is strictly after its opening event and
+    /// before its installed-game duration boundary.
+    synergy_crit_field_windows: HashMap<FormulaStatusKey, FormulaStatusWindow>,
+    /// Element Sharing's exact recipient child has a fixed ten-second
+    /// lifecycle. Its clock is kept separately from generic formula status
+    /// context so a missing terminal can never produce indefinite credit.
+    element_sharing_windows: HashMap<FormulaStatusKey, FormulaStatusWindow>,
+    /// Enhanced Synergy's exact recipient child carries both PHY and MAG
+    /// Boost for three seconds. The recipient's selected damage stage chooses
+    /// which packet-final boost attribute supplies the exact denominator.
+    enhanced_synergy_windows: HashMap<FormulaStatusKey, FormulaStatusWindow>,
+    /// Blessing's exact recipient status is bounded to ten seconds. Its
+    /// stacking rule is not interpreted: more than one active instance or
+    /// provider fails closed in the contribution decision.
+    blessing_windows: HashMap<FormulaStatusKey, FormulaStatusWindow>,
+    /// Synergy Luck Field grants one exact Imagine passive to an external
+    /// recipient for ten seconds. Whole-proc transfer additionally requires
+    /// an exact loadout proving that recipient did not already equip it.
+    synergy_luck_field_windows: HashMap<FormulaStatusKey, FormulaStatusWindow>,
+    synergy_luck_field_recipient_has_intrinsic_imagine: HashMap<i64, bool>,
+    /// Coordinated Strike's exact recipient child has a fixed three-second
+    /// lifecycle. The separate clock prevents a missing terminal row from
+    /// extending its +15% Attack contribution indefinitely.
+    coordinated_strike_windows: HashMap<FormulaStatusKey, FormulaStatusWindow>,
+    /// All-Class Aura is continuous rather than timer-bound. Exact status
+    /// terminals, actor boundaries, run boundaries, and TCP gaps clear it; the
+    /// simultaneously observed recipient cohort selects its distinct-role tier.
+    all_class_aura_windows: HashMap<FormulaStatusKey, FormulaStatusWindow>,
+    /// Attribute Transfer uses one child ID for five possible final-substat
+    /// lanes. `lane` remains absent until an exact adjacent recipient
+    /// transition uniquely identifies which installed-description branch the
+    /// child carries.
+    attribute_transfer_windows: HashMap<FormulaStatusKey, AttributeTransferWindow>,
+    /// Tactical Blessing's exact recipient child simultaneously contributes
+    /// +10% Crit and +10% Luck for ten seconds. A separate bounded clock keeps
+    /// missing terminal rows from extending either chance stage indefinitely.
+    tactical_blessing_windows: HashMap<FormulaStatusKey, FormulaStatusWindow>,
     /// Original formula-status values for keys mutated by the current wire.
     /// Remote paired-output proofs hash this pre-wire view because on-hit
     /// applications and refreshes serialized earlier in the same packet are
@@ -2325,6 +2418,16 @@ impl Default for BpsrStateDamageContributionProjector {
             target_vulnerability_transitions: HashSet::new(),
             formula_attributes_by_actor: HashMap::new(),
             formula_statuses: HashMap::new(),
+            synergy_crit_field_windows: HashMap::new(),
+            element_sharing_windows: HashMap::new(),
+            enhanced_synergy_windows: HashMap::new(),
+            blessing_windows: HashMap::new(),
+            synergy_luck_field_windows: HashMap::new(),
+            synergy_luck_field_recipient_has_intrinsic_imagine: HashMap::new(),
+            coordinated_strike_windows: HashMap::new(),
+            all_class_aura_windows: HashMap::new(),
+            attribute_transfer_windows: HashMap::new(),
+            tactical_blessing_windows: HashMap::new(),
             formula_status_prior_values_current_wire: HashMap::new(),
             unresolved_status_windows: HashSet::new(),
             unresolved_status_generation_by_actor: HashMap::new(),
@@ -2900,6 +3003,14 @@ impl BpsrStateDamageContributionProjector {
         self.expire_inspire_haste_windows(envelope.time.observed_micros);
         self.expire_arcane_time_decree_windows(envelope.time.observed_micros);
         self.expire_thunder_roar_windows(envelope.time.observed_micros);
+        self.expire_synergy_crit_field_windows(envelope.time.observed_micros);
+        self.expire_attribute_transfer_windows(envelope.time.observed_micros);
+        self.expire_tactical_blessing_windows(envelope.time.observed_micros);
+        self.expire_element_sharing_windows(envelope.time.observed_micros);
+        self.expire_enhanced_synergy_windows(envelope.time.observed_micros);
+        self.expire_blessing_windows(envelope.time.observed_micros);
+        self.expire_synergy_luck_field_windows(envelope.time.observed_micros);
+        self.expire_coordinated_strike_windows(envelope.time.observed_micros);
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
             return;
         };
@@ -2943,6 +3054,8 @@ impl BpsrStateDamageContributionProjector {
                     actor.state,
                     ActorState::Spawned | ActorState::Transformed | ActorState::Despawned
                 ) {
+                    self.synergy_luck_field_recipient_has_intrinsic_imagine
+                        .remove(&actor.actor.entity_uuid.0);
                     self.clear_actor(actor_id);
                     self.actor_ancestry
                         .clear_owner(envelope.time.observed_micros, actor.actor);
@@ -2963,6 +3076,7 @@ impl BpsrStateDamageContributionProjector {
                     self.active_players.insert(actor_id);
                     self.observe_fatal_spiral_provider_loadout(actor);
                     self.observe_arcane_time_decree_provider_loadout(actor);
+                    self.observe_synergy_luck_field_recipient_loadout(actor);
                 } else if actor.state == ActorState::Despawned {
                     self.active_players.remove(&actor_id);
                     let entity_uuid = actor.actor.entity_uuid.0;
@@ -2973,6 +3087,8 @@ impl BpsrStateDamageContributionProjector {
                     self.fatal_spiral_ambiguous_provider_entities
                         .remove(&entity_uuid);
                     self.arcane_time_decree_basis_points_by_provider_entity
+                        .remove(&entity_uuid);
+                    self.synergy_luck_field_recipient_has_intrinsic_imagine
                         .remove(&entity_uuid);
                 }
             }
@@ -2994,6 +3110,15 @@ impl BpsrStateDamageContributionProjector {
                 self.clear_arcane_time_decree_after_gap(gap.kind);
                 self.clear_thunder_roar_after_gap(gap.kind);
                 self.clear_critical_cold_after_gap(gap.kind);
+                self.clear_synergy_crit_field_after_gap(gap.kind);
+                self.clear_element_sharing_after_gap(gap.kind);
+                self.clear_enhanced_synergy_after_gap(gap.kind);
+                self.clear_blessing_after_gap(gap.kind);
+                self.clear_synergy_luck_field_after_gap(gap.kind);
+                self.clear_coordinated_strike_after_gap(gap.kind);
+                self.clear_all_class_aura_after_gap(gap.kind);
+                self.clear_attribute_transfer_after_gap(gap.kind);
+                self.clear_tactical_blessing_after_gap(gap.kind);
                 self.clear_inspire_haste_after_gap(gap.kind);
                 self.clear_full_bloom_after_gap(gap.kind);
             }
@@ -3043,6 +3168,21 @@ impl BpsrStateDamageContributionProjector {
                     // packet-final integer through recipient stat stages.
                     if let Some(contribution) =
                         self.thunder_roar_contribution(envelope.time.observed_micros, damage)
+                    {
+                        output.push(contribution);
+                    }
+                    return;
+                }
+                if self.runtime.synergy_luck_field.runtime_transfer_enabled
+                    && damage.ability.map(|ability| ability.0)
+                        == Some(self.runtime.synergy_luck_field.produced_damage_ability_id)
+                {
+                    // Action 3210081 is the Lizardman Hunter passive's
+                    // standalone produced output. It is transferable only
+                    // when one exact external aura is active and an exact
+                    // recipient loadout excludes an intrinsic copy.
+                    if let Some(contribution) =
+                        self.synergy_luck_field_contribution(envelope.time.observed_micros, damage)
                     {
                         output.push(contribution);
                     }
@@ -3142,12 +3282,28 @@ impl BpsrStateDamageContributionProjector {
                     self.remote_harmony_paired_output_contribution(envelope, damage);
                 let fatal_spiral_direct_contribution =
                     self.fatal_spiral_direct_contribution(envelope.time.observed_micros, damage);
+                let element_sharing_contribution =
+                    self.element_sharing_contribution(envelope.time.observed_micros, damage);
+                let enhanced_synergy_contribution =
+                    self.enhanced_synergy_contribution(envelope.time.observed_micros, damage);
+                let blessing_contribution =
+                    self.blessing_contribution(envelope.time.observed_micros, damage);
+                let attribute_transfer_versatility_contribution = self
+                    .attribute_transfer_versatility_contribution(
+                        envelope.time.observed_micros,
+                        damage,
+                    );
                 let mechanical_power_contribution =
                     self.mechanical_power_contribution(envelope.time.observed_micros, damage);
                 let stat_resonance_contribution =
                     self.stat_resonance_contribution(envelope.time.observed_micros, damage);
                 let fiery_battle_will_contribution =
                     self.fiery_battle_will_contribution(envelope.time.observed_micros, damage);
+                let coordinated_strike_contribution =
+                    self.coordinated_strike_contribution(envelope.time.observed_micros, damage);
+                let all_class_aura_decision = self
+                    .all_class_aura_decision(envelope.time.observed_micros, damage)
+                    .ok();
                 let mut inspiration_contribution =
                     self.inspiration_contribution(envelope.time.observed_micros, damage);
                 let endless_mind_contribution = self.endless_mind_shattered_illusion_contribution(
@@ -3156,6 +3312,16 @@ impl BpsrStateDamageContributionProjector {
                 );
                 let inspiration_occurrence_contribution =
                     self.inspiration_occurrence_contribution(envelope.time.observed_micros, damage);
+                let attribute_transfer_occurrence_contribution = self
+                    .attribute_transfer_occurrence_contribution(
+                        envelope.time.observed_micros,
+                        damage,
+                    );
+                let tactical_blessing_occurrence_contribution = self
+                    .tactical_blessing_occurrence_contribution(
+                        envelope.time.observed_micros,
+                        damage,
+                    );
                 let inspiration_occurrence_components = inspiration_occurrence_contribution
                     .map(|_| {
                         self.inspiration_occurrence_contributions(
@@ -3166,6 +3332,8 @@ impl BpsrStateDamageContributionProjector {
                     .unwrap_or_default();
                 let critical_cold_occurrence_contribution = self
                     .critical_cold_occurrence_contribution(envelope.time.observed_micros, damage);
+                let synergy_crit_field_contribution =
+                    self.synergy_crit_field_contribution(envelope.time.observed_micros, damage);
                 if inspiration_contribution.is_some()
                     && (damage.flags.critical == Some(true) || damage.flags.lucky == Some(true))
                     && inspiration_occurrence_contribution.is_none()
@@ -3257,11 +3425,21 @@ impl BpsrStateDamageContributionProjector {
                         // emit no guessed transfer.
                         AttackContributionOverlapPolicy::Suppress => (Vec::new(), true),
                     };
+                let attack_percent_bucket = self.observed_attack_percent_bucket_contributions(
+                    envelope.time.observed_micros,
+                    damage,
+                    fiery_battle_will_contribution,
+                    coordinated_strike_contribution,
+                    all_class_aura_decision,
+                );
                 let (observed_attack_contributions, observed_attack_overlap_unresolved) =
-                    select_ordered_observed_attack_contributions(
-                        stat_resonance_contribution,
-                        fiery_battle_will_contribution,
-                    );
+                    match attack_percent_bucket {
+                        Ok(bucket) => select_ordered_observed_attack_contributions(
+                            stat_resonance_contribution,
+                            bucket,
+                        ),
+                        Err(_) => (Vec::new(), true),
+                    };
                 let (per_hit_attack_contributions, unresolved_per_hit_attack_overlap) =
                     if observed_attack_overlap_unresolved {
                         // The candidate stages or their rational allocation
@@ -3317,6 +3495,25 @@ impl BpsrStateDamageContributionProjector {
                     )
                 };
                 let (attack_contributions, unresolved_attack_overlap) =
+                    if let Some(versatility) = attribute_transfer_versatility_contribution {
+                        if unresolved_attack_overlap || attack_contributions.is_empty() {
+                            // Versatility is a later multiplicative factor and
+                            // remains independently exact when an earlier
+                            // Attack-provider allocation is unresolved.
+                            (vec![versatility], false)
+                        } else {
+                            match extend_ordered_rational_marginals(
+                                attack_contributions,
+                                vec![versatility],
+                            ) {
+                                Some(contributions) => (contributions, false),
+                                None => (Vec::new(), true),
+                            }
+                        }
+                    } else {
+                        (attack_contributions, unresolved_attack_overlap)
+                    };
+                let (attack_contributions, unresolved_attack_overlap) =
                     if let Some(endless_mind) = endless_mind_contribution {
                         if unresolved_attack_overlap || attack_contributions.is_empty() {
                             // The Shattered Illusion element-bonus share is an
@@ -3335,12 +3532,62 @@ impl BpsrStateDamageContributionProjector {
                     } else {
                         (attack_contributions, unresolved_attack_overlap)
                     };
+                let (attack_contributions, unresolved_attack_overlap) =
+                    if let Some(blessing) = blessing_contribution {
+                        if unresolved_attack_overlap || attack_contributions.is_empty() {
+                            // General Damage is a later independent
+                            // multiplicative bucket. Its packet-final total
+                            // keeps this share exact even when an earlier
+                            // Attack or element allocation is unresolved.
+                            (vec![blessing], false)
+                        } else {
+                            match extend_ordered_rational_marginals(
+                                attack_contributions,
+                                vec![blessing],
+                            ) {
+                                Some(contributions) => (contributions, false),
+                                None => (Vec::new(), true),
+                            }
+                        }
+                    } else {
+                        (attack_contributions, unresolved_attack_overlap)
+                    };
+                let (attack_contributions, unresolved_attack_overlap) =
+                    if let Some(enhanced_synergy) = enhanced_synergy_contribution {
+                        if unresolved_attack_overlap || attack_contributions.is_empty() {
+                            // PHY/MAG Boost is a later independent
+                            // multiplicative bucket. Its packet-final total
+                            // makes this share exact even when an earlier
+                            // Attack allocation is unresolved.
+                            (vec![enhanced_synergy], false)
+                        } else {
+                            match extend_ordered_rational_marginals(
+                                attack_contributions,
+                                vec![enhanced_synergy],
+                            ) {
+                                Some(contributions) => (contributions, false),
+                                None => (Vec::new(), true),
+                            }
+                        }
+                    } else {
+                        (attack_contributions, unresolved_attack_overlap)
+                    };
+                let element_bucket_contributions = [
+                    fatal_spiral_direct_contribution,
+                    element_sharing_contribution,
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
                 let rational_candidate_count = usize::from(team_luck_contribution.is_some())
                     + attack_contributions.len()
                     + usize::from(remote_harmony_paired_output_contribution.is_some())
-                    + usize::from(fatal_spiral_direct_contribution.is_some())
+                    + element_bucket_contributions.len()
                     + usize::from(inspiration_occurrence_contribution.is_some())
+                    + usize::from(attribute_transfer_occurrence_contribution.is_some())
+                    + usize::from(tactical_blessing_occurrence_contribution.is_some())
                     + usize::from(critical_cold_occurrence_contribution.is_some())
+                    + usize::from(synergy_crit_field_contribution.is_some())
                     + usize::from(thunderwind_contribution.is_some())
                     + target_vulnerability_rational_contributions.len();
                 if self.inspiration_combined_receipt_audit_enabled
@@ -3445,20 +3692,38 @@ impl BpsrStateDamageContributionProjector {
                     let later_contributions = match (
                         team_luck_contribution,
                         inspiration_occurrence_contribution,
+                        attribute_transfer_occurrence_contribution,
+                        tactical_blessing_occurrence_contribution,
                         critical_cold_occurrence_contribution,
+                        synergy_crit_field_contribution,
                         thunderwind_contribution,
                         target_vulnerability_rational_contributions.as_slice(),
                     ) {
-                        (Some(team_luck), None, None, None, []) => vec![team_luck],
-                        (None, Some(_), None, None, []) => {
+                        (Some(team_luck), None, None, None, None, None, None, []) => {
+                            vec![team_luck]
+                        }
+                        (None, Some(_), None, None, None, None, None, []) => {
                             inspiration_occurrence_components.clone()
                         }
-                        (None, None, Some(critical_cold), None, []) => vec![critical_cold],
-                        (None, None, None, Some(thunderwind), []) => vec![thunderwind],
-                        (None, None, None, None, [target_vulnerability]) => {
+                        (None, None, Some(attribute_transfer), None, None, None, None, []) => {
+                            vec![attribute_transfer]
+                        }
+                        (None, None, None, Some(tactical_blessing), None, None, None, []) => {
+                            vec![tactical_blessing]
+                        }
+                        (None, None, None, None, Some(critical_cold), None, None, []) => {
+                            vec![critical_cold]
+                        }
+                        (None, None, None, None, None, Some(synergy_crit), None, []) => {
+                            vec![synergy_crit]
+                        }
+                        (None, None, None, None, None, None, Some(thunderwind), []) => {
+                            vec![thunderwind]
+                        }
+                        (None, None, None, None, None, None, None, [target_vulnerability]) => {
                             vec![*target_vulnerability]
                         }
-                        (None, None, None, None, []) => Vec::new(),
+                        (None, None, None, None, None, None, None, []) => Vec::new(),
                         // Multiple later-stage providers need a separately
                         // proven allocation order. The paired Harmony delta is
                         // still exact because every other context was held
@@ -3469,16 +3734,27 @@ impl BpsrStateDamageContributionProjector {
                     let joint_critical_cold_team_luck = match (
                         team_luck_contribution,
                         inspiration_occurrence_contribution,
+                        attribute_transfer_occurrence_contribution,
+                        tactical_blessing_occurrence_contribution,
                         critical_cold_occurrence_contribution,
+                        synergy_crit_field_contribution,
                         thunderwind_contribution,
                         target_vulnerability_rational_contributions.as_slice(),
                     ) {
-                        (Some(team_luck), None, Some(critical_cold), None, []) => self
-                            .joint_critical_cold_team_luck_contributions(
-                                damage,
-                                critical_cold,
-                                team_luck,
-                            ),
+                        (
+                            Some(team_luck),
+                            None,
+                            None,
+                            None,
+                            Some(critical_cold),
+                            None,
+                            None,
+                            [],
+                        ) => self.joint_critical_cold_team_luck_contributions(
+                            damage,
+                            critical_cold,
+                            team_luck,
+                        ),
                         _ => None,
                     };
                     if deferred_remote_harmony_candidate.is_some()
@@ -3541,25 +3817,27 @@ impl BpsrStateDamageContributionProjector {
                         );
                         return;
                     }
-                    if let Some(fatal_spiral) = fatal_spiral_direct_contribution {
-                        // Highland Blood is removed from the observed final
-                        // damage by an exact all-plus-property element-bucket
-                        // ratio. Same/earlier-stage candidates still need a
-                        // proved allocation order; a unique later-stage share
-                        // is scaled from the damage remaining after Highland.
+                    if !element_bucket_contributions.is_empty() {
+                        // Highland Blood and Element Sharing are additive
+                        // members of the same all-plus-property element bucket.
+                        // Each exact delta therefore uses the same observed
+                        // denominator and their sum is the exact joint removal.
+                        // Same/earlier stages remain fail-closed; later stages
+                        // are scaled from damage remaining after every member.
                         if attack_contributions.is_empty() {
                             if let Some(joint) = joint_critical_cold_team_luck.and_then(|joint| {
                                 joint
                                     .into_iter()
                                     .map(|later| {
                                         scale_later_rational_marginal_after_many(
-                                            std::slice::from_ref(&fatal_spiral),
+                                            &element_bucket_contributions,
                                             later,
                                         )
                                     })
                                     .collect::<Option<Vec<_>>>()
                             }) {
-                                rational_output.push(fatal_spiral);
+                                rational_output
+                                    .extend(element_bucket_contributions.iter().copied());
                                 rational_output.extend(joint);
                             } else if !later_contributions.is_empty()
                                 && let Some(later) = later_contributions
@@ -3567,16 +3845,18 @@ impl BpsrStateDamageContributionProjector {
                                     .copied()
                                     .map(|later| {
                                         scale_later_rational_marginal_after_many(
-                                            std::slice::from_ref(&fatal_spiral),
+                                            &element_bucket_contributions,
                                             later,
                                         )
                                     })
                                     .collect::<Option<Vec<_>>>()
                             {
-                                rational_output.push(fatal_spiral);
+                                rational_output
+                                    .extend(element_bucket_contributions.iter().copied());
                                 rational_output.extend(later);
                             } else {
-                                rational_output.push(fatal_spiral);
+                                rational_output
+                                    .extend(element_bucket_contributions.iter().copied());
                             }
                         } else {
                             rational_output.extend(attack_contributions.iter().copied().filter(
@@ -3587,14 +3867,17 @@ impl BpsrStateDamageContributionProjector {
                                 },
                             ));
                         }
-                        self.finish_critical_cold_pipeline_audit("fatal_spiral_direct_return");
+                        self.finish_critical_cold_pipeline_audit("element_bucket_direct_return");
                         return;
                     }
                     if later_contributions.is_empty()
                         && joint_critical_cold_team_luck.is_none()
                         && (usize::from(team_luck_contribution.is_some())
                             + usize::from(inspiration_occurrence_contribution.is_some())
+                            + usize::from(attribute_transfer_occurrence_contribution.is_some())
+                            + usize::from(tactical_blessing_occurrence_contribution.is_some())
                             + usize::from(critical_cold_occurrence_contribution.is_some())
+                            + usize::from(synergy_crit_field_contribution.is_some())
                             + usize::from(thunderwind_contribution.is_some())
                             + target_vulnerability_rational_contributions.len())
                             > 1
@@ -3613,7 +3896,14 @@ impl BpsrStateDamageContributionProjector {
                                 attack_contributions,
                                 usize::from(team_luck_contribution.is_some())
                                     + usize::from(inspiration_occurrence_contribution.is_some())
+                                    + usize::from(
+                                        attribute_transfer_occurrence_contribution.is_some(),
+                                    )
+                                    + usize::from(
+                                        tactical_blessing_occurrence_contribution.is_some(),
+                                    )
                                     + usize::from(critical_cold_occurrence_contribution.is_some())
+                                    + usize::from(synergy_crit_field_contribution.is_some())
                                     + usize::from(thunderwind_contribution.is_some())
                                     + target_vulnerability_rational_contributions.len(),
                                 &[
@@ -3801,6 +4091,7 @@ impl BpsrStateDamageContributionProjector {
     fn advance_wire(&mut self, wire: WireKey) {
         if self.current_wire.is_some_and(|current| current != wire) {
             self.reconcile_inspiration_staged_states();
+            self.reconcile_attribute_transfer_staged_states();
             self.reconcile_thunderwind_staged_states();
             self.reconcile_fatal_spiral_staged_states();
             self.reconcile_stat_resonance_staged_states();
@@ -3963,6 +4254,103 @@ impl BpsrStateDamageContributionProjector {
         })
     }
 
+    fn synergy_luck_field_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactDamageContributionEvent> {
+        let config = &self.runtime.synergy_luck_field;
+        if !config.runtime_transfer_enabled
+            || damage.ability.map(|ability| ability.0) != Some(config.produced_damage_ability_id)
+            || damage.amount <= 0
+        {
+            return None;
+        }
+        let raw_recipient_actor_id = damage.source.actor_id.0;
+        let recipient_actor_id = self.resolve_owner_actor_id(raw_recipient_actor_id);
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        if recipient_entity_uuid == 0
+            || self
+                .synergy_luck_field_recipient_has_intrinsic_imagine
+                .get(&recipient_entity_uuid)
+                != Some(&false)
+        {
+            return None;
+        }
+        let target_matches = |target_actor_id: u64| {
+            target_actor_id == raw_recipient_actor_id
+                || self.resolve_owner_actor_id(target_actor_id) == recipient_actor_id
+                || self
+                    .attribute_state_entity_uuid_by_actor
+                    .get(&target_actor_id)
+                    == Some(&recipient_entity_uuid)
+        };
+        if self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .any(|key| key.effect_id == config.effect_id && target_matches(key.target_actor_id))
+        {
+            return None;
+        }
+
+        let mut providers = Vec::new();
+        let mut matching_window_count = 0_usize;
+        for (key, _) in self
+            .synergy_luck_field_windows
+            .iter()
+            .filter(|(key, window)| {
+                key.effect_id == config.effect_id
+                    && target_matches(key.target_actor_id)
+                    && observed_micros > window.opened_observed_micros
+                    && observed_micros < window.expires_at_observed_micros
+            })
+        {
+            let value = self.formula_statuses.get(key)?;
+            if value.level != i64::from(config.required_level)
+                || value.stacks != i64::from(config.required_stacks)
+            {
+                continue;
+            }
+            matching_window_count += 1;
+            let provider_entity_uuid = value.source_entity_uuid?;
+            if provider_entity_uuid == 0 || provider_entity_uuid == recipient_entity_uuid {
+                return None;
+            }
+            let provider_actor_id = self.resolve_owner_actor_id(
+                self.actor_ancestry
+                    .actor_for_entity(provider_entity_uuid)
+                    .unwrap_or(key.source_actor_id),
+            );
+            if provider_actor_id == recipient_actor_id
+                || !self.active_players.contains(&provider_actor_id)
+            {
+                return None;
+            }
+            providers.push((provider_actor_id, provider_entity_uuid));
+        }
+        providers.sort_unstable();
+        providers.dedup();
+        let [(provider_actor_id, _)] = providers.as_slice() else {
+            return None;
+        };
+        if matching_window_count != 1 {
+            return None;
+        }
+
+        Some(ExactDamageContributionEvent {
+            observed_micros,
+            effect_id: config.effect_id,
+            provider_actor_id: *provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(
+                "Synergy Luck Field — Lizardman Hunter passive produced damage",
+            ),
+            amount: damage.amount,
+            observed_damage: damage.amount,
+            included: true,
+        })
+    }
+
     fn clear_stat_resonance_after_gap(&mut self) {
         self.stat_resonance_windows.clear();
         self.stat_resonance_transition_wires.clear();
@@ -4023,6 +4411,33 @@ impl BpsrStateDamageContributionProjector {
 
     fn observe_status(&mut self, status: &rlogs_events::StatusEvent, observed_micros: u64) {
         self.observe_formula_status(status);
+        if status.effect.0 == self.runtime.synergy_crit_field.effect_id {
+            self.observe_synergy_crit_field_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.element_sharing.effect_id {
+            self.observe_element_sharing_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.enhanced_synergy.effect_id {
+            self.observe_enhanced_synergy_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.blessing.effect_id {
+            self.observe_blessing_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.synergy_luck_field.effect_id {
+            self.observe_synergy_luck_field_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.coordinated_strike.effect_id {
+            self.observe_coordinated_strike_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.all_class_aura.effect_id {
+            self.observe_all_class_aura_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.attribute_transfer.effect_id {
+            self.observe_attribute_transfer_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.tactical_blessing.effect_id {
+            self.observe_tactical_blessing_status(status, observed_micros);
+        }
         if status.effect.0 == self.runtime.inspire.effect_id {
             self.observe_inspire_haste_status(status, observed_micros);
         }
@@ -4368,6 +4783,470 @@ impl BpsrStateDamageContributionProjector {
                         origin_source_config_id: status
                             .origin
                             .map(|origin| origin.source_config_id),
+                    },
+                );
+            }
+        }
+    }
+
+    fn observe_synergy_crit_field_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.synergy_crit_field;
+        let target_actor_id = status.target.actor_id.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Removed | StatusState::Consumed => {
+                self.synergy_crit_field_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || key.effect_id != config.effect_id
+                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let key = FormulaStatusKey {
+                    target_actor_id,
+                    source_actor_id: status.source.map(|source| source.actor_id.0).unwrap_or(0),
+                    effect_id: status.effect.0,
+                    instance_id,
+                };
+                // A missing provider, instance, exact child level/stack, or the
+                // authoritative 1.1-second duration cannot establish the
+                // installed aura lifecycle. Remove a previously admitted exact
+                // key on malformed refresh and fail closed.
+                if key.source_actor_id == 0
+                    || key.instance_id.is_none()
+                    || status.level != Some(config.required_level)
+                    || status.stacks != Some(config.required_stacks)
+                    || status.duration_millis != Some(config.child_refresh_duration_millis)
+                {
+                    self.synergy_crit_field_windows.remove(&key);
+                    return;
+                }
+                let Some(expires_at_observed_micros) = observed_micros.checked_add(
+                    u64::from(config.child_refresh_duration_millis).saturating_mul(1_000),
+                ) else {
+                    self.synergy_crit_field_windows.remove(&key);
+                    return;
+                };
+                self.synergy_crit_field_windows.insert(
+                    key,
+                    FormulaStatusWindow {
+                        opened_observed_micros: observed_micros,
+                        expires_at_observed_micros,
+                    },
+                );
+            }
+        }
+    }
+
+    fn observe_element_sharing_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.element_sharing;
+        let target_actor_id = status.target.actor_id.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Removed | StatusState::Consumed => {
+                self.element_sharing_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || key.effect_id != config.effect_id
+                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let key = FormulaStatusKey {
+                    target_actor_id,
+                    source_actor_id: status.source.map(|source| source.actor_id.0).unwrap_or(0),
+                    effect_id: status.effect.0,
+                    instance_id,
+                };
+                if key.source_actor_id == 0
+                    || key.instance_id.is_none()
+                    || status.level != Some(config.required_level)
+                    || status.stacks != Some(config.required_stacks)
+                    || status.duration_millis != Some(config.duration_millis)
+                {
+                    self.element_sharing_windows.remove(&key);
+                    return;
+                }
+                let Some(expires_at_observed_micros) =
+                    observed_micros.checked_add(config.duration_millis.saturating_mul(1_000))
+                else {
+                    self.element_sharing_windows.remove(&key);
+                    return;
+                };
+                self.element_sharing_windows.insert(
+                    key,
+                    FormulaStatusWindow {
+                        opened_observed_micros: observed_micros,
+                        expires_at_observed_micros,
+                    },
+                );
+            }
+        }
+    }
+
+    fn observe_tactical_blessing_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.tactical_blessing;
+        let target_actor_id = status.target.actor_id.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Removed | StatusState::Consumed => {
+                self.tactical_blessing_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || key.effect_id != config.effect_id
+                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let key = FormulaStatusKey {
+                    target_actor_id,
+                    source_actor_id: status.source.map(|source| source.actor_id.0).unwrap_or(0),
+                    effect_id: status.effect.0,
+                    instance_id,
+                };
+                if key.source_actor_id == 0
+                    || key.instance_id.is_none()
+                    || status.level != Some(config.required_level)
+                    || status.stacks != Some(config.required_stacks)
+                    || status.duration_millis != Some(config.duration_millis)
+                {
+                    self.tactical_blessing_windows.remove(&key);
+                    return;
+                }
+                let Some(expires_at_observed_micros) =
+                    observed_micros.checked_add(config.duration_millis.saturating_mul(1_000))
+                else {
+                    self.tactical_blessing_windows.remove(&key);
+                    return;
+                };
+                self.tactical_blessing_windows.insert(
+                    key,
+                    FormulaStatusWindow {
+                        opened_observed_micros: observed_micros,
+                        expires_at_observed_micros,
+                    },
+                );
+            }
+        }
+    }
+
+    fn observe_coordinated_strike_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.coordinated_strike;
+        let target_actor_id = status.target.actor_id.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Removed | StatusState::Consumed => {
+                self.coordinated_strike_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || key.effect_id != config.effect_id
+                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let key = FormulaStatusKey {
+                    target_actor_id,
+                    source_actor_id: status.source.map(|source| source.actor_id.0).unwrap_or(0),
+                    effect_id: status.effect.0,
+                    instance_id,
+                };
+                if key.source_actor_id == 0
+                    || key.instance_id.is_none()
+                    || status.level != Some(config.required_level)
+                    || status.stacks != Some(config.required_stacks)
+                    || status.duration_millis != Some(config.duration_millis)
+                {
+                    self.coordinated_strike_windows.remove(&key);
+                    return;
+                }
+                let Some(expires_at_observed_micros) =
+                    observed_micros.checked_add(config.duration_millis.saturating_mul(1_000))
+                else {
+                    self.coordinated_strike_windows.remove(&key);
+                    return;
+                };
+                self.coordinated_strike_windows.insert(
+                    key,
+                    FormulaStatusWindow {
+                        opened_observed_micros: observed_micros,
+                        expires_at_observed_micros,
+                    },
+                );
+            }
+        }
+    }
+
+    fn observe_all_class_aura_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.all_class_aura;
+        let target_actor_id = status.target.actor_id.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Removed | StatusState::Consumed => {
+                self.all_class_aura_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || key.effect_id != config.effect_id
+                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let key = FormulaStatusKey {
+                    target_actor_id,
+                    source_actor_id: status.source.map(|source| source.actor_id.0).unwrap_or(0),
+                    effect_id: status.effect.0,
+                    instance_id,
+                };
+                // BuffTable has no DestroyParam: a positive packet duration
+                // contradicts the exact continuous-aura lifecycle.
+                if key.source_actor_id == 0
+                    || key.instance_id.is_none()
+                    || status.level != Some(config.required_level)
+                    || status.stacks != Some(config.required_stacks)
+                    || status.duration_millis.is_some_and(|duration| duration != 0)
+                {
+                    self.all_class_aura_windows.remove(&key);
+                    return;
+                }
+                self.all_class_aura_windows.insert(
+                    key,
+                    FormulaStatusWindow {
+                        opened_observed_micros: observed_micros,
+                        expires_at_observed_micros: u64::MAX,
+                    },
+                );
+            }
+        }
+    }
+
+    fn observe_enhanced_synergy_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.enhanced_synergy;
+        let target_actor_id = status.target.actor_id.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Removed | StatusState::Consumed => {
+                self.enhanced_synergy_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || key.effect_id != config.effect_id
+                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let key = FormulaStatusKey {
+                    target_actor_id,
+                    source_actor_id: status.source.map(|source| source.actor_id.0).unwrap_or(0),
+                    effect_id: status.effect.0,
+                    instance_id,
+                };
+                if key.source_actor_id == 0
+                    || key.instance_id.is_none()
+                    || status.level != Some(config.required_level)
+                    || status.stacks != Some(config.required_stacks)
+                    || status.duration_millis != Some(config.duration_millis)
+                {
+                    self.enhanced_synergy_windows.remove(&key);
+                    return;
+                }
+                let Some(expires_at_observed_micros) =
+                    observed_micros.checked_add(config.duration_millis.saturating_mul(1_000))
+                else {
+                    self.enhanced_synergy_windows.remove(&key);
+                    return;
+                };
+                self.enhanced_synergy_windows.insert(
+                    key,
+                    FormulaStatusWindow {
+                        opened_observed_micros: observed_micros,
+                        expires_at_observed_micros,
+                    },
+                );
+            }
+        }
+    }
+
+    fn observe_blessing_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.blessing;
+        let target_actor_id = status.target.actor_id.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Removed | StatusState::Consumed => {
+                self.blessing_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || key.effect_id != config.effect_id
+                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let key = FormulaStatusKey {
+                    target_actor_id,
+                    source_actor_id: status.source.map(|source| source.actor_id.0).unwrap_or(0),
+                    effect_id: status.effect.0,
+                    instance_id,
+                };
+                if key.source_actor_id == 0
+                    || key.instance_id.is_none()
+                    || status.level != Some(config.required_level)
+                    || status.stacks != Some(config.required_stacks)
+                    || status.duration_millis != Some(config.duration_millis)
+                {
+                    self.blessing_windows.remove(&key);
+                    return;
+                }
+                let Some(expires_at_observed_micros) =
+                    observed_micros.checked_add(config.duration_millis.saturating_mul(1_000))
+                else {
+                    self.blessing_windows.remove(&key);
+                    return;
+                };
+                self.blessing_windows.insert(
+                    key,
+                    FormulaStatusWindow {
+                        opened_observed_micros: observed_micros,
+                        expires_at_observed_micros,
+                    },
+                );
+            }
+        }
+    }
+
+    fn observe_synergy_luck_field_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.synergy_luck_field;
+        let target_actor_id = status.target.actor_id.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Removed | StatusState::Consumed => {
+                self.synergy_luck_field_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || key.effect_id != config.effect_id
+                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let key = FormulaStatusKey {
+                    target_actor_id,
+                    source_actor_id: status.source.map_or(0, |source| source.actor_id.0),
+                    effect_id: config.effect_id,
+                    instance_id,
+                };
+                if key.source_actor_id == 0
+                    || key.instance_id.is_none()
+                    || status.level != Some(config.required_level)
+                    || status.stacks != Some(config.required_stacks)
+                    || status.duration_millis != Some(config.duration_millis)
+                {
+                    self.synergy_luck_field_windows.remove(&key);
+                    return;
+                }
+                let Some(expires_at_observed_micros) =
+                    observed_micros.checked_add(config.duration_millis.saturating_mul(1_000))
+                else {
+                    self.synergy_luck_field_windows.remove(&key);
+                    return;
+                };
+                self.synergy_luck_field_windows.insert(
+                    key,
+                    FormulaStatusWindow {
+                        opened_observed_micros: observed_micros,
+                        expires_at_observed_micros,
+                    },
+                );
+            }
+        }
+    }
+
+    fn observe_attribute_transfer_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.attribute_transfer;
+        let target_actor_id = status.target.actor_id.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Removed | StatusState::Consumed => {
+                self.attribute_transfer_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || key.effect_id != config.effect_id
+                        || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let key = FormulaStatusKey {
+                    target_actor_id,
+                    source_actor_id: status.source.map(|source| source.actor_id.0).unwrap_or(0),
+                    effect_id: status.effect.0,
+                    instance_id,
+                };
+                if key.source_actor_id == 0
+                    || key.instance_id.is_none()
+                    || status.level != Some(config.required_level)
+                    || status.stacks != Some(config.required_stacks)
+                    || status.duration_millis != Some(config.duration_millis)
+                {
+                    self.attribute_transfer_windows.retain(|existing, _| {
+                        existing.target_actor_id != target_actor_id
+                            || instance_id
+                                .is_some_and(|instance| existing.instance_id != Some(instance))
+                    });
+                    self.formula_statuses.retain(|existing, _| {
+                        existing.effect_id != config.effect_id
+                            || existing.target_actor_id != target_actor_id
+                            || instance_id
+                                .is_some_and(|instance| existing.instance_id != Some(instance))
+                    });
+                    return;
+                }
+                let Some(expires_at_observed_micros) =
+                    observed_micros.checked_add(config.duration_millis.saturating_mul(1_000))
+                else {
+                    self.attribute_transfer_windows.remove(&key);
+                    return;
+                };
+                // A true refresh of the exact same instance retains its lane.
+                // New instances remain unbound until their adjacent final-stat
+                // transition supplies the missing branch identity.
+                let prior_lane = (status.state == StatusState::Refreshed)
+                    .then(|| {
+                        self.attribute_transfer_windows
+                            .get(&key)
+                            .and_then(|window| window.lane)
+                    })
+                    .flatten();
+                self.attribute_transfer_windows.insert(
+                    key,
+                    AttributeTransferWindow {
+                        lifecycle: FormulaStatusWindow {
+                            opened_observed_micros: observed_micros,
+                            expires_at_observed_micros,
+                        },
+                        lane: prior_lane,
                     },
                 );
             }
@@ -6106,6 +6985,16 @@ impl BpsrStateDamageContributionProjector {
             } else if attribute.attribute_id == self.runtime.team_luck.lucky_damage_attribute_id {
                 next.lucky_damage_raw = Some(value);
             } else if attribute.attribute_id
+                == self.runtime.enhanced_synergy.physical_boost_attribute_id
+            {
+                next.physical_boost_raw = Some(value);
+            } else if attribute.attribute_id
+                == self.runtime.enhanced_synergy.magical_boost_attribute_id
+            {
+                next.magical_boost_raw = Some(value);
+            } else if attribute.attribute_id == self.runtime.blessing.general_damage_attribute_id {
+                next.general_damage_raw = Some(value);
+            } else if attribute.attribute_id
                 == self.runtime.thunderwind.critical_chance_attribute_id
             {
                 next.critical_chance_raw = Some(value);
@@ -6787,6 +7676,49 @@ impl BpsrStateDamageContributionProjector {
         }
     }
 
+    fn reconcile_attribute_transfer_staged_states(&mut self) {
+        let actor_ids = self.staged_states.keys().copied().collect::<Vec<_>>();
+        for actor_id in actor_ids {
+            if self.inspiration_snapshot_targets.contains(&actor_id) {
+                continue;
+            }
+            let Some(previous) = self.states.get(&actor_id) else {
+                continue;
+            };
+            let Some(next) = self.staged_states.get(&actor_id) else {
+                continue;
+            };
+            let mut unbound = self
+                .attribute_transfer_windows
+                .iter()
+                .filter(|(key, window)| key.target_actor_id == actor_id && window.lane.is_none())
+                .map(|(key, _)| *key);
+            let Some(key) = unbound.next() else {
+                continue;
+            };
+            if unbound.next().is_some() {
+                // One packet transition cannot identify two same-ID children.
+                continue;
+            }
+            let Some(lane) = attribute_transfer_lane_transition(
+                previous,
+                next,
+                self.runtime.attribute_transfer.substat_raw_delta,
+                self.runtime
+                    .attribute_transfer
+                    .versatility_to_external_damage_numerator,
+                self.runtime
+                    .attribute_transfer
+                    .versatility_to_external_damage_denominator,
+            ) else {
+                continue;
+            };
+            if let Some(window) = self.attribute_transfer_windows.get_mut(&key) {
+                window.lane = Some(lane);
+            }
+        }
+    }
+
     fn reconcile_thunderwind_staged_states(&mut self) {
         let actor_ids = self.staged_states.keys().copied().collect::<Vec<_>>();
         for actor_id in actor_ids {
@@ -7080,6 +8012,23 @@ impl BpsrStateDamageContributionProjector {
                     .remove(&entity_uuid);
             }
         }
+    }
+
+    fn observe_synergy_luck_field_recipient_loadout(&mut self, actor: &rlogs_events::ActorEvent) {
+        if actor.loadout_observation.primary != rlogs_events::ActorLoadoutEvidence::ExactSlots {
+            return;
+        }
+        let entity_uuid = actor.actor.entity_uuid.0;
+        if entity_uuid == 0 {
+            return;
+        }
+        let config = &self.runtime.synergy_luck_field;
+        let has_intrinsic_imagine = actor.primary_loadout.iter().any(|slot| {
+            slot.ability_id == Some(config.granted_imagine_ability_id)
+                || slot.item_id == Some(config.granted_imagine_item_id)
+        });
+        self.synergy_luck_field_recipient_has_intrinsic_imagine
+            .insert(entity_uuid, has_intrinsic_imagine);
     }
 
     fn learn_fatal_spiral_provider_basis_points(
@@ -7470,6 +8419,49 @@ impl BpsrStateDamageContributionProjector {
     ) -> Option<&ActorHpState> {
         let has_inputs = |state: &&ActorHpState| {
             state.critical_chance_raw.is_some() && state.critical_damage_raw.is_some()
+        };
+        self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, true)
+            .and_then(|actor_id| self.staged_states.get(&actor_id))
+            .filter(has_inputs)
+            .or_else(|| {
+                self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+                    .and_then(|actor_id| self.states.get(&actor_id))
+                    .filter(has_inputs)
+            })
+    }
+
+    /// Resolves only the Crit-DMG input needed by Synergy Crit Field. Crit
+    /// chance is deliberately not required because the observed row already
+    /// proves that the critical outcome occurred; this effect changes the
+    /// critical multiplier, not its occurrence probability.
+    fn critical_damage_formula_state(
+        &self,
+        recipient_actor_id: u64,
+        recipient_entity_uuid: i64,
+    ) -> Option<&ActorHpState> {
+        let has_input = |state: &&ActorHpState| state.critical_damage_raw.is_some();
+        self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, true)
+            .and_then(|actor_id| self.staged_states.get(&actor_id))
+            .filter(has_input)
+            .or_else(|| {
+                self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+                    .and_then(|actor_id| self.states.get(&actor_id))
+                    .filter(has_input)
+            })
+    }
+
+    /// Resolves the exact all-element and property-specific damage inputs used
+    /// by Element Sharing's additive element bucket. Same-wire staged state is
+    /// preferred so the live and replay paths use the packet-final snapshot.
+    fn element_damage_formula_state(
+        &self,
+        recipient_actor_id: u64,
+        recipient_entity_uuid: i64,
+        property: i32,
+    ) -> Option<&ActorHpState> {
+        let has_inputs = |state: &&ActorHpState| {
+            state.all_element.current_value.is_some()
+                && state.element_damage_by_property.contains_key(&property)
         };
         self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, true)
             .and_then(|actor_id| self.staged_states.get(&actor_id))
@@ -10198,6 +11190,14 @@ impl BpsrStateDamageContributionProjector {
             ));
         }
         if let Some(contribution) =
+            self.synergy_crit_field_contribution(envelope.time.observed_micros, damage)
+        {
+            candidates.push(format!(
+                "{}:{}:{:?}",
+                contribution.effect_id, contribution.provider_actor_id, contribution.scope
+            ));
+        }
+        if let Some(contribution) =
             self.thunderwind_contribution(envelope.time.observed_micros, damage)
         {
             candidates.push(format!(
@@ -10336,6 +11336,1435 @@ impl BpsrStateDamageContributionProjector {
             } else {
                 DamageContributionScope::Component("critical-cold-critical-chance")
             },
+            numerator,
+            denominator,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn element_sharing_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.element_sharing_decision(observed_micros, damage).ok()
+    }
+
+    fn attribute_transfer_provider_for_lane(
+        &self,
+        observed_micros: u64,
+        recipient_actor_id: u64,
+        recipient_entity_uuid: i64,
+        lane: AttributeTransferLane,
+    ) -> Result<u64, &'static str> {
+        let config = &self.runtime.attribute_transfer;
+        let target_matches = |target_actor_id: u64| {
+            target_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && self
+                        .attribute_state_entity_uuid_by_actor
+                        .get(&target_actor_id)
+                        == Some(&recipient_entity_uuid))
+        };
+        if self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .any(|key| key.effect_id == config.effect_id && target_matches(key.target_actor_id))
+        {
+            return Err("same_wire_transition");
+        }
+        let mut providers = BTreeMap::new();
+        let mut matched_window_count = 0_usize;
+        for (key, _) in self
+            .attribute_transfer_windows
+            .iter()
+            .filter(|(key, window)| {
+                key.effect_id == config.effect_id
+                    && target_matches(key.target_actor_id)
+                    && window.lane == Some(lane)
+                    && observed_micros > window.lifecycle.opened_observed_micros
+                    && observed_micros < window.lifecycle.expires_at_observed_micros
+            })
+        {
+            let Some(value) = self.formula_statuses.get(key) else {
+                continue;
+            };
+            if value.level != i64::from(config.required_level)
+                || value.stacks != i64::from(config.required_stacks)
+                || key.source_actor_id == 0
+            {
+                continue;
+            }
+            matched_window_count = matched_window_count.saturating_add(1);
+            let provider_entity_uuid = value.source_entity_uuid.unwrap_or_default();
+            let provider_actor_id = (provider_entity_uuid != 0)
+                .then(|| self.actor_ancestry.actor_for_entity(provider_entity_uuid))
+                .flatten()
+                .unwrap_or(key.source_actor_id);
+            let provider_actor_id = self.resolve_owner_actor_id(provider_actor_id);
+            if provider_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0 && provider_entity_uuid == recipient_entity_uuid)
+            {
+                return Err("provider_is_recipient");
+            }
+            if !self.active_players.contains(&provider_actor_id) {
+                return Err("provider_inactive");
+            }
+            let identity = if provider_entity_uuid != 0 {
+                (0_u8, i128::from(provider_entity_uuid))
+            } else {
+                (1_u8, i128::from(provider_actor_id))
+            };
+            providers.entry(identity).or_insert(provider_actor_id);
+        }
+        if matched_window_count != 1 || providers.len() != 1 {
+            return Err(if providers.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        }
+        providers
+            .values()
+            .next()
+            .copied()
+            .ok_or("provider_window_missing")
+    }
+
+    fn attribute_transfer_versatility_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.attribute_transfer_versatility_decision(observed_micros, damage)
+            .ok()
+    }
+
+    fn attribute_transfer_versatility_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        let config = &self.runtime.attribute_transfer;
+        if !config.runtime_transfer_enabled || !config.versatility_runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let provider_actor_id = self.attribute_transfer_provider_for_lane(
+            observed_micros,
+            recipient_actor_id,
+            recipient_entity_uuid,
+            AttributeTransferLane::Versatility,
+        )?;
+        let state = self
+            .team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, true)
+            .and_then(|actor_id| self.staged_states.get(&actor_id))
+            .filter(|state| state.external_damage_raw.is_some())
+            .or_else(|| {
+                self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+                    .and_then(|actor_id| self.states.get(&actor_id))
+                    .filter(|state| state.external_damage_raw.is_some())
+            })
+            .ok_or("recipient_state_missing")?;
+        let current_external = state
+            .external_damage_raw
+            .ok_or("external_damage_state_missing")?;
+        let scaled = config
+            .substat_raw_delta
+            .checked_mul(config.versatility_to_external_damage_numerator)
+            .ok_or("versatility_delta_invalid")?;
+        if scaled % config.versatility_to_external_damage_denominator != 0 {
+            return Err("versatility_delta_invalid");
+        }
+        let provider_external = scaled / config.versatility_to_external_damage_denominator;
+        if provider_external <= 0 || current_external < provider_external {
+            return Err("external_damage_state_excludes_provider_delta");
+        }
+        let denominator = 10_000_i128
+            .checked_add(i128::from(current_external))
+            .filter(|value| *value > 0)
+            .ok_or("invalid_external_damage_bucket")?;
+        let numerator = i128::from(damage.amount)
+            .checked_mul(i128::from(provider_external))
+            .filter(|value| *value > 0)
+            .ok_or("invalid_external_damage_bucket")?;
+        let divisor = greatest_common_divisor(numerator, denominator);
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: config.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(
+                "attribute-transfer-versatility-external-damage",
+            ),
+            numerator: numerator / divisor,
+            denominator: denominator / divisor,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn attribute_transfer_occurrence_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.attribute_transfer_occurrence_decision(observed_micros, damage)
+            .ok()
+    }
+
+    fn attribute_transfer_occurrence_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        let config = &self.runtime.attribute_transfer;
+        if !config.runtime_transfer_enabled || damage.amount <= 0 {
+            return Err("runtime_transfer_disabled");
+        }
+        let event_critical = damage.flags.critical == Some(true);
+        let event_lucky = damage.flags.lucky == Some(true);
+        if !event_critical && !event_lucky {
+            return Err("occurrence_missing");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let critical_provider = (event_critical && config.critical_chance_runtime_transfer_enabled)
+            .then(|| {
+                self.attribute_transfer_provider_for_lane(
+                    observed_micros,
+                    recipient_actor_id,
+                    recipient_entity_uuid,
+                    AttributeTransferLane::CriticalChance,
+                )
+                .ok()
+            })
+            .flatten();
+        let lucky_provider = (event_lucky && config.lucky_chance_runtime_transfer_enabled)
+            .then(|| {
+                self.attribute_transfer_provider_for_lane(
+                    observed_micros,
+                    recipient_actor_id,
+                    recipient_entity_uuid,
+                    AttributeTransferLane::LuckyChance,
+                )
+                .ok()
+            })
+            .flatten();
+        let provider_actor_id = match (critical_provider, lucky_provider) {
+            (Some(critical), Some(lucky)) if critical == lucky => critical,
+            (Some(_), Some(_)) => return Err("provider_window_ambiguous"),
+            (Some(provider), None) | (None, Some(provider)) => provider,
+            (None, None) => return Err("provider_window_missing"),
+        };
+        let critical = critical_provider.is_some();
+        let lucky = lucky_provider.is_some();
+        let has_occurrence_inputs = |state: &&ActorHpState| {
+            (!critical
+                || (state.critical_chance_raw.is_some() && state.critical_damage_raw.is_some()))
+                && (!lucky
+                    || (state.lucky_chance_raw.is_some() && state.lucky_damage_raw.is_some()))
+        };
+        let state = self
+            .team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, true)
+            .and_then(|actor_id| self.staged_states.get(&actor_id))
+            .filter(has_occurrence_inputs)
+            .or_else(|| {
+                self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+                    .and_then(|actor_id| self.states.get(&actor_id))
+                    .filter(has_occurrence_inputs)
+            })
+            .ok_or("recipient_state_missing")?;
+        let provider_critical_damage_raw_delta = (critical
+            && self
+                .inspiration_recipient_dependency_entities
+                .contains(&recipient_entity_uuid)
+            && self.class_id_by_actor.get(&recipient_actor_id).copied()
+                == Some(
+                    self.runtime
+                        .inspiration
+                        .recipient_dependency
+                        .recipient_class_id,
+                ))
+        .then(|| {
+            self.runtime
+                .inspiration
+                .recipient_dependency
+                .critical_damage_raw_delta(config.substat_raw_delta)
+        })
+        .flatten();
+        let provider_lucky_damage_raw_delta = lucky
+            .then(|| {
+                self.runtime
+                    .inspiration
+                    .base_lucky_damage_dependency
+                    .lucky_damage_raw_delta(state.lucky_chance_raw?, config.substat_raw_delta)
+            })
+            .flatten();
+        let (numerator, denominator) = exact_inspiration_occurrence_fraction(
+            damage.amount,
+            critical,
+            lucky,
+            state.critical_chance_raw.unwrap_or_default(),
+            state.lucky_chance_raw.unwrap_or_default(),
+            config.substat_raw_delta,
+            state.critical_damage_raw.unwrap_or_default(),
+            provider_critical_damage_raw_delta,
+            state.lucky_damage_raw,
+            provider_lucky_damage_raw_delta,
+            self.runtime.critical_damage_factor_interpretation,
+        )
+        .ok_or("damage_counterfactual_unproven")?;
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: config.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(match (critical, lucky) {
+                (true, true) => "attribute-transfer-critical-and-lucky-chance",
+                (true, false) => "attribute-transfer-critical-chance",
+                (false, true) => "attribute-transfer-lucky-chance-and-base-lucky-damage",
+                (false, false) => unreachable!(),
+            }),
+            numerator,
+            denominator,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn tactical_blessing_occurrence_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.tactical_blessing_occurrence_decision(observed_micros, damage)
+            .ok()
+    }
+
+    fn tactical_blessing_occurrence_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        let config = &self.runtime.tactical_blessing;
+        if !config.runtime_transfer_enabled || damage.amount <= 0 {
+            return Err("runtime_transfer_disabled");
+        }
+        let critical = damage.flags.critical == Some(true);
+        let lucky = damage.flags.lucky == Some(true);
+        if !critical && !lucky {
+            return Err("occurrence_missing");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let target_matches = |target_actor_id: u64| {
+            target_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && self
+                        .attribute_state_entity_uuid_by_actor
+                        .get(&target_actor_id)
+                        == Some(&recipient_entity_uuid))
+        };
+        if self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .any(|key| key.effect_id == config.effect_id && target_matches(key.target_actor_id))
+        {
+            return Err("same_wire_transition");
+        }
+
+        let mut providers = BTreeMap::new();
+        let mut matched_window_count = 0_usize;
+        for (key, value) in self.formula_statuses.iter().filter(|(key, value)| {
+            key.effect_id == config.effect_id
+                && target_matches(key.target_actor_id)
+                && value.level == i64::from(config.required_level)
+                && value.stacks == i64::from(config.required_stacks)
+        }) {
+            let Some(window) = self.tactical_blessing_windows.get(key) else {
+                continue;
+            };
+            if observed_micros <= window.opened_observed_micros
+                || observed_micros >= window.expires_at_observed_micros
+            {
+                continue;
+            }
+            if key.source_actor_id == 0 {
+                return Err("provider_missing");
+            }
+            matched_window_count = matched_window_count.saturating_add(1);
+            let provider_entity_uuid = value.source_entity_uuid.unwrap_or_default();
+            let provider_actor_id = (provider_entity_uuid != 0)
+                .then(|| self.actor_ancestry.actor_for_entity(provider_entity_uuid))
+                .flatten()
+                .unwrap_or(key.source_actor_id);
+            let provider_actor_id = self.resolve_owner_actor_id(provider_actor_id);
+            if provider_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0 && provider_entity_uuid == recipient_entity_uuid)
+            {
+                return Err("provider_is_recipient");
+            }
+            if !self.active_players.contains(&provider_actor_id) {
+                return Err("provider_inactive");
+            }
+            let identity = if provider_entity_uuid != 0 {
+                (0_u8, i128::from(provider_entity_uuid))
+            } else {
+                (1_u8, i128::from(provider_actor_id))
+            };
+            providers.entry(identity).or_insert(provider_actor_id);
+        }
+        if matched_window_count != 1 || providers.len() != 1 {
+            return Err(if providers.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        }
+        let provider_actor_id = *providers.values().next().ok_or("provider_window_missing")?;
+        let has_occurrence_inputs = |state: &&ActorHpState| {
+            (!critical
+                || (state.critical_chance_raw.is_some() && state.critical_damage_raw.is_some()))
+                && (!lucky
+                    || (state.lucky_chance_raw.is_some() && state.lucky_damage_raw.is_some()))
+        };
+        let state = self
+            .team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, true)
+            .and_then(|actor_id| self.staged_states.get(&actor_id))
+            .filter(has_occurrence_inputs)
+            .or_else(|| {
+                self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+                    .and_then(|actor_id| self.states.get(&actor_id))
+                    .filter(has_occurrence_inputs)
+            })
+            .ok_or("recipient_state_missing")?;
+        let provider_critical_damage_raw_delta = (critical
+            && self
+                .inspiration_recipient_dependency_entities
+                .contains(&recipient_entity_uuid)
+            && self.class_id_by_actor.get(&recipient_actor_id).copied()
+                == Some(
+                    self.runtime
+                        .inspiration
+                        .recipient_dependency
+                        .recipient_class_id,
+                ))
+        .then(|| {
+            self.runtime
+                .inspiration
+                .recipient_dependency
+                .critical_damage_raw_delta(config.critical_chance_raw_delta)
+        })
+        .flatten();
+        let provider_lucky_damage_raw_delta = lucky
+            .then(|| {
+                self.runtime
+                    .inspiration
+                    .base_lucky_damage_dependency
+                    .lucky_damage_raw_delta(state.lucky_chance_raw?, config.lucky_chance_raw_delta)
+            })
+            .flatten();
+        let (numerator, denominator) = exact_inspiration_occurrence_fraction(
+            damage.amount,
+            critical,
+            lucky,
+            state.critical_chance_raw.unwrap_or_default(),
+            state.lucky_chance_raw.unwrap_or_default(),
+            config.critical_chance_raw_delta,
+            state.critical_damage_raw.unwrap_or_default(),
+            provider_critical_damage_raw_delta,
+            state.lucky_damage_raw,
+            provider_lucky_damage_raw_delta,
+            self.runtime.critical_damage_factor_interpretation,
+        )
+        .ok_or("damage_counterfactual_unproven")?;
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: config.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(match (critical, lucky) {
+                (true, true) => "tactical-blessing-critical-and-lucky-chance",
+                (true, false) => "tactical-blessing-critical-chance",
+                (false, true) => "tactical-blessing-lucky-chance-and-base-lucky-damage",
+                (false, false) => unreachable!(),
+            }),
+            numerator,
+            denominator,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn element_sharing_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        let config = &self.runtime.element_sharing;
+        if !config.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        let property = damage.packet.property.ok_or("damage_property_missing")?;
+        if property_damage_final_attribute_id(property).is_none() {
+            return Err("non_elemental_damage_property");
+        }
+
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let target_matches = |target_actor_id: u64| {
+            target_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && self
+                        .attribute_state_entity_uuid_by_actor
+                        .get(&target_actor_id)
+                        == Some(&recipient_entity_uuid))
+        };
+        if self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .any(|key| key.effect_id == config.effect_id && target_matches(key.target_actor_id))
+        {
+            return Err("same_wire_transition");
+        }
+
+        let mut providers = BTreeMap::new();
+        for (key, value) in self.formula_statuses.iter().filter(|(key, value)| {
+            key.effect_id == config.effect_id
+                && target_matches(key.target_actor_id)
+                && value.level == i64::from(config.required_level)
+                && value.stacks == i64::from(config.required_stacks)
+        }) {
+            let Some(window) = self.element_sharing_windows.get(key) else {
+                continue;
+            };
+            if observed_micros <= window.opened_observed_micros
+                || observed_micros >= window.expires_at_observed_micros
+            {
+                continue;
+            }
+            if key.source_actor_id == 0 {
+                return Err("provider_missing");
+            }
+            let provider_entity_uuid = value.source_entity_uuid.unwrap_or_default();
+            let provider_actor_id = (provider_entity_uuid != 0)
+                .then(|| self.actor_ancestry.actor_for_entity(provider_entity_uuid))
+                .flatten()
+                .unwrap_or(key.source_actor_id);
+            let provider_actor_id = self.resolve_owner_actor_id(provider_actor_id);
+            if provider_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0 && provider_entity_uuid == recipient_entity_uuid)
+            {
+                return Err("provider_is_recipient");
+            }
+            if !self.active_players.contains(&provider_actor_id) {
+                return Err("provider_inactive");
+            }
+            let identity = if provider_entity_uuid != 0 {
+                (0_u8, i128::from(provider_entity_uuid))
+            } else {
+                (1_u8, i128::from(provider_actor_id))
+            };
+            providers.entry(identity).or_insert(provider_actor_id);
+        }
+        if providers.len() != 1 {
+            return Err(if providers.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        }
+        let provider_actor_id = *providers.values().next().ok_or("provider_window_missing")?;
+        let state = self
+            .element_damage_formula_state(recipient_actor_id, recipient_entity_uuid, property)
+            .ok_or("recipient_element_state_missing")?;
+        let current_all_element = state
+            .all_element
+            .current_value
+            .ok_or("all_element_state_missing")?;
+        if current_all_element < config.element_damage_raw_delta {
+            return Err("element_state_excludes_provider_delta");
+        }
+        let current_property_bonus = state
+            .element_damage_by_property
+            .get(&property)
+            .copied()
+            .ok_or("property_element_state_missing")?;
+        let denominator = 10_000_i128
+            .checked_add(i128::from(current_all_element))
+            .and_then(|value| value.checked_add(i128::from(current_property_bonus)))
+            .ok_or("invalid_element_bucket")?;
+        let numerator = i128::from(damage.amount)
+            .checked_mul(i128::from(config.element_damage_raw_delta))
+            .ok_or("invalid_element_bucket")?;
+        if denominator <= 0
+            || numerator <= 0
+            || numerator
+                > i128::from(damage.amount)
+                    .checked_mul(denominator)
+                    .ok_or("invalid_element_bucket")?
+        {
+            return Err("invalid_element_bucket");
+        }
+        let divisor = greatest_common_divisor(numerator, denominator);
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: config.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(
+                "element-sharing-all-plus-property-element-damage",
+            ),
+            numerator: numerator / divisor,
+            denominator: denominator / divisor,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn coordinated_strike_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.coordinated_strike_decision(observed_micros, damage)
+            .ok()
+    }
+
+    fn enhanced_synergy_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.enhanced_synergy_decision(observed_micros, damage).ok()
+    }
+
+    fn enhanced_synergy_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        let config = &self.runtime.enhanced_synergy;
+        if !config.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let target_matches = |target_actor_id: u64| {
+            target_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && self
+                        .attribute_state_entity_uuid_by_actor
+                        .get(&target_actor_id)
+                        == Some(&recipient_entity_uuid))
+        };
+        if self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .any(|key| key.effect_id == config.effect_id && target_matches(key.target_actor_id))
+        {
+            return Err("same_wire_transition");
+        }
+
+        let mut providers = BTreeMap::new();
+        let mut matching_window_count = 0_usize;
+        for (key, value) in self.formula_statuses.iter().filter(|(key, value)| {
+            key.effect_id == config.effect_id
+                && target_matches(key.target_actor_id)
+                && value.level == i64::from(config.required_level)
+                && value.stacks == i64::from(config.required_stacks)
+        }) {
+            let Some(window) = self.enhanced_synergy_windows.get(key) else {
+                continue;
+            };
+            if observed_micros <= window.opened_observed_micros
+                || observed_micros >= window.expires_at_observed_micros
+            {
+                continue;
+            }
+            matching_window_count += 1;
+            if key.source_actor_id == 0 {
+                return Err("provider_missing");
+            }
+            let provider_entity_uuid = value.source_entity_uuid.unwrap_or_default();
+            let provider_actor_id = (provider_entity_uuid != 0)
+                .then(|| self.actor_ancestry.actor_for_entity(provider_entity_uuid))
+                .flatten()
+                .unwrap_or(key.source_actor_id);
+            let provider_actor_id = self.resolve_owner_actor_id(provider_actor_id);
+            if provider_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0 && provider_entity_uuid == recipient_entity_uuid)
+            {
+                return Err("provider_is_recipient");
+            }
+            if !self.active_players.contains(&provider_actor_id) {
+                return Err("provider_inactive");
+            }
+            let identity = if provider_entity_uuid != 0 {
+                (0_u8, i128::from(provider_entity_uuid))
+            } else {
+                (1_u8, i128::from(provider_actor_id))
+            };
+            providers.entry(identity).or_insert(provider_actor_id);
+        }
+        if matching_window_count != 1 || providers.len() != 1 {
+            return Err(if matching_window_count == 0 || providers.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        }
+        let provider_actor_id = *providers.values().next().ok_or("provider_window_missing")?;
+        let selected = select_damage_stage(
+            damage.ability.ok_or("ability_missing")?.0,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        )
+        .ok_or("damage_stage_missing")?;
+        let actor_state = self
+            .states
+            .get(&recipient_actor_id)
+            .or_else(|| {
+                (recipient_entity_uuid != 0)
+                    .then(|| {
+                        self.attribute_state_actor_by_entity_uuid
+                            .get(&recipient_entity_uuid)
+                            .and_then(|actor_id| self.states.get(actor_id))
+                    })
+                    .flatten()
+            })
+            .ok_or("recipient_state_missing")?;
+        let (current_boost, scope) = match selected.offensive_stat {
+            OffensiveStatKind::PhysicalAttack => (
+                actor_state
+                    .physical_boost_raw
+                    .ok_or("physical_boost_state_missing")?,
+                "enhanced-synergy-physical-boost",
+            ),
+            OffensiveStatKind::MagicalAttack => (
+                actor_state
+                    .magical_boost_raw
+                    .ok_or("magical_boost_state_missing")?,
+                "enhanced-synergy-magical-boost",
+            ),
+        };
+        if current_boost < config.boost_raw_delta {
+            return Err("boost_state_excludes_provider_delta");
+        }
+        let denominator = i128::from(BPSR_FIXED_POINT_SCALE)
+            .checked_add(i128::from(current_boost))
+            .ok_or("invalid_boost_bucket")?;
+        let numerator = i128::from(damage.amount)
+            .checked_mul(i128::from(config.boost_raw_delta))
+            .ok_or("invalid_boost_bucket")?;
+        if denominator <= 0
+            || numerator <= 0
+            || numerator
+                > i128::from(damage.amount)
+                    .checked_mul(denominator)
+                    .ok_or("invalid_boost_bucket")?
+        {
+            return Err("invalid_boost_bucket");
+        }
+        let divisor = greatest_common_divisor(numerator, denominator);
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: config.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(scope),
+            numerator: numerator / divisor,
+            denominator: denominator / divisor,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn blessing_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.blessing_decision(observed_micros, damage).ok()
+    }
+
+    fn blessing_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        let config = &self.runtime.blessing;
+        if !config.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let target_matches = |target_actor_id: u64| {
+            target_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && self
+                        .attribute_state_entity_uuid_by_actor
+                        .get(&target_actor_id)
+                        == Some(&recipient_entity_uuid))
+        };
+        if self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .any(|key| key.effect_id == config.effect_id && target_matches(key.target_actor_id))
+        {
+            return Err("same_wire_transition");
+        }
+
+        let mut providers = BTreeMap::new();
+        let mut matching_window_count = 0_usize;
+        for (key, value) in self.formula_statuses.iter().filter(|(key, value)| {
+            key.effect_id == config.effect_id
+                && target_matches(key.target_actor_id)
+                && value.level == i64::from(config.required_level)
+                && value.stacks == i64::from(config.required_stacks)
+        }) {
+            let Some(window) = self.blessing_windows.get(key) else {
+                continue;
+            };
+            if observed_micros <= window.opened_observed_micros
+                || observed_micros >= window.expires_at_observed_micros
+            {
+                continue;
+            }
+            matching_window_count += 1;
+            if key.source_actor_id == 0 {
+                return Err("provider_missing");
+            }
+            let provider_entity_uuid = value.source_entity_uuid.unwrap_or_default();
+            let provider_actor_id = (provider_entity_uuid != 0)
+                .then(|| self.actor_ancestry.actor_for_entity(provider_entity_uuid))
+                .flatten()
+                .unwrap_or(key.source_actor_id);
+            let provider_actor_id = self.resolve_owner_actor_id(provider_actor_id);
+            if provider_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0 && provider_entity_uuid == recipient_entity_uuid)
+            {
+                return Err("provider_is_recipient");
+            }
+            if !self.active_players.contains(&provider_actor_id) {
+                return Err("provider_inactive");
+            }
+            let identity = if provider_entity_uuid != 0 {
+                (0_u8, i128::from(provider_entity_uuid))
+            } else {
+                (1_u8, i128::from(provider_actor_id))
+            };
+            providers.entry(identity).or_insert(provider_actor_id);
+        }
+        if matching_window_count != 1 || providers.len() != 1 {
+            return Err(if matching_window_count == 0 || providers.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        }
+        let provider_actor_id = *providers.values().next().ok_or("provider_window_missing")?;
+        let actor_state = self
+            .states
+            .get(&recipient_actor_id)
+            .or_else(|| {
+                (recipient_entity_uuid != 0)
+                    .then(|| {
+                        self.attribute_state_actor_by_entity_uuid
+                            .get(&recipient_entity_uuid)
+                            .and_then(|actor_id| self.states.get(actor_id))
+                    })
+                    .flatten()
+            })
+            .ok_or("recipient_state_missing")?;
+        let current_general_damage = actor_state
+            .general_damage_raw
+            .ok_or("general_damage_state_missing")?;
+        if current_general_damage < config.general_damage_raw_delta {
+            return Err("general_damage_state_excludes_provider_delta");
+        }
+        let denominator = i128::from(BPSR_FIXED_POINT_SCALE)
+            .checked_add(i128::from(current_general_damage))
+            .ok_or("invalid_general_damage_bucket")?;
+        let numerator = i128::from(damage.amount)
+            .checked_mul(i128::from(config.general_damage_raw_delta))
+            .ok_or("invalid_general_damage_bucket")?;
+        if denominator <= 0
+            || numerator <= 0
+            || numerator
+                > i128::from(damage.amount)
+                    .checked_mul(denominator)
+                    .ok_or("invalid_general_damage_bucket")?
+        {
+            return Err("invalid_general_damage_bucket");
+        }
+        let divisor = greatest_common_divisor(numerator, denominator);
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: config.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component("blessing-general-damage"),
+            numerator: numerator / divisor,
+            denominator: denominator / divisor,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn coordinated_strike_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        let config = &self.runtime.coordinated_strike;
+        if !config.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        if self.damage_has_unresolved_status_confounder(damage) {
+            return Err("unresolved_status_confounder");
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let target_matches = |target_actor_id: u64| {
+            target_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && self
+                        .attribute_state_entity_uuid_by_actor
+                        .get(&target_actor_id)
+                        == Some(&recipient_entity_uuid))
+        };
+        if self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .any(|key| key.effect_id == config.effect_id && target_matches(key.target_actor_id))
+        {
+            return Err("same_wire_transition");
+        }
+
+        let mut providers = BTreeMap::new();
+        for (key, value) in self.formula_statuses.iter().filter(|(key, value)| {
+            key.effect_id == config.effect_id
+                && target_matches(key.target_actor_id)
+                && value.level == i64::from(config.required_level)
+                && value.stacks == i64::from(config.required_stacks)
+        }) {
+            let Some(window) = self.coordinated_strike_windows.get(key) else {
+                continue;
+            };
+            if observed_micros <= window.opened_observed_micros
+                || observed_micros >= window.expires_at_observed_micros
+            {
+                continue;
+            }
+            if key.source_actor_id == 0 {
+                return Err("provider_missing");
+            }
+            let provider_entity_uuid = value.source_entity_uuid.unwrap_or_default();
+            let provider_actor_id = (provider_entity_uuid != 0)
+                .then(|| self.actor_ancestry.actor_for_entity(provider_entity_uuid))
+                .flatten()
+                .unwrap_or(key.source_actor_id);
+            let provider_actor_id = self.resolve_owner_actor_id(provider_actor_id);
+            if provider_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0 && provider_entity_uuid == recipient_entity_uuid)
+            {
+                return Err("provider_is_recipient");
+            }
+            if !self.active_players.contains(&provider_actor_id) {
+                return Err("provider_inactive");
+            }
+            let identity = if provider_entity_uuid != 0 {
+                (0_u8, i128::from(provider_entity_uuid))
+            } else {
+                (1_u8, i128::from(provider_actor_id))
+            };
+            providers.entry(identity).or_insert(provider_actor_id);
+        }
+        if providers.len() != 1 {
+            return Err(if providers.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        }
+        let provider_actor_id = *providers.values().next().ok_or("provider_window_missing")?;
+        let selected = select_damage_stage(
+            damage.ability.ok_or("ability_missing")?.0,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        )
+        .ok_or("damage_stage_missing")?;
+        let actor_state = self
+            .states
+            .get(&recipient_actor_id)
+            .or_else(|| {
+                (recipient_entity_uuid != 0)
+                    .then(|| {
+                        self.attribute_state_actor_by_entity_uuid
+                            .get(&recipient_entity_uuid)
+                            .and_then(|actor_id| self.states.get(actor_id))
+                    })
+                    .flatten()
+            })
+            .ok_or("recipient_state_missing")?;
+        let family = match selected.offensive_stat {
+            OffensiveStatKind::PhysicalAttack => &actor_state.physical_attack,
+            OffensiveStatKind::MagicalAttack => &actor_state.magical_attack,
+        };
+        if !family.raw_percent_packet_observed {
+            return Err("recipient_attack_not_packet_observed");
+        }
+        let current_attack = family.final_value.ok_or("attack_family_incomplete")?;
+        if family.raw_percent.ok_or("attack_family_incomplete")? < config.attack_raw_percent_delta {
+            return Err("attack_state_excludes_provider_delta");
+        }
+        let provider_attack_marginal = exact_signed_attack_raw_percent_provider_marginal(
+            family,
+            config.attack_raw_percent_delta,
+        )
+        .ok_or("attack_family_formula_mismatch")?;
+        exact_observed_final_attack_stage_contribution(
+            observed_micros,
+            config.effect_id,
+            DamageContributionScope::Component("coordinated-strike-observed-final-attack-percent"),
+            provider_actor_id,
+            recipient_actor_id,
+            damage.amount,
+            current_attack,
+            provider_attack_marginal,
+            selected,
+        )
+        .ok_or("damage_coefficient_counterfactual_unproven")
+    }
+
+    fn all_class_aura_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<(ExactRationalDamageContributionEvent, i64), &'static str> {
+        let config = &self.runtime.all_class_aura;
+        if !config.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        if self.damage_has_unresolved_status_confounder(damage) {
+            return Err("unresolved_status_confounder");
+        }
+        // A cohort mutation serialized earlier on this wire may be the result
+        // of the same action. Its pre/post role tier cannot be guessed.
+        if self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .any(|key| key.effect_id == config.effect_id)
+        {
+            return Err("same_wire_transition");
+        }
+
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let target_matches = |target_actor_id: u64| {
+            target_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && self
+                        .attribute_state_entity_uuid_by_actor
+                        .get(&target_actor_id)
+                        == Some(&recipient_entity_uuid))
+        };
+        let mut provider_ids = BTreeSet::new();
+        let mut recipient_window_count = 0_usize;
+        for (key, value) in self.formula_statuses.iter().filter(|(key, value)| {
+            key.effect_id == config.effect_id
+                && target_matches(key.target_actor_id)
+                && value.level == i64::from(config.required_level)
+                && value.stacks == i64::from(config.required_stacks)
+        }) {
+            let Some(window) = self.all_class_aura_windows.get(key) else {
+                continue;
+            };
+            if observed_micros <= window.opened_observed_micros
+                || observed_micros >= window.expires_at_observed_micros
+            {
+                continue;
+            }
+            recipient_window_count += 1;
+            let provider_entity_uuid = value.source_entity_uuid.unwrap_or_default();
+            let provider_actor_id = (provider_entity_uuid != 0)
+                .then(|| self.actor_ancestry.actor_for_entity(provider_entity_uuid))
+                .flatten()
+                .unwrap_or(key.source_actor_id);
+            provider_ids.insert(self.resolve_owner_actor_id(provider_actor_id));
+        }
+        if recipient_window_count != 1 || provider_ids.len() != 1 {
+            return Err(if recipient_window_count == 0 || provider_ids.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        }
+        let provider_actor_id = *provider_ids
+            .iter()
+            .next()
+            .ok_or("provider_window_missing")?;
+        if provider_actor_id == recipient_actor_id {
+            return Err("provider_is_recipient");
+        }
+        if !self.active_players.contains(&provider_actor_id) {
+            return Err("provider_inactive");
+        }
+
+        let provider_class_id = *self
+            .class_id_by_actor
+            .get(&provider_actor_id)
+            .ok_or("provider_role_missing")?;
+        let provider_role = class_role(provider_class_id)
+            .ok()
+            .flatten()
+            .ok_or("provider_role_missing")?;
+        let mut roles = BTreeSet::from([provider_role]);
+        let mut cohort_targets = BTreeSet::new();
+        for (key, window) in &self.all_class_aura_windows {
+            if key.effect_id != config.effect_id
+                || observed_micros <= window.opened_observed_micros
+                || observed_micros >= window.expires_at_observed_micros
+            {
+                continue;
+            }
+            let Some(value) = self.formula_statuses.get(key) else {
+                return Err("cohort_status_missing");
+            };
+            if value.level != i64::from(config.required_level)
+                || value.stacks != i64::from(config.required_stacks)
+            {
+                return Err("cohort_status_malformed");
+            }
+            let source_entity_uuid = value.source_entity_uuid.unwrap_or_default();
+            let cohort_provider = (source_entity_uuid != 0)
+                .then(|| self.actor_ancestry.actor_for_entity(source_entity_uuid))
+                .flatten()
+                .unwrap_or(key.source_actor_id);
+            if self.resolve_owner_actor_id(cohort_provider) != provider_actor_id {
+                continue;
+            }
+            if !cohort_targets.insert(key.target_actor_id) {
+                return Err("cohort_target_ambiguous");
+            }
+            if !self.active_players.contains(&key.target_actor_id) {
+                return Err("cohort_target_inactive");
+            }
+            let class_id = *self
+                .class_id_by_actor
+                .get(&key.target_actor_id)
+                .ok_or("cohort_role_missing")?;
+            let role = class_role(class_id)
+                .ok()
+                .flatten()
+                .ok_or("cohort_role_missing")?;
+            roles.insert(role);
+        }
+        if !cohort_targets.contains(&recipient_actor_id) {
+            return Err("recipient_cohort_missing");
+        }
+        let role_delta = i64::try_from(roles.len())
+            .ok()
+            .and_then(|count| count.checked_mul(config.per_distinct_role_raw_percent_delta))
+            .ok_or("role_delta_overflow")?;
+        let attack_raw_percent_delta = config
+            .base_attack_raw_percent_delta
+            .checked_add(role_delta)
+            .ok_or("role_delta_overflow")?
+            .min(config.maximum_attack_raw_percent_delta);
+
+        let selected = select_damage_stage(
+            damage.ability.ok_or("ability_missing")?.0,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        )
+        .ok_or("damage_stage_missing")?;
+        let actor_state = self
+            .states
+            .get(&recipient_actor_id)
+            .or_else(|| {
+                (recipient_entity_uuid != 0)
+                    .then(|| {
+                        self.attribute_state_actor_by_entity_uuid
+                            .get(&recipient_entity_uuid)
+                            .and_then(|actor_id| self.states.get(actor_id))
+                    })
+                    .flatten()
+            })
+            .ok_or("recipient_state_missing")?;
+        let family = match selected.offensive_stat {
+            OffensiveStatKind::PhysicalAttack => &actor_state.physical_attack,
+            OffensiveStatKind::MagicalAttack => &actor_state.magical_attack,
+        };
+        if !family.raw_percent_packet_observed {
+            return Err("recipient_attack_not_packet_observed");
+        }
+        let current_attack = family.final_value.ok_or("attack_family_incomplete")?;
+        if family.raw_percent.ok_or("attack_family_incomplete")? < attack_raw_percent_delta {
+            return Err("attack_state_excludes_provider_delta");
+        }
+        let provider_attack_marginal =
+            exact_signed_attack_raw_percent_provider_marginal(family, attack_raw_percent_delta)
+                .ok_or("attack_family_formula_mismatch")?;
+        let contribution = exact_observed_final_attack_stage_contribution(
+            observed_micros,
+            config.effect_id,
+            DamageContributionScope::Component("all-class-aura-observed-final-attack-percent"),
+            provider_actor_id,
+            recipient_actor_id,
+            damage.amount,
+            current_attack,
+            provider_attack_marginal,
+            selected,
+        )
+        .ok_or("damage_coefficient_counterfactual_unproven")?;
+        Ok((contribution, attack_raw_percent_delta))
+    }
+
+    fn observed_attack_percent_bucket_contributions(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+        fiery_battle_will: Option<ExactRationalDamageContributionEvent>,
+        coordinated_strike: Option<ExactRationalDamageContributionEvent>,
+        all_class_aura: Option<(ExactRationalDamageContributionEvent, i64)>,
+    ) -> Result<Vec<ExactRationalDamageContributionEvent>, &'static str> {
+        let mut weighted = Vec::new();
+        if let Some(contribution) = fiery_battle_will {
+            weighted.push((
+                contribution,
+                self.runtime.fiery_battle_will.provider_raw_percent_delta,
+            ));
+        }
+        if let Some(contribution) = coordinated_strike {
+            weighted.push((
+                contribution,
+                self.runtime.coordinated_strike.attack_raw_percent_delta,
+            ));
+        }
+        if let Some((contribution, delta)) = all_class_aura {
+            weighted.push((contribution, delta));
+        }
+        if weighted.len() <= 1 {
+            return Ok(weighted
+                .into_iter()
+                .map(|(contribution, _)| contribution)
+                .collect());
+        }
+        let first = &weighted[0].0;
+        if weighted.iter().any(|(contribution, _)| {
+            contribution.observed_damage != first.observed_damage
+                || contribution.recipient_actor_id != first.recipient_actor_id
+                || contribution.observed_damage != damage.amount
+        }) {
+            return Err("attack_percent_bucket_context_mismatch");
+        }
+        let selected = select_damage_stage(
+            damage.ability.ok_or("ability_missing")?.0,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        )
+        .ok_or("damage_stage_missing")?;
+        let actor_state = self
+            .states
+            .get(&damage.source.actor_id.0)
+            .ok_or("recipient_state_missing")?;
+        let family = match selected.offensive_stat {
+            OffensiveStatKind::PhysicalAttack => &actor_state.physical_attack,
+            OffensiveStatKind::MagicalAttack => &actor_state.magical_attack,
+        };
+        if !family.raw_percent_packet_observed {
+            return Err("recipient_attack_not_packet_observed");
+        }
+        let total_delta = weighted.iter().try_fold(0_i64, |total, (_, delta)| {
+            total
+                .checked_add(*delta)
+                .ok_or("attack_percent_bucket_overflow")
+        })?;
+        if family.raw_percent.ok_or("attack_family_incomplete")? < total_delta {
+            return Err("attack_state_excludes_provider_delta");
+        }
+        let current_attack = family.final_value.ok_or("attack_family_incomplete")?;
+        let joint_marginal = exact_signed_attack_raw_percent_provider_marginal(family, total_delta)
+            .ok_or("attack_family_formula_mismatch")?;
+        let aggregate = exact_observed_final_attack_stage_contribution(
+            observed_micros,
+            first.effect_id,
+            DamageContributionScope::Component("additive-attack-percent-provider-bucket"),
+            first.provider_actor_id,
+            first.recipient_actor_id,
+            damage.amount,
+            current_attack,
+            joint_marginal,
+            selected,
+        )
+        .ok_or("damage_coefficient_counterfactual_unproven")?;
+        let weights = weighted
+            .into_iter()
+            .map(|(contribution, delta)| {
+                (
+                    contribution.effect_id,
+                    contribution.provider_actor_id,
+                    contribution.scope,
+                    delta,
+                )
+            })
+            .collect();
+        split_exact_rational_contribution_by_weights(aggregate, weights)
+            .ok_or("attack_percent_bucket_split_unproven")
+    }
+
+    fn synergy_crit_field_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.synergy_crit_field_decision(observed_micros, damage)
+            .ok()
+    }
+
+    fn synergy_crit_field_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<ExactRationalDamageContributionEvent, &'static str> {
+        let config = &self.runtime.synergy_crit_field;
+        if !config.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        if damage.flags.critical != Some(true) {
+            return Err("critical_occurrence_missing");
+        }
+        if damage.flags.lucky != Some(false) {
+            return Err("lucky_or_unknown_outcome");
+        }
+
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let target_matches = |target_actor_id: u64| {
+            target_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && self
+                        .attribute_state_entity_uuid_by_actor
+                        .get(&target_actor_id)
+                        == Some(&recipient_entity_uuid))
+        };
+        if self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .any(|key| key.effect_id == config.effect_id && target_matches(key.target_actor_id))
+        {
+            return Err("same_wire_transition");
+        }
+
+        // Multiple refreshed instances from the same stable provider are one
+        // aura. Different providers are intentionally not stacked or split:
+        // the description gives no ordered multi-owner allocation rule.
+        let mut providers = BTreeMap::new();
+        for (key, value) in self.formula_statuses.iter().filter(|(key, value)| {
+            key.effect_id == config.effect_id
+                && target_matches(key.target_actor_id)
+                && value.level == i64::from(config.required_level)
+                && value.stacks == i64::from(config.required_stacks)
+        }) {
+            let Some(window) = self.synergy_crit_field_windows.get(key) else {
+                continue;
+            };
+            if observed_micros <= window.opened_observed_micros
+                || observed_micros >= window.expires_at_observed_micros
+            {
+                continue;
+            }
+            if key.source_actor_id == 0 {
+                return Err("provider_missing");
+            }
+            let provider_entity_uuid = value.source_entity_uuid.unwrap_or_default();
+            let provider_actor_id = (provider_entity_uuid != 0)
+                .then(|| self.actor_ancestry.actor_for_entity(provider_entity_uuid))
+                .flatten()
+                .unwrap_or(key.source_actor_id);
+            let provider_actor_id = self.resolve_owner_actor_id(provider_actor_id);
+            if provider_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0 && provider_entity_uuid == recipient_entity_uuid)
+            {
+                return Err("provider_is_recipient");
+            }
+            if !self.active_players.contains(&provider_actor_id) {
+                return Err("provider_inactive");
+            }
+            let identity = if provider_entity_uuid != 0 {
+                (0_u8, i128::from(provider_entity_uuid))
+            } else {
+                (1_u8, i128::from(provider_actor_id))
+            };
+            providers.entry(identity).or_insert(provider_actor_id);
+        }
+        if providers.len() != 1 {
+            return Err(if providers.is_empty() {
+                "provider_window_missing"
+            } else {
+                "provider_window_ambiguous"
+            });
+        }
+        let provider_actor_id = *providers.values().next().ok_or("provider_window_missing")?;
+        let state = self
+            .critical_damage_formula_state(recipient_actor_id, recipient_entity_uuid)
+            .ok_or("recipient_state_missing")?;
+        let (numerator, denominator) = exact_external_critical_damage_fraction(
+            damage.amount,
+            state
+                .critical_damage_raw
+                .ok_or("critical_damage_state_missing")?,
+            config.critical_damage_raw_delta,
+            self.runtime.critical_damage_factor_interpretation,
+        )
+        .ok_or("damage_counterfactual_unproven")?;
+        Ok(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: config.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component("synergy-crit-field-critical-damage"),
             numerator,
             denominator,
             observed_damage: damage.amount,
@@ -11589,6 +14018,234 @@ impl BpsrStateDamageContributionProjector {
             .retain(|_, window| window.expires_at_observed_micros > observed_micros);
     }
 
+    fn expire_synergy_crit_field_windows(&mut self, observed_micros: u64) {
+        let expired = self
+            .synergy_crit_field_windows
+            .iter()
+            .filter_map(|(key, window)| {
+                (window.expires_at_observed_micros <= observed_micros).then_some(*key)
+            })
+            .collect::<Vec<_>>();
+        for key in expired {
+            self.synergy_crit_field_windows.remove(&key);
+            self.formula_statuses.remove(&key);
+            self.formula_status_prior_values_current_wire.remove(&key);
+        }
+    }
+
+    fn clear_synergy_crit_field_after_gap(&mut self, kind: DataGapKind) {
+        if kind != DataGapKind::TcpGap {
+            return;
+        }
+        self.synergy_crit_field_windows.clear();
+        let effect_id = self.runtime.synergy_crit_field.effect_id;
+        self.formula_statuses
+            .retain(|key, _| key.effect_id != effect_id);
+        self.formula_status_prior_values_current_wire
+            .retain(|key, _| key.effect_id != effect_id);
+    }
+
+    fn expire_element_sharing_windows(&mut self, observed_micros: u64) {
+        let expired = self
+            .element_sharing_windows
+            .iter()
+            .filter_map(|(key, window)| {
+                (window.expires_at_observed_micros <= observed_micros).then_some(*key)
+            })
+            .collect::<Vec<_>>();
+        for key in expired {
+            self.element_sharing_windows.remove(&key);
+            self.formula_statuses.remove(&key);
+            self.formula_status_prior_values_current_wire.remove(&key);
+        }
+    }
+
+    fn clear_element_sharing_after_gap(&mut self, kind: DataGapKind) {
+        if kind != DataGapKind::TcpGap {
+            return;
+        }
+        self.element_sharing_windows.clear();
+        let effect_id = self.runtime.element_sharing.effect_id;
+        self.formula_statuses
+            .retain(|key, _| key.effect_id != effect_id);
+        self.formula_status_prior_values_current_wire
+            .retain(|key, _| key.effect_id != effect_id);
+    }
+
+    fn expire_tactical_blessing_windows(&mut self, observed_micros: u64) {
+        let expired = self
+            .tactical_blessing_windows
+            .iter()
+            .filter_map(|(key, window)| {
+                (window.expires_at_observed_micros <= observed_micros).then_some(*key)
+            })
+            .collect::<Vec<_>>();
+        for key in expired {
+            self.tactical_blessing_windows.remove(&key);
+            self.formula_statuses.remove(&key);
+            self.formula_status_prior_values_current_wire.remove(&key);
+        }
+    }
+
+    fn clear_tactical_blessing_after_gap(&mut self, kind: DataGapKind) {
+        if kind != DataGapKind::TcpGap {
+            return;
+        }
+        self.tactical_blessing_windows.clear();
+        let effect_id = self.runtime.tactical_blessing.effect_id;
+        self.formula_statuses
+            .retain(|key, _| key.effect_id != effect_id);
+        self.formula_status_prior_values_current_wire
+            .retain(|key, _| key.effect_id != effect_id);
+    }
+
+    fn expire_enhanced_synergy_windows(&mut self, observed_micros: u64) {
+        let expired = self
+            .enhanced_synergy_windows
+            .iter()
+            .filter_map(|(key, window)| {
+                (window.expires_at_observed_micros <= observed_micros).then_some(*key)
+            })
+            .collect::<Vec<_>>();
+        for key in expired {
+            self.enhanced_synergy_windows.remove(&key);
+            self.formula_statuses.remove(&key);
+            self.formula_status_prior_values_current_wire.remove(&key);
+        }
+    }
+
+    fn clear_enhanced_synergy_after_gap(&mut self, kind: DataGapKind) {
+        if kind != DataGapKind::TcpGap {
+            return;
+        }
+        self.enhanced_synergy_windows.clear();
+        let effect_id = self.runtime.enhanced_synergy.effect_id;
+        self.formula_statuses
+            .retain(|key, _| key.effect_id != effect_id);
+        self.formula_status_prior_values_current_wire
+            .retain(|key, _| key.effect_id != effect_id);
+    }
+
+    fn expire_blessing_windows(&mut self, observed_micros: u64) {
+        let expired = self
+            .blessing_windows
+            .iter()
+            .filter_map(|(key, window)| {
+                (window.expires_at_observed_micros <= observed_micros).then_some(*key)
+            })
+            .collect::<Vec<_>>();
+        for key in expired {
+            self.blessing_windows.remove(&key);
+            self.formula_statuses.remove(&key);
+            self.formula_status_prior_values_current_wire.remove(&key);
+        }
+    }
+
+    fn clear_blessing_after_gap(&mut self, kind: DataGapKind) {
+        if kind != DataGapKind::TcpGap {
+            return;
+        }
+        self.blessing_windows.clear();
+        let effect_id = self.runtime.blessing.effect_id;
+        self.formula_statuses
+            .retain(|key, _| key.effect_id != effect_id);
+        self.formula_status_prior_values_current_wire
+            .retain(|key, _| key.effect_id != effect_id);
+    }
+
+    fn expire_synergy_luck_field_windows(&mut self, observed_micros: u64) {
+        let expired = self
+            .synergy_luck_field_windows
+            .iter()
+            .filter_map(|(key, window)| {
+                (window.expires_at_observed_micros <= observed_micros).then_some(*key)
+            })
+            .collect::<Vec<_>>();
+        for key in expired {
+            self.synergy_luck_field_windows.remove(&key);
+            self.formula_statuses.remove(&key);
+            self.formula_status_prior_values_current_wire.remove(&key);
+        }
+    }
+
+    fn clear_synergy_luck_field_after_gap(&mut self, kind: DataGapKind) {
+        if kind != DataGapKind::TcpGap {
+            return;
+        }
+        self.synergy_luck_field_windows.clear();
+        let effect_id = self.runtime.synergy_luck_field.effect_id;
+        self.formula_statuses
+            .retain(|key, _| key.effect_id != effect_id);
+        self.formula_status_prior_values_current_wire
+            .retain(|key, _| key.effect_id != effect_id);
+    }
+
+    fn expire_coordinated_strike_windows(&mut self, observed_micros: u64) {
+        let expired = self
+            .coordinated_strike_windows
+            .iter()
+            .filter_map(|(key, window)| {
+                (window.expires_at_observed_micros <= observed_micros).then_some(*key)
+            })
+            .collect::<Vec<_>>();
+        for key in expired {
+            self.coordinated_strike_windows.remove(&key);
+            self.formula_statuses.remove(&key);
+            self.formula_status_prior_values_current_wire.remove(&key);
+        }
+    }
+
+    fn clear_coordinated_strike_after_gap(&mut self, kind: DataGapKind) {
+        if kind != DataGapKind::TcpGap {
+            return;
+        }
+        self.coordinated_strike_windows.clear();
+        let effect_id = self.runtime.coordinated_strike.effect_id;
+        self.formula_statuses
+            .retain(|key, _| key.effect_id != effect_id);
+        self.formula_status_prior_values_current_wire
+            .retain(|key, _| key.effect_id != effect_id);
+    }
+
+    fn clear_all_class_aura_after_gap(&mut self, kind: DataGapKind) {
+        if kind != DataGapKind::TcpGap {
+            return;
+        }
+        self.all_class_aura_windows.clear();
+        let effect_id = self.runtime.all_class_aura.effect_id;
+        self.formula_statuses
+            .retain(|key, _| key.effect_id != effect_id);
+        self.formula_status_prior_values_current_wire
+            .retain(|key, _| key.effect_id != effect_id);
+    }
+
+    fn expire_attribute_transfer_windows(&mut self, observed_micros: u64) {
+        let expired = self
+            .attribute_transfer_windows
+            .iter()
+            .filter_map(|(key, window)| {
+                (window.lifecycle.expires_at_observed_micros <= observed_micros).then_some(*key)
+            })
+            .collect::<Vec<_>>();
+        for key in expired {
+            self.attribute_transfer_windows.remove(&key);
+            self.formula_statuses.remove(&key);
+            self.formula_status_prior_values_current_wire.remove(&key);
+        }
+    }
+
+    fn clear_attribute_transfer_after_gap(&mut self, kind: DataGapKind) {
+        if kind != DataGapKind::TcpGap {
+            return;
+        }
+        self.attribute_transfer_windows.clear();
+        let effect_id = self.runtime.attribute_transfer.effect_id;
+        self.formula_statuses
+            .retain(|key, _| key.effect_id != effect_id);
+        self.formula_status_prior_values_current_wire
+            .retain(|key, _| key.effect_id != effect_id);
+    }
+
     fn clear_inspire_haste_after_gap(&mut self, kind: DataGapKind) {
         if kind == DataGapKind::TcpGap {
             self.inspire_haste_windows.clear();
@@ -11763,6 +14420,24 @@ impl BpsrStateDamageContributionProjector {
         self.target_vulnerability_transitions
             .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.formula_attributes_by_actor.remove(&actor_id);
+        self.synergy_crit_field_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
+        self.element_sharing_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
+        self.enhanced_synergy_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
+        self.blessing_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
+        self.synergy_luck_field_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
+        self.coordinated_strike_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
+        self.all_class_aura_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
+        self.attribute_transfer_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
+        self.tactical_blessing_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
         self.formula_statuses
             .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
         self.formula_status_prior_values_current_wire
@@ -11849,6 +14524,15 @@ impl BpsrStateDamageContributionProjector {
         self.target_vulnerability_windows.clear();
         self.target_vulnerability_transitions.clear();
         self.formula_attributes_by_actor.clear();
+        self.synergy_crit_field_windows.clear();
+        self.element_sharing_windows.clear();
+        self.enhanced_synergy_windows.clear();
+        self.blessing_windows.clear();
+        self.synergy_luck_field_windows.clear();
+        self.coordinated_strike_windows.clear();
+        self.all_class_aura_windows.clear();
+        self.attribute_transfer_windows.clear();
+        self.tactical_blessing_windows.clear();
         self.formula_statuses.clear();
         self.formula_status_prior_values_current_wire.clear();
         self.unresolved_status_windows.clear();
@@ -12149,25 +14833,65 @@ fn exact_signed_attack_raw_percent_provider_marginal(
         .filter(|marginal| *marginal > 0)
 }
 
+fn split_exact_rational_contribution_by_weights(
+    aggregate: ExactRationalDamageContributionEvent,
+    rows: Vec<(i64, u64, DamageContributionScope, i64)>,
+) -> Option<Vec<ExactRationalDamageContributionEvent>> {
+    if aggregate.numerator <= 0
+        || aggregate.denominator <= 0
+        || aggregate.observed_damage <= 0
+        || rows.is_empty()
+        || rows.iter().any(|(_, _, _, weight)| *weight <= 0)
+    {
+        return None;
+    }
+    let total_weight = rows.iter().try_fold(0_i128, |sum, (_, _, _, weight)| {
+        sum.checked_add(i128::from(*weight))
+    })?;
+    let mut split = Vec::with_capacity(rows.len());
+    for (effect_id, provider_actor_id, scope, weight) in rows {
+        if effect_id <= 0 || provider_actor_id == aggregate.recipient_actor_id {
+            return None;
+        }
+        let numerator = aggregate.numerator.checked_mul(i128::from(weight))?;
+        let denominator = aggregate.denominator.checked_mul(total_weight)?;
+        let divisor = greatest_common_divisor(numerator, denominator);
+        split.push(ExactRationalDamageContributionEvent {
+            observed_micros: aggregate.observed_micros,
+            effect_id,
+            provider_actor_id,
+            recipient_actor_id: aggregate.recipient_actor_id,
+            scope,
+            numerator: numerator.checked_div(divisor)?,
+            denominator: denominator.checked_div(divisor)?,
+            observed_damage: aggregate.observed_damage,
+            included: aggregate.included,
+            deferred_damage_context: aggregate.deferred_damage_context.clone(),
+        });
+    }
+    Some(split)
+}
+
 fn select_ordered_observed_attack_contributions(
     stat_resonance: Option<ExactRationalDamageContributionEvent>,
-    fiery_battle_will: Option<ExactRationalDamageContributionEvent>,
+    attack_percent_bucket: Vec<ExactRationalDamageContributionEvent>,
 ) -> (Vec<ExactRationalDamageContributionEvent>, bool) {
-    match (stat_resonance, fiery_battle_will) {
-        (Some(stat_resonance), Some(fiery_battle_will)) => {
+    match (stat_resonance, attack_percent_bucket.is_empty()) {
+        (Some(stat_resonance), false) => {
             // Each candidate was derived from this damage row's selected
-            // Attack lane and current packet-observed final Attack. Fiery's
-            // raw-percent stage is later than Stat Resonance's base-Add stage,
-            // so it owns its active marginal (including the cross-term) first.
-            // Stat Resonance is scaled against the remaining observed damage;
-            // no unexplained packet residual is assigned to either provider.
-            match allocate_ordered_rational_marginals(fiery_battle_will, vec![stat_resonance]) {
+            // Attack lane and current packet-observed final Attack. The
+            // additive raw-percent bucket is later than Stat Resonance's
+            // base-Add stage, so all same-stage providers jointly own their
+            // exact active marginal (including cross-terms) first. Stat
+            // Resonance is then scaled against the remaining observed damage.
+            match extend_ordered_rational_marginals(attack_percent_bucket, vec![stat_resonance]) {
                 Some(contributions) => (contributions, false),
                 None => (Vec::new(), true),
             }
         }
-        (Some(contribution), None) | (None, Some(contribution)) => (vec![contribution], false),
-        (None, None) => (Vec::new(), false),
+        (Some(contribution), true) => (vec![contribution], false),
+        (None, false) => (attack_percent_bucket, false),
+        (None, true) => (Vec::new(), false),
     }
 }
 
@@ -12285,6 +15009,7 @@ fn scale_later_rational_marginal_after_many(
     Some(later)
 }
 
+#[cfg(test)]
 fn allocate_ordered_rational_marginals(
     first: ExactRationalDamageContributionEvent,
     later: Vec<ExactRationalDamageContributionEvent>,
@@ -13231,6 +15956,77 @@ fn inspiration_mode_transition(
 
 fn option_delta(previous: Option<i64>, next: Option<i64>) -> Option<i64> {
     next?.checked_sub(previous?)
+}
+
+fn attribute_transfer_lane_transition(
+    previous: &ActorHpState,
+    next: &ActorHpState,
+    substat_delta: i64,
+    versatility_numerator: i64,
+    versatility_denominator: i64,
+) -> Option<AttributeTransferLane> {
+    if substat_delta <= 0 || versatility_denominator <= 0 {
+        return None;
+    }
+    let scaled = substat_delta.checked_mul(versatility_numerator)?;
+    if scaled % versatility_denominator != 0 {
+        return None;
+    }
+    let versatility_external_delta = scaled / versatility_denominator;
+    let deltas = [
+        option_delta(previous.critical_chance_raw, next.critical_chance_raw)?,
+        option_delta(
+            previous.critical_chance_raw_add,
+            next.critical_chance_raw_add,
+        )?,
+        option_delta(previous.lucky_chance_raw, next.lucky_chance_raw)?,
+        option_delta(previous.lucky_chance_raw_add, next.lucky_chance_raw_add)?,
+        option_delta(
+            previous.haste_percent_basis_points,
+            next.haste_percent_basis_points,
+        )?,
+        option_delta(previous.mastery_raw, next.mastery_raw)?,
+        option_delta(previous.mastery_raw_add, next.mastery_raw_add)?,
+        option_delta(previous.versatility_raw, next.versatility_raw)?,
+        option_delta(previous.versatility_raw_add, next.versatility_raw_add)?,
+        option_delta(previous.external_damage_raw, next.external_damage_raw)?,
+    ];
+    let signatures = [
+        (
+            AttributeTransferLane::CriticalChance,
+            [substat_delta, substat_delta, 0, 0, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            AttributeTransferLane::LuckyChance,
+            [0, 0, substat_delta, substat_delta, 0, 0, 0, 0, 0, 0],
+        ),
+        (
+            AttributeTransferLane::Haste,
+            [0, 0, 0, 0, substat_delta, 0, 0, 0, 0, 0],
+        ),
+        (
+            AttributeTransferLane::Mastery,
+            [0, 0, 0, 0, 0, substat_delta, substat_delta, 0, 0, 0],
+        ),
+        (
+            AttributeTransferLane::Versatility,
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                substat_delta,
+                substat_delta,
+                versatility_external_delta,
+            ],
+        ),
+    ];
+    signatures
+        .into_iter()
+        .find_map(|(lane, signature)| (deltas == signature).then_some(lane))
 }
 
 fn fixed_point_family_component_deltas(
@@ -15046,6 +17842,533 @@ mod tests {
         }
     }
 
+    fn synergy_crit_field_test_status(
+        provider: Option<EntityRef>,
+        recipient: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().synergy_crit_field;
+        rlogs_events::StatusEvent {
+            source: provider,
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(config.required_stacks),
+            level: Some(config.required_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+            duration_millis: Some(config.child_refresh_duration_millis),
+        }
+    }
+
+    fn synergy_crit_field_test_projector() -> BpsrStateDamageContributionProjector {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    critical_chance_raw: Some(9_696),
+                    critical_damage_raw: Some(10_300),
+                    ..ActorHpState::default()
+                },
+            )]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 4)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(4, 40)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_status(
+            &synergy_crit_field_test_status(Some(provider), recipient, 91, StatusState::Applied),
+            0,
+        );
+        projector.formula_status_prior_values_current_wire.clear();
+        projector
+    }
+
+    fn element_sharing_test_status(
+        provider: Option<EntityRef>,
+        recipient: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().element_sharing;
+        rlogs_events::StatusEvent {
+            source: provider,
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(config.required_stacks),
+            level: Some(config.required_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+            duration_millis: Some(config.duration_millis),
+        }
+    }
+
+    fn element_sharing_test_projector() -> BpsrStateDamageContributionProjector {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    all_element: FixedPointFamilyState {
+                        current_value: Some(2_500),
+                        ..FixedPointFamilyState::default()
+                    },
+                    element_damage_by_property: BTreeMap::from([(1, 500)]),
+                    ..ActorHpState::default()
+                },
+            )]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 4)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(4, 40)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_status(
+            &element_sharing_test_status(Some(provider), recipient, 71, StatusState::Applied),
+            0,
+        );
+        projector.formula_status_prior_values_current_wire.clear();
+        projector
+    }
+
+    fn coordinated_strike_test_status(
+        provider: Option<EntityRef>,
+        recipient: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().coordinated_strike;
+        rlogs_events::StatusEvent {
+            source: provider,
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(config.required_stacks),
+            level: Some(config.required_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+            duration_millis: Some(config.duration_millis),
+        }
+    }
+
+    fn all_class_aura_test_status(
+        provider: Option<EntityRef>,
+        recipient: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().all_class_aura;
+        rlogs_events::StatusEvent {
+            source: provider,
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(config.required_stacks),
+            level: Some(config.required_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+            duration_millis: None,
+        }
+    }
+
+    fn enhanced_synergy_test_status(
+        provider: Option<EntityRef>,
+        recipient: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().enhanced_synergy;
+        rlogs_events::StatusEvent {
+            source: provider,
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(config.required_stacks),
+            level: Some(config.required_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+            duration_millis: Some(config.duration_millis),
+        }
+    }
+
+    fn enhanced_synergy_test_projector() -> BpsrStateDamageContributionProjector {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_boost_raw: Some(2_500),
+                    magical_boost_raw: Some(1_500),
+                    ..ActorHpState::default()
+                },
+            )]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 4)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(4, 40)]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_status(
+            &enhanced_synergy_test_status(Some(provider), recipient, 81, StatusState::Applied),
+            0,
+        );
+        projector.formula_status_prior_values_current_wire.clear();
+        projector
+    }
+
+    fn enhanced_synergy_test_damage(magical: bool) -> rlogs_events::DamageEvent {
+        let mut damage = critical_test_damage(test_entity(4, 40), 1_000_000);
+        if magical {
+            damage.ability = Some(rlogs_events::AbilityId(1_262));
+            damage.hit_event_id = Some(5);
+            damage.packet.owner_level = Some(30);
+            damage.packet.owner_stage = None;
+        } else {
+            damage.packet.owner_level = Some(2);
+            damage.packet.owner_stage = Some(1);
+        }
+        damage
+    }
+
+    fn blessing_test_status(
+        provider: Option<EntityRef>,
+        recipient: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().blessing;
+        rlogs_events::StatusEvent {
+            source: provider,
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(config.required_stacks),
+            level: Some(config.required_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+            duration_millis: Some(config.duration_millis),
+        }
+    }
+
+    fn blessing_test_projector() -> BpsrStateDamageContributionProjector {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    general_damage_raw: Some(5_000),
+                    ..ActorHpState::default()
+                },
+            )]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 4)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(4, 40)]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_status(
+            &blessing_test_status(Some(provider), recipient, 91, StatusState::Applied),
+            0,
+        );
+        projector.formula_status_prior_values_current_wire.clear();
+        projector
+    }
+
+    fn blessing_test_damage() -> rlogs_events::DamageEvent {
+        enhanced_synergy_test_damage(false)
+    }
+
+    fn synergy_luck_field_test_status(
+        provider: Option<EntityRef>,
+        recipient: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().synergy_luck_field;
+        rlogs_events::StatusEvent {
+            source: provider,
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(config.required_stacks),
+            level: Some(config.required_level),
+            part_id: None,
+            count: None,
+            created_at_millis: None,
+            duration_millis: Some(config.duration_millis),
+        }
+    }
+
+    fn synergy_luck_field_test_actor(has_intrinsic_imagine: bool) -> rlogs_events::ActorEvent {
+        let config = &runtime().synergy_luck_field;
+        rlogs_events::ActorEvent {
+            actor: test_entity(4, 40),
+            state: ActorState::Spawned,
+            entity_type_id: 10,
+            kind: ActorKind::Player,
+            monster_id: None,
+            character_id: Some("synergy-luck-recipient".into()),
+            display_name: Some("Synergy Luck Recipient".into()),
+            class_id: Some(11),
+            specialization_id: Some(111),
+            level: Some(60),
+            ability_score: None,
+            weapon_item_id: None,
+            weapon_breakthrough_count: None,
+            seasonal_score: None,
+            primary_loadout: has_intrinsic_imagine
+                .then(|| rlogs_events::ActorLoadoutSlot {
+                    slot_id: 7,
+                    ability_id: Some(config.granted_imagine_ability_id),
+                    item_id: Some(config.granted_imagine_item_id),
+                    tier: Some(1),
+                })
+                .into_iter()
+                .collect(),
+            auxiliary_loadout: Vec::new(),
+            loadout_observation: rlogs_events::ActorLoadoutObservation {
+                primary: rlogs_events::ActorLoadoutEvidence::ExactSlots,
+                auxiliary: rlogs_events::ActorLoadoutEvidence::Unobserved,
+            },
+        }
+    }
+
+    fn synergy_luck_field_test_projector() -> BpsrStateDamageContributionProjector {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (9, 90)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(4, 40)]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 4)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector
+            .observe_synergy_luck_field_recipient_loadout(&synergy_luck_field_test_actor(false));
+        projector.observe_status(
+            &synergy_luck_field_test_status(Some(provider), recipient, 91, StatusState::Applied),
+            0,
+        );
+        projector.formula_status_prior_values_current_wire.clear();
+        projector
+    }
+
+    fn synergy_luck_field_test_damage() -> rlogs_events::DamageEvent {
+        rlogs_events::DamageEvent {
+            source: test_entity(4, 40),
+            direct_source: None,
+            target: test_entity(9, 90),
+            ability: Some(rlogs_events::AbilityId(
+                runtime().synergy_luck_field.produced_damage_ability_id,
+            )),
+            amount: 77_777,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(1),
+            damage_source: None,
+            damage_type: Some(2),
+            flags: rlogs_events::DamageFlags::default(),
+            packet: rlogs_events::DamagePacketDetail::default(),
+        }
+    }
+
+    fn coordinated_strike_test_projector() -> BpsrStateDamageContributionProjector {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let active_family = fiery_battle_will_test_family(1_500);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: active_family.clone(),
+                    magical_attack: active_family,
+                    ..ActorHpState::default()
+                },
+            )]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 4)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(4, 40)]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_status(
+            &coordinated_strike_test_status(Some(provider), recipient, 61, StatusState::Applied),
+            0,
+        );
+        projector.formula_status_prior_values_current_wire.clear();
+        projector
+    }
+
+    fn all_class_aura_test_projector() -> BpsrStateDamageContributionProjector {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let tank = test_entity(9, 90);
+        let active_family = fiery_battle_will_test_family(2_000);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4, 9]),
+            class_id_by_actor: HashMap::from([(2, 5), (4, 4), (9, 9)]),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: active_family.clone(),
+                    magical_attack: active_family,
+                    ..ActorHpState::default()
+                },
+            )]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 4)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(4, 40)]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (9, 90)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_status(
+            &all_class_aura_test_status(Some(provider), recipient, 101, StatusState::Applied),
+            0,
+        );
+        projector.observe_status(
+            &all_class_aura_test_status(Some(provider), tank, 102, StatusState::Applied),
+            0,
+        );
+        projector.formula_status_prior_values_current_wire.clear();
+        projector
+    }
+
+    fn attribute_transfer_test_status(
+        provider: Option<EntityRef>,
+        recipient: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().attribute_transfer;
+        rlogs_events::StatusEvent {
+            source: provider,
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(config.required_stacks),
+            level: Some(config.required_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+            duration_millis: Some(config.duration_millis),
+        }
+    }
+
+    fn attribute_transfer_test_state() -> ActorHpState {
+        ActorHpState {
+            critical_chance_raw: Some(8_000),
+            critical_chance_raw_add: Some(7_000),
+            lucky_chance_raw: Some(4_000),
+            lucky_chance_raw_add: Some(3_000),
+            haste_percent_basis_points: Some(2_000),
+            mastery_raw: Some(3_000),
+            mastery_raw_add: Some(2_000),
+            versatility_raw: Some(5_000),
+            versatility_raw_add: Some(4_000),
+            external_damage_raw: Some(1_350),
+            critical_damage_raw: Some(10_000),
+            lucky_damage_raw: Some(5_000),
+            ..ActorHpState::default()
+        }
+    }
+
+    fn attribute_transfer_test_projector(
+        lane: AttributeTransferLane,
+    ) -> BpsrStateDamageContributionProjector {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            states: HashMap::from([(4, attribute_transfer_test_state())]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 4)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(4, 40)]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_status(
+            &attribute_transfer_test_status(Some(provider), recipient, 81, StatusState::Applied),
+            0,
+        );
+        projector.formula_status_prior_values_current_wire.clear();
+        projector
+            .attribute_transfer_windows
+            .values_mut()
+            .next()
+            .expect("test child window")
+            .lane = Some(lane);
+        projector
+    }
+
+    fn tactical_blessing_test_status(
+        provider: Option<EntityRef>,
+        recipient: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().tactical_blessing;
+        rlogs_events::StatusEvent {
+            source: provider,
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(config.required_stacks),
+            level: Some(config.required_level),
+            part_id: None,
+            count: Some(-1),
+            created_at_millis: None,
+            duration_millis: Some(config.duration_millis),
+        }
+    }
+
+    fn tactical_blessing_test_projector() -> BpsrStateDamageContributionProjector {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            states: HashMap::from([(4, attribute_transfer_test_state())]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 4)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(4, 40)]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.observe_status(
+            &tactical_blessing_test_status(Some(provider), recipient, 101, StatusState::Applied),
+            0,
+        );
+        projector.formula_status_prior_values_current_wire.clear();
+        projector
+    }
+
     fn critical_cold_test_status(
         provider: EntityRef,
         recipient: EntityRef,
@@ -15283,7 +18606,8 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                31_602, 55_228, 55_333, 2_110_034, 2_110_065, 2_110_096, 2_110_125, 2_110_140,
+                31_602, 55_228, 55_333, 997_511, 997_513, 997_515, 997_518, 997_534, 997_538,
+                997_570, 998_542, 2_100_154, 2_110_034, 2_110_065, 2_110_096, 2_110_125, 2_110_140,
                 2_110_143, 2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271,
                 3_003_052, 3_003_411
             ],
@@ -16123,7 +19447,8 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                31_602, 55_228, 55_333, 2_110_034, 2_110_065, 2_110_096, 2_110_125, 2_110_140,
+                31_602, 55_228, 55_333, 997_511, 997_513, 997_515, 997_518, 997_534, 997_538,
+                997_570, 998_542, 2_100_154, 2_110_034, 2_110_065, 2_110_096, 2_110_125, 2_110_140,
                 2_110_143, 2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271,
                 3_003_052, 3_003_411
             ]
@@ -18295,6 +21620,1327 @@ mod tests {
                 CriticalDamageFactorInterpretation::AdditiveBonus,
             ),
             "recipient-build Crit chance to Crit DMG conversion must be composed as one provider marginal",
+        );
+    }
+
+    #[test]
+    fn element_sharing_uses_exact_description_magnitude_and_remote_identity() {
+        let mut damage = critical_test_damage(test_entity(4, 40), 1_000_000);
+        damage.packet.property = Some(1);
+        let projector = element_sharing_test_projector();
+        let contribution = projector
+            .element_sharing_decision(123, &damage)
+            .expect("one exact recipient child and element state should emit");
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            (2_000_000, 13)
+        );
+        assert_eq!(contribution.effect_id, 997_513);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(
+            contribution.scope,
+            DamageContributionScope::Component("element-sharing-all-plus-property-element-damage")
+        );
+
+        let mut rotated = element_sharing_test_projector();
+        rotated.active_players.insert(44);
+        rotated.attribute_state_entity_uuid_by_actor.insert(44, 40);
+        let mut rotated_damage = critical_test_damage(test_entity(44, 40), 1_000_000);
+        rotated_damage.packet.property = Some(1);
+        let rotated_contribution = rotated
+            .element_sharing_decision(124, &rotated_damage)
+            .expect("stable recipient entity should join rotated actor IDs");
+        assert_eq!(rotated_contribution.recipient_actor_id, 44);
+        assert_eq!(
+            (
+                rotated_contribution.numerator,
+                rotated_contribution.denominator
+            ),
+            (2_000_000, 13)
+        );
+    }
+
+    #[test]
+    fn attribute_transfer_binds_only_one_exact_final_substat_lane() {
+        let previous = attribute_transfer_test_state();
+        let mut critical = previous.clone();
+        critical.critical_chance_raw = Some(9_000);
+        critical.critical_chance_raw_add = Some(8_000);
+        assert_eq!(
+            attribute_transfer_lane_transition(&previous, &critical, 1_000, 35, 100),
+            Some(AttributeTransferLane::CriticalChance)
+        );
+
+        let mut versatility = previous.clone();
+        versatility.versatility_raw = Some(6_000);
+        versatility.versatility_raw_add = Some(5_000);
+        versatility.external_damage_raw = Some(1_700);
+        assert_eq!(
+            attribute_transfer_lane_transition(&previous, &versatility, 1_000, 35, 100),
+            Some(AttributeTransferLane::Versatility)
+        );
+
+        let mut ambiguous = critical.clone();
+        ambiguous.lucky_chance_raw = Some(5_000);
+        ambiguous.lucky_chance_raw_add = Some(4_000);
+        assert_eq!(
+            attribute_transfer_lane_transition(&previous, &ambiguous, 1_000, 35, 100),
+            None,
+            "one shared child cannot authorize a multi-lane packet transition"
+        );
+
+        let mut projector =
+            attribute_transfer_test_projector(AttributeTransferLane::CriticalChance);
+        projector
+            .attribute_transfer_windows
+            .values_mut()
+            .next()
+            .unwrap()
+            .lane = None;
+        projector.staged_states.insert(4, critical);
+        projector.reconcile_attribute_transfer_staged_states();
+        assert_eq!(
+            projector
+                .attribute_transfer_windows
+                .values()
+                .next()
+                .unwrap()
+                .lane,
+            Some(AttributeTransferLane::CriticalChance)
+        );
+    }
+
+    #[test]
+    fn attribute_transfer_crit_and_versatility_use_exact_corrected_stages() {
+        let damage = critical_test_damage(test_entity(4, 40), 1_000_000);
+        let critical = attribute_transfer_test_projector(AttributeTransferLane::CriticalChance)
+            .attribute_transfer_occurrence_decision(123, &damage)
+            .expect("one exact Crit child should emit");
+        assert_eq!(critical.effect_id, 997_515);
+        assert_eq!(critical.provider_actor_id, 2);
+        assert_eq!(
+            (critical.numerator, critical.denominator),
+            exact_external_critical_chance_fraction(
+                1_000_000,
+                8_000,
+                1_000,
+                10_000,
+                runtime().critical_damage_factor_interpretation,
+            )
+            .unwrap()
+        );
+
+        let versatility = attribute_transfer_test_projector(AttributeTransferLane::Versatility)
+            .attribute_transfer_versatility_decision(123, &damage)
+            .expect("one exact Versatility child should emit");
+        assert_eq!(versatility.effect_id, 997_515);
+        assert_eq!(versatility.provider_actor_id, 2);
+        assert_eq!(
+            (versatility.numerator, versatility.denominator),
+            (7_000_000, 227),
+            "+10% Versatility becomes +3.5% in the external-damage bucket"
+        );
+
+        let envelope =
+            harmony_grace_wire_envelope(200, 123, TimelineEventKind::Damage(damage.clone()));
+        let mut pipeline = attribute_transfer_test_projector(AttributeTransferLane::Versatility);
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut pipeline,
+            &envelope,
+            &mut exact,
+            &mut rational,
+        );
+        assert!(exact.is_empty());
+        assert_eq!(rational.len(), 1);
+        assert_eq!(rational[0].effect_id, 997_515);
+    }
+
+    #[test]
+    fn attribute_transfer_unbound_expired_self_and_gap_cases_fail_closed() {
+        let damage = critical_test_damage(test_entity(4, 40), 1_000_000);
+        let mut unbound = attribute_transfer_test_projector(AttributeTransferLane::CriticalChance);
+        unbound
+            .attribute_transfer_windows
+            .values_mut()
+            .next()
+            .unwrap()
+            .lane = None;
+        assert_eq!(
+            unbound.attribute_transfer_occurrence_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut expired = attribute_transfer_test_projector(AttributeTransferLane::CriticalChance);
+        expired.expire_attribute_transfer_windows(10_000_000);
+        assert_eq!(
+            expired.attribute_transfer_occurrence_decision(10_000_000, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut gap = attribute_transfer_test_projector(AttributeTransferLane::CriticalChance);
+        gap.clear_attribute_transfer_after_gap(DataGapKind::TcpGap);
+        assert_eq!(
+            gap.attribute_transfer_occurrence_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut self_owned =
+            attribute_transfer_test_projector(AttributeTransferLane::CriticalChance);
+        let key = *self_owned.attribute_transfer_windows.keys().next().unwrap();
+        let window = self_owned.attribute_transfer_windows.remove(&key).unwrap();
+        let value = self_owned.formula_statuses.remove(&key).unwrap();
+        let self_key = FormulaStatusKey {
+            source_actor_id: 4,
+            ..key
+        };
+        self_owned
+            .attribute_transfer_windows
+            .insert(self_key, window);
+        self_owned.formula_statuses.insert(
+            self_key,
+            FormulaStatusValue {
+                source_entity_uuid: Some(40),
+                ..value
+            },
+        );
+        assert_eq!(
+            self_owned.attribute_transfer_occurrence_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+    }
+
+    #[test]
+    fn tactical_blessing_attributes_exact_crit_luck_occurrence_stage() {
+        let recipient = test_entity(4, 40);
+        let critical_damage = critical_test_damage(recipient, 1_000_000);
+        let critical = tactical_blessing_test_projector()
+            .tactical_blessing_occurrence_decision(123, &critical_damage)
+            .expect("one exact Tactical Blessing child should emit Crit chance credit");
+        assert_eq!(critical.effect_id, 997_570);
+        assert_eq!(critical.provider_actor_id, 2);
+        assert_eq!(critical.recipient_actor_id, 4);
+        assert_eq!(
+            (critical.numerator, critical.denominator),
+            exact_external_critical_chance_fraction(
+                1_000_000,
+                8_000,
+                1_000,
+                10_000,
+                runtime().critical_damage_factor_interpretation,
+            )
+            .unwrap()
+        );
+
+        let mut combined_damage = critical_damage.clone();
+        combined_damage.flags.lucky = Some(true);
+        let combined = tactical_blessing_test_projector()
+            .tactical_blessing_occurrence_decision(123, &combined_damage)
+            .expect("simultaneous Crit and Luck must remove the shared cross-term once");
+        let provider_lucky_damage_raw_delta = runtime()
+            .inspiration
+            .base_lucky_damage_dependency
+            .lucky_damage_raw_delta(4_000, 1_000);
+        assert_eq!(
+            (combined.numerator, combined.denominator),
+            exact_inspiration_occurrence_fraction(
+                1_000_000,
+                true,
+                true,
+                8_000,
+                4_000,
+                1_000,
+                10_000,
+                None,
+                Some(5_000),
+                provider_lucky_damage_raw_delta,
+                runtime().critical_damage_factor_interpretation,
+            )
+            .unwrap()
+        );
+
+        let envelope = harmony_grace_wire_envelope(
+            200,
+            123,
+            TimelineEventKind::Damage(combined_damage.clone()),
+        );
+        let mut pipeline = tactical_blessing_test_projector();
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut pipeline,
+            &envelope,
+            &mut exact,
+            &mut rational,
+        );
+        assert!(exact.is_empty());
+        assert_eq!(rational.len(), 1);
+        assert_eq!(rational[0].effect_id, 997_570);
+    }
+
+    #[test]
+    fn tactical_blessing_lifecycle_and_ambiguity_fail_closed() {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let damage = critical_test_damage(recipient, 1_000_000);
+
+        let mut duplicate = tactical_blessing_test_projector();
+        duplicate.observe_status(
+            &tactical_blessing_test_status(Some(provider), recipient, 102, StatusState::Applied),
+            1,
+        );
+        duplicate.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            duplicate.tactical_blessing_occurrence_decision(123, &damage),
+            Err("provider_window_ambiguous")
+        );
+
+        let mut same_wire = tactical_blessing_test_projector();
+        same_wire.observe_status(
+            &tactical_blessing_test_status(Some(provider), recipient, 101, StatusState::Refreshed),
+            1,
+        );
+        assert_eq!(
+            same_wire.tactical_blessing_occurrence_decision(123, &damage),
+            Err("same_wire_transition")
+        );
+
+        let mut malformed = tactical_blessing_test_projector();
+        malformed.formula_statuses.clear();
+        malformed.tactical_blessing_windows.clear();
+        let mut missing_duration =
+            tactical_blessing_test_status(Some(provider), recipient, 103, StatusState::Applied);
+        missing_duration.duration_millis = None;
+        malformed.observe_status(&missing_duration, 0);
+        malformed.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            malformed.tactical_blessing_occurrence_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut self_owned = tactical_blessing_test_projector();
+        self_owned.formula_statuses.clear();
+        self_owned.tactical_blessing_windows.clear();
+        self_owned.observe_status(
+            &tactical_blessing_test_status(Some(recipient), recipient, 104, StatusState::Applied),
+            0,
+        );
+        self_owned.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            self_owned.tactical_blessing_occurrence_decision(123, &damage),
+            Err("provider_is_recipient")
+        );
+
+        let mut expired = tactical_blessing_test_projector();
+        expired.expire_tactical_blessing_windows(10_000_000);
+        assert_eq!(
+            expired.tactical_blessing_occurrence_decision(10_000_000, &damage),
+            Err("provider_window_missing")
+        );
+        let mut gap = tactical_blessing_test_projector();
+        gap.clear_tactical_blessing_after_gap(DataGapKind::TcpGap);
+        assert_eq!(
+            gap.tactical_blessing_occurrence_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut unflagged = damage.clone();
+        unflagged.flags.critical = Some(false);
+        assert_eq!(
+            tactical_blessing_test_projector()
+                .tactical_blessing_occurrence_decision(123, &unflagged),
+            Err("occurrence_missing")
+        );
+    }
+
+    #[test]
+    fn element_sharing_lifecycle_formula_and_pipeline_fail_closed() {
+        let recipient = test_entity(4, 40);
+        let mut damage = critical_test_damage(recipient, 1_000_000);
+        damage.packet.property = Some(1);
+
+        let mut malformed = element_sharing_test_projector();
+        malformed.formula_statuses.clear();
+        malformed.element_sharing_windows.clear();
+        let mut wrong_duration = element_sharing_test_status(
+            Some(test_entity(2, 20)),
+            recipient,
+            72,
+            StatusState::Applied,
+        );
+        wrong_duration.duration_millis = None;
+        malformed.observe_status(&wrong_duration, 0);
+        malformed.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            malformed.element_sharing_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut expired = element_sharing_test_projector();
+        expired.expire_element_sharing_windows(10_000_000);
+        assert_eq!(
+            expired.element_sharing_decision(10_000_000, &damage),
+            Err("provider_window_missing")
+        );
+        let mut gap = element_sharing_test_projector();
+        gap.clear_element_sharing_after_gap(DataGapKind::TcpGap);
+        assert_eq!(
+            gap.element_sharing_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut non_elemental = damage.clone();
+        non_elemental.packet.property = None;
+        assert_eq!(
+            element_sharing_test_projector().element_sharing_decision(123, &non_elemental),
+            Err("damage_property_missing")
+        );
+
+        let envelope =
+            harmony_grace_wire_envelope(200, 123, TimelineEventKind::Damage(damage.clone()));
+        let mut pipeline = element_sharing_test_projector();
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut pipeline,
+            &envelope,
+            &mut exact,
+            &mut rational,
+        );
+        assert!(exact.is_empty());
+        assert_eq!(rational.len(), 1);
+        assert_eq!(rational[0].effect_id, 997_513);
+    }
+
+    #[test]
+    fn coordinated_strike_uses_exact_description_magnitude_and_remote_identity() {
+        let damage = stat_resonance_test_damage();
+        let projector = coordinated_strike_test_projector();
+        let contribution = projector
+            .coordinated_strike_decision(123, &damage)
+            .expect("one exact recipient child and complete Attack family should emit");
+        let selected = select_damage_stage(
+            damage.ability.unwrap().0,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        )
+        .unwrap();
+        let family = &projector.states.get(&4).unwrap().physical_attack;
+        let marginal = exact_signed_attack_raw_percent_provider_marginal(
+            family,
+            runtime().coordinated_strike.attack_raw_percent_delta,
+        )
+        .unwrap();
+        let expected = exact_observed_final_attack_stage_contribution(
+            123,
+            runtime().coordinated_strike.effect_id,
+            DamageContributionScope::Component("coordinated-strike-observed-final-attack-percent"),
+            2,
+            4,
+            damage.amount,
+            family.final_value.unwrap(),
+            marginal,
+            selected,
+        )
+        .unwrap();
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            (expected.numerator, expected.denominator)
+        );
+        assert_eq!(contribution.effect_id, 997_511);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+
+        let mut rotated = coordinated_strike_test_projector();
+        rotated.active_players.insert(44);
+        rotated.attribute_state_entity_uuid_by_actor.insert(44, 40);
+        let mut rotated_damage = damage;
+        rotated_damage.source = test_entity(44, 40);
+        let rotated_contribution = rotated
+            .coordinated_strike_decision(124, &rotated_damage)
+            .expect("stable recipient entity should join rotated actor IDs");
+        assert_eq!(rotated_contribution.recipient_actor_id, 44);
+    }
+
+    #[test]
+    fn all_class_aura_selects_exact_observed_role_cohort_and_fails_closed() {
+        let damage = stat_resonance_test_damage();
+        let projector = all_class_aura_test_projector();
+        let (contribution, delta) = projector
+            .all_class_aura_decision(123, &damage)
+            .expect("three observed roles select the exact capped aura tier");
+        assert_eq!(delta, 2_000);
+        assert_eq!(contribution.effect_id, 998_542);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(
+            contribution.scope,
+            DamageContributionScope::Component("all-class-aura-observed-final-attack-percent")
+        );
+
+        let mut missing_role = all_class_aura_test_projector();
+        missing_role.class_id_by_actor.remove(&9);
+        assert_eq!(
+            missing_role.all_class_aura_decision(123, &damage),
+            Err("cohort_role_missing")
+        );
+
+        let mut removed = all_class_aura_test_projector();
+        removed.observe_status(
+            &all_class_aura_test_status(
+                Some(test_entity(2, 20)),
+                test_entity(4, 40),
+                101,
+                StatusState::Removed,
+            ),
+            124,
+        );
+        removed.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            removed.all_class_aura_decision(125, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut gap = all_class_aura_test_projector();
+        gap.clear_all_class_aura_after_gap(DataGapKind::TcpGap);
+        assert_eq!(
+            gap.all_class_aura_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+    }
+
+    #[test]
+    fn enhanced_synergy_selects_exact_physical_and_magical_boost_buckets() {
+        let projector = enhanced_synergy_test_projector();
+        let physical = projector
+            .enhanced_synergy_decision(123, &enhanced_synergy_test_damage(false))
+            .expect("the exact physical Boost bucket should emit");
+        assert_eq!(physical.effect_id, 997_518);
+        assert_eq!(physical.provider_actor_id, 2);
+        assert_eq!(physical.recipient_actor_id, 4);
+        assert_eq!((physical.numerator, physical.denominator), (80_000, 1));
+        assert_eq!(
+            physical.scope,
+            DamageContributionScope::Component("enhanced-synergy-physical-boost")
+        );
+
+        let magical = projector
+            .enhanced_synergy_decision(123, &enhanced_synergy_test_damage(true))
+            .expect("the exact magical Boost bucket should emit");
+        assert_eq!((magical.numerator, magical.denominator), (2_000_000, 23));
+        assert_eq!(
+            magical.scope,
+            DamageContributionScope::Component("enhanced-synergy-magical-boost")
+        );
+    }
+
+    #[test]
+    fn enhanced_synergy_lifecycle_state_and_pipeline_fail_closed() {
+        let recipient = test_entity(4, 40);
+        let damage = enhanced_synergy_test_damage(false);
+
+        let mut malformed = enhanced_synergy_test_projector();
+        malformed.formula_statuses.clear();
+        malformed.enhanced_synergy_windows.clear();
+        let mut wrong_duration = enhanced_synergy_test_status(
+            Some(test_entity(2, 20)),
+            recipient,
+            82,
+            StatusState::Applied,
+        );
+        wrong_duration.duration_millis = None;
+        malformed.observe_status(&wrong_duration, 0);
+        malformed.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            malformed.enhanced_synergy_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut expired = enhanced_synergy_test_projector();
+        expired.expire_enhanced_synergy_windows(3_000_000);
+        assert_eq!(
+            expired.enhanced_synergy_decision(3_000_000, &damage),
+            Err("provider_window_missing")
+        );
+        let mut gap = enhanced_synergy_test_projector();
+        gap.clear_enhanced_synergy_after_gap(DataGapKind::TcpGap);
+        assert_eq!(
+            gap.enhanced_synergy_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut incomplete = enhanced_synergy_test_projector();
+        incomplete.states.get_mut(&4).unwrap().physical_boost_raw = None;
+        assert_eq!(
+            incomplete.enhanced_synergy_decision(123, &damage),
+            Err("physical_boost_state_missing")
+        );
+
+        let mut duplicate = enhanced_synergy_test_projector();
+        duplicate.observe_status(
+            &enhanced_synergy_test_status(
+                Some(test_entity(2, 20)),
+                recipient,
+                83,
+                StatusState::Applied,
+            ),
+            0,
+        );
+        duplicate.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            duplicate.enhanced_synergy_decision(123, &damage),
+            Err("provider_window_ambiguous"),
+            "two exact active instances remain ambiguous even when they name the same provider"
+        );
+
+        let mut self_owned = enhanced_synergy_test_projector();
+        self_owned.formula_statuses.clear();
+        self_owned.enhanced_synergy_windows.clear();
+        self_owned.observe_status(
+            &enhanced_synergy_test_status(Some(recipient), recipient, 84, StatusState::Applied),
+            0,
+        );
+        self_owned.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            self_owned.enhanced_synergy_decision(123, &damage),
+            Err("provider_is_recipient")
+        );
+
+        let mut same_wire = enhanced_synergy_test_projector();
+        let key = *same_wire.formula_statuses.keys().next().unwrap();
+        same_wire
+            .formula_status_prior_values_current_wire
+            .insert(key, None);
+        assert_eq!(
+            same_wire.enhanced_synergy_decision(123, &damage),
+            Err("same_wire_transition")
+        );
+
+        let envelope =
+            harmony_grace_wire_envelope(200, 123, TimelineEventKind::Damage(damage.clone()));
+        let mut pipeline = enhanced_synergy_test_projector();
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut pipeline,
+            &envelope,
+            &mut exact,
+            &mut rational,
+        );
+        assert!(exact.is_empty());
+        assert_eq!(rational.len(), 1);
+        assert_eq!(rational[0].effect_id, 997_518);
+    }
+
+    #[test]
+    fn blessing_uses_packet_final_general_damage_total_and_composes_before_boost() {
+        let projector = blessing_test_projector();
+        let damage = blessing_test_damage();
+        let contribution = projector
+            .blessing_decision(123, &damage)
+            .expect("one exact external Blessing plus packet-final General Damage should emit");
+        assert_eq!(contribution.effect_id, 2_100_154);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            (200_000, 1)
+        );
+        assert_eq!(
+            contribution.scope,
+            DamageContributionScope::Component("blessing-general-damage")
+        );
+
+        let envelope =
+            harmony_grace_wire_envelope(210, 123, TimelineEventKind::Damage(damage.clone()));
+        let mut pipeline = blessing_test_projector();
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut pipeline,
+            &envelope,
+            &mut exact,
+            &mut rational,
+        );
+        assert!(exact.is_empty());
+        assert_eq!(rational.len(), 1);
+        assert_eq!(rational[0], contribution);
+        assert_eq!(rational[0].observed_damage, damage.amount);
+
+        let mut overlap = blessing_test_projector();
+        overlap.states.get_mut(&4).unwrap().physical_boost_raw = Some(2_500);
+        overlap.observe_status(
+            &enhanced_synergy_test_status(
+                Some(test_entity(3, 30)),
+                test_entity(4, 40),
+                92,
+                StatusState::Applied,
+            ),
+            0,
+        );
+        overlap.active_players.insert(3);
+        overlap.actor_ancestry = test_ancestry(&[(2, 20), (3, 30), (4, 40)]);
+        overlap.formula_status_prior_values_current_wire.clear();
+        let mut overlap_exact = Vec::new();
+        let mut overlap_rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut overlap,
+            &envelope,
+            &mut overlap_exact,
+            &mut overlap_rational,
+        );
+        assert!(overlap_exact.is_empty());
+        assert_eq!(overlap_rational.len(), 2);
+        assert_eq!(overlap_rational[0].effect_id, 2_100_154);
+        assert_eq!(
+            (
+                overlap_rational[0].numerator,
+                overlap_rational[0].denominator
+            ),
+            (200_000, 1)
+        );
+        assert_eq!(overlap_rational[1].effect_id, 997_518);
+        assert_eq!(
+            (
+                overlap_rational[1].numerator,
+                overlap_rational[1].denominator
+            ),
+            (64_000, 1)
+        );
+        assert_eq!(
+            overlap_rational
+                .iter()
+                .map(|row| row.numerator / row.denominator)
+                .sum::<i128>(),
+            264_000,
+            "General Damage then PHY Boost must conserve their exact joint removal"
+        );
+    }
+
+    #[test]
+    fn blessing_lifecycle_stacking_and_missing_state_fail_closed() {
+        let recipient = test_entity(4, 40);
+        let damage = blessing_test_damage();
+
+        let mut malformed = blessing_test_projector();
+        malformed.formula_statuses.clear();
+        malformed.blessing_windows.clear();
+        let mut wrong_duration = blessing_test_status(
+            Some(test_entity(2, 20)),
+            recipient,
+            93,
+            StatusState::Applied,
+        );
+        wrong_duration.duration_millis = None;
+        malformed.observe_status(&wrong_duration, 0);
+        malformed.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            malformed.blessing_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut expired = blessing_test_projector();
+        expired.expire_blessing_windows(10_000_000);
+        assert_eq!(
+            expired.blessing_decision(10_000_000, &damage),
+            Err("provider_window_missing")
+        );
+        let mut gap = blessing_test_projector();
+        gap.clear_blessing_after_gap(DataGapKind::TcpGap);
+        assert_eq!(
+            gap.blessing_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut missing = blessing_test_projector();
+        missing.states.get_mut(&4).unwrap().general_damage_raw = None;
+        assert_eq!(
+            missing.blessing_decision(123, &damage),
+            Err("general_damage_state_missing")
+        );
+        let mut excludes_delta = blessing_test_projector();
+        excludes_delta
+            .states
+            .get_mut(&4)
+            .unwrap()
+            .general_damage_raw = Some(2_999);
+        assert_eq!(
+            excludes_delta.blessing_decision(123, &damage),
+            Err("general_damage_state_excludes_provider_delta")
+        );
+
+        let mut duplicate = blessing_test_projector();
+        duplicate.observe_status(
+            &blessing_test_status(
+                Some(test_entity(2, 20)),
+                recipient,
+                94,
+                StatusState::Applied,
+            ),
+            0,
+        );
+        duplicate.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            duplicate.blessing_decision(123, &damage),
+            Err("provider_window_ambiguous")
+        );
+
+        let mut self_owned = blessing_test_projector();
+        self_owned.formula_statuses.clear();
+        self_owned.blessing_windows.clear();
+        self_owned.observe_status(
+            &blessing_test_status(Some(recipient), recipient, 95, StatusState::Applied),
+            0,
+        );
+        self_owned.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            self_owned.blessing_decision(123, &damage),
+            Err("provider_is_recipient")
+        );
+
+        let mut same_wire = blessing_test_projector();
+        let key = *same_wire.formula_statuses.keys().next().unwrap();
+        same_wire
+            .formula_status_prior_values_current_wire
+            .insert(key, None);
+        assert_eq!(
+            same_wire.blessing_decision(123, &damage),
+            Err("same_wire_transition")
+        );
+
+        let mut removed = blessing_test_projector();
+        removed.observe_status(
+            &blessing_test_status(
+                Some(test_entity(2, 20)),
+                recipient,
+                91,
+                StatusState::Removed,
+            ),
+            124,
+        );
+        removed.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            removed.blessing_decision(125, &damage),
+            Err("provider_window_missing")
+        );
+    }
+
+    #[test]
+    fn synergy_luck_field_attributes_only_the_external_imagine_passive_output() {
+        let projector = synergy_luck_field_test_projector();
+        let damage = synergy_luck_field_test_damage();
+        let contribution = projector
+            .synergy_luck_field_contribution(123, &damage)
+            .expect("one external aura plus exact absent Imagine loadout should emit");
+        assert_eq!(contribution.effect_id, 997_534);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(contribution.amount, damage.amount);
+        assert_eq!(contribution.observed_damage, damage.amount);
+
+        let envelope =
+            harmony_grace_wire_envelope(201, 123, TimelineEventKind::Damage(damage.clone()));
+        let mut pipeline = synergy_luck_field_test_projector();
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut pipeline,
+            &envelope,
+            &mut exact,
+            &mut rational,
+        );
+        assert!(rational.is_empty());
+        assert_eq!(exact.len(), 1);
+        assert_eq!(exact[0].effect_id, 997_534);
+
+        let mut unrelated = damage;
+        unrelated.ability = Some(rlogs_events::AbilityId(3_937));
+        assert!(
+            projector
+                .synergy_luck_field_contribution(123, &unrelated)
+                .is_none(),
+            "the Imagine's direct cast remains ordinary owner damage"
+        );
+    }
+
+    #[test]
+    fn synergy_luck_field_loadout_lifecycle_and_ambiguity_fail_closed() {
+        let recipient = test_entity(4, 40);
+        let damage = synergy_luck_field_test_damage();
+
+        let mut intrinsic = synergy_luck_field_test_projector();
+        intrinsic
+            .observe_synergy_luck_field_recipient_loadout(&synergy_luck_field_test_actor(true));
+        assert!(
+            intrinsic
+                .synergy_luck_field_contribution(123, &damage)
+                .is_none(),
+            "an equipped intrinsic copy makes the proc cause nonunique"
+        );
+
+        let mut missing_loadout = synergy_luck_field_test_projector();
+        missing_loadout
+            .synergy_luck_field_recipient_has_intrinsic_imagine
+            .clear();
+        assert!(
+            missing_loadout
+                .synergy_luck_field_contribution(123, &damage)
+                .is_none(),
+            "an unobserved recipient loadout cannot prove passive absence"
+        );
+
+        let mut duplicate = synergy_luck_field_test_projector();
+        duplicate.observe_status(
+            &synergy_luck_field_test_status(
+                Some(test_entity(2, 20)),
+                recipient,
+                92,
+                StatusState::Applied,
+            ),
+            0,
+        );
+        duplicate.formula_status_prior_values_current_wire.clear();
+        assert!(
+            duplicate
+                .synergy_luck_field_contribution(123, &damage)
+                .is_none(),
+            "two active aura instances are ambiguous even with one provider"
+        );
+
+        let mut self_owned = synergy_luck_field_test_projector();
+        self_owned.formula_statuses.clear();
+        self_owned.synergy_luck_field_windows.clear();
+        self_owned.observe_status(
+            &synergy_luck_field_test_status(Some(recipient), recipient, 93, StatusState::Applied),
+            0,
+        );
+        self_owned.formula_status_prior_values_current_wire.clear();
+        assert!(
+            self_owned
+                .synergy_luck_field_contribution(123, &damage)
+                .is_none()
+        );
+
+        let mut same_wire = synergy_luck_field_test_projector();
+        let key = *same_wire.formula_statuses.keys().next().unwrap();
+        same_wire
+            .formula_status_prior_values_current_wire
+            .insert(key, None);
+        assert!(
+            same_wire
+                .synergy_luck_field_contribution(123, &damage)
+                .is_none()
+        );
+
+        let mut expired = synergy_luck_field_test_projector();
+        expired.expire_synergy_luck_field_windows(10_000_000);
+        assert!(
+            expired
+                .synergy_luck_field_contribution(10_000_000, &damage)
+                .is_none()
+        );
+
+        let mut gap = synergy_luck_field_test_projector();
+        gap.clear_synergy_luck_field_after_gap(DataGapKind::TcpGap);
+        assert!(gap.synergy_luck_field_contribution(123, &damage).is_none());
+    }
+
+    #[test]
+    fn coordinated_strike_lifecycle_formula_and_pipeline_fail_closed() {
+        let recipient = test_entity(4, 40);
+        let damage = stat_resonance_test_damage();
+
+        let mut malformed = coordinated_strike_test_projector();
+        malformed.formula_statuses.clear();
+        malformed.coordinated_strike_windows.clear();
+        let mut wrong_duration = coordinated_strike_test_status(
+            Some(test_entity(2, 20)),
+            recipient,
+            62,
+            StatusState::Applied,
+        );
+        wrong_duration.duration_millis = None;
+        malformed.observe_status(&wrong_duration, 0);
+        malformed.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            malformed.coordinated_strike_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut expired = coordinated_strike_test_projector();
+        expired.expire_coordinated_strike_windows(3_000_000);
+        assert_eq!(
+            expired.coordinated_strike_decision(3_000_000, &damage),
+            Err("provider_window_missing")
+        );
+        let mut gap = coordinated_strike_test_projector();
+        gap.clear_coordinated_strike_after_gap(DataGapKind::TcpGap);
+        assert_eq!(
+            gap.coordinated_strike_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut incomplete = coordinated_strike_test_projector();
+        incomplete
+            .states
+            .get_mut(&4)
+            .unwrap()
+            .physical_attack
+            .raw_percent_packet_observed = false;
+        assert_eq!(
+            incomplete.coordinated_strike_decision(123, &damage),
+            Err("recipient_attack_not_packet_observed")
+        );
+
+        let envelope =
+            harmony_grace_wire_envelope(200, 123, TimelineEventKind::Damage(damage.clone()));
+        let mut pipeline = coordinated_strike_test_projector();
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut pipeline,
+            &envelope,
+            &mut exact,
+            &mut rational,
+        );
+        assert!(exact.is_empty());
+        assert_eq!(rational.len(), 1);
+        assert_eq!(rational[0].effect_id, 997_511);
+    }
+
+    #[test]
+    fn all_attack_percent_providers_share_one_exact_conserved_bucket() {
+        let damage = stat_resonance_test_damage();
+        let family = fiery_battle_will_test_family(4_500);
+        let projector = BpsrStateDamageContributionProjector {
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    physical_attack: family.clone(),
+                    magical_attack: family.clone(),
+                    ..ActorHpState::default()
+                },
+            )]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let selected = select_damage_stage(
+            damage.ability.unwrap().0,
+            damage.hit_event_id,
+            damage.damage_source,
+            damage.packet.owner_stage,
+            damage.packet.owner_level,
+        )
+        .unwrap();
+        let event = |effect_id, provider_actor_id, delta, scope| {
+            exact_observed_final_attack_stage_contribution(
+                123,
+                effect_id,
+                DamageContributionScope::Component(scope),
+                provider_actor_id,
+                4,
+                damage.amount,
+                family.final_value.unwrap(),
+                exact_signed_attack_raw_percent_provider_marginal(&family, delta).unwrap(),
+                selected,
+            )
+            .unwrap()
+        };
+        let fiery = event(
+            runtime().fiery_battle_will.effect_id,
+            2,
+            runtime().fiery_battle_will.provider_raw_percent_delta,
+            "fiery",
+        );
+        let coordinated = event(
+            runtime().coordinated_strike.effect_id,
+            3,
+            runtime().coordinated_strike.attack_raw_percent_delta,
+            "coordinated",
+        );
+        let aura_delta = runtime().all_class_aura.maximum_attack_raw_percent_delta;
+        let aura = event(
+            runtime().all_class_aura.effect_id,
+            5,
+            aura_delta,
+            "all-class-aura",
+        );
+        let split = projector
+            .observed_attack_percent_bucket_contributions(
+                123,
+                &damage,
+                Some(fiery),
+                Some(coordinated),
+                Some((aura, aura_delta)),
+            )
+            .unwrap();
+        assert_eq!(split.len(), 3);
+        assert_eq!(split[0].effect_id, runtime().fiery_battle_will.effect_id);
+        assert_eq!(split[1].effect_id, runtime().coordinated_strike.effect_id);
+        assert_eq!(split[2].effect_id, runtime().all_class_aura.effect_id);
+
+        let joint_delta = runtime().fiery_battle_will.provider_raw_percent_delta
+            + runtime().coordinated_strike.attack_raw_percent_delta
+            + aura_delta;
+        let aggregate = exact_observed_final_attack_stage_contribution(
+            123,
+            runtime().coordinated_strike.effect_id,
+            DamageContributionScope::Component("aggregate"),
+            3,
+            4,
+            damage.amount,
+            family.final_value.unwrap(),
+            exact_signed_attack_raw_percent_provider_marginal(&family, joint_delta).unwrap(),
+            selected,
+        )
+        .unwrap();
+        let split_numerator = split[0].numerator * split[1].denominator * split[2].denominator
+            + split[1].numerator * split[0].denominator * split[2].denominator
+            + split[2].numerator * split[0].denominator * split[1].denominator;
+        let split_denominator = split[0]
+            .denominator
+            .checked_mul(split[1].denominator)
+            .and_then(|value| value.checked_mul(split[2].denominator))
+            .unwrap();
+        assert_eq!(
+            split_numerator * aggregate.denominator,
+            aggregate.numerator * split_denominator,
+            "same-stage shares must sum exactly to the joint Attack counterfactual"
+        );
+        assert_eq!(
+            split[0].numerator * split[1].denominator * i128::from(1_500),
+            split[1].numerator * split[0].denominator * i128::from(1_000),
+            "the conserved bucket is divided by authoritative raw-percent deltas"
+        );
+        assert_eq!(
+            split[1].numerator * split[2].denominator * i128::from(aura_delta),
+            split[2].numerator * split[1].denominator * i128::from(1_500),
+            "the variable aura tier remains an exact weight in the shared bucket"
+        );
+    }
+
+    #[test]
+    fn synergy_crit_field_uses_exact_description_magnitude_and_remote_identity() {
+        let damage = critical_test_damage(test_entity(4, 40), 1_000_000);
+        let projector = synergy_crit_field_test_projector();
+        let contribution = projector
+            .synergy_crit_field_decision(123, &damage)
+            .expect("one external child status and Crit-DMG state should emit");
+        let expected = exact_external_critical_damage_fraction(
+            damage.amount,
+            10_300,
+            runtime().synergy_crit_field.critical_damage_raw_delta,
+            runtime().critical_damage_factor_interpretation,
+        )
+        .unwrap();
+        assert_eq!((contribution.numerator, contribution.denominator), expected);
+        assert_eq!(contribution.effect_id, 997_538);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(
+            contribution.scope,
+            DamageContributionScope::Component("synergy-crit-field-critical-damage")
+        );
+
+        let mut rotated = synergy_crit_field_test_projector();
+        rotated.active_players.insert(44);
+        rotated.attribute_state_entity_uuid_by_actor.insert(44, 40);
+        let rotated_damage = critical_test_damage(test_entity(44, 40), 1_000_000);
+        let rotated_contribution = rotated
+            .synergy_crit_field_decision(124, &rotated_damage)
+            .expect("stable recipient entity should join rotated actor IDs");
+        assert_eq!(rotated_contribution.recipient_actor_id, 44);
+        assert_eq!(
+            (
+                rotated_contribution.numerator,
+                rotated_contribution.denominator
+            ),
+            expected
+        );
+    }
+
+    #[test]
+    fn synergy_crit_field_lifecycle_outcomes_and_ownership_fail_closed() {
+        let recipient = test_entity(4, 40);
+        let damage = critical_test_damage(recipient, 1_000_000);
+
+        let mut removed = synergy_crit_field_test_projector();
+        removed.observe_status(
+            &synergy_crit_field_test_status(
+                Some(test_entity(2, 20)),
+                recipient,
+                91,
+                StatusState::Removed,
+            ),
+            122,
+        );
+        assert_eq!(
+            removed.synergy_crit_field_decision(123, &damage),
+            Err("same_wire_transition")
+        );
+        removed.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            removed.synergy_crit_field_decision(124, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut ambiguous = synergy_crit_field_test_projector();
+        ambiguous.active_players.insert(3);
+        ambiguous.observe_status(
+            &synergy_crit_field_test_status(
+                Some(test_entity(3, 30)),
+                recipient,
+                92,
+                StatusState::Applied,
+            ),
+            0,
+        );
+        ambiguous.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            ambiguous.synergy_crit_field_decision(123, &damage),
+            Err("provider_window_ambiguous")
+        );
+
+        let mut self_owned = synergy_crit_field_test_projector();
+        self_owned.formula_statuses.clear();
+        self_owned.synergy_crit_field_windows.clear();
+        self_owned.observe_status(
+            &synergy_crit_field_test_status(Some(recipient), recipient, 93, StatusState::Applied),
+            0,
+        );
+        self_owned.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            self_owned.synergy_crit_field_decision(123, &damage),
+            Err("provider_is_recipient")
+        );
+
+        let mut inactive = synergy_crit_field_test_projector();
+        inactive.active_players.remove(&2);
+        assert_eq!(
+            inactive.synergy_crit_field_decision(123, &damage),
+            Err("provider_inactive")
+        );
+
+        let mut same_wire = synergy_crit_field_test_projector();
+        let key = *same_wire.formula_statuses.keys().next().unwrap();
+        same_wire
+            .formula_status_prior_values_current_wire
+            .insert(key, None);
+        assert_eq!(
+            same_wire.synergy_crit_field_decision(123, &damage),
+            Err("same_wire_transition")
+        );
+
+        let mut noncritical = damage.clone();
+        noncritical.flags.critical = Some(false);
+        assert_eq!(
+            synergy_crit_field_test_projector().synergy_crit_field_decision(123, &noncritical),
+            Err("critical_occurrence_missing")
+        );
+        let mut lucky = damage;
+        lucky.flags.lucky = Some(true);
+        assert_eq!(
+            synergy_crit_field_test_projector().synergy_crit_field_decision(123, &lucky),
+            Err("lucky_or_unknown_outcome")
+        );
+    }
+
+    #[test]
+    fn synergy_crit_field_requires_exact_unexpired_child_lifecycle_and_clears_tcp_gap() {
+        let recipient = test_entity(4, 40);
+        let damage = critical_test_damage(recipient, 1_000_000);
+
+        let mut expired = synergy_crit_field_test_projector();
+        assert_eq!(
+            expired.synergy_crit_field_decision(1_099_999, &damage),
+            Ok(expired
+                .synergy_crit_field_contribution(1_099_999, &damage)
+                .unwrap())
+        );
+        expired.expire_synergy_crit_field_windows(1_100_000);
+        assert_eq!(
+            expired.synergy_crit_field_decision(1_100_000, &damage),
+            Err("provider_window_missing")
+        );
+        assert!(
+            expired
+                .formula_statuses
+                .keys()
+                .all(|key| key.effect_id != runtime().synergy_crit_field.effect_id)
+        );
+
+        let mut malformed = synergy_crit_field_test_projector();
+        malformed.formula_statuses.clear();
+        malformed.synergy_crit_field_windows.clear();
+        let mut wrong_duration = synergy_crit_field_test_status(
+            Some(test_entity(2, 20)),
+            recipient,
+            94,
+            StatusState::Applied,
+        );
+        wrong_duration.duration_millis = None;
+        malformed.observe_status(&wrong_duration, 0);
+        malformed.formula_status_prior_values_current_wire.clear();
+        assert_eq!(
+            malformed.synergy_crit_field_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut gap = synergy_crit_field_test_projector();
+        gap.clear_synergy_crit_field_after_gap(DataGapKind::TcpGap);
+        assert_eq!(
+            gap.synergy_crit_field_decision(123, &damage),
+            Err("provider_window_missing")
+        );
+        assert!(gap.synergy_crit_field_windows.is_empty());
+        assert!(
+            gap.formula_statuses
+                .keys()
+                .all(|key| key.effect_id != runtime().synergy_crit_field.effect_id)
+        );
+    }
+
+    #[test]
+    fn synergy_crit_field_pipeline_emits_standalone_and_suppresses_unordered_overlap() {
+        let damage = critical_test_damage(test_entity(4, 40), 1_000_000);
+        let envelope =
+            harmony_grace_wire_envelope(200, 123, TimelineEventKind::Damage(damage.clone()));
+        let mut standalone = synergy_crit_field_test_projector();
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut standalone,
+            &envelope,
+            &mut exact,
+            &mut rational,
+        );
+        assert!(exact.is_empty());
+        assert_eq!(rational.len(), 1);
+        assert_eq!(rational[0].effect_id, 997_538);
+
+        let mut overlap = synergy_crit_field_test_projector();
+        overlap.active_players.insert(3);
+        overlap.observe_critical_cold_status(&critical_cold_test_status(
+            test_entity(3, 30),
+            test_entity(4, 40),
+            77,
+            StatusState::Applied,
+        ));
+        let mut overlap_exact = Vec::new();
+        let mut overlap_rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut overlap,
+            &envelope,
+            &mut overlap_exact,
+            &mut overlap_rational,
+        );
+        assert!(overlap_exact.is_empty());
+        assert!(
+            overlap_rational.is_empty(),
+            "simultaneous un-ordered critical-stage providers must retain damage without guessed credit"
         );
     }
 
@@ -20708,7 +25354,7 @@ mod tests {
         };
         let (selected, unresolved) = select_ordered_observed_attack_contributions(
             Some(event(runtime().stat_resonance.effect_id)),
-            Some(event(runtime().fiery_battle_will.effect_id)),
+            vec![event(runtime().fiery_battle_will.effect_id)],
         );
         assert!(!unresolved);
         assert_eq!(selected.len(), 2);

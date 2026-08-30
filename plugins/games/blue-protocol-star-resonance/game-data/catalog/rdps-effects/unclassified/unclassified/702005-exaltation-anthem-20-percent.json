@@ -1,19 +1,21 @@
 {
   "schema_version": 1,
-  "game_build": "24252055",
+  "game_build": "24687926",
   "rule": {
     "effect_id": 702005,
-    "review_state": "candidate",
+    "review_state": "non_contributing",
     "contribution_kind": "direct_damage_amplification",
-    "source_scope": "unresolved",
+    "source_scope": "environment",
     "target_scope": "effect_target",
     "magnitude_basis_points": 2000,
     "stacking_rule": "fixed",
     "attribution_enabled": false
   },
   "evidence": [
-    "Current-build status-effect row 702005 is mapped.",
-    "Official en-US description states that damage dealt and healing are increased by 20%.",
-    "Provider ownership and whether this is player-supplied or environmental remain unresolved."
+    "Exact-build 24687926 status-effect row 702005 is mapped and localized as Exaltation Anthem. The retained magnitude is presentation evidence only and grants no damage-formula authority.",
+    "The exact-build BuffTable places 702005 in the S3 environmental family that also contains the interactable-speaker affix 702018, speaker skill 702019, and speaker innate buff 702020. No player skill, factor, equipment, or other player-owned source is mapped to 702005.",
+    "The sealed 26-log cohort contains 55 lifecycle events: six synchronized activation groups of five recipients, with one 30-second recipient-local instance per player. All wire sources equal their recipients and every origin is absent, so recipient-local wire source is not treated as provider authority.",
+    "In the retained current-build run-0005 sequence slice, effect 702018 refreshes immediately before effect 702005 applies for all five recipients at the same capture timestamp. The environmental relation receipt is effect-702003-702005.exaltation-anthem.environmental-relation.current-build-24687926.v1.json.",
+    "This review authorizes environmental exclusion only; the bounded counterfactual has zero controlled groups, so direct damage attribution and player rDPS credit remain disabled."
   ]
 }

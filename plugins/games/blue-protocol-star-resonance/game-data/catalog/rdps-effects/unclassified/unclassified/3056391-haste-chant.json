@@ -1,19 +1,21 @@
 {
   "schema_version": 1,
-  "game_build": "24252055",
+  "game_build": "24687926",
   "rule": {
     "effect_id": 3056391,
-    "review_state": "candidate",
-    "contribution_kind": "haste",
-    "source_scope": "unresolved",
-    "target_scope": "effect_target",
+    "review_state": "non_contributing",
+    "contribution_kind": "self_only",
+    "source_scope": "owner",
+    "target_scope": "self_only",
     "magnitude_basis_points": null,
     "stacking_rule": "unresolved",
     "attribution_enabled": false
   },
   "evidence": [
-    "Current-build status-effect row 3056391 is mapped and officially localized as Haste Chant.",
-    "The current-build design label identifies a cast-speed increase, but its numeric magnitude is unresolved.",
-    "Provider ownership, recipient scope, and stacking behavior remain unresolved."
+    "Exact-build 24687926 status-effect row 3056391 is mapped and localized as Haste Chant.",
+    "Every one of the 359 observed lifecycle events in the sealed 26-log current-build cohort has the same player entity as wire source and recipient. The cohort covers four stable character IDs and contains no external recipient observation.",
+    "Every observed source is class 5, and every status row carries exact origin source type 1 and source configuration 3056390.",
+    "The current-build static source catalog maps 3056390 to the class-5 Verdant Oracle Reality Factor X2 family 202311, item IDs 20022101 through 20022110. Current-build factor/profile evidence observes family 202311 on the same four characters that receive 3056391.",
+    "The exact magnitude and stacking behavior remain unresolved, but neither is needed to establish that this owner-only cadence effect transfers no external provider damage credit."
   ]
 }

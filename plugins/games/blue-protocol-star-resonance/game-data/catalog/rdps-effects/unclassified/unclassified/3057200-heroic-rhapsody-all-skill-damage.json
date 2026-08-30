@@ -1,19 +1,20 @@
 {
   "schema_version": 1,
-  "game_build": "24252055",
+  "game_build": "24687926",
   "rule": {
     "effect_id": 3057200,
-    "review_state": "candidate",
-    "contribution_kind": "direct_damage_amplification",
-    "source_scope": "unresolved",
-    "target_scope": "effect_target",
+    "review_state": "non_contributing",
+    "contribution_kind": "self_only",
+    "source_scope": "owner",
+    "target_scope": "self_only",
     "magnitude_basis_points": null,
-    "stacking_rule": "unresolved",
+    "stacking_rule": "fixed",
     "attribution_enabled": false
   },
   "evidence": [
-    "Current-build status-effect row 3057200 is mapped as a design-only effect.",
-    "Its current-build design label describes an all-skill damage increase while Heroic Rhapsody is active.",
-    "Provider ownership, recipient scope, magnitude, and stacking behavior remain unresolved."
+    "Exact-build 24687926 BuffTable row 3057200 is the hidden owner state whose design label says that Heroic Melody activates Rhapsody of Flame and increases all of the owner's skill damage.",
+    "The exact current-build reference graph contains one declared incoming edge: RogueEntryTable row 330 BuffId -> BuffTable 3057200 (rogue-entry-buff). No player skill, party recipient, or external provider edge exists.",
+    "Current-build rogue entry 330 is localized as Beat Performer - Heroic Rhapsody: Illusion-Breaking DMG is increased by 50%; while Heroic Melody is active, Rhapsody of Flame is active; available only in Nightmare.",
+    "This is an owner-selected Nightmare rogue-entry modifier. Its personal damage remains ordinary owner DPS and never transfers rDPS to another player; an exact numeric magnitude for the hidden child status is therefore not invented or required."
   ]
 }

@@ -289,9 +289,72 @@ mod tests {
         ),
     ];
 
-    const REVIEW_BATCH_SOURCES: [&str; 7] = [
+    const REVIEW_BATCH_SOURCES: [&str; 30] = [
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/current-build-production-effect-classifications.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/2100154-blessing-party-damage.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/31602-inspire-party-haste.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/997510-coordinated-strike-family.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/997512-element-sharing-family.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/997514-attribute-transfer-family.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/997517-enhanced-synergy-family.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/997536-synergy-crit-field-family.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/997533-synergy-luck-field-family.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/997557-tactical-blessing-family.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/998542-all-class-aura.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/2204471-critical-cold-child.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/promoted-stat-resonance-team-luck-children.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/unclassified/unclassified/997519-energy-synergy-domain-family.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/unclassified/unclassified/2110060-swift-vortex-party-haste.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/unclassified/unclassified/2202720-inspire-and-strengthen-composite.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/unclassified/unclassified/2100104-battlelust-applied-aura-family.v1.json"
+        ),
         include_str!(
             "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-support-and-marker-batch.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/2100212-battlelust-aura-owner-markers.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/997550-pulse-owner-and-support-family.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/997580-mastery-owner-and-support-family.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/997610-bloodwrath-owner-and-support-family.v1.json"
         ),
         include_str!(
             "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-owner-self-and-support-batch.v1.json"
@@ -304,6 +367,12 @@ mod tests {
         ),
         include_str!(
             "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-owner-talent-tail-batch.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/2110121-phantom-rally-owner-companion-attack.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/party-offense-parent-markers.v1.json"
         ),
         include_str!(
             "../game-data/catalog/rdps-effects/unclassified/unclassified/current-build-blocked-frontier-and-parent-dispositions.v1.json"
@@ -347,13 +416,23 @@ mod tests {
     }
 
     #[test]
-    fn older_build_candidates_are_retained_but_not_claimed_as_current_review() {
-        for effect_id in [702_004, 3_057_200] {
-            assert_eq!(
-                classify_rdps_effect(effect_id).unwrap(),
-                RdpsEffectLookup::RetainedMappedUnclassified { effect_id }
-            );
-        }
+    fn current_build_descriptions_disposition_environment_and_owner_only_effects() {
+        let RdpsEffectLookup::Reviewed(anthem) = classify_rdps_effect(702_004).unwrap() else {
+            panic!("expected reviewed Exaltation Anthem 702004");
+        };
+        assert_eq!(anthem.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(anthem.source_scope, RdpsSourceScope::Environment);
+        assert_eq!(anthem.magnitude_basis_points, Some(1_000));
+        assert!(!anthem.attribution_enabled);
+
+        let RdpsEffectLookup::Reviewed(rhapsody) = classify_rdps_effect(3_057_200).unwrap() else {
+            panic!("expected reviewed Heroic Rhapsody 3057200");
+        };
+        assert_eq!(rhapsody.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(rhapsody.contribution_kind, RdpsContributionKind::SelfOnly);
+        assert_eq!(rhapsody.source_scope, RdpsSourceScope::Owner);
+        assert_eq!(rhapsody.target_scope, RdpsTargetScope::SelfOnly);
+        assert!(!rhapsody.attribution_enabled);
     }
 
     #[test]
@@ -369,6 +448,415 @@ mod tests {
         assert_eq!(rule.stacking_rule, RdpsStackingRule::Unresolved);
         assert!(!rule.attribution_enabled);
         assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
+    }
+
+    #[test]
+    fn join_forces_is_owner_local_proximity_scaling_without_transfer_credit() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(997_516).unwrap() else {
+            panic!("expected reviewed Join Forces 997516");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(rule.contribution_kind, RdpsContributionKind::SelfOnly);
+        assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+        assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+        assert_eq!(rule.magnitude_basis_points, Some(800));
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::StackScaled);
+        assert!(!rule.attribution_enabled);
+    }
+
+    #[test]
+    fn coordinated_conversion_is_owner_local_element_damage_without_transfer_credit() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(997_530).unwrap() else {
+            panic!("expected reviewed Coordinated Conversion 997530");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(rule.contribution_kind, RdpsContributionKind::SelfOnly);
+        assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+        assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+        assert_eq!(rule.magnitude_basis_points, Some(500));
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::Fixed);
+        assert!(!rule.attribution_enabled);
+    }
+
+    #[test]
+    fn healing_driven_damage_procs_remain_the_healers_ordinary_damage() {
+        for effect_id in [997_539, 997_540, 997_541] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed healing-driven owner effect {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::SelfOnly);
+            assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+            assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+            assert!(!rule.attribution_enabled);
+        }
+    }
+
+    #[test]
+    fn rogue_imagine_summon_roots_do_not_duplicate_downstream_effect_credit() {
+        for effect_id in [997_542, 997_543, 997_544] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed Rogue Imagine summon marker {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::InternalMarker);
+            assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+            assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+            assert_eq!(rule.magnitude_basis_points, None);
+            assert_eq!(rule.stacking_rule, RdpsStackingRule::Fixed);
+            assert!(!rule.attribution_enabled);
+        }
+    }
+
+    #[test]
+    fn rogue_defensive_synergies_cannot_enter_damage_attribution() {
+        for effect_id in [
+            997_521, 997_522, 997_523, 997_524, 997_525, 997_526, 997_527, 997_528, 997_529,
+            997_531, 997_532,
+        ] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed Rogue defensive Synergy {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert!(!rule.attribution_enabled);
+            assert!(matches!(
+                rule.contribution_kind,
+                RdpsContributionKind::HealingSupport
+                    | RdpsContributionKind::Mitigation
+                    | RdpsContributionKind::InternalMarker
+            ));
+        }
+    }
+
+    #[test]
+    fn energy_synergy_retains_exact_resource_formula_as_zero_credit_candidate() {
+        let RdpsEffectLookup::Reviewed(root) = classify_rdps_effect(997_519).unwrap() else {
+            panic!("expected reviewed Energy Synergy Domain root 997519");
+        };
+        assert_eq!(root.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(root.contribution_kind, RdpsContributionKind::InternalMarker);
+        assert!(!root.attribution_enabled);
+
+        let RdpsEffectLookup::Reviewed(resource) = classify_rdps_effect(997_520).unwrap() else {
+            panic!("expected reviewed Energy Synergy Domain child 997520");
+        };
+        assert_eq!(resource.review_state, RdpsReviewState::Candidate);
+        assert_eq!(resource.contribution_kind, RdpsContributionKind::Haste);
+        assert_eq!(resource.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(resource.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(resource.magnitude_basis_points, Some(10_000));
+        assert_eq!(resource.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!resource.attribution_enabled);
+    }
+
+    #[test]
+    fn synergy_luck_field_retains_root_and_exact_external_proc_child() {
+        let RdpsEffectLookup::Reviewed(root) = classify_rdps_effect(997_533).unwrap() else {
+            panic!("expected reviewed Synergy Luck Field root 997533");
+        };
+        assert_eq!(root.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(root.contribution_kind, RdpsContributionKind::InternalMarker);
+
+        let RdpsEffectLookup::Reviewed(child) = classify_rdps_effect(997_534).unwrap() else {
+            panic!("expected reviewed Synergy Luck Field child 997534");
+        };
+        assert_eq!(child.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            child.contribution_kind,
+            RdpsContributionKind::DirectDamageAmplification
+        );
+        assert_eq!(child.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(child.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(child.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!child.attribution_enabled);
+    }
+
+    #[test]
+    fn tactical_blessing_retains_root_and_exact_external_chance_child() {
+        let RdpsEffectLookup::Reviewed(root) = classify_rdps_effect(997_557).unwrap() else {
+            panic!("expected reviewed Tactical Blessing root 997557");
+        };
+        assert_eq!(root.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(root.contribution_kind, RdpsContributionKind::InternalMarker);
+        assert!(!root.attribution_enabled);
+
+        let RdpsEffectLookup::Reviewed(child) = classify_rdps_effect(997_570).unwrap() else {
+            panic!("expected reviewed Tactical Blessing child 997570");
+        };
+        assert_eq!(child.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            child.contribution_kind,
+            RdpsContributionKind::OffensiveStatBoost
+        );
+        assert_eq!(child.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(child.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(child.magnitude_basis_points, Some(1_000));
+        assert_eq!(child.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!child.attribution_enabled);
+    }
+
+    #[test]
+    fn all_class_aura_retains_exact_role_scaled_party_attack_formula() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(998_542).unwrap() else {
+            panic!("expected reviewed All-Class Aura effect 998542");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            rule.contribution_kind,
+            RdpsContributionKind::OffensiveStatBoost
+        );
+        assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(rule.magnitude_basis_points, None);
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!rule.attribution_enabled);
+    }
+
+    #[test]
+    fn pulse_family_other_than_tactical_blessing_never_transfers_damage() {
+        for effect_id in [
+            997_550, 997_551, 997_552, 997_553, 997_554, 997_555, 997_556, 997_558, 997_559,
+            997_560, 997_561, 997_562, 997_563, 997_564, 997_565, 997_566, 997_567, 997_568,
+            997_569,
+        ] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed Pulse-family disposition {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert!(!rule.attribution_enabled);
+            assert!(matches!(
+                rule.contribution_kind,
+                RdpsContributionKind::SelfOnly
+                    | RdpsContributionKind::HealingSupport
+                    | RdpsContributionKind::InternalMarker
+            ));
+        }
+    }
+
+    #[test]
+    fn mastery_and_bloodwrath_families_are_owner_local_or_support_only() {
+        for effect_id in (997_580..=997_599).chain(997_610..=997_642) {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed Mastery/Bloodwrath disposition {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert!(!rule.attribution_enabled);
+            assert!(matches!(
+                rule.contribution_kind,
+                RdpsContributionKind::SelfOnly
+                    | RdpsContributionKind::HealingSupport
+                    | RdpsContributionKind::Mitigation
+                    | RdpsContributionKind::InternalMarker
+            ));
+        }
+    }
+
+    #[test]
+    fn phantom_rally_is_owner_companion_attack_without_transfer_credit() {
+        let RdpsEffectLookup::Reviewed(config) = classify_rdps_effect(2_110_082).unwrap() else {
+            panic!("expected reviewed Phantom Rally config marker 2110082");
+        };
+        assert_eq!(config.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(
+            config.contribution_kind,
+            RdpsContributionKind::InternalMarker
+        );
+        assert_eq!(config.source_scope, RdpsSourceScope::Owner);
+        assert_eq!(config.target_scope, RdpsTargetScope::SelfOnly);
+        assert_eq!(config.magnitude_basis_points, None);
+        assert_eq!(config.stacking_rule, RdpsStackingRule::Fixed);
+        assert!(!config.attribution_enabled);
+
+        let RdpsEffectLookup::Reviewed(status) = classify_rdps_effect(2_110_121).unwrap() else {
+            panic!("expected reviewed Phantom Rally status 2110121");
+        };
+        assert_eq!(status.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(status.contribution_kind, RdpsContributionKind::SelfOnly);
+        assert_eq!(status.source_scope, RdpsSourceScope::Owner);
+        assert_eq!(status.target_scope, RdpsTargetScope::SelfOnly);
+        assert_eq!(status.magnitude_basis_points, None);
+        assert_eq!(status.stacking_rule, RdpsStackingRule::Fixed);
+        assert!(!status.attribution_enabled);
+    }
+
+    #[test]
+    fn party_offense_roots_do_not_duplicate_their_applied_child_credit() {
+        for effect_id in [2_207_250, 2_302_120] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed party-offense parent marker {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::InternalMarker);
+            assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+            assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+            assert_eq!(rule.magnitude_basis_points, None);
+            assert_eq!(rule.stacking_rule, RdpsStackingRule::Fixed);
+            assert!(!rule.attribution_enabled);
+        }
+    }
+
+    #[test]
+    fn critical_cold_child_retains_exact_external_crit_chance_role() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(2_204_471).unwrap() else {
+            panic!("expected reviewed Critical Cold child 2204471");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            rule.contribution_kind,
+            RdpsContributionKind::OffensiveStatBoost
+        );
+        assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(rule.magnitude_basis_points, Some(300));
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!rule.attribution_enabled);
+    }
+
+    #[test]
+    fn inspire_child_retains_exact_party_haste_opportunity_role() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(31_602).unwrap() else {
+            panic!("expected reviewed Inspire child 31602");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(rule.contribution_kind, RdpsContributionKind::Haste);
+        assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(rule.magnitude_basis_points, Some(1_000));
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!rule.attribution_enabled);
+    }
+
+    #[test]
+    fn swift_vortex_retains_nonstacking_party_haste_as_a_fail_closed_candidate() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(2_110_060).unwrap() else {
+            panic!("expected reviewed Swift Vortex status 2110060");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::Candidate);
+        assert_eq!(rule.contribution_kind, RdpsContributionKind::Haste);
+        assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(rule.magnitude_basis_points, None);
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!rule.attribution_enabled);
+    }
+
+    #[test]
+    fn unavailable_inspire_and_strengthen_is_owner_local() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(2_202_720).unwrap() else {
+            panic!("expected reviewed Inspire and Strengthen status 2202720");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(rule.contribution_kind, RdpsContributionKind::SelfOnly);
+        assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+        assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+        assert_eq!(rule.magnitude_basis_points, None);
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::Fixed);
+        assert!(!rule.attribution_enabled);
+    }
+
+    #[test]
+    fn battlelust_learned_owner_rows_do_not_stand_in_for_applied_aura_children() {
+        for effect_id in [2_100_212, 2_100_300] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed Battlelust owner marker {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::InternalMarker);
+            assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+            assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+            assert_eq!(rule.magnitude_basis_points, None);
+            assert_eq!(rule.stacking_rule, RdpsStackingRule::Fixed);
+            assert!(!rule.attribution_enabled);
+        }
+    }
+
+    #[test]
+    fn unavailable_battlelust_applied_family_never_transfers_player_rdps() {
+        for effect_id in [2_100_104, 2_100_105] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed Battlelust healing row {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::HealingSupport);
+            assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+            assert!(!rule.attribution_enabled);
+        }
+
+        let RdpsEffectLookup::Reviewed(enemy_debuff) = classify_rdps_effect(2_100_107).unwrap()
+        else {
+            panic!("expected reviewed Battlelust enemy debuff");
+        };
+        assert_eq!(enemy_debuff.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(
+            enemy_debuff.contribution_kind,
+            RdpsContributionKind::TargetVulnerability
+        );
+        assert_eq!(enemy_debuff.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(enemy_debuff.target_scope, RdpsTargetScope::Enemy);
+        assert_eq!(enemy_debuff.magnitude_basis_points, None);
+        assert_eq!(enemy_debuff.stacking_rule, RdpsStackingRule::Unresolved);
+        assert!(!enemy_debuff.attribution_enabled);
+
+        let RdpsEffectLookup::Reviewed(ally_buff) = classify_rdps_effect(2_100_108).unwrap() else {
+            panic!("expected reviewed Battlelust ally buff");
+        };
+        assert_eq!(ally_buff.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(
+            ally_buff.contribution_kind,
+            RdpsContributionKind::Mitigation
+        );
+        assert_eq!(ally_buff.target_scope, RdpsTargetScope::PartyMembers);
+        assert!(!ally_buff.attribution_enabled);
+
+        for effect_id in [2_100_207, 2_100_208] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed Battlelust aura marker {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::InternalMarker);
+            assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+            assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+            assert!(!rule.attribution_enabled);
+        }
+
+        assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
+    }
+
+    #[test]
+    fn blessing_retains_exact_thirty_percent_party_damage_without_approximate_credit() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(2_100_154).unwrap() else {
+            panic!("expected reviewed Blessing status 2100154");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            rule.contribution_kind,
+            RdpsContributionKind::DirectDamageAmplification
+        );
+        assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(rule.magnitude_basis_points, Some(3_000));
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::Unresolved);
+        assert!(!rule.attribution_enabled);
+        assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
+    }
+
+    #[test]
+    fn promoted_stat_resonance_and_team_luck_children_keep_composite_roles() {
+        for effect_id in [2_207_252, 2_302_121] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed promoted composite child {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::Confirmed);
+            assert_eq!(
+                rule.contribution_kind,
+                RdpsContributionKind::OffensiveStatBoost
+            );
+            assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+            assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+            assert_eq!(rule.magnitude_basis_points, None);
+            assert_eq!(rule.stacking_rule, RdpsStackingRule::RefreshOnly);
+            assert!(!rule.attribution_enabled);
+        }
     }
 
     #[test]
@@ -482,78 +970,35 @@ mod tests {
     }
 
     #[test]
-    fn blocked_frontier_candidates_retain_exact_scope_gaps_without_runtime_credit() {
-        for (effect_id, kind, source_scope, target_scope) in [
-            (
-                2_201_330,
-                RdpsContributionKind::DirectDamageAmplification,
-                RdpsSourceScope::Owner,
-                RdpsTargetScope::SelfOnly,
-            ),
-            (
-                2_205_310,
-                RdpsContributionKind::Haste,
-                RdpsSourceScope::Owner,
-                RdpsTargetScope::PartyMembers,
-            ),
-            (
-                2_208_260,
-                RdpsContributionKind::OffensiveStatBoost,
-                RdpsSourceScope::Owner,
-                RdpsTargetScope::Unresolved,
-            ),
-            (
-                2_208_310,
-                RdpsContributionKind::OffensiveStatBoost,
-                RdpsSourceScope::Owner,
-                RdpsTargetScope::Unresolved,
-            ),
-            (
-                2_405_150,
-                RdpsContributionKind::OffensiveStatBoost,
-                RdpsSourceScope::Unresolved,
-                RdpsTargetScope::Unresolved,
-            ),
-            (
-                2_406_110,
-                RdpsContributionKind::DirectDamageAmplification,
-                RdpsSourceScope::Owner,
-                RdpsTargetScope::SelfOnly,
-            ),
-            (
-                2_407_280,
-                RdpsContributionKind::TargetVulnerability,
-                RdpsSourceScope::Unresolved,
-                RdpsTargetScope::Unresolved,
-            ),
-            (
-                3_003_210,
-                RdpsContributionKind::OffensiveStatBoost,
-                RdpsSourceScope::Owner,
-                RdpsTargetScope::Unresolved,
-            ),
+    fn exact_description_dispositions_keep_owner_mechanics_out_of_rdps() {
+        for effect_id in [
+            2_201_330, 2_205_310, 2_208_260, 2_208_310, 2_405_150, 2_406_110, 2_407_280, 3_003_210,
         ] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
-                panic!("expected retained blocked candidate {effect_id}");
+                panic!("expected reviewed owner-only effect {effect_id}");
             };
-            assert_eq!(rule.review_state, RdpsReviewState::Candidate);
-            assert_eq!(rule.contribution_kind, kind);
-            assert_eq!(rule.source_scope, source_scope);
-            assert_eq!(rule.target_scope, target_scope);
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::SelfOnly);
+            assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+            assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
             assert_eq!(rule.magnitude_basis_points, None);
-            assert_eq!(rule.stacking_rule, RdpsStackingRule::Unresolved);
+            assert_eq!(rule.stacking_rule, RdpsStackingRule::Fixed);
             assert!(!rule.attribution_enabled);
         }
         assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
     }
 
     #[test]
-    fn unresolved_external_survival_status_remains_unclassified_and_fail_closed() {
-        let effect_id = 2_110_032;
-        assert_eq!(
-            classify_rdps_effect(effect_id).unwrap(),
-            RdpsEffectLookup::RetainedMappedUnclassified { effect_id }
-        );
+    fn heroes_immortal_design_label_resolves_to_an_internal_counter() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(2_110_032).unwrap() else {
+            panic!("expected reviewed Air Blade Thrust counter 2110032");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(rule.contribution_kind, RdpsContributionKind::InternalMarker);
+        assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+        assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::StackScaled);
+        assert!(!rule.attribution_enabled);
     }
 
     #[test]
@@ -573,7 +1018,9 @@ mod tests {
 
     #[test]
     fn observed_exaltation_anthems_are_environmental_and_never_credit_a_player() {
-        for (effect_id, magnitude_basis_points) in [(702_003, 500), (702_005, 2_000)] {
+        for (effect_id, magnitude_basis_points) in
+            [(702_003, 500), (702_004, 1_000), (702_005, 2_000)]
+        {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed Exaltation Anthem {effect_id}");
             };
@@ -681,6 +1128,161 @@ mod tests {
     }
 
     #[test]
+    fn synergy_crit_field_child_is_confirmed_but_uses_the_critical_state_projector() {
+        for effect_id in [997_536, 997_537] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed Synergy Crit Field marker {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::InternalMarker);
+            assert!(!rule.attribution_enabled);
+        }
+
+        let RdpsEffectLookup::Reviewed(child) = classify_rdps_effect(997_538).unwrap() else {
+            panic!("expected reviewed Synergy Crit Field recipient child");
+        };
+        assert_eq!(child.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            child.contribution_kind,
+            RdpsContributionKind::DirectDamageAmplification
+        );
+        assert_eq!(child.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(child.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(child.magnitude_basis_points, Some(300));
+        assert_eq!(child.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!child.attribution_enabled);
+        assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
+        assert!(
+            crate::proven_state_damage_contribution_effect_ids()
+                .unwrap()
+                .contains(&997_538),
+            "the exact critical-only state projector, not the generic unconditional reducer, grants runtime credit"
+        );
+    }
+
+    #[test]
+    fn element_sharing_child_is_confirmed_but_uses_the_element_state_projector() {
+        let RdpsEffectLookup::Reviewed(root) = classify_rdps_effect(997_512).unwrap() else {
+            panic!("expected reviewed Element Sharing root marker");
+        };
+        assert_eq!(root.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(root.contribution_kind, RdpsContributionKind::InternalMarker);
+        assert!(!root.attribution_enabled);
+
+        let RdpsEffectLookup::Reviewed(child) = classify_rdps_effect(997_513).unwrap() else {
+            panic!("expected reviewed Element Sharing recipient child");
+        };
+        assert_eq!(child.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            child.contribution_kind,
+            RdpsContributionKind::DirectDamageAmplification
+        );
+        assert_eq!(child.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(child.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(child.magnitude_basis_points, Some(2_000));
+        assert_eq!(child.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!child.attribution_enabled);
+        assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
+        assert!(
+            crate::proven_state_damage_contribution_effect_ids()
+                .unwrap()
+                .contains(&997_513),
+            "the exact element-bucket state projector, not the generic unconditional reducer, grants runtime credit"
+        );
+    }
+
+    #[test]
+    fn coordinated_strike_child_is_confirmed_but_uses_the_attack_state_projector() {
+        let RdpsEffectLookup::Reviewed(root) = classify_rdps_effect(997_510).unwrap() else {
+            panic!("expected reviewed Coordinated Strike root marker");
+        };
+        assert_eq!(root.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(root.contribution_kind, RdpsContributionKind::InternalMarker);
+        assert!(!root.attribution_enabled);
+
+        let RdpsEffectLookup::Reviewed(child) = classify_rdps_effect(997_511).unwrap() else {
+            panic!("expected reviewed Coordinated Strike recipient child");
+        };
+        assert_eq!(child.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            child.contribution_kind,
+            RdpsContributionKind::DirectDamageAmplification
+        );
+        assert_eq!(child.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(child.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(child.magnitude_basis_points, Some(1_500));
+        assert_eq!(child.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!child.attribution_enabled);
+        assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
+        assert!(
+            crate::proven_state_damage_contribution_effect_ids()
+                .unwrap()
+                .contains(&997_511),
+            "the exact Attack-percent state projector, not the generic unconditional reducer, grants runtime credit"
+        );
+    }
+
+    #[test]
+    fn enhanced_synergy_child_is_confirmed_but_uses_the_boost_state_projector() {
+        let RdpsEffectLookup::Reviewed(root) = classify_rdps_effect(997_517).unwrap() else {
+            panic!("expected reviewed Enhanced Synergy root marker");
+        };
+        assert_eq!(root.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(root.contribution_kind, RdpsContributionKind::InternalMarker);
+        assert!(!root.attribution_enabled);
+
+        let RdpsEffectLookup::Reviewed(child) = classify_rdps_effect(997_518).unwrap() else {
+            panic!("expected reviewed Enhanced Synergy recipient child");
+        };
+        assert_eq!(child.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            child.contribution_kind,
+            RdpsContributionKind::DirectDamageAmplification
+        );
+        assert_eq!(child.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(child.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(child.magnitude_basis_points, Some(1_000));
+        assert_eq!(child.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!child.attribution_enabled);
+        assert!(
+            crate::proven_state_damage_contribution_effect_ids()
+                .unwrap()
+                .contains(&997_518),
+            "the exact boost-bucket state projector grants runtime credit"
+        );
+    }
+
+    #[test]
+    fn attribute_transfer_child_is_confirmed_but_uses_the_lane_state_projector() {
+        let RdpsEffectLookup::Reviewed(root) = classify_rdps_effect(997_514).unwrap() else {
+            panic!("expected reviewed Attribute Transfer root marker");
+        };
+        assert_eq!(root.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(root.contribution_kind, RdpsContributionKind::InternalMarker);
+        assert!(!root.attribution_enabled);
+
+        let RdpsEffectLookup::Reviewed(child) = classify_rdps_effect(997_515).unwrap() else {
+            panic!("expected reviewed Attribute Transfer recipient child");
+        };
+        assert_eq!(child.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            child.contribution_kind,
+            RdpsContributionKind::DirectDamageAmplification
+        );
+        assert_eq!(child.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(child.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(child.magnitude_basis_points, None);
+        assert_eq!(child.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!child.attribution_enabled);
+        assert!(
+            crate::proven_state_damage_contribution_effect_ids()
+                .unwrap()
+                .contains(&997_515),
+            "only the exact lane-bound state projector grants runtime credit"
+        );
+    }
+
+    #[test]
     fn mechanical_power_review_catalog_stays_separate_from_the_promoted_state_runtime() {
         assert_eq!(
             classify_rdps_effect(2_110_140).unwrap(),
@@ -699,33 +1301,98 @@ mod tests {
 
     #[test]
     fn inspiration_keeps_catalog_identity_separate_from_promoted_chance_components() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(2_202_041).unwrap() else {
+            panic!("expected reviewed Inspiration recipient child");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::Confirmed);
         assert_eq!(
-            classify_rdps_effect(2_202_041).unwrap(),
-            RdpsEffectLookup::RetainedMappedUnclassified {
-                effect_id: 2_202_041
-            }
+            rule.contribution_kind,
+            RdpsContributionKind::OffensiveStatBoost
         );
+        assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(rule.magnitude_basis_points, None);
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!rule.attribution_enabled);
         assert!(
             crate::proven_state_damage_contribution_effect_ids()
                 .unwrap()
                 .contains(&2_202_041),
-            "only the Crit-only and Lucky-only chance components are production enabled; the catalog remains unclassified and the combined, dependency, Attack, Mastery, and haste lanes remain uncredited"
+            "the specialized projector preserves each proven Inspiration lane without a generic composite scalar"
         );
     }
 
     #[test]
     fn functional_amp_uses_the_dormant_current_state_runtime_not_the_older_review_catalog() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(2_110_143).unwrap() else {
+            panic!("expected reviewed Functional Amp recipient child");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::Confirmed);
         assert_eq!(
-            classify_rdps_effect(2_110_143).unwrap(),
-            RdpsEffectLookup::RetainedMappedUnclassified {
-                effect_id: 2_110_143
-            }
+            rule.contribution_kind,
+            RdpsContributionKind::OffensiveStatBoost
         );
+        assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(rule.magnitude_basis_points, None);
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!rule.attribution_enabled);
         assert!(
             crate::proven_state_damage_contribution_effect_ids()
                 .unwrap()
                 .contains(&2_110_143),
             "the migrated rule is armed, while the projector still requires a live exact lifecycle and reversible +360 packet transition before credit"
         );
+    }
+
+    #[test]
+    fn production_effect_identities_never_flatten_specialized_formula_paths() {
+        let expected = [
+            (
+                55_333,
+                RdpsContributionKind::DirectDamageAmplification,
+                RdpsTargetScope::PartyMembers,
+                None,
+            ),
+            (
+                2_110_065,
+                RdpsContributionKind::OffensiveStatBoost,
+                RdpsTargetScope::PartyMembers,
+                Some(1_000),
+            ),
+            (
+                2_110_125,
+                RdpsContributionKind::DirectDamageAmplification,
+                RdpsTargetScope::PartyMembers,
+                None,
+            ),
+            (
+                3_003_052,
+                RdpsContributionKind::OffensiveStatBoost,
+                RdpsTargetScope::EffectTarget,
+                Some(200),
+            ),
+        ];
+
+        for (effect_id, kind, target_scope, magnitude) in expected {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed production effect {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::Confirmed);
+            assert_eq!(rule.contribution_kind, kind);
+            assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+            assert_eq!(rule.target_scope, target_scope);
+            assert_eq!(rule.magnitude_basis_points, magnitude);
+            assert_eq!(rule.stacking_rule, RdpsStackingRule::RefreshOnly);
+            assert!(!rule.attribution_enabled);
+            assert!(
+                crate::proven_state_damage_contribution_effect_ids()
+                    .unwrap()
+                    .contains(&effect_id),
+                "effect {effect_id} must remain owned by its specialized state projector"
+            );
+        }
+
+        assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
     }
 }

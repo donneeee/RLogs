@@ -1,19 +1,20 @@
 {
   "schema_version": 1,
-  "game_build": "24252055",
+  "game_build": "24687926",
   "rule": {
     "effect_id": 702004,
-    "review_state": "candidate",
+    "review_state": "non_contributing",
     "contribution_kind": "direct_damage_amplification",
-    "source_scope": "unresolved",
+    "source_scope": "environment",
     "target_scope": "effect_target",
     "magnitude_basis_points": 1000,
     "stacking_rule": "fixed",
     "attribution_enabled": false
   },
   "evidence": [
-    "Current-build status-effect row 702004 is mapped.",
-    "Official en-US description states that damage dealt is increased by 10% and healing by 10%.",
-    "Provider ownership and whether this is player-supplied or environmental remain unresolved."
+    "Exact-build 24687926 BuffTable row 702004 is localized as Exaltation Anthem: damage dealt and healing are each increased by 10%. The magnitude is presentation evidence only and grants no player attribution authority.",
+    "Its exact design identity is S3 music bonus (tier 2), placing it between the already-dispositioned 702003 tier-1 and 702005 tier-3 rows in the same S3 environmental speaker family.",
+    "No exact current-build player skill, factor, equipment, rogue entry, or other player-owned source maps to 702004. The sole skill-like numeric occurrence is explicitly retained by the reference index as reference-like-unproven rather than a declared source edge.",
+    "The status can increase observed damage, but the environment supplied it. Ordinary player damage is preserved and no player receives provider rDPS credit."
   ]
 }

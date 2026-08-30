@@ -902,7 +902,7 @@ fn validate_rdps_conservation(
     Ok(())
 }
 
-fn validate_session_id(session_id: &str) -> Result<(), String> {
+pub(crate) fn validate_session_id(session_id: &str) -> Result<(), String> {
     if session_id.is_empty()
         || session_id.len() > 128
         || !session_id

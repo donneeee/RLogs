@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2100212,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2100300,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 SkillTable entry 3303 describes the Battlelust aura's enemy slow/DEF reduction and ally DEF/healing outputs. Its exact SkillEffectTable row 330301 learns only owner rows 2100212 and 2100300.",
+    "BuffTable names 2100212 as the healing-ultimate Battlelust aura permanent passive and 2100300 as the active-talent Ultimate-value-cap reduction. These are owner installation/resource markers, not the separately applied ally, enemy, healing, or mitigation lifecycles described by the skill.",
+    "Any downstream party or target component must be attributed through its own exact status and provider/recipient or provider/target lifecycle. Crediting either learned owner row would duplicate or invent the actual applied effect, so both remain visible and attribution-disabled."
+  ]
+}

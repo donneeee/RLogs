@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 25;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 34;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -1555,6 +1555,291 @@ pub(crate) struct CriticalColdRuntimeConfig {
     pub runtime_transfer_enabled: bool,
 }
 
+/// Rogue entry 209, Synergy Crit Field. The visible five-second aura refreshes
+/// child effect 997538 on recipients inside the field. Runtime occurrence and
+/// ownership come only from that observed child status; the installed-game
+/// description supplies the exact +3% Crit DMG magnitude and party scope.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SynergyCritFieldRuntimeConfig {
+    pub effect_id: i64,
+    pub root_effect_id: i64,
+    pub aura_effect_id: i64,
+    pub source_rogue_entry_id: i64,
+    pub description_id: i64,
+    pub official_en_us_name: String,
+    pub required_level: i32,
+    pub required_stacks: u32,
+    pub aura_duration_millis: u64,
+    pub child_refresh_duration_millis: u64,
+    pub aura_radius_meters: u32,
+    pub critical_damage_attribute_id: i32,
+    pub critical_damage_raw_delta: i64,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_child_status_identity_authority: bool,
+    pub additive_critical_stage_authority: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
+/// Rogue entry 196, Element Sharing. The owner marker is effect 997512 and
+/// the exact ten-second recipient child is 997513. The installed description
+/// supplies +20% Elemental Damage and party scope; runtime ownership and
+/// occurrence still require the observed child status.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ElementSharingRuntimeConfig {
+    pub effect_id: i64,
+    pub root_effect_id: i64,
+    pub source_rogue_entry_id: i64,
+    pub description_id: i64,
+    pub official_en_us_name: String,
+    pub required_level: i32,
+    pub required_stacks: u32,
+    pub duration_millis: u64,
+    pub element_damage_raw_delta: i64,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_child_status_identity_authority: bool,
+    pub additive_all_plus_property_stage_authority: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
+/// Rogue entry 199, Enhanced Synergy. Effect 997517 is the owner marker and
+/// 997518 is the exact three-second recipient child. The installed description
+/// supplies +10% PHY Boost and +10% MAG Boost; the packet-synced final boost
+/// attributes select the recipient's physical or magical damage bucket.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct EnhancedSynergyRuntimeConfig {
+    pub effect_id: i64,
+    pub root_effect_id: i64,
+    pub source_rogue_entry_id: i64,
+    pub description_id: i64,
+    pub official_en_us_name: String,
+    pub required_level: i32,
+    pub required_stacks: u32,
+    pub duration_millis: u64,
+    pub physical_boost_attribute_id: i32,
+    pub magical_boost_attribute_id: i32,
+    pub boost_raw_delta: i64,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_child_status_identity_authority: bool,
+    pub packet_final_boost_attributes_authority: bool,
+    pub corrected_calculator_multiplicative_boost_stage_authority: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
+/// Verdant Oracle skill 3401, Blessing. Effect 2100154 is the exact
+/// recipient-held party status. The installed description supplies +30%
+/// damage for ten seconds; the corrected calculator places it in the
+/// additive General Damage bucket, whose packet-final current value is
+/// `AttrOtherDamInc` (12670) in ten-thousandths.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct BlessingRuntimeConfig {
+    pub effect_id: i64,
+    pub source_skill_id: i64,
+    pub official_en_us_name: String,
+    pub required_level: i32,
+    pub required_stacks: u32,
+    pub duration_millis: u64,
+    pub general_damage_attribute_id: i32,
+    pub general_damage_raw_delta: i64,
+    current_build_buff_row_fingerprint_sha256: String,
+    current_build_fight_attribute_row_fingerprint_sha256: String,
+    pinned_calculator_calc_skill_sha256: String,
+    pinned_calculator_general_damage_stage_expression: String,
+    pub exact_current_build_buff_row_authority: bool,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_current_build_fight_attribute_row_authority: bool,
+    pub packet_final_general_damage_attribute_route_authority: bool,
+    pub corrected_calculator_additive_general_damage_stage_authority: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub unresolved_stacking_fails_closed: bool,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
+/// Rogue entry 208, Synergy Luck Field. Effect 997533 is the owner marker and
+/// 997534 is the exact ten-second recipient aura. The aura grants the
+/// Lizardman Hunter Imagine passive; its uniquely linked produced-damage
+/// action 3210081 is wholly provider-created only when an exact recipient
+/// loadout proves that Imagine was not already equipped.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SynergyLuckFieldRuntimeConfig {
+    pub effect_id: i64,
+    pub root_effect_id: i64,
+    pub source_rogue_entry_id: i64,
+    pub description_id: i64,
+    pub official_en_us_name: String,
+    pub required_level: i32,
+    pub required_stacks: u32,
+    pub duration_millis: u64,
+    pub trigger_cooldown_millis: u64,
+    pub granted_imagine_ability_id: i64,
+    pub granted_imagine_item_id: i64,
+    pub granted_passive_effect_id: i64,
+    pub produced_damage_ability_id: i64,
+    pub produced_damage_attr_id: i64,
+    pub base_passive_coefficient_basis_points: i64,
+    pub game_description_trigger_and_party_scope_authority: bool,
+    pub exact_child_status_identity_authority: bool,
+    pub exact_imagine_passive_family_authority: bool,
+    pub exact_produced_damage_action_authority: bool,
+    pub exact_recipient_loadout_absence_required: bool,
+    pub observed_final_direct_output_authority: bool,
+    pub accounting_method: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
+/// Rogue entry 195, Coordinated Strike. Effect 997510 is the owner marker and
+/// 997511 is the exact three-second recipient child. The installed description
+/// supplies the +15% Attack magnitude, party scope, trigger cooldown, and
+/// duration; attribution still requires the observed child status and the
+/// recipient's complete packet-observed Attack family.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CoordinatedStrikeRuntimeConfig {
+    pub effect_id: i64,
+    pub root_effect_id: i64,
+    pub source_rogue_entry_id: i64,
+    pub description_id: i64,
+    pub official_en_us_name: String,
+    pub required_level: i32,
+    pub required_stacks: u32,
+    pub duration_millis: u64,
+    pub trigger_cooldown_millis: u64,
+    pub attack_raw_percent_delta: i64,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_child_status_identity_authority: bool,
+    pub additive_attack_percent_stage_authority: bool,
+    pub same_stage_provider_conservation_authority: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
+/// Rogue entry 103, All-Class Aura. Effect 998542 is the continuous level-42
+/// aura status. Its installed description defines a +5% Attack base plus +5%
+/// for each distinct role represented by the observed aura cohort, capped at
+/// +20%. Runtime never infers missing cohort members or actor roles.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AllClassAuraRuntimeConfig {
+    pub effect_id: i64,
+    pub source_rogue_entry_id: i64,
+    pub description_id: i64,
+    pub official_en_us_name: String,
+    pub required_level: i32,
+    pub required_stacks: u32,
+    pub base_attack_raw_percent_delta: i64,
+    pub per_distinct_role_raw_percent_delta: i64,
+    pub maximum_attack_raw_percent_delta: i64,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_observed_aura_status_authority: bool,
+    pub observed_aura_cohort_role_selector_authority: bool,
+    pub additive_attack_percent_stage_authority: bool,
+    pub same_stage_provider_conservation_authority: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
+/// Rogue entry 197, Attribute Transfer. Effect 997514 is the owner marker and
+/// 997515 is the shared ten-second recipient child for Crit, Luck, Haste,
+/// Mastery, and Versatility. Because all five branches share one child ID,
+/// runtime lane identity must be established by the recipient's exact adjacent
+/// final-substat transition; the status alone never guesses a lane.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AttributeTransferRuntimeConfig {
+    pub effect_id: i64,
+    pub root_effect_id: i64,
+    pub source_rogue_entry_id: i64,
+    pub description_id: i64,
+    pub official_en_us_name: String,
+    pub required_level: i32,
+    pub required_stacks: u32,
+    pub duration_millis: u64,
+    pub substat_raw_delta: i64,
+    pub versatility_to_external_damage_numerator: i64,
+    pub versatility_to_external_damage_denominator: i64,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_child_status_identity_authority: bool,
+    pub exact_adjacent_lane_transition_authority: bool,
+    pub corrected_calculator_final_substat_stage_authority: bool,
+    pub corrected_calculator_versatility_stage_authority: bool,
+    pub reuses_inspiration_chance_stage_authority: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub critical_chance_runtime_transfer_enabled: bool,
+    pub lucky_chance_runtime_transfer_enabled: bool,
+    pub versatility_runtime_transfer_enabled: bool,
+    pub mastery_runtime_transfer_enabled: bool,
+    pub haste_runtime_transfer_enabled: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
+/// Rogue entry 349, Tactical Blessing. Root effect 997557 makes Pulse Beam
+/// grant the exact ten-second recipient child 997570 to friendly units. The
+/// installed description supplies simultaneous +10% Crit and +10% Luck;
+/// packet-final chance and damage attributes close the occurrence-stage
+/// counterfactual without requiring a newly observed session.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TacticalBlessingRuntimeConfig {
+    pub effect_id: i64,
+    pub root_effect_id: i64,
+    pub source_rogue_entry_id: i64,
+    pub description_id: i64,
+    pub official_en_us_name: String,
+    pub required_level: i32,
+    pub required_stacks: u32,
+    pub duration_millis: u64,
+    pub critical_chance_raw_delta: i64,
+    pub lucky_chance_raw_delta: i64,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_child_status_identity_authority: bool,
+    pub exact_static_lifecycle_authority: bool,
+    pub corrected_calculator_final_substat_stage_authority: bool,
+    pub reuses_inspiration_chance_stage_authority: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub runtime_transfer_enabled: bool,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct FixedPointFamilyRuntimeConfig {
@@ -1748,6 +2033,15 @@ pub(crate) struct RdpsRuntimeConfig {
     pub inspiration: InspirationRuntimeConfig,
     pub inspire: InspireRuntimeConfig,
     pub critical_cold: CriticalColdRuntimeConfig,
+    pub synergy_crit_field: SynergyCritFieldRuntimeConfig,
+    pub element_sharing: ElementSharingRuntimeConfig,
+    pub enhanced_synergy: EnhancedSynergyRuntimeConfig,
+    pub blessing: BlessingRuntimeConfig,
+    pub synergy_luck_field: SynergyLuckFieldRuntimeConfig,
+    pub coordinated_strike: CoordinatedStrikeRuntimeConfig,
+    pub all_class_aura: AllClassAuraRuntimeConfig,
+    pub attribute_transfer: AttributeTransferRuntimeConfig,
+    pub tactical_blessing: TacticalBlessingRuntimeConfig,
     pub endless_mind: EndlessMindRuntimeConfig,
     pub arcane_time_decree: ArcaneTimeDecreeRuntimeConfig,
     pub thunder_roar: ThunderRoarRuntimeConfig,
@@ -1794,6 +2088,15 @@ impl RdpsRuntimeConfig {
                 .full_bloom_increment_runtime_transfer_enabled
             || self.inspire.runtime_transfer_enabled
             || self.critical_cold.runtime_transfer_enabled
+            || self.synergy_crit_field.runtime_transfer_enabled
+            || self.element_sharing.runtime_transfer_enabled
+            || self.enhanced_synergy.runtime_transfer_enabled
+            || self.blessing.runtime_transfer_enabled
+            || self.synergy_luck_field.runtime_transfer_enabled
+            || self.coordinated_strike.runtime_transfer_enabled
+            || self.all_class_aura.runtime_transfer_enabled
+            || self.attribute_transfer.runtime_transfer_enabled
+            || self.tactical_blessing.runtime_transfer_enabled
             || self.endless_mind.runtime_transfer_enabled
             || self.arcane_time_decree.runtime_transfer_enabled
             || self.thunder_roar.runtime_transfer_enabled
@@ -1843,6 +2146,23 @@ impl RdpsRuntimeConfig {
             || (effect_id == self.inspire.effect_id && self.inspire.runtime_transfer_enabled)
             || (effect_id == self.critical_cold.effect_id
                 && self.critical_cold.runtime_transfer_enabled)
+            || (effect_id == self.synergy_crit_field.effect_id
+                && self.synergy_crit_field.runtime_transfer_enabled)
+            || (effect_id == self.element_sharing.effect_id
+                && self.element_sharing.runtime_transfer_enabled)
+            || (effect_id == self.enhanced_synergy.effect_id
+                && self.enhanced_synergy.runtime_transfer_enabled)
+            || (effect_id == self.blessing.effect_id && self.blessing.runtime_transfer_enabled)
+            || (effect_id == self.synergy_luck_field.effect_id
+                && self.synergy_luck_field.runtime_transfer_enabled)
+            || (effect_id == self.coordinated_strike.effect_id
+                && self.coordinated_strike.runtime_transfer_enabled)
+            || (effect_id == self.all_class_aura.effect_id
+                && self.all_class_aura.runtime_transfer_enabled)
+            || (effect_id == self.attribute_transfer.effect_id
+                && self.attribute_transfer.runtime_transfer_enabled)
+            || (effect_id == self.tactical_blessing.effect_id
+                && self.tactical_blessing.runtime_transfer_enabled)
             || (effect_id == self.endless_mind.effect_id
                 && self.endless_mind.runtime_transfer_enabled)
             || (effect_id == self.arcane_time_decree.effect_id
@@ -2195,9 +2515,43 @@ impl RdpsRuntimeConfig {
                         .iter()
                         .any(|rule| rule.recipient_class_id == *class_id)
             });
-        let harmony_remote_paired_output_evidence_is_valid =
-            harmony.remote_paired_output_ignored_effect_ids == [27_016, 55_301, 3_002_011]
-                && harmony.remote_paired_output_formula_effect_ids.len() == 583
+        let harmony_remote_paired_output_evidence_is_valid = harmony.remote_paired_output_ignored_effect_ids == [27_016, 55_301, 3_002_011]
+                // The sealed receipt covered 583 current-build formula
+                // effects. Coordinated Strike, Element Sharing, Attribute
+                // Transfer, Enhanced Synergy, Synergy Luck Field, and Tactical
+                // Blessing are appended as
+                // stronger context dimensions:
+                // pair matching now fails when either lifecycle differs, while
+                // the checksum below continues to authenticate the original set.
+                && harmony.remote_paired_output_formula_effect_ids.len() == 589
+                && harmony
+                    .remote_paired_output_formula_effect_ids
+                    .binary_search(&self.coordinated_strike.effect_id)
+                    .is_ok()
+                && harmony
+                    .remote_paired_output_formula_effect_ids
+                    .binary_search(&self.element_sharing.effect_id)
+                    .is_ok()
+                && harmony
+                    .remote_paired_output_formula_effect_ids
+                    .binary_search(&self.attribute_transfer.effect_id)
+                    .is_ok()
+                && harmony
+                    .remote_paired_output_formula_effect_ids
+                    .binary_search(&self.enhanced_synergy.effect_id)
+                    .is_ok()
+                && harmony
+                    .remote_paired_output_formula_effect_ids
+                    .binary_search(&self.synergy_luck_field.effect_id)
+                    .is_ok()
+                && harmony
+                    .remote_paired_output_formula_effect_ids
+                    .binary_search(&self.tactical_blessing.effect_id)
+                    .is_ok()
+                && harmony
+                    .remote_paired_output_formula_effect_ids
+                    .binary_search(&self.all_class_aura.effect_id)
+                    .is_ok()
                 && harmony
                     .remote_paired_output_formula_effect_ids
                     .windows(2)
@@ -2205,7 +2559,15 @@ impl RdpsRuntimeConfig {
                 && {
                     let mut hasher = Sha256::new();
                     for effect_id in &harmony.remote_paired_output_formula_effect_ids {
-                        hasher.update(effect_id.to_le_bytes());
+                        if *effect_id != self.coordinated_strike.effect_id
+                            && *effect_id != self.element_sharing.effect_id
+                            && *effect_id != self.attribute_transfer.effect_id
+                            && *effect_id != self.enhanced_synergy.effect_id
+                            && *effect_id != self.synergy_luck_field.effect_id
+                            && *effect_id != self.tactical_blessing.effect_id
+                        {
+                            hasher.update(effect_id.to_le_bytes());
+                        }
                     }
                     format!("{:x}", hasher.finalize())
                         == "da6bc3f98a3c8c38105bc9ff17eb8fd3be50f905481046c919969d34c86a44de"
@@ -2691,6 +3053,314 @@ impl RdpsRuntimeConfig {
         {
             return Err(
                 "bundled BPSR Critical Cold (talent 250; child effect 2204471, design name 暴击之寒_队友暴击) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let synergy_crit = &self.synergy_crit_field;
+        let synergy_crit_current_authority = synergy_crit.game_description_formula_authority
+            && synergy_crit.game_description_party_scope_authority
+            && synergy_crit.exact_child_status_identity_authority
+            && synergy_crit.additive_critical_stage_authority
+            && synergy_crit.accounting_method
+                == "observed-final-damage-proportional-critical-damage-stage-share"
+            && synergy_crit.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && synergy_crit.unresolved_overlap_fails_closed
+            && synergy_crit.ordinary_damage_unchanged;
+        if synergy_crit.effect_id != 997_538
+            || synergy_crit.root_effect_id != 997_536
+            || synergy_crit.aura_effect_id != 997_537
+            || synergy_crit.source_rogue_entry_id != 209
+            || synergy_crit.description_id != 110_901
+            || synergy_crit.official_en_us_name != "Synergy Crit Field"
+            || synergy_crit.required_level != 38
+            || synergy_crit.required_stacks != 1
+            || synergy_crit.aura_duration_millis != 5_000
+            || synergy_crit.child_refresh_duration_millis != 1_100
+            || synergy_crit.aura_radius_meters != 15
+            || synergy_crit.critical_damage_attribute_id
+                != self.team_luck.critical_damage_attribute_id
+            || synergy_crit.critical_damage_raw_delta != 300
+            || (self.game_build == "24687926" && !synergy_crit_current_authority)
+            || synergy_crit.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Synergy Crit Field (Rogue entry 209; recipient effect 997538) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let element_sharing = &self.element_sharing;
+        let element_sharing_current_authority = element_sharing.game_description_formula_authority
+            && element_sharing.game_description_party_scope_authority
+            && element_sharing.exact_child_status_identity_authority
+            && element_sharing.additive_all_plus_property_stage_authority
+            && element_sharing.accounting_method
+                == "observed-final-damage-proportional-all-plus-property-element-stage-share"
+            && element_sharing.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && element_sharing.unresolved_overlap_fails_closed
+            && element_sharing.ordinary_damage_unchanged;
+        if element_sharing.effect_id != 997_513
+            || element_sharing.root_effect_id != 997_512
+            || element_sharing.source_rogue_entry_id != 196
+            || element_sharing.description_id != 109_601
+            || element_sharing.official_en_us_name != "Element Sharing"
+            || element_sharing.required_level != 13
+            || element_sharing.required_stacks != 1
+            || element_sharing.duration_millis != 10_000
+            || element_sharing.element_damage_raw_delta != 2_000
+            || (self.game_build == "24687926" && !element_sharing_current_authority)
+            || element_sharing.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Element Sharing (Rogue entry 196; recipient effect 997513) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let enhanced_synergy = &self.enhanced_synergy;
+        let enhanced_synergy_current_authority = enhanced_synergy
+            .game_description_formula_authority
+            && enhanced_synergy.game_description_party_scope_authority
+            && enhanced_synergy.exact_child_status_identity_authority
+            && enhanced_synergy.packet_final_boost_attributes_authority
+            && enhanced_synergy.corrected_calculator_multiplicative_boost_stage_authority
+            && enhanced_synergy.accounting_method
+                == "observed-final-damage-proportional-phy-mag-boost-stage-share"
+            && enhanced_synergy.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && enhanced_synergy.unresolved_overlap_fails_closed
+            && enhanced_synergy.ordinary_damage_unchanged;
+        if enhanced_synergy.effect_id != 997_518
+            || enhanced_synergy.root_effect_id != 997_517
+            || enhanced_synergy.source_rogue_entry_id != 199
+            || enhanced_synergy.description_id != 109_901
+            || enhanced_synergy.official_en_us_name != "Enhanced Synergy"
+            || enhanced_synergy.required_level != 18
+            || enhanced_synergy.required_stacks != 1
+            || enhanced_synergy.duration_millis != 3_000
+            || enhanced_synergy.physical_boost_attribute_id != 12_550
+            || enhanced_synergy.magical_boost_attribute_id != 12_570
+            || enhanced_synergy.boost_raw_delta != 1_000
+            || (self.game_build == "24687926" && !enhanced_synergy_current_authority)
+            || enhanced_synergy.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Enhanced Synergy (Rogue entry 199; recipient effect 997518) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let blessing = &self.blessing;
+        let blessing_current_authority = blessing.exact_current_build_buff_row_authority
+            && blessing.game_description_formula_authority
+            && blessing.game_description_party_scope_authority
+            && blessing.exact_current_build_fight_attribute_row_authority
+            && blessing.packet_final_general_damage_attribute_route_authority
+            && blessing.corrected_calculator_additive_general_damage_stage_authority
+            && blessing.accounting_method
+                == "observed-final-damage-proportional-additive-general-damage-stage-share"
+            && blessing.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && blessing.unresolved_stacking_fails_closed
+            && blessing.unresolved_overlap_fails_closed
+            && blessing.ordinary_damage_unchanged;
+        if blessing.effect_id != 2_100_154
+            || blessing.source_skill_id != 3_401
+            || blessing.official_en_us_name != "Blessing"
+            || blessing.required_level != 1
+            || blessing.required_stacks != 1
+            || blessing.duration_millis != 10_000
+            || blessing.general_damage_attribute_id != 12_670
+            || blessing.general_damage_raw_delta != 3_000
+            || blessing.current_build_buff_row_fingerprint_sha256
+                != "sha256:6cc38de4edc95d37b153196aa65e6db1ebf09aa13f5500f4e4933fdea56bc464"
+            || blessing.current_build_fight_attribute_row_fingerprint_sha256
+                != "sha256:3a67b30072f160536002ebb8d3b41fba6cacfa76c1424640daa23284300ee0a1"
+            || blessing.pinned_calculator_calc_skill_sha256
+                != "sha256:7c9a29e0ee817e8b6439e130c3e4f68443e28faf402f3775b75feae5ed269fc2"
+            || blessing.pinned_calculator_general_damage_stage_expression
+                != "stdMult includes (1 + totalGen) after (1 + finalElemDmgPct) and before (1 + finalDreamDmgPct)"
+            || (self.game_build == "24687926" && !blessing_current_authority)
+            || blessing.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Blessing (skill 3401; recipient effect 2100154) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let synergy_luck_field = &self.synergy_luck_field;
+        let synergy_luck_field_current_authority = synergy_luck_field
+            .game_description_trigger_and_party_scope_authority
+            && synergy_luck_field.exact_child_status_identity_authority
+            && synergy_luck_field.exact_imagine_passive_family_authority
+            && synergy_luck_field.exact_produced_damage_action_authority
+            && synergy_luck_field.exact_recipient_loadout_absence_required
+            && synergy_luck_field.observed_final_direct_output_authority
+            && synergy_luck_field.accounting_method == "whole-observed-final-produced-damage"
+            && synergy_luck_field.unresolved_overlap_fails_closed
+            && synergy_luck_field.ordinary_damage_unchanged;
+        if synergy_luck_field.effect_id != 997_534
+            || synergy_luck_field.root_effect_id != 997_533
+            || synergy_luck_field.source_rogue_entry_id != 208
+            || synergy_luck_field.description_id != 110_801
+            || synergy_luck_field.official_en_us_name != "Synergy Luck Field"
+            || synergy_luck_field.required_level != 34
+            || synergy_luck_field.required_stacks != 1
+            || synergy_luck_field.duration_millis != 10_000
+            || synergy_luck_field.trigger_cooldown_millis != 30_000
+            || synergy_luck_field.granted_imagine_ability_id != 3_937
+            || synergy_luck_field.granted_imagine_item_id != 3_000_016
+            || synergy_luck_field.granted_passive_effect_id != 3_210_080
+            || synergy_luck_field.produced_damage_ability_id != 3_210_081
+            || synergy_luck_field.produced_damage_attr_id != 2_321_008_101
+            || synergy_luck_field.base_passive_coefficient_basis_points != 1_120
+            || (self.game_build == "24687926" && !synergy_luck_field_current_authority)
+            || synergy_luck_field.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Synergy Luck Field (Rogue entry 208; recipient effect 997534) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let coordinated_strike = &self.coordinated_strike;
+        let coordinated_strike_current_authority = coordinated_strike
+            .game_description_formula_authority
+            && coordinated_strike.game_description_party_scope_authority
+            && coordinated_strike.exact_child_status_identity_authority
+            && coordinated_strike.additive_attack_percent_stage_authority
+            && coordinated_strike.same_stage_provider_conservation_authority
+            && coordinated_strike.accounting_method
+                == "observed-final-damage-proportional-additive-attack-percent-stage-share"
+            && coordinated_strike.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && coordinated_strike.unresolved_overlap_fails_closed
+            && coordinated_strike.ordinary_damage_unchanged;
+        if coordinated_strike.effect_id != 997_511
+            || coordinated_strike.root_effect_id != 997_510
+            || coordinated_strike.source_rogue_entry_id != 195
+            || coordinated_strike.description_id != 109_501
+            || coordinated_strike.official_en_us_name != "Coordinated Strike"
+            || coordinated_strike.required_level != 11
+            || coordinated_strike.required_stacks != 1
+            || coordinated_strike.duration_millis != 3_000
+            || coordinated_strike.trigger_cooldown_millis != 300
+            || coordinated_strike.attack_raw_percent_delta != 1_500
+            || (self.game_build == "24687926" && !coordinated_strike_current_authority)
+            || coordinated_strike.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Coordinated Strike (Rogue entry 195; recipient effect 997511) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let all_class_aura = &self.all_class_aura;
+        let all_class_aura_current_authority = all_class_aura.game_description_formula_authority
+            && all_class_aura.game_description_party_scope_authority
+            && all_class_aura.exact_observed_aura_status_authority
+            && all_class_aura.observed_aura_cohort_role_selector_authority
+            && all_class_aura.additive_attack_percent_stage_authority
+            && all_class_aura.same_stage_provider_conservation_authority
+            && all_class_aura.accounting_method
+                == "observed-final-damage-proportional-additive-attack-percent-stage-share"
+            && all_class_aura.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && all_class_aura.unresolved_overlap_fails_closed
+            && all_class_aura.ordinary_damage_unchanged;
+        if all_class_aura.effect_id != 998_542
+            || all_class_aura.source_rogue_entry_id != 103
+            || all_class_aura.description_id != 100_301
+            || all_class_aura.official_en_us_name != "All-Class Aura"
+            || all_class_aura.required_level != 42
+            || all_class_aura.required_stacks != 1
+            || all_class_aura.base_attack_raw_percent_delta != 500
+            || all_class_aura.per_distinct_role_raw_percent_delta != 500
+            || all_class_aura.maximum_attack_raw_percent_delta != 2_000
+            || (self.game_build == "24687926" && !all_class_aura_current_authority)
+            || all_class_aura.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR All-Class Aura (Rogue entry 103; effect 998542) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let attribute_transfer = &self.attribute_transfer;
+        let attribute_transfer_current_authority = attribute_transfer
+            .game_description_formula_authority
+            && attribute_transfer.game_description_party_scope_authority
+            && attribute_transfer.exact_child_status_identity_authority
+            && attribute_transfer.exact_adjacent_lane_transition_authority
+            && attribute_transfer.corrected_calculator_final_substat_stage_authority
+            && attribute_transfer.corrected_calculator_versatility_stage_authority
+            && attribute_transfer.reuses_inspiration_chance_stage_authority
+            && attribute_transfer.accounting_method
+                == "observed-final-damage-proportional-final-substat-stage-share"
+            && attribute_transfer.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && attribute_transfer.unresolved_overlap_fails_closed
+            && attribute_transfer.ordinary_damage_unchanged;
+        if attribute_transfer.effect_id != 997_515
+            || attribute_transfer.root_effect_id != 997_514
+            || attribute_transfer.source_rogue_entry_id != 197
+            || attribute_transfer.description_id != 109_701
+            || attribute_transfer.official_en_us_name != "Attribute Transfer"
+            || attribute_transfer.required_level != 15
+            || attribute_transfer.required_stacks != 1
+            || attribute_transfer.duration_millis != 10_000
+            || attribute_transfer.substat_raw_delta != 1_000
+            || attribute_transfer.versatility_to_external_damage_numerator != 35
+            || attribute_transfer.versatility_to_external_damage_denominator != 100
+            || !attribute_transfer.critical_chance_runtime_transfer_enabled
+            || !attribute_transfer.lucky_chance_runtime_transfer_enabled
+            || !attribute_transfer.versatility_runtime_transfer_enabled
+            || attribute_transfer.mastery_runtime_transfer_enabled
+            || attribute_transfer.haste_runtime_transfer_enabled
+            || (self.game_build == "24687926" && !attribute_transfer_current_authority)
+            || attribute_transfer.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Attribute Transfer (Rogue entry 197; recipient effect 997515) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let tactical_blessing = &self.tactical_blessing;
+        let tactical_blessing_current_authority = tactical_blessing
+            .game_description_formula_authority
+            && tactical_blessing.game_description_party_scope_authority
+            && tactical_blessing.exact_child_status_identity_authority
+            && tactical_blessing.exact_static_lifecycle_authority
+            && tactical_blessing.corrected_calculator_final_substat_stage_authority
+            && tactical_blessing.reuses_inspiration_chance_stage_authority
+            && tactical_blessing.accounting_method
+                == "observed-final-damage-proportional-critical-and-lucky-chance-stage-share"
+            && tactical_blessing.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient"
+            && tactical_blessing.unresolved_overlap_fails_closed
+            && tactical_blessing.ordinary_damage_unchanged;
+        if tactical_blessing.effect_id != 997_570
+            || tactical_blessing.root_effect_id != 997_557
+            || tactical_blessing.source_rogue_entry_id != 349
+            || tactical_blessing.description_id != 124_901
+            || tactical_blessing.official_en_us_name != "Tactical Blessing"
+            || tactical_blessing.required_level != 70
+            || tactical_blessing.required_stacks != 1
+            || tactical_blessing.duration_millis != 10_000
+            || tactical_blessing.critical_chance_raw_delta != 1_000
+            || tactical_blessing.lucky_chance_raw_delta != 1_000
+            || tactical_blessing.critical_chance_raw_delta
+                != tactical_blessing.lucky_chance_raw_delta
+            || (self.game_build == "24687926" && !tactical_blessing_current_authority)
+            || tactical_blessing.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Tactical Blessing (Rogue entry 349; recipient effect 997570) formula is not ready for runtime transfer"
                     .into(),
             );
         }
@@ -3527,6 +4197,378 @@ mod tests {
             .expect("historical formula identity should remain registered");
         assert!(!historical.critical_cold.runtime_transfer_enabled);
         assert!(!historical.effect_runtime_transfer_enabled(historical.critical_cold.effect_id));
+    }
+
+    #[test]
+    fn synergy_crit_field_uses_description_authority_and_child_status_occurrence() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert_eq!(current.synergy_crit_field.effect_id, 997_538);
+        assert_eq!(current.synergy_crit_field.root_effect_id, 997_536);
+        assert_eq!(current.synergy_crit_field.aura_effect_id, 997_537);
+        assert_eq!(current.synergy_crit_field.source_rogue_entry_id, 209);
+        assert_eq!(current.synergy_crit_field.description_id, 110_901);
+        assert_eq!(current.synergy_crit_field.critical_damage_raw_delta, 300);
+        assert!(current.effect_runtime_transfer_enabled(current.synergy_crit_field.effect_id));
+        assert!(
+            !current.effect_runtime_transfer_enabled(current.synergy_crit_field.root_effect_id)
+        );
+        assert!(
+            !current.effect_runtime_transfer_enabled(current.synergy_crit_field.aura_effect_id)
+        );
+
+        for field in [
+            "game_description_formula_authority",
+            "game_description_party_scope_authority",
+            "exact_child_status_identity_authority",
+            "additive_critical_stage_authority",
+            "unresolved_overlap_fails_closed",
+            "ordinary_damage_unchanged",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["synergy_crit_field"][field] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("historical formula identity should remain registered");
+        assert!(!historical.synergy_crit_field.runtime_transfer_enabled);
+        assert!(
+            !historical.effect_runtime_transfer_enabled(historical.synergy_crit_field.effect_id)
+        );
+    }
+
+    #[test]
+    fn element_sharing_uses_description_authority_and_exact_child_status() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert_eq!(current.element_sharing.effect_id, 997_513);
+        assert_eq!(current.element_sharing.root_effect_id, 997_512);
+        assert_eq!(current.element_sharing.source_rogue_entry_id, 196);
+        assert_eq!(current.element_sharing.description_id, 109_601);
+        assert_eq!(current.element_sharing.element_damage_raw_delta, 2_000);
+        assert!(current.effect_runtime_transfer_enabled(current.element_sharing.effect_id));
+        assert!(!current.effect_runtime_transfer_enabled(current.element_sharing.root_effect_id));
+        assert!(
+            current
+                .harmony_grace
+                .remote_paired_output_formula_effect_ids
+                .binary_search(&current.element_sharing.effect_id)
+                .is_ok()
+        );
+
+        for field in [
+            "game_description_formula_authority",
+            "game_description_party_scope_authority",
+            "exact_child_status_identity_authority",
+            "additive_all_plus_property_stage_authority",
+            "unresolved_overlap_fails_closed",
+            "ordinary_damage_unchanged",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["element_sharing"][field] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("historical formula identity should remain registered");
+        assert!(!historical.element_sharing.runtime_transfer_enabled);
+        assert!(!historical.effect_runtime_transfer_enabled(historical.element_sharing.effect_id));
+    }
+
+    #[test]
+    fn coordinated_strike_uses_description_authority_and_exact_child_status() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert_eq!(current.coordinated_strike.effect_id, 997_511);
+        assert_eq!(current.coordinated_strike.root_effect_id, 997_510);
+        assert_eq!(current.coordinated_strike.source_rogue_entry_id, 195);
+        assert_eq!(current.coordinated_strike.description_id, 109_501);
+        assert_eq!(current.coordinated_strike.attack_raw_percent_delta, 1_500);
+        assert!(current.effect_runtime_transfer_enabled(current.coordinated_strike.effect_id));
+        assert!(
+            !current.effect_runtime_transfer_enabled(current.coordinated_strike.root_effect_id)
+        );
+        assert!(
+            current
+                .harmony_grace
+                .remote_paired_output_formula_effect_ids
+                .binary_search(&current.coordinated_strike.effect_id)
+                .is_ok()
+        );
+
+        for field in [
+            "game_description_formula_authority",
+            "game_description_party_scope_authority",
+            "exact_child_status_identity_authority",
+            "additive_attack_percent_stage_authority",
+            "same_stage_provider_conservation_authority",
+            "unresolved_overlap_fails_closed",
+            "ordinary_damage_unchanged",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["coordinated_strike"][field] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("historical formula identity should remain registered");
+        assert!(!historical.coordinated_strike.runtime_transfer_enabled);
+        assert!(
+            !historical.effect_runtime_transfer_enabled(historical.coordinated_strike.effect_id)
+        );
+    }
+
+    #[test]
+    fn all_class_aura_uses_exact_role_scaled_attack_formula() {
+        let current = rdps_runtime_config().unwrap();
+        assert_eq!(current.all_class_aura.effect_id, 998_542);
+        assert_eq!(current.all_class_aura.source_rogue_entry_id, 103);
+        assert_eq!(current.all_class_aura.description_id, 100_301);
+        assert_eq!(current.all_class_aura.required_level, 42);
+        assert_eq!(current.all_class_aura.base_attack_raw_percent_delta, 500);
+        assert_eq!(
+            current.all_class_aura.per_distinct_role_raw_percent_delta,
+            500
+        );
+        assert_eq!(
+            current.all_class_aura.maximum_attack_raw_percent_delta,
+            2_000
+        );
+        assert!(current.effect_runtime_transfer_enabled(current.all_class_aura.effect_id));
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("historical formula identity should remain registered");
+        assert!(!historical.all_class_aura.runtime_transfer_enabled);
+        assert!(!historical.effect_runtime_transfer_enabled(historical.all_class_aura.effect_id));
+    }
+
+    #[test]
+    fn enhanced_synergy_uses_exact_phy_mag_boost_bucket() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert_eq!(current.enhanced_synergy.effect_id, 997_518);
+        assert_eq!(current.enhanced_synergy.root_effect_id, 997_517);
+        assert_eq!(current.enhanced_synergy.source_rogue_entry_id, 199);
+        assert_eq!(current.enhanced_synergy.description_id, 109_901);
+        assert_eq!(current.enhanced_synergy.physical_boost_attribute_id, 12_550);
+        assert_eq!(current.enhanced_synergy.magical_boost_attribute_id, 12_570);
+        assert_eq!(current.enhanced_synergy.boost_raw_delta, 1_000);
+        assert!(current.effect_runtime_transfer_enabled(current.enhanced_synergy.effect_id));
+        assert!(!current.effect_runtime_transfer_enabled(current.enhanced_synergy.root_effect_id));
+        assert!(
+            current
+                .harmony_grace
+                .remote_paired_output_formula_effect_ids
+                .binary_search(&current.enhanced_synergy.effect_id)
+                .is_ok()
+        );
+
+        for field in [
+            "game_description_formula_authority",
+            "game_description_party_scope_authority",
+            "exact_child_status_identity_authority",
+            "packet_final_boost_attributes_authority",
+            "corrected_calculator_multiplicative_boost_stage_authority",
+            "unresolved_overlap_fails_closed",
+            "ordinary_damage_unchanged",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["enhanced_synergy"][field] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("historical formula identity should remain registered");
+        assert!(!historical.enhanced_synergy.runtime_transfer_enabled);
+        assert!(!historical.effect_runtime_transfer_enabled(historical.enhanced_synergy.effect_id));
+    }
+
+    #[test]
+    fn blessing_uses_exact_additive_general_damage_bucket() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        let config = &current.blessing;
+        assert_eq!(config.effect_id, 2_100_154);
+        assert_eq!(config.source_skill_id, 3_401);
+        assert_eq!(config.required_level, 1);
+        assert_eq!(config.required_stacks, 1);
+        assert_eq!(config.duration_millis, 10_000);
+        assert_eq!(config.general_damage_attribute_id, 12_670);
+        assert_eq!(config.general_damage_raw_delta, 3_000);
+        assert!(current.effect_runtime_transfer_enabled(config.effect_id));
+
+        for field in [
+            "exact_current_build_buff_row_authority",
+            "game_description_formula_authority",
+            "game_description_party_scope_authority",
+            "exact_current_build_fight_attribute_row_authority",
+            "packet_final_general_damage_attribute_route_authority",
+            "corrected_calculator_additive_general_damage_stage_authority",
+            "unresolved_stacking_fails_closed",
+            "unresolved_overlap_fails_closed",
+            "ordinary_damage_unchanged",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["blessing"][field] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let mut wrong_accounting = base;
+        wrong_accounting["blessing"]["accounting_method"] =
+            serde_json::Value::String("standalone-times-1.30".into());
+        assert!(runtime_from_value(wrong_accounting).validate().is_err());
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("historical formula identity should remain registered");
+        assert!(!historical.blessing.runtime_transfer_enabled);
+        assert!(!historical.effect_runtime_transfer_enabled(historical.blessing.effect_id));
+    }
+
+    #[test]
+    fn synergy_luck_field_uses_exact_external_imagine_proc_identity() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        let config = &current.synergy_luck_field;
+        assert_eq!(config.effect_id, 997_534);
+        assert_eq!(config.root_effect_id, 997_533);
+        assert_eq!(config.source_rogue_entry_id, 208);
+        assert_eq!(config.description_id, 110_801);
+        assert_eq!(config.granted_imagine_ability_id, 3_937);
+        assert_eq!(config.granted_imagine_item_id, 3_000_016);
+        assert_eq!(config.granted_passive_effect_id, 3_210_080);
+        assert_eq!(config.produced_damage_ability_id, 3_210_081);
+        assert_eq!(config.produced_damage_attr_id, 2_321_008_101);
+        assert!(current.effect_runtime_transfer_enabled(config.effect_id));
+        assert!(!current.effect_runtime_transfer_enabled(config.root_effect_id));
+        assert!(
+            current
+                .harmony_grace
+                .remote_paired_output_formula_effect_ids
+                .binary_search(&config.effect_id)
+                .is_ok()
+        );
+
+        for field in [
+            "game_description_trigger_and_party_scope_authority",
+            "exact_child_status_identity_authority",
+            "exact_imagine_passive_family_authority",
+            "exact_produced_damage_action_authority",
+            "exact_recipient_loadout_absence_required",
+            "observed_final_direct_output_authority",
+            "unresolved_overlap_fails_closed",
+            "ordinary_damage_unchanged",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["synergy_luck_field"][field] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("historical formula identity should remain registered");
+        assert!(!historical.synergy_luck_field.runtime_transfer_enabled);
+        assert!(
+            !historical.effect_runtime_transfer_enabled(historical.synergy_luck_field.effect_id)
+        );
+    }
+
+    #[test]
+    fn attribute_transfer_promotes_only_formula_complete_substat_lanes() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        assert_eq!(current.attribute_transfer.effect_id, 997_515);
+        assert_eq!(current.attribute_transfer.root_effect_id, 997_514);
+        assert_eq!(current.attribute_transfer.source_rogue_entry_id, 197);
+        assert_eq!(current.attribute_transfer.description_id, 109_701);
+        assert_eq!(current.attribute_transfer.substat_raw_delta, 1_000);
+        assert!(
+            current
+                .attribute_transfer
+                .critical_chance_runtime_transfer_enabled
+        );
+        assert!(
+            current
+                .attribute_transfer
+                .lucky_chance_runtime_transfer_enabled
+        );
+        assert!(
+            current
+                .attribute_transfer
+                .versatility_runtime_transfer_enabled
+        );
+        assert!(!current.attribute_transfer.mastery_runtime_transfer_enabled);
+        assert!(!current.attribute_transfer.haste_runtime_transfer_enabled);
+        assert!(current.effect_runtime_transfer_enabled(997_515));
+        assert!(!current.effect_runtime_transfer_enabled(997_514));
+
+        let historical = rdps_runtime_config_for_identity(
+            "global",
+            "24252055",
+            "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!historical.attribute_transfer.runtime_transfer_enabled);
+        assert!(!historical.effect_runtime_transfer_enabled(997_515));
+    }
+
+    #[test]
+    fn tactical_blessing_uses_exact_simultaneous_crit_and_luck_child() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        let config = &current.tactical_blessing;
+        assert_eq!(config.effect_id, 997_570);
+        assert_eq!(config.root_effect_id, 997_557);
+        assert_eq!(config.source_rogue_entry_id, 349);
+        assert_eq!(config.description_id, 124_901);
+        assert_eq!(config.duration_millis, 10_000);
+        assert_eq!(config.critical_chance_raw_delta, 1_000);
+        assert_eq!(config.lucky_chance_raw_delta, 1_000);
+        assert!(current.effect_runtime_transfer_enabled(config.effect_id));
+        assert!(!current.effect_runtime_transfer_enabled(config.root_effect_id));
+        assert!(
+            current
+                .harmony_grace
+                .remote_paired_output_formula_effect_ids
+                .binary_search(&config.effect_id)
+                .is_ok()
+        );
+
+        for field in [
+            "game_description_formula_authority",
+            "game_description_party_scope_authority",
+            "exact_child_status_identity_authority",
+            "exact_static_lifecycle_authority",
+            "corrected_calculator_final_substat_stage_authority",
+            "reuses_inspiration_chance_stage_authority",
+            "unresolved_overlap_fails_closed",
+            "ordinary_damage_unchanged",
+        ] {
+            let mut missing_authority = base.clone();
+            missing_authority["tactical_blessing"][field] = serde_json::Value::Bool(false);
+            assert!(runtime_from_value(missing_authority).validate().is_err());
+        }
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("historical formula identity should remain registered");
+        assert!(!historical.tactical_blessing.runtime_transfer_enabled);
+        assert!(!historical.effect_runtime_transfer_enabled(config.effect_id));
     }
 
     #[test]

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {
+      "effect_id": 997512,
+      "review_state": "non_contributing",
+      "contribution_kind": "internal_marker",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 997513,
+      "review_state": "confirmed",
+      "contribution_kind": "direct_damage_amplification",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": 2000,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    }
+  ],
+  "evidence": [
+    "Exact current-build RogueEntryTable row 196 is Element Sharing and declares BuffId 997512 plus RogueEntryDescriptionTable row 109601.",
+    "The installed English description states: when Elemental Damage changes, nearby allies gain 20% Elemental Damage for 10 seconds. That description is authoritative for party scope, magnitude, and duration in build 24687926.",
+    "BuffTable 997512 is the persistent owner marker at level 12. Consecutive exact child 997513 is design-labeled Element Sharing - Element Bonus, level 13, stack 1, with DestroyParam 10 seconds; runtime transfer is keyed only to this recipient child.",
+    "Elemental Damage is the existing additive all-element plus property-specific bucket used by the corrected BPSR calculator model. The specialized state projector removes exactly 2000 raw units from the packet-observed current bucket and transfers observed_final_damage * 2000 / (10000 + current_all_element + current_property_bonus).",
+    "The compact classifier deliberately leaves generic attribution disabled. Only an exact unexpired child lifecycle, one external active provider, an elemental damage property, complete current element state, and a conserved rational counterfactual can emit; malformed, ambiguous, self-owned, stale, historical-build, and unresolved-overlap cases preserve ordinary damage without credit."
+  ]
+}

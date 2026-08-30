@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":997519,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":997520,"review_state":"candidate","contribution_kind":"haste","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":10000,"stacking_rule":"refresh_only","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Steam build 24687926 binds RogueEntryTable[200] Energy Synergy Domain to owner marker 997519. RogueEntryDescriptionTable[110001] says Ultimate Skills grant a Resource Aura for 15 seconds that gives nearby allies +100% Combat Resource Acquisition Efficiency, with only one effect active at a time.",
+    "BuffTable[997520] is the exact recipient resource child at level 20 with a fixed 15-second DestroyParam. The root marker 997519 is not itself an external damage component; the child preserves the exact +10000-basis-point candidate magnitude and party-recipient scope from the installed description.",
+    "Resource acquisition is an action-opportunity mechanic, not a multiplicative damage bucket. Exact attribution additionally requires event-time resource gain and spend, cap or overcap behavior, downstream action selection, and a uniquely reconstructable provider-removed schedule. Until those existing timeline inputs close for a damage action, ordinary damage is retained and provider credit remains zero. No new live-session packet evidence is treated as formula authority."
+  ]
+}

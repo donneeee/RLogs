@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2100154,"review_state":"confirmed","contribution_kind":"direct_damage_amplification","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":3000,"stacking_rule":"unresolved","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 skill 3401 is the support skill whose localized description says it grants nearby allies a temporary DMG Boost.",
+    "BuffTable status 2100154 is explicitly named for skill 3401's support damage-amplification effect, is localized as Blessing, and says Increases damage by 30%. Its table lifetime is 10 seconds.",
+    "The exact current-build status presentation retains effect 2100154 and the current-build formula indexes route it to the general-damage family. The effect is therefore confirmed as a 3000-basis-point party damage modifier rather than left as an unidentified skill description.",
+    "The installed description does not state same-effect stacking and the decoded repeat-add operation is not interpreted as an invented stacking formula. The specialized build-24687926 projector uses the packet-final AttrOtherDamInc total and fails closed on multiple active instances/providers; generic attribution remains disabled so it cannot duplicate that exact-rational runtime lane."
+  ]
+}

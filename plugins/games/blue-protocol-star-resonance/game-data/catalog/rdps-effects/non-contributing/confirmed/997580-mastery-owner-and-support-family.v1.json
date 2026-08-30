@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":997580,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997581,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false},
+    {"effect_id":997582,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":1500,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997583,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997584,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997585,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997586,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997587,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997588,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":2000,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997589,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":2000,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997590,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":10000,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997591,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false},
+    {"effect_id":997592,"review_state":"non_contributing","contribution_kind":"healing_support","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997593,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997594,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997595,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997596,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997597,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997598,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997599,"review_state":"non_contributing","contribution_kind":"healing_support","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 Rogue entries 362 through 381 define the Mastery family. Every description changes the holder's Mastery, PHY/MAG Boost, cooldowns, speed, resources, Crit/Luck damage, healing, mitigation, or generated damage; none grants an offensive property to an ally or friendly unit.",
+    "Mastery Boost and conversion entries are dynamic owner formulas, so magnitude_basis_points remains null where one scalar would misrepresent a per-Mastery or threshold relationship. Exact displayed constants are retained only where they describe one unambiguous fixed percent.",
+    "Arachnocrab Summon 997583, Foxen Summon 997587, and Spider Summon 997598 are owner trigger markers. Summon output remains ordinary owner damage; any independently identified downstream party status must use its own provider/recipient lifecycle and cannot receive duplicate root credit.",
+    "HP Echo 997592 and Healing Mastery 997599 are healing support; Tenacity Armor 997593 is mitigation. All 20 rules remain visible but attribution-disabled."
+  ]
+}

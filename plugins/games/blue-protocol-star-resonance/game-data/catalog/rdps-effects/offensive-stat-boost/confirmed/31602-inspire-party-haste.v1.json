@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":31602,"review_state":"confirmed","contribution_kind":"haste","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":1000,"stacking_rule":"refresh_only","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 SkillTable entry 1410 Typhoon Cleave states that Inspire lasts 10 seconds and gives all allies 10% Haste. TalentTable entry 434 Battle Cry repeats the same party magnitude and says only one Inspire effect can be active at a time, while separating the caster's 50% Crit DMG, Courage, Sharp, and follow-up leap.",
+    "BuffTable effect 31602 is the one-stack level-2 Inspire recipient status. Its exact source tuple is type 1/config 31601; the separately reviewed 2205310 Battle Cry owner state cannot receive duplicate child credit.",
+    "Current-build action-opportunity proof covers 130 status events, 65 complete windows, 3,713 damage memberships, and 3,185 external memberships. The specialized projector uses recipient-specific packet-observed normal/guide speed deltas and exact action routes, allocating speed capacity before per-hit modifiers rather than pretending Haste is a direct 10% damage multiplier.",
+    "Generic classifier attribution stays disabled. Only exact external provider-recipient lifecycle, supported class/spec speed mode, route identity, complete timing state, and conserved rational accounting can emit; all other cases preserve ordinary damage without credit."
+  ]
+}

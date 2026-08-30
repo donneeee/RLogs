@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2204471,"review_state":"confirmed","contribution_kind":"offensive_stat_boost","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":300,"stacking_rule":"refresh_only","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 TalentTable entry 250 installs owner/root 2204470 Critical Cold. BuffTable child 2204471 is level 71, one stack, design-labeled Critical Cold - Teammate Crit, and its exact source tuple is type 1/config 2204470.",
+    "The build-scoped runtime proof establishes an external recipient Crit chance raw delta of 300, or 3 percentage points, across 5,500 exact status events, 2,775 lifecycle windows, 2,203 external-player windows, and 41,078 packet-final samples. The child reuses the already-proven Crit occurrence stage rather than treating Crit as a direct blanket damage multiplier.",
+    "Root 2204470 remains a separately classified owner-only selector. Generic classifier attribution stays disabled; only the specialized current-build projector can emit for exact external child 2204471 lifecycle/provider/recipient identity, recipient-local dependencies, and conserved rational counterfactual. Missing or overlapped evidence preserves ordinary damage without credit."
+  ]
+}

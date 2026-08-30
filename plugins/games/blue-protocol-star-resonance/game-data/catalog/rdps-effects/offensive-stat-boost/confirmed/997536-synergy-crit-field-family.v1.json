@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":997536,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":997537,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":997538,"review_state":"confirmed","contribution_kind":"direct_damage_amplification","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":300,"stacking_rule":"refresh_only","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Current-build RogueEntryTable row 209 is Synergy Crit Field and links exactly to root BuffTable effect 997536 and RogueEntryDescriptionTable row 110901.",
+    "Description 110901 states that a Special Attack creates a Crit Aura for 5 seconds and increases allies' Crit DMG within 15m by +3%. The installed-game description is authoritative for mechanic, party scope, duration, radius, and magnitude.",
+    "BuffTable rows 997536/997537/997538 are levels 36/37/38. Effect 997537 is the five-second aura and effect 997538 is its 1.1-second refreshed recipient child; runtime occurrence and ownership require the observed level-38 child with an exact external source.",
+    "The root and aura are lifecycle markers and never produce separate credit. Child 997538 uses the exact critical-only state projector, so generic unconditional attribution remains disabled and cannot double-credit noncritical or overlapping rows."
+  ]
+}

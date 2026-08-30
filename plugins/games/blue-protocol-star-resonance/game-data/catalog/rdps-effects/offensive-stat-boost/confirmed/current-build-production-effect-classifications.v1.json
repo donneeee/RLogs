@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":55333,"review_state":"confirmed","contribution_kind":"direct_damage_amplification","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":2110065,"review_state":"confirmed","contribution_kind":"offensive_stat_boost","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":1000,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":2110125,"review_state":"confirmed","contribution_kind":"direct_damage_amplification","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":2110143,"review_state":"confirmed","contribution_kind":"offensive_stat_boost","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":2202041,"review_state":"confirmed","contribution_kind":"offensive_stat_boost","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":3003052,"review_state":"confirmed","contribution_kind":"offensive_stat_boost","source_scope":"effect_source","target_scope":"effect_target","magnitude_basis_points":200,"stacking_rule":"refresh_only","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 identifies BuffTable status 55333 as Encore. Its specialized runtime accepts only externally provided Encore lifecycle windows and damage actions 230401/230501, transfers each standalone generated packet-final damage integer exactly once, excludes healing action 55314, and conserves ordinary damage. It has no fixed scalar magnitude to expose through the generic reducer.",
+    "Installed build status 2110065 is Fiery Battle Will. The exact child origin is source type 1/config 2110064, and the current-build mirrored recipient Attack-family transition is +1000 raw-percent units (+10%). Its specialized projector requires the external provider, local recipient, exact transition, overlap order, and conservation gates.",
+    "Installed skill 3957 Arcane! Fatal Spiral says that casting grants the provider and up to ten nearby allies an All-Element Bonus for 10 seconds and prevents the same effect for 60 seconds. Exact current-build SkillEffect/Aoyi tier data and status 2110125 give 6/7/8/9/10% by equipped tier; one magnitude_basis_points value would erase the required provider-tier selector.",
+    "Installed skill 3974 Arcane! Precision Burst says the provider and teammates in its area gain ATK, Attack SPD, and Casting SPD and that the self effect is multiplied by 2.5. Status 2110143 is the external Functional Amp child from emitter 2110151. ATK/MAttack attribution and speed opportunity are separate stages, so no composite generic scalar is valid.",
+    "Installed build status 2202041 is the externally applied Inspiration child from source config 2202040. The specialized runtime preserves its exact level-dependent primary/secondary stat, Crit, Luck, Mastery, Versatility, external-damage, property-damage, Haste, and Full Bloom lanes instead of collapsing them into a single percentage.",
+    "Installed build status 3003052 is Harmony Grace, sourced by config 3003053. The description and reversible current-build attribute transitions establish +200 raw primary-stat percent units (+2%) on the recipient; the specialized runtime then applies the recipient-class primary-to-Attack transform, Attack lane, downstream stages, and exact remote paired-output gates.",
+    "All six rules are semantic classifier records only. attribution_enabled remains false because their build-scoped specialized live/history projectors own provider binding, formula staging, overlap arbitration, integer projection, and conservation; enabling the generic reducer would double-credit or flatten distinct stages."
+  ]
+}

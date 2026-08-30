@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2207252,"review_state":"confirmed","contribution_kind":"offensive_stat_boost","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":2302121,"review_state":"confirmed","contribution_kind":"offensive_stat_boost","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 TalentTable entry 1324 and the Stat Resonance description define an ally primary-stat grant equal to 5% of the provider's corresponding value. BuffTable child 2207252 is the applied recipient primary-stat status and uses exact source tuple type 1/config 2207251; root 2207250 is separately non-contributing.",
+    "The current-build Stat Resonance projector learns the exact same-wire final Attack marginal on apply/removal and replays only that proven recipient Attack-family delta. magnitude_basis_points remains null because 5% of a provider primary stat is not a fixed 5% damage or Attack scalar.",
+    "Installed module effect 2406 and its description define party Lucky DMG and Crit DMG increases with double benefit for the holder. BuffTable child 2302121 is the applied recipient status with source tuple type 1/config 2302120. Its current-build external formula uses separate raw Crit-DMG and Lucky-DMG deltas of 520 and 340 plus their exact joint cross-term; one compact scalar would be false.",
+    "Both children are emitted only by their specialized build-scoped live/history paths after exact lifecycle, external provider, recipient state, formula stage, overlap, and conservation gates. Generic classifier attribution remains disabled, so the review records cannot duplicate runtime credit."
+  ]
+}

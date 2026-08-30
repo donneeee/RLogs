@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2100104,"review_state":"non_contributing","contribution_kind":"healing_support","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":2100105,"review_state":"non_contributing","contribution_kind":"healing_support","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":2100107,"review_state":"non_contributing","contribution_kind":"target_vulnerability","source_scope":"effect_source","target_scope":"enemy","magnitude_basis_points":null,"stacking_rule":"unresolved","attribution_enabled":false},
+    {"effect_id":2100108,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":2100207,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2100208,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 skill 3303 is the Battlelust aura. Its localized description says activation drastically reduces movement speed and DEF for enemies in the area, greatly increases DEF for allies in range, and heals those allies every 3 seconds.",
+    "Current-build BuffTable design identities split that behavior into 2100107 (active enemy debuff), 2100108 (active ally buff), 2100104 (group heal), 2100105 (healed-recipient presentation), 2100207 (aura body), and 2100208 (passive). These exact identities are unchanged from the decoded 24609362 rows in the current-build semantic diff.",
+    "The enemy DEF-reduction child 2100107 preserves the described mechanical role, but the exact current-build skill 3303 row is explicitly placeholder-presented and has no obtainable player route. The exhaustive 577-table decoded reference surface finds no profession, talent tree, item, factor, Imagine, rogue entry, or other player source for skill 3303; only its own skill/effect/fight-level rows, its bullet, and unrelated same-number table rows occur.",
+    "Accordingly, effect 2100107 is non-contributing for build 24687926 rather than an open player-rDPS candidate. Its unstated magnitude is not invented, and the exact mechanical evidence remains retained so a later build with a real player ownership edge can be reviewed independently.",
+    "The ally DEF/heal rows are mitigation or healing support and cannot create damage credit. Aura body/passive rows are routing markers. Skill-learn rows 2100212 and 2100300 remain separately reviewed owner installation/resource markers and are not substitutes for these applied children."
+  ]
+}

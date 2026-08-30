@@ -1,5 +1,5 @@
 {
-  "schema_version": 25,
+  "schema_version": 34,
   "deployment_id": "global",
   "builds": [
     {
@@ -108,6 +108,33 @@
           "current_build_lifecycle_authority": false,
           "current_build_provider_ownership_authority": false,
           "current_build_magnitude_authority": false,
+          "runtime_transfer_enabled": false
+        },
+        "synergy_crit_field": {
+          "runtime_transfer_enabled": false
+        },
+        "element_sharing": {
+          "runtime_transfer_enabled": false
+        },
+        "enhanced_synergy": {
+          "runtime_transfer_enabled": false
+        },
+        "blessing": {
+          "runtime_transfer_enabled": false
+        },
+        "synergy_luck_field": {
+          "runtime_transfer_enabled": false
+        },
+        "coordinated_strike": {
+          "runtime_transfer_enabled": false
+        },
+        "all_class_aura": {
+          "runtime_transfer_enabled": false
+        },
+        "attribute_transfer": {
+          "runtime_transfer_enabled": false
+        },
+        "tactical_blessing": {
           "runtime_transfer_enabled": false
         },
         "inspiration": {

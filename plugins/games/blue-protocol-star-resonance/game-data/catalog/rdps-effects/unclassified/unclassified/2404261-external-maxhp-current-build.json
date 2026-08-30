@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rule": {
+    "effect_id": 2404261,
+    "review_state": "candidate",
+    "contribution_kind": "state_scaling",
+    "source_scope": "effect_source",
+    "target_scope": "party_members",
+    "magnitude_basis_points": null,
+    "stacking_rule": "stack_scaled",
+    "attribution_enabled": false
+  },
+  "evidence": [
+    "Current AttrDescription row 2404260 officially names the state Spring Breeze and says direct-healing Class Skills grant one stack: Max HP +2.5% for 10 seconds, stacking up to 5 times. Effect 2404261 itself has no direct en-US locale name; its exact BuffTable design identity remains 【S2套装2B】-子BUFF (literal gloss: S2 2-Piece Set B - Child Buff).",
+    "The current-build matrix retains packet origin 1:2404260, a fixed 10000 ms lifecycle, level 1, and observed stacks 1 through 5. RepeatAddRule [3,5] and 81 stack-5 transitions each followed immediately by a same-instance removal resolve the historical max-4 ceiling as stale for build 24687926.",
+    "The corrected build-24687926 relationship index v2 observes 839 events: 208 applies, 425 stack transitions, and 206 removals across one exact provider and 20 recipients. Of the applies, 197 have a provider distinct from the party recipient; 206 of 208 lifecycle instances are terminally closed and two remain open only at the capture boundary.",
+    "Of 345 current packet-final Judgment Pursuit damage rows, five share the Spring Breeze capture. Exact event-order and recipient-entity matching find two active external windows, both at stack 4: 3520301 on instance 1173 and 3474063 on instance 8804. The other three rows remain ordinary damage, including 3254433 sequenced after a stack-5 removal and before the next apply at the same observed timestamp.",
+    "The current-build transition receipt examines 36 of 36 complete selected lifecycle transitions with no missing before/after value. Five exact single-effect stack equations all yield +250 raw attribute 11324 units per stack. Instance 8804 has a complete four-step +250 lineage to active 5027; instance 1173 has its last two +250 steps plus an exact four-stack reducer, proving active 5227 minus 1000 equals 4227.",
+    "At the two exact active damage packets, the recipient state tuples are {11320:1286660,11321:765907,11322:502988,11324:5227,11325:6799} and {11320:1269760,11321:755847,11322:502988,11324:5027,11325:6799}. Difference-of-floors at the packet-observed two-stage MaxHP accumulators yields exact provider MaxHP marginals 84496 and 84497.",
+    "Current AttrDescription row 2206290 fixes the ability body at 200% Max HP. Solving the integer multiplier interval for reported=floor((2*11320*m)/10000) uniquely yields m=13680 for both packets and exactly reproduces them. Re-evaluating without Spring Breeze yields 3289120 and 3242879, so exact transferred rDPS is 231181 and 231184, total 462365.",
+    "The generic review catalog remains candidate because the contribution is state-scaled rather than a fixed magnitude rule. The specialized current-build runtime enables only the exact external stack-4 packet-state predicate; all other stacks, malformed or ambiguous lifecycles, nonunique packet factors, overlaps, and incomplete state remain canonical ordinary damage without transfer.",
+    "The versioned 26-log runtime replay conserves all 26 reports with zero rational projection overflow. It emits exactly the two authorized Spring Breeze rows, transfers 462365 total rDPS, and leaves every other row unchanged; see spring-breeze-2404261-state-scaled-damage-runtime-001.json."
+  ]
+}

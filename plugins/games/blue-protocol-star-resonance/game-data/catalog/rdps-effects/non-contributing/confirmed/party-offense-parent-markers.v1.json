@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2207250,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2302120,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 TalentTable entry 1324 installs root 2207250 Stat Resonance. Its description says Healing Chapters grant allies the corresponding primary stat equal to 5% of the provider's value, while the exact runtime chain applies recipient child 2207252 through source/config 2207251. Root 2207250 is therefore the owner talent selector, not the recipient damage-changing lifecycle.",
+    "Installed build module effect 2406 installs terminal root 2302120 Team Luck & Crit at module levels 5 and 6. Its description says party Lucky DMG and Crit DMG increase while the holder gets double effect; the exact applied recipient lifecycle is child 2302121 with source/config 2302120. Root 2302120 owns and selects the module mechanic but is not itself the transferable child.",
+    "Both roots remain visible internal markers with generic attribution disabled. The specialized build-scoped live/history projector continues to emit only for exact child 2207252 or 2302121 provider-recipient lifecycles, and preserves ordinary damage if those child proofs are absent. This prevents duplicate credit between a root selector and its applied child."
+  ]
+}

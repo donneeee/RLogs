@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {
+      "effect_id": 998542,
+      "review_state": "confirmed",
+      "contribution_kind": "offensive_stat_boost",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    }
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 RogueEntryTable entry 103 is All-Class Aura and binds exact status 998542 through BuffId. RogueEntryDescriptionTable 100301 states that the user and allies within 10m gain 5% ATK, plus 5% for each distinct role present, capped at 20%.",
+    "The description is exact formula and recipient-scope authority: raw Attack-percent delta = min(2000, 500 + 500 * distinct observed aura-cohort roles). It does not require a new live-session capture.",
+    "BuffTable effect 998542 is the continuous level-42, one-stack aura status with no DestroyParam. Runtime binds provider and recipient only from its exact status lifecycle and selects the tier only when every simultaneously observed cohort actor has an exact class-to-role identity.",
+    "ATK uses the corrected calculator's packet-observed family: final = floor(base_add * (10000 + raw_percent) / 10000) + extra_add. The specialized state projector removes the selected raw-percent delta and evaluates the selected physical or magical Attack damage-coefficient stage.",
+    "Simultaneous externally owned Attack-percent effects are removed as one additive bucket and divided by their authoritative deltas, preserving the joint integer counterfactual without double-counting floor cross-terms. Generic classifier attribution remains disabled so only the build-scoped projector can emit.",
+    "Missing roles, malformed or duplicate cohort lifecycles, same-wire cohort changes, self-attribution, inactive providers, incomplete Attack state, TCP gaps, and unresolved overlaps preserve ordinary damage without provider credit."
+  ]
+}

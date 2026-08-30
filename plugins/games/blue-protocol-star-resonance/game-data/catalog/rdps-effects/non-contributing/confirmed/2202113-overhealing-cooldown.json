@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rule": {
+    "effect_id": 2202113,
+    "review_state": "non_contributing",
+    "contribution_kind": "internal_marker",
+    "source_scope": "effect_source",
+    "target_scope": "party_members",
+    "magnitude_basis_points": null,
+    "stacking_rule": "fixed",
+    "attribution_enabled": false
+  },
+  "evidence": [
+    "Exact current-build BuffTable identity 2202113 has NameId 0 and DescriptionId 0, so it has no en-US locale name. Its exact design-only name is 溢出CD; the nearby localized effect 2202112 is Overhealing.",
+    "Build 24687926 defines packet origin source type 1 as EFightSourceBuff. All 372 observed effect-2202113 applications carry source type 1 and source configuration 21423, so 21423 is an exact parent BuffTable origin rather than an active-skill ID or a replacement identity for the child effect.",
+    "The retained current-build cohort contains 660 lifecycle events for effect 2202113: 372 applied, zero refreshed or stacked, 288 removed, and stacks always equal to one. All 372 recipients are players, including 328 resolved external player-to-player windows and zero player-to-monster windows.",
+    "A focused exact-wire slice from monitor-1787003553387.run-0002 at envelope sequence 41052 applies localized effect 2202112 Overhealing for 10000 milliseconds. The immediately following event in the same wire packet, envelope sequence 41053, applies effect 2202113 to the same recipient for 30000 milliseconds. Both have the same provider, origin 1:21423, packet level 30, one stack, and created_at_millis 1787005171571.",
+    "The exact parent row 21423 is localized Symbiotic Mark. Its en-US description says that damage dealt heals the marked target for 45 percent of damage dealt, and current-build canonical events emit ability 21423 as healing. This produces healing output; it does not increase the triggering player's packet-final damage.",
+    "The generated formula endpoint for effect 2202113 contains no scalar, vector, component, or damage-stage input. The retained counterfactual relation artifact contains zero controlled comparisons for both source- and target-scoped effect-2202113 states. A design-name cadence heuristic and temporal overlap therefore cannot authorize a player damage contribution.",
+    "Effect 2202113 remains canonical lifecycle evidence and retains its exact provider and recipient identities. It is excluded only from rDPS attribution; attribution_enabled remains false and no hidden damage scalar or cadence equation is invented."
+  ]
+}

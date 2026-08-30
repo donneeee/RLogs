@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":997533,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
+    {"effect_id":997534,"review_state":"confirmed","contribution_kind":"direct_damage_amplification","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Steam build 24687926 binds RogueEntryTable[208] Synergy Luck Field to owner marker 997533. Description 110801 gives the exact trigger, 10-second duration, 15-meter ally scope, 30-second cooldown, no-stacking rule, and names the granted Lizardman Hunter Imagine passive.",
+    "BuffTable[997534] is the exact level-34 recipient aura with a ten-second DestroyParam. SkillAoyiTable[3937] and item 3000016 identify Lizardman Hunter; TransformationType links its passive family to 3210080, whose trigger child is 3210081. DamageAttrTable[2321008101] binds action 3210081 to the passive's standalone produced-damage row, while the base Imagine parameter records 1120 basis points for formula audit.",
+    "The complete observed integer for action 3210081 is provider-created output only when exactly one external 997534 lifecycle is active and the recipient's exact event-time primary loadout proves ability 3937/item 3000016 absent. An equipped intrinsic copy, unknown loadout, self-provider, duplicate window, same-wire mutation, malformed lifecycle, expiry, or TCP gap retains ordinary damage with zero transfer. The Imagine's direct cast remains owner damage."
+  ]
+}

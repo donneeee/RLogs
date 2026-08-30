@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {
+      "effect_id": 997517,
+      "review_state": "non_contributing",
+      "contribution_kind": "internal_marker",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 997518,
+      "review_state": "confirmed",
+      "contribution_kind": "direct_damage_amplification",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": 1000,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    }
+  ],
+  "evidence": [
+    "Exact current-build RogueEntryTable row 199 is Enhanced Synergy and declares BuffId 997517 plus RogueEntryDescriptionTable row 109901.",
+    "The installed English description states that healing grants the target 10% PHY Boost and MAG Boost for 3 seconds. That description is authoritative for recipient scope, magnitude, trigger, and duration in build 24687926.",
+    "BuffTable 997517 is the level-17 owner marker. Consecutive child 997518 is design-labeled Enhanced Synergy - Boost, level 18, stack 1, with DestroyParam 3 seconds; runtime occurrence and provider ownership require this exact recipient child.",
+    "FightAttrTable final attributes 12550 (PHY Boost) and 12570 (MAG Boost) are packet-synced fixed-point totals. The corrected calculator places the selected PHY/MAG Boost in its own multiplicative damage bucket, so the specialized projector transfers observed_final_damage * 1000 / (10000 + current_selected_boost).",
+    "The compact classifier deliberately leaves generic attribution disabled. Only one exact unexpired external child lifecycle, an active provider, a known damage stage, the matching packet-final boost total, and a conserved rational counterfactual can emit; malformed, ambiguous, self-owned, stale, historical-build, and unresolved-overlap cases preserve ordinary damage without credit."
+  ]
+}

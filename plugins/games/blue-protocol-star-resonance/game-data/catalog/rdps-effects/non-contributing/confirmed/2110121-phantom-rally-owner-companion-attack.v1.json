@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2110082,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2110121,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 SkillTable entry 3954 Arcane! Phantom Ambush says that after casting, your Companion ATK is increased for a period of time. Its exact Imagine relationship mrs:6afe2776e1b8 routes primaryAttack through the owner-scoped companion-attack component and labels transfer eligibility self-only-formula-context.",
+    "Current-build BuffTable binds source/config row 2110082 to owner skill effect 395401 and status 2110121 Phantom Rally. Effect 2110121 is a one-stack level-21 status with a 20-second DestroyParam; effect 2110082 is the pet-spawn/config row without an independent duration.",
+    "SkillAoyiStarTable modification stages select exact owner values of 4%, 8%, 12%, 16%, or 20% Companion ATK. magnitude_basis_points remains null because the active tier is loadout-selected and no single scalar represents all tiers. Regardless of tier, the recipient and formula scope remain the owner, so companion output stays ordinary source-owned damage and neither effect can transfer rDPS."
+  ]
+}

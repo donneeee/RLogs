@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":997550,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997551,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997552,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":400,"stacking_rule":"stack_scaled","attribution_enabled":false},
+    {"effect_id":997553,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997554,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997555,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997556,"review_state":"non_contributing","contribution_kind":"healing_support","source_scope":"owner","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997558,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997559,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997560,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997561,"review_state":"non_contributing","contribution_kind":"healing_support","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":1000,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997562,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":4000,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997563,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":2000,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997564,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":2000,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997565,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997566,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997567,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997568,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":50000,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997569,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 Rogue entries 342 through 361 define the Pulse family. Entry 349 Tactical Blessing and recipient child 997570 are separately promoted because they explicitly affect friendly units' Crit and Luck.",
+    "Entries 342, 343, 344, 346, 347, 350 through 355, 358, 360, and 361 modify only the holder's Pulse Beam damage, shape, cadence, trigger chance, Resilience Break, or Mastery scaling. Generated Pulse output remains ordinary owner damage and owner-only opportunity changes cannot create another player's relative damage.",
+    "Cross Calibration 997553 and Expertise Synergy 997565 are behavior triggers with no independent damage multiplier. Frost Summon 997567 is likewise only the owner trigger; summon damage remains owner damage and any separately identified downstream party status must be attributed under its own lifecycle identity.",
+    "HP Resonance 997556 heals friendly units and Medical Pulse 997561 heals the caster. They remain visible support evidence but have no outgoing-damage contribution. All 19 rules are attribution-disabled and cannot double-count Tactical Blessing 997570."
+  ]
+}

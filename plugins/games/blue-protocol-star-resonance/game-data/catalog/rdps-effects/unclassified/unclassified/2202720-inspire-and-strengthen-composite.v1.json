@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2202720,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 TalentTable entry 568 Inspire and Strengthen selects status 2202720. The exact modifier description grants the effect recipient 135 Intellect, Strength, Agility, and Endurance plus 1.5 percentage points of Crit, Haste, Luck, Mastery, and Versatility.",
+    "The status is a one-stack level-20 persistent selector. A single magnitude_basis_points value would erase its mixed flat-primary-stat and percentage-substat lanes, so the compact rule retains null while the evidence preserves every exact component and constant.",
+    "The exact current-build combat-domain catalog classifies talent 568 as a class-5 spec-exclusive talent passive. Its sole effect source is talent:568, and the installed description contains no ally, party, field, aura, or external-recipient selector. Talent tree node 526015 is also absent from the current talent stage, so no current player-owned external route exists.",
+    "The modifier is therefore owner-local even if the dormant selector becomes obtainable in another stage: its personal primary stats, Crit, Haste, Luck, Mastery, and Versatility remain ordinary owner damage and timing. It cannot transfer provider rDPS to another player, and attribution stays disabled without requiring a synthetic live-session observation."
+  ]
+}

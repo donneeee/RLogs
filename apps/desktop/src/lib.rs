@@ -27,7 +27,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use character_identities::{
     CaptureTimeCharacterIdentityStore, CharacterIdentityResolver, CharacterIdentityStore,
 };
-use combat_history::{CombatHistoryCatalog, CombatHistoryDeleteResult, CombatHistoryStore};
+use combat_history::{
+    CombatHistoryCatalog, CombatHistoryDeleteResult, CombatHistoryStore, validate_session_id,
+};
 use combat_meter_settings::{CombatMeterSettings, CombatMeterSettingsStore};
 use combat_overlay_settings::{CombatOverlaySettings, CombatOverlaySettingsStore};
 use core_settings::{CoreSettings, CoreSettingsStore};
@@ -1054,7 +1056,11 @@ struct CombatHistoryRevisionState {
     last_catalog_revision: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+const HISTORY_RDPS_REFRESH_STATE_SCHEMA_VERSION: u16 = 1;
+const MAXIMUM_HISTORY_RDPS_REFRESH_STATE_BYTES: u64 = 2 * 1024 * 1024;
+const MAXIMUM_HISTORY_RDPS_REFRESH_RECORDS: usize = 2_048;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum HistoryRdpsRefreshStage {
     Queued,
@@ -1064,7 +1070,8 @@ enum HistoryRdpsRefreshStage {
     Failed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct HistoryRdpsRefreshProgress {
     session_id: String,
     stage: HistoryRdpsRefreshStage,
@@ -1088,13 +1095,21 @@ impl HistoryRdpsRefreshProgress {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredHistoryRdpsRefreshState {
+    schema_version: u16,
+    records: Vec<HistoryRdpsRefreshProgress>,
+}
+
+#[derive(Debug)]
 struct HistoryRdpsBackfillQueue {
+    persistence_path: PathBuf,
     state: Mutex<HistoryRdpsBackfillState>,
     changed: Condvar,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct HistoryRdpsBackfillState {
     pending: BTreeSet<String>,
     active: Option<String>,
@@ -1102,7 +1117,92 @@ struct HistoryRdpsBackfillState {
 }
 
 impl HistoryRdpsBackfillQueue {
-    fn enqueue(&self, session_id: String) -> bool {
+    fn open(persistence_path: PathBuf) -> Result<Self, String> {
+        let parent = persistence_path
+            .parent()
+            .ok_or_else(|| "historical rDPS replay state path has no parent".to_owned())?;
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!("could not create historical rDPS replay state folder: {error}")
+        })?;
+        let mut state = HistoryRdpsBackfillState::default();
+        if persistence_path.is_file() {
+            let stored: StoredHistoryRdpsRefreshState = read_json_with_limit(
+                &persistence_path,
+                MAXIMUM_HISTORY_RDPS_REFRESH_STATE_BYTES,
+                "historical rDPS replay state",
+            )?;
+            if stored.schema_version != HISTORY_RDPS_REFRESH_STATE_SCHEMA_VERSION {
+                return Err(format!(
+                    "historical rDPS replay state {} uses unsupported schema {}",
+                    persistence_path.display(),
+                    stored.schema_version
+                ));
+            }
+            if stored.records.len() > MAXIMUM_HISTORY_RDPS_REFRESH_RECORDS {
+                return Err(format!(
+                    "historical rDPS replay state {} exceeds its {}-record safety limit",
+                    persistence_path.display(),
+                    MAXIMUM_HISTORY_RDPS_REFRESH_RECORDS
+                ));
+            }
+            for mut progress in stored.records {
+                validate_session_id(&progress.session_id)?;
+                if state.progress.contains_key(&progress.session_id) {
+                    return Err(format!(
+                        "historical rDPS replay state {} duplicates session {}",
+                        persistence_path.display(),
+                        progress.session_id
+                    ));
+                }
+                if progress.stage == HistoryRdpsRefreshStage::Failed {
+                    let detail = progress.detail.as_deref().ok_or_else(|| {
+                        format!(
+                            "historical rDPS replay state {} has a failed session without an exact reason",
+                            persistence_path.display()
+                        )
+                    })?;
+                    if detail.trim().is_empty() {
+                        return Err(format!(
+                            "historical rDPS replay state {} has a failed session with an empty reason",
+                            persistence_path.display()
+                        ));
+                    }
+                    progress.detail = Some(bounded_history_rdps_failure_detail(detail));
+                } else {
+                    progress = HistoryRdpsRefreshProgress::queued(progress.session_id.clone());
+                    state.pending.insert(progress.session_id.clone());
+                }
+                state.progress.insert(progress.session_id.clone(), progress);
+            }
+        }
+        Ok(Self {
+            persistence_path,
+            state: Mutex::new(state),
+            changed: Condvar::new(),
+        })
+    }
+
+    fn persist(&self, state: &HistoryRdpsBackfillState) -> Result<(), String> {
+        let records = state.progress.values().cloned().collect::<Vec<_>>();
+        if records.len() > MAXIMUM_HISTORY_RDPS_REFRESH_RECORDS {
+            return Err(format!(
+                "historical rDPS replay state exceeds its {}-record safety limit",
+                MAXIMUM_HISTORY_RDPS_REFRESH_RECORDS
+            ));
+        }
+        write_json_atomic_with_limit(
+            &self.persistence_path,
+            &StoredHistoryRdpsRefreshState {
+                schema_version: HISTORY_RDPS_REFRESH_STATE_SCHEMA_VERSION,
+                records,
+            },
+            MAXIMUM_HISTORY_RDPS_REFRESH_STATE_BYTES,
+            "historical rDPS replay state",
+        )
+    }
+
+    fn enqueue(&self, session_id: String) -> Result<bool, String> {
+        validate_session_id(&session_id)?;
         let mut state = self
             .state
             .lock()
@@ -1110,15 +1210,18 @@ impl HistoryRdpsBackfillQueue {
         if state.active.as_deref() == Some(session_id.as_str())
             || state.pending.contains(&session_id)
         {
-            return false;
+            return Ok(false);
         }
-        state.progress.insert(
+        let mut candidate = state.clone();
+        candidate.progress.insert(
             session_id.clone(),
             HistoryRdpsRefreshProgress::queued(session_id.clone()),
         );
-        state.pending.insert(session_id);
+        candidate.pending.insert(session_id);
+        self.persist(&candidate)?;
+        *state = candidate;
         self.changed.notify_one();
-        true
+        Ok(true)
     }
 
     fn next(&self, shutdown: Option<&AtomicBool>) -> Option<String> {
@@ -1141,46 +1244,65 @@ impl HistoryRdpsBackfillQueue {
         }
     }
 
-    fn update_progress(&self, progress: HistoryRdpsRefreshProgress) {
-        self.state
+    fn update_progress(&self, progress: HistoryRdpsRefreshProgress) -> Result<(), String> {
+        validate_session_id(&progress.session_id)?;
+        let mut state = self
+            .state
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut candidate = state.clone();
+        candidate
             .progress
             .insert(progress.session_id.clone(), progress);
+        self.persist(&candidate)?;
+        *state = candidate;
+        Ok(())
     }
 
-    fn requeue(&self, session_id: String) {
+    fn requeue(&self, session_id: String) -> Result<(), String> {
+        validate_session_id(&session_id)?;
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.active.as_deref() == Some(session_id.as_str()) {
-            state.active = None;
+        let mut candidate = state.clone();
+        if candidate.active.as_deref() == Some(session_id.as_str()) {
+            candidate.active = None;
         }
-        state.pending.insert(session_id);
+        candidate.pending.insert(session_id);
+        self.persist(&candidate)?;
+        *state = candidate;
         self.changed.notify_one();
+        Ok(())
     }
 
-    fn finish(&self, session_id: &str) {
+    fn finish(&self, session_id: &str) -> Result<(), String> {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.active.as_deref() == Some(session_id) {
-            state.active = None;
+        let mut candidate = state.clone();
+        if candidate.active.as_deref() == Some(session_id) {
+            candidate.active = None;
         }
-        state.progress.remove(session_id);
+        candidate.pending.remove(session_id);
+        candidate.progress.remove(session_id);
+        self.persist(&candidate)?;
+        *state = candidate;
+        Ok(())
     }
 
-    fn fail(&self, session_id: &str, detail: String) {
+    fn fail(&self, session_id: &str, detail: String) -> Result<(), String> {
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if state.active.as_deref() == Some(session_id) {
-            state.active = None;
+        let mut candidate = state.clone();
+        if candidate.active.as_deref() == Some(session_id) {
+            candidate.active = None;
         }
-        let progress = state
+        candidate.pending.remove(session_id);
+        let progress = candidate
             .progress
             .entry(session_id.to_owned())
             .or_insert_with(|| HistoryRdpsRefreshProgress::queued(session_id.to_owned()));
@@ -1190,6 +1312,9 @@ impl HistoryRdpsBackfillQueue {
         // replay never started and discarded useful failure context.
         progress.stage = HistoryRdpsRefreshStage::Failed;
         progress.detail = Some(detail);
+        self.persist(&candidate)?;
+        *state = candidate;
+        Ok(())
     }
 
     fn progress_snapshot(&self) -> Vec<HistoryRdpsRefreshProgress> {
@@ -3114,6 +3239,9 @@ impl RuntimeController {
             LocalSubmissionQueue::open(install_root.join("runtime-data/submissions/queue"))?;
         let combat_history =
             CombatHistoryStore::open(install_root.join("runtime-data/history/combat-meter"))?;
+        let history_rdps_backfill = HistoryRdpsBackfillQueue::open(
+            install_root.join("runtime-data/history/combat-meter/rdps-refresh-state.v1.json"),
+        )?;
         let character_identities = CharacterIdentityStore::open(
             install_root.join("runtime-data/identity/characters.v1.json"),
         )?;
@@ -3175,7 +3303,7 @@ impl RuntimeController {
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
             live_event_feed: Arc::new(LiveEventFeed::default()),
             combat_history_feed: Arc::new(CombatHistoryRevisionFeed::default()),
-            history_rdps_backfill: Arc::new(HistoryRdpsBackfillQueue::default()),
+            history_rdps_backfill: Arc::new(history_rdps_backfill),
             #[cfg(windows)]
             live_stop: Arc::new(Mutex::new(None)),
             #[cfg(windows)]
@@ -3258,9 +3386,11 @@ impl RuntimeController {
         self: &Arc<Self>,
         shutdown: Option<Arc<AtomicBool>>,
     ) -> Result<(), String> {
-        // Do not scan or replay archived sessions at startup. A stale session
-        // is queued only when the user explicitly opens it; the refreshed
-        // projection is then persisted into that history artifact.
+        // Do not scan archived sessions at startup. A newly stale session is
+        // queued only when the user explicitly opens it. Work that was
+        // already queued before a restart is restored from the bounded state
+        // file and may resume here; the refreshed projection is then persisted
+        // into that history artifact.
         let controller = Arc::clone(self);
         thread::Builder::new()
             .name("rlogs-history-rdps".into())
@@ -3269,7 +3399,7 @@ impl RuntimeController {
                     controller.history_rdps_backfill.next(shutdown.as_deref())
                 {
                     if controller.snapshot().phase == RuntimePhase::Processing {
-                        controller.history_rdps_backfill.update_progress(
+                        if let Err(error) = controller.history_rdps_backfill.update_progress(
                             HistoryRdpsRefreshProgress {
                                 session_id: session_id.clone(),
                                 stage: HistoryRdpsRefreshStage::WaitingForLiveCapture,
@@ -3278,23 +3408,52 @@ impl RuntimeController {
                                 total_bytes: 0,
                                 detail: None,
                             },
-                        );
+                        ) {
+                            eprintln!(
+                                "could not persist historical rDPS wait state for {session_id}: {error}"
+                            );
+                        }
                         controller.combat_history_feed.publish_progress();
-                        controller.history_rdps_backfill.requeue(session_id);
+                        if let Err(error) = controller
+                            .history_rdps_backfill
+                            .requeue(session_id.clone())
+                        {
+                            let detail = bounded_history_rdps_failure_detail(&format!(
+                                "could not persist historical rDPS replay queue: {error}"
+                            ));
+                            let _ = controller.history_rdps_backfill.fail(&session_id, detail);
+                            controller.combat_history_feed.publish_progress();
+                            eprintln!(
+                                "could not requeue historical rDPS replay {session_id}: {error}"
+                            );
+                            continue;
+                        }
                         thread::sleep(Duration::from_millis(250));
                         continue;
                     }
                     match controller.refresh_history_rdps(&session_id, shutdown.as_deref()) {
                         Ok(HistoryRdpsRefresh::Current) => {
-                            controller.history_rdps_backfill.finish(&session_id);
+                            if let Err(error) =
+                                controller.history_rdps_backfill.finish(&session_id)
+                            {
+                                eprintln!(
+                                    "could not persist completed historical rDPS state for {session_id}: {error}"
+                                );
+                            }
                             controller.combat_history_feed.publish_progress();
                         }
                         Ok(HistoryRdpsRefresh::Refreshed) => {
-                            controller.history_rdps_backfill.finish(&session_id);
+                            if let Err(error) =
+                                controller.history_rdps_backfill.finish(&session_id)
+                            {
+                                eprintln!(
+                                    "could not persist completed historical rDPS state for {session_id}: {error}"
+                                );
+                            }
                             controller.combat_history_feed.publish();
                         }
                         Ok(HistoryRdpsRefresh::Deferred) => {
-                            controller.history_rdps_backfill.update_progress(
+                            if let Err(error) = controller.history_rdps_backfill.update_progress(
                                 HistoryRdpsRefreshProgress {
                                     session_id: session_id.clone(),
                                     stage: HistoryRdpsRefreshStage::WaitingForLiveCapture,
@@ -3303,15 +3462,38 @@ impl RuntimeController {
                                     total_bytes: 0,
                                     detail: None,
                                 },
-                            );
+                            ) {
+                                eprintln!(
+                                    "could not persist historical rDPS deferral for {session_id}: {error}"
+                                );
+                            }
                             controller.combat_history_feed.publish_progress();
-                            controller.history_rdps_backfill.requeue(session_id);
+                            if let Err(error) = controller
+                                .history_rdps_backfill
+                                .requeue(session_id.clone())
+                            {
+                                let detail = bounded_history_rdps_failure_detail(&format!(
+                                    "could not persist historical rDPS replay queue: {error}"
+                                ));
+                                let _ =
+                                    controller.history_rdps_backfill.fail(&session_id, detail);
+                                controller.combat_history_feed.publish_progress();
+                                eprintln!(
+                                    "could not requeue historical rDPS replay {session_id}: {error}"
+                                );
+                                continue;
+                            }
                             thread::sleep(Duration::from_millis(250));
                         }
                         Err(error) => {
-                            controller
+                            if let Err(persist_error) = controller
                                 .history_rdps_backfill
-                                .fail(&session_id, bounded_history_rdps_failure_detail(&error));
+                                .fail(&session_id, bounded_history_rdps_failure_detail(&error))
+                            {
+                                eprintln!(
+                                    "could not persist historical rDPS failure for {session_id}: {persist_error}"
+                                );
+                            }
                             controller.combat_history_feed.publish_progress();
                             eprintln!(
                                 "could not refresh derived rDPS for history {session_id}: {error}"
@@ -3360,14 +3542,15 @@ impl RuntimeController {
                 processed_bytes: 0,
                 total_bytes,
                 detail: None,
-            });
+            })?;
         self.combat_history_feed.publish_progress();
         let state = Arc::clone(&self.state);
         let mut last_progress_publish = Instant::now();
         let mut last_percent = 0_u64;
         let mut final_processed_events = 0_u64;
         let mut final_processed_bytes = 0_u64;
-        let projection = replay_bpsr_combat_history_interruptible(
+        let mut progress_persistence_error = None;
+        let projection_result = replay_bpsr_combat_history_interruptible(
             &raw_log,
             || {
                 shutdown.is_some_and(|shutdown| shutdown.load(Ordering::Acquire))
@@ -3391,18 +3574,28 @@ impl RuntimeController {
                 }
                 last_percent = percent;
                 last_progress_publish = Instant::now();
-                self.history_rdps_backfill
-                    .update_progress(HistoryRdpsRefreshProgress {
-                        session_id: session_id.to_owned(),
-                        stage: HistoryRdpsRefreshStage::Replaying,
-                        processed_events,
-                        processed_bytes,
-                        total_bytes,
-                        detail: None,
-                    });
+                if let Err(error) =
+                    self.history_rdps_backfill
+                        .update_progress(HistoryRdpsRefreshProgress {
+                            session_id: session_id.to_owned(),
+                            stage: HistoryRdpsRefreshStage::Replaying,
+                            processed_events,
+                            processed_bytes,
+                            total_bytes,
+                            detail: None,
+                        })
+                {
+                    progress_persistence_error.get_or_insert(error);
+                }
                 self.combat_history_feed.publish_progress();
             },
-        )?;
+        );
+        if let Some(error) = progress_persistence_error {
+            return Err(format!(
+                "could not persist historical rDPS replay progress: {error}"
+            ));
+        }
+        let projection = projection_result?;
         let Some(projection) = projection else {
             return Ok(HistoryRdpsRefresh::Deferred);
         };
@@ -3419,7 +3612,7 @@ impl RuntimeController {
                 processed_bytes: final_processed_bytes,
                 total_bytes,
                 detail: None,
-            });
+            })?;
         self.combat_history_feed.publish_progress();
         self.combat_history
             .lock()
@@ -3603,7 +3796,7 @@ impl RuntimeController {
         } else if snapshot.rdps_formula_identity.as_deref() != Some(formula_identity) {
             if self
                 .history_rdps_backfill
-                .enqueue(snapshot.session_id.clone())
+                .enqueue(snapshot.session_id.clone())?
             {
                 self.combat_history_feed.publish_progress();
             }
@@ -9843,6 +10036,7 @@ mod tests {
             !controller
                 .history_rdps_backfill
                 .enqueue(snapshot.session_id.clone())
+                .unwrap()
         );
 
         std::fs::remove_dir_all(root).unwrap();
@@ -10532,21 +10726,25 @@ mod tests {
 
     #[test]
     fn failed_history_rdps_refresh_retains_replay_progress_and_exact_reason() {
-        let queue = HistoryRdpsBackfillQueue::default();
+        let root = temporary_root();
+        let path = root.join("rdps-refresh-state.v1.json");
+        let queue = HistoryRdpsBackfillQueue::open(path.clone()).unwrap();
         let session_id = "history-progress-failure".to_owned();
-        assert!(queue.enqueue(session_id.clone()));
+        assert!(queue.enqueue(session_id.clone()).unwrap());
         assert_eq!(queue.next(None).as_deref(), Some(session_id.as_str()));
-        queue.update_progress(HistoryRdpsRefreshProgress {
-            session_id: session_id.clone(),
-            stage: HistoryRdpsRefreshStage::ValidatingAndSaving,
-            processed_events: 12_345,
-            processed_bytes: 2_000,
-            total_bytes: 2_000,
-            detail: None,
-        });
+        queue
+            .update_progress(HistoryRdpsRefreshProgress {
+                session_id: session_id.clone(),
+                stage: HistoryRdpsRefreshStage::ValidatingAndSaving,
+                processed_events: 12_345,
+                processed_bytes: 2_000,
+                total_bytes: 2_000,
+                detail: None,
+            })
+            .unwrap();
 
         let reason = "replayed combat history run 2 changed the saved ordinary combat cube";
-        queue.fail(&session_id, reason.into());
+        queue.fail(&session_id, reason.into()).unwrap();
 
         let progress = queue.progress_snapshot();
         assert_eq!(progress.len(), 1);
@@ -10556,6 +10754,43 @@ mod tests {
         assert_eq!(progress[0].processed_bytes, 2_000);
         assert_eq!(progress[0].total_bytes, 2_000);
         assert_eq!(progress[0].detail.as_deref(), Some(reason));
+
+        drop(queue);
+        let restored = HistoryRdpsBackfillQueue::open(path).unwrap();
+        assert_eq!(restored.progress_snapshot(), progress);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unfinished_history_rdps_refresh_restores_as_queued_after_restart() {
+        let root = temporary_root();
+        let path = root.join("rdps-refresh-state.v1.json");
+        let session_id = "history-restart-resume".to_owned();
+        let queue = HistoryRdpsBackfillQueue::open(path.clone()).unwrap();
+        assert!(queue.enqueue(session_id.clone()).unwrap());
+        assert_eq!(queue.next(None).as_deref(), Some(session_id.as_str()));
+        queue
+            .update_progress(HistoryRdpsRefreshProgress {
+                session_id: session_id.clone(),
+                stage: HistoryRdpsRefreshStage::Replaying,
+                processed_events: 4_096,
+                processed_bytes: 32_768,
+                total_bytes: 65_536,
+                detail: None,
+            })
+            .unwrap();
+        drop(queue);
+
+        let restored = HistoryRdpsBackfillQueue::open(path).unwrap();
+        let progress = restored.progress_snapshot();
+        assert_eq!(progress.len(), 1);
+        assert_eq!(
+            progress[0],
+            HistoryRdpsRefreshProgress::queued(session_id.clone())
+        );
+        assert_eq!(restored.next(None).as_deref(), Some(session_id.as_str()));
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

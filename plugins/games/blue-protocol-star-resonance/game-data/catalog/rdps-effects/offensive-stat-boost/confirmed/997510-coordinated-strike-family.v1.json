@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {
+      "effect_id": 997510,
+      "review_state": "non_contributing",
+      "contribution_kind": "internal_marker",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 997511,
+      "review_state": "confirmed",
+      "contribution_kind": "direct_damage_amplification",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": 1500,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    }
+  ],
+  "evidence": [
+    "Exact current-build RogueEntryTable row 195 is Coordinated Strike and declares BuffId 997510 plus RogueEntryDescriptionTable row 109501.",
+    "The installed English description states that Class Skill damage restores 1% HP to the owner and nearby allies and grants a 15% ATK bonus for 3 seconds, with a 0.3-second trigger cooldown. Healing is non-rDPS; the description is authoritative for the party Attack magnitude, duration, and trigger scope in build 24687926.",
+    "BuffTable 997510 is the level-10 owner marker. Consecutive exact child 997511 is design-labeled Coordinated Strike - Attack Bonus, level 11, stack 1, with DestroyParam 3 seconds; runtime transfer is keyed only to this recipient child.",
+    "ATK uses the corrected calculator's packet-observed family: final = floor(base_add * (10000 + raw_percent) / 10000) + extra_add. The specialized state projector removes exactly 1500 raw-percent units and evaluates the selected physical or magical Attack damage-coefficient stage.",
+    "Simultaneous externally owned Attack-percent effects are removed as one exact additive bucket and divided by their authoritative raw deltas, preserving the joint integer counterfactual without double-counting floor cross-terms. Generic classifier attribution remains disabled so only the specialized build-scoped projector can emit.",
+    "An exact unexpired child lifecycle, one external active provider, complete packet-observed Attack family, selected damage stage, and conserved rational counterfactual are required. Malformed, ambiguous, self-owned, stale, historical-build, and unresolved-overlap cases preserve ordinary damage without credit."
+  ]
+}

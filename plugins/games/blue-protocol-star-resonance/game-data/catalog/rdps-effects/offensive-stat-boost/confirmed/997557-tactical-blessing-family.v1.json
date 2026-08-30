@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":997557,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":997570,"review_state":"confirmed","contribution_kind":"offensive_stat_boost","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":1000,"stacking_rule":"refresh_only","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 RogueEntryTable entry 349 is Tactical Blessing: Pulse Beam increases friendly units' Crit by 10% and Luck by 10%. The description is formula and recipient-scope authority; it does not require a new live-session capture.",
+    "Root BuffTable effect 997557 is the owner-held entry marker. Child effect 997570 has exact design identity [脉冲]：战术祝福BUFF, level 70, one-stack replacement semantics, delete-on-death/scene/offline lifecycle, and a fixed ten-second DestroyParam. Only the observed child occurrence can bind provider and recipient.",
+    "The corrected calculator places Crit and Luck in the final occurrence-probability stage. Runtime removes the provider's exact 1000 raw units from both packet-final chance values and reuses the already validated critical/lucky occurrence counterfactual, including recipient-derived critical- and lucky-damage dependencies.",
+    "Duplicate active child instances, same-wire status changes, self-providers, inactive providers, incomplete final attributes, expired lifecycles, TCP gaps, and overlapping later-stage providers all fail closed. Ordinary damage remains unchanged and exact rational credit is projected only by the shared conservation accumulator."
+  ]
+}

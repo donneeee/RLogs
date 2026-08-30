@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {
+      "effect_id": 997514,
+      "review_state": "non_contributing",
+      "contribution_kind": "internal_marker",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 997515,
+      "review_state": "confirmed",
+      "contribution_kind": "direct_damage_amplification",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    }
+  ],
+  "evidence": [
+    "Exact current-build RogueEntryTable row 197 is Attribute Transfer and declares BuffId 997514 plus RogueEntryDescriptionTable row 109701.",
+    "The installed English description states: when Crit, Luck, Haste, Mastery, or Versatility changes, nearby allies gain a 10% increase of the corresponding stat for 10 seconds. That description is authoritative for party scope, magnitude, trigger family, and duration in build 24687926.",
+    "BuffTable 997514 is the level-14 owner marker. Consecutive exact child 997515 is design-labeled Attribute Transfer - Secondary Stat, level 15, stack 1, with DestroyParam 10 seconds; all five branches share this one child ID.",
+    "The corrected calculator applies the magnitude as a flat +10 percentage points after each normal substat conversion, not as 10% of rating. Crit and Luck therefore reuse the exact Inspiration occurrence stage at +1000 raw; Versatility converts through total Versatility x 0.35 and supplies +350 raw to the external-damage bucket.",
+    "Because 997515 alone does not encode which corresponding stat changed, the specialized projector admits a branch only after one exact adjacent recipient transition uniquely matches Crit, Luck, Haste, Mastery, or Versatility. Ambiguous or multi-lane transitions remain unbound and emit nothing.",
+    "Crit, Luck, and Versatility are runtime-enabled. Mastery is retained as a decoded class-specific frontier and Haste as a decoded cadence frontier; neither is misrepresented as a blanket per-hit multiplier. Generic classifier attribution remains disabled so only the specialized build-scoped projector can emit.",
+    "An exact unexpired child lifecycle, one external active provider, a uniquely bound lane, complete event-time recipient factors, and conserved rational counterfactual are required. Malformed, ambiguous, self-owned, stale, historical-build, and unresolved-overlap cases preserve ordinary damage without credit."
+  ]
+}
