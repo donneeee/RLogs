@@ -205,6 +205,29 @@ pub(crate) fn select_damage_stage(
         .select(owner_stage, owner_level)
 }
 
+/// Returns the exact unique current-build DamageAttr identity for an action
+/// even when that generated-damage row has no ordinary Attack coefficient.
+/// This is identity evidence only; callers must not infer a coefficient or
+/// fixed parameter from an empty formula vector.
+pub(crate) fn damage_attr_id_for_action(
+    ability_id: i64,
+    hit_event_id: Option<i32>,
+    damage_source: Option<i32>,
+) -> Option<i64> {
+    let catalog = damage_stage_catalog().ok()?;
+    let hit_event_id = hit_event_id.unwrap_or_default();
+    catalog
+        .rules
+        .get(&(ability_id, hit_event_id, damage_source))
+        .or_else(|| {
+            damage_source
+                .is_some()
+                .then(|| catalog.rules.get(&(ability_id, hit_event_id, None)))
+                .flatten()
+        })
+        .map(|rule| rule.damage_attr_id)
+}
+
 pub(crate) fn validate_damage_stage_catalog() -> Result<(), String> {
     damage_stage_catalog().map(|_| ())
 }
@@ -253,6 +276,18 @@ mod tests {
                 coefficient_basis_points: 7_333,
                 fixed_parameter: 540,
             })
+        );
+    }
+
+    #[test]
+    fn generated_damage_without_attack_coefficient_retains_exact_action_identity() {
+        assert_eq!(
+            damage_attr_id_for_action(3_003_213, Some(1), None),
+            Some(2_300_321_301)
+        );
+        assert_eq!(
+            select_damage_stage(3_003_213, Some(1), None, None, None),
+            None
         );
     }
 

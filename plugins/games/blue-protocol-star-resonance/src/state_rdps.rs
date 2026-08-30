@@ -27,7 +27,8 @@ use crate::{
     BPSR_FIXED_POINT_SCALE, CriticalDamageFactorInterpretation, PacketDamageScriptFamily,
     PositiveFixedPointRounding,
     damage_stage::{
-        OffensiveStatKind, SelectedDamageStage, select_damage_stage, validate_damage_stage_catalog,
+        OffensiveStatKind, SelectedDamageStage, damage_attr_id_for_action, select_damage_stage,
+        validate_damage_stage_catalog,
     },
     decode_known_entity_attribute_value,
     decoder::{ATTR_CURRENT_HP, ATTR_MAX_HP_EXTRA_ADD},
@@ -38,10 +39,10 @@ use crate::{
     exact_external_combined_critical_lucky_chance_and_damage_fraction,
     exact_external_combined_critical_lucky_damage_fraction,
     exact_external_critical_chance_and_damage_fraction, exact_external_critical_chance_fraction,
-    exact_external_critical_damage_fraction, exact_external_lucky_chance_and_damage_fraction,
-    exact_external_lucky_chance_fraction, exact_external_lucky_damage_fraction,
-    exact_joint_critical_cold_team_luck_fractions, packet_attribute_family_provider_marginal,
-    packet_attribute_family_value,
+    exact_external_critical_damage_fraction, exact_external_linear_derived_damage_factor_fraction,
+    exact_external_lucky_chance_and_damage_fraction, exact_external_lucky_chance_fraction,
+    exact_external_lucky_damage_fraction, exact_joint_critical_cold_team_luck_fractions,
+    packet_attribute_family_provider_marginal, packet_attribute_family_value,
     rdps_runtime::{
         AttackFamilyRuntimeConfig, AttributeFamilyRounding, InspirationVectorRuntimeConfig,
         InspireSpeedLaneRuntimeConfig, PrimaryAttackLane, PrimaryStatRecipientRule,
@@ -59,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v27";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v28";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -214,6 +215,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.inspiration.full_bloom_effect_id) {
         effect_ids.push(runtime.inspiration.full_bloom_effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.endless_mind.effect_id) {
+        effect_ids.push(runtime.endless_mind.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.critical_cold.effect_id) {
         effect_ids.push(runtime.critical_cold.effect_id);
@@ -897,6 +901,13 @@ struct InspireHasteWindow {
 struct CriticalColdWindow {
     target_entity_uuid: i64,
     provider_entity_uuid: i64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EndlessMindWindow {
+    target_entity_uuid: i64,
+    provider_entity_uuid: i64,
+    stacks: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -2114,6 +2125,11 @@ pub struct BpsrStateDamageContributionProjector {
     /// already-created Inspiration instance.
     full_bloom_windows: HashMap<EffectWindowKey, FullBloomWindow>,
     inspiration_windows: HashMap<EffectWindowKey, InspirationWindow>,
+    /// Exact external Endless Mind lifecycle. Its provider contributes a
+    /// build-authored +2% Mastery per current stack to the recipient; the
+    /// derived Shattered Illusion element stage consumes that Mastery.
+    endless_mind_windows: HashMap<EffectWindowKey, EndlessMindWindow>,
+    endless_mind_transition_wires: HashMap<u64, WireKey>,
     /// Exact provider -> recipient lifecycle for Inspire (31602). This is a
     /// separate mechanic from Inspiration (2202041).
     inspire_haste_windows: HashMap<EffectWindowKey, InspireHasteWindow>,
@@ -2238,6 +2254,8 @@ impl Default for BpsrStateDamageContributionProjector {
             thunderwind_transition_wires: HashMap::new(),
             full_bloom_windows: HashMap::new(),
             inspiration_windows: HashMap::new(),
+            endless_mind_windows: HashMap::new(),
+            endless_mind_transition_wires: HashMap::new(),
             inspire_haste_windows: HashMap::new(),
             inspire_haste_transition_wires: HashMap::new(),
             critical_cold_windows: HashMap::new(),
@@ -2913,6 +2931,7 @@ impl BpsrStateDamageContributionProjector {
                 self.clear_stat_resonance_after_gap();
                 self.clear_fiery_battle_will_after_gap();
                 self.clear_encore_after_gap(gap.kind);
+                self.clear_endless_mind_after_gap(gap.kind);
                 self.clear_critical_cold_after_gap(gap.kind);
                 self.clear_inspire_haste_after_gap(gap.kind);
                 self.clear_full_bloom_after_gap(gap.kind);
@@ -3043,6 +3062,10 @@ impl BpsrStateDamageContributionProjector {
                     self.fiery_battle_will_contribution(envelope.time.observed_micros, damage);
                 let mut inspiration_contribution =
                     self.inspiration_contribution(envelope.time.observed_micros, damage);
+                let endless_mind_contribution = self.endless_mind_shattered_illusion_contribution(
+                    envelope.time.observed_micros,
+                    damage,
+                );
                 let inspiration_occurrence_contribution =
                     self.inspiration_occurrence_contribution(envelope.time.observed_micros, damage);
                 let inspiration_occurrence_components = inspiration_occurrence_contribution
@@ -3205,6 +3228,25 @@ impl BpsrStateDamageContributionProjector {
                         unresolved_per_hit_attack_overlap,
                     )
                 };
+                let (attack_contributions, unresolved_attack_overlap) =
+                    if let Some(endless_mind) = endless_mind_contribution {
+                        if unresolved_attack_overlap || attack_contributions.is_empty() {
+                            // The Shattered Illusion element-bonus share is an
+                            // independently exact later stage. Preserve it
+                            // when an earlier Attack allocation is unresolved.
+                            (vec![endless_mind], false)
+                        } else {
+                            match extend_ordered_rational_marginals(
+                                attack_contributions,
+                                vec![endless_mind],
+                            ) {
+                                Some(contributions) => (contributions, false),
+                                None => (Vec::new(), true),
+                            }
+                        }
+                    } else {
+                        (attack_contributions, unresolved_attack_overlap)
+                    };
                 let rational_candidate_count = usize::from(team_luck_contribution.is_some())
                     + attack_contributions.len()
                     + usize::from(remote_harmony_paired_output_contribution.is_some())
@@ -3835,6 +3877,9 @@ impl BpsrStateDamageContributionProjector {
                 == Some(self.runtime.inspiration.source_config_id)
         {
             self.observe_inspiration_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.endless_mind.effect_id {
+            self.observe_endless_mind_status(status);
         }
         if status.effect.0 == self.runtime.critical_cold.effect_id {
             self.observe_critical_cold_status(status);
@@ -4513,6 +4558,85 @@ impl BpsrStateDamageContributionProjector {
         if let Some(wire) = self.current_wire {
             self.critical_cold_transition_wires
                 .insert(target_actor_id, wire);
+        }
+    }
+
+    fn observe_endless_mind_status(&mut self, status: &rlogs_events::StatusEvent) {
+        let target_actor_id = status.target.actor_id.0;
+        let target_entity_uuid = status.target.entity_uuid.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        let active = matches!(
+            status.state,
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+        ) || (status.state == StatusState::Consumed
+            && status.stacks.unwrap_or_default() > 0);
+        let exact_identity = status.level == Some(self.runtime.endless_mind.required_level)
+            && status.stacks.is_some_and(|stacks| {
+                (self.runtime.endless_mind.minimum_stacks
+                    ..=self.runtime.endless_mind.maximum_stacks)
+                    .contains(&stacks)
+            })
+            && status
+                .origin
+                .map(|origin| (origin.source_type_id, origin.source_config_id))
+                == Some((
+                    self.runtime.endless_mind.source_type_id,
+                    self.runtime.endless_mind.source_config_id,
+                ));
+
+        if active && exact_identity {
+            if let Some(provider) = status.source
+                && provider != status.target
+            {
+                self.endless_mind_windows.insert(
+                    EffectWindowKey {
+                        target_actor_id,
+                        provider_actor_id: provider.actor_id.0,
+                        instance_id,
+                    },
+                    EndlessMindWindow {
+                        target_entity_uuid,
+                        provider_entity_uuid: provider.entity_uuid.0,
+                        stacks: status
+                            .stacks
+                            .expect("an exact Endless Mind lifecycle has stacks"),
+                    },
+                );
+            } else {
+                // An incomplete or self-owned refresh supersedes any older
+                // exact external owner for this lifecycle instance.
+                self.endless_mind_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || (instance_id.is_some() && key.instance_id != instance_id)
+                });
+            }
+        } else {
+            self.endless_mind_windows.retain(|key, window| {
+                if key.target_actor_id != target_actor_id
+                    && (target_entity_uuid == 0 || window.target_entity_uuid != target_entity_uuid)
+                {
+                    return true;
+                }
+                if instance_id.is_some() && key.instance_id != instance_id {
+                    return true;
+                }
+                status.source.is_some_and(|provider| {
+                    key.provider_actor_id != provider.actor_id.0
+                        || (provider.entity_uuid.0 != 0
+                            && window.provider_entity_uuid != provider.entity_uuid.0)
+                })
+            });
+        }
+        if let Some(wire) = self.current_wire {
+            self.endless_mind_transition_wires
+                .insert(target_actor_id, wire);
+        }
+    }
+
+    fn clear_endless_mind_after_gap(&mut self, kind: DataGapKind) {
+        if kind == DataGapKind::TcpGap {
+            self.endless_mind_windows.clear();
+            self.endless_mind_transition_wires.clear();
         }
     }
 
@@ -8521,6 +8645,109 @@ impl BpsrStateDamageContributionProjector {
         })
     }
 
+    fn endless_mind_shattered_illusion_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        let config = &self.runtime.endless_mind;
+        if !config.runtime_transfer_enabled
+            || damage.amount <= 0
+            || damage.ability.map(|ability| ability.0) != Some(config.shattered_illusion_ability_id)
+            || damage.hit_event_id != Some(config.shattered_illusion_hit_event_id)
+        {
+            return None;
+        }
+        if damage_attr_id_for_action(
+            config.shattered_illusion_ability_id,
+            damage.hit_event_id,
+            damage.damage_source,
+        ) != Some(config.shattered_illusion_damage_attr_id)
+        {
+            return None;
+        }
+
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        if self.current_wire.is_some_and(|wire| {
+            self.endless_mind_transition_wires.get(&recipient_actor_id) == Some(&wire)
+        }) {
+            return None;
+        }
+        let mut matching_windows = self.endless_mind_windows.iter().filter(|(key, window)| {
+            key.target_actor_id == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && window.target_entity_uuid == recipient_entity_uuid)
+        });
+        let (window_key, window) = matching_windows.next()?;
+        if matching_windows.next().is_some() {
+            return None;
+        }
+        let provider_actor_id = (window.provider_entity_uuid != 0)
+            .then(|| {
+                self.actor_ancestry
+                    .actor_for_entity(window.provider_entity_uuid)
+            })
+            .flatten()
+            .unwrap_or(window_key.provider_actor_id);
+        if provider_actor_id == recipient_actor_id
+            || (recipient_entity_uuid != 0 && window.provider_entity_uuid == recipient_entity_uuid)
+            || !self.active_players.contains(&provider_actor_id)
+        {
+            return None;
+        }
+
+        let state_has_mastery = |state: &ActorHpState| state.mastery_raw.is_some();
+        let exact_state_for_actor = |actor_id: u64| {
+            self.staged_states
+                .get(&actor_id)
+                .filter(|state| state_has_mastery(state))
+                .or_else(|| {
+                    self.states
+                        .get(&actor_id)
+                        .filter(|state| state_has_mastery(state))
+                })
+        };
+        let state = exact_state_for_actor(recipient_actor_id).or_else(|| {
+            (recipient_entity_uuid != 0)
+                .then(|| {
+                    self.attribute_state_actor_by_entity_uuid
+                        .get(&recipient_entity_uuid)
+                        .copied()
+                })
+                .flatten()
+                .filter(|actor_id| {
+                    self.attribute_state_entity_uuid_by_actor.get(actor_id)
+                        == Some(&recipient_entity_uuid)
+                })
+                .and_then(exact_state_for_actor)
+        })?;
+        let provider_mastery_delta = config
+            .mastery_basis_points_per_stack
+            .checked_mul(i64::from(window.stacks))?;
+        let (numerator, denominator) = exact_external_linear_derived_damage_factor_fraction(
+            damage.amount,
+            state.mastery_raw?,
+            provider_mastery_delta,
+            config.mastery_to_element_numerator,
+            config.mastery_to_element_denominator,
+        )?;
+        Some(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: config.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(
+                "endless-mind-shattered-illusion-mastery-element-bonus",
+            ),
+            numerator,
+            denominator,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
     fn inspiration_contribution(
         &self,
         observed_micros: u64,
@@ -10981,6 +11208,9 @@ impl BpsrStateDamageContributionProjector {
         // clears the lifecycle.
         self.inspiration_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.endless_mind_windows
+            .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.endless_mind_transition_wires.remove(&actor_id);
         self.inspire_haste_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.inspire_haste_transition_wires.remove(&actor_id);
@@ -11062,6 +11292,8 @@ impl BpsrStateDamageContributionProjector {
         self.thunderwind_transition_wires.clear();
         self.full_bloom_windows.clear();
         self.inspiration_windows.clear();
+        self.endless_mind_windows.clear();
+        self.endless_mind_transition_wires.clear();
         self.inspire_haste_windows.clear();
         self.inspire_haste_transition_wires.clear();
         self.critical_cold_windows.clear();
@@ -13694,6 +13926,220 @@ mod tests {
         assert!(projector.inspire_haste_windows.is_empty());
     }
 
+    fn endless_mind_test_status(
+        provider: EntityRef,
+        recipient: EntityRef,
+        instance_id: i64,
+        stacks: u32,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        rlogs_events::StatusEvent {
+            source: Some(provider),
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(runtime().endless_mind.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: Some(rlogs_events::StatusOrigin {
+                source_type_id: runtime().endless_mind.source_type_id,
+                source_config_id: runtime().endless_mind.source_config_id,
+            }),
+            state,
+            stacks: Some(stacks),
+            level: Some(runtime().endless_mind.required_level),
+            part_id: None,
+            count: None,
+            created_at_millis: None,
+            duration_millis: Some(10_000),
+        }
+    }
+
+    fn shattered_illusion_test_damage(recipient: EntityRef) -> rlogs_events::DamageEvent {
+        rlogs_events::DamageEvent {
+            source: recipient,
+            direct_source: None,
+            target: test_entity(9, 90),
+            ability: Some(rlogs_events::AbilityId(
+                runtime().endless_mind.shattered_illusion_ability_id,
+            )),
+            amount: 120_000,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(runtime().endless_mind.shattered_illusion_hit_event_id),
+            damage_source: None,
+            damage_type: Some(1),
+            flags: rlogs_events::DamageFlags::default(),
+            packet: rlogs_events::DamagePacketDetail::default(),
+        }
+    }
+
+    fn endless_mind_test_projector() -> BpsrStateDamageContributionProjector {
+        let mut projector = BpsrStateDamageContributionProjector {
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (9, 90)]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.active_players.extend([2, 4]);
+        projector.attribute_state_entity_uuid_by_actor.insert(4, 40);
+        projector.attribute_state_actor_by_entity_uuid.insert(40, 4);
+        projector.states.insert(
+            4,
+            ActorHpState {
+                mastery_raw: Some(2_347),
+                ..ActorHpState::default()
+            },
+        );
+        projector
+    }
+
+    #[test]
+    fn endless_mind_attributes_only_the_shattered_illusion_mastery_element_stage() {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = endless_mind_test_projector();
+        projector.observe_endless_mind_status(&endless_mind_test_status(
+            provider,
+            recipient,
+            77,
+            2,
+            StatusState::Applied,
+        ));
+        let damage = shattered_illusion_test_damage(recipient);
+        let contribution = projector
+            .endless_mind_shattered_illusion_contribution(123, &damage)
+            .expect("the localized external lifecycle and exact generated-damage route authorize credit");
+        assert_eq!(contribution.effect_id, 3_003_411);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            exact_external_linear_derived_damage_factor_fraction(
+                damage.amount,
+                2_347,
+                400,
+                65,
+                100,
+            )
+            .unwrap()
+        );
+        assert_eq!(contribution.observed_damage, damage.amount);
+        assert_eq!(
+            contribution.scope,
+            DamageContributionScope::Component(
+                "endless-mind-shattered-illusion-mastery-element-bonus"
+            )
+        );
+
+        let mut unrelated = damage.clone();
+        unrelated.ability = Some(rlogs_events::AbilityId(3_003_214));
+        assert!(
+            projector
+                .endless_mind_shattered_illusion_contribution(124, &unrelated)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn endless_mind_lifecycle_ambiguity_and_transport_gaps_fail_closed() {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let mut projector = endless_mind_test_projector();
+        projector.observe_endless_mind_status(&endless_mind_test_status(
+            provider,
+            recipient,
+            77,
+            1,
+            StatusState::Applied,
+        ));
+        assert!(
+            projector
+                .endless_mind_shattered_illusion_contribution(
+                    123,
+                    &shattered_illusion_test_damage(recipient),
+                )
+                .is_some()
+        );
+
+        projector.clear_endless_mind_after_gap(DataGapKind::DecodeFailure);
+        assert_eq!(projector.endless_mind_windows.len(), 1);
+        projector.clear_endless_mind_after_gap(DataGapKind::TcpGap);
+        assert!(projector.endless_mind_windows.is_empty());
+
+        projector.observe_endless_mind_status(&endless_mind_test_status(
+            recipient,
+            recipient,
+            78,
+            1,
+            StatusState::Applied,
+        ));
+        assert!(projector.endless_mind_windows.is_empty());
+
+        projector.observe_endless_mind_status(&endless_mind_test_status(
+            provider,
+            recipient,
+            79,
+            1,
+            StatusState::Applied,
+        ));
+        projector.observe_endless_mind_status(&endless_mind_test_status(
+            provider,
+            recipient,
+            79,
+            1,
+            StatusState::Removed,
+        ));
+        assert!(projector.endless_mind_windows.is_empty());
+    }
+
+    #[test]
+    fn endless_mind_projects_through_the_shared_live_and_history_pipeline() {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let damage = shattered_illusion_test_damage(recipient);
+        let observed_damage = damage.amount;
+        let mut projector = endless_mind_test_projector();
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+
+        ExactDamageContributionProjector::observe(
+            &mut projector,
+            &harmony_grace_wire_envelope(
+                1,
+                100,
+                TimelineEventKind::Status(endless_mind_test_status(
+                    provider,
+                    recipient,
+                    77,
+                    2,
+                    StatusState::Applied,
+                )),
+            ),
+            &mut exact,
+            &mut rational,
+        );
+        ExactDamageContributionProjector::observe(
+            &mut projector,
+            &harmony_grace_wire_envelope(2, 200, TimelineEventKind::Damage(damage.clone())),
+            &mut exact,
+            &mut rational,
+        );
+
+        assert!(exact.is_empty());
+        let [contribution] = rational.as_slice() else {
+            panic!("the shared projector should emit exactly one Endless Mind transfer");
+        };
+        assert_eq!(contribution.effect_id, runtime().endless_mind.effect_id);
+        assert_eq!(contribution.provider_actor_id, provider.actor_id.0);
+        assert_eq!(contribution.recipient_actor_id, recipient.actor_id.0);
+        assert_eq!(contribution.observed_damage, observed_damage);
+        assert!(
+            contribution.numerator < i128::from(observed_damage) * contribution.denominator,
+            "the provider share must conserve the unchanged packet-final damage",
+        );
+        assert_eq!(
+            damage.amount, observed_damage,
+            "projection must never rewrite ordinary damage or DPS inputs",
+        );
+    }
+
     fn stat_resonance_test_family(base_add: i64) -> AttackFamilyState {
         let raw_percent = 1_000;
         let extra_add = 100;
@@ -14095,9 +14541,9 @@ mod tests {
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
                 31_602, 55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041,
-                2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271, 3_003_052
+                2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271, 3_003_052, 3_003_411
             ],
-            "only effects with current production authority are exposed; Thunderwind Power remains owner-only and Mechanical Power is limited to its exact class-11 tier-0 route"
+            "only effects with current production authority are exposed; Endless Mind is limited to Shattered Illusion's description-defined Mastery consumer, Thunderwind Power remains owner-only, and Mechanical Power is limited to its exact class-11 tier-0 route"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -14934,7 +15380,7 @@ mod tests {
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
                 31_602, 55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041,
-                2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271, 3_003_052
+                2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271, 3_003_052, 3_003_411
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");

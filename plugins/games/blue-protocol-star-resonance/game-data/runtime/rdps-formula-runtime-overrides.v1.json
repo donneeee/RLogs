@@ -1,5 +1,5 @@
 {
-  "schema_version": 22,
+  "schema_version": 23,
   "deployment_id": "global",
   "builds": [
     {
@@ -17,6 +17,9 @@
           "critical_damage_factor_interpretation_authority": false
         },
         "critical_damage_factor_interpretation": "unresolved",
+        "endless_mind": {
+          "runtime_transfer_enabled": false
+        },
         "team_luck": {
           "combined_critical_lucky_enabled": false,
           "critical_damage_current_build_lifecycle_authority": false,

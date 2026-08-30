@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 22;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 23;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -1606,6 +1606,33 @@ pub(crate) struct HighlandBloodRuntimeConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct EndlessMindRuntimeConfig {
+    pub effect_id: i64,
+    pub source_type_id: i32,
+    pub source_config_id: i64,
+    pub required_level: i32,
+    pub minimum_stacks: u32,
+    pub maximum_stacks: u32,
+    pub mastery_attribute_id: i32,
+    pub mastery_basis_points_per_stack: i64,
+    pub shattered_illusion_ability_id: i64,
+    pub shattered_illusion_hit_event_id: i32,
+    pub shattered_illusion_damage_attr_id: i64,
+    pub mastery_to_element_numerator: i64,
+    pub mastery_to_element_denominator: i64,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_action_identity_authority: bool,
+    pub observed_final_proportional_authority: bool,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub runtime_transfer_enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct TargetVulnerabilityRuntimeConfig {
     current_build_lifecycle_authority: bool,
     current_build_formula_authority: bool,
@@ -1645,6 +1672,7 @@ pub(crate) struct RdpsRuntimeConfig {
     pub inspiration: InspirationRuntimeConfig,
     pub inspire: InspireRuntimeConfig,
     pub critical_cold: CriticalColdRuntimeConfig,
+    pub endless_mind: EndlessMindRuntimeConfig,
     pub highland_blood: HighlandBloodRuntimeConfig,
 }
 
@@ -1688,6 +1716,7 @@ impl RdpsRuntimeConfig {
                 .full_bloom_increment_runtime_transfer_enabled
             || self.inspire.runtime_transfer_enabled
             || self.critical_cold.runtime_transfer_enabled
+            || self.endless_mind.runtime_transfer_enabled
     }
 
     /// Effect-scoped production authority. A false result never hides the
@@ -1734,6 +1763,8 @@ impl RdpsRuntimeConfig {
             || (effect_id == self.inspire.effect_id && self.inspire.runtime_transfer_enabled)
             || (effect_id == self.critical_cold.effect_id
                 && self.critical_cold.runtime_transfer_enabled)
+            || (effect_id == self.endless_mind.effect_id
+                && self.endless_mind.runtime_transfer_enabled)
     }
 
     pub(crate) fn target_vulnerability_runtime_transfer_effect_ids(&self) -> &[i64] {
@@ -2576,6 +2607,39 @@ impl RdpsRuntimeConfig {
         {
             return Err(
                 "bundled BPSR Critical Cold (talent 250; child effect 2204471, design name 暴击之寒_队友暴击) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let endless_mind = &self.endless_mind;
+        let endless_mind_current_authority = endless_mind.game_description_formula_authority
+            && endless_mind.game_description_party_scope_authority
+            && endless_mind.exact_action_identity_authority
+            && endless_mind.observed_final_proportional_authority
+            && endless_mind.unresolved_overlap_fails_closed
+            && endless_mind.ordinary_damage_unchanged
+            && endless_mind.accounting_method
+                == "observed-final-damage-proportional-derived-element-stage-share"
+            && endless_mind.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient";
+        if endless_mind.effect_id != 3_003_411
+            || endless_mind.source_type_id != 1
+            || endless_mind.source_config_id != 3_003_410
+            || endless_mind.required_level != 11
+            || endless_mind.minimum_stacks != 1
+            || endless_mind.maximum_stacks != 3
+            || endless_mind.mastery_attribute_id != self.inspiration.mastery_attribute_id
+            || endless_mind.mastery_basis_points_per_stack != 200
+            || endless_mind.shattered_illusion_ability_id != 3_003_213
+            || endless_mind.shattered_illusion_hit_event_id != 1
+            || endless_mind.shattered_illusion_damage_attr_id != 2_300_321_301
+            || endless_mind.mastery_to_element_numerator != 65
+            || endless_mind.mastery_to_element_denominator != 100
+            || (self.game_build == "24687926" && !endless_mind_current_authority)
+            || endless_mind.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Endless Mind (effect 3003411) Shattered Illusion formula is not ready for runtime transfer"
                     .into(),
             );
         }

@@ -208,6 +208,45 @@ pub fn exact_positive_linear_conversion_delta(
     i64::try_from(converted).ok()
 }
 
+/// Removes one external provider from a description-defined linear derived
+/// damage factor and returns its exact share of packet-final damage.
+///
+/// The source stat and derived bonus use the game's 1/10,000 fixed-point
+/// representation. The conversion is replayed on both sides of the provider
+/// removal so an integer boundary is never approximated as
+/// `provider_delta * numerator / denominator`. Every unrelated earlier or
+/// later multiplier cancels in the observed-final ratio.
+pub fn exact_external_linear_derived_damage_factor_fraction(
+    observed_damage: i64,
+    current_source_raw: i64,
+    provider_source_raw_delta: i64,
+    conversion_numerator: i64,
+    conversion_denominator: i64,
+) -> Option<(i128, i128)> {
+    if observed_damage <= 0
+        || current_source_raw < 0
+        || provider_source_raw_delta <= 0
+        || provider_source_raw_delta > current_source_raw
+        || conversion_numerator <= 0
+        || conversion_denominator <= 0
+    {
+        return None;
+    }
+    let without_provider_source = current_source_raw.checked_sub(provider_source_raw_delta)?;
+    let current_derived = exact_positive_linear_conversion_delta(
+        current_source_raw,
+        conversion_numerator,
+        conversion_denominator,
+    )?;
+    let without_provider_derived = exact_positive_linear_conversion_delta(
+        without_provider_source,
+        conversion_numerator,
+        conversion_denominator,
+    )?;
+    let provider_derived_delta = current_derived.checked_sub(without_provider_derived)?;
+    exact_external_damage_bonus_fraction(observed_damage, current_derived, provider_derived_delta)
+}
+
 /// Replays one packet-observed BPSR attribute family and returns the exact
 /// final-value marginal owned by one external provider.
 ///
@@ -1288,6 +1327,42 @@ mod tests {
         assert_eq!(exact_positive_linear_conversion_delta(-1, 60, 100), None);
         assert_eq!(exact_positive_linear_conversion_delta(300, -1, 100), None);
         assert_eq!(exact_positive_linear_conversion_delta(300, 60, 0), None);
+    }
+
+    #[test]
+    fn description_defined_mastery_factor_preserves_its_integer_boundary() {
+        // Shattered Illusion grants 0.65% Element Bonus per 1% Mastery.
+        // At 23.47% current Mastery, removing one 2% Endless Mind stack
+        // changes the derived bonus by 1.30%, including both floor stages.
+        let fraction =
+            exact_external_linear_derived_damage_factor_fraction(100_000, 2_347, 200, 65, 100)
+                .unwrap();
+        let current_bonus = 2_347_i128 * 65 / 100;
+        let without_bonus = 2_147_i128 * 65 / 100;
+        assert_eq!(
+            fraction,
+            reduce_positive_fraction(
+                100_000 * (current_bonus - without_bonus),
+                i128::from(BPSR_FIXED_POINT_SCALE) + current_bonus,
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn derived_damage_factor_rejects_missing_or_impossible_provider_state() {
+        assert_eq!(
+            exact_external_linear_derived_damage_factor_fraction(100_000, 199, 200, 65, 100),
+            None
+        );
+        assert_eq!(
+            exact_external_linear_derived_damage_factor_fraction(0, 2_000, 200, 65, 100),
+            None
+        );
+        assert_eq!(
+            exact_external_linear_derived_damage_factor_fraction(100_000, 2_000, 200, 65, 0),
+            None
+        );
     }
 
     #[test]
