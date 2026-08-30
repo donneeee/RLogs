@@ -83,6 +83,9 @@ struct StatusEffectLocalizationCatalog {
 
 static ACTION_PRESENTATION: OnceLock<Result<CombatActionPresentationCatalog, String>> =
     OnceLock::new();
+static SUPPORT_GENERATED_ACTION_PRESENTATION: OnceLock<
+    Result<CombatActionPresentationCatalog, String>,
+> = OnceLock::new();
 static REVIEWED_ACTION_PRESENTATION: OnceLock<Result<CombatActionPresentationCatalog, String>> =
     OnceLock::new();
 static EFFECT_PRESENTATION: OnceLock<Result<StatusEffectPresentationCatalog, String>> =
@@ -99,6 +102,23 @@ fn action_presentation_catalog() -> Result<&'static CombatActionPresentationCata
             ))
             .map_err(|error| {
                 format!("bundled BPSR combat action presentation is invalid: {error}")
+            })?;
+            validate_action_presentation(&catalog)?;
+            Ok(catalog)
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+fn support_generated_action_presentation_catalog()
+-> Result<&'static CombatActionPresentationCatalog, String> {
+    SUPPORT_GENERATED_ACTION_PRESENTATION
+        .get_or_init(|| {
+            let catalog: CombatActionPresentationCatalog = serde_json::from_str(include_str!(
+                "../game-data/runtime/support-generated-combat-action-presentation.v1.json"
+            ))
+            .map_err(|error| {
+                format!("bundled BPSR support-generated action presentation is invalid: {error}")
             })?;
             validate_action_presentation(&catalog)?;
             Ok(catalog)
@@ -433,6 +453,13 @@ fn direct_action_has_user_facing_english(ability_id: i64) -> Result<bool, String
 pub fn combat_action_presentation(
     ability_id: i64,
 ) -> Result<Option<&'static CombatActionPresentation>, String> {
+    let support_generated = support_generated_action_presentation_catalog()?;
+    if let Ok(index) = support_generated
+        .actions
+        .binary_search_by_key(&ability_id, |action| action.ability_id)
+    {
+        return Ok(Some(&support_generated.actions[index]));
+    }
     let reviewed = reviewed_action_presentation_catalog()?;
     if let Ok(index) = reviewed
         .actions
@@ -632,6 +659,29 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
+    }
+
+    #[test]
+    fn support_generated_actions_are_not_presented_as_native_kit_skills() {
+        for ability_id in [230_401, 230_501] {
+            let presentation = combat_action_presentation(ability_id).unwrap().unwrap();
+            assert_eq!(presentation.kind, "support-generated-damage");
+            assert_eq!(presentation.recount_group_id, Some(215));
+            assert_eq!(
+                localized_combat_action_name(ability_id, "en-US").unwrap(),
+                Some("Encore")
+            );
+        }
+
+        for ability_id in [2_207_141, 2_207_411] {
+            let presentation = combat_action_presentation(ability_id).unwrap().unwrap();
+            assert_eq!(presentation.kind, "support-generated-healing");
+            assert_eq!(presentation.recount_group_id, Some(222));
+            assert_eq!(
+                localized_combat_action_name(ability_id, "en-US").unwrap(),
+                Some("Note")
+            );
+        }
     }
 
     #[test]

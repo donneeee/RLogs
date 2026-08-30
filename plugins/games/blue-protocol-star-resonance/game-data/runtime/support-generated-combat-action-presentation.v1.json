@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "actions": [
+    {
+      "ability_id": 230401,
+      "kind": "support-generated-damage",
+      "resolution": "localized",
+      "icon": "icons/combat/atlas/buff/buff_icon13.png",
+      "recount_group_id": 215
+    },
+    {
+      "ability_id": 230501,
+      "kind": "support-generated-damage",
+      "resolution": "localized",
+      "icon": "icons/combat/atlas/buff/buff_icon13.png",
+      "recount_group_id": 215
+    },
+    {
+      "ability_id": 2207141,
+      "kind": "support-generated-healing",
+      "resolution": "localized",
+      "icon": null,
+      "recount_group_id": 222
+    },
+    {
+      "ability_id": 2207411,
+      "kind": "support-generated-healing",
+      "resolution": "localized",
+      "icon": null,
+      "recount_group_id": 222
+    }
+  ]
+}
