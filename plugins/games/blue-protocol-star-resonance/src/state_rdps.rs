@@ -4975,12 +4975,9 @@ impl BpsrStateDamageContributionProjector {
         {
             return;
         }
-        let Some(expires_at_observed_micros) = observed_micros.checked_add(
-            config
-                .duration_millis
-                .checked_mul(1_000)
-                .unwrap_or(u64::MAX),
-        ) else {
+        let Some(expires_at_observed_micros) =
+            observed_micros.checked_add(config.duration_millis.saturating_mul(1_000))
+        else {
             return;
         };
         self.poison_explosion_windows.insert(
@@ -5078,12 +5075,9 @@ impl BpsrStateDamageContributionProjector {
         {
             return;
         }
-        let Some(expires_at_observed_micros) = observed_micros.checked_add(
-            config
-                .duration_millis
-                .checked_mul(1_000)
-                .unwrap_or(u64::MAX),
-        ) else {
+        let Some(expires_at_observed_micros) =
+            observed_micros.checked_add(config.duration_millis.saturating_mul(1_000))
+        else {
             return;
         };
         self.celestial_guardian_windows.insert(
@@ -5139,9 +5133,9 @@ impl BpsrStateDamageContributionProjector {
                     self.synergy_crit_field_windows.remove(&key);
                     return;
                 }
-                let Some(expires_at_observed_micros) = observed_micros.checked_add(
-                    u64::from(config.child_refresh_duration_millis).saturating_mul(1_000),
-                ) else {
+                let Some(expires_at_observed_micros) = observed_micros
+                    .checked_add(config.child_refresh_duration_millis.saturating_mul(1_000))
+                else {
                     self.synergy_crit_field_windows.remove(&key);
                     return;
                 };
@@ -15427,7 +15421,7 @@ fn split_exact_rational_contribution_by_weights(
             denominator: denominator.checked_div(divisor)?,
             observed_damage: aggregate.observed_damage,
             included: aggregate.included,
-            deferred_damage_context: aggregate.deferred_damage_context.clone(),
+            deferred_damage_context: aggregate.deferred_damage_context,
         });
     }
     Some(split)
@@ -19258,7 +19252,7 @@ mod tests {
             weapon_breakthrough_count: None,
             seasonal_score: None,
             primary_loadout: has_intrinsic_imagine
-                .then(|| rlogs_events::ActorLoadoutSlot {
+                .then_some(rlogs_events::ActorLoadoutSlot {
                     slot_id: 7,
                     ability_id: Some(config.granted_imagine_ability_id),
                     item_id: Some(config.granted_imagine_item_id),
@@ -19509,6 +19503,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn inspiration_test_status(
         effect_id: i64,
         source_config_id: i64,
