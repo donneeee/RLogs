@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {
+      "effect_id": 998341,
+      "review_state": "non_contributing",
+      "contribution_kind": "mitigation",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    }
+  ],
+  "evidence": [
+    "Installed Steam build 24687926 RogueEntryTable row 131 binds Sanctuary Aura directly to root effect 998341. RogueEntryDescriptionTable row 103101 says allies within 10 meters gain a Shield equal to 20 percent of their Max HP every 10 seconds.",
+    "The exact current-build description exposes only a recurring party shield. Max HP is the shield magnitude input and is not an offensive consumer; no clause converts this shield, prevented damage, or Max HP into outgoing party damage.",
+    "Effect 998341 remains in the canonical status and route inventory but cannot transfer Damage or rDMG. This disposition does not affect ordinary Damage/DPS and would be reopened only if a separately identified exact offensive consumer were linked in a future build."
+  ]
+}

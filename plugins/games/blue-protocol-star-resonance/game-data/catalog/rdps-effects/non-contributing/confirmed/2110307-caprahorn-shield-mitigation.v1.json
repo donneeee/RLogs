@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {
+      "effect_id": 2110307,
+      "review_state": "non_contributing",
+      "contribution_kind": "mitigation",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    }
+  ],
+  "evidence": [
+    "Installed Global Steam build 24687926 BuffTable row 2110307 is localized as Caprahorn Shield with description 'Greatly reduces incoming damage'. Its design name explicitly identifies damage reduction and super armor, and SpecialAttr values 703 through 706 are defensive state rather than outgoing-damage attributes.",
+    "The exact status lifecycle is 1.5 seconds with one unique instance. Current-build observations retain 1118 status events and 161 windows, including 122 external player-to-player windows, so this is real party support state and not an unused placeholder.",
+    "Observed source type 1/config 2110308 is the status emitter. The owning Arcane! Guardian's Boundary skill grants nearby allies Final DMG Reduction and Super Armor. Its separate clause reducing the caster's skill cooldown when the caster takes damage is owner-local and does not turn recipient effect 2110307 into a cadence or outgoing-damage contribution.",
+    "Effect 2110307 remains visible in the canonical timeline with exact provider and recipient identities. It receives zero rDPS credit, preserves ordinary Damage/DPS, and cannot enter either the generic damage reducer or a specialized attribution projector."
+  ]
+}

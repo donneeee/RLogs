@@ -30,6 +30,7 @@ pub enum RdpsContributionKind {
     StateScaling,
     TargetVulnerability,
     Mitigation,
+    ResourceSupport,
     SelfOnly,
 }
 
@@ -289,7 +290,7 @@ mod tests {
         ),
     ];
 
-    const REVIEW_BATCH_SOURCES: [&str; 30] = [
+    const REVIEW_BATCH_SOURCES: [&str; 33] = [
         include_str!(
             "../game-data/catalog/rdps-effects/offensive-stat-boost/confirmed/current-build-production-effect-classifications.v1.json"
         ),
@@ -372,6 +373,12 @@ mod tests {
             "../game-data/catalog/rdps-effects/non-contributing/confirmed/2110121-phantom-rally-owner-companion-attack.v1.json"
         ),
         include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/2110307-caprahorn-shield-mitigation.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/998341-sanctuary-aura-shield.v1.json"
+        ),
+        include_str!(
             "../game-data/catalog/rdps-effects/non-contributing/confirmed/party-offense-parent-markers.v1.json"
         ),
         include_str!(
@@ -379,6 +386,9 @@ mod tests {
         ),
         include_str!(
             "../game-data/catalog/rdps-effects/unclassified/unclassified/current-build-mixed-owner-and-support-dispositions.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/target-vulnerability/candidate/aoyi-target-mitigation-candidates.v1.json"
         ),
     ];
 
@@ -541,12 +551,55 @@ mod tests {
             panic!("expected reviewed Energy Synergy Domain child 997520");
         };
         assert_eq!(resource.review_state, RdpsReviewState::Candidate);
-        assert_eq!(resource.contribution_kind, RdpsContributionKind::Haste);
+        assert_eq!(
+            resource.contribution_kind,
+            RdpsContributionKind::ResourceSupport
+        );
         assert_eq!(resource.source_scope, RdpsSourceScope::EffectSource);
         assert_eq!(resource.target_scope, RdpsTargetScope::PartyMembers);
         assert_eq!(resource.magnitude_basis_points, Some(10_000));
         assert_eq!(resource.stacking_rule, RdpsStackingRule::RefreshOnly);
         assert!(!resource.attribution_enabled);
+    }
+
+    #[test]
+    fn aoyi_target_mitigation_candidates_and_emitters_remain_fail_closed() {
+        for effect_id in [2_110_078, 2_110_092, 2_110_099, 2_110_167] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed Aoyi target-mitigation effect {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::Candidate);
+            assert_eq!(
+                rule.contribution_kind,
+                RdpsContributionKind::TargetVulnerability
+            );
+            assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+            assert_eq!(rule.target_scope, RdpsTargetScope::Enemy);
+            assert!(!rule.attribution_enabled);
+        }
+
+        let RdpsEffectLookup::Reviewed(emitter) = classify_rdps_effect(2_110_166).unwrap() else {
+            panic!("expected reviewed Celestial Spirit Mage emitter 2110166");
+        };
+        assert_eq!(emitter.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(
+            emitter.contribution_kind,
+            RdpsContributionKind::InternalMarker
+        );
+        assert_eq!(emitter.target_scope, RdpsTargetScope::Enemy);
+        assert!(!emitter.attribution_enabled);
+    }
+
+    #[test]
+    fn sanctuary_aura_shield_is_defensive_support_not_damage_credit() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(998_341).unwrap() else {
+            panic!("expected reviewed Sanctuary Aura shield 998341");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+        assert_eq!(rule.contribution_kind, RdpsContributionKind::Mitigation);
+        assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+        assert!(!rule.attribution_enabled);
     }
 
     #[test]
@@ -1284,12 +1337,19 @@ mod tests {
 
     #[test]
     fn mechanical_power_review_catalog_stays_separate_from_the_promoted_state_runtime() {
+        let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(2_110_140).unwrap() else {
+            panic!("expected reviewed Mechanical Power recipient effect");
+        };
+        assert_eq!(rule.review_state, RdpsReviewState::Confirmed);
         assert_eq!(
-            classify_rdps_effect(2_110_140).unwrap(),
-            RdpsEffectLookup::RetainedMappedUnclassified {
-                effect_id: 2_110_140
-            }
+            rule.contribution_kind,
+            RdpsContributionKind::OffensiveStatBoost
         );
+        assert_eq!(rule.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(rule.target_scope, RdpsTargetScope::PartyMembers);
+        assert_eq!(rule.magnitude_basis_points, None);
+        assert_eq!(rule.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(!rule.attribution_enabled);
         assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
         assert!(
             crate::proven_state_damage_contribution_effect_ids()

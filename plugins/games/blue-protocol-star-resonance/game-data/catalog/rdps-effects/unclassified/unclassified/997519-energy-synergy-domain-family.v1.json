@@ -3,7 +3,7 @@
   "game_build": "24687926",
   "rules": [
     {"effect_id":997519,"review_state":"non_contributing","contribution_kind":"internal_marker","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"refresh_only","attribution_enabled":false},
-    {"effect_id":997520,"review_state":"candidate","contribution_kind":"haste","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":10000,"stacking_rule":"refresh_only","attribution_enabled":false}
+    {"effect_id":997520,"review_state":"candidate","contribution_kind":"resource_support","source_scope":"effect_source","target_scope":"party_members","magnitude_basis_points":10000,"stacking_rule":"refresh_only","attribution_enabled":false}
   ],
   "evidence": [
     "Installed Steam build 24687926 binds RogueEntryTable[200] Energy Synergy Domain to owner marker 997519. RogueEntryDescriptionTable[110001] says Ultimate Skills grant a Resource Aura for 15 seconds that gives nearby allies +100% Combat Resource Acquisition Efficiency, with only one effect active at a time.",

@@ -396,7 +396,7 @@
     {
       "effect_id": 997520,
       "review_state": "candidate",
-      "contribution_kind": "haste",
+      "contribution_kind": "resource_support",
       "source_scope": "effect_source",
       "target_scope": "party_members",
       "magnitude_basis_points": 10000,
@@ -1203,6 +1203,16 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 998341,
+      "review_state": "non_contributing",
+      "contribution_kind": "mitigation",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 998542,
       "review_state": "confirmed",
       "contribution_kind": "offensive_stat_boost",
@@ -1343,6 +1353,16 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2110034,
+      "review_state": "confirmed",
+      "contribution_kind": "haste",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2110050,
       "review_state": "non_contributing",
       "contribution_kind": "internal_marker",
@@ -1403,6 +1423,16 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2110078,
+      "review_state": "candidate",
+      "contribution_kind": "target_vulnerability",
+      "source_scope": "effect_source",
+      "target_scope": "enemy",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2110082,
       "review_state": "non_contributing",
       "contribution_kind": "internal_marker",
@@ -1410,6 +1440,26 @@
       "target_scope": "self_only",
       "magnitude_basis_points": null,
       "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2110092,
+      "review_state": "candidate",
+      "contribution_kind": "target_vulnerability",
+      "source_scope": "effect_source",
+      "target_scope": "enemy",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2110099,
+      "review_state": "candidate",
+      "contribution_kind": "target_vulnerability",
+      "source_scope": "effect_source",
+      "target_scope": "enemy",
+      "magnitude_basis_points": null,
+      "stacking_rule": "stack_scaled",
       "attribution_enabled": false
     },
     {
@@ -1443,6 +1493,16 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2110140,
+      "review_state": "confirmed",
+      "contribution_kind": "offensive_stat_boost",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2110143,
       "review_state": "confirmed",
       "contribution_kind": "offensive_stat_boost",
@@ -1450,6 +1510,36 @@
       "target_scope": "party_members",
       "magnitude_basis_points": null,
       "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2110166,
+      "review_state": "non_contributing",
+      "contribution_kind": "internal_marker",
+      "source_scope": "effect_source",
+      "target_scope": "enemy",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2110167,
+      "review_state": "candidate",
+      "contribution_kind": "target_vulnerability",
+      "source_scope": "effect_source",
+      "target_scope": "enemy",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2110307,
+      "review_state": "non_contributing",
+      "contribution_kind": "mitigation",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
       "attribution_enabled": false
     },
     {
@@ -2153,6 +2243,16 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2404271,
+      "review_state": "confirmed",
+      "contribution_kind": "offensive_stat_boost",
+      "source_scope": "effect_source",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "refresh_only",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2405150,
       "review_state": "non_contributing",
       "contribution_kind": "self_only",
@@ -2280,6 +2380,16 @@
       "target_scope": "self_only",
       "magnitude_basis_points": null,
       "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 3003411,
+      "review_state": "confirmed",
+      "contribution_kind": "offensive_stat_boost",
+      "source_scope": "effect_source",
+      "target_scope": "effect_target",
+      "magnitude_basis_points": 200,
+      "stacking_rule": "stack_scaled",
       "attribution_enabled": false
     },
     {
