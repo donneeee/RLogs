@@ -1180,17 +1180,16 @@ impl HistoryRdpsBackfillQueue {
         if state.active.as_deref() == Some(session_id) {
             state.active = None;
         }
-        state.progress.insert(
-            session_id.to_owned(),
-            HistoryRdpsRefreshProgress {
-                session_id: session_id.to_owned(),
-                stage: HistoryRdpsRefreshStage::Failed,
-                processed_events: 0,
-                processed_bytes: 0,
-                total_bytes: 0,
-                detail: Some(detail),
-            },
-        );
+        let progress = state
+            .progress
+            .entry(session_id.to_owned())
+            .or_insert_with(|| HistoryRdpsRefreshProgress::queued(session_id.to_owned()));
+        // Keep the last replay counters alongside the exact failure reason.
+        // A validation/save failure can happen after both sealed-log passes
+        // completed; resetting the row to zero made the UI falsely imply that
+        // replay never started and discarded useful failure context.
+        progress.stage = HistoryRdpsRefreshStage::Failed;
+        progress.detail = Some(detail);
     }
 
     fn progress_snapshot(&self) -> Vec<HistoryRdpsRefreshProgress> {
@@ -10529,6 +10528,34 @@ mod tests {
 
         let unchanged = feed.wait_after(saved_revision, Duration::from_millis(1));
         assert_eq!(unchanged, (saved_revision, false));
+    }
+
+    #[test]
+    fn failed_history_rdps_refresh_retains_replay_progress_and_exact_reason() {
+        let queue = HistoryRdpsBackfillQueue::default();
+        let session_id = "history-progress-failure".to_owned();
+        assert!(queue.enqueue(session_id.clone()));
+        assert_eq!(queue.next(None).as_deref(), Some(session_id.as_str()));
+        queue.update_progress(HistoryRdpsRefreshProgress {
+            session_id: session_id.clone(),
+            stage: HistoryRdpsRefreshStage::ValidatingAndSaving,
+            processed_events: 12_345,
+            processed_bytes: 2_000,
+            total_bytes: 2_000,
+            detail: None,
+        });
+
+        let reason = "replayed combat history run 2 changed the saved ordinary combat cube";
+        queue.fail(&session_id, reason.into());
+
+        let progress = queue.progress_snapshot();
+        assert_eq!(progress.len(), 1);
+        assert_eq!(progress[0].session_id, session_id);
+        assert_eq!(progress[0].stage, HistoryRdpsRefreshStage::Failed);
+        assert_eq!(progress[0].processed_events, 12_345);
+        assert_eq!(progress[0].processed_bytes, 2_000);
+        assert_eq!(progress[0].total_bytes, 2_000);
+        assert_eq!(progress[0].detail.as_deref(), Some(reason));
     }
 
     #[test]

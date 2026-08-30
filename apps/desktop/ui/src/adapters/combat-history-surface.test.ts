@@ -61,6 +61,24 @@ describe("Combat History archived rDPS progress", () => {
     expect(presentation.stageLabel).toContain("Paused");
     expect(presentation.details).toContain("resume after capture stops");
   });
+
+  it("keeps completed replay progress beside the concrete failure reason", () => {
+    const reason =
+      "replayed combat history run 2 changed the saved ordinary combat cube";
+    const presentation = historyRdpsProgressPresentation({
+      session_id: "session-1",
+      stage: "failed",
+      processed_events: 12_345,
+      processed_bytes: 2_000,
+      total_bytes: 2_000,
+      detail: reason,
+    });
+
+    expect(presentation.stageLabel).toBe("Could not refresh this run");
+    expect(presentation.percent).toBe(100);
+    expect(presentation.details).toContain("12,345 canonical events processed");
+    expect(presentation.details).toContain(reason);
+  });
 });
 
 describe("Combat History rDPS influence filtering", () => {
