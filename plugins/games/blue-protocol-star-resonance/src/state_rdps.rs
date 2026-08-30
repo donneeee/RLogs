@@ -50,8 +50,8 @@ use crate::{
         rdps_runtime_config_for, rdps_runtime_config_for_identity,
     },
     skill_speed::{
-        SkillStageSpeedFamily, SkillStageSpeedInputs, exact_external_speed_capacity_fraction,
-        skill_stage_speed,
+        ExactSkillSpeedRatio, SkillStageSpeedFamily, SkillStageSpeedInputs,
+        exact_external_speed_capacity_fraction, skill_stage_speed,
     },
     specialization_identity_from_observed_abilities, two_stage_percent_input_marginal,
 };
@@ -60,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v28";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v29";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -218,6 +218,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.endless_mind.effect_id) {
         effect_ids.push(runtime.endless_mind.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.arcane_time_decree.effect_id) {
+        effect_ids.push(runtime.arcane_time_decree.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.critical_cold.effect_id) {
         effect_ids.push(runtime.critical_cold.effect_id);
@@ -908,6 +911,24 @@ struct EndlessMindWindow {
     target_entity_uuid: i64,
     provider_entity_uuid: i64,
     stacks: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ArcaneTimeDecreeWindow {
+    target_entity_uuid: i64,
+    provider_entity_uuid: i64,
+    provider_owner_actor_id: u64,
+    provider_owner_entity_uuid: i64,
+    opened_observed_micros: u64,
+    expires_at_observed_micros: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CooldownActionState {
+    actor_entity_uuid: i64,
+    observed_micros: u64,
+    duration_millis: i32,
+    accelerate_basis_points: i64,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -2130,6 +2151,13 @@ pub struct BpsrStateDamageContributionProjector {
     /// derived Shattered Illusion element stage consumes that Mastery.
     endless_mind_windows: HashMap<EffectWindowKey, EndlessMindWindow>,
     endless_mind_transition_wires: HashMap<u64, WireKey>,
+    /// Arcane! Time Decree is a cooldown-opportunity effect, not a blanket
+    /// damage multiplier. Only an exact recipient cooldown row for the same
+    /// ability can authorize a packet-final capacity share.
+    arcane_time_decree_windows: HashMap<EffectWindowKey, ArcaneTimeDecreeWindow>,
+    arcane_time_decree_transition_wires: HashMap<u64, WireKey>,
+    cooldown_action_state: HashMap<(u64, i64), CooldownActionState>,
+    arcane_time_decree_basis_points_by_provider_entity: HashMap<i64, i64>,
     /// Exact provider -> recipient lifecycle for Inspire (31602). This is a
     /// separate mechanic from Inspiration (2202041).
     inspire_haste_windows: HashMap<EffectWindowKey, InspireHasteWindow>,
@@ -2256,6 +2284,10 @@ impl Default for BpsrStateDamageContributionProjector {
             inspiration_windows: HashMap::new(),
             endless_mind_windows: HashMap::new(),
             endless_mind_transition_wires: HashMap::new(),
+            arcane_time_decree_windows: HashMap::new(),
+            arcane_time_decree_transition_wires: HashMap::new(),
+            cooldown_action_state: HashMap::new(),
+            arcane_time_decree_basis_points_by_provider_entity: HashMap::new(),
             inspire_haste_windows: HashMap::new(),
             inspire_haste_transition_wires: HashMap::new(),
             critical_cold_windows: HashMap::new(),
@@ -2847,6 +2879,7 @@ impl BpsrStateDamageContributionProjector {
         self.expire_target_vulnerability_windows(envelope.time.observed_micros);
         self.expire_harmony_grace_windows(envelope.time.observed_micros);
         self.expire_inspire_haste_windows(envelope.time.observed_micros);
+        self.expire_arcane_time_decree_windows(envelope.time.observed_micros);
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
             return;
         };
@@ -2909,6 +2942,7 @@ impl BpsrStateDamageContributionProjector {
                 if actor.state != ActorState::Despawned && actor.kind == ActorKind::Player {
                     self.active_players.insert(actor_id);
                     self.observe_fatal_spiral_provider_loadout(actor);
+                    self.observe_arcane_time_decree_provider_loadout(actor);
                 } else if actor.state == ActorState::Despawned {
                     self.active_players.remove(&actor_id);
                     let entity_uuid = actor.actor.entity_uuid.0;
@@ -2918,7 +2952,12 @@ impl BpsrStateDamageContributionProjector {
                         .remove(&entity_uuid);
                     self.fatal_spiral_ambiguous_provider_entities
                         .remove(&entity_uuid);
+                    self.arcane_time_decree_basis_points_by_provider_entity
+                        .remove(&entity_uuid);
                 }
+            }
+            TimelineEventKind::Cooldown(cooldown) => {
+                self.observe_cooldown_action_state(envelope.time.observed_micros, cooldown)
             }
             TimelineEventKind::Status(status) => {
                 self.observe_status(status, envelope.time.observed_micros)
@@ -2932,6 +2971,7 @@ impl BpsrStateDamageContributionProjector {
                 self.clear_fiery_battle_will_after_gap();
                 self.clear_encore_after_gap(gap.kind);
                 self.clear_endless_mind_after_gap(gap.kind);
+                self.clear_arcane_time_decree_after_gap(gap.kind);
                 self.clear_critical_cold_after_gap(gap.kind);
                 self.clear_inspire_haste_after_gap(gap.kind);
                 self.clear_full_bloom_after_gap(gap.kind);
@@ -3036,6 +3076,17 @@ impl BpsrStateDamageContributionProjector {
                 });
                 let inspire_haste_contribution =
                     self.inspire_haste_contribution(envelope.time.observed_micros, damage);
+                let arcane_time_decree_contribution =
+                    self.arcane_time_decree_contribution(envelope.time.observed_micros, damage);
+                let opportunity_contribution =
+                    match (inspire_haste_contribution, arcane_time_decree_contribution) {
+                        (Some(inspire), None) => Some(inspire),
+                        (None, Some(arcane)) => Some(arcane),
+                        // Action speed and cooldown acceleration alter different
+                        // cadence constraints. Without a unique joint schedule,
+                        // suppress both shares while retaining per-hit stages.
+                        _ => None,
+                    };
                 let team_luck_contribution = self.team_luck_contribution(envelope, damage);
                 let functional_amp_contribution =
                     self.functional_amp_contribution(envelope.time.observed_micros, damage);
@@ -3203,23 +3254,23 @@ impl BpsrStateDamageContributionProjector {
                     } else {
                         (base_attack_contributions, base_attack_overlap_unresolved)
                     };
-                let (attack_contributions, unresolved_attack_overlap) = if let Some(inspire_haste) =
-                    inspire_haste_contribution
+                let (attack_contributions, unresolved_attack_overlap) = if let Some(opportunity) =
+                    opportunity_contribution
                 {
                     if unresolved_per_hit_attack_overlap || per_hit_attack_contributions.is_empty()
                     {
-                        // Inspire is the earliest independently exact
+                        // Cadence opportunity is the earliest independently exact
                         // packet-final throughput share. An unresolved
                         // later per-hit allocation suppresses only those
                         // later rows, never this conserved share.
-                        (vec![inspire_haste], false)
+                        (vec![opportunity], false)
                     } else {
                         match extend_ordered_rational_marginals(
-                            vec![inspire_haste],
+                            vec![opportunity],
                             per_hit_attack_contributions,
                         ) {
                             Some(contributions) => (contributions, false),
-                            None => (vec![inspire_haste], false),
+                            None => (vec![opportunity], false),
                         }
                     }
                 } else {
@@ -3327,13 +3378,13 @@ impl BpsrStateDamageContributionProjector {
                     unresolved_attack_overlap,
                 });
                 if exact_candidate_count > 0
-                    && let Some(inspire_haste) = inspire_haste_contribution
+                    && let Some(opportunity) = opportunity_contribution
                 {
                     // Exact-integer candidates are final packet components;
                     // their order against the speed opportunity stage is not
                     // yet reviewed. Preserve only the independently exact
-                    // earliest Inspire share instead of suppressing both.
-                    rational_output.push(inspire_haste);
+                    // earliest opportunity share instead of suppressing both.
+                    rational_output.push(opportunity);
                     self.finish_critical_cold_pipeline_audit(
                         "exact_candidate_overlap_inspire_only",
                     );
@@ -3443,6 +3494,8 @@ impl BpsrStateDamageContributionProjector {
                             rational_output.extend(attack_contributions.iter().copied().filter(
                                 |contribution| {
                                     contribution.effect_id == self.runtime.inspire.effect_id
+                                        || contribution.effect_id
+                                            == self.runtime.arcane_time_decree.effect_id
                                 },
                             ));
                         }
@@ -3492,6 +3545,8 @@ impl BpsrStateDamageContributionProjector {
                             rational_output.extend(attack_contributions.iter().copied().filter(
                                 |contribution| {
                                     contribution.effect_id == self.runtime.inspire.effect_id
+                                        || contribution.effect_id
+                                            == self.runtime.arcane_time_decree.effect_id
                                 },
                             ));
                         }
@@ -3526,6 +3581,7 @@ impl BpsrStateDamageContributionProjector {
                                     + target_vulnerability_rational_contributions.len(),
                                 &[
                                     self.runtime.inspire.effect_id,
+                                    self.runtime.arcane_time_decree.effect_id,
                                     self.runtime.fiery_battle_will.effect_id,
                                 ],
                             )
@@ -3720,6 +3776,7 @@ impl BpsrStateDamageContributionProjector {
             self.stat_resonance_transition_wires.clear();
             self.fiery_battle_will_transition_wires.clear();
             self.inspire_haste_transition_wires.clear();
+            self.arcane_time_decree_transition_wires.clear();
             self.inspiration_transition_wires.clear();
             self.inspiration_snapshot_targets.clear();
             self.thunderwind_transition_wires.clear();
@@ -3880,6 +3937,9 @@ impl BpsrStateDamageContributionProjector {
         }
         if status.effect.0 == self.runtime.endless_mind.effect_id {
             self.observe_endless_mind_status(status);
+        }
+        if status.effect.0 == self.runtime.arcane_time_decree.effect_id {
+            self.observe_arcane_time_decree_status(status, observed_micros);
         }
         if status.effect.0 == self.runtime.critical_cold.effect_id {
             self.observe_critical_cold_status(status);
@@ -4637,6 +4697,136 @@ impl BpsrStateDamageContributionProjector {
         if kind == DataGapKind::TcpGap {
             self.endless_mind_windows.clear();
             self.endless_mind_transition_wires.clear();
+        }
+    }
+
+    fn observe_arcane_time_decree_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let target_actor_id = status.target.actor_id.0;
+        let target_entity_uuid = status.target.entity_uuid.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        if let Some(wire) = self.current_wire {
+            self.arcane_time_decree_transition_wires
+                .insert(target_actor_id, wire);
+        }
+        let active = matches!(
+            status.state,
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+        ) || (status.state == StatusState::Consumed
+            && status.stacks.unwrap_or_default() > 0);
+        if active {
+            let exact_identity = status.level
+                == Some(self.runtime.arcane_time_decree.required_effect_level)
+                && status.stacks == Some(self.runtime.arcane_time_decree.required_stacks)
+                && status.duration_millis == Some(self.runtime.arcane_time_decree.duration_millis)
+                && target_entity_uuid != 0;
+            let Some(provider) = status.source.filter(|_| exact_identity) else {
+                self.arcane_time_decree_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || (instance_id.is_some() && key.instance_id != instance_id)
+                });
+                return;
+            };
+            let provider_owner_actor_id = self.resolve_owner_actor_id(provider.actor_id.0);
+            let Some(provider_owner_entity_uuid) = self
+                .actor_ancestry
+                .entity_for_actor(provider_owner_actor_id)
+                .filter(|entity_uuid| *entity_uuid != 0)
+            else {
+                return;
+            };
+            if !self.active_players.contains(&provider_owner_actor_id)
+                || !self
+                    .arcane_time_decree_basis_points_by_provider_entity
+                    .contains_key(&provider_owner_entity_uuid)
+            {
+                return;
+            }
+            let Some(expires_at_observed_micros) = self
+                .runtime
+                .arcane_time_decree
+                .duration_millis
+                .checked_mul(1_000)
+                .and_then(|duration| observed_micros.checked_add(duration))
+            else {
+                return;
+            };
+            self.arcane_time_decree_windows.insert(
+                EffectWindowKey {
+                    target_actor_id,
+                    provider_actor_id: provider.actor_id.0,
+                    instance_id,
+                },
+                ArcaneTimeDecreeWindow {
+                    target_entity_uuid,
+                    provider_entity_uuid: provider.entity_uuid.0,
+                    provider_owner_actor_id,
+                    provider_owner_entity_uuid,
+                    opened_observed_micros: observed_micros,
+                    expires_at_observed_micros,
+                },
+            );
+            return;
+        }
+        self.arcane_time_decree_windows.retain(|key, window| {
+            if key.target_actor_id != target_actor_id
+                || instance_id.is_some_and(|instance| key.instance_id != Some(instance))
+            {
+                return true;
+            }
+            status.source.is_some_and(|source| {
+                key.provider_actor_id != source.actor_id.0
+                    || (source.entity_uuid.0 != 0
+                        && window.provider_entity_uuid != source.entity_uuid.0)
+            })
+        });
+    }
+
+    fn observe_cooldown_action_state(
+        &mut self,
+        observed_micros: u64,
+        cooldown: &rlogs_events::CooldownEvent,
+    ) {
+        let key = (cooldown.actor.actor_id.0, cooldown.ability.0);
+        let exact = cooldown.actor.entity_uuid.0 != 0
+            && cooldown.ability.0 > 0
+            && cooldown
+                .duration_millis
+                .is_some_and(|duration| duration > 0)
+            && cooldown
+                .valid_duration_millis
+                .is_none_or(|duration| duration > 0)
+            && cooldown
+                .valid_cooldown_time_millis
+                .is_none_or(|duration| duration > 0)
+            && cooldown
+                .accelerate_cooldown_ratio_raw
+                .is_some_and(|value| value >= 0);
+        if !exact {
+            self.cooldown_action_state.remove(&key);
+            return;
+        }
+        self.cooldown_action_state.insert(
+            key,
+            CooldownActionState {
+                actor_entity_uuid: cooldown.actor.entity_uuid.0,
+                observed_micros,
+                duration_millis: cooldown.duration_millis.unwrap_or_default(),
+                accelerate_basis_points: i64::from(
+                    cooldown.accelerate_cooldown_ratio_raw.unwrap_or_default(),
+                ),
+            },
+        );
+    }
+
+    fn clear_arcane_time_decree_after_gap(&mut self, kind: DataGapKind) {
+        if kind == DataGapKind::TcpGap {
+            self.arcane_time_decree_windows.clear();
+            self.arcane_time_decree_transition_wires.clear();
+            self.cooldown_action_state.clear();
         }
     }
 
@@ -6664,6 +6854,40 @@ impl BpsrStateDamageContributionProjector {
         }
     }
 
+    fn observe_arcane_time_decree_provider_loadout(&mut self, actor: &rlogs_events::ActorEvent) {
+        let config = &self.runtime.arcane_time_decree;
+        let mut magnitudes = actor
+            .primary_loadout
+            .iter()
+            .filter(|slot| slot.ability_id == Some(config.provider_imagine_ability_id))
+            .filter(|slot| {
+                slot.item_id
+                    .is_none_or(|item_id| item_id == config.provider_imagine_item_id)
+            })
+            .filter_map(|slot| config.basis_points_for_tier(slot.tier?))
+            .collect::<Vec<_>>();
+        magnitudes.sort_unstable();
+        magnitudes.dedup();
+        let entity_uuid = actor.actor.entity_uuid.0;
+        match magnitudes.as_slice() {
+            [magnitude] if entity_uuid != 0 => {
+                self.arcane_time_decree_basis_points_by_provider_entity
+                    .insert(entity_uuid, *magnitude);
+            }
+            [] if actor.loadout_observation.primary
+                == rlogs_events::ActorLoadoutEvidence::ExactSlots =>
+            {
+                self.arcane_time_decree_basis_points_by_provider_entity
+                    .remove(&entity_uuid);
+            }
+            [] => {}
+            _ => {
+                self.arcane_time_decree_basis_points_by_provider_entity
+                    .remove(&entity_uuid);
+            }
+        }
+    }
+
     fn learn_fatal_spiral_provider_basis_points(
         &mut self,
         provider_entity_uuid: i64,
@@ -7363,6 +7587,95 @@ impl BpsrStateDamageContributionProjector {
             recipient_actor_id,
             scope: DamageContributionScope::Component(
                 "Inspire (31602) packet-final action-speed opportunity",
+            ),
+            numerator,
+            denominator,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn arcane_time_decree_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        if !self.runtime.arcane_time_decree.runtime_transfer_enabled || damage.amount <= 0 {
+            return None;
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let ability_id = damage.ability?.0;
+        if recipient_entity_uuid == 0 || !self.active_players.contains(&recipient_actor_id) {
+            return None;
+        }
+        if self.current_wire.is_some_and(|wire| {
+            self.arcane_time_decree_transition_wires
+                .get(&recipient_actor_id)
+                == Some(&wire)
+        }) {
+            return None;
+        }
+        let matching_windows = self
+            .arcane_time_decree_windows
+            .iter()
+            .filter(|(key, window)| {
+                (key.target_actor_id == recipient_actor_id
+                    || window.target_entity_uuid == recipient_entity_uuid)
+                    && observed_micros > window.opened_observed_micros
+                    && observed_micros < window.expires_at_observed_micros
+            })
+            .collect::<Vec<_>>();
+        let [(_window_key, window)] = matching_windows.as_slice() else {
+            return None;
+        };
+        let provider_actor_id = window.provider_owner_actor_id;
+        if provider_actor_id == recipient_actor_id
+            || !self.active_players.contains(&provider_actor_id)
+        {
+            return None;
+        }
+        let provider_basis_points = *self
+            .arcane_time_decree_basis_points_by_provider_entity
+            .get(&window.provider_owner_entity_uuid)?;
+        if window.provider_entity_uuid == 0
+            || window.provider_owner_entity_uuid == recipient_entity_uuid
+        {
+            return None;
+        }
+        let cooldown = self
+            .cooldown_action_state
+            .get(&(recipient_actor_id, ability_id))?;
+        if cooldown.actor_entity_uuid != recipient_entity_uuid
+            || cooldown.duration_millis <= 0
+            || cooldown.observed_micros < window.opened_observed_micros
+            || cooldown.observed_micros > observed_micros
+            || cooldown.accelerate_basis_points < provider_basis_points
+        {
+            return None;
+        }
+        let active_capacity =
+            BPSR_FIXED_POINT_SCALE.checked_add(cooldown.accelerate_basis_points)?;
+        let provider_removed_capacity = active_capacity.checked_sub(provider_basis_points)?;
+        let (numerator, denominator) = exact_external_speed_capacity_fraction(
+            damage.amount,
+            ExactSkillSpeedRatio::new(
+                i128::from(active_capacity),
+                i128::from(BPSR_FIXED_POINT_SCALE),
+            )?,
+            ExactSkillSpeedRatio::new(
+                i128::from(provider_removed_capacity),
+                i128::from(BPSR_FIXED_POINT_SCALE),
+            )?,
+        )?;
+        Some(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: self.runtime.arcane_time_decree.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(
+                "Arcane! Time Decree — Lower CD packet-final cooldown opportunity",
             ),
             numerator,
             denominator,
@@ -11072,6 +11385,11 @@ impl BpsrStateDamageContributionProjector {
             .retain(|_, window| window.expires_at_observed_micros > observed_micros);
     }
 
+    fn expire_arcane_time_decree_windows(&mut self, observed_micros: u64) {
+        self.arcane_time_decree_windows
+            .retain(|_, window| window.expires_at_observed_micros > observed_micros);
+    }
+
     fn clear_inspire_haste_after_gap(&mut self, kind: DataGapKind) {
         if kind == DataGapKind::TcpGap {
             self.inspire_haste_windows.clear();
@@ -11211,6 +11529,11 @@ impl BpsrStateDamageContributionProjector {
         self.endless_mind_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.endless_mind_transition_wires.remove(&actor_id);
+        self.arcane_time_decree_windows
+            .retain(|key, _| key.target_actor_id != actor_id);
+        self.arcane_time_decree_transition_wires.remove(&actor_id);
+        self.cooldown_action_state
+            .retain(|(cooldown_actor_id, _), _| *cooldown_actor_id != actor_id);
         self.inspire_haste_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.inspire_haste_transition_wires.remove(&actor_id);
@@ -11294,6 +11617,9 @@ impl BpsrStateDamageContributionProjector {
         self.inspiration_windows.clear();
         self.endless_mind_windows.clear();
         self.endless_mind_transition_wires.clear();
+        self.arcane_time_decree_windows.clear();
+        self.arcane_time_decree_transition_wires.clear();
+        self.cooldown_action_state.clear();
         self.inspire_haste_windows.clear();
         self.inspire_haste_transition_wires.clear();
         self.critical_cold_windows.clear();
@@ -11347,6 +11673,8 @@ impl BpsrStateDamageContributionProjector {
         self.fatal_spiral_provider_basis_points_by_entity_uuid
             .clear();
         self.fatal_spiral_ambiguous_provider_entities.clear();
+        self.arcane_time_decree_basis_points_by_provider_entity
+            .clear();
         self.class_id_by_actor.clear();
         self.specialization_id_by_actor.clear();
         self.active_players.clear();
@@ -14140,6 +14468,122 @@ mod tests {
         );
     }
 
+    #[test]
+    fn arcane_time_decree_attributes_only_exact_cooldown_backed_actions() {
+        let player = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let proxy = test_entity(200, 2_000);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (200, 2_000), (9, 90)]),
+            latest_observed_micros: 100,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.actor_ancestry.observe_relation(
+            100,
+            proxy,
+            player,
+            ActorOwnershipEvidence::ConfirmedEntityAttributes,
+        );
+        projector.observe_arcane_time_decree_provider_loadout(&rlogs_events::ActorEvent {
+            actor: player,
+            state: ActorState::Spawned,
+            entity_type_id: 10,
+            kind: ActorKind::Player,
+            monster_id: None,
+            character_id: Some("arcane-provider".into()),
+            display_name: Some("Arcane Provider".into()),
+            class_id: Some(13),
+            specialization_id: Some(120),
+            level: Some(60),
+            ability_score: None,
+            weapon_item_id: None,
+            weapon_breakthrough_count: None,
+            seasonal_score: None,
+            primary_loadout: vec![rlogs_events::ActorLoadoutSlot {
+                slot_id: 8,
+                ability_id: Some(runtime().arcane_time_decree.provider_imagine_ability_id),
+                item_id: Some(runtime().arcane_time_decree.provider_imagine_item_id),
+                tier: Some(2),
+            }],
+            auxiliary_loadout: Vec::new(),
+            loadout_observation: rlogs_events::ActorLoadoutObservation {
+                primary: rlogs_events::ActorLoadoutEvidence::ExactSlots,
+                auxiliary: rlogs_events::ActorLoadoutEvidence::Unobserved,
+            },
+        });
+        projector.observe_arcane_time_decree_status(
+            &rlogs_events::StatusEvent {
+                source: Some(proxy),
+                target: recipient,
+                effect: rlogs_events::StatusEffectId(runtime().arcane_time_decree.effect_id),
+                instance_id: Some(rlogs_events::StatusEffectInstanceId(77)),
+                origin: None,
+                state: StatusState::Applied,
+                stacks: Some(1),
+                duration_millis: Some(20_000),
+                level: Some(34),
+                part_id: None,
+                count: None,
+                created_at_millis: None,
+            },
+            100,
+        );
+        projector.observe_cooldown_action_state(
+            150,
+            &rlogs_events::CooldownEvent {
+                actor: recipient,
+                ability: rlogs_events::AbilityId(12_345),
+                begin_time_millis: Some(1_000),
+                duration_millis: Some(10_000),
+                valid_duration_millis: Some(10_000),
+                cooldown_type: Some(1),
+                profession_hold_begin_time_millis: None,
+                charge_count: Some(0),
+                valid_cooldown_time_millis: Some(10_000),
+                sub_cooldown_ratio_raw: None,
+                sub_cooldown_fixed_raw: None,
+                accelerate_cooldown_ratio_raw: Some(3_000),
+            },
+        );
+        let damage = rlogs_events::DamageEvent {
+            source: recipient,
+            direct_source: None,
+            target: test_entity(9, 90),
+            ability: Some(rlogs_events::AbilityId(12_345)),
+            amount: 130_000,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(1),
+            damage_source: None,
+            damage_type: Some(1),
+            flags: rlogs_events::DamageFlags::default(),
+            packet: rlogs_events::DamagePacketDetail::default(),
+        };
+        let contribution = projector
+            .arcane_time_decree_contribution(200, &damage)
+            .expect("the exact cooldown row authorizes one action-opportunity share");
+        assert_eq!(contribution.effect_id, 2_110_034);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            (20_000, 1)
+        );
+
+        let mut auto_attack = damage.clone();
+        auto_attack.ability = Some(rlogs_events::AbilityId(12_346));
+        assert!(
+            projector
+                .arcane_time_decree_contribution(200, &auto_attack)
+                .is_none(),
+            "an action without the same exact cooldown identity is never credited",
+        );
+        projector.clear_arcane_time_decree_after_gap(DataGapKind::TcpGap);
+        assert!(projector.arcane_time_decree_windows.is_empty());
+        assert!(projector.cooldown_action_state.is_empty());
+    }
+
     fn stat_resonance_test_family(base_add: i64) -> AttackFamilyState {
         let raw_percent = 1_000;
         let extra_add = 100;
@@ -14540,8 +14984,9 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                31_602, 55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041,
-                2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271, 3_003_052, 3_003_411
+                31_602, 55_228, 55_333, 2_110_034, 2_110_065, 2_110_125, 2_110_140, 2_110_143,
+                2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271, 3_003_052,
+                3_003_411
             ],
             "only effects with current production authority are exposed; Endless Mind is limited to Shattered Illusion's description-defined Mastery consumer, Thunderwind Power remains owner-only, and Mechanical Power is limited to its exact class-11 tier-0 route"
         );
@@ -15379,8 +15824,9 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                31_602, 55_228, 55_333, 2_110_065, 2_110_125, 2_110_140, 2_110_143, 2_202_041,
-                2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271, 3_003_052, 3_003_411
+                31_602, 55_228, 55_333, 2_110_034, 2_110_065, 2_110_125, 2_110_140, 2_110_143,
+                2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271, 3_003_052,
+                3_003_411
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");

@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 23;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 24;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -1633,6 +1633,36 @@ pub(crate) struct EndlessMindRuntimeConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct ArcaneTimeDecreeRuntimeConfig {
+    pub effect_id: i64,
+    pub provider_imagine_ability_id: i64,
+    pub provider_imagine_item_id: i64,
+    pub required_effect_level: i32,
+    pub required_stacks: u32,
+    pub duration_millis: u64,
+    pub cooldown_acceleration_basis_points_by_tier: Vec<i64>,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub canonical_cooldown_acceleration_field_authority: bool,
+    pub exact_cooldown_action_identity_required: bool,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub runtime_transfer_enabled: bool,
+}
+
+impl ArcaneTimeDecreeRuntimeConfig {
+    pub(crate) fn basis_points_for_tier(&self, tier: u32) -> Option<i64> {
+        usize::try_from(tier.checked_sub(1)?)
+            .ok()
+            .and_then(|index| self.cooldown_acceleration_basis_points_by_tier.get(index))
+            .copied()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct TargetVulnerabilityRuntimeConfig {
     current_build_lifecycle_authority: bool,
     current_build_formula_authority: bool,
@@ -1673,6 +1703,7 @@ pub(crate) struct RdpsRuntimeConfig {
     pub inspire: InspireRuntimeConfig,
     pub critical_cold: CriticalColdRuntimeConfig,
     pub endless_mind: EndlessMindRuntimeConfig,
+    pub arcane_time_decree: ArcaneTimeDecreeRuntimeConfig,
     pub highland_blood: HighlandBloodRuntimeConfig,
 }
 
@@ -1717,6 +1748,7 @@ impl RdpsRuntimeConfig {
             || self.inspire.runtime_transfer_enabled
             || self.critical_cold.runtime_transfer_enabled
             || self.endless_mind.runtime_transfer_enabled
+            || self.arcane_time_decree.runtime_transfer_enabled
     }
 
     /// Effect-scoped production authority. A false result never hides the
@@ -1765,6 +1797,8 @@ impl RdpsRuntimeConfig {
                 && self.critical_cold.runtime_transfer_enabled)
             || (effect_id == self.endless_mind.effect_id
                 && self.endless_mind.runtime_transfer_enabled)
+            || (effect_id == self.arcane_time_decree.effect_id
+                && self.arcane_time_decree.runtime_transfer_enabled)
     }
 
     pub(crate) fn target_vulnerability_runtime_transfer_effect_ids(&self) -> &[i64] {
@@ -2640,6 +2674,34 @@ impl RdpsRuntimeConfig {
         {
             return Err(
                 "bundled BPSR Endless Mind (effect 3003411) Shattered Illusion formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let arcane = &self.arcane_time_decree;
+        let arcane_current_authority = arcane.game_description_formula_authority
+            && arcane.game_description_party_scope_authority
+            && arcane.canonical_cooldown_acceleration_field_authority
+            && arcane.exact_cooldown_action_identity_required
+            && arcane.unresolved_overlap_fails_closed
+            && arcane.ordinary_damage_unchanged
+            && arcane.accounting_method
+                == "observed-final-damage-proportional-cooldown-opportunity-capacity"
+            && arcane.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient";
+        if arcane.effect_id != 2_110_034
+            || arcane.provider_imagine_ability_id != 3_921
+            || arcane.provider_imagine_item_id != 3_000_011
+            || arcane.required_effect_level != 34
+            || arcane.required_stacks != 1
+            || arcane.duration_millis != 20_000
+            || arcane.cooldown_acceleration_basis_points_by_tier
+                != [1_000, 2_000, 3_000, 4_000, 5_000]
+            || (self.game_build == "24687926" && !arcane_current_authority)
+            || arcane.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Arcane! Time Decree (effect 2110034) cooldown-opportunity formula is not ready for runtime transfer"
                     .into(),
             );
         }

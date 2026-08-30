@@ -1,5 +1,5 @@
 {
-  "schema_version": 23,
+  "schema_version": 24,
   "deployment_id": "global",
   "builds": [
     {
@@ -18,6 +18,9 @@
         },
         "critical_damage_factor_interpretation": "unresolved",
         "endless_mind": {
+          "runtime_transfer_enabled": false
+        },
+        "arcane_time_decree": {
           "runtime_transfer_enabled": false
         },
         "team_luck": {
