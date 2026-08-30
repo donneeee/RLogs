@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 35;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 36;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -2016,6 +2016,42 @@ impl PoisonExplosionVulnerabilityRuntimeConfig {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CelestialGuardianVulnerabilityRuntimeConfig {
+    pub effect_id: i64,
+    pub provider_imagine_ability_id: i64,
+    pub provider_imagine_item_id: i64,
+    pub required_effect_level: i32,
+    pub required_stacks: u32,
+    pub duration_millis: u64,
+    pub vulnerability_basis_points_by_tier: Vec<i64>,
+    pub conflicting_target_effect_ids: Vec<i64>,
+    pub game_description_formula_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_target_status_identity_authority: bool,
+    pub exact_static_lifecycle_authority: bool,
+    pub provider_loadout_tier_authority: bool,
+    pub additive_vulnerability_stage_authority: bool,
+    pub later_stage_cancellation_authority: bool,
+    pub element_resistance_component_transfer_enabled: bool,
+    pub same_stage_provider_conservation_authority: bool,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub runtime_transfer_enabled: bool,
+}
+
+impl CelestialGuardianVulnerabilityRuntimeConfig {
+    pub(crate) fn basis_points_for_tier(&self, tier: u32) -> Option<i64> {
+        usize::try_from(tier.checked_sub(1)?)
+            .ok()
+            .and_then(|index| self.vulnerability_basis_points_by_tier.get(index))
+            .copied()
+    }
+}
+
 impl ThunderRoarRuntimeConfig {
     pub(crate) fn is_thunderstrike_action(
         &self,
@@ -2081,6 +2117,7 @@ pub(crate) struct RdpsRuntimeConfig {
     pub arcane_time_decree: ArcaneTimeDecreeRuntimeConfig,
     pub thunder_roar: ThunderRoarRuntimeConfig,
     pub poison_explosion_vulnerability: PoisonExplosionVulnerabilityRuntimeConfig,
+    pub celestial_guardian_vulnerability: CelestialGuardianVulnerabilityRuntimeConfig,
     pub highland_blood: HighlandBloodRuntimeConfig,
 }
 
@@ -2137,6 +2174,9 @@ impl RdpsRuntimeConfig {
             || self.arcane_time_decree.runtime_transfer_enabled
             || self.thunder_roar.runtime_transfer_enabled
             || self.poison_explosion_vulnerability.runtime_transfer_enabled
+            || self
+                .celestial_guardian_vulnerability
+                .runtime_transfer_enabled
     }
 
     /// Effect-scoped production authority. A false result never hides the
@@ -2208,6 +2248,10 @@ impl RdpsRuntimeConfig {
                 && self.thunder_roar.runtime_transfer_enabled)
             || (effect_id == self.poison_explosion_vulnerability.effect_id
                 && self.poison_explosion_vulnerability.runtime_transfer_enabled)
+            || (effect_id == self.celestial_guardian_vulnerability.effect_id
+                && self
+                    .celestial_guardian_vulnerability
+                    .runtime_transfer_enabled)
     }
 
     pub(crate) fn target_vulnerability_runtime_transfer_effect_ids(&self) -> &[i64] {
@@ -3518,13 +3562,45 @@ impl RdpsRuntimeConfig {
             || poison.maximum_stacks != 5
             || poison.duration_millis != 8_000
             || poison.vulnerability_basis_points_per_stack_by_tier != [80, 160, 240, 320, 400]
-            || poison.conflicting_target_effect_ids
-                != [55_228, 2_100_107, 2_110_078, 2_110_092, 2_110_167]
+            || poison.conflicting_target_effect_ids != [55_228, 2_100_107, 2_110_078, 2_110_092]
             || (self.game_build == "24687926" && !poison_current_authority)
             || poison.runtime_transfer_enabled != (self.game_build == "24687926")
         {
             return Err(
                 "bundled BPSR Arcane! Poison Explosion (effect 2110099) stacked Vulnerability formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let celestial = &self.celestial_guardian_vulnerability;
+        let celestial_current_authority = celestial.game_description_formula_authority
+            && celestial.game_description_party_scope_authority
+            && celestial.exact_target_status_identity_authority
+            && celestial.exact_static_lifecycle_authority
+            && celestial.provider_loadout_tier_authority
+            && celestial.additive_vulnerability_stage_authority
+            && celestial.later_stage_cancellation_authority
+            && !celestial.element_resistance_component_transfer_enabled
+            && celestial.same_stage_provider_conservation_authority
+            && celestial.unresolved_overlap_fails_closed
+            && celestial.ordinary_damage_unchanged
+            && celestial.accounting_method
+                == "observed-final-damage-proportional-separated-vulnerability-component-share"
+            && celestial.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient";
+        if celestial.effect_id != 2_110_167
+            || celestial.provider_imagine_ability_id != 3_982
+            || celestial.provider_imagine_item_id != 3_001_001
+            || celestial.required_effect_level != 67
+            || celestial.required_stacks != 1
+            || celestial.duration_millis != 10_000
+            || celestial.vulnerability_basis_points_by_tier != [60, 120, 180, 240, 300]
+            || celestial.conflicting_target_effect_ids != [55_228, 2_100_107, 2_110_078, 2_110_092]
+            || (self.game_build == "24687926" && !celestial_current_authority)
+            || celestial.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Arcane! Celestial Spirit Mage (effect 2110167) separated Vulnerability component is not ready for runtime transfer"
                     .into(),
             );
         }
@@ -4111,7 +4187,7 @@ mod tests {
         );
         assert_eq!(
             config.conflicting_target_effect_ids,
-            [55_228, 2_100_107, 2_110_078, 2_110_092, 2_110_167]
+            [55_228, 2_100_107, 2_110_078, 2_110_092]
         );
         assert!(config.runtime_transfer_enabled);
 
@@ -4131,8 +4207,47 @@ mod tests {
 
         let mut missing_conflict = base;
         missing_conflict["poison_explosion_vulnerability"]["conflicting_target_effect_ids"] =
-            serde_json::json!([55228, 2100107, 2110078, 2110092]);
+            serde_json::json!([55228, 2100107, 2110078]);
         assert!(runtime_from_value(missing_conflict).validate().is_err());
+    }
+
+    #[test]
+    fn celestial_guardian_vulnerability_is_exact_current_build_component_authority_only() {
+        let base = bundled_runtime_value();
+        let current = runtime_from_value(base.clone());
+        assert!(current.validate().is_ok());
+        let config = &current.celestial_guardian_vulnerability;
+        assert_eq!(config.effect_id, 2_110_167);
+        assert_eq!(config.provider_imagine_ability_id, 3_982);
+        assert_eq!(config.provider_imagine_item_id, 3_001_001);
+        assert_eq!(config.required_effect_level, 67);
+        assert_eq!(config.required_stacks, 1);
+        assert_eq!(config.duration_millis, 10_000);
+        assert_eq!(
+            config.vulnerability_basis_points_by_tier,
+            [60, 120, 180, 240, 300]
+        );
+        assert!(!config.element_resistance_component_transfer_enabled);
+        assert!(config.runtime_transfer_enabled);
+
+        let historical = rdps_runtime_config_for("global", "24252055")
+            .unwrap()
+            .expect("historical formula identity should remain registered");
+        assert!(
+            !historical
+                .celestial_guardian_vulnerability
+                .runtime_transfer_enabled
+        );
+
+        let mut guessed_resistance = base.clone();
+        guessed_resistance["celestial_guardian_vulnerability"]["element_resistance_component_transfer_enabled"] =
+            serde_json::json!(true);
+        assert!(runtime_from_value(guessed_resistance).validate().is_err());
+
+        let mut wrong_tier = base;
+        wrong_tier["celestial_guardian_vulnerability"]["vulnerability_basis_points_by_tier"][4] =
+            serde_json::json!(301);
+        assert!(runtime_from_value(wrong_tier).validate().is_err());
     }
 
     #[test]

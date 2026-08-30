@@ -248,7 +248,7 @@ mod tests {
         evidence: Vec<String>,
     }
 
-    const REVIEW_SOURCES: [&str; 14] = [
+    const REVIEW_SOURCES: [&str; 15] = [
         include_str!(
             "../game-data/catalog/rdps-effects/target-vulnerability/candidate/55228-luminary-bolt-vulnerability.json"
         ),
@@ -284,6 +284,9 @@ mod tests {
         ),
         include_str!(
             "../game-data/catalog/rdps-effects/target-vulnerability/confirmed/2110099-arcane-poison-explosion.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/target-vulnerability/confirmed/2110167-celestial-guardian-vulnerability.v1.json"
         ),
         include_str!(
             "../game-data/catalog/rdps-effects/self-only/confirmed/2300621-dmg-stack.json"
@@ -567,7 +570,7 @@ mod tests {
 
     #[test]
     fn aoyi_target_mitigation_dispositions_match_specialized_runtime_authority() {
-        for effect_id in [2_110_078, 2_110_092, 2_110_167] {
+        for effect_id in [2_110_078, 2_110_092] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed Aoyi target-mitigation effect {effect_id}");
             };
@@ -595,6 +598,22 @@ mod tests {
         assert!(
             !poison.attribution_enabled,
             "the specialized state projector owns tier, stacks, overlap, and conservation"
+        );
+
+        let RdpsEffectLookup::Reviewed(celestial) = classify_rdps_effect(2_110_167).unwrap() else {
+            panic!("expected reviewed Celestial Guardian effect 2110167");
+        };
+        assert_eq!(celestial.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            celestial.contribution_kind,
+            RdpsContributionKind::TargetVulnerability
+        );
+        assert_eq!(celestial.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(celestial.target_scope, RdpsTargetScope::Enemy);
+        assert_eq!(celestial.stacking_rule, RdpsStackingRule::RefreshOnly);
+        assert!(
+            !celestial.attribution_enabled,
+            "the specialized state projector owns component separation, tier, overlap, and conservation"
         );
 
         let RdpsEffectLookup::Reviewed(emitter) = classify_rdps_effect(2_110_166).unwrap() else {

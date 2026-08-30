@@ -60,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v40";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v41";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -227,6 +227,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.poison_explosion_vulnerability.effect_id) {
         effect_ids.push(runtime.poison_explosion_vulnerability.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.celestial_guardian_vulnerability.effect_id) {
+        effect_ids.push(runtime.celestial_guardian_vulnerability.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.critical_cold.effect_id) {
         effect_ids.push(runtime.critical_cold.effect_id);
@@ -2289,6 +2292,12 @@ pub struct BpsrStateDamageContributionProjector {
     /// Vulnerability denominator and are conserved as one stage bucket.
     poison_explosion_windows: HashMap<PoisonExplosionWindowKey, PoisonExplosionWindow>,
     poison_explosion_basis_points_per_stack_by_provider_entity: HashMap<i64, i64>,
+    /// Celestial Guardian effect 2110167 contains independent Vulnerability,
+    /// target-ATK reduction, and Element Resistance reduction components. Only
+    /// the exact additive Vulnerability lane is admitted here; the later
+    /// resistance lane remains fail closed and receives no invented credit.
+    celestial_guardian_windows: HashMap<PoisonExplosionWindowKey, PoisonExplosionWindow>,
+    celestial_guardian_basis_points_by_provider_entity: HashMap<i64, i64>,
     /// Full packet-observed state used only by exact paired-output rules. The
     /// digest gate prevents a sealed counterfactual from leaking into a
     /// different remote build or overlapping status context.
@@ -2443,6 +2452,8 @@ impl Default for BpsrStateDamageContributionProjector {
             target_vulnerability_transitions: HashSet::new(),
             poison_explosion_windows: HashMap::new(),
             poison_explosion_basis_points_per_stack_by_provider_entity: HashMap::new(),
+            celestial_guardian_windows: HashMap::new(),
+            celestial_guardian_basis_points_by_provider_entity: HashMap::new(),
             formula_attributes_by_actor: HashMap::new(),
             formula_statuses: HashMap::new(),
             synergy_crit_field_windows: HashMap::new(),
@@ -3027,6 +3038,7 @@ impl BpsrStateDamageContributionProjector {
         self.advance_wire(wire);
         self.expire_target_vulnerability_windows(envelope.time.observed_micros);
         self.expire_poison_explosion_windows(envelope.time.observed_micros);
+        self.expire_celestial_guardian_windows(envelope.time.observed_micros);
         self.expire_harmony_grace_windows(envelope.time.observed_micros);
         self.expire_inspire_haste_windows(envelope.time.observed_micros);
         self.expire_arcane_time_decree_windows(envelope.time.observed_micros);
@@ -3084,6 +3096,8 @@ impl BpsrStateDamageContributionProjector {
                 ) {
                     self.poison_explosion_basis_points_per_stack_by_provider_entity
                         .remove(&actor.actor.entity_uuid.0);
+                    self.celestial_guardian_basis_points_by_provider_entity
+                        .remove(&actor.actor.entity_uuid.0);
                     self.synergy_luck_field_recipient_has_intrinsic_imagine
                         .remove(&actor.actor.entity_uuid.0);
                     self.clear_actor(actor_id);
@@ -3107,6 +3121,7 @@ impl BpsrStateDamageContributionProjector {
                     self.observe_fatal_spiral_provider_loadout(actor);
                     self.observe_arcane_time_decree_provider_loadout(actor);
                     self.observe_poison_explosion_provider_loadout(actor);
+                    self.observe_celestial_guardian_provider_loadout(actor);
                     self.observe_synergy_luck_field_recipient_loadout(actor);
                 } else if actor.state == ActorState::Despawned {
                     self.active_players.remove(&actor_id);
@@ -3120,6 +3135,8 @@ impl BpsrStateDamageContributionProjector {
                     self.arcane_time_decree_basis_points_by_provider_entity
                         .remove(&entity_uuid);
                     self.poison_explosion_basis_points_per_stack_by_provider_entity
+                        .remove(&entity_uuid);
+                    self.celestial_guardian_basis_points_by_provider_entity
                         .remove(&entity_uuid);
                     self.synergy_luck_field_recipient_has_intrinsic_imagine
                         .remove(&entity_uuid);
@@ -3143,6 +3160,7 @@ impl BpsrStateDamageContributionProjector {
                 self.clear_arcane_time_decree_after_gap(gap.kind);
                 self.clear_thunder_roar_after_gap(gap.kind);
                 self.clear_poison_explosion_after_gap(gap.kind);
+                self.clear_celestial_guardian_after_gap(gap.kind);
                 self.clear_critical_cold_after_gap(gap.kind);
                 self.clear_synergy_crit_field_after_gap(gap.kind);
                 self.clear_element_sharing_after_gap(gap.kind);
@@ -4447,6 +4465,12 @@ impl BpsrStateDamageContributionProjector {
         }
     }
 
+    fn clear_celestial_guardian_after_gap(&mut self, kind: DataGapKind) {
+        if kind == DataGapKind::TcpGap {
+            self.celestial_guardian_windows.clear();
+        }
+    }
+
     fn observe_unresolved_status(&mut self, status: &rlogs_events::UnresolvedStatusEvent) {
         if status.instance_id.is_none() {
             let generation = self
@@ -4487,6 +4511,9 @@ impl BpsrStateDamageContributionProjector {
         self.observe_formula_status(status);
         if status.effect.0 == self.runtime.poison_explosion_vulnerability.effect_id {
             self.observe_poison_explosion_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.celestial_guardian_vulnerability.effect_id {
+            self.observe_celestial_guardian_status(status, observed_micros);
         }
         if status.effect.0 == self.runtime.synergy_crit_field.effect_id {
             self.observe_synergy_crit_field_status(status, observed_micros);
@@ -4967,6 +4994,109 @@ impl BpsrStateDamageContributionProjector {
                 provider_owner_entity_uuid,
                 stacks,
                 basis_points_per_stack,
+                opened_observed_micros: observed_micros,
+                expires_at_observed_micros,
+            },
+        );
+    }
+
+    fn observe_celestial_guardian_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.celestial_guardian_vulnerability;
+        if !config.runtime_transfer_enabled {
+            return;
+        }
+        let target_actor_id = status.target.actor_id.0;
+        let target_entity_uuid = status.target.entity_uuid.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        let provider_owner_actor_id = status
+            .source
+            .map(|source| self.resolve_owner_actor_id(source.actor_id.0));
+        let lifecycle_matches = |key: &PoisonExplosionWindowKey, window: &PoisonExplosionWindow| {
+            let target_matches = key.target_actor_id == target_actor_id
+                || (target_entity_uuid != 0 && window.target_entity_uuid == target_entity_uuid);
+            let instance_matches = instance_id.is_none_or(|instance| key.instance_id == instance);
+            let provider_matches = provider_owner_actor_id
+                .is_none_or(|provider| key.provider_owner_actor_id == provider);
+            target_matches && instance_matches && provider_matches
+        };
+
+        if matches!(status.state, StatusState::Removed | StatusState::Consumed) {
+            self.celestial_guardian_windows
+                .retain(|key, window| !lifecycle_matches(key, window));
+            return;
+        }
+
+        // Refresh is replace-not-merge. Invalidate the previous matching
+        // lifecycle before validating the replacement so incomplete packet
+        // state cannot preserve stale credit.
+        self.celestial_guardian_windows
+            .retain(|key, window| !lifecycle_matches(key, window));
+
+        let Some(source) = status.source else {
+            return;
+        };
+        let Some(instance_id) = instance_id else {
+            return;
+        };
+        if status.level != Some(config.required_effect_level)
+            || status.stacks != Some(config.required_stacks)
+            || status.duration_millis != Some(config.duration_millis)
+            || target_entity_uuid == 0
+        {
+            return;
+        }
+
+        self.actor_ancestry.observe_entity(status.target);
+        self.actor_ancestry.observe_entity(source);
+        let provider_owner_actor_id = self.resolve_owner_actor_id(source.actor_id.0);
+        if !self.active_players.contains(&provider_owner_actor_id) {
+            return;
+        }
+        let provider_owner_entity_uuid = self
+            .actor_ancestry
+            .entity_for_actor(provider_owner_actor_id)
+            .or_else(|| {
+                (provider_owner_actor_id == source.actor_id.0).then_some(source.entity_uuid.0)
+            })
+            .unwrap_or_default();
+        if provider_owner_entity_uuid == 0 {
+            return;
+        }
+        let Some(&basis_points) = self
+            .celestial_guardian_basis_points_by_provider_entity
+            .get(&provider_owner_entity_uuid)
+        else {
+            return;
+        };
+        if !config
+            .vulnerability_basis_points_by_tier
+            .contains(&basis_points)
+        {
+            return;
+        }
+        let Some(expires_at_observed_micros) = observed_micros.checked_add(
+            config
+                .duration_millis
+                .checked_mul(1_000)
+                .unwrap_or(u64::MAX),
+        ) else {
+            return;
+        };
+        self.celestial_guardian_windows.insert(
+            PoisonExplosionWindowKey {
+                target_actor_id,
+                provider_owner_actor_id,
+                instance_id,
+            },
+            PoisonExplosionWindow {
+                target_entity_uuid,
+                provider_owner_entity_uuid,
+                stacks: 1,
+                basis_points_per_stack: basis_points,
                 opened_observed_micros: observed_micros,
                 expires_at_observed_micros,
             },
@@ -8226,6 +8356,39 @@ impl BpsrStateDamageContributionProjector {
             }
             [] | [_, _, ..] => {
                 self.poison_explosion_basis_points_per_stack_by_provider_entity
+                    .remove(&entity_uuid);
+            }
+        }
+    }
+
+    fn observe_celestial_guardian_provider_loadout(&mut self, actor: &rlogs_events::ActorEvent) {
+        if actor.loadout_observation.primary != rlogs_events::ActorLoadoutEvidence::ExactSlots {
+            return;
+        }
+        let entity_uuid = actor.actor.entity_uuid.0;
+        if entity_uuid == 0 {
+            return;
+        }
+        let config = &self.runtime.celestial_guardian_vulnerability;
+        let mut magnitudes = actor
+            .primary_loadout
+            .iter()
+            .filter(|slot| slot.ability_id == Some(config.provider_imagine_ability_id))
+            .filter(|slot| {
+                slot.item_id
+                    .is_none_or(|item_id| item_id == config.provider_imagine_item_id)
+            })
+            .filter_map(|slot| config.basis_points_for_tier(slot.tier?))
+            .collect::<Vec<_>>();
+        magnitudes.sort_unstable();
+        magnitudes.dedup();
+        match magnitudes.as_slice() {
+            [magnitude] => {
+                self.celestial_guardian_basis_points_by_provider_entity
+                    .insert(entity_uuid, *magnitude);
+            }
+            [] | [_, _, ..] => {
+                self.celestial_guardian_basis_points_by_provider_entity
                     .remove(&entity_uuid);
             }
         }
@@ -13669,8 +13832,12 @@ impl BpsrStateDamageContributionProjector {
         observed_micros: u64,
         damage: &rlogs_events::DamageEvent,
     ) -> Result<Vec<ExactRationalDamageContributionEvent>, &'static str> {
-        let config = &self.runtime.poison_explosion_vulnerability;
-        if !self.runtime_applicable || !config.runtime_transfer_enabled {
+        let poison_config = &self.runtime.poison_explosion_vulnerability;
+        let celestial_config = &self.runtime.celestial_guardian_vulnerability;
+        if !self.runtime_applicable
+            || (!poison_config.runtime_transfer_enabled
+                && !celestial_config.runtime_transfer_enabled)
+        {
             return Err("runtime_mismatch");
         }
         if damage.amount <= 0 {
@@ -13695,62 +13862,76 @@ impl BpsrStateDamageContributionProjector {
         if self
             .formula_status_prior_values_current_wire
             .keys()
-            .any(|key| key.target_actor_id == target_actor_id && key.effect_id == config.effect_id)
+            .any(|key| {
+                key.target_actor_id == target_actor_id
+                    && (key.effect_id == poison_config.effect_id
+                        || key.effect_id == celestial_config.effect_id)
+            })
         {
             return Err("same_wire_transition");
         }
         if self.formula_statuses.keys().any(|key| {
             key.target_actor_id == target_actor_id
-                && config
+                && (poison_config
                     .conflicting_target_effect_ids
                     .contains(&key.effect_id)
+                    || celestial_config
+                        .conflicting_target_effect_ids
+                        .contains(&key.effect_id))
         }) {
             return Err("conflicting_target_vulnerability");
         }
 
-        let matching = self
-            .poison_explosion_windows
-            .iter()
-            .filter(|(key, window)| {
-                (key.target_actor_id == target_actor_id
-                    || window.target_entity_uuid == target_entity_uuid)
-                    && window.target_entity_uuid == target_entity_uuid
-                    && observed_micros > window.opened_observed_micros
-                    && observed_micros < window.expires_at_observed_micros
-            })
-            .collect::<Vec<_>>();
-        if matching.is_empty() {
-            return Err("provider_window_missing");
+        // The two supported effects share the additive Vulnerability stage.
+        // Keying by effect and provider preserves separate ledger components
+        // while one denominator conserves every active same-stage magnitude.
+        // Celestial Guardian's later Element Resistance reduction cancels from
+        // the Vulnerability marginal ratio and is deliberately not credited.
+        let mut provider_deltas = BTreeMap::<(i64, u64), (i64, i64)>::new();
+        let mut add_matching_windows =
+            |effect_id: i64,
+             windows: &HashMap<PoisonExplosionWindowKey, PoisonExplosionWindow>|
+             -> Result<(), &'static str> {
+                for (key, window) in windows.iter().filter(|(key, window)| {
+                    (key.target_actor_id == target_actor_id
+                        || window.target_entity_uuid == target_entity_uuid)
+                        && window.target_entity_uuid == target_entity_uuid
+                        && observed_micros > window.opened_observed_micros
+                        && observed_micros < window.expires_at_observed_micros
+                }) {
+                    if !self.active_players.contains(&key.provider_owner_actor_id)
+                        || self
+                            .actor_ancestry
+                            .entity_for_actor(key.provider_owner_actor_id)
+                            != Some(window.provider_owner_entity_uuid)
+                    {
+                        return Err("provider_identity_stale");
+                    }
+                    let provider_delta = window
+                        .basis_points_per_stack
+                        .checked_mul(i64::from(window.stacks))
+                        .ok_or("provider_delta_overflow")?;
+                    if provider_delta <= 0
+                        || provider_deltas
+                            .insert(
+                                (effect_id, key.provider_owner_actor_id),
+                                (provider_delta, window.provider_owner_entity_uuid),
+                            )
+                            .is_some()
+                    {
+                        return Err("provider_window_ambiguous");
+                    }
+                }
+                Ok(())
+            };
+        if poison_config.runtime_transfer_enabled {
+            add_matching_windows(poison_config.effect_id, &self.poison_explosion_windows)?;
         }
-
-        // One status instance per provider is required. The status count is the
-        // complete stack magnitude; two simultaneous instances from the same
-        // owner would have an unproven merge rule and therefore fail closed.
-        let mut provider_deltas = BTreeMap::<u64, (i64, i64)>::new();
-        for (key, window) in matching {
-            if !self.active_players.contains(&key.provider_owner_actor_id)
-                || self
-                    .actor_ancestry
-                    .entity_for_actor(key.provider_owner_actor_id)
-                    != Some(window.provider_owner_entity_uuid)
-            {
-                return Err("provider_identity_stale");
-            }
-            let stacks = i64::from(window.stacks);
-            let provider_delta = window
-                .basis_points_per_stack
-                .checked_mul(stacks)
-                .ok_or("provider_delta_overflow")?;
-            if provider_delta <= 0
-                || provider_deltas
-                    .insert(
-                        key.provider_owner_actor_id,
-                        (provider_delta, window.provider_owner_entity_uuid),
-                    )
-                    .is_some()
-            {
-                return Err("provider_window_ambiguous");
-            }
+        if celestial_config.runtime_transfer_enabled {
+            add_matching_windows(celestial_config.effect_id, &self.celestial_guardian_windows)?;
+        }
+        if provider_deltas.is_empty() {
+            return Err("provider_window_missing");
         }
         let total_delta = provider_deltas
             .values()
@@ -13767,7 +13948,7 @@ impl BpsrStateDamageContributionProjector {
         }
 
         let mut contributions = Vec::new();
-        for (provider_actor_id, (provider_delta, _)) in provider_deltas {
+        for ((effect_id, provider_actor_id), (provider_delta, _)) in provider_deltas {
             if provider_actor_id == recipient_actor_id {
                 // Self-applied stacks remain in the complete active-stage
                 // denominator but never transfer damage to the same actor.
@@ -13782,7 +13963,7 @@ impl BpsrStateDamageContributionProjector {
             let divisor = greatest_common_divisor(numerator, denominator);
             contributions.push(ExactRationalDamageContributionEvent {
                 observed_micros,
-                effect_id: config.effect_id,
+                effect_id,
                 provider_actor_id,
                 recipient_actor_id,
                 scope: DamageContributionScope::Component("target-vulnerability"),
@@ -14366,6 +14547,11 @@ impl BpsrStateDamageContributionProjector {
             .retain(|_, window| window.expires_at_observed_micros > observed_micros);
     }
 
+    fn expire_celestial_guardian_windows(&mut self, observed_micros: u64) {
+        self.celestial_guardian_windows
+            .retain(|_, window| window.expires_at_observed_micros > observed_micros);
+    }
+
     fn expire_inspire_haste_windows(&mut self, observed_micros: u64) {
         self.inspire_haste_windows
             .retain(|_, window| window.expires_at_observed_micros > observed_micros);
@@ -14785,6 +14971,9 @@ impl BpsrStateDamageContributionProjector {
         self.poison_explosion_windows.retain(|key, _| {
             key.target_actor_id != actor_id && key.provider_owner_actor_id != actor_id
         });
+        self.celestial_guardian_windows.retain(|key, _| {
+            key.target_actor_id != actor_id && key.provider_owner_actor_id != actor_id
+        });
         self.formula_attributes_by_actor.remove(&actor_id);
         self.synergy_crit_field_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
@@ -14890,6 +15079,7 @@ impl BpsrStateDamageContributionProjector {
         self.target_vulnerability_windows.clear();
         self.target_vulnerability_transitions.clear();
         self.poison_explosion_windows.clear();
+        self.celestial_guardian_windows.clear();
         self.formula_attributes_by_actor.clear();
         self.synergy_crit_field_windows.clear();
         self.element_sharing_windows.clear();
@@ -14933,6 +15123,8 @@ impl BpsrStateDamageContributionProjector {
         self.arcane_time_decree_basis_points_by_provider_entity
             .clear();
         self.poison_explosion_basis_points_per_stack_by_provider_entity
+            .clear();
+        self.celestial_guardian_basis_points_by_provider_entity
             .clear();
         self.class_id_by_actor.clear();
         self.specialization_id_by_actor.clear();
@@ -16753,6 +16945,43 @@ mod tests {
         projector
     }
 
+    fn celestial_guardian_test_actor(
+        actor_id: u64,
+        entity_uuid: i64,
+        tier: u32,
+    ) -> rlogs_events::ActorEvent {
+        let config = &runtime().celestial_guardian_vulnerability;
+        let mut actor = poison_explosion_test_actor(actor_id, entity_uuid, tier);
+        actor.character_id = Some(format!("celestial-provider-{actor_id}"));
+        actor.display_name = Some(format!("Celestial Provider {actor_id}"));
+        actor.primary_loadout[0].ability_id = Some(config.provider_imagine_ability_id);
+        actor.primary_loadout[0].item_id = Some(config.provider_imagine_item_id);
+        actor
+    }
+
+    fn celestial_guardian_test_status(
+        provider: EntityRef,
+        target: EntityRef,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().celestial_guardian_vulnerability;
+        rlogs_events::StatusEvent {
+            source: Some(provider),
+            target,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(config.required_stacks),
+            duration_millis: Some(config.duration_millis),
+            level: Some(config.required_effect_level),
+            part_id: None,
+            count: None,
+            created_at_millis: None,
+        }
+    }
+
     #[test]
     fn poison_explosion_uses_exact_equipped_tier_and_single_provider_stage_share() {
         let provider = test_entity(2, 20);
@@ -17003,6 +17232,178 @@ mod tests {
         assert_eq!(
             (contribution.numerator, contribution.denominator),
             (12_000, 1)
+        );
+        assert_eq!(damage.amount, observed_damage);
+    }
+
+    #[test]
+    fn celestial_guardian_separates_exact_vulnerability_from_uncredited_resistance() {
+        let provider = test_entity(6, 60);
+        let recipient = test_entity(4, 40);
+        let target = test_entity(9, 90);
+        let mut damage = poison_explosion_test_damage(recipient, target);
+        damage.amount = 103_000;
+        let mut projector = poison_explosion_test_projector();
+        projector
+            .observe_celestial_guardian_provider_loadout(&celestial_guardian_test_actor(6, 60, 5));
+        projector.observe_celestial_guardian_status(
+            &celestial_guardian_test_status(provider, target, 91, StatusState::Applied),
+            100,
+        );
+
+        let contributions = projector
+            .poison_explosion_vulnerability_decision(200, &damage)
+            .expect("tier-5 Celestial Guardian Vulnerability should be independently exact");
+        let [contribution] = contributions.as_slice() else {
+            panic!("one external Celestial Guardian provider should emit one component");
+        };
+        assert_eq!(contribution.effect_id, 2_110_167);
+        assert_eq!(contribution.provider_actor_id, 6);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            (3_000, 1)
+        );
+        assert_eq!(
+            contribution.scope,
+            DamageContributionScope::Component("target-vulnerability")
+        );
+    }
+
+    #[test]
+    fn poison_and_celestial_guardian_share_one_conserved_vulnerability_denominator() {
+        let recipient = test_entity(4, 40);
+        let target = test_entity(9, 90);
+        let mut damage = poison_explosion_test_damage(recipient, target);
+        damage.amount = 111_000;
+        let mut projector = poison_explosion_test_projector();
+        projector.observe_poison_explosion_provider_loadout(&poison_explosion_test_actor(2, 20, 5));
+        projector
+            .observe_celestial_guardian_provider_loadout(&celestial_guardian_test_actor(6, 60, 5));
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(test_entity(2, 20), target, 77, 2, StatusState::Applied),
+            100,
+        );
+        projector.observe_celestial_guardian_status(
+            &celestial_guardian_test_status(test_entity(6, 60), target, 91, StatusState::Applied),
+            100,
+        );
+
+        let contributions = projector
+            .poison_explosion_vulnerability_decision(200, &damage)
+            .unwrap();
+        assert_eq!(
+            contributions
+                .iter()
+                .map(|event| {
+                    (
+                        event.effect_id,
+                        event.provider_actor_id,
+                        event.numerator / event.denominator,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            vec![(2_110_099, 2, 8_000), (2_110_167, 6, 3_000)]
+        );
+        assert_eq!(
+            contributions
+                .iter()
+                .map(|event| event.numerator / event.denominator)
+                .sum::<i128>(),
+            11_000
+        );
+    }
+
+    #[test]
+    fn celestial_guardian_lifecycle_ambiguity_and_gaps_fail_closed() {
+        let provider = test_entity(6, 60);
+        let recipient = test_entity(4, 40);
+        let target = test_entity(9, 90);
+        let damage = poison_explosion_test_damage(recipient, target);
+        let mut projector = poison_explosion_test_projector();
+        projector
+            .observe_celestial_guardian_provider_loadout(&celestial_guardian_test_actor(6, 60, 5));
+        projector.observe_celestial_guardian_status(
+            &celestial_guardian_test_status(provider, target, 91, StatusState::Applied),
+            100,
+        );
+        projector.observe_celestial_guardian_status(
+            &celestial_guardian_test_status(provider, target, 92, StatusState::Applied),
+            100,
+        );
+        assert_eq!(
+            projector.poison_explosion_vulnerability_decision(200, &damage),
+            Err("provider_window_ambiguous")
+        );
+
+        projector.celestial_guardian_windows.clear();
+        let mut malformed =
+            celestial_guardian_test_status(provider, target, 93, StatusState::Applied);
+        projector.observe_celestial_guardian_status(&malformed, 100);
+        malformed.state = StatusState::Refreshed;
+        malformed.stacks = None;
+        projector.observe_celestial_guardian_status(&malformed, 200);
+        assert!(projector.celestial_guardian_windows.is_empty());
+
+        projector.observe_celestial_guardian_status(
+            &celestial_guardian_test_status(provider, target, 94, StatusState::Applied),
+            100,
+        );
+        projector.expire_celestial_guardian_windows(10_000_100);
+        assert!(projector.celestial_guardian_windows.is_empty());
+
+        projector.observe_celestial_guardian_status(
+            &celestial_guardian_test_status(provider, target, 95, StatusState::Applied),
+            100,
+        );
+        projector.clear_celestial_guardian_after_gap(DataGapKind::TcpGap);
+        assert!(projector.celestial_guardian_windows.is_empty());
+    }
+
+    #[test]
+    fn celestial_guardian_projects_through_shared_live_and_history_state_path() {
+        let provider = test_entity(6, 60);
+        let recipient = test_entity(4, 40);
+        let target = test_entity(9, 90);
+        let mut damage = poison_explosion_test_damage(recipient, target);
+        damage.amount = 103_000;
+        let observed_damage = damage.amount;
+        let mut projector = poison_explosion_test_projector();
+        projector
+            .observe_celestial_guardian_provider_loadout(&celestial_guardian_test_actor(6, 60, 5));
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+
+        ExactDamageContributionProjector::observe(
+            &mut projector,
+            &harmony_grace_wire_envelope(
+                1,
+                100,
+                TimelineEventKind::Status(celestial_guardian_test_status(
+                    provider,
+                    target,
+                    91,
+                    StatusState::Applied,
+                )),
+            ),
+            &mut exact,
+            &mut rational,
+        );
+        ExactDamageContributionProjector::observe(
+            &mut projector,
+            &harmony_grace_wire_envelope(2, 200, TimelineEventKind::Damage(damage.clone())),
+            &mut exact,
+            &mut rational,
+        );
+
+        assert!(exact.is_empty());
+        let [contribution] = rational.as_slice() else {
+            panic!("the shared projector should emit one Celestial Guardian transfer");
+        };
+        assert_eq!(contribution.effect_id, 2_110_167);
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            (3_000, 1)
         );
         assert_eq!(damage.amount, observed_damage);
     }
@@ -19322,8 +19723,8 @@ mod tests {
             vec![
                 31_602, 55_228, 55_333, 997_511, 997_513, 997_515, 997_518, 997_534, 997_538,
                 997_570, 998_542, 2_100_154, 2_110_034, 2_110_065, 2_110_096, 2_110_099, 2_110_125,
-                2_110_140, 2_110_143, 2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261,
-                2_404_271, 3_003_052, 3_003_411
+                2_110_140, 2_110_143, 2_110_167, 2_202_041, 2_204_471, 2_207_252, 2_302_121,
+                2_404_261, 2_404_271, 3_003_052, 3_003_411
             ],
             "only effects with current production authority are exposed; Arcane! Thunder Roar transfers only Electro Shield's exact Thunderstrike output, Endless Mind is limited to Shattered Illusion's description-defined Mastery consumer, Thunderwind Power remains owner-only, and Mechanical Power is limited to its exact class-11 tier-0 route"
         );
@@ -20163,8 +20564,8 @@ mod tests {
             vec![
                 31_602, 55_228, 55_333, 997_511, 997_513, 997_515, 997_518, 997_534, 997_538,
                 997_570, 998_542, 2_100_154, 2_110_034, 2_110_065, 2_110_096, 2_110_099, 2_110_125,
-                2_110_140, 2_110_143, 2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261,
-                2_404_271, 3_003_052, 3_003_411
+                2_110_140, 2_110_143, 2_110_167, 2_202_041, 2_204_471, 2_207_252, 2_302_121,
+                2_404_261, 2_404_271, 3_003_052, 3_003_411
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");

@@ -1,5 +1,5 @@
 {
-  "schema_version": 35,
+  "schema_version": 36,
   "deployment_id": "global",
   "builds": [
     {
@@ -27,6 +27,9 @@
           "runtime_transfer_enabled": false
         },
         "poison_explosion_vulnerability": {
+          "runtime_transfer_enabled": false
+        },
+        "celestial_guardian_vulnerability": {
           "runtime_transfer_enabled": false
         },
         "team_luck": {
