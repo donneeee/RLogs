@@ -3666,8 +3666,16 @@ impl RuntimeController {
                             .dumpcap_path
                             .map(PathBuf::from)
                             .or_else(default_dumpcap_path);
-                        if let (Some(interface), Some(dumpcap_path)) =
-                            (settings.capture_interface, dumpcap_path)
+                        let interface = settings.capture_interface.or_else(|| {
+                            let dumpcap_path = dumpcap_path.as_deref()?;
+                            if !dumpcap_path.is_file() {
+                                return None;
+                            }
+                            let mut interfaces = discover_capture_interfaces(dumpcap_path).ok()?;
+                            enrich_windows_capture_interfaces(&mut interfaces, &processes)
+                                .map(|(interface, _, _)| interface)
+                        });
+                        if let (Some(interface), Some(dumpcap_path)) = (interface, dumpcap_path)
                             && dumpcap_path.is_file()
                         {
                             let request = LiveSessionRequest {

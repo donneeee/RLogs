@@ -1325,7 +1325,7 @@ function mountNetworkSettingsSurface(container: HTMLElement): MountedSurface {
   root.className = "plugin-surface network-settings-surface";
   const heading = actionCard(
     "Native capture adapter",
-    "Choose the interface rLogs should use for future live captures. Capture remains off until you explicitly start it from Session Recorder.",
+    "rLogs automatically uses the BPSR-matched network device while the game is running. Save a device here only to pin or override that automatic choice.",
   );
   const form = document.createElement("form");
   form.className = "content-card submission-policy-form";
