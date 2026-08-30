@@ -1,5 +1,5 @@
 {
-  "schema_version": 34,
+  "schema_version": 35,
   "deployment_id": "global",
   "builds": [
     {
@@ -24,6 +24,9 @@
           "runtime_transfer_enabled": false
         },
         "thunder_roar": {
+          "runtime_transfer_enabled": false
+        },
+        "poison_explosion_vulnerability": {
           "runtime_transfer_enabled": false
         },
         "team_luck": {

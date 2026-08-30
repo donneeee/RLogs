@@ -248,7 +248,7 @@ mod tests {
         evidence: Vec<String>,
     }
 
-    const REVIEW_SOURCES: [&str; 13] = [
+    const REVIEW_SOURCES: [&str; 14] = [
         include_str!(
             "../game-data/catalog/rdps-effects/target-vulnerability/candidate/55228-luminary-bolt-vulnerability.json"
         ),
@@ -281,6 +281,9 @@ mod tests {
         ),
         include_str!(
             "../game-data/catalog/rdps-effects/target-vulnerability/confirmed/2205031-wounding-curse.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/target-vulnerability/confirmed/2110099-arcane-poison-explosion.v1.json"
         ),
         include_str!(
             "../game-data/catalog/rdps-effects/self-only/confirmed/2300621-dmg-stack.json"
@@ -563,8 +566,8 @@ mod tests {
     }
 
     #[test]
-    fn aoyi_target_mitigation_candidates_and_emitters_remain_fail_closed() {
-        for effect_id in [2_110_078, 2_110_092, 2_110_099, 2_110_167] {
+    fn aoyi_target_mitigation_dispositions_match_specialized_runtime_authority() {
+        for effect_id in [2_110_078, 2_110_092, 2_110_167] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed Aoyi target-mitigation effect {effect_id}");
             };
@@ -577,6 +580,22 @@ mod tests {
             assert_eq!(rule.target_scope, RdpsTargetScope::Enemy);
             assert!(!rule.attribution_enabled);
         }
+
+        let RdpsEffectLookup::Reviewed(poison) = classify_rdps_effect(2_110_099).unwrap() else {
+            panic!("expected reviewed Arcane! Poison Explosion effect 2110099");
+        };
+        assert_eq!(poison.review_state, RdpsReviewState::Confirmed);
+        assert_eq!(
+            poison.contribution_kind,
+            RdpsContributionKind::TargetVulnerability
+        );
+        assert_eq!(poison.source_scope, RdpsSourceScope::EffectSource);
+        assert_eq!(poison.target_scope, RdpsTargetScope::Enemy);
+        assert_eq!(poison.stacking_rule, RdpsStackingRule::StackScaled);
+        assert!(
+            !poison.attribution_enabled,
+            "the specialized state projector owns tier, stacks, overlap, and conservation"
+        );
 
         let RdpsEffectLookup::Reviewed(emitter) = classify_rdps_effect(2_110_166).unwrap() else {
             panic!("expected reviewed Celestial Spirit Mage emitter 2110166");

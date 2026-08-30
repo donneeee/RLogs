@@ -60,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v39";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v40";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -224,6 +224,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.thunder_roar.effect_id) {
         effect_ids.push(runtime.thunder_roar.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.poison_explosion_vulnerability.effect_id) {
+        effect_ids.push(runtime.poison_explosion_vulnerability.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.critical_cold.effect_id) {
         effect_ids.push(runtime.critical_cold.effect_id);
@@ -1924,6 +1927,23 @@ struct TargetVulnerabilityWindow {
     expires_at_observed_micros: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct PoisonExplosionWindowKey {
+    target_actor_id: u64,
+    provider_owner_actor_id: u64,
+    instance_id: i64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PoisonExplosionWindow {
+    target_entity_uuid: i64,
+    provider_owner_entity_uuid: i64,
+    stacks: u32,
+    basis_points_per_stack: i64,
+    opened_observed_micros: u64,
+    expires_at_observed_micros: u64,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct EffectWindow {
     desired_stacks: u32,
@@ -2264,6 +2284,11 @@ pub struct BpsrStateDamageContributionProjector {
     fatal_spiral_ambiguous_provider_entities: HashSet<i64>,
     target_vulnerability_windows: HashMap<TargetVulnerabilityWindowKey, TargetVulnerabilityWindow>,
     target_vulnerability_transitions: HashSet<TargetVulnerabilityTransitionKey>,
+    /// Arcane! Poison Explosion snapshots the equipped Imagine tier into each
+    /// exact target-held lifecycle. Multiple providers share one additive
+    /// Vulnerability denominator and are conserved as one stage bucket.
+    poison_explosion_windows: HashMap<PoisonExplosionWindowKey, PoisonExplosionWindow>,
+    poison_explosion_basis_points_per_stack_by_provider_entity: HashMap<i64, i64>,
     /// Full packet-observed state used only by exact paired-output rules. The
     /// digest gate prevents a sealed counterfactual from leaking into a
     /// different remote build or overlapping status context.
@@ -2416,6 +2441,8 @@ impl Default for BpsrStateDamageContributionProjector {
             fatal_spiral_ambiguous_provider_entities: HashSet::new(),
             target_vulnerability_windows: HashMap::new(),
             target_vulnerability_transitions: HashSet::new(),
+            poison_explosion_windows: HashMap::new(),
+            poison_explosion_basis_points_per_stack_by_provider_entity: HashMap::new(),
             formula_attributes_by_actor: HashMap::new(),
             formula_statuses: HashMap::new(),
             synergy_crit_field_windows: HashMap::new(),
@@ -2999,6 +3026,7 @@ impl BpsrStateDamageContributionProjector {
         };
         self.advance_wire(wire);
         self.expire_target_vulnerability_windows(envelope.time.observed_micros);
+        self.expire_poison_explosion_windows(envelope.time.observed_micros);
         self.expire_harmony_grace_windows(envelope.time.observed_micros);
         self.expire_inspire_haste_windows(envelope.time.observed_micros);
         self.expire_arcane_time_decree_windows(envelope.time.observed_micros);
@@ -3054,6 +3082,8 @@ impl BpsrStateDamageContributionProjector {
                     actor.state,
                     ActorState::Spawned | ActorState::Transformed | ActorState::Despawned
                 ) {
+                    self.poison_explosion_basis_points_per_stack_by_provider_entity
+                        .remove(&actor.actor.entity_uuid.0);
                     self.synergy_luck_field_recipient_has_intrinsic_imagine
                         .remove(&actor.actor.entity_uuid.0);
                     self.clear_actor(actor_id);
@@ -3076,6 +3106,7 @@ impl BpsrStateDamageContributionProjector {
                     self.active_players.insert(actor_id);
                     self.observe_fatal_spiral_provider_loadout(actor);
                     self.observe_arcane_time_decree_provider_loadout(actor);
+                    self.observe_poison_explosion_provider_loadout(actor);
                     self.observe_synergy_luck_field_recipient_loadout(actor);
                 } else if actor.state == ActorState::Despawned {
                     self.active_players.remove(&actor_id);
@@ -3087,6 +3118,8 @@ impl BpsrStateDamageContributionProjector {
                     self.fatal_spiral_ambiguous_provider_entities
                         .remove(&entity_uuid);
                     self.arcane_time_decree_basis_points_by_provider_entity
+                        .remove(&entity_uuid);
+                    self.poison_explosion_basis_points_per_stack_by_provider_entity
                         .remove(&entity_uuid);
                     self.synergy_luck_field_recipient_has_intrinsic_imagine
                         .remove(&entity_uuid);
@@ -3109,6 +3142,7 @@ impl BpsrStateDamageContributionProjector {
                 self.clear_endless_mind_after_gap(gap.kind);
                 self.clear_arcane_time_decree_after_gap(gap.kind);
                 self.clear_thunder_roar_after_gap(gap.kind);
+                self.clear_poison_explosion_after_gap(gap.kind);
                 self.clear_critical_cold_after_gap(gap.kind);
                 self.clear_synergy_crit_field_after_gap(gap.kind);
                 self.clear_element_sharing_after_gap(gap.kind);
@@ -3385,6 +3419,24 @@ impl BpsrStateDamageContributionProjector {
                         )
                     })
                     .collect::<Vec<_>>();
+                let poison_explosion_vulnerability_contributions = self
+                    .poison_explosion_vulnerability_contributions(
+                        envelope.time.observed_micros,
+                        damage,
+                    );
+                let target_vulnerability_rational_contributions = match (
+                    target_vulnerability_rational_contributions.is_empty(),
+                    poison_explosion_vulnerability_contributions.is_empty(),
+                ) {
+                    (false, true) => target_vulnerability_rational_contributions,
+                    (true, false) => poison_explosion_vulnerability_contributions,
+                    (true, true) => Vec::new(),
+                    // Two independently derived target-stage formula
+                    // families need a joint denominator. The Poison route
+                    // normally rejects this through its explicit conflict
+                    // list; retain this final guard against catalog drift.
+                    (false, false) => Vec::new(),
+                };
 
                 let exact_candidate_count = usize::from(state_contribution.is_some())
                     + target_vulnerability_contributions.len();
@@ -3589,7 +3641,7 @@ impl BpsrStateDamageContributionProjector {
                     + usize::from(critical_cold_occurrence_contribution.is_some())
                     + usize::from(synergy_crit_field_contribution.is_some())
                     + usize::from(thunderwind_contribution.is_some())
-                    + target_vulnerability_rational_contributions.len();
+                    + usize::from(!target_vulnerability_rational_contributions.is_empty());
                 if self.inspiration_combined_receipt_audit_enabled
                     && damage.flags.critical == Some(true)
                     && damage.flags.lucky == Some(true)
@@ -3612,8 +3664,9 @@ impl BpsrStateDamageContributionProjector {
                             critical_cold_candidate: critical_cold_occurrence_contribution
                                 .is_some(),
                             thunderwind_candidate: thunderwind_contribution.is_some(),
-                            target_vulnerability_candidate_count:
-                                target_vulnerability_rational_contributions.len(),
+                            target_vulnerability_candidate_count: usize::from(
+                                !target_vulnerability_rational_contributions.is_empty(),
+                            ),
                             remote_harmony_candidate: remote_harmony_paired_output_contribution
                                 .is_some()
                                 || deferred_remote_harmony_candidate.is_some(),
@@ -3720,10 +3773,13 @@ impl BpsrStateDamageContributionProjector {
                         (None, None, None, None, None, None, Some(thunderwind), []) => {
                             vec![thunderwind]
                         }
-                        (None, None, None, None, None, None, None, [target_vulnerability]) => {
-                            vec![*target_vulnerability]
-                        }
                         (None, None, None, None, None, None, None, []) => Vec::new(),
+                        (None, None, None, None, None, None, None, target_vulnerability_bucket) => {
+                            // All Poison Explosion providers are additive
+                            // members of one proved Vulnerability stage and
+                            // already share the complete active denominator.
+                            target_vulnerability_bucket.to_vec()
+                        }
                         // Multiple later-stage providers need a separately
                         // proven allocation order. The paired Harmony delta is
                         // still exact because every other context was held
@@ -3762,6 +3818,13 @@ impl BpsrStateDamageContributionProjector {
                     {
                         deferred_remote_harmony_later_contribution =
                             (later_contributions.len() == 1).then(|| later_contributions[0]);
+                        if later_contributions.len() > 1 {
+                            // A deferred Harmony receipt currently stores one
+                            // downstream marginal. Do not emit an unscaled
+                            // multi-provider Vulnerability bucket while that
+                            // earlier exact contribution is pending.
+                            deferred_remote_harmony_suppresses_later_overlap = true;
+                        }
                     }
                     if let Some(remote_harmony) = remote_harmony_paired_output_contribution {
                         // This receipt is an exact final-output difference, so
@@ -3879,7 +3942,7 @@ impl BpsrStateDamageContributionProjector {
                             + usize::from(critical_cold_occurrence_contribution.is_some())
                             + usize::from(synergy_crit_field_contribution.is_some())
                             + usize::from(thunderwind_contribution.is_some())
-                            + target_vulnerability_rational_contributions.len())
+                            + usize::from(!target_vulnerability_rational_contributions.is_empty()))
                             > 1
                     {
                         if deferred_remote_harmony_candidate.is_some()
@@ -3905,7 +3968,9 @@ impl BpsrStateDamageContributionProjector {
                                     + usize::from(critical_cold_occurrence_contribution.is_some())
                                     + usize::from(synergy_crit_field_contribution.is_some())
                                     + usize::from(thunderwind_contribution.is_some())
-                                    + target_vulnerability_rational_contributions.len(),
+                                    + usize::from(
+                                        !target_vulnerability_rational_contributions.is_empty(),
+                                    ),
                                 &[
                                     self.runtime.inspire.effect_id,
                                     self.runtime.arcane_time_decree.effect_id,
@@ -4373,6 +4438,15 @@ impl BpsrStateDamageContributionProjector {
         }
     }
 
+    fn clear_poison_explosion_after_gap(&mut self, kind: DataGapKind) {
+        if kind == DataGapKind::TcpGap {
+            // A transport hole can hide a stack change or terminal. Provider
+            // loadout identity remains valid, but every active lifecycle is
+            // discarded until the server supplies a new exact application.
+            self.poison_explosion_windows.clear();
+        }
+    }
+
     fn observe_unresolved_status(&mut self, status: &rlogs_events::UnresolvedStatusEvent) {
         if status.instance_id.is_none() {
             let generation = self
@@ -4411,6 +4485,9 @@ impl BpsrStateDamageContributionProjector {
 
     fn observe_status(&mut self, status: &rlogs_events::StatusEvent, observed_micros: u64) {
         self.observe_formula_status(status);
+        if status.effect.0 == self.runtime.poison_explosion_vulnerability.effect_id {
+            self.observe_poison_explosion_status(status, observed_micros);
+        }
         if status.effect.0 == self.runtime.synergy_crit_field.effect_id {
             self.observe_synergy_crit_field_status(status, observed_micros);
         }
@@ -4787,6 +4864,113 @@ impl BpsrStateDamageContributionProjector {
                 );
             }
         }
+    }
+
+    fn observe_poison_explosion_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.poison_explosion_vulnerability;
+        if !config.runtime_transfer_enabled {
+            return;
+        }
+        let target_actor_id = status.target.actor_id.0;
+        let target_entity_uuid = status.target.entity_uuid.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        let provider_owner_actor_id = status
+            .source
+            .map(|source| self.resolve_owner_actor_id(source.actor_id.0));
+
+        let lifecycle_matches = |key: &PoisonExplosionWindowKey, window: &PoisonExplosionWindow| {
+            let target_matches = key.target_actor_id == target_actor_id
+                || (target_entity_uuid != 0 && window.target_entity_uuid == target_entity_uuid);
+            let instance_matches = instance_id.is_none_or(|instance| key.instance_id == instance);
+            let provider_matches = provider_owner_actor_id
+                .is_none_or(|provider| key.provider_owner_actor_id == provider);
+            target_matches && instance_matches && provider_matches
+        };
+
+        if matches!(status.state, StatusState::Removed | StatusState::Consumed) {
+            self.poison_explosion_windows
+                .retain(|key, window| !lifecycle_matches(key, window));
+            return;
+        }
+
+        // A malformed refresh invalidates any previously admitted matching
+        // instance before the replacement is considered. This prevents stale
+        // magnitude or stack credit from surviving incomplete packet state.
+        self.poison_explosion_windows
+            .retain(|key, window| !lifecycle_matches(key, window));
+
+        let Some(source) = status.source else {
+            return;
+        };
+        let Some(instance_id) = instance_id else {
+            return;
+        };
+        let Some(stacks) = status.stacks else {
+            return;
+        };
+        if status.level != Some(config.required_effect_level)
+            || !(config.minimum_stacks..=config.maximum_stacks).contains(&stacks)
+            || status.duration_millis != Some(config.duration_millis)
+            || target_entity_uuid == 0
+        {
+            return;
+        }
+
+        self.actor_ancestry.observe_entity(status.target);
+        self.actor_ancestry.observe_entity(source);
+        let provider_owner_actor_id = self.resolve_owner_actor_id(source.actor_id.0);
+        if !self.active_players.contains(&provider_owner_actor_id) {
+            return;
+        }
+        let provider_owner_entity_uuid = self
+            .actor_ancestry
+            .entity_for_actor(provider_owner_actor_id)
+            .or_else(|| {
+                (provider_owner_actor_id == source.actor_id.0).then_some(source.entity_uuid.0)
+            })
+            .unwrap_or_default();
+        if provider_owner_entity_uuid == 0 {
+            return;
+        }
+        let Some(&basis_points_per_stack) = self
+            .poison_explosion_basis_points_per_stack_by_provider_entity
+            .get(&provider_owner_entity_uuid)
+        else {
+            return;
+        };
+        if !config
+            .vulnerability_basis_points_per_stack_by_tier
+            .contains(&basis_points_per_stack)
+        {
+            return;
+        }
+        let Some(expires_at_observed_micros) = observed_micros.checked_add(
+            config
+                .duration_millis
+                .checked_mul(1_000)
+                .unwrap_or(u64::MAX),
+        ) else {
+            return;
+        };
+        self.poison_explosion_windows.insert(
+            PoisonExplosionWindowKey {
+                target_actor_id,
+                provider_owner_actor_id,
+                instance_id,
+            },
+            PoisonExplosionWindow {
+                target_entity_uuid,
+                provider_owner_entity_uuid,
+                stacks,
+                basis_points_per_stack,
+                opened_observed_micros: observed_micros,
+                expires_at_observed_micros,
+            },
+        );
     }
 
     fn observe_synergy_crit_field_status(
@@ -8009,6 +8193,39 @@ impl BpsrStateDamageContributionProjector {
             [] => {}
             _ => {
                 self.arcane_time_decree_basis_points_by_provider_entity
+                    .remove(&entity_uuid);
+            }
+        }
+    }
+
+    fn observe_poison_explosion_provider_loadout(&mut self, actor: &rlogs_events::ActorEvent) {
+        if actor.loadout_observation.primary != rlogs_events::ActorLoadoutEvidence::ExactSlots {
+            return;
+        }
+        let entity_uuid = actor.actor.entity_uuid.0;
+        if entity_uuid == 0 {
+            return;
+        }
+        let config = &self.runtime.poison_explosion_vulnerability;
+        let mut magnitudes = actor
+            .primary_loadout
+            .iter()
+            .filter(|slot| slot.ability_id == Some(config.provider_imagine_ability_id))
+            .filter(|slot| {
+                slot.item_id
+                    .is_none_or(|item_id| item_id == config.provider_imagine_item_id)
+            })
+            .filter_map(|slot| config.basis_points_per_stack_for_tier(slot.tier?))
+            .collect::<Vec<_>>();
+        magnitudes.sort_unstable();
+        magnitudes.dedup();
+        match magnitudes.as_slice() {
+            [magnitude] => {
+                self.poison_explosion_basis_points_per_stack_by_provider_entity
+                    .insert(entity_uuid, *magnitude);
+            }
+            [] | [_, _, ..] => {
+                self.poison_explosion_basis_points_per_stack_by_provider_entity
                     .remove(&entity_uuid);
             }
         }
@@ -13438,6 +13655,147 @@ impl BpsrStateDamageContributionProjector {
         })
     }
 
+    fn poison_explosion_vulnerability_contributions(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Vec<ExactRationalDamageContributionEvent> {
+        self.poison_explosion_vulnerability_decision(observed_micros, damage)
+            .unwrap_or_default()
+    }
+
+    fn poison_explosion_vulnerability_decision(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<Vec<ExactRationalDamageContributionEvent>, &'static str> {
+        let config = &self.runtime.poison_explosion_vulnerability;
+        if !self.runtime_applicable || !config.runtime_transfer_enabled {
+            return Err("runtime_mismatch");
+        }
+        if damage.amount <= 0 {
+            return Err("nonpositive_damage");
+        }
+        let target_actor_id = damage.target.actor_id.0;
+        let target_entity_uuid = damage.target.entity_uuid.0;
+        if target_actor_id == 0 || target_entity_uuid == 0 {
+            return Err("target_identity_missing");
+        }
+        let recipient_actor_id = self.resolve_owner_actor_id(damage.source.actor_id.0);
+        if recipient_actor_id == 0 || !self.active_players.contains(&recipient_actor_id) {
+            return Err("recipient_inactive");
+        }
+        if self
+            .unresolved_status_windows
+            .iter()
+            .any(|window| window.target_actor_id == target_actor_id)
+        {
+            return Err("unresolved_target_status_overlap");
+        }
+        if self
+            .formula_status_prior_values_current_wire
+            .keys()
+            .any(|key| key.target_actor_id == target_actor_id && key.effect_id == config.effect_id)
+        {
+            return Err("same_wire_transition");
+        }
+        if self.formula_statuses.keys().any(|key| {
+            key.target_actor_id == target_actor_id
+                && config
+                    .conflicting_target_effect_ids
+                    .contains(&key.effect_id)
+        }) {
+            return Err("conflicting_target_vulnerability");
+        }
+
+        let matching = self
+            .poison_explosion_windows
+            .iter()
+            .filter(|(key, window)| {
+                (key.target_actor_id == target_actor_id
+                    || window.target_entity_uuid == target_entity_uuid)
+                    && window.target_entity_uuid == target_entity_uuid
+                    && observed_micros > window.opened_observed_micros
+                    && observed_micros < window.expires_at_observed_micros
+            })
+            .collect::<Vec<_>>();
+        if matching.is_empty() {
+            return Err("provider_window_missing");
+        }
+
+        // One status instance per provider is required. The status count is the
+        // complete stack magnitude; two simultaneous instances from the same
+        // owner would have an unproven merge rule and therefore fail closed.
+        let mut provider_deltas = BTreeMap::<u64, (i64, i64)>::new();
+        for (key, window) in matching {
+            if !self.active_players.contains(&key.provider_owner_actor_id)
+                || self
+                    .actor_ancestry
+                    .entity_for_actor(key.provider_owner_actor_id)
+                    != Some(window.provider_owner_entity_uuid)
+            {
+                return Err("provider_identity_stale");
+            }
+            let stacks = i64::from(window.stacks);
+            let provider_delta = window
+                .basis_points_per_stack
+                .checked_mul(stacks)
+                .ok_or("provider_delta_overflow")?;
+            if provider_delta <= 0
+                || provider_deltas
+                    .insert(
+                        key.provider_owner_actor_id,
+                        (provider_delta, window.provider_owner_entity_uuid),
+                    )
+                    .is_some()
+            {
+                return Err("provider_window_ambiguous");
+            }
+        }
+        let total_delta = provider_deltas
+            .values()
+            .try_fold(0_i64, |total, (delta, _)| {
+                total
+                    .checked_add(*delta)
+                    .ok_or("vulnerability_stage_overflow")
+            })?;
+        let denominator = 10_000_i128
+            .checked_add(i128::from(total_delta))
+            .ok_or("vulnerability_stage_overflow")?;
+        if denominator <= 10_000 {
+            return Err("invalid_vulnerability_stage");
+        }
+
+        let mut contributions = Vec::new();
+        for (provider_actor_id, (provider_delta, _)) in provider_deltas {
+            if provider_actor_id == recipient_actor_id {
+                // Self-applied stacks remain in the complete active-stage
+                // denominator but never transfer damage to the same actor.
+                continue;
+            }
+            let numerator = i128::from(damage.amount)
+                .checked_mul(i128::from(provider_delta))
+                .ok_or("vulnerability_stage_overflow")?;
+            if numerator <= 0 {
+                return Err("invalid_vulnerability_stage");
+            }
+            let divisor = greatest_common_divisor(numerator, denominator);
+            contributions.push(ExactRationalDamageContributionEvent {
+                observed_micros,
+                effect_id: config.effect_id,
+                provider_actor_id,
+                recipient_actor_id,
+                scope: DamageContributionScope::Component("target-vulnerability"),
+                numerator: numerator / divisor,
+                denominator: denominator / divisor,
+                observed_damage: damage.amount,
+                included: true,
+                deferred_damage_context: None,
+            });
+        }
+        Ok(contributions)
+    }
+
     fn target_vulnerability_audit_gate(&self, damage: &rlogs_events::DamageEvent) -> &'static str {
         let Ok(catalog) = target_vulnerability_rdps_catalog() else {
             return "ability_mismatch";
@@ -14003,6 +14361,11 @@ impl BpsrStateDamageContributionProjector {
         });
     }
 
+    fn expire_poison_explosion_windows(&mut self, observed_micros: u64) {
+        self.poison_explosion_windows
+            .retain(|_, window| window.expires_at_observed_micros > observed_micros);
+    }
+
     fn expire_inspire_haste_windows(&mut self, observed_micros: u64) {
         self.inspire_haste_windows
             .retain(|_, window| window.expires_at_observed_micros > observed_micros);
@@ -14419,6 +14782,9 @@ impl BpsrStateDamageContributionProjector {
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.target_vulnerability_transitions
             .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.poison_explosion_windows.retain(|key, _| {
+            key.target_actor_id != actor_id && key.provider_owner_actor_id != actor_id
+        });
         self.formula_attributes_by_actor.remove(&actor_id);
         self.synergy_crit_field_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.source_actor_id != actor_id);
@@ -14523,6 +14889,7 @@ impl BpsrStateDamageContributionProjector {
             });
         self.target_vulnerability_windows.clear();
         self.target_vulnerability_transitions.clear();
+        self.poison_explosion_windows.clear();
         self.formula_attributes_by_actor.clear();
         self.synergy_crit_field_windows.clear();
         self.element_sharing_windows.clear();
@@ -14564,6 +14931,8 @@ impl BpsrStateDamageContributionProjector {
             .clear();
         self.fatal_spiral_ambiguous_provider_entities.clear();
         self.arcane_time_decree_basis_points_by_provider_entity
+            .clear();
+        self.poison_explosion_basis_points_per_stack_by_provider_entity
             .clear();
         self.class_id_by_actor.clear();
         self.specialization_id_by_actor.clear();
@@ -16291,6 +16660,351 @@ mod tests {
         let mut rational = Vec::new();
         ExactDamageContributionProjector::observe(projector, envelope, &mut exact, &mut rational);
         rational
+    }
+
+    fn poison_explosion_test_actor(
+        actor_id: u64,
+        entity_uuid: i64,
+        tier: u32,
+    ) -> rlogs_events::ActorEvent {
+        let config = &runtime().poison_explosion_vulnerability;
+        rlogs_events::ActorEvent {
+            actor: test_entity(actor_id, entity_uuid),
+            state: ActorState::Spawned,
+            entity_type_id: 10,
+            kind: ActorKind::Player,
+            monster_id: None,
+            character_id: Some(format!("poison-provider-{actor_id}")),
+            display_name: Some(format!("Poison Provider {actor_id}")),
+            class_id: Some(13),
+            specialization_id: Some(120),
+            level: Some(60),
+            ability_score: None,
+            weapon_item_id: None,
+            weapon_breakthrough_count: None,
+            seasonal_score: None,
+            primary_loadout: vec![rlogs_events::ActorLoadoutSlot {
+                slot_id: 8,
+                ability_id: Some(config.provider_imagine_ability_id),
+                item_id: Some(config.provider_imagine_item_id),
+                tier: Some(tier),
+            }],
+            auxiliary_loadout: Vec::new(),
+            loadout_observation: rlogs_events::ActorLoadoutObservation {
+                primary: rlogs_events::ActorLoadoutEvidence::ExactSlots,
+                auxiliary: rlogs_events::ActorLoadoutEvidence::Unobserved,
+            },
+        }
+    }
+
+    fn poison_explosion_test_status(
+        provider: EntityRef,
+        target: EntityRef,
+        instance_id: i64,
+        stacks: u32,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let config = &runtime().poison_explosion_vulnerability;
+        rlogs_events::StatusEvent {
+            source: Some(provider),
+            target,
+            effect: rlogs_events::StatusEffectId(config.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: None,
+            state,
+            stacks: Some(stacks),
+            duration_millis: Some(config.duration_millis),
+            level: Some(config.required_effect_level),
+            part_id: None,
+            count: None,
+            created_at_millis: None,
+        }
+    }
+
+    fn poison_explosion_test_damage(
+        recipient: EntityRef,
+        target: EntityRef,
+    ) -> rlogs_events::DamageEvent {
+        rlogs_events::DamageEvent {
+            source: recipient,
+            direct_source: None,
+            target,
+            ability: Some(rlogs_events::AbilityId(2_203_521)),
+            amount: 112_000,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(5),
+            damage_source: None,
+            damage_type: Some(2),
+            flags: rlogs_events::DamageFlags::default(),
+            packet: rlogs_events::DamagePacketDetail::default(),
+        }
+    }
+
+    fn poison_explosion_test_projector() -> BpsrStateDamageContributionProjector {
+        let mut projector = BpsrStateDamageContributionProjector {
+            runtime_applicable: true,
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (6, 60), (9, 90)]),
+            latest_observed_micros: 100,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.active_players.extend([2, 4, 6]);
+        projector
+    }
+
+    #[test]
+    fn poison_explosion_uses_exact_equipped_tier_and_single_provider_stage_share() {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let target = test_entity(9, 90);
+        let mut projector = poison_explosion_test_projector();
+        projector.observe_poison_explosion_provider_loadout(&poison_explosion_test_actor(2, 20, 5));
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(provider, target, 77, 3, StatusState::Applied),
+            100,
+        );
+
+        let contributions = projector
+            .poison_explosion_vulnerability_decision(
+                200,
+                &poison_explosion_test_damage(recipient, target),
+            )
+            .expect("an exact tier-5 three-stack lifecycle should be attributable");
+        let [contribution] = contributions.as_slice() else {
+            panic!("one external provider should emit one contribution");
+        };
+        assert_eq!(contribution.effect_id, 2_110_099);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            (12_000, 1)
+        );
+        assert_eq!(contribution.observed_damage, 112_000);
+    }
+
+    #[test]
+    fn poison_explosion_conserves_multiple_same_stage_providers_jointly() {
+        let recipient = test_entity(4, 40);
+        let target = test_entity(9, 90);
+        let mut projector = poison_explosion_test_projector();
+        projector.observe_poison_explosion_provider_loadout(&poison_explosion_test_actor(2, 20, 1));
+        projector.observe_poison_explosion_provider_loadout(&poison_explosion_test_actor(6, 60, 2));
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(test_entity(2, 20), target, 77, 5, StatusState::Applied),
+            100,
+        );
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(test_entity(6, 60), target, 78, 5, StatusState::Applied),
+            100,
+        );
+
+        let contributions = projector
+            .poison_explosion_vulnerability_decision(
+                200,
+                &poison_explosion_test_damage(recipient, target),
+            )
+            .unwrap();
+        assert_eq!(contributions.len(), 2);
+        assert_eq!(
+            contributions
+                .iter()
+                .map(|event| (event.provider_actor_id, event.numerator / event.denominator))
+                .collect::<Vec<_>>(),
+            vec![(2, 4_000), (6, 8_000)]
+        );
+        assert_eq!(
+            contributions
+                .iter()
+                .map(|event| event.numerator / event.denominator)
+                .sum::<i128>(),
+            12_000
+        );
+    }
+
+    #[test]
+    fn poison_explosion_self_stacks_stay_in_denominator_without_self_transfer() {
+        let recipient = test_entity(4, 40);
+        let target = test_entity(9, 90);
+        let mut projector = poison_explosion_test_projector();
+        projector.observe_poison_explosion_provider_loadout(&poison_explosion_test_actor(2, 20, 5));
+        projector.observe_poison_explosion_provider_loadout(&poison_explosion_test_actor(4, 40, 5));
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(test_entity(2, 20), target, 77, 2, StatusState::Applied),
+            100,
+        );
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(recipient, target, 78, 1, StatusState::Applied),
+            100,
+        );
+
+        let contributions = projector
+            .poison_explosion_vulnerability_decision(
+                200,
+                &poison_explosion_test_damage(recipient, target),
+            )
+            .unwrap();
+        assert_eq!(contributions.len(), 1);
+        assert_eq!(contributions[0].provider_actor_id, 2);
+        assert_eq!(
+            (contributions[0].numerator, contributions[0].denominator),
+            (8_000, 1)
+        );
+    }
+
+    #[test]
+    fn poison_explosion_lifecycle_ambiguity_conflicts_and_gaps_fail_closed() {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let target = test_entity(9, 90);
+        let damage = poison_explosion_test_damage(recipient, target);
+        let mut projector = poison_explosion_test_projector();
+        projector.observe_poison_explosion_provider_loadout(&poison_explosion_test_actor(2, 20, 5));
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(provider, target, 77, 3, StatusState::Applied),
+            100,
+        );
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(provider, target, 78, 3, StatusState::Applied),
+            100,
+        );
+        assert_eq!(
+            projector.poison_explosion_vulnerability_decision(200, &damage),
+            Err("provider_window_ambiguous")
+        );
+
+        projector
+            .poison_explosion_windows
+            .retain(|key, _| key.instance_id == 77);
+        let conflicting_effect_id = runtime()
+            .poison_explosion_vulnerability
+            .conflicting_target_effect_ids[0];
+        projector.formula_statuses.insert(
+            FormulaStatusKey {
+                target_actor_id: 9,
+                source_actor_id: 2,
+                effect_id: conflicting_effect_id,
+                instance_id: Some(99),
+            },
+            FormulaStatusValue {
+                effect_id: conflicting_effect_id,
+                source_entity_uuid: Some(20),
+                stacks: 1,
+                level: 1,
+                origin_source_type_id: None,
+                origin_source_config_id: None,
+            },
+        );
+        assert_eq!(
+            projector.poison_explosion_vulnerability_decision(200, &damage),
+            Err("conflicting_target_vulnerability")
+        );
+        projector.formula_statuses.clear();
+        projector.clear_poison_explosion_after_gap(DataGapKind::TcpGap);
+        assert!(projector.poison_explosion_windows.is_empty());
+        assert_eq!(
+            projector.poison_explosion_vulnerability_decision(200, &damage),
+            Err("provider_window_missing")
+        );
+
+        let mut ambiguous_loadout = poison_explosion_test_actor(2, 20, 5);
+        ambiguous_loadout
+            .primary_loadout
+            .push(rlogs_events::ActorLoadoutSlot {
+                slot_id: 9,
+                ability_id: Some(
+                    runtime()
+                        .poison_explosion_vulnerability
+                        .provider_imagine_ability_id,
+                ),
+                item_id: Some(
+                    runtime()
+                        .poison_explosion_vulnerability
+                        .provider_imagine_item_id,
+                ),
+                tier: Some(1),
+            });
+        projector.observe_poison_explosion_provider_loadout(&ambiguous_loadout);
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(provider, target, 80, 3, StatusState::Applied),
+            100,
+        );
+        assert!(projector.poison_explosion_windows.is_empty());
+
+        projector.observe_poison_explosion_provider_loadout(&poison_explosion_test_actor(2, 20, 5));
+        let mut malformed =
+            poison_explosion_test_status(provider, target, 81, 3, StatusState::Applied);
+        projector.observe_poison_explosion_status(&malformed, 100);
+        assert_eq!(projector.poison_explosion_windows.len(), 1);
+        malformed.state = StatusState::Refreshed;
+        malformed.duration_millis = None;
+        projector.observe_poison_explosion_status(&malformed, 200);
+        assert!(projector.poison_explosion_windows.is_empty());
+
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(provider, target, 82, 3, StatusState::Applied),
+            100,
+        );
+        projector.expire_poison_explosion_windows(8_000_100);
+        assert!(projector.poison_explosion_windows.is_empty());
+
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(provider, target, 83, 3, StatusState::Applied),
+            100,
+        );
+        projector.observe_poison_explosion_status(
+            &poison_explosion_test_status(provider, target, 83, 3, StatusState::Removed),
+            200,
+        );
+        assert!(projector.poison_explosion_windows.is_empty());
+    }
+
+    #[test]
+    fn poison_explosion_projects_through_shared_live_and_history_state_path() {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let target = test_entity(9, 90);
+        let damage = poison_explosion_test_damage(recipient, target);
+        let observed_damage = damage.amount;
+        let mut projector = poison_explosion_test_projector();
+        projector.observe_poison_explosion_provider_loadout(&poison_explosion_test_actor(2, 20, 5));
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+
+        ExactDamageContributionProjector::observe(
+            &mut projector,
+            &harmony_grace_wire_envelope(
+                1,
+                100,
+                TimelineEventKind::Status(poison_explosion_test_status(
+                    provider,
+                    target,
+                    77,
+                    3,
+                    StatusState::Applied,
+                )),
+            ),
+            &mut exact,
+            &mut rational,
+        );
+        ExactDamageContributionProjector::observe(
+            &mut projector,
+            &harmony_grace_wire_envelope(2, 200, TimelineEventKind::Damage(damage.clone())),
+            &mut exact,
+            &mut rational,
+        );
+
+        assert!(exact.is_empty());
+        let [contribution] = rational.as_slice() else {
+            panic!("the shared projector should emit exactly one Poison Explosion transfer");
+        };
+        assert_eq!(contribution.effect_id, 2_110_099);
+        assert_eq!(
+            (contribution.numerator, contribution.denominator),
+            (12_000, 1)
+        );
+        assert_eq!(damage.amount, observed_damage);
     }
 
     #[test]
@@ -18607,9 +19321,9 @@ mod tests {
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
                 31_602, 55_228, 55_333, 997_511, 997_513, 997_515, 997_518, 997_534, 997_538,
-                997_570, 998_542, 2_100_154, 2_110_034, 2_110_065, 2_110_096, 2_110_125, 2_110_140,
-                2_110_143, 2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271,
-                3_003_052, 3_003_411
+                997_570, 998_542, 2_100_154, 2_110_034, 2_110_065, 2_110_096, 2_110_099, 2_110_125,
+                2_110_140, 2_110_143, 2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261,
+                2_404_271, 3_003_052, 3_003_411
             ],
             "only effects with current production authority are exposed; Arcane! Thunder Roar transfers only Electro Shield's exact Thunderstrike output, Endless Mind is limited to Shattered Illusion's description-defined Mastery consumer, Thunderwind Power remains owner-only, and Mechanical Power is limited to its exact class-11 tier-0 route"
         );
@@ -19448,9 +20162,9 @@ mod tests {
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
                 31_602, 55_228, 55_333, 997_511, 997_513, 997_515, 997_518, 997_534, 997_538,
-                997_570, 998_542, 2_100_154, 2_110_034, 2_110_065, 2_110_096, 2_110_125, 2_110_140,
-                2_110_143, 2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271,
-                3_003_052, 3_003_411
+                997_570, 998_542, 2_100_154, 2_110_034, 2_110_065, 2_110_096, 2_110_099, 2_110_125,
+                2_110_140, 2_110_143, 2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261,
+                2_404_271, 3_003_052, 3_003_411
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
