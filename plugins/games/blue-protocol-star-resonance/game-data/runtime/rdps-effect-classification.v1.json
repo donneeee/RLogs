@@ -324,11 +324,51 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2110064,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2110117,
       "review_state": "non_contributing",
       "contribution_kind": "mitigation",
       "source_scope": "effect_source",
       "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2200320,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2200470,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2200600,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
       "magnitude_basis_points": null,
       "stacking_rule": "fixed",
       "attribution_enabled": false
@@ -354,6 +394,26 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2200720,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2201200,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2201201,
       "review_state": "non_contributing",
       "contribution_kind": "self_only",
@@ -371,6 +431,16 @@
       "target_scope": "self_only",
       "magnitude_basis_points": null,
       "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2201330,
+      "review_state": "candidate",
+      "contribution_kind": "direct_damage_amplification",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "unresolved",
       "attribution_enabled": false
     },
     {
@@ -434,11 +504,31 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2202120,
+      "review_state": "non_contributing",
+      "contribution_kind": "healing_support",
+      "source_scope": "owner",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2202121,
       "review_state": "non_contributing",
       "contribution_kind": "internal_marker",
       "source_scope": "effect_source",
       "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2202170,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
       "magnitude_basis_points": null,
       "stacking_rule": "fixed",
       "attribution_enabled": false
@@ -469,6 +559,26 @@
       "contribution_kind": "internal_marker",
       "source_scope": "effect_source",
       "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2202540,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2202570,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
       "magnitude_basis_points": null,
       "stacking_rule": "fixed",
       "attribution_enabled": false
@@ -514,6 +624,36 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2203420,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2203450,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2203460,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2203530,
       "review_state": "non_contributing",
       "contribution_kind": "self_only",
@@ -534,12 +674,182 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2204320,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2204470,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2204520,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2205031,
       "review_state": "non_contributing",
       "contribution_kind": "self_only",
       "source_scope": "effect_source",
       "target_scope": "enemy",
       "magnitude_basis_points": 1000,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205060,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205120,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205140,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205160,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205200,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205270,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205310,
+      "review_state": "candidate",
+      "contribution_kind": "haste",
+      "source_scope": "owner",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "unresolved",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205380,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "stack_scaled",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205480,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "stack_scaled",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2205510,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2206110,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2206180,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2206240,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2206290,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
       "stacking_rule": "fixed",
       "attribution_enabled": false
     },
@@ -554,6 +864,26 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2206400,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2206550,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2206551,
       "review_state": "non_contributing",
       "contribution_kind": "self_only",
@@ -561,6 +891,36 @@
       "target_scope": "self_only",
       "magnitude_basis_points": null,
       "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2206680,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2208260,
+      "review_state": "candidate",
+      "contribution_kind": "offensive_stat_boost",
+      "source_scope": "owner",
+      "target_scope": "unresolved",
+      "magnitude_basis_points": null,
+      "stacking_rule": "unresolved",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2208310,
+      "review_state": "candidate",
+      "contribution_kind": "offensive_stat_boost",
+      "source_scope": "owner",
+      "target_scope": "unresolved",
+      "magnitude_basis_points": null,
+      "stacking_rule": "unresolved",
       "attribution_enabled": false
     },
     {
@@ -584,6 +944,26 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2401260,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2404150,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2404261,
       "review_state": "candidate",
       "contribution_kind": "state_scaling",
@@ -591,6 +971,26 @@
       "target_scope": "party_members",
       "magnitude_basis_points": null,
       "stacking_rule": "stack_scaled",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2405150,
+      "review_state": "candidate",
+      "contribution_kind": "offensive_stat_boost",
+      "source_scope": "unresolved",
+      "target_scope": "unresolved",
+      "magnitude_basis_points": null,
+      "stacking_rule": "unresolved",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 2406110,
+      "review_state": "candidate",
+      "contribution_kind": "direct_damage_amplification",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "unresolved",
       "attribution_enabled": false
     },
     {
@@ -614,6 +1014,16 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 2407280,
+      "review_state": "candidate",
+      "contribution_kind": "target_vulnerability",
+      "source_scope": "unresolved",
+      "target_scope": "unresolved",
+      "magnitude_basis_points": null,
+      "stacking_rule": "unresolved",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 2407290,
       "review_state": "non_contributing",
       "contribution_kind": "self_only",
@@ -624,6 +1034,36 @@
       "attribution_enabled": false
     },
     {
+      "effect_id": 3002410,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "stack_scaled",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 3003050,
+      "review_state": "non_contributing",
+      "contribution_kind": "self_only",
+      "source_scope": "owner",
+      "target_scope": "self_only",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 3003070,
+      "review_state": "non_contributing",
+      "contribution_kind": "mitigation",
+      "source_scope": "owner",
+      "target_scope": "party_members",
+      "magnitude_basis_points": null,
+      "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
       "effect_id": 3003071,
       "review_state": "non_contributing",
       "contribution_kind": "mitigation",
@@ -631,6 +1071,16 @@
       "target_scope": "effect_target",
       "magnitude_basis_points": null,
       "stacking_rule": "fixed",
+      "attribution_enabled": false
+    },
+    {
+      "effect_id": 3003210,
+      "review_state": "candidate",
+      "contribution_kind": "offensive_stat_boost",
+      "source_scope": "owner",
+      "target_scope": "unresolved",
+      "magnitude_basis_points": null,
+      "stacking_rule": "unresolved",
       "attribution_enabled": false
     },
     {

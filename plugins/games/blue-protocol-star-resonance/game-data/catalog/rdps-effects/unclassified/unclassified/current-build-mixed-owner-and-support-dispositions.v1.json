@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2201330,"review_state":"candidate","contribution_kind":"direct_damage_amplification","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"unresolved","attribution_enabled":false},
+    {"effect_id":2202120,"review_state":"non_contributing","contribution_kind":"healing_support","source_scope":"owner","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2406110,"review_state":"candidate","contribution_kind":"direct_damage_amplification","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"unresolved","attribution_enabled":false},
+    {"effect_id":3003070,"review_state":"non_contributing","contribution_kind":"mitigation","source_scope":"owner","target_scope":"party_members","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Effect 2201330 is talent 931's mixed Shield Bash owner mechanic: its outgoing component modifies only the owner's Shield Bash, while its resistance/shield components are defensive. Current-build external lifecycle is missing and old-build windows are self-held, so the complete row remains an attribution-disabled personal candidate rather than being mislabeled as pure support.",
+    "Effect 2406110 is an ambiguous two-piece equipment-set owner state with personal Shield Bash damage plus shield production. The active suit selector, affected damage row, exact output split, and same-build counterfactual are missing; old-build windows are self-held. It remains a blocked owner-local candidate.",
+    "Effect 2202120 Nature Shield has an exact Heal-typed action endpoint 2220212004 and produced healing/shield components, with no offensive action or formula. Static skill context is party-capable, but current external lifecycle nesting remains unproven; the damage-rDPS disposition is nevertheless noncontributing.",
+    "Effect 3003070 Dream Obsession is exact tree node 1503 and contains only ally Illusion-Breaking damage reduction. It has no damage or recount rows. Its separately confirmed external mitigation child 3003071 is not substituted for this owner marker.",
+    "Effect 2110032 is deliberately excluded from rules and retained unclassified. It has only the exact design identity Heroes Immortal, with no source, localized operator, component, action, origin, or same-build correlation proving survival, mitigation, bookkeeping, or damage. Attribution stays blocked pending those exact acquisitions.",
+    "All four rules remain attribution-disabled. Mixed personal damage is preserved as ordinary source-owned DPS, while healing and mitigation roles never enter damage transfer."
+  ]
+}

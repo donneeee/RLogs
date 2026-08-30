@@ -289,7 +289,7 @@ mod tests {
         ),
     ];
 
-    const REVIEW_BATCH_SOURCES: [&str; 4] = [
+    const REVIEW_BATCH_SOURCES: [&str; 7] = [
         include_str!(
             "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-support-and-marker-batch.v1.json"
         ),
@@ -301,6 +301,15 @@ mod tests {
         ),
         include_str!(
             "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-healing-and-mitigation-role-batch.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/non-contributing/confirmed/current-build-owner-talent-tail-batch.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/unclassified/unclassified/current-build-blocked-frontier-and-parent-dispositions.v1.json"
+        ),
+        include_str!(
+            "../game-data/catalog/rdps-effects/unclassified/unclassified/current-build-mixed-owner-and-support-dispositions.v1.json"
         ),
     ];
 
@@ -381,7 +390,7 @@ mod tests {
     fn exact_support_and_marker_batch_never_enters_damage_attribution() {
         for effect_id in [
             21_402, 21_404, 21_427, 21_428, 55_301, 55_302, 55_304, 55_314, 55_339, 55_342, 55_344,
-            55_346, 55_361, 829_130, 2_100_412, 2_202_091, 2_202_112, 2_202_262,
+            55_346, 55_361, 829_130, 2_100_412, 2_202_091, 2_202_112, 2_202_120, 2_202_262,
         ] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed healing-support effect {effect_id}");
@@ -392,7 +401,7 @@ mod tests {
         }
         for effect_id in [
             21_408, 21_411, 21_413, 21_422, 55_226, 55_315, 55_407, 2_100_410, 2_100_411,
-            2_110_117, 2_201_452, 2_202_705, 2_206_331, 3_003_071,
+            2_110_117, 2_201_452, 2_202_705, 2_206_331, 3_003_070, 3_003_071,
         ] {
             let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
                 panic!("expected reviewed mitigation effect {effect_id}");
@@ -446,6 +455,93 @@ mod tests {
             assert_eq!(rule.contribution_kind, RdpsContributionKind::SelfOnly);
             assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
             assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+            assert!(!rule.attribution_enabled);
+        }
+        assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
+    }
+
+    #[test]
+    fn exact_owner_talent_tail_and_parent_ids_never_suppress_external_children() {
+        for effect_id in [
+            2_110_064, 2_200_320, 2_200_470, 2_200_600, 2_200_720, 2_201_200, 2_202_170, 2_202_540,
+            2_202_570, 2_203_420, 2_203_450, 2_203_460, 2_204_320, 2_204_470, 2_204_520, 2_205_060,
+            2_205_120, 2_205_140, 2_205_160, 2_205_200, 2_205_270, 2_205_380, 2_205_480, 2_205_510,
+            2_206_110, 2_206_180, 2_206_240, 2_206_290, 2_206_400, 2_206_550, 2_206_680, 2_401_260,
+            2_404_150, 3_002_410, 3_003_050,
+        ] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected reviewed owner-local effect {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::NonContributing);
+            assert_eq!(rule.contribution_kind, RdpsContributionKind::SelfOnly);
+            assert_eq!(rule.source_scope, RdpsSourceScope::Owner);
+            assert_eq!(rule.target_scope, RdpsTargetScope::SelfOnly);
+            assert!(!rule.attribution_enabled);
+        }
+        assert!(confirmed_damage_contribution_rules().unwrap().is_empty());
+    }
+
+    #[test]
+    fn blocked_frontier_candidates_retain_exact_scope_gaps_without_runtime_credit() {
+        for (effect_id, kind, source_scope, target_scope) in [
+            (
+                2_201_330,
+                RdpsContributionKind::DirectDamageAmplification,
+                RdpsSourceScope::Owner,
+                RdpsTargetScope::SelfOnly,
+            ),
+            (
+                2_205_310,
+                RdpsContributionKind::Haste,
+                RdpsSourceScope::Owner,
+                RdpsTargetScope::PartyMembers,
+            ),
+            (
+                2_208_260,
+                RdpsContributionKind::OffensiveStatBoost,
+                RdpsSourceScope::Owner,
+                RdpsTargetScope::Unresolved,
+            ),
+            (
+                2_208_310,
+                RdpsContributionKind::OffensiveStatBoost,
+                RdpsSourceScope::Owner,
+                RdpsTargetScope::Unresolved,
+            ),
+            (
+                2_405_150,
+                RdpsContributionKind::OffensiveStatBoost,
+                RdpsSourceScope::Unresolved,
+                RdpsTargetScope::Unresolved,
+            ),
+            (
+                2_406_110,
+                RdpsContributionKind::DirectDamageAmplification,
+                RdpsSourceScope::Owner,
+                RdpsTargetScope::SelfOnly,
+            ),
+            (
+                2_407_280,
+                RdpsContributionKind::TargetVulnerability,
+                RdpsSourceScope::Unresolved,
+                RdpsTargetScope::Unresolved,
+            ),
+            (
+                3_003_210,
+                RdpsContributionKind::OffensiveStatBoost,
+                RdpsSourceScope::Owner,
+                RdpsTargetScope::Unresolved,
+            ),
+        ] {
+            let RdpsEffectLookup::Reviewed(rule) = classify_rdps_effect(effect_id).unwrap() else {
+                panic!("expected retained blocked candidate {effect_id}");
+            };
+            assert_eq!(rule.review_state, RdpsReviewState::Candidate);
+            assert_eq!(rule.contribution_kind, kind);
+            assert_eq!(rule.source_scope, source_scope);
+            assert_eq!(rule.target_scope, target_scope);
+            assert_eq!(rule.magnitude_basis_points, None);
+            assert_eq!(rule.stacking_rule, RdpsStackingRule::Unresolved);
             assert!(!rule.attribution_enabled);
         }
         assert!(confirmed_damage_contribution_rules().unwrap().is_empty());

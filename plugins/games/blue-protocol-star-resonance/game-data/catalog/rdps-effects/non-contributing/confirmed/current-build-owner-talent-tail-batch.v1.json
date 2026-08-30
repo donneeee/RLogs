@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "rules": [
+    {"effect_id":2200320,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2200470,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2200600,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2200720,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2201200,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2202170,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2202570,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2203420,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2203450,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2203460,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2204320,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2204470,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2204520,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2205060,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2205120,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2205140,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2205160,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2205200,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2205380,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false},
+    {"effect_id":2205480,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false},
+    {"effect_id":2205510,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2206110,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2206180,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2206240,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2206290,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2206400,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2206550,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":2206680,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"fixed","attribution_enabled":false},
+    {"effect_id":3002410,"review_state":"non_contributing","contribution_kind":"self_only","source_scope":"owner","target_scope":"self_only","magnitude_basis_points":null,"stacking_rule":"stack_scaled","attribution_enabled":false}
+  ],
+  "evidence": [
+    "Build-24687926 reconciliation gives all 29 listed effects resolved owner/provider-recipient subdivision with zero cross-actor, external-player, monster-recipient, and unresolved-cross-actor windows. Exact source components are owner/self, skill-targeted, or source-actor-category-targeted.",
+    "Talent effects 2200320, 2200470, 2200600, 2200720, 2201200, 2202170, 2202570, 2203420, 2203450, 2203460, 2204320, 2204520, 2205060, 2205120, 2205140, 2205160, 2205200, 2205380, 2205480, and 2205510 modify only their owner's skills, stats, proc rows, or cadence. Produced damage remains ordinary damage owned by that source actor.",
+    "Effects 2206110, 2206180, 2206240, 2206290, 2206400, 2206550, and 2206680 are exact current-build owner talent states for Judgment Revelation, Holy Barrier, Holy Radiance, Judgment Pursuit, Holy Summon, Radiant Core, and the alternate Judgment Pursuit branch. Their damage, healing, shielding, and cooldown components have no external lifecycle on these status IDs.",
+    "Effect 3002410 is tree node 1201 Phantom Arrow. Its accumulating summon count, internal cooldown, Mastery scaling, and source-owned Phantom Arrow output are a personal proc mechanic, not party transfer.",
+    "Effect 2204470 is the owner/root Critical Cold state and source configuration for separately promoted external child 2204471. Classifying the root as owner-only does not disable or reassign child 2204471 provider credit. Likewise, numeric effect 2202170 is unrelated to the promoted Dreamscope Full Bloom child 2404271 despite the localized name collision.",
+    "All 29 rules set attribution_enabled false. Exact personal formula branches may remain useful for ordinary DPS analysis, but they cannot create an external provider transfer without a distinct recipient lifecycle and conserved counterfactual."
+  ]
+}
