@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 24;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 25;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -1661,6 +1661,52 @@ impl ArcaneTimeDecreeRuntimeConfig {
     }
 }
 
+/// Whole packet-final produced damage created by Arcane! Thunder Roar's
+/// recipient-held Electro Shield (2110096).
+///
+/// The game description identifies the 0.5-second recipient-triggered
+/// Thunderstrike, while DamageAttrTable binds that output to action
+/// 2110096:3 / row 2211009603. Because the action would not exist without the
+/// external provider, its complete observed integer is the provider marginal;
+/// the tier coefficient is retained for audit/versioning but is not used to
+/// reverse an already-final packet result.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ThunderRoarRuntimeConfig {
+    pub effect_id: i64,
+    pub required_effect_level: i32,
+    pub required_stacks: u32,
+    pub duration_millis: u64,
+    pub trigger_cooldown_millis: u64,
+    pub thunderstrike_ability_id: i64,
+    pub thunderstrike_hit_event_id: i32,
+    pub thunderstrike_damage_attr_id: i64,
+    pub thunderstrike_coefficient_basis_points_by_tier: Vec<i64>,
+    pub thunderstrike_fixed_parameter: i64,
+    pub excluded_placeholder_damage_attr_id: i64,
+    pub excluded_direct_cast_damage_attr_id: i64,
+    pub game_description_trigger_authority: bool,
+    pub game_description_party_scope_authority: bool,
+    pub exact_damage_attr_link_authority: bool,
+    pub source_owner_ancestry_required: bool,
+    pub observed_final_direct_output_authority: bool,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub accounting_method: String,
+    pub runtime_transfer_enabled: bool,
+}
+
+impl ThunderRoarRuntimeConfig {
+    pub(crate) fn is_thunderstrike_action(
+        &self,
+        ability_id: Option<i64>,
+        hit_event_id: Option<i32>,
+    ) -> bool {
+        ability_id == Some(self.thunderstrike_ability_id)
+            && hit_event_id == Some(self.thunderstrike_hit_event_id)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TargetVulnerabilityRuntimeConfig {
@@ -1704,6 +1750,7 @@ pub(crate) struct RdpsRuntimeConfig {
     pub critical_cold: CriticalColdRuntimeConfig,
     pub endless_mind: EndlessMindRuntimeConfig,
     pub arcane_time_decree: ArcaneTimeDecreeRuntimeConfig,
+    pub thunder_roar: ThunderRoarRuntimeConfig,
     pub highland_blood: HighlandBloodRuntimeConfig,
 }
 
@@ -1749,6 +1796,7 @@ impl RdpsRuntimeConfig {
             || self.critical_cold.runtime_transfer_enabled
             || self.endless_mind.runtime_transfer_enabled
             || self.arcane_time_decree.runtime_transfer_enabled
+            || self.thunder_roar.runtime_transfer_enabled
     }
 
     /// Effect-scoped production authority. A false result never hides the
@@ -1799,6 +1847,8 @@ impl RdpsRuntimeConfig {
                 && self.endless_mind.runtime_transfer_enabled)
             || (effect_id == self.arcane_time_decree.effect_id
                 && self.arcane_time_decree.runtime_transfer_enabled)
+            || (effect_id == self.thunder_roar.effect_id
+                && self.thunder_roar.runtime_transfer_enabled)
     }
 
     pub(crate) fn target_vulnerability_runtime_transfer_effect_ids(&self) -> &[i64] {
@@ -2702,6 +2752,37 @@ impl RdpsRuntimeConfig {
         {
             return Err(
                 "bundled BPSR Arcane! Time Decree (effect 2110034) cooldown-opportunity formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let thunder_roar = &self.thunder_roar;
+        let thunder_roar_current_authority = thunder_roar.game_description_trigger_authority
+            && thunder_roar.game_description_party_scope_authority
+            && thunder_roar.exact_damage_attr_link_authority
+            && thunder_roar.source_owner_ancestry_required
+            && thunder_roar.observed_final_direct_output_authority
+            && thunder_roar.unresolved_overlap_fails_closed
+            && thunder_roar.ordinary_damage_unchanged
+            && thunder_roar.accounting_method == "whole-observed-final-produced-damage";
+        if thunder_roar.effect_id != 2_110_096
+            || thunder_roar.required_effect_level != 96
+            || thunder_roar.required_stacks != 1
+            || thunder_roar.duration_millis != 15_000
+            || thunder_roar.trigger_cooldown_millis != 500
+            || thunder_roar.thunderstrike_ability_id != 2_110_096
+            || thunder_roar.thunderstrike_hit_event_id != 3
+            || thunder_roar.thunderstrike_damage_attr_id != 2_211_009_603
+            || thunder_roar.thunderstrike_coefficient_basis_points_by_tier
+                != [5_800, 6_660, 7_540, 8_410, 9_280, 10_150]
+            || thunder_roar.thunderstrike_fixed_parameter != 5
+            || thunder_roar.excluded_placeholder_damage_attr_id != 2_211_009_601
+            || thunder_roar.excluded_direct_cast_damage_attr_id != 2_211_009_604
+            || (self.game_build == "24687926" && !thunder_roar_current_authority)
+            || thunder_roar.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Arcane! Thunder Roar — Electro Shield (Thunderstrike; effect 2110096) produced-damage formula is not ready for runtime transfer"
                     .into(),
             );
         }

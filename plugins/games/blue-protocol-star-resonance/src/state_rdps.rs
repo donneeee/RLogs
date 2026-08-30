@@ -60,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v29";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v30";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -221,6 +221,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.arcane_time_decree.effect_id) {
         effect_ids.push(runtime.arcane_time_decree.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.thunder_roar.effect_id) {
+        effect_ids.push(runtime.thunder_roar.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.critical_cold.effect_id) {
         effect_ids.push(runtime.critical_cold.effect_id);
@@ -1045,6 +1048,17 @@ struct EncoreWindowKey {
     provider_actor_id: u64,
     provider_entity_uuid: i64,
     instance_id: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ThunderRoarWindow {
+    target_entity_uuid: i64,
+    source_actor_id: u64,
+    source_entity_uuid: i64,
+    provider_owner_actor_id: u64,
+    provider_owner_entity_uuid: i64,
+    opened_observed_micros: u64,
+    expires_at_observed_micros: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2138,6 +2152,10 @@ pub struct BpsrStateDamageContributionProjector {
     fiery_battle_will_pending_transitions: HashMap<u64, FieryBattleWillPendingTransition>,
     fiery_battle_will_attack_witnesses: HashSet<ObservedAttackProviderKey>,
     encore_windows: HashSet<EncoreWindowKey>,
+    /// Exact recipient-held Electro Shield lifecycles. Thunderstrike damage is
+    /// a wholly produced packet-final output, so the status snapshots the
+    /// source proxy's resolved player owner at application time.
+    thunder_roar_windows: HashMap<EffectWindowKey, ThunderRoarWindow>,
     thunderwind_windows: HashMap<EffectWindowKey, ThunderwindWindow>,
     thunderwind_child_targets: HashSet<u64>,
     thunderwind_transition_wires: HashMap<u64, WireKey>,
@@ -2277,6 +2295,7 @@ impl Default for BpsrStateDamageContributionProjector {
             fiery_battle_will_pending_transitions: HashMap::new(),
             fiery_battle_will_attack_witnesses: HashSet::new(),
             encore_windows: HashSet::new(),
+            thunder_roar_windows: HashMap::new(),
             thunderwind_windows: HashMap::new(),
             thunderwind_child_targets: HashSet::new(),
             thunderwind_transition_wires: HashMap::new(),
@@ -2880,6 +2899,7 @@ impl BpsrStateDamageContributionProjector {
         self.expire_harmony_grace_windows(envelope.time.observed_micros);
         self.expire_inspire_haste_windows(envelope.time.observed_micros);
         self.expire_arcane_time_decree_windows(envelope.time.observed_micros);
+        self.expire_thunder_roar_windows(envelope.time.observed_micros);
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
             return;
         };
@@ -2972,6 +2992,7 @@ impl BpsrStateDamageContributionProjector {
                 self.clear_encore_after_gap(gap.kind);
                 self.clear_endless_mind_after_gap(gap.kind);
                 self.clear_arcane_time_decree_after_gap(gap.kind);
+                self.clear_thunder_roar_after_gap(gap.kind);
                 self.clear_critical_cold_after_gap(gap.kind);
                 self.clear_inspire_haste_after_gap(gap.kind);
                 self.clear_full_bloom_after_gap(gap.kind);
@@ -3006,6 +3027,22 @@ impl BpsrStateDamageContributionProjector {
                     // or multiple-provider lifecycle is ever guessed.
                     if let Some(contribution) =
                         self.encore_direct_contribution(envelope.time.observed_micros, damage)
+                    {
+                        output.push(contribution);
+                    }
+                    return;
+                }
+                if self.runtime.thunder_roar.runtime_transfer_enabled
+                    && self.runtime.thunder_roar.is_thunderstrike_action(
+                        damage.ability.map(|ability| ability.0),
+                        damage.hit_event_id,
+                    )
+                {
+                    // The exact 2110096:3 output is created wholly by the
+                    // external Electro Shield lifecycle. Never also run its
+                    // packet-final integer through recipient stat stages.
+                    if let Some(contribution) =
+                        self.thunder_roar_contribution(envelope.time.observed_micros, damage)
                     {
                         output.push(contribution);
                     }
@@ -3863,6 +3900,69 @@ impl BpsrStateDamageContributionProjector {
         })
     }
 
+    fn thunder_roar_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactDamageContributionEvent> {
+        let config = &self.runtime.thunder_roar;
+        if !config.runtime_transfer_enabled
+            || !config.is_thunderstrike_action(
+                damage.ability.map(|ability| ability.0),
+                damage.hit_event_id,
+            )
+            || damage.amount <= 0
+        {
+            return None;
+        }
+
+        let raw_recipient_actor_id = damage.source.actor_id.0;
+        let recipient_actor_id = self.resolve_owner_actor_id(raw_recipient_actor_id);
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let mut providers = self
+            .thunder_roar_windows
+            .iter()
+            .filter(|(key, window)| {
+                observed_micros > window.opened_observed_micros
+                    && observed_micros < window.expires_at_observed_micros
+                    && (key.target_actor_id == raw_recipient_actor_id
+                        || self.resolve_owner_actor_id(key.target_actor_id) == recipient_actor_id
+                        || (recipient_entity_uuid != 0
+                            && window.target_entity_uuid == recipient_entity_uuid))
+            })
+            .map(|(_, window)| {
+                (
+                    window.provider_owner_actor_id,
+                    window.provider_owner_entity_uuid,
+                )
+            })
+            .filter(|(provider_actor_id, provider_entity_uuid)| {
+                *provider_actor_id != recipient_actor_id
+                    && *provider_entity_uuid != 0
+                    && *provider_entity_uuid != recipient_entity_uuid
+                    && self.active_players.contains(provider_actor_id)
+            })
+            .collect::<Vec<_>>();
+        providers.sort_unstable();
+        providers.dedup();
+        let [(provider_actor_id, _)] = providers.as_slice() else {
+            return None;
+        };
+
+        Some(ExactDamageContributionEvent {
+            observed_micros,
+            effect_id: config.effect_id,
+            provider_actor_id: *provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(
+                "Arcane! Thunder Roar — Electro Shield (Thunderstrike) produced damage",
+            ),
+            amount: damage.amount,
+            observed_damage: damage.amount,
+            included: true,
+        })
+    }
+
     fn clear_stat_resonance_after_gap(&mut self) {
         self.stat_resonance_windows.clear();
         self.stat_resonance_transition_wires.clear();
@@ -3940,6 +4040,9 @@ impl BpsrStateDamageContributionProjector {
         }
         if status.effect.0 == self.runtime.arcane_time_decree.effect_id {
             self.observe_arcane_time_decree_status(status, observed_micros);
+        }
+        if status.effect.0 == self.runtime.thunder_roar.effect_id {
+            self.observe_thunder_roar_status(status, observed_micros);
         }
         if status.effect.0 == self.runtime.critical_cold.effect_id {
             self.observe_critical_cold_status(status);
@@ -4785,6 +4888,91 @@ impl BpsrStateDamageContributionProjector {
         });
     }
 
+    fn observe_thunder_roar_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        let config = &self.runtime.thunder_roar;
+        let target_actor_id = status.target.actor_id.0;
+        let target_entity_uuid = status.target.entity_uuid.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        let active = matches!(
+            status.state,
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+        ) || (status.state == StatusState::Consumed
+            && status.stacks.unwrap_or_default() > 0);
+
+        if active {
+            let exact_shape = status.level == Some(config.required_effect_level)
+                && status.stacks == Some(config.required_stacks)
+                && status.duration_millis == Some(config.duration_millis)
+                && target_entity_uuid != 0;
+            let Some(source) = status.source.filter(|_| exact_shape) else {
+                self.thunder_roar_windows.retain(|key, _| {
+                    key.target_actor_id != target_actor_id
+                        || (instance_id.is_some() && key.instance_id != instance_id)
+                });
+                return;
+            };
+            self.actor_ancestry.observe_entity(status.target);
+            self.actor_ancestry.observe_entity(source);
+            let provider_owner_actor_id = self
+                .actor_ancestry
+                .resolve_actor_id_at(source.actor_id.0, observed_micros);
+            let Some(provider_owner_entity_uuid) = self
+                .actor_ancestry
+                .entity_for_actor(provider_owner_actor_id)
+                .filter(|entity_uuid| *entity_uuid != 0)
+            else {
+                return;
+            };
+            if !self.active_players.contains(&provider_owner_actor_id)
+                || provider_owner_actor_id == target_actor_id
+                || provider_owner_entity_uuid == target_entity_uuid
+            {
+                return;
+            }
+            let Some(expires_at_observed_micros) = config
+                .duration_millis
+                .checked_mul(1_000)
+                .and_then(|duration| observed_micros.checked_add(duration))
+            else {
+                return;
+            };
+            self.thunder_roar_windows.insert(
+                EffectWindowKey {
+                    target_actor_id,
+                    provider_actor_id: source.actor_id.0,
+                    instance_id,
+                },
+                ThunderRoarWindow {
+                    target_entity_uuid,
+                    source_actor_id: source.actor_id.0,
+                    source_entity_uuid: source.entity_uuid.0,
+                    provider_owner_actor_id,
+                    provider_owner_entity_uuid,
+                    opened_observed_micros: observed_micros,
+                    expires_at_observed_micros,
+                },
+            );
+            return;
+        }
+
+        self.thunder_roar_windows.retain(|key, window| {
+            let target_matches = key.target_actor_id == target_actor_id
+                || (target_entity_uuid != 0 && window.target_entity_uuid == target_entity_uuid);
+            let instance_matches =
+                instance_id.is_none_or(|instance| key.instance_id == Some(instance));
+            let source_matches = status.source.is_none_or(|source| {
+                window.source_actor_id == source.actor_id.0
+                    && (source.entity_uuid.0 == 0
+                        || window.source_entity_uuid == source.entity_uuid.0)
+            });
+            !(target_matches && instance_matches && source_matches)
+        });
+    }
+
     fn observe_cooldown_action_state(
         &mut self,
         observed_micros: u64,
@@ -4827,6 +5015,12 @@ impl BpsrStateDamageContributionProjector {
             self.arcane_time_decree_windows.clear();
             self.arcane_time_decree_transition_wires.clear();
             self.cooldown_action_state.clear();
+        }
+    }
+
+    fn clear_thunder_roar_after_gap(&mut self, kind: DataGapKind) {
+        if kind == DataGapKind::TcpGap {
+            self.thunder_roar_windows.clear();
         }
     }
 
@@ -11390,6 +11584,11 @@ impl BpsrStateDamageContributionProjector {
             .retain(|_, window| window.expires_at_observed_micros > observed_micros);
     }
 
+    fn expire_thunder_roar_windows(&mut self, observed_micros: u64) {
+        self.thunder_roar_windows
+            .retain(|_, window| window.expires_at_observed_micros > observed_micros);
+    }
+
     fn clear_inspire_haste_after_gap(&mut self, kind: DataGapKind) {
         if kind == DataGapKind::TcpGap {
             self.inspire_haste_windows.clear();
@@ -11517,6 +11716,12 @@ impl BpsrStateDamageContributionProjector {
             // an exact status terminal, or a TCP gap still fails closed.
             key.target_actor_id != actor_id
         });
+        self.thunder_roar_windows.retain(|key, window| {
+            // The recipient-held lifecycle survives a source proxy despawn;
+            // its player owner was snapped at application. Recipient despawn
+            // remains an exact terminal for attribution state.
+            key.target_actor_id != actor_id && window.provider_owner_actor_id != actor_id
+        });
         self.thunderwind_windows
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.thunderwind_child_targets.remove(&actor_id);
@@ -11610,6 +11815,7 @@ impl BpsrStateDamageContributionProjector {
         self.fiery_battle_will_pending_transitions.clear();
         self.fiery_battle_will_attack_witnesses.clear();
         self.encore_windows.clear();
+        self.thunder_roar_windows.clear();
         self.thunderwind_windows.clear();
         self.thunderwind_child_targets.clear();
         self.thunderwind_transition_wires.clear();
@@ -14584,6 +14790,99 @@ mod tests {
         assert!(projector.cooldown_action_state.is_empty());
     }
 
+    #[test]
+    fn thunder_roar_attributes_the_complete_recipient_triggered_thunderstrike() {
+        let provider = test_entity(2, 20);
+        let recipient = test_entity(4, 40);
+        let proxy = test_entity(200, 2_000);
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            actor_ancestry: test_ancestry(&[(2, 20), (4, 40), (200, 2_000), (9, 90)]),
+            latest_observed_micros: 100,
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.actor_ancestry.observe_relation(
+            100,
+            proxy,
+            provider,
+            ActorOwnershipEvidence::ConfirmedEntityAttributes,
+        );
+        let status = rlogs_events::StatusEvent {
+            source: Some(proxy),
+            target: recipient,
+            effect: rlogs_events::StatusEffectId(runtime().thunder_roar.effect_id),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(77)),
+            origin: None,
+            state: StatusState::Applied,
+            stacks: Some(runtime().thunder_roar.required_stacks),
+            duration_millis: Some(runtime().thunder_roar.duration_millis),
+            level: Some(runtime().thunder_roar.required_effect_level),
+            part_id: None,
+            count: None,
+            created_at_millis: None,
+        };
+        let damage = rlogs_events::DamageEvent {
+            source: recipient,
+            direct_source: None,
+            target: test_entity(9, 90),
+            ability: Some(rlogs_events::AbilityId(
+                runtime().thunder_roar.thunderstrike_ability_id,
+            )),
+            amount: 88_765,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: Some(runtime().thunder_roar.thunderstrike_hit_event_id),
+            damage_source: None,
+            damage_type: Some(2),
+            flags: rlogs_events::DamageFlags::default(),
+            packet: rlogs_events::DamagePacketDetail::default(),
+        };
+        let observed_damage = damage.amount;
+        let mut exact = Vec::new();
+        let mut rational = Vec::new();
+        ExactDamageContributionProjector::observe(
+            &mut projector,
+            &harmony_grace_wire_envelope(1, 100, TimelineEventKind::Status(status.clone())),
+            &mut exact,
+            &mut rational,
+        );
+        ExactDamageContributionProjector::observe(
+            &mut projector,
+            &harmony_grace_wire_envelope(2, 200, TimelineEventKind::Damage(damage.clone())),
+            &mut exact,
+            &mut rational,
+        );
+
+        assert!(rational.is_empty());
+        let [contribution] = exact.as_slice() else {
+            panic!(
+                "the shared live/history projector should emit exactly one Thunderstrike transfer"
+            );
+        };
+        assert_eq!(contribution.effect_id, 2_110_096);
+        assert_eq!(contribution.provider_actor_id, provider.actor_id.0);
+        assert_eq!(contribution.recipient_actor_id, recipient.actor_id.0);
+        assert_eq!(contribution.amount, observed_damage);
+        assert_eq!(contribution.observed_damage, observed_damage);
+        assert_eq!(damage.amount, observed_damage);
+
+        let mut direct_cast = damage.clone();
+        direct_cast.hit_event_id = Some(4);
+        assert!(
+            projector
+                .thunder_roar_contribution(300, &direct_cast)
+                .is_none(),
+            "the caster-owned 2110096:4 row must remain ordinary owner damage",
+        );
+
+        projector.clear_thunder_roar_after_gap(DataGapKind::DecodeFailure);
+        assert_eq!(projector.thunder_roar_windows.len(), 1);
+        projector.clear_thunder_roar_after_gap(DataGapKind::TcpGap);
+        assert!(projector.thunder_roar_windows.is_empty());
+        assert!(projector.thunder_roar_contribution(400, &damage).is_none());
+    }
+
     fn stat_resonance_test_family(base_add: i64) -> AttackFamilyState {
         let raw_percent = 1_000;
         let extra_add = 100;
@@ -14984,11 +15283,11 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                31_602, 55_228, 55_333, 2_110_034, 2_110_065, 2_110_125, 2_110_140, 2_110_143,
-                2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271, 3_003_052,
-                3_003_411
+                31_602, 55_228, 55_333, 2_110_034, 2_110_065, 2_110_096, 2_110_125, 2_110_140,
+                2_110_143, 2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271,
+                3_003_052, 3_003_411
             ],
-            "only effects with current production authority are exposed; Endless Mind is limited to Shattered Illusion's description-defined Mastery consumer, Thunderwind Power remains owner-only, and Mechanical Power is limited to its exact class-11 tier-0 route"
+            "only effects with current production authority are exposed; Arcane! Thunder Roar transfers only Electro Shield's exact Thunderstrike output, Endless Mind is limited to Shattered Illusion's description-defined Mastery consumer, Thunderwind Power remains owner-only, and Mechanical Power is limited to its exact class-11 tier-0 route"
         );
         assert_eq!(
             target_vulnerability_candidate_effect_ids().unwrap(),
@@ -15824,9 +16123,9 @@ mod tests {
         assert_eq!(
             proven_state_damage_contribution_effect_ids().unwrap(),
             vec![
-                31_602, 55_228, 55_333, 2_110_034, 2_110_065, 2_110_125, 2_110_140, 2_110_143,
-                2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271, 3_003_052,
-                3_003_411
+                31_602, 55_228, 55_333, 2_110_034, 2_110_065, 2_110_096, 2_110_125, 2_110_140,
+                2_110_143, 2_202_041, 2_204_471, 2_207_252, 2_302_121, 2_404_261, 2_404_271,
+                3_003_052, 3_003_411
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");
