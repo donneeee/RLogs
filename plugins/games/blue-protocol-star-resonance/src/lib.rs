@@ -306,7 +306,7 @@ pub use use_skill_attr::{
 pub use weapon_presentation::{
     WeaponLevelPresentation, WeaponPresentation, weapon_level_presentation, weapon_presentation,
 };
-pub use website::{BpsrWebsiteProfileError, website_profile_request};
+pub use website::{BPSR_PROFILE_ENDPOINT, BpsrWebsiteProfileError, website_profile_request};
 
 #[cfg(test)]
 mod manifest_tests {

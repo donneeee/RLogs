@@ -1,14 +1,23 @@
 const PUBLIC_ROUTES = [
   ["GET", /^\/health$/],
+  ["GET", /^\/v1\/auth\/config$/],
+  ["GET", /^\/v1\/auth\/discord\/start$/],
+  ["GET", /^\/v1\/auth\/discord\/callback$/],
+  ["GET", /^\/v1\/auth\/me$/],
   ["GET", /^\/v1\/parses$/],
   ["GET", /^\/v1\/parses\/[A-Za-z0-9_-]+$/],
   ["GET", /^\/v1\/run-groups\/[A-Za-z0-9_-]+\/reconciliation$/],
+  ["GET", /^\/v1\/profiles$/],
+  ["GET", /^\/v1\/profiles\/prf_[a-z0-9_]+$/],
 ];
 
 const INGEST_ROUTES = [
   ["POST", /^\/v1\/uploads$/],
+  ["POST", /^\/v1\/auth\/session\/exchange$/],
+  ["POST", /^\/v1\/auth\/app-tokens$/],
   ["PUT", /^\/v1\/uploads\/[A-Za-z0-9_-]+\/chunks\/[0-9]+$/],
   ["POST", /^\/v1\/uploads\/[A-Za-z0-9_-]+\/finalize$/],
+  ["POST", /^\/v1\/games\/blue-protocol-star-resonance\/profiles$/],
 ];
 
 function corsHeaders(origin, allowedOrigin) {

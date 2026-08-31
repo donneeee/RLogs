@@ -45,6 +45,18 @@ export interface ProfileProjectionResult {
   external_network_requests: 0;
 }
 
+export interface ProfilePublishResult {
+  schema_version: 1;
+  profile_id: string;
+  character_id: string;
+  package_id: string;
+  claimed: boolean;
+  duplicate: boolean;
+  module_inventory_count: number;
+  equipped_module_count: number;
+  profile_url: string;
+}
+
 export function parseProfilePackageStore(
   value: unknown,
 ): ProfilePackageStoreView {
@@ -111,6 +123,27 @@ export function parseProfileProjectionResult(
     throw new Error("The local host returned an invalid profile projection.");
   }
   return value as unknown as ProfileProjectionResult;
+}
+
+export function parseProfilePublishResult(value: unknown): ProfilePublishResult {
+  if (
+    !isRecord(value) ||
+    value.schema_version !== 1 ||
+    typeof value.profile_id !== "string" ||
+    !/^prf_[0-9a-f]{32}$/u.test(value.profile_id) ||
+    typeof value.character_id !== "string" ||
+    value.character_id.length === 0 ||
+    !isSha256(value.package_id) ||
+    value.claimed !== true ||
+    typeof value.duplicate !== "boolean" ||
+    !isSafeCount(value.module_inventory_count) ||
+    !isSafeCount(value.equipped_module_count) ||
+    typeof value.profile_url !== "string" ||
+    !value.profile_url.startsWith("https://")
+  ) {
+    throw new Error("The local host returned an invalid profile publication receipt.");
+  }
+  return value as unknown as ProfilePublishResult;
 }
 
 function isProfilePackageView(value: unknown): value is ProfilePackageView {

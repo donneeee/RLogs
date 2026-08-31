@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseProfilePackageInspection,
   parseProfilePackageStore,
+  parseProfilePublishResult,
   parseProfileProjectionResult,
 } from "./profile-packages";
 
@@ -100,5 +101,20 @@ describe("profile package contracts", () => {
         external_network_requests: 1,
       }),
     ).toThrow("invalid profile projection");
+  });
+
+  it("validates an authenticated UID claim receipt with module counts", () => {
+    const result = parseProfilePublishResult({
+      schema_version: 1,
+      profile_id: `prf_${"a".repeat(32)}`,
+      character_id: "123",
+      package_id: "b".repeat(64),
+      claimed: true,
+      duplicate: false,
+      module_inventory_count: 649,
+      equipped_module_count: 5,
+      profile_url: `https://example.test/?profile=prf_${"a".repeat(32)}#profile-lab`,
+    });
+    expect(result.module_inventory_count).toBe(649);
   });
 });

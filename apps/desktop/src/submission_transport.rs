@@ -10,6 +10,7 @@ use reqwest::{
     Url,
     blocking::{Client, RequestBuilder},
 };
+use rlogs_profiles::LocalProfilePackage;
 use rlogs_submission::{
     LogChunkDescriptor, QueuedSubmission, ServerReportReceipt, Sha256Digest, SubmissionState,
     VerificationTier,
@@ -41,6 +42,19 @@ pub struct SubmissionTransportResult {
     pub uploaded_bytes: u64,
     pub resumed: bool,
     pub duplicate: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ProfilePublishResult {
+    pub schema_version: u16,
+    pub profile_id: String,
+    pub character_id: String,
+    pub package_id: String,
+    pub claimed: bool,
+    pub duplicate: bool,
+    pub module_inventory_count: usize,
+    pub equipped_module_count: usize,
+    pub profile_url: String,
 }
 
 impl SubmissionTransport {
@@ -255,6 +269,39 @@ impl SubmissionTransport {
             resumed,
             finalized.duplicate,
         ))
+    }
+
+    pub fn publish_profile(
+        &self,
+        package: &LocalProfilePackage,
+    ) -> Result<ProfilePublishResult, String> {
+        package
+            .validate()
+            .map_err(|error| format!("profile package is invalid: {error}"))?;
+        let expected_endpoint = "/v1/games/blue-protocol-star-resonance/profiles";
+        if package.request.relative_endpoint != expected_endpoint {
+            return Err("profile package targets an unsupported endpoint".into());
+        }
+        let response: ProfilePublishResult = self
+            .authorized(
+                self.client
+                    .post(self.url(expected_endpoint.trim_start_matches('/'))?)
+                    .json(package),
+            )
+            .send()
+            .map_err(|error| format!("profile receiver could not publish the package: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("profile receiver rejected the package: {error}"))?
+            .json()
+            .map_err(|error| format!("profile receiver returned an invalid receipt: {error}"))?;
+        if response.schema_version != 1
+            || response.package_id != package.package_id
+            || response.character_id != package.request.payload.routing["character-id"]
+            || !response.claimed
+        {
+            return Err("profile publication receipt did not match the sealed package".into());
+        }
+        Ok(response)
     }
 
     #[allow(clippy::too_many_arguments)]

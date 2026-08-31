@@ -14,7 +14,7 @@ use axum::{
     body::Bytes,
     extract::{DefaultBodyLimit, Path as AxumPath, Query, State},
     http::{HeaderMap, StatusCode, header::AUTHORIZATION},
-    response::{IntoResponse, Response},
+    response::{IntoResponse, Redirect, Response},
     routing::{get, post, put},
 };
 use reqwest::Url;
@@ -43,9 +43,20 @@ use thiserror::Error;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use uuid::Uuid;
 
+mod accounts;
 mod github_archive;
+mod profiles;
 
+use accounts::{
+    AccountError, AccountStore, AccountView, AppTokenReceipt, DiscordConfiguration,
+    WebSessionReceipt,
+};
 use github_archive::{ArchiveJob, GithubArchive};
+use profiles::{
+    ProfilePublishReceipt, ProfileRegistry, ProfileRegistryError, PublicProfile,
+    PublicProfileCatalog,
+};
+use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 6;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 5;
@@ -142,6 +153,8 @@ struct ServiceInner {
     public_site_url: String,
     authentication: SubmissionAuthentication,
     github_archive: Option<GithubArchive>,
+    accounts: AccountStore,
+    profiles: ProfileRegistry,
     writes: Mutex<()>,
 }
 
@@ -334,15 +347,22 @@ impl SubmissionService {
             "reconciliations",
             "archive-outbox",
             "archive-receipts",
+            "profiles",
         ] {
             std::fs::create_dir_all(root.join(relative))?;
         }
+        let public_site_url = public_site_url.trim_end_matches('/').to_owned();
+        let discord_configuration = DiscordConfiguration::from_environment(&public_site_url)?;
+        let accounts = AccountStore::open(root.join("accounts"), discord_configuration)?;
+        let profiles = ProfileRegistry::open(root.join("profiles"), public_site_url.clone())?;
         let service = Self {
             inner: Arc::new(ServiceInner {
                 root,
-                public_site_url: public_site_url.trim_end_matches('/').into(),
+                public_site_url,
                 authentication,
                 github_archive,
+                accounts,
+                profiles,
                 writes: Mutex::new(()),
             }),
         };
@@ -519,6 +539,29 @@ impl SubmissionService {
             return Err(ServiceError::NotFound);
         }
         Ok(report)
+    }
+
+    fn publish_profile(
+        &self,
+        package: LocalProfilePackage,
+        owner: &UploadOwner,
+    ) -> Result<ProfilePublishReceipt, ServiceError> {
+        let _write = self.write_guard();
+        Ok(self
+            .inner
+            .profiles
+            .publish(package, owner.submitter_id.as_deref(), unix_millis()?)?)
+    }
+
+    fn profile(&self, profile_id: &str) -> Result<PublicProfile, ServiceError> {
+        Ok(self.inner.profiles.get(profile_id)?)
+    }
+
+    fn profile_catalog(
+        &self,
+        query: &ProfileCatalogQuery,
+    ) -> Result<PublicProfileCatalog, ServiceError> {
+        Ok(self.inner.profiles.catalog(query.character_id.as_deref())?)
     }
 
     pub fn reconciliation(
@@ -1264,6 +1307,12 @@ impl SubmissionService {
 pub fn router(service: SubmissionService) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/v1/auth/config", get(auth_config))
+        .route("/v1/auth/discord/start", get(begin_discord_auth))
+        .route("/v1/auth/discord/callback", get(complete_discord_auth))
+        .route("/v1/auth/session/exchange", post(exchange_auth_code))
+        .route("/v1/auth/me", get(get_account))
+        .route("/v1/auth/app-tokens", post(issue_app_token))
         .route("/v1/uploads", post(begin_upload))
         .route(
             "/v1/uploads/{upload_id}/chunks/{sequence}",
@@ -1272,6 +1321,12 @@ pub fn router(service: SubmissionService) -> Router {
         .route("/v1/uploads/{upload_id}/finalize", post(finalize_upload))
         .route("/v1/parses", get(list_parses))
         .route("/v1/parses/{report_id}", get(get_parse))
+        .route(
+            "/v1/games/blue-protocol-star-resonance/profiles",
+            post(publish_bpsr_profile),
+        )
+        .route("/v1/profiles", get(list_profiles))
+        .route("/v1/profiles/{profile_id}", get(get_profile))
         .route(
             "/v1/run-groups/{run_group_id}/reconciliation",
             get(get_run_reconciliation),
@@ -1284,6 +1339,71 @@ pub fn router(service: SubmissionService) -> Router {
 
 async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({"status":"ok","service":"rlogs-submissions","schema_version":1}))
+}
+
+async fn auth_config(State(service): State<SubmissionService>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "schema_version": 1,
+        "discord_enabled": service.inner.accounts.configured(),
+        "desktop_authentication": "bearer_app_token"
+    }))
+}
+
+async fn begin_discord_auth(
+    State(service): State<SubmissionService>,
+) -> Result<Redirect, ApiError> {
+    let url = service.inner.accounts.begin_discord_login(unix_millis()?)?;
+    Ok(Redirect::temporary(&url))
+}
+
+async fn complete_discord_auth(
+    State(service): State<SubmissionService>,
+    Query(query): Query<DiscordCallbackQuery>,
+) -> Result<Redirect, ApiError> {
+    let url = service
+        .inner
+        .accounts
+        .complete_discord_login(&query.code, &query.state, unix_millis()?)
+        .await?;
+    Ok(Redirect::temporary(&url))
+}
+
+async fn exchange_auth_code(
+    State(service): State<SubmissionService>,
+    Json(request): Json<LoginCodeExchangeRequest>,
+) -> Result<Json<WebSessionReceipt>, ApiError> {
+    Ok(Json(
+        service
+            .inner
+            .accounts
+            .exchange_login_code(&request.code, unix_millis()?)?,
+    ))
+}
+
+async fn get_account(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+) -> Result<Json<AccountView>, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    Ok(Json(
+        service
+            .inner
+            .accounts
+            .authenticate_web(token, unix_millis()?)?,
+    ))
+}
+
+async fn issue_app_token(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+) -> Result<Json<AppTokenReceipt>, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    Ok(Json(
+        service
+            .inner
+            .accounts
+            .issue_device_token(token, unix_millis()?)?,
+    ))
 }
 
 async fn begin_upload(
@@ -1330,6 +1450,32 @@ async fn get_parse(
     Ok(Json(service.report(&report_id)?))
 }
 
+async fn publish_bpsr_profile(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+    Json(package): Json<LocalProfilePackage>,
+) -> Result<Json<ProfilePublishReceipt>, ApiError> {
+    let owner = authorize(&service, &headers).await?;
+    if owner.submitter_id.is_none() {
+        return Err(ApiError::Unauthorized);
+    }
+    Ok(Json(service.publish_profile(package, &owner)?))
+}
+
+async fn list_profiles(
+    State(service): State<SubmissionService>,
+    Query(query): Query<ProfileCatalogQuery>,
+) -> Result<Json<PublicProfileCatalog>, ApiError> {
+    Ok(Json(service.profile_catalog(&query)?))
+}
+
+async fn get_profile(
+    State(service): State<SubmissionService>,
+    AxumPath(profile_id): AxumPath<String>,
+) -> Result<Json<PublicProfile>, ApiError> {
+    Ok(Json(service.profile(&profile_id)?))
+}
+
 async fn get_run_reconciliation(
     State(service): State<SubmissionService>,
     AxumPath(run_group_id): AxumPath<String>,
@@ -1341,6 +1487,22 @@ async fn authorize(
     service: &SubmissionService,
     headers: &HeaderMap,
 ) -> Result<UploadOwner, ApiError> {
+    if let Some(token) = bearer_token(headers).filter(|token| token.starts_with("rld_")) {
+        let identity = service
+            .inner
+            .accounts
+            .authenticate_device(token)
+            .map_err(|error| match error {
+                AccountError::NotConfigured | AccountError::Unauthorized => ApiError::Unauthorized,
+                other => ApiError::Account(other),
+            })?;
+        return Ok(UploadOwner {
+            schema_version: UPLOAD_OWNER_SCHEMA_VERSION,
+            submitter_id: Some(identity.submitter_id),
+            device_id: Some(identity.device_id),
+            authentication: "device_token".into(),
+        });
+    }
     match &service.inner.authentication {
         SubmissionAuthentication::UnauthenticatedDevelopment => Ok(UploadOwner {
             schema_version: UPLOAD_OWNER_SCHEMA_VERSION,
@@ -1438,6 +1600,18 @@ struct IntrospectionResponse {
     submitter_id: Option<String>,
     device_id: Option<String>,
     authentication: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DiscordCallbackQuery {
+    code: String,
+    state: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LoginCodeExchangeRequest {
+    code: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1672,6 +1846,11 @@ pub struct CatalogQuery {
     pub terminal: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ProfileCatalogQuery {
+    pub character_id: Option<String>,
 }
 
 impl CatalogQuery {
@@ -3646,6 +3825,10 @@ pub enum ServiceError {
     CatalogTooLarge,
     #[error("private GitHub research archive failed: {0}")]
     GithubArchive(String),
+    #[error(transparent)]
+    Account(#[from] AccountError),
+    #[error(transparent)]
+    Profile(#[from] ProfileRegistryError),
     #[error("requested resource was not found")]
     NotFound,
     #[error("system clock is before the Unix epoch")]
@@ -3668,12 +3851,19 @@ pub enum ServiceError {
 enum ApiError {
     Unauthorized,
     AuthenticationUnavailable,
+    Account(AccountError),
     Service(ServiceError),
 }
 
 impl From<ServiceError> for ApiError {
     fn from(value: ServiceError) -> Self {
         Self::Service(value)
+    }
+}
+
+impl From<AccountError> for ApiError {
+    fn from(value: AccountError) -> Self {
+        Self::Account(value)
     }
 }
 
@@ -3688,9 +3878,43 @@ impl IntoResponse for ApiError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 "write authentication is temporarily unavailable".into(),
             ),
+            Self::Account(AccountError::NotConfigured) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "account authentication is not configured".into(),
+            ),
+            Self::Account(AccountError::Unauthorized) => (
+                StatusCode::UNAUTHORIZED,
+                "account authentication failed".into(),
+            ),
+            Self::Account(AccountError::InvalidOrExpiredCode) => (
+                StatusCode::BAD_REQUEST,
+                "login code is invalid or expired".into(),
+            ),
+            Self::Account(AccountError::DiscordUnavailable) => (
+                StatusCode::BAD_GATEWAY,
+                "Discord authentication is temporarily unavailable".into(),
+            ),
+            Self::Account(error) => (StatusCode::BAD_REQUEST, error.to_string()),
             Self::Service(ServiceError::NotFound) => {
                 (StatusCode::NOT_FOUND, "resource not found".into())
             }
+            Self::Service(ServiceError::Profile(ProfileRegistryError::NotFound)) => {
+                (StatusCode::NOT_FOUND, "profile not found".into())
+            }
+            Self::Service(ServiceError::Profile(ProfileRegistryError::AuthenticationRequired)) => (
+                StatusCode::UNAUTHORIZED,
+                "profile publication requires authentication".into(),
+            ),
+            Self::Service(ServiceError::Profile(ProfileRegistryError::ClaimConflict {
+                character_id,
+            })) => (
+                StatusCode::CONFLICT,
+                format!("UID {character_id} is already claimed by another user"),
+            ),
+            Self::Service(ServiceError::Profile(ProfileRegistryError::StalePackage)) => (
+                StatusCode::CONFLICT,
+                "a newer profile is already published".into(),
+            ),
             Self::Service(error) => (StatusCode::BAD_REQUEST, error.to_string()),
         };
         (status, Json(serde_json::json!({"error": message}))).into_response()

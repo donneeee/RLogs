@@ -3444,6 +3444,7 @@ dependencies = [
  "rlogs-log-format",
  "rlogs-plugin-combat-meter",
  "rlogs-plugin-encounter-recorder",
+ "rlogs-profiles",
  "rlogs-submission",
  "serde",
  "serde_json",
@@ -3453,6 +3454,7 @@ dependencies = [
  "tokio",
  "tower",
  "tower-http 0.7.0",
+ "url",
  "uuid",
 ]
 

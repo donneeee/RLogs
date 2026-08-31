@@ -52,6 +52,7 @@ import {
   type ProfilePackageStoreView,
   parseProfilePackageInspection,
   parseProfilePackageStore,
+  parseProfilePublishResult,
   parseProfileProjectionResult,
 } from "./profile-packages";
 import { projectedRunCount } from "./run-projection";
@@ -1093,7 +1094,7 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
     "",
     "https://rlogs-submissions.example.workers.dev",
   );
-  const token = field("Invited tester token", "password", "", "Paste the token once");
+  const token = field("rLogs app token", "password", "", "Paste the account token once");
   token.input.autocomplete = "new-password";
   const actions = document.createElement("div");
   actions.className = "runtime-card-actions submission-policy-actions";
@@ -1123,7 +1124,7 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
     message.classList.remove("error");
     message.textContent = view.endpointUrl
       ? "Receiver connected. Enable Log Uploader below to permit submissions."
-      : "Enter the invited endpoint and token to connect this PC.";
+      : "Sign in on the rLogs website, create an app token, then connect this PC. The token stays in Windows Credential Manager.";
   };
 
   const load = () =>
@@ -2571,7 +2572,7 @@ function mountSubmissionPolicyOptionsSurface(
     isUploader ? "Enable Log Uploader" : "Enable BPSR Profile Sync",
     isUploader
       ? "Permits local dry runs and verified uploads to the connected receiver."
-      : "Reserves permission for profile projection and submission; neither is connected yet.",
+      : "Permits sealed local profile projection and authenticated UID publication to the connected receiver.",
   );
   const automatic = checkboxOption(
     isUploader
@@ -2579,7 +2580,7 @@ function mountSubmissionPolicyOptionsSurface(
       : "Automatically sync character profiles",
     isUploader
       ? "Uploads completed sealed logs when a receiver is connected. Local drafts are still created either way."
-      : "Applies only after a profile projection and external transport exist.",
+      : "Builds current per-character packages automatically; publication remains explicit until the authenticated auto-sync queue is enabled.",
   );
   form.append(enable.label, automatic.label);
 
@@ -2661,7 +2662,9 @@ function mountSubmissionPolicyOptionsSurface(
         ? view.transport_mode === "http"
           ? `Verified uploads will use ${view.endpoint_url}.`
           : "Set RLOGS_SUBMISSION_API_URL and restart rLogs to connect a receiver."
-        : "Profile projection and external networking remain unavailable in this build.");
+        : view.transport_mode === "http"
+          ? `Authenticated profile publication will use ${view.endpoint_url}.`
+          : "Connect the authenticated rLogs receiver before publishing profiles.");
     save.disabled = false;
   };
 
@@ -2776,7 +2779,7 @@ function mountProfileSyncStatusSurface(
   inspection.hidden = true;
   const boundary = actionCard(
     "Current boundary",
-    "Projection and local review are implemented. Device pairing, authentication, automatic external submission, and website transport remain disconnected. Building a package makes zero external requests.",
+    "Local projection makes zero external requests. Publishing is a separate authenticated action: the first valid personal package claims that region-scoped UID, and only the same account can publish newer state. Modules remain attached to that character ID.",
   );
   root.append(heading, status, content, inspection, boundary);
   container.append(root);
@@ -2896,6 +2899,8 @@ function mountProfileSyncStatusSurface(
         actions.className =
           "runtime-card-actions submission-verification-actions";
         const inspectButton = button("Inspect exact JSON", "quiet-button");
+        const publishButton = button("Claim UID and publish", "primary-button");
+        publishButton.disabled = policy.transport_mode !== "http";
         const inspectMessage = text(
           "span",
           `${formatBytes(profile.package_byte_length)} · local review only`,
@@ -2927,7 +2932,38 @@ function mountProfileSyncStatusSurface(
             inspectButton.disabled = false;
           }
         });
-        actions.append(inspectButton, inspectMessage);
+        publishButton.addEventListener("click", async () => {
+          publishButton.disabled = true;
+          inspectMessage.classList.remove("error");
+          inspectMessage.textContent = "Authenticating and publishing the sealed profile…";
+          try {
+            const receipt = parseProfilePublishResult(
+              await apiJson<unknown>("/api/profiles/packages/publish", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ packageId: profile.package_id }),
+              }),
+            );
+            if (alive) {
+              const link = document.createElement("a");
+              link.href = receipt.profile_url;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.textContent = receipt.duplicate
+                ? "Open already-published profile"
+                : `UID claimed · ${receipt.module_inventory_count.toLocaleString()} modules published`;
+              inspectMessage.replaceChildren(link);
+            }
+          } catch (error) {
+            if (alive) {
+              inspectMessage.textContent = errorMessage(error);
+              inspectMessage.classList.add("error");
+            }
+          } finally {
+            if (alive) publishButton.disabled = policy.transport_mode !== "http";
+          }
+        });
+        actions.append(publishButton, inspectButton, inspectMessage);
         card.append(header, details, actions);
         list.append(card);
       }

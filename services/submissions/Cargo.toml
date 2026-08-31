@@ -11,6 +11,7 @@ rlogs-game-bpsr = { path = "../../plugins/games/blue-protocol-star-resonance" }
 rlogs-combat = { path = "../../engine/combat" }
 rlogs-events = { path = "../../engine/events" }
 rlogs-log-format = { path = "../../engine/log-format" }
+rlogs-profiles = { path = "../../engine/profiles" }
 rlogs-plugin-combat-meter = { path = "../../plugins/builtin/combat-meter" }
 rlogs-plugin-encounter-recorder = { path = "../../plugins/builtin/encounter-recorder" }
 rlogs-submission = { path = "../../engine/submission" }
@@ -22,6 +23,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
 uuid.workspace = true
+url = "2.5.8"
 
 [dev-dependencies]
 tempfile = "3.27.0"

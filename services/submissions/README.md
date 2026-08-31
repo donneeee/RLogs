@@ -1,6 +1,6 @@
 # Submission service
 
-This service is the first non-leaderboard website backend for rLogs. It owns:
+This service is the first website backend for rLogs. It owns:
 
 - resumable, digest-verified `.rlog` ingestion;
 - private content-addressed artifact storage;
@@ -9,10 +9,13 @@ This service is the first non-leaderboard website backend for rLogs. It owns:
 - uploader provenance kept separate from every character in a parse;
 - exact-instance run groups that retain every contributing report instead of
   silently choosing or merging one observer's timeline;
+- Discord-backed website accounts and one-time desktop app-token issuance;
+- immutable first-owner UID claims from sealed personal profile evidence;
+- current per-character profile and module publication;
 - a public browse catalog whose region, activity, scene, difficulty, and run
   state filters are derived from accepted reports.
 
-It does **not** implement accounts, profiles, rankings, or leaderboard scores.
+It does **not** implement rankings or leaderboard scores.
 The raw artifact is never served by a public endpoint. Public projections are
 server-produced and retain exact client-build and protocol-pack provenance.
 
@@ -48,11 +51,39 @@ disposable, deliberately unauthenticated test can override that guard with
 that override. `RLOGS_INGEST_KEY` remains a temporary single-developer fallback
 and cannot be combined with introspection.
 
-The private provider returns a submitter ID and device ID. The receiver stores
-both only while an upload is incomplete, uses them to prevent one device from
-claiming another device's interrupted upload, and publishes only the submitter
-identity. Provisioning, token hashes, revocation, and account mapping do not
-belong to this public service.
+An external introspection provider remains supported for deployments that
+already have an identity service. It returns a submitter ID and device ID; the
+receiver never stores the forwarded bearer token. The built-in Discord flow
+below provides the same identity contract for this deployment.
+
+## Accounts, app tokens, and UID claims
+
+The website authentication flow intentionally follows the original 2025
+Resonance Logs boundary: a user signs in with Discord, receives a short-lived
+website session, and explicitly generates a desktop app token. Plaintext web
+and app tokens are returned only at issuance and only peppered SHA-256 digests
+are persisted. The desktop stores its app token in Windows Credential Manager.
+
+Configure all four values together before starting the receiver:
+
+```powershell
+$env:RLOGS_DISCORD_CLIENT_ID = "Discord application client ID"
+$env:RLOGS_DISCORD_CLIENT_SECRET = "Discord application client secret"
+$env:RLOGS_PUBLIC_API_URL = "https://rlogs-submissions.example.workers.dev"
+$env:RLOGS_AUTH_TOKEN_PEPPER = "at least 32 random characters"
+```
+
+The Discord application redirect URI must be the stable API origin followed by
+`/v1/auth/discord/callback`. OAuth state and login codes are bounded,
+single-use records. Browser sessions expire after 30 days. App tokens are
+independent per device and never appear in a public profile.
+
+The first authenticated `current.profile.json` for an exact
+deployment/region/realm-or-world/character-ID tuple claims that UID. A
+different account receives HTTP 409 and cannot replace it. The same owner can
+publish only a newer sealed package. The public profile retains the complete
+privacy-reviewed BPSR envelope, including module inventory and equipped-slot
+state under that character ID.
 
 ## Private GitHub research archive
 
@@ -303,6 +334,10 @@ receiver when testing expands beyond the initial invited sample.
 artifacts/sha256/<prefix>/<digest>.rlog  private immutable source artifacts
 projections/<report-id>.json            public-safe server projections
 reconciliations/<run-group-id>.json      derived cross-vantage evidence manifests
+accounts/                                private account, session, and token-hash records
+profiles/<profile-id>/claim.json         private immutable UID owner mapping
+profiles/<profile-id>/public.json        public current character profile and modules
+profiles/catalog.v1.json                 rebuildable public profile catalog
 uploads/<upload-id>/                     resumable temporary chunks
 archive-outbox/<report-id>.json           retryable private archive jobs
 archive-receipts/<report-id>.json         completed private archive receipts

@@ -109,7 +109,7 @@ use serde::{Deserialize, Serialize};
 use submission_connection::{SubmissionConnectionStore, SubmissionConnectionView};
 use submission_policy::{SubmissionPolicy, SubmissionPolicyStore, SubmissionPolicyView};
 use submission_queue::{LocalSubmissionQueue, QueueInsertOutcome, SubmissionQueueView};
-use submission_transport::{SubmissionTransport, SubmissionTransportResult};
+use submission_transport::{ProfilePublishResult, SubmissionTransport, SubmissionTransportResult};
 use theme_settings::{ThemeSettings, ThemeSettingsStore};
 #[cfg(windows)]
 use windows_sys::Win32::{
@@ -2447,6 +2447,12 @@ struct ProfilePackageInspectionRequest {
     package_id: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ProfilePackagePublishRequest {
+    package_id: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct ProfileProjectionResult {
     schema_version: u16,
@@ -4079,6 +4085,35 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .inspect(&request.package_id)
+    }
+
+    fn publish_profile_package(
+        &self,
+        request: ProfilePackagePublishRequest,
+    ) -> Result<ProfilePublishResult, String> {
+        let policy = self
+            .submission_policy
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .policy()
+            .bpsr_profile_sync
+            .clone();
+        if !policy.enabled {
+            return Err("BPSR Profile Sync is disabled; enable it before publishing".into());
+        }
+        let package = self
+            .profile_packages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .inspect(&request.package_id)?
+            .package;
+        let transport = self
+            .submission_transport
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or_else(|| "connect an authenticated submission receiver first".to_owned())?;
+        transport.publish_profile(&package)
     }
 
     fn project_last_profile_packages(&self) -> Result<ProfileProjectionResult, String> {
@@ -8815,6 +8850,20 @@ fn handle_connection(
                 };
             match controller.inspect_profile_package(request) {
                 Ok(package) => write_json(&mut stream, 200, &package)?,
+                Err(error) => write_api_error(&mut stream, 409, error)?,
+            }
+        }
+        ("POST", "/api/profiles/packages/publish") => {
+            let request: ProfilePackagePublishRequest = match serde_json::from_slice(&request.body)
+            {
+                Ok(request) => request,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            match controller.publish_profile_package(request) {
+                Ok(receipt) => write_json(&mut stream, 200, &receipt)?,
                 Err(error) => write_api_error(&mut stream, 409, error)?,
             }
         }
