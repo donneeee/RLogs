@@ -2584,11 +2584,35 @@ export function mergeProjectedActorPresentation(
   return {
     ...projected,
     entity_uuid: live.entity_uuid ?? projected.entity_uuid,
-    display_name: live.display_name?.trim() || projected.display_name,
+    display_name: preferredOverlayDisplayName(live.display_name, projected.display_name),
     actor_kind: live.actor_kind ?? projected.actor_kind,
     monster_id: live.monster_id ?? projected.monster_id,
     presentation,
   };
+}
+
+/**
+ * The terminal live snapshot can be less complete than the frozen run
+ * projection while capture ownership changes hands. A generic player label or
+ * public UID is useful as a final fallback, but it must never replace a real
+ * name that the completed projection already retained.
+ */
+export function preferredOverlayDisplayName(
+  liveName: string | null | undefined,
+  projectedName: string | null | undefined,
+): string | null {
+  const live = liveName?.trim() || null;
+  const projected = projectedName?.trim() || null;
+  if (live !== null && !overlayDisplayNameIsPlaceholder(live)) return live;
+  if (projected !== null && !overlayDisplayNameIsPlaceholder(projected)) return projected;
+  return live ?? projected;
+}
+
+function overlayDisplayNameIsPlaceholder(name: string): boolean {
+  const folded = name.trim().toLowerCase();
+  if (/^\d+$/.test(folded)) return true;
+  return ["player", "actor", "uid", "unknown"].some((prefix) =>
+    folded === prefix || new RegExp(`^${prefix}\\s+\\d+$`).test(folded));
 }
 
 function projectedActorToOverlayActor(actor: OverlayActor | OverlayHistoryActor): OverlayActor {

@@ -14,6 +14,7 @@ import {
   normalizeHeaderViewGeometry,
   parseCombatOverlaySettings,
   planCombatOverlayVisibility,
+  preferredOverlayDisplayName,
   shouldIgnoreCombatOverlayCursor,
   shouldKeepCombatVisibilityTimer,
 } from "../../../../../plugins/builtin/desktop/combat-overlay/ui/combat-overlay";
@@ -279,6 +280,14 @@ describe("Combat Overlay plug-in settings", () => {
       },
     });
     expect(merged.presentation?.primary_imagines.map((imagine) => imagine.item_id)).toEqual([10_001]);
+  });
+
+  it("does not replace a completed run name with a terminal UID fallback", () => {
+    expect(preferredOverlayDisplayName("UID 3296036", "MarieRose")).toBe("MarieRose");
+    expect(preferredOverlayDisplayName("3296036", "MarieRose")).toBe("MarieRose");
+    expect(preferredOverlayDisplayName("Player 6", "MarieRose")).toBe("MarieRose");
+    expect(preferredOverlayDisplayName("CurrentName", "MarieRose")).toBe("CurrentName");
+    expect(preferredOverlayDisplayName("UID 3296036", null)).toBe("UID 3296036");
   });
 
   it("labels live combatants by name, character UID, then exact entity identity", () => {

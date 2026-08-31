@@ -5258,9 +5258,18 @@ impl RuntimeController {
                                     }
                                     match live_meter.live_overlay_snapshot() {
                                         Ok(mut snapshot) => {
+                                            // The terminal event moves the completed run's
+                                            // capture-time identities into the frozen ledger
+                                            // before clearing the ledger for the next run.
+                                            // Use that same frozen evidence for this final live
+                                            // publication so the overlay cannot regress from a
+                                            // public name to a UID at run completion.
+                                            let live_identities = frozen_capture_time_identities
+                                                .as_ref()
+                                                .unwrap_or(&capture_time_identities);
                                             enrich_bpsr_live_character_state(
                                                 &mut snapshot,
-                                                &capture_time_identities,
+                                                live_identities,
                                                 LiveCharacterIdentityAuthority::CaptureTime,
                                             );
                                             enrich_bpsr_live_character_state(
