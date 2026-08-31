@@ -1,9 +1,10 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
 use rlogs_profiles::LocalProfilePackage;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const PROFILE_PACKAGE_STORE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_PROFILE_PACKAGE_BYTES: u64 = 9 * 1024 * 1024;
@@ -11,6 +12,9 @@ const MAXIMUM_PROFILE_PACKAGES: usize = 512;
 const MAXIMUM_DISCOVERED_ENTRIES: usize = 4_096;
 const MAXIMUM_COMPONENT_BYTES: usize = 128;
 const PROFILE_PACKAGE_DIRECTORY_DEPTH: usize = 5;
+const PROFILE_PUBLICATION_LEDGER_SCHEMA_VERSION: u16 = 1;
+const MAXIMUM_PROFILE_PUBLICATION_LEDGER_BYTES: u64 = 512 * 1024;
+const MAXIMUM_PROFILE_PUBLICATION_RECORDS: usize = 512;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ProfilePackageStoreView {
@@ -66,6 +70,159 @@ struct StoredProfilePackage {
     path: PathBuf,
     byte_length: u64,
     package: LocalProfilePackage,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProfilePublicationRecord {
+    pub package_id: String,
+    pub profile_id: String,
+    pub character_id: String,
+    pub published_unix_millis: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredProfilePublicationLedger {
+    schema_version: u16,
+    records: Vec<ProfilePublicationRecord>,
+}
+
+#[derive(Debug)]
+pub struct ProfilePublicationLedger {
+    path: PathBuf,
+    records: BTreeMap<String, ProfilePublicationRecord>,
+}
+
+impl ProfilePublicationLedger {
+    pub fn open(path: PathBuf) -> Result<Self, String> {
+        let parent = path
+            .parent()
+            .ok_or_else(|| "profile publication ledger path has no parent".to_owned())?;
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("could not create profile publication folder: {error}"))?;
+        let stored = match std::fs::metadata(&path) {
+            Ok(metadata) => {
+                if !metadata.is_file() || metadata.len() > MAXIMUM_PROFILE_PUBLICATION_LEDGER_BYTES
+                {
+                    return Err("profile publication ledger is not a bounded regular file".into());
+                }
+                let bytes = std::fs::read(&path).map_err(|error| {
+                    format!("could not read profile publication ledger: {error}")
+                })?;
+                Some(
+                    serde_json::from_slice::<StoredProfilePublicationLedger>(&bytes).map_err(
+                        |error| format!("profile publication ledger JSON is invalid: {error}"),
+                    )?,
+                )
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(format!(
+                    "could not inspect profile publication ledger: {error}"
+                ));
+            }
+        };
+        let mut records = BTreeMap::new();
+        if let Some(stored) = stored {
+            if stored.schema_version != PROFILE_PUBLICATION_LEDGER_SCHEMA_VERSION {
+                return Err(format!(
+                    "profile publication ledger uses unsupported schema {}; expected {PROFILE_PUBLICATION_LEDGER_SCHEMA_VERSION}",
+                    stored.schema_version
+                ));
+            }
+            if stored.records.len() > MAXIMUM_PROFILE_PUBLICATION_RECORDS {
+                return Err(format!(
+                    "profile publication ledger exceeds its {MAXIMUM_PROFILE_PUBLICATION_RECORDS}-record safety limit"
+                ));
+            }
+            for record in stored.records {
+                validate_publication_record(&record)?;
+                if records.insert(record.package_id.clone(), record).is_some() {
+                    return Err("profile publication ledger contains a duplicate package ID".into());
+                }
+            }
+        }
+        Ok(Self { path, records })
+    }
+
+    pub fn is_published(&self, package_id: &str) -> bool {
+        self.records.contains_key(package_id)
+    }
+
+    pub fn reconcile(&mut self, active_package_ids: &BTreeSet<String>) -> Result<(), String> {
+        let mut candidate = self.records.clone();
+        candidate.retain(|package_id, _| active_package_ids.contains(package_id));
+        if candidate == self.records {
+            return Ok(());
+        }
+        self.persist(&candidate)?;
+        self.records = candidate;
+        Ok(())
+    }
+
+    pub fn record(
+        &mut self,
+        record: ProfilePublicationRecord,
+        active_package_ids: &BTreeSet<String>,
+    ) -> Result<(), String> {
+        validate_publication_record(&record)?;
+        if !active_package_ids.contains(&record.package_id) {
+            return Err("published profile package is no longer current locally".into());
+        }
+        let mut candidate = self.records.clone();
+        candidate.retain(|package_id, _| active_package_ids.contains(package_id));
+        candidate.insert(record.package_id.clone(), record);
+        if candidate.len() > MAXIMUM_PROFILE_PUBLICATION_RECORDS {
+            return Err(format!(
+                "profile publication ledger exceeds its {MAXIMUM_PROFILE_PUBLICATION_RECORDS}-record safety limit"
+            ));
+        }
+        self.persist(&candidate)?;
+        self.records = candidate;
+        Ok(())
+    }
+
+    fn persist(&self, records: &BTreeMap<String, ProfilePublicationRecord>) -> Result<(), String> {
+        let stored = StoredProfilePublicationLedger {
+            schema_version: PROFILE_PUBLICATION_LEDGER_SCHEMA_VERSION,
+            records: records.values().cloned().collect(),
+        };
+        let mut bytes = serde_json::to_vec_pretty(&stored)
+            .map_err(|error| format!("could not encode profile publication ledger: {error}"))?;
+        bytes.push(b'\n');
+        if bytes.len() as u64 > MAXIMUM_PROFILE_PUBLICATION_LEDGER_BYTES {
+            return Err(format!(
+                "profile publication ledger exceeds its {MAXIMUM_PROFILE_PUBLICATION_LEDGER_BYTES}-byte safety limit"
+            ));
+        }
+        atomic_write(&self.path, &bytes)
+            .map_err(|error| format!("could not persist profile publication ledger: {error}"))
+    }
+}
+
+fn validate_publication_record(record: &ProfilePublicationRecord) -> Result<(), String> {
+    if !is_sha256(&record.package_id) {
+        return Err("profile publication record package ID must be a lowercase SHA-256".into());
+    }
+    if !record.profile_id.starts_with("prf_")
+        || record.profile_id.len() != 36
+        || !record.profile_id[4..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("profile publication record profile ID is invalid".into());
+    }
+    if record.character_id.is_empty()
+        || record.character_id.len() > MAXIMUM_COMPONENT_BYTES
+        || record.character_id.contains('\0')
+    {
+        return Err("profile publication record character ID is invalid".into());
+    }
+    if record.published_unix_millis == 0 {
+        return Err("profile publication record timestamp must be positive".into());
+    }
+    Ok(())
 }
 
 impl LocalProfilePackageStore {
@@ -539,6 +696,39 @@ mod tests {
         let store = LocalProfilePackageStore::open(root.clone()).unwrap();
         assert_eq!(store.snapshot().entry_count, 0);
         assert_eq!(store.snapshot().issues.len(), 1);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn publication_ledger_persists_success_and_prunes_superseded_packages() {
+        let root = temporary_root();
+        let ledger_path = root.join("publications.v1.json");
+        let first = package(59).package_id;
+        let second = package(60).package_id;
+        let mut ledger = ProfilePublicationLedger::open(ledger_path.clone()).unwrap();
+        ledger
+            .record(
+                ProfilePublicationRecord {
+                    package_id: first.clone(),
+                    profile_id: format!("prf_{}", "b".repeat(32)),
+                    character_id: "123456".into(),
+                    published_unix_millis: 1,
+                },
+                &BTreeSet::from([first.clone(), second.clone()]),
+            )
+            .unwrap();
+        assert!(ledger.is_published(&first));
+        assert!(!ledger.is_published(&second));
+
+        let mut restored = ProfilePublicationLedger::open(ledger_path).unwrap();
+        assert!(restored.is_published(&first));
+        restored
+            .reconcile(&BTreeSet::from([second.clone()]))
+            .unwrap();
+        assert!(!restored.is_published(&first));
+
+        let restored = ProfilePublicationLedger::open(root.join("publications.v1.json")).unwrap();
+        assert!(!restored.is_published(&first));
         std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -41,7 +41,8 @@ pub use hotkey_settings::{
 use layout_settings::{LayoutSettings, LayoutSettingsStore};
 use native_plugin_processes::{NativePluginLaunch, NativePluginProcesses};
 use profile_packages::{
-    LocalProfilePackageStore, ProfilePackageInspection, ProfilePackageStoreView, ProfilePackageView,
+    LocalProfilePackageStore, ProfilePackageInspection, ProfilePackageStoreView,
+    ProfilePackageView, ProfilePublicationLedger, ProfilePublicationRecord,
 };
 use rlogs_capture::{CaptureSource, OfflineCapture};
 #[cfg(windows)]
@@ -3218,6 +3219,8 @@ struct RuntimeController {
     combat_history: Arc<Mutex<CombatHistoryStore>>,
     character_identities: Arc<Mutex<CharacterIdentityStore>>,
     profile_packages: Arc<Mutex<LocalProfilePackageStore>>,
+    profile_publications: Arc<Mutex<ProfilePublicationLedger>>,
+    profile_publication: Arc<Mutex<()>>,
     submission_policy: Mutex<SubmissionPolicyStore>,
     submission_connection: Mutex<SubmissionConnectionStore>,
     submission_transport: Mutex<Option<SubmissionTransport>>,
@@ -3257,6 +3260,16 @@ impl RuntimeController {
         let profile_packages = LocalProfilePackageStore::open(
             install_root.join("runtime-data/profile-sync/packages"),
         )?;
+        let active_profile_package_ids = profile_packages
+            .snapshot()
+            .entries
+            .into_iter()
+            .map(|entry| entry.package_id)
+            .collect::<BTreeSet<_>>();
+        let mut profile_publications = ProfilePublicationLedger::open(
+            install_root.join("runtime-data/profile-sync/publications.v1.json"),
+        )?;
+        profile_publications.reconcile(&active_profile_package_ids)?;
         let submission_policy = SubmissionPolicyStore::open(
             install_root.join("runtime-data/settings/submission-policy.v1.json"),
         )?;
@@ -3298,6 +3311,8 @@ impl RuntimeController {
             combat_history: Arc::new(Mutex::new(combat_history)),
             character_identities: Arc::new(Mutex::new(character_identities)),
             profile_packages: Arc::new(Mutex::new(profile_packages)),
+            profile_publications: Arc::new(Mutex::new(profile_publications)),
+            profile_publication: Arc::new(Mutex::new(())),
             submission_policy: Mutex::new(submission_policy),
             submission_connection: Mutex::new(submission_connection),
             submission_transport: Mutex::new(submission_transport),
@@ -3334,26 +3349,21 @@ impl RuntimeController {
                 {
                     return;
                 }
-                let automatic = controller
+                let policy = controller
                     .submission_policy
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .policy()
-                    .log_uploader
-                    .automatic_combat_logs;
-                let enabled = controller
-                    .submission_policy
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .policy()
-                    .log_uploader
-                    .enabled;
+                    .clone();
                 let connected = controller
                     .submission_transport
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .is_some();
-                if enabled && automatic && connected {
+                if policy.log_uploader.enabled
+                    && policy.log_uploader.automatic_combat_logs
+                    && connected
+                {
                     let next = controller
                         .submission_queue()
                         .entries
@@ -3375,6 +3385,18 @@ impl RuntimeController {
                                 "automatic research submission will retry after an error: {error}"
                             ),
                         }
+                    }
+                }
+                if policy.bpsr_profile_sync.enabled
+                    && policy.bpsr_profile_sync.automatic_profiles
+                    && connected
+                {
+                    match controller.publish_next_pending_profile() {
+                        Ok(true) => continue,
+                        Ok(false) => {}
+                        Err(error) => eprintln!(
+                            "automatic profile publication will retry after an error: {error}"
+                        ),
                     }
                 }
                 for _ in 0..120 {
@@ -4092,6 +4114,10 @@ impl RuntimeController {
         &self,
         request: ProfilePackagePublishRequest,
     ) -> Result<ProfilePublishResult, String> {
+        let _publication = self
+            .profile_publication
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let policy = self
             .submission_policy
             .lock()
@@ -4114,7 +4140,80 @@ impl RuntimeController {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
             .ok_or_else(|| "connect an authenticated submission receiver first".to_owned())?;
-        transport.publish_profile(&package)
+        let receipt = transport.publish_profile(&package)?;
+        self.record_profile_publication(&receipt)?;
+        Ok(receipt)
+    }
+
+    fn publish_next_pending_profile(&self) -> Result<bool, String> {
+        let _publication = match self.profile_publication.try_lock() {
+            Ok(publication) => publication,
+            Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => return Ok(false),
+        };
+        let transport = match self
+            .submission_transport
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+        {
+            Some(transport) => transport,
+            None => return Ok(false),
+        };
+        let packages = self.profile_packages();
+        let active_package_ids = packages
+            .entries
+            .iter()
+            .map(|entry| entry.package_id.clone())
+            .collect::<BTreeSet<_>>();
+        let next_package_id = {
+            let mut publications = self
+                .profile_publications
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            publications.reconcile(&active_package_ids)?;
+            packages
+                .entries
+                .iter()
+                .find(|entry| !publications.is_published(&entry.package_id))
+                .map(|entry| entry.package_id.clone())
+        };
+        let Some(package_id) = next_package_id else {
+            return Ok(false);
+        };
+        let package = self
+            .profile_packages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .inspect(&package_id)?
+            .package;
+        let receipt = transport.publish_profile(&package)?;
+        self.record_profile_publication(&receipt)?;
+        Ok(true)
+    }
+
+    fn record_profile_publication(&self, receipt: &ProfilePublishResult) -> Result<(), String> {
+        let active_package_ids = self
+            .profile_packages()
+            .entries
+            .into_iter()
+            .map(|entry| entry.package_id)
+            .collect::<BTreeSet<_>>();
+        if !active_package_ids.contains(&receipt.package_id) {
+            return Ok(());
+        }
+        self.profile_publications
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .record(
+                ProfilePublicationRecord {
+                    package_id: receipt.package_id.clone(),
+                    profile_id: receipt.profile_id.clone(),
+                    character_id: receipt.character_id.clone(),
+                    published_unix_millis: unix_millis(),
+                },
+                &active_package_ids,
+            )
     }
 
     fn project_last_profile_packages(&self) -> Result<ProfileProjectionResult, String> {
@@ -4651,6 +4750,8 @@ impl RuntimeController {
         let state = Arc::clone(&self.state);
         let submission_queue = Arc::clone(&self.submission_queue);
         let profile_packages = Arc::clone(&self.profile_packages);
+        let profile_publications = Arc::clone(&self.profile_publications);
+        let profile_publication = Arc::clone(&self.profile_publication);
         let policy = self
             .submission_policy
             .lock()
@@ -4680,6 +4781,8 @@ impl RuntimeController {
                     };
                     let profile_warning = apply_profile_sync_policy(
                         &profile_packages,
+                        &profile_publications,
+                        &profile_publication,
                         &mut result,
                         profile_sync.enabled,
                         profile_sync.automatic_profiles,
@@ -4990,6 +5093,8 @@ impl RuntimeController {
         let history_rdps_backfill = Arc::clone(&self.history_rdps_backfill);
         let character_identities = Arc::clone(&self.character_identities);
         let profile_packages = Arc::clone(&self.profile_packages);
+        let profile_publications = Arc::clone(&self.profile_publications);
+        let profile_publication = Arc::clone(&self.profile_publication);
         let policy = self
             .submission_policy
             .lock()
@@ -5499,6 +5604,8 @@ impl RuntimeController {
                                 Arc::clone(&combat_history_feed),
                                 Arc::clone(&history_rdps_backfill),
                                 Arc::clone(&profile_packages),
+                                Arc::clone(&profile_publications),
+                                Arc::clone(&profile_publication),
                                 automatic_submissions,
                                 default_visibility,
                                 profile_sync.clone(),
@@ -5544,6 +5651,8 @@ impl RuntimeController {
                             Arc::clone(&combat_history_feed),
                             Arc::clone(&history_rdps_backfill),
                             Arc::clone(&profile_packages),
+                            Arc::clone(&profile_publications),
+                            Arc::clone(&profile_publication),
                             automatic_submissions,
                             default_visibility,
                             profile_sync.clone(),
@@ -5992,6 +6101,8 @@ fn postprocess_continuous_run(
     combat_history_feed: Arc<CombatHistoryRevisionFeed>,
     history_rdps_backfill: Arc<HistoryRdpsBackfillQueue>,
     profile_packages: Arc<Mutex<LocalProfilePackageStore>>,
+    profile_publications: Arc<Mutex<ProfilePublicationLedger>>,
+    profile_publication: Arc<Mutex<()>>,
     automatic_submissions: bool,
     default_visibility: ReportVisibility,
     profile_sync: submission_policy::ProfileSyncPolicy,
@@ -6096,6 +6207,8 @@ fn postprocess_continuous_run(
             let profile_warning = if build_profile {
                 apply_profile_sync_policy(
                     &profile_packages,
+                    &profile_publications,
+                    &profile_publication,
                     &mut result,
                     true,
                     true,
@@ -6253,6 +6366,8 @@ fn completed_session_detail(
 
 fn apply_profile_sync_policy(
     store: &Arc<Mutex<LocalProfilePackageStore>>,
+    publications: &Arc<Mutex<ProfilePublicationLedger>>,
+    publication: &Arc<Mutex<()>>,
     result: &mut SessionResult,
     enabled: bool,
     automatic_profiles: bool,
@@ -6278,13 +6393,45 @@ fn apply_profile_sync_policy(
                 result.profile_sync_status = "packaged_waiting_for_authenticated_receiver".into();
                 return None;
             };
+            let _publication = match publication.try_lock() {
+                Ok(publication) => publication,
+                Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner(),
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    result.profile_sync_status = "packaged_waiting_for_publication_worker".into();
+                    return None;
+                }
+            };
             let package_ids = packages
                 .iter()
                 .map(|package| package.package_id.clone())
                 .collect::<Vec<_>>();
-            match publish_profile_package_ids(store, &package_ids, |package| {
-                transport.publish_profile(package).map(|_| ())
-            }) {
+            let active_package_ids = store
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .snapshot()
+                .entries
+                .into_iter()
+                .map(|entry| entry.package_id)
+                .collect::<BTreeSet<_>>();
+            match publish_profile_package_ids(
+                store,
+                &package_ids,
+                |package| transport.publish_profile(package),
+                |receipt| {
+                    publications
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .record(
+                            ProfilePublicationRecord {
+                                package_id: receipt.package_id.clone(),
+                                profile_id: receipt.profile_id.clone(),
+                                character_id: receipt.character_id.clone(),
+                                published_unix_millis: unix_millis(),
+                            },
+                            &active_package_ids,
+                        )
+                },
+            ) {
                 Ok(published) => {
                     result.profile_sync_status = format!("published:{published}");
                     None
@@ -6305,7 +6452,8 @@ fn apply_profile_sync_policy(
 fn publish_profile_package_ids(
     store: &Arc<Mutex<LocalProfilePackageStore>>,
     package_ids: &[String],
-    mut publish: impl FnMut(&LocalProfilePackage) -> Result<(), String>,
+    mut publish: impl FnMut(&LocalProfilePackage) -> Result<ProfilePublishResult, String>,
+    mut record: impl FnMut(&ProfilePublishResult) -> Result<(), String>,
 ) -> Result<usize, String> {
     let mut unique_ids = package_ids.to_vec();
     unique_ids.sort();
@@ -6318,9 +6466,14 @@ fn publish_profile_package_ids(
             .inspect(&package_id)?
             .package;
         let character_id = package.request.payload.routing["character-id"].clone();
-        publish(&package).map_err(|error| {
+        let receipt = publish(&package).map_err(|error| {
             format!(
                 "profile auto-sync stopped after {published} publication(s); UID {character_id} remains local and retryable: {error}"
+            )
+        })?;
+        record(&receipt).map_err(|error| {
+            format!(
+                "profile auto-sync accepted UID {character_id}, but its local retry receipt could not be persisted: {error}"
             )
         })?;
         published = published.saturating_add(1);
@@ -12490,23 +12643,58 @@ kind = "content"
             projection.stored_packages[0].package_id.clone(),
         ];
         let profile_packages = Arc::clone(&controller.profile_packages);
+        let active_package_ids = package_ids.iter().cloned().collect::<BTreeSet<_>>();
         let mut published_character_ids = Vec::new();
         assert_eq!(
-            publish_profile_package_ids(&controller.profile_packages, &package_ids, |package| {
-                assert!(profile_packages.try_lock().is_ok());
-                published_character_ids
-                    .push(package.request.payload.routing["character-id"].clone());
-                Ok(())
-            },)
+            publish_profile_package_ids(
+                &controller.profile_packages,
+                &package_ids,
+                |package| {
+                    assert!(profile_packages.try_lock().is_ok());
+                    published_character_ids
+                        .push(package.request.payload.routing["character-id"].clone());
+                    Ok(ProfilePublishResult {
+                        schema_version: 1,
+                        profile_id: format!("prf_{}", "b".repeat(32)),
+                        character_id: package.request.payload.routing["character-id"].clone(),
+                        package_id: package.package_id.clone(),
+                        claimed: true,
+                        duplicate: false,
+                        module_inventory_count: 0,
+                        equipped_module_count: 0,
+                        profile_url: "https://receiver.example/profiles/test".into(),
+                    })
+                },
+                |receipt| {
+                    controller.profile_publications.lock().unwrap().record(
+                        ProfilePublicationRecord {
+                            package_id: receipt.package_id.clone(),
+                            profile_id: receipt.profile_id.clone(),
+                            character_id: receipt.character_id.clone(),
+                            published_unix_millis: 1,
+                        },
+                        &active_package_ids,
+                    )
+                },
+            )
             .unwrap(),
             1
         );
         assert_eq!(published_character_ids, vec!["123456789"]);
-        let publish_error =
-            publish_profile_package_ids(&controller.profile_packages, &package_ids, |_| {
-                Err("receiver unavailable".into())
-            })
-            .unwrap_err();
+        assert!(
+            controller
+                .profile_publications
+                .lock()
+                .unwrap()
+                .is_published(&projection.stored_packages[0].package_id)
+        );
+        let publish_error = publish_profile_package_ids(
+            &controller.profile_packages,
+            &package_ids,
+            |_| -> Result<ProfilePublishResult, String> { Err("receiver unavailable".into()) },
+            |_| Ok(()),
+        )
+        .unwrap_err();
         assert!(publish_error.contains("UID 123456789"));
         assert!(publish_error.contains("remains local and retryable"));
 
