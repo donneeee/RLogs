@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "client_build": "24252055",
+  "effect_id": 2110138,
+  "name": "Thunderwind Power",
+  "source_identity": {
+    "summon_entity_type_id": 1,
+    "summon_config_attribute_id": 100,
+    "summon_config_id": 140145,
+    "owner_entity_attribute_ids": [90, 91],
+    "owner_attributes_must_agree": true
+  },
+  "packet_lifecycle": {
+    "visible_parent_effect_id": 2110138,
+    "visible_parent_source": "summon proxy",
+    "hidden_child_effect_id": 2110154,
+    "hidden_child_source_config_id": 2110138,
+    "hidden_child_source": "recipient self",
+    "required_duration_millis": 20000,
+    "attribution_owner": "player entity referenced by both summon owner attributes",
+    "child_is_provider": false
+  },
+  "packet_proven_vectors": [
+    {
+      "source_level": 1,
+      "critical_chance": {
+        "attribute_id": 11710,
+        "raw_delta": 1852,
+        "unit": "percentage_point_hundredths",
+        "display_delta": "18.52 percentage points"
+      },
+      "critical_damage": {
+        "attribute_id": 12510,
+        "raw_delta": 566,
+        "unit": "percentage_point_hundredths",
+        "display_delta": "5.66 percentage points"
+      }
+    }
+  ],
+  "runtime_policy": {
+    "parent_required": true,
+    "child_required": true,
+    "exact_proxy_identity_required": true,
+    "exact_owner_required": true,
+    "exact_level_vector_required": true,
+    "exact_recipient_attribute_transition_required": true,
+    "self_supplied_is_personal_dps": true,
+    "multi_provider_critical_stage_enabled": false,
+    "lucky_critical_rows_enabled": false,
+    "removal_deltas_used_as_coefficients": false,
+    "removal_reason": "captured removal transitions overlap another effect and are retained as contaminated evidence rather than discarded",
+    "unsupported_levels": "retained without rDPS transfer"
+  },
+  "exact_accounting": {
+    "description": "The parent owns both Crit Rate and Crit DMG. Removing them independently double-counts their shared cross-term.",
+    "combined_marginal": "C*B - (C-dC)*(B-dB) = dC*B + (C-dC)*dB",
+    "observed_critical_row_fraction": "combined_marginal / (C * (10000 + B))",
+    "non_critical_rows": "no transfer",
+    "critical_and_lucky_rows": "no transfer until the combined stage is proven"
+  },
+  "captured_proxy_examples": [
+    {
+      "actor_id": 435,
+      "entity_uuid": 3768384,
+      "owner_entity_uuid": 216009015936
+    },
+    {
+      "actor_id": 456,
+      "entity_uuid": 4227136,
+      "owner_entity_uuid": 216009015936
+    }
+  ],
+  "evidence_sources": [
+    ".codex_tmp/thunderwind-2110138-2110154-crit-family-proof.v1.json",
+    ".codex_tmp/thunderwind-2110138-2110154-crit-damage-family-proof.v1.json",
+    ".codex_tmp/thunderwind-2110138-2110154-flat-crit-family-proof.v1.json",
+    ".codex_tmp/thunderwind-apply-wire-15897-buff-payload.v1.json",
+    ".codex_tmp/thunderwind-child-2110154-apply-wire-15897-buff-payload.v1.json",
+    ".codex_tmp/thunderwind-all-families-selected-context.v5.json",
+    ".codex_tmp/thunderwind-lifecycle-full-examples.v6.json"
+  ],
+  "newer_build_guard": {
+    "observed_current_client_build": "24568685",
+    "matching_packet_replay_available": false,
+    "runtime_enabled_for_newer_build": false,
+    "reason": "the formula pack is exact-build evidence and fails closed until a matching-build packet replay proves unchanged identity, vector, and stage behavior"
+  }
+}

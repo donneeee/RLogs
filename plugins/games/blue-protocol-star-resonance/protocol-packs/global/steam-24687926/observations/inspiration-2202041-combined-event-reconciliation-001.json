@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "observation_id": "inspiration-2202041-combined-event-reconciliation-001",
+  "deployment_id": "global",
+  "client_build": "24687926",
+  "effect_id": 2202041,
+  "origin": {
+    "source_type_id": 1,
+    "source_config_id": 2202040
+  },
+  "reconciliation": {
+    "artifact_sha256": "398afdf36c949545fe28676de01ba2d0f2dda8274a31417e310ee38959558672",
+    "artifact_bytes": 10119,
+    "packet_proof_sha256": "924f8945ca37963e0726358d7385d7e1ffe19e8caeba15b40d5ba644885aba26",
+    "baseline_replay_sha256": "976632bcf673e0fd23238ab621e7e1d9309d87ca5a4de1c03932706b275ca740",
+    "experimental_replay_sha256": "e8d2738a695632f03fe7dc51645e9b9fffd7e0e3c20a04204ccd7125f3e383a7",
+    "exact_build_rlogs": 26,
+    "canonical_events": 6411565,
+    "packet_proven_combined_candidates": 61,
+    "experimental_added_ledger_rows": 53,
+    "event_identity_matches": 2,
+    "out_of_proof_emissions": 51,
+    "unemitted_packet_proven_candidates": 59,
+    "baseline_ability_2031109_rows_excluded_from_delta": 5,
+    "experimental_projected_rdmg_delta": 681597,
+    "runtime_target_matches": 26,
+    "conserved_rlogs": 26,
+    "rational_projection_overflow_count": 0
+  },
+  "gate_differential": {
+    "combined_disabled_rows_removed": 40127,
+    "occurrence_gate_emitted_added": 326,
+    "provider_window_missing_added": 29015,
+    "recipient_state_missing_added": 10786,
+    "ledger_rows_added": 53,
+    "downstream_nonledger_occurrence_candidates": 273,
+    "gate_balance_validated": true,
+    "downstream_suppression_reasons_itemized": false
+  },
+  "policy": {
+    "runtime_authority": false,
+    "provider_rdps_credit_authorized": false,
+    "combined_critical_lucky_runtime_transfer_enabled": false,
+    "reason": "experimental runtime emissions do not equal the packet-proven event identity set",
+    "required_next_proof": "event-key reconciliation for every packet-proven candidate with one explicit gate for each non-emission and exact equality between the enabled-minus-baseline ledger and the authorized emitted candidate set",
+    "ordinary_damage_is_immutable": true,
+    "unresolved_evidence_is_preserved": true
+  }
+}

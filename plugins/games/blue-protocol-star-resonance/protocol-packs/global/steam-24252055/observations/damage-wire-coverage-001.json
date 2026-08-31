@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "observation_id": "damage-wire-coverage-001",
+  "game_build": "24252055",
+  "purpose": "Prove whether current-build AOI damage packets expose any undeclared protobuf field that could contain an omitted pre-multiplier or formula input.",
+  "source": {
+    "journal": "private-research/live-captures/factor-scan-session-20260731-010829.jsonl",
+    "capture_id": "factor-scan-010829",
+    "service_id": 1664308034,
+    "methods": [
+      45,
+      46
+    ],
+    "generated_report": ".codex_tmp/damage-wire-coverage.current-build.v1.json",
+    "reproduction": "cargo run --quiet --manifest-path plugins/games/blue-protocol-star-resonance/Cargo.toml --bin rlogs-bpsr-damage-wire-coverage -- --journal private-research/live-captures/factor-scan-session-20260731-010829.jsonl --output .codex_tmp/damage-wire-coverage.current-build.v1.json"
+  },
+  "coverage": {
+    "route_packets": 13108,
+    "route_packets_by_method": {
+      "45": 7364,
+      "46": 5744
+    },
+    "damage_messages": 185387,
+    "observed_damage_field_numbers": [
+      1,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      21,
+      22,
+      25
+    ],
+    "declared_but_not_observed_in_this_capture": [
+      2,
+      3,
+      10,
+      20,
+      23,
+      24
+    ],
+    "unknown_field_observations": 0,
+    "wire_type_mismatch_observations": 0,
+    "extraction_errors": 0
+  },
+  "conclusions": {
+    "every_observed_damage_field_is_declared": true,
+    "every_observed_damage_field_has_expected_wire_type": true,
+    "current_decoder_has_no_wire_visible_undeclared_damage_field": true,
+    "packet_exposes_a_pre_multiplier_damage_value": false,
+    "formula_is_fully_proven_by_this_audit": false,
+    "next_proof_boundary": "Resolve each active packet-observed status and attribute into its exact integer calculation stage, then prove that stage from controlled transitions and strict same-context damage pairs."
+  },
+  "evidence_policy": {
+    "unknown_fields_discarded": false,
+    "malformed_payloads_discarded": false,
+    "absence_of_a_field_is_treated_as_zero": false,
+    "declared_schema_is_formula_authority": false,
+    "packet_field_identity_is_formula_semantics": false,
+    "unobserved_declared_fields_are_claimed_absent_globally": false
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "schema_version": 2,
+  "game_build": "24252055",
+  "subject": "Named DamageAttr PVE inputs and packet correlation boundary",
+  "policy": {
+    "runtime_formula_authority": false,
+    "current_build_values_are_authority": true,
+    "historical_reference_values_are_authority": false,
+    "unresolved_evidence_is_hidden": false,
+    "nested_pool_references_are_scalars": false,
+    "rdps_enablement": "No new rDPS counterfactual is enabled until every integer stage and selection rule replays exactly."
+  },
+  "field_layout_proof": {
+    "path": "game-data/catalog/formulas/damage-attr-field-layout.current-build.v1.json",
+    "current_rows": 5601,
+    "historical_schema_overlap_rows": 3514,
+    "directly_decoded_fields": 16,
+    "unreadable_values_across_compared_fields": 0,
+    "client_formula_occurrences": {
+      "PVEDamageRadio": 383,
+      "PVEFixedParameter": 384,
+      "PVEStunnedDamage": 215
+    }
+  },
+  "named_fields": [
+    {
+      "name": "PVEDamageRadio",
+      "row_offset": 28,
+      "encoding": "int_array_pool_1_reference",
+      "unit": "basis_points",
+      "meaning": "PVE HP-damage ratio"
+    },
+    {
+      "name": "PVEFixedParameter",
+      "row_offset": 32,
+      "encoding": "int_array_pool_1_reference",
+      "unit": "whole_damage_units",
+      "meaning": "PVE fixed damage term; not a percentage"
+    },
+    {
+      "name": "PVEStunnedDamage",
+      "row_offset": 40,
+      "encoding": "int_array_pool_1_reference",
+      "unit": "whole_stagger_or_break_units",
+      "meaning": "stagger or break contribution; not HP damage"
+    }
+  ],
+  "packet_correlation": {
+    "replayed_sessions": 3,
+    "damage_events": 166236,
+    "events_with_ability_and_hit": 160678,
+    "unique_row_matches": 159688,
+    "ambiguous_row_matches": 0,
+    "missing_row_matches": 990,
+    "unique_match_basis_points": 9938,
+    "observed_ability_hit_keys": 209,
+    "uniquely_mapped_ability_hit_keys": 208,
+    "missing_ability_hit_keys": 1
+  },
+  "exact_build_decoded_surface_replay": {
+    "tool": "rlogs-bpsr-damage-attr-semantic-surface",
+    "decoded_table": ".codex_tmp/StarResonanceData-current/Excels/DamageAttrTable.json",
+    "semantic_surface": ".codex_tmp/damage-attr-semantic-surface.24252055.v1.json",
+    "route_proof": ".codex_tmp/damage-source-route-proof.24252055.v10.json",
+    "component_aware_coefficient_report": ".codex_tmp/damage-attr-coefficient-proof.skill-effect-groups.24252055.v7.json",
+    "decoded_rows_retained": 3557,
+    "lookup_keys": 3554,
+    "ambiguous_lookup_keys": 3,
+    "maximum_candidates_per_lookup": 2,
+    "route_keys": 3554,
+    "route_keys_with_unresolved_candidates": 30,
+    "mapped_combat_results": 76452,
+    "observed_damage_rows": 127,
+    "observed_damage_script_families": 7,
+    "component_aware_sibling_pair_families": 0,
+    "policy": [
+      "The bridge derives only TypeEnum-plus-Id-suffix routing and the decoded PVEDamageRadio and PVEFixedParameter arrays; it does not claim raw CTB offset authority.",
+      "Every decoded row is retained, including rows omitted from a raw native surface.",
+      "The exact component-aware replay invalidates the earlier apparent sibling-coefficient witnesses: no two events remain the same calculation after skill-effect component index and count are included."
+    ]
+  },
+  "strict_vulnerability_pair": {
+    "rlog_session": "session-20260731-010829",
+    "sequences": [671285, 671617],
+    "source_entity_uuid": 216009015936,
+    "direct_source_entity_uuid": 295424,
+    "target_entity_uuid": 9699392,
+    "ability_id": 2203291,
+    "hit_event_id": 7,
+    "damage_attr_row_id": 2220329107,
+    "packet_owner_level": 30,
+    "packet_owner_stage": null,
+    "source_attack_attribute_11330": 5569,
+    "source_critical_damage_attribute_12510": 11558,
+    "source_season_strength_attribute_11440": 3505,
+    "target_season_strength_attribute_11440": 2420,
+    "pve_damage_ratio_candidates": [15000, 15600, 16200, 18000, 18600, 19200, 21000],
+    "pve_fixed_parameter_count": 30,
+    "owner_level_30_fixed_parameter_candidate": 600,
+    "inactive_damage": 84592,
+    "active_damage": 90015,
+    "packet_proven_inactive_vulnerability_ratio": 15600,
+    "packet_proven_active_vulnerability_ratio": 16600,
+    "exact_pre_vulnerability_latent_damage": 54226,
+    "critical_outcome_inversion": {
+      "candidate_formula": "floor(precritical_damage * (10000 + AttrCritDamage) / 10000)",
+      "precritical_damage_candidate": 25154,
+      "replay": "floor(25154 * 21558 / 10000) = 54226",
+      "state": "exact_for_this_pair_not_yet_generic_stage_order"
+    },
+    "raw_named_input_candidates": {
+      "fixed_after_ratio": "floor(5569 * 15600 / 10000) + 600 = 9287",
+      "fixed_before_ratio": "floor((5569 + 600) * 15600 / 10000) = 9623"
+    }
+  },
+  "unresolved_before_generic_replay": [
+    "which packet or actor state selects a PVEDamageRadio array element when owner_stage is absent",
+    "whether PVEFixedParameter is selected by packet owner_level for every calculation mode",
+    "PVEFixedParameter placement and floor boundary",
+    "refined or elemental attack placement",
+    "target defense acquisition for monsters whose packet snapshots omit defense attributes",
+    "season-strength stage",
+    "outgoing damage bucket membership and ordering",
+    "critical plus lucky combined ordering",
+    "cast-snapshot or random input responsible for divergent outputs under otherwise identical exposed state",
+    "nested AbnormalDamage and DamageWeight layouts"
+  ]
+}

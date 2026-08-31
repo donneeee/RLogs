@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "client_build": "24252055",
+  "subject": "Lucky Strike packet parent identity and formula boundary",
+  "sources": {
+    "current_decoder_replay": {
+      "path": ".codex_tmp/lucky-strike-formula-proof.current-decode-v4.json",
+      "sha256": "sha256:1108c6fb3e01c8737b30b67e642ed0fdb72652920b91d51ee944fcd0e52c67f2"
+    },
+    "fight_attribute_table": {
+      "stable_key": "ctb.FightAttrTable",
+      "sha256": "sha256:a9b514e0de157e85eb40fb7169628c4fafd48a89f8128ca5e0a16e4412921dd9"
+    },
+    "fight_attribute_transform_table": {
+      "stable_key": "ctb.FightAttrTranTable",
+      "sha256": "sha256:3912c4565c5f476b9fafecd67a3e37774f0d8b55e9328268c446ece4e3f53ac3"
+    }
+  },
+  "packet_identity": {
+    "lucky_ability_id": 2031109,
+    "lucky_hit_event_id": 3,
+    "damage_id": 2203110903,
+    "damage_type": 2,
+    "damage_script": "AttackLucky"
+  },
+  "fight_attributes": [
+    {
+      "attribute_id": 11780,
+      "internal_name": "AttrLuckyStrikeProb",
+      "official_name": "Luck",
+      "unit": "ten_thousandths",
+      "base_value": 500
+    },
+    {
+      "attribute_id": 12530,
+      "internal_name": "AttrLuckDamInc",
+      "official_name": "Lucky Strike DMG Multiplier",
+      "unit": "ten_thousandths",
+      "base_value": 0
+    }
+  ],
+  "parent_packet_rule": {
+    "conditions": [
+      "same wire capture sequence, connection, and stream",
+      "same source entity",
+      "same target entity",
+      "same skill_effect_group_index",
+      "same skill_effect_component_count",
+      "candidate has causes_lucky=true",
+      "candidate component index is exactly Lucky component index plus one"
+    ],
+    "lucky_events": 580,
+    "lucky_observed_damage": 14429216,
+    "events_with_exact_immediate_following_parent": 580,
+    "broader_same_group_ambiguities_resolved_by_component_order": 16,
+    "unresolved_parent_events": 0,
+    "distinct_parent_action_identities": 17
+  },
+  "rejected_parent_amount_formulas": [
+    {
+      "expression": "floor(parent_amount * AttrLuckDamInc / selected_parent_PVEDamageRadio)",
+      "comparable_events": 236,
+      "exact_events": 0,
+      "maximum_absolute_residual": 193323
+    },
+    {
+      "expression": "floor(parent_amount * AttrLuckDamInc / 10000)",
+      "comparable_events": 236,
+      "exact_events": 0,
+      "maximum_absolute_residual": 360880
+    }
+  ],
+  "conclusion": {
+    "parent_role": "The following causes_lucky hit proves which action triggered the proc.",
+    "damage_role": "AttackLucky is a separately calculated damage component and is not a percentage of the triggering hit's final amount.",
+    "next_formula_stage": "Replay AttackLucky from its own Attack input, AttrLuckDamInc, hit outcome, target state, and later common damage stages.",
+    "rdps_attribution_enabled": false
+  },
+  "policy": {
+    "recount": "retain both the Lucky Strike child damage and its exact triggering action relation",
+    "parent_damage_is_replaced": false,
+    "unresolved_evidence_is_hidden": false,
+    "formula_is_guessed": false
+  }
+}

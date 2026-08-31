@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "client_build": "24252055",
+  "generated_at": "2026-08-09",
+  "subject": "packet-observed Oblivion Dream recipient marker and exact rDPS exclusion",
+  "effect": {
+    "effect_id": 3003071,
+    "origin": {
+      "source_type_id": 1,
+      "source_config_id": 3003041
+    },
+    "technical_identity_zh_cn": "环域压制效果",
+    "english_identity": "Oblivion Dream recipient effect",
+    "duration_millis": 1100,
+    "repeat_add_rule": [
+      1,
+      0
+    ]
+  },
+  "packet_evidence": {
+    "source": ".codex_tmp/rdps-cross-actor-all-fight-attributes.seal-valid.v4.json",
+    "selected_status_events": 2871,
+    "selected_mechanic_state_changes": 1294,
+    "provider_resolution": "direct_player",
+    "provider_is_recipient": false,
+    "only_same_wire_isolated_attribute_families": [
+      {
+        "attribute_id": 11310,
+        "internal_name": "AttrHp",
+        "meaning": "current HP",
+        "observed_raw_deltas": [
+          -57387,
+          -45691,
+          -31829,
+          -7800,
+          1965,
+          19753,
+          -21424,
+          -6081
+        ]
+      },
+      {
+        "attribute_id": 20010,
+        "internal_name": "AttrOriginEnergy",
+        "meaning": "current resonance energy",
+        "observed_raw_deltas": [
+          -13000
+        ]
+      }
+    ],
+    "offensive_attribute_transitions": 0,
+    "offensive_attribute_families_checked": [
+      "Attack and MAttack",
+      "critical chance and critical damage",
+      "lucky chance and lucky damage",
+      "mastery",
+      "versatility",
+      "haste",
+      "external damage",
+      "target damage taken"
+    ],
+    "interpretation": "The varying positive and negative current-HP deltas and the single resonance-energy spend are combat activity serialized in the same wire messages as this short-lived area marker. They are not a stable coefficient produced by the marker."
+  },
+  "current_build_identity_evidence": {
+    "client_build": "24609362",
+    "buff_table": "BuffTable.ctb",
+    "buff_row": 3003071,
+    "description_table": "AttrDescription",
+    "description_row": 3003070,
+    "description_semantics": "Allies in Oblivion Dream receive 5 percent Illusion-Breaking damage reduction, increased by another 3 percent when at least three enemies are in range.",
+    "formula_authority": false,
+    "purpose": "Current-build rows independently identify the retained historical packet effect as a defensive recipient marker. They are not used to manufacture packet occurrence or an offensive scalar."
+  },
+  "rdps_classification": {
+    "category": "defensive_support",
+    "direct_rdps_contribution": 0,
+    "runtime_transfer_enabled": false,
+    "reason": "The effect reduces incoming Illusion-Breaking damage and has no packet-observed offensive attribute or target-vulnerability stage. Defensive mitigation belongs to survivability analysis, not damage transferred to the provider.",
+    "retention": "Every status transition, provider, recipient, current-HP update, resonance-energy update, and coincident damage event remains canonical and visible. Only rDPS transfer is exactly zero."
+  }
+}

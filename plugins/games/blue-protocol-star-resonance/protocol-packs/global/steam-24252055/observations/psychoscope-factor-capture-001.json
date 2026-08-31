@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "observation_id": "psychoscope-factor-capture-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "client_build": "24252055",
+  "scope": "local-owner Psychoscope factor ownership and active cultivation selection",
+  "static_definition_verification": {
+    "installed_client_build": "24252055",
+    "source_rows": 3830,
+    "decoded_rows": 3830,
+    "factor_families": 383,
+    "described_or_buff_rows": 3740,
+    "probe_sha256": "E3083D0E50954525E25F58C331A52EA113F38A6566F867173C253C89D2D02675",
+    "fresh_scan_matches_retained_probe": true,
+    "policy": "Static factor definitions may resolve an observed item ID, but never prove character ownership or selection."
+  },
+  "runtime_verification": {
+    "route": "WorldNtf/SyncContainerData",
+    "route_key": {
+      "service": 1664308034,
+      "method": 21
+    },
+    "candidate_packets": 4,
+    "decoded_packets": 4,
+    "decode_failures": 0,
+    "current_season_id": 3,
+    "cultivation_seasons": 2,
+    "cultivation_lines": 4,
+    "cultivation_areas": 16,
+    "current_active_areas": [
+      {
+        "line_type_id": 800522,
+        "area_id": 8,
+        "active_effect_score": 56
+      },
+      {
+        "line_type_id": 800523,
+        "area_id": 20001,
+        "active_effect_score": null
+      }
+    ],
+    "current_active_middle_nodes": [
+      { "line_type_id": 800522, "area_id": 8, "node_id": 170, "item_id": 20020887, "family_id": 202189, "name": "Polarity X1", "grade": 7, "category": "polarity" },
+      { "line_type_id": 800522, "area_id": 8, "node_id": 171, "item_id": 20020927, "family_id": 202193, "name": "Polarity X5", "grade": 7, "category": "polarity" },
+      { "line_type_id": 800522, "area_id": 8, "node_id": 173, "item_id": 20021035, "family_id": 202204, "name": "Stasis X5", "grade": 5, "category": "stasis" },
+      { "line_type_id": 800522, "area_id": 8, "node_id": 175, "item_id": 20021025, "family_id": 202203, "name": "Stasis X4", "grade": 5, "category": "stasis" },
+      { "line_type_id": 800522, "area_id": 8, "node_id": 176, "item_id": 20020397, "family_id": 202140, "name": "Marksman X7", "grade": 7, "category": "inspiration" },
+      { "line_type_id": 800522, "area_id": 8, "node_id": 177, "item_id": 20020420, "family_id": 202142, "name": "Marksman X9", "grade": 10, "category": "inspiration" },
+      { "line_type_id": 800522, "area_id": 8, "node_id": 178, "item_id": 20020427, "family_id": 202143, "name": "Marksman X10", "grade": 7, "category": "inspiration" },
+      { "line_type_id": 800522, "area_id": 8, "node_id": 179, "item_id": 20021155, "family_id": 202216, "name": "Marksman Stasis X2", "grade": 5, "category": "stasis" },
+      { "line_type_id": 800522, "area_id": 8, "node_id": 230, "item_id": 20021947, "family_id": 202295, "name": "Marksman Reality Factor X4", "grade": 7, "category": "reality" },
+      { "line_type_id": 800522, "area_id": 8, "node_id": 231, "item_id": 20021967, "family_id": 202297, "name": "Marksman Reality Factor X6", "grade": 7, "category": "reality" },
+      { "line_type_id": 800523, "area_id": 20001, "node_id": 180, "item_id": 20021394, "family_id": 202240, "name": "Marksman Rhapsody X4", "grade": 4, "category": "rhapsody" },
+      { "line_type_id": 800523, "area_id": 20001, "node_id": 181, "item_id": 20020425, "family_id": 202143, "name": "Marksman X10", "grade": 5, "category": "inspiration" }
+    ],
+    "current_active_big_node_fantasy_ids": [
+      3948,
+      3956,
+      3969,
+      3982,
+      3983
+    ]
+  },
+  "ownership_evidence": {
+    "owned_factor_grade_item_ids": 26,
+    "source": "local ItemPackage",
+    "proves_selection": false,
+    "rule": "Inventory presence remains separate from the explicitly active cultivation areas."
+  },
+  "dirty_update_review": {
+    "route": "WorldNtf/SyncContainerDirtyData",
+    "candidate_packets": 141,
+    "decoded_packets": 141,
+    "decode_failures": 0,
+    "legacy_dirty_tree_framing_matches": 0,
+    "known_factor_binary_matches": 0,
+    "result": "The historical hard-coded dirty-buffer offsets are not portable to this build. The full snapshot is the verified source; exact dirty-delta updates remain a separate controlled-change task."
+  },
+  "decoder_policy": {
+    "owner": "BPSR game plug-in",
+    "core_owns_factor_semantics": false,
+    "old_extractor_is_authoritative": false,
+    "unknown_ids_are_guessed": false,
+    "runtime_selection_is_inferred_from_inventory": false,
+    "automatic_protobuf_update": "deferred future milestone"
+  },
+  "retained_data": {
+    "packet_payloads": false,
+    "network_endpoints": false,
+    "character_names": false,
+    "character_ids": false,
+    "account_identifiers": false,
+    "credentials_or_tokens": false
+  }
+}

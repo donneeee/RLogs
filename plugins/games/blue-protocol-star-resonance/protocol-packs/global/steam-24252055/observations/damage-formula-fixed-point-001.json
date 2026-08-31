@@ -1,0 +1,748 @@
+{
+  "schema_version": 19,
+  "client_build": "steam-24252055",
+  "purpose": "Record packet-proven fixed-point damage semantics without enabling incomplete runtime rDPS rules.",
+  "policy": {
+    "runtime_formula_authority": false,
+    "localization_is_formula_authority": false,
+    "game_table_names_are_formula_authority": false,
+    "unresolved_formula_stages_are_hidden": false,
+    "fixed_point_scale": 10000
+  },
+  "current_build_table_evidence": {
+    "table_hash": 2490336417,
+    "attributes": [
+      {
+        "attribute_id": 11710,
+        "internal_name": "AttrCrit",
+        "design_description_zh_cn": "暴击万分比",
+        "table_unit": "ten-thousandths",
+        "formula_stage": "unresolved"
+      },
+      {
+        "attribute_id": 11780,
+        "internal_name": "AttrLuckyStrikeProb",
+        "design_description_zh_cn": "幸运万分比",
+        "table_unit": "ten-thousandths",
+        "formula_stage": "unresolved"
+      },
+      {
+        "attribute_id": 12510,
+        "internal_name": "AttrCritDamage",
+        "design_description_zh_cn": "暴击伤害万分比",
+        "table_unit": "ten-thousandths",
+        "formula_stage": "critical-hit multiplier bonus"
+      },
+      {
+        "attribute_id": 12530,
+        "internal_name": "AttrLuckDamInc",
+        "design_description_zh_cn": "幸运一击伤害倍率",
+        "table_unit": "packet-proven ten-thousandths despite the table row not stating a unit",
+        "formula_stage": "Lucky Strike multiplier"
+      }
+    ]
+  },
+  "packet_family_evidence": {
+    "current_total_add_suffixes": [
+      "current",
+      "total",
+      "add",
+      "extra_add",
+      "percent",
+      "extra_percent"
+    ],
+    "observations": [
+      {
+        "base_attribute_id": 11710,
+        "member_observations": [671, 565, 565, 64, 0, 0]
+      },
+      {
+        "base_attribute_id": 11780,
+        "member_observations": [180, 180, 180, 0, 0, 0]
+      },
+      {
+        "base_attribute_id": 12510,
+        "member_observations": [1351, 1351, 1351, 0, 0, 0]
+      },
+      {
+        "base_attribute_id": 12530,
+        "member_observations": [345, 345, 345, 0, 0, 0]
+      }
+    ],
+    "interpretation": "The suffix rows identify packet aggregation channels. They do not by themselves prove where a family enters the damage formula."
+  },
+  "proven_components": [
+    {
+      "attribute_id": 12510,
+      "status": "packet-proven",
+      "meaning": "Raw current value is an additive critical-damage bonus in ten-thousandths over an implicit 1.0 base.",
+      "formula_when_critical": "critical_factor = (10000 + crit_damage_raw) / 10000",
+      "formula_when_not_critical": "critical_factor = 1",
+      "percentage_point_semantics": {
+        "raw_delta_520": 5.2,
+        "raw_delta_340": 3.4,
+        "raw_delta_310": 3.1,
+        "raw_delta_200": 2.0,
+        "unit": "percentage points added to the shared fixed-point base"
+      },
+      "counterexample_rejected": "A raw +520 is not current_crit_damage_raw multiplied by 1.052.",
+      "exact_packet_pair": {
+        "session_id": "formula-session-20260731-010829",
+        "run_ordinal": 2,
+        "source_entity_uuid": 216009015936,
+        "target_entity_uuid": 7602240,
+        "ability_id": 2203531,
+        "hit_event_id": 1,
+        "damage_source": 2,
+        "critical_sequence": 550866,
+        "normal_sequence": 550867,
+        "gap_micros": 0,
+        "crit_damage_raw": 12058,
+        "critical_amount": 67428,
+        "normal_amount": 30568,
+        "reverse_check": "floor(67428 * 10000 / (10000 + 12058)) = 30568",
+        "residual": 0
+      },
+      "broader_audit": {
+        "damage_events_with_both_multiplier_attributes": 46421,
+        "strict_cross-flag_pairs": 1372,
+        "exact_matches": 177,
+        "within_one_matches": 173,
+        "mismatches_requiring_additional_formula_controls": 1022
+      }
+    },
+    {
+      "attribute_id": 12530,
+      "status": "packet-proven",
+      "meaning": "Raw current value is the complete Lucky Strike damage multiplier in ten-thousandths; unlike critical damage, it has no implicit 1.0 base added at this stage.",
+      "formula_when_lucky": "lucky_factor = lucky_damage_raw / 10000",
+      "formula_when_not_lucky": "lucky_factor = 1",
+      "counterexample_rejected": "The packet value is neither (10000 + lucky_damage_raw) / 10000 nor current_lucky_damage_raw multiplied by a displayed percentage.",
+      "proof_artifact": ".codex_tmp/team-luck-crit-counterfactual.v3.json",
+      "external_effect_counterfactual": {
+        "effect_id": 2302121,
+        "external_provider_events": 9839,
+        "unique_provider_events": 9839,
+        "ambiguous_provider_events": 0,
+        "critical_only_events": 9805,
+        "lucky_only_events": 34,
+        "critical_and_lucky_events": 0,
+        "integer_counterfactual_events_exact_across_all_stage_orders": 9819,
+        "integer_counterfactual_events_with_one_point_rounding_interval": 20,
+        "unresolved_events_hidden": false
+      },
+      "exact_rdps_accounting_definition": {
+        "formula": "observed_damage * (current_combined_factor - provider_removed_combined_factor) / current_combined_factor",
+        "representation": "reduced rational numerator and denominator",
+        "events": 9839,
+        "factor_buckets": 173,
+        "conservation": "The provider gain and recipient subtraction retain the identical reduced rational value; every packet damage amount equals recipient retained damage plus provider-attributed damage exactly.",
+        "integer_boundary": "The exact rational rDPS accounting metric is distinct from reconstructing the server's unobserved integer pre-multiplier. Twenty Lucky Strike events retain both compatible adjacent integer counterfactuals rather than choosing one."
+      }
+    }
+  ],
+  "packet_provider_effect_evidence": [
+    {
+      "effect_id": 2302121,
+      "origin": {
+        "source_type_id": 1,
+        "source_config_id": 2302120
+      },
+      "proof_artifact": ".codex_tmp/rdps-team-luck-attribute-proof.v3.json",
+      "recipient_relation": "different player from the exact packet source",
+      "provider": {
+        "entity_uuid": 42310107776,
+        "actor_kind": "player",
+        "class_id": 5,
+        "specialization_id": 111
+      },
+      "recipient_entity_uuid": 216009015936,
+      "status_shape": {
+        "level": 1,
+        "stacks": 1,
+        "duration_millis": 1100,
+        "count": -1
+      },
+      "exact_same_wire_attribute_changes": [
+        {
+          "attribute_family": 12510,
+          "meaning": "critical-damage bonus",
+          "apply_raw_delta": 520,
+          "remove_raw_delta": -520,
+          "apply_occurrences": 20,
+          "remove_occurrences": 20,
+          "isolated_removals": 1,
+          "user_facing_percentage_points": 5.2
+        },
+        {
+          "attribute_family": 12530,
+          "meaning": "lucky-damage bonus",
+          "apply_raw_delta": 340,
+          "remove_raw_delta": -340,
+          "apply_occurrences": 24,
+          "remove_occurrences": 30,
+          "user_facing_percentage_points": 3.4
+        }
+      ],
+      "cross_cohort_control": "Across the exact +520 and +340 application cohorts, no different status transition is common to every message. The selected 2302121 application is the sole common lifecycle transition; simultaneous and intervening transitions remain preserved in every example.",
+      "scope": "This proves the external recipient's raw stat deltas, fixed-point units, Lucky Strike multiplier convention, exact provider identity, and a conserved rational per-event rDPS transfer. Self-recipient behavior and unrelated damage-formula stages remain separate questions."
+    }
+  ],
+  "unresolved_components": [
+    {
+      "scope": "complete damage formula",
+      "reason": "Attack, skill coefficient, target defense and resistance, additive damage increases, reductions, elemental terms, and special-mode terms still require independent packet correlation."
+    }
+  ],
+  "temporal_state_evidence": {
+    "audit": ".codex_tmp/damage-formula-stage-proof.current-captures.v2.json",
+    "controlled_pairs": 2156,
+    "observed_changed_attributes": [
+      {
+        "locus": "source",
+        "attribute_id": 11310,
+        "internal_name": "AttrHp",
+        "controlled_pairs": 2,
+        "updates_between_hits": 2
+      },
+      {
+        "locus": "source",
+        "attribute_id": 20010,
+        "internal_name": "AttrOriginEnergy",
+        "controlled_pairs": 5,
+        "updates_between_hits": 5
+      },
+      {
+        "locus": "target",
+        "attribute_id": 11310,
+        "internal_name": "AttrHp",
+        "controlled_pairs": 2149,
+        "updates_between_hits": 2149,
+        "delta_equals_negative_immediately_preceding_hp_loss": 8
+      }
+    ],
+    "policy": "HP, shield, and resource values are retained. A state update may be an output of one hit and still be an input, threshold, or resource predicate for the next hit. Timing correlation alone does not assign a formula stage or rDPS ownership."
+  },
+  "current_build_shield_state_evidence": {
+    "attribute_id": 60050,
+    "wire_identity": "AttrShieldList",
+    "packet_shape": "protobuf wrapper field 1 repeats shield instances; each instance retains uuid, shield_type, current_value, initial_value, and max_value",
+    "decoder": "rlogs_game_bpsr::decode_shield_list",
+    "formula_policy": "Every shield instance is retained. A formula consumer may select or exclude a shield type only after current-build packet evidence proves that rule.",
+    "buff_lifecycle_payload_audit": {
+      "proof_artifact": ".codex_tmp/buff-payload-seq14002-target257187840640-instances314-315-983.v2.json",
+      "tool": "rlogs-bpsr-buff-payload-audit",
+      "journal": "private-research/live-captures/factor-scan-session-20260731-010829.jsonl",
+      "journal_record_sequence": 14002,
+      "route": {
+        "direction": "server_to_client",
+        "fragment": "notify",
+        "service_id": 1664308034,
+        "method_id": 45
+      },
+      "target_entity_uuid": 257187840640,
+      "target_filter_policy": "Buff instance IDs are only unique inside their owning entity's state. The audit filters target entity before matching instance IDs so a same-numbered buff on another entity cannot contaminate the proof.",
+      "instances": [
+        {
+          "buff_instance_id": 314,
+          "effect_id": 50024,
+          "packet_events": 2,
+          "event_types": [6],
+          "logic_type": 19,
+          "raw_fields": [
+            "field 1 stacks",
+            "field 2 duration_millis",
+            "field 3 create_time_millis"
+          ],
+          "numeric_shield_amount_present": false
+        },
+        {
+          "buff_instance_id": 315,
+          "effect_id": 2201502,
+          "packet_events": 4,
+          "event_types": [6, 10001],
+          "logic_types": [14, 19],
+          "change_raw_fields": [
+            "field 1 stacks",
+            "field 3 create_time_millis"
+          ],
+          "event_10001_logic_type_14_raw_fields": [
+            "field 1 value 31"
+          ],
+          "interpretation": "Resource or energy lifecycle evidence; no structured shield instance with UUID 315 exists in the same source state.",
+          "numeric_shield_amount_present": false
+        },
+        {
+          "buff_instance_id": 983,
+          "effect_id": 2201561,
+          "origin_source_config_id": 2201560,
+          "packet_events": 12,
+          "event_types": [6],
+          "logic_type": 19,
+          "raw_fields": [
+            "field 1 stacks",
+            "field 2 duration_millis",
+            "field 3 create_time_millis"
+          ],
+          "numeric_shield_amount_present": false
+        }
+      ],
+      "finding": "For the calculation window that contains the unique 1036137 transient shield-total solution, current-build BuffChange payloads carry identity, stacks, duration, and timing but no shield magnitude or undeclared numeric field. Attribute 60050 is the authoritative serialized magnitude surface; the buff lifecycle is the authoritative identity and timing surface. Both must be retained and correlated.",
+      "rdps_boundary": "The missing per-instance intermediate amount cannot be assigned to instance 314 or 983 from this payload alone. Provider attribution remains unresolved even though the aggregate calculation-time shield total is exactly constrained."
+    },
+    "exact_packet_samples": [
+      {
+        "raw_hex": "0a1108f001100c1890930220bec90128d08d13",
+        "decoded": [
+          {
+            "uuid": 240,
+            "shield_type": 12,
+            "current_value": 35216,
+            "initial_value": 25790,
+            "max_value": 313040
+          }
+        ]
+      },
+      {
+        "raw_hex": "0a1108be03106618e198242088f71928adeb360a1108d103100c1888930220e0c1012897c012",
+        "decoded": [
+          {
+            "uuid": 446,
+            "shield_type": 102,
+            "current_value": 592993,
+            "initial_value": 424840,
+            "max_value": 898477
+          },
+          {
+            "uuid": 465,
+            "shield_type": 12,
+            "current_value": 35208,
+            "initial_value": 24800,
+            "max_value": 303127
+          }
+        ],
+        "current_value_total": 628201
+      }
+    ],
+    "stale_reference_rejected": "The old Global scalar label that called attribute 11325 current shield is incompatible with current-build packets. Attribute 11325 is the extra MaxHP-percent aggregation member; current shield state is the structured attribute 60050 list."
+  },
+  "state_scaled_skill_evidence": {
+    "policy": "Current HP, missing HP, final Max HP, every Max-HP aggregation member, physical-Defense aggregation members, shields, and resources remain formula inputs. No value is removed merely because it is not ordinary Attack scaling.",
+    "proof_artifact": ".codex_tmp/judgment-ability-state.current.v8.json",
+    "wire_message_state_policy": "Selected ability proofs retain the exact damage packet, complete source and target attribute state and statuses both at wire-message start and at the canonical damage event. Attribute or status notifications serialized earlier in the same wire message are not assumed to have preceded the server-side damage calculation.",
+    "complete_current_build_state_audit": {
+      "proof_artifact": ".codex_tmp/state-scaling-all-abilities.current-captures.v21.json",
+      "compact_hp_shield_inventory": ".codex_tmp/hp-shield-dependency-inventory.current-captures.v21.json",
+      "damage_events": 167227,
+      "packet_ability_ids": 199,
+      "hp_shield_dependency_inventory": {
+        "abilities_retained": 199,
+        "packet_state_unavailable": 0,
+        "exact_aggregate_formula_proofs": 1,
+        "cross_state_fixed_point_candidates": 49,
+        "repeated_single_state_candidates": 26,
+        "event_order_target_state_consequences_observed": 3,
+        "packet_state_observed_formula_unresolved": 120,
+        "runtime_rdps_attribution_enabled": 0,
+        "promotion_policy": "A compact cross-state candidate requires a positive fixed-point ratio repeated across at least two distinct numerator values and two distinct HP or shield values with at least 25% coverage at that exact timing and state locus. A repeated single-state candidate requires at least three observations and 50% coverage. Event-order-only target-current-HP or target-missing-HP ratios remain retained but are marked as possible post-hit consequences and excluded from formula promotion unless the same ratio exists at wire-message start. Promotion prioritizes review only; it is never formula proof or a filter.",
+        "retention_policy": "Every packet-observed ability, HP or shield state, status lifecycle, damage event, and unpromoted ratio remains in the canonical rlog and exhaustive proof. HP-based skills and effects are never discarded merely because their dependency is not yet isolated."
+      },
+      "state_families_retained": [
+        "source current HP",
+        "source final MaxHP and every aggregation member",
+        "source missing HP",
+        "target current HP",
+        "target final MaxHP and every aggregation member",
+        "target missing HP",
+        "source physical Defense and every aggregation member",
+        "source and target shield percentage families",
+        "source and target structured attribute-60050 shield instances and their current-value totals",
+        "source and target resource families",
+        "source and target status signatures"
+      ],
+      "cross_state_ratio_evidence": "Every reported ratio keeps its count plus distinct numerator and denominator values. A repeated ratio at one unchanged HP value is correlation only; review prioritizes relationships repeated across different HP values, while every original event remains in the source rlog.",
+      "timing_stages": [
+        "wire-message-start state",
+        "canonical event state"
+      ],
+      "wire_to_event_state_transition_policy": "For every ability, paired wire-message-start and canonical-event CurrentHP, MaxHP, missing-HP, and shield values are retained as signed transitions. Source-side and MaxHP transitions may identify a cost, gain, temporary stat surface, or formula stage, but do not establish server calculation order by themselves. Target CurrentHP, missing-HP, and shield changes are retained with an explicit post-event-consequence warning. No transition or damage event is discarded.",
+      "hp_state_transition_evidence": [
+        {
+          "ability_id": 3054440,
+          "presentation_kind": "reality-factor-proc",
+          "damage_events": 11,
+          "paired_source_current_hp_and_max_hp_events": 11,
+          "events_with_source_current_hp_change": 9,
+          "events_with_source_max_hp_change": 9,
+          "exact_signed_current_hp_change": -25781,
+          "exact_signed_max_hp_change": -25781,
+          "events_with_unchanged_source_missing_hp": 11,
+          "finding": "Nine damage events share an intra-message source CurrentHP and MaxHP decrease of exactly 25781 while source missing HP remains exactly 2. CurrentHP and MaxHP move together onto a lower MaxHP surface while preserving the same two-point missing-HP offset, so this is not an HP cost and cannot be dropped as an ordinary damage outlier. The packet proves a temporary MaxHP-state transition but does not yet prove whether damage used the pre-transition value, post-transition value, or another hidden intermediate stage.",
+          "observed_damage_cohorts_during_transition": [
+            {
+              "amount": 147687,
+              "events": 8,
+              "amount_to_absolute_transition_basis_points_floor": 57285
+            },
+            {
+              "amount": 239255,
+              "events": 1,
+              "amount_to_absolute_transition_basis_points_floor": 92802
+            }
+          ],
+          "max_hp_fixed_point_transition_proof": {
+            "stable_base_attribute_id": 11321,
+            "stable_base_value": 569116,
+            "extra_percent_attribute_id": 11325,
+            "wire_message_start_extra_percent": 5440,
+            "event_order_extra_percent": 4987,
+            "signed_extra_percent_change": -453,
+            "unit_interpretation": "ten-thousand fixed point; -453 is -4.53 percentage points, not -453 flat HP",
+            "wire_message_start_final_max_hp": 878723,
+            "event_order_final_max_hp": 852942,
+            "signed_final_max_hp_change": -25781,
+            "exact_integer_equality": "floor(569116 * 5440 / 10000) - floor(569116 * 4987 / 10000) = 25781",
+            "current_hp_changed_by_same_amount": true,
+            "missing_hp_changed": false,
+            "finding": "The packet proves that attribute 11325 contributes percentage-scaled MaxHP from the stable 11321 basis. The simultaneous CurrentHP adjustment preserves missing HP, so this transition is an HP stat-surface change and must remain available to HP-dependent skill formulas and later external-provider marginal replay."
+          },
+          "packet_lifecycle": [
+            {
+              "sequence": 4236,
+              "observed_at_micros": 49744580,
+              "event": "source_ready_status_applied",
+              "effect_id": 3054441,
+              "effect_instance_id": 1902,
+              "origin_type": 1,
+              "origin_config_id": 3054440,
+              "stacks": 1
+            },
+            {
+              "sequence": 4739,
+              "observed_at_micros": 51607382,
+              "event": "target_marker_applied",
+              "effect_id": 3054141,
+              "effect_instance_id": 8,
+              "origin_type": 1,
+              "origin_config_id": 3054441,
+              "duration_millis": 1000
+            },
+            {
+              "sequence": 4741,
+              "observed_at_micros": 51607382,
+              "event": "ordinary_triggering_attack_damage",
+              "ability_id": 240102,
+              "amount": 30253
+            },
+            {
+              "sequence": 4750,
+              "observed_at_micros": 51687523,
+              "event": "source_ready_status_removed",
+              "effect_id": 3054441,
+              "effect_instance_id": 1902
+            },
+            {
+              "sequence": 5487,
+              "observed_at_micros": 52081823,
+              "event": "factor_damage",
+              "ability_id": 3054440,
+              "amount": 79083,
+              "target_marker_effect_id": 3054141
+            },
+            {
+              "observed_at_micros": 52736972,
+              "event": "target_marker_removed",
+              "effect_id": 3054141,
+              "effect_instance_id": 8
+            }
+          ],
+          "separate_hp_component_evidence": {
+            "finding": "The packet emits Reality-factor damage 3054440 as its own canonical damage event immediately beside Sacred Blade base damage 2453 for the same target and timestamp. The 3054440 amount is therefore retained as an independently produced HP-derived component; it must not be discarded, merged away, or mistaken for the base skill row.",
+            "paired_event_examples": [
+              {
+                "observed_at_micros": 52081823,
+                "target_entity_id": 7798848,
+                "hp_component": {
+                  "sequence": 5487,
+                  "ability_id": 3054440,
+                  "amount": 79083,
+                  "hit_event_id": 6,
+                  "damage_source": 2
+                },
+                "base_skill": {
+                  "sequence": 5488,
+                  "ability_id": 2453,
+                  "amount": 36552,
+                  "hit_event_id": 1,
+                  "direct_source_id": 4358848
+                }
+              },
+              {
+                "observed_at_micros": 94961952,
+                "relationship": "Every affected target receives a 3054440 event followed by its separate 2453 damage event for that target at the same timestamp.",
+                "normal_hp_component_amount": 147687,
+                "critical_hp_component_amount": 239255
+              },
+              {
+                "observed_at_micros": 123607316,
+                "hp_component": {
+                  "sequence": 61112,
+                  "ability_id": 3054440,
+                  "amount": 159292
+                },
+                "base_skill": {
+                  "sequence": 61113,
+                  "ability_id": 2453,
+                  "amount": 51727,
+                  "direct_source_id": 6128320
+                }
+              }
+            ],
+            "formula_boundary": "Independent packet rows prove component identity and observed produced damage, but not the selected factor grade, which CurrentHP snapshot the server used, the later critical and outgoing/target stages, or integer rounding order."
+          },
+          "packet_identity_finding": "Packet origin data proves this retained chain: factor 3054440 grants source-ready status 3054441; ordinary damaging ability 240102 applies target marker 3054141 through origin config 3054441; the source-ready status is consumed; ability 3054440 then deals the factor damage while the target marker is active. Status 3054091 originates from separate config 3054090 and is not part of this chain.",
+          "raw_buff_payload_evidence": {
+            "source_ready_apply_capture_sequence": 1881,
+            "source_ready_effect_id": 3054441,
+            "source_ready_level": 1,
+            "source_ready_stacks": 1,
+            "source_ready_origin_config_id": 3054440,
+            "target_marker_apply_capture_sequence": 2020,
+            "target_marker_effect_id": 3054141,
+            "target_marker_level": 1,
+            "target_marker_stacks": 1,
+            "target_marker_duration_millis": 1000,
+            "target_marker_origin_config_id": 3054441,
+            "source_ready_remove_capture_sequence": 2026,
+            "factor_damage_capture_sequence": 2058,
+            "target_marker_remove_capture_sequence": 2100,
+            "selected_factor_grade_or_scalar_present": false,
+            "finding": "Lossless protobuf audits of the ready-status apply, marker apply, damage packet, and both removals preserve every unknown field and expose no selected factor grade or numeric percentage. Status level 1 is shared by the factor family and cannot be treated as the equipped grade."
+          },
+          "remote_source_attribute_evidence": {
+            "candidate_factor_item_ids_present": false,
+            "factor_family_id_present": false,
+            "factor_status_ids_present": false,
+            "finding": "A lossless raw-varint inventory of the remote source actor's AOI attributes around all eleven hits contains none of factor item IDs 20022011 through 20022020, family ID 202302, or status IDs 3054090, 3054091, 3054141, 3054440 and 3054441. Ordinary remote AOI attributes therefore do not prove the equipped factor grade."
+          },
+          "resource_surface_evidence": {
+            "generic_energy_attribute_id": 20010,
+            "generic_energy_updates_at_factor_proc_windows": false,
+            "fight_resource_id_attribute_id": 50001,
+            "fight_resource_value_attribute_id": 50002,
+            "fight_resource_encoding": "protobuf_field_1_packed_varints",
+            "observed_resource_id_sets": [
+              [90001, 90007, 90011, 90017, 90021, 90027, 24001, 24007, 25001, 25007, 27001, 27007],
+              [90001, 90007, 90011, 90017, 90021, 90027, 22001, 22007, 22011, 22017]
+            ],
+            "selected_factor_threshold_present_as_unique_value": false,
+            "finding": "Ordered packet evidence proves that generic Energy 20010 does not update at any of the three 3054440 proc windows. Fight-resource IDs and values are preserved as paired packed-varint arrays, but the observed values do not expose a unique current-build factor threshold or equipped grade. Neither surface may be guessed into the HP-scaling formula."
+          },
+          "formula_boundary": "The lifecycle proves trigger and ownership identities and retains CurrentHP, MaxHP, missing HP, shields, statuses and all hits. It does not yet prove the selected factor grade, which HP stage supplies the percentage basis, Sacred Blade base damage, target mitigation or vulnerability stages, or integer rounding order. The absent grade must be found on another packet surface rather than guessed from status level or discarded as unavailable.",
+          "rdps_policy": "Retain the factor, its source and target status lifecycles, both HP snapshots, and every hit. Do not enable attribution until packet evidence isolates the factor trigger, exact formula stage, provider, recipient window, and stacking behavior."
+        }
+      ],
+      "post_hit_consequence_controls": [
+        {
+          "ability_id": 300001,
+          "identity": "Right Sweep",
+          "finding": "The event-state target missing HP sometimes equals the hit amount, but the wire-start state does not. This is post-hit HP loss, not evidence that the attack scales from missing HP."
+        },
+        {
+          "ability_id": 300005,
+          "identity": "Triple Slash",
+          "finding": "Nine of eleven event-state observations equal target missing HP across five damage values. The relationship disappears at wire start, proving canonical serialization consequence rather than a missing-HP formula."
+        },
+        {
+          "ability_id": 300038,
+          "identity": "Cursed Cabinet",
+          "finding": "All three available event-state observations equal target missing HP across two damage values. The relationship is absent at wire start and is retained as a rejected timing false positive, not deleted evidence."
+        },
+        {
+          "ability_id": 2000206,
+          "identity": "packet-localized monster damage source",
+          "finding": "Its promoted target-missing-HP relationship exists only at event order. The candidate and all events remain retained, but the compact inventory classifies the ability as an observed target-state consequence instead of an HP formula."
+        },
+        {
+          "ability_id": 2001501,
+          "identity": "packet-localized base skill",
+          "finding": "Its promoted target-missing-HP relationship exists only at event order. The candidate and all events remain retained, but the compact inventory classifies the ability as an observed target-state consequence instead of an HP formula."
+        }
+      ],
+      "candidate_policy": "HP, shield, Defense, and resource correlations are never discarded or hidden. They remain unresolved until packet source identity, calculation-time state, flags, target conditions, and repeated numeric behavior distinguish a formula input from an output or coincidental ratio."
+    },
+    "judgment_pursuit_variants": [
+      {
+        "talent_id": 1228,
+        "runtime_effect_id": 2206290,
+        "damage_attribute_id": 2220629005,
+        "recount_parent_id": 166,
+        "game_description_basis": "200% final Max HP fixed damage",
+        "packet_activation_evidence": {
+          "events": 11,
+          "ability_id": 2206290,
+          "activations": [
+            {
+              "events": 9,
+              "source_final_max_hp_used_by_damage": 827104,
+              "amount": 2481311,
+              "exact_observed_relation": "2481311 = 3 * 827104 - 1",
+              "state_timing": "The 827104 MaxHP notification and the damage events share wire capture sequence 4630; the immediately preceding packet state was 801323."
+            },
+            {
+              "events": 2,
+              "source_final_max_hp_used_by_damage": 912334,
+              "amount": 2737001,
+              "exact_observed_relation": "2737001 = 3 * 912334 - 1",
+              "state_timing": "The immediately preceding packet state was 912334. A 930294 MaxHP notification and the damage events share wire capture sequence 7031, proving that earlier canonical notification order inside one wire message is not calculation-time order."
+            }
+          ],
+          "source_status_signatures": 2,
+          "target_status_signatures": 8,
+          "critical": false,
+          "lucky": false
+        },
+        "formula_status": "Both packet activations independently prove amount = 3 * the server calculation-time source MaxHP - 1. Identical amounts across targets with different HP, attributes, and status signatures rule out ordinary target mitigation for these activations. The remaining problem is assigning the exact MaxHP snapshot and its externally provided aggregation components, not discarding HP state. The difference between the described 200% base term and the observed 300%-minus-one total still proves an additional 100% stage or base term that descriptions alone do not expose."
+      },
+      {
+        "talent_id": 1267,
+        "runtime_effect_id": 2206680,
+        "damage_attribute_id": 2220668005,
+        "recount_parent_id": 167,
+        "game_description_basis": "5000% physical Defense (Armor) fixed damage",
+        "packet_activation_evidence": {
+          "status_events": 2,
+          "damage_events": 0,
+          "source_physical_defense_exposed": false
+        },
+        "formula_status": "The current captures prove the runtime identity exists but do not contain an activation. The Armor coefficient is description evidence only until a 2206680 packet damage event can be matched to packet-current source physical Defense."
+      },
+      {
+        "talent_id": 952,
+        "runtime_effect_id": 2201540,
+        "damage_attribute_id": 2220154005,
+        "recount_parent_id": 137,
+        "game_description_basis": "100% final MaxHP plus 300% current shield",
+        "packet_activation_evidence": {
+          "proof_artifact": ".codex_tmp/state-scaling-bash-pursuit-2201540.v26.cap-counterfactual.json",
+          "damage_events": 225,
+          "events_with_source_final_max_hp": 225,
+          "events_with_source_shield_list": 225,
+          "distinct_source_final_max_hp_values": 24,
+          "distinct_source_state_signatures": 30,
+          "packet_validated_formula_base": "source_final_max_hp + 3 * min(sum(packet shield current_value), floor(1.5 * source_final_max_hp))",
+          "events_with_exact_formula_inputs": 225,
+          "events_using_shield_input_cap": 141,
+          "formula_base_sum": "937985743",
+          "best_exact_snapshot_formula_base_sum": "942819173",
+          "dominant_post_basis_ratio": {
+            "basis_points_floor": 14999,
+            "wire_start_state_count": 182,
+            "distinct_wire_start_numerators": 23,
+            "distinct_wire_start_denominators": 23
+          },
+          "other_observed_post_basis_ratios": [
+            {
+              "basis_points_floor": 7500,
+              "events": 18,
+              "rounding_observation": "reported as 7499 when integer flooring leaves a sub-unit remainder"
+            },
+            {
+              "basis_points_floor": 15000,
+              "events": 15
+            },
+            {
+              "basis_points_floor": 17106,
+              "events": 10,
+              "status": "preserved wire-start-state observation; exact fixed-point inversion proves a unique intermediate source shield total for all ten events"
+            }
+          ],
+          "transient_source_snapshot_evidence": {
+            "events": 10,
+            "wire_capture_sequence": 14002,
+            "source_entity_uuid": 257187840640,
+            "packet_amount": 5887315,
+            "max_hp_basis_attribute_id": 11321,
+            "max_hp_basis_value": 816466,
+            "observed_wire_start_current_shield_total": 875020,
+            "observed_event_order_current_shield_total": 1335566,
+            "exact_inferred_intermediate_current_shield_total": 1036137,
+            "wire_start_to_inferred_shield_delta": 161117,
+            "inferred_to_event_order_shield_delta": 299429,
+            "shield_input_cap": 1224699,
+            "exact_formula_base": 3924877,
+            "exact_fixed_point_equality": "floor((816466 + 3 * 1036137) * 3 / 2) = 5887315",
+            "best_exact_snapshot_ratio_result": "the ten former 17106-basis-point outliers join the 14999 fixed-point cohort; best-exact-snapshot ratios are 14999:192 events, 15000:15 events, and 7499:18 events",
+            "packet_observed_shield_instances": [
+              {
+                "shield_uuid": 314,
+                "shield_type": 102,
+                "effect_id": 50024,
+                "provider_entity_uuid": 257187840640,
+                "wire_start_current_value": 621884,
+                "event_order_current_value": 909382,
+                "packet_consistent_transient_current_value_min": 621884,
+                "packet_consistent_transient_current_value_max": 783001,
+                "packet_consistent_delta_from_wire_min": 0,
+                "packet_consistent_delta_from_wire_max": 161117
+              },
+              {
+                "shield_uuid": 983,
+                "shield_type": 12,
+                "effect_id": 2201561,
+                "origin_source_config_id": 2201560,
+                "provider_entity_uuid": 257187840640,
+                "wire_start_current_value": 253136,
+                "event_order_current_value": 426184,
+                "packet_consistent_transient_current_value_min": 253136,
+                "packet_consistent_transient_current_value_max": 414253,
+                "packet_consistent_delta_from_wire_min": 0,
+                "packet_consistent_delta_from_wire_max": 161117
+              }
+            ],
+            "instance_allocation_constraint": "The two retained transient instance values must sum to 1036137 and each must remain within its own packet-observed endpoints. This admits multiple allocations; the aggregate is exact but the per-instance allocation is not unique.",
+            "inference_boundary": "The inferred shield total is retained separately from both serialized packet states. It is the unique integer solution inside their observed bounds and is not treated as a directly serialized value.",
+            "provider_ownership_status": "resolved for all 10 events: both feasible shield instances are packet-owned by damage source entity 257187840640; the exact per-instance allocation of the 161117 aggregate delta remains intentionally unresolved",
+            "external_rdps_transfer_required": false,
+            "rdps_policy": "Retain MaxHP, every shield instance, provider identity, both serialized states, and the full hit. Because every feasible transient shield instance is self-provided, external rDPS transfer for this aggregate delta is exactly zero even though the per-instance split is not guessed."
+          },
+          "external_shield_counterfactuals": [
+            {
+              "effect_id": 2404271,
+              "origin_source_type_id": 1,
+              "origin_source_config_id": 2404270,
+              "provider_entity_uuid": 42310107776,
+              "recipient_entity_uuid": 257187840640,
+              "damage_events": 14,
+              "shield_instance_current_value_sum": 444439,
+              "provider_removed_formula_base_delta_sum": 0,
+              "zero_due_to_existing_shield_cap_events": 14,
+              "finding": "The external shield is retained with exact ownership and event timing. It contributes zero marginal Bash Pursuit damage in these 14 hits because self-provided shields already saturate the 150% MaxHP shield-input cap. This is a proved zero counterfactual, not discarded evidence."
+            },
+            {
+              "effect_id": 2202705,
+              "origin_source_type_id": 1,
+              "origin_source_config_id": 20301,
+              "provider_entity_uuid": 42310107776,
+              "recipient_entity_uuid": 257187840640,
+              "damage_events": 5,
+              "events_without_packet_current_value": 5,
+              "events_with_exact_zero_marginal_without_provider_current_value": 5,
+              "known_non_provider_current_shield_per_event": 1312504,
+              "shield_input_cap_per_event": 1297461,
+              "provider_removed_formula_base_delta_sum": 0,
+              "zero_due_to_non_provider_shields_already_saturating_cap_events": 5,
+              "finding": "The externally provided shield/status and all five HP-scaled damage events remain canonical. Its structured shield instance exposes no current_value, but the two packet-known self shields total 1312504 and already exceed the 1297461 shield-input cap. Removing the external provider therefore has exactly zero Bash Pursuit marginal damage in these five hits without guessing its magnitude; this does not imply zero value for other actions or shield states."
+            }
+          ],
+          "same_source_state_different_target_control": "The same HP-and-shield basis can produce different packet normal values on different targets, including an exact twofold pair. This proves that target-side mitigation or vulnerability stages remain after the HP-and-shield basis and prevents treating the final hit amount as the raw state-scaled coefficient."
+        },
+        "formula_status": "The packet-validated current-build formula base is MaxHP + 300% of current shield amount after capping the shield input at 150% MaxHP. MaxHP and every shield instance remain required inputs. Ten apparent 17106-basis-point outliers are exactly resolved by a unique transient source shield total between serialized before/after states. Their per-instance allocation remains unknown, but packet ownership is complete and self-provided for all candidates, proving zero external rDPS transfer without removing the HP-scaled hits. A separate five-hit external shield cohort has an absent provider current_value but an exact zero marginal because packet-known non-provider shields alone saturate the cap. Final packet damage can still apply later target/status stages, which remain separately reported."
+      }
+    ]
+  },
+  "runtime_state": {
+    "rdps_rules_enabled_from_this_observation": 0,
+    "reason": "A formula component may be proven while provider ownership, recipient windows, stacking, and all interacting stages remain incomplete."
+  }
+}

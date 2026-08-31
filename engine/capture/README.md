@@ -28,12 +28,15 @@ process/socket view.
 Only an exact flow confirmed as game-owned may leave the bounded capture
 ingress. Unattributed frames are held briefly for connection-table race
 resolution and then discarded. They are never reconstructed, decoded, or
-written to a raw capture or journal. `DumpcapLiveCapture` writes only to a pipe;
-`OwnedProcessCapture` is the mandatory persistence boundary around it.
+written to a raw capture or journal. `NpcapLiveCapture` opens the trusted system
+Npcap API directly; `DumpcapLiveCapture` remains an optional compatibility
+pipe. `OwnedProcessCapture` is the mandatory privacy and persistence boundary
+around either source.
 
-Live sessions expose a cooperative stop handle. A stop request terminates only
-the private dumpcap child, causing its pipe to reach EOF. The ownership filter
-then refreshes and drains its bounded queue before the shared file recorder
+Live sessions expose a cooperative stop handle. Native Npcap checks it at the
+bounded read timeout; the compatibility adapter terminates only its private
+dumpcap child. The ownership filter then refreshes and drains its bounded queue
+before the shared file recorder
 flushes and atomically publishes the process-owned PCAP and exact connection
 evidence. The command-line capture tool and localhost host use this same
 recorder rather than maintaining separate persistence implementations.

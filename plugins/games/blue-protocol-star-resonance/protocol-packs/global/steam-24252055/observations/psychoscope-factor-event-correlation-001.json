@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "observation_id": "psychoscope-factor-event-correlation-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "client_build": "24252055",
+  "scope": "Psychoscope factor selection, status-effect lifecycle, provider/recipient, stacking, and damage-event correlation",
+  "analysis_policy": {
+    "mode": "offline sealed canonical rlog replay",
+    "factor_semantics_owner": "BPSR game plug-in",
+    "history_or_live_meter_mutated": false,
+    "rdps_attribution_enabled": false,
+    "unknown_or_ambiguous_evidence_dropped": false
+  },
+  "retained_archive_set": {
+    "sealed_rlogs": 29,
+    "reports_with_factor_selection_snapshots": 12,
+    "factor_selection_observations": 27,
+    "reports_with_mapped_factor_effect_windows": 7,
+    "reports_with_both_selection_and_effect_windows": 0,
+    "correlated_effect_windows": 91,
+    "unmatched_lifecycle_events": 38
+  },
+  "selection_evidence": {
+    "season_id": 3,
+    "selected_factor_item_ids": [
+      20020397,
+      20020420,
+      20020425,
+      20020427,
+      20020887,
+      20020927,
+      20021025,
+      20021035,
+      20021155,
+      20021394,
+      20021947,
+      20021967
+    ],
+    "unmapped_selected_item_ids": 0,
+    "temporal_join_result": "The retained selection snapshots and factor-effect windows occur in different sealed run archives. Exact factor grade and magnitude are therefore not joined across them."
+  },
+  "provider_recipient_evidence": {
+    "windows_with_source_equal_to_recipient": 91,
+    "windows_with_distinct_source_and_recipient": 0,
+    "windows_without_source": 0,
+    "result": "Every mapped factor effect observed in this archive set was self-provided. This does not prove that every factor in every game context is self-only."
+  },
+  "lifecycle_evidence": {
+    "samples": 101,
+    "states": {
+      "applied": 53,
+      "refreshed": 38,
+      "stacked": 0,
+      "consumed": 0,
+      "removed": 10
+    },
+    "unmatched_states": {
+      "refreshed_without_prior_apply_in_same_archive": 38
+    },
+    "close_reasons": {
+      "removed": 10,
+      "log_ended": 81
+    },
+    "duration_samples_present": 0,
+    "dropped_lifecycle_samples": 0
+  },
+  "stacking_evidence": {
+    "minimum_observed_stack": 1,
+    "maximum_observed_stack": 1,
+    "windows_observed_above_one_stack": 0,
+    "maximum_concurrent_instances_per_recipient": 1,
+    "maximum_concurrent_distinct_providers_per_recipient": 1,
+    "overlapping_window_pairs": 0,
+    "result": "The retained archive set supports single-instance, stack-one behavior only. It is insufficient to promote a global non-stacking rule."
+  },
+  "effect_damage_correlations": [
+    {
+      "effect_id": 3053070,
+      "factor_item_candidates": [20020397],
+      "windows": 8,
+      "matched_rule_action_events": 0,
+      "matched_rule_action_damage": 0
+    },
+    {
+      "effect_id": 3053090,
+      "factor_item_candidates": [20020420],
+      "windows": 8,
+      "matched_rule_action_events": 2264,
+      "matched_rule_action_damage": 111549398
+    },
+    {
+      "effect_id": 3053100,
+      "factor_item_candidates": [20020425, 20020427],
+      "windows": 4,
+      "matched_rule_action_events_per_candidate": 207,
+      "matched_rule_action_damage_per_candidate": 24828538,
+      "ambiguity": "Both grades use the same primary effect ID but different magnitudes. Candidate aggregates are alternatives and must not be added together."
+    },
+    {
+      "effect_id": 3053430,
+      "factor_item_candidates": [20021947],
+      "windows": 8,
+      "matched_rule_action_events": 252,
+      "matched_rule_action_damage": 129654896
+    },
+    {
+      "effect_id": 3053450,
+      "factor_item_candidates": [20021967],
+      "windows": 8,
+      "matched_rule_action_events": 1212,
+      "matched_rule_action_damage": 67155040
+    },
+    {
+      "effect_id": 3058050,
+      "factor_item_candidates": [20020927],
+      "windows": 20,
+      "matched_rule_action_events": 0,
+      "matched_rule_action_damage": 0
+    },
+    {
+      "effect_id": 3059050,
+      "factor_item_candidates": [20021035],
+      "windows": 31,
+      "matched_rule_action_events": 0,
+      "matched_rule_action_damage": 0
+    },
+    {
+      "effect_id": 3059170,
+      "factor_item_candidates": [20021155],
+      "windows": 4,
+      "matched_rule_action_events": 0,
+      "matched_rule_action_damage": 0
+    }
+  ],
+  "promotion_blockers": [
+    "seed the run archive with the last capture-time factor selection snapshot so a later profile cannot rewrite an earlier run",
+    "resolve shared primary effect ID 3053100 to the selected factor grade at the run timestamp",
+    "observe duration or authoritative removal for passives currently closed by the end of the sealed segment",
+    "observe repeated or multi-provider applications before assigning a stacking rule",
+    "validate factor-specific magnitude and eligible damage domains before granting rDPS credit"
+  ],
+  "retained_data": {
+    "packet_payloads": false,
+    "network_endpoints": false,
+    "character_names": false,
+    "character_ids": false,
+    "entity_ids": false,
+    "account_identifiers": false,
+    "credentials_or_tokens": false
+  }
+}

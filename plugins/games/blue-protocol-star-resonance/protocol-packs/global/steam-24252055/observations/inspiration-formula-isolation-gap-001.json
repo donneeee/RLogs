@@ -1,0 +1,165 @@
+{
+  "schema_version": 5,
+  "game_build": "24252055",
+  "purpose": "Retain the current-build Inspiration damage-formula isolation gap without hiding packet evidence or guessing a runtime transfer.",
+  "policy": {
+    "proof_authority": false,
+    "runtime_rdps_attribution_enabled": false,
+    "unresolved_evidence_hidden": false,
+    "partial_effect_total_emitted": false,
+    "derived_and_source_axes_counted_once": true
+  },
+  "sealed_inputs": [
+    ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260730-235717.rlog",
+    ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260731-010244.rlog",
+    ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260731-010829.rlog"
+  ],
+  "focused_action": {
+    "ability_id": 2031109,
+    "sample_count": 833,
+    "samples_with_complete_source_formula_state": 335,
+    "strict_control_scope": "Same retained packet formula inputs, source and target identity, action and hit identity, hit flags, semantic status state, and every other observed source and target formula attribute; remove only the candidate axis.",
+    "candidate_axes": [
+      {
+        "name": "physical_attack",
+        "attribute_id": 11330,
+        "samples": 335,
+        "distinct_value_count": 36,
+        "strict_controlled_groups": 0
+      },
+      {
+        "name": "critical_chance",
+        "attribute_id": 11710,
+        "samples": 335,
+        "distinct_value_count": 52,
+        "strict_controlled_groups": 0
+      },
+      {
+        "name": "lucky_chance",
+        "attribute_id": 11780,
+        "samples": 335,
+        "distinct_values": [500, 800, 860],
+        "strict_controlled_groups": 0
+      },
+      {
+        "name": "external_damage",
+        "attribute_id": 11840,
+        "samples": 335,
+        "distinct_values": [575, 680, 701],
+        "strict_controlled_groups": 0
+      },
+      {
+        "name": "haste",
+        "attribute_id": 11930,
+        "samples": 335,
+        "distinct_value_count": 25,
+        "strict_controlled_groups": 0
+      },
+      {
+        "name": "mastery",
+        "attribute_id": 11940,
+        "samples": 335,
+        "distinct_values": [1100, 1400, 1700, 1760, 2100, 2200, 2500, 2560],
+        "strict_controlled_groups": 0
+      },
+      {
+        "name": "versatility",
+        "attribute_id": 11950,
+        "samples": 335,
+        "distinct_values": [1644, 1944, 2004],
+        "strict_controlled_groups": 0
+      },
+      {
+        "name": "derived_light_damage",
+        "attribute_id": 13170,
+        "samples": 335,
+        "distinct_value_count": 14,
+        "strict_controlled_groups": 0
+      }
+    ]
+  },
+  "proven_boundaries_retained": [
+    "Inspiration occurrence and provider identity",
+    "normal and Full Bloom packet attribute vectors",
+    "Attack-family base-add and percentage integer relation",
+    "Versatility 11950 to External Damage 11840 derived relation",
+    "Mastery 11940 delta to derived Light Damage 13170 delta relation",
+    "critical, Lucky, and combined Critical-plus-Lucky chance occurrence counterfactuals",
+    "non-overlapping Attack-plus-External-Damage reduced-rational accounting primitive"
+  ],
+  "mastery_light_packet_order_audit": {
+    "tool": "rlogs-bpsr-inspiration-elemental-snapshot-proof",
+    "gap_proof": ".codex_tmp/inspiration-mastery-gap-proof.skill-groups.v6.json",
+    "generated_report": ".codex_tmp/inspiration-elemental-snapshot-proof.skill-groups.v17.json",
+    "superseded_report": ".codex_tmp/inspiration-elemental-snapshot-proof.all-abilities.v16.json",
+    "attribute_closure_catalog": "plugins/games/blue-protocol-star-resonance/game-data/catalog/formulas/inspiration-packet-attribute-closure.global-steam-24252055.v1.json",
+    "calculation_identity": "ability, hit event, packet flags, server skill-effect UUID when present, component index, and component count; group index is retained as occurrence evidence but is not stable across casts",
+    "light_property_damage_events_between_mastery_and_derived_light_updates": 374,
+    "events_with_exact_mastery_to_light_transition_boundary": 374,
+    "events_with_prior_old_light_observation": 36,
+    "events_with_next_logical_light_observation": 29,
+    "events_with_both_boundary_observations": 1,
+    "prior_observation_amount_equal": 0,
+    "next_observation_amount_equal": 21,
+    "both_observations_amount_equal": 0,
+    "prior_state_controlled_observations": 0,
+    "next_state_controlled_observations": 0,
+    "two_sided_state_controlled_observations": 0,
+    "strict_state_control_pairs": 0,
+    "occurrence_candidates_with_logical_light": 56,
+    "occurrence_candidates_with_complete_attribute_control": 6,
+    "occurrence_candidates_with_complete_source_status_control": 3,
+    "occurrence_candidates_with_complete_target_status_control": 0,
+    "occurrence_candidates_with_complete_status_control": 0,
+    "interpretation": [
+      "For this cohort, Damage.normal_value is a duplicate of the emitted final damage amount, not an independent pre-element or pre-mitigation checkpoint.",
+      "The v16 report's three prior-state and nine next-state one-sided controls are invalid as formula witnesses because their identity omitted skill-effect component index and count; retained examples show that equal ability and hit IDs can contain distinct server sub-hits.",
+      "The component-aware v17 replay retains 374 exact gap events, but only one has both boundary observations and none has a state-controlled prior, next, or two-sided witness.",
+      "The six occurrence-level complete attribute controls still lack complete status control and therefore remain evidence only.",
+      "No evidence is removed or reassigned; runtime Mastery-derived Light attribution remains disabled until the snapshot boundary and integer formula stage are exact."
+    ]
+  },
+  "expanded_runtime_archive_audit": {
+    "report": ".codex_tmp/inspiration-mastery-gap-proof.all-archives.v4.json",
+    "sealed_rlogs": 29,
+    "matching_mastery_transitions": 281,
+    "matching_light_transitions": 276,
+    "mismatched_light_transitions": 5,
+    "delayed_light_transitions": 276,
+    "transitions_with_any_gap_damage": 189,
+    "gap_damage_events": 1435,
+    "gap_damage_events_with_packet_property": 0,
+    "formula_authority": false,
+    "interpretation": "The 29 original runtime archives broaden transition coverage but predate canonical preservation of packet damage property, so none of their 1,435 gap damage events can establish the elemental snapshot stage. They remain retained missing-field evidence and are not silently discarded."
+  },
+  "coefficient_stage_audit": {
+    "component_aware_report": ".codex_tmp/damage-attr-coefficient-proof.skill-effect-groups.24252055.v7.json",
+    "superseded_report": ".codex_tmp/ability-2352-formula-proof.wire-start.v33-post-coefficient.json",
+    "ability_id": 2352,
+    "exact_build_semantic_surface": ".codex_tmp/damage-attr-semantic-surface.24252055.v1.json",
+    "exact_build_route_proof": ".codex_tmp/damage-source-route-proof.24252055.v10.json",
+    "mapped_combat_results": 76452,
+    "mapped_standard_coefficient_results": 60353,
+    "observed_damage_rows": 127,
+    "component_aware_sibling_pair_families": 0,
+    "component_aware_paired_events": 0,
+    "superseded_paired_groups": 35,
+    "formula_authority": false,
+    "interpretation": "The prior 35 apparent sibling groups compared distinct server skill-effect components. Once skill-effect UUID, component index, and component count join the calculation identity, zero legitimate sibling pairs remain. All 76,452 mapped combat results and 127 observed semantic rows remain retained, but none authorizes a generic coefficient formula."
+  },
+  "remaining_gap": {
+    "reason": "All relevant source axes vary in the focused corpus, but no component-aware pair isolates one candidate while every other observed formula input and state remains equal. The earlier apparent one-sided controls were distinct server damage components, not repeated calculations.",
+    "not_proven": [
+      "authoritative packet snapshot and stage placement for External Damage inside the complete damage formula",
+      "Mastery-derived elemental damage placement and snapshot boundary",
+      "Haste conversion into additional action opportunities",
+      "one complete conserved Inspiration counterfactual containing every provider-caused stage"
+    ],
+    "required_evidence": [
+      "A packet capture containing the same action and hit context immediately across an exact Inspiration apply or remove transition with all non-Inspiration inputs stable.",
+      "Or an independently recovered current-build client formula whose integer ordering is replayed exactly against sealed packets.",
+      "Exact per-event and party-level conservation after composing every Inspiration stage once."
+    ]
+  },
+  "generated_report": ".codex_tmp/ability-2031109-formula-proof.wire-start.v35.json"
+}

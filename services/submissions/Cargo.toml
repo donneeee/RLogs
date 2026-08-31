@@ -9,6 +9,7 @@ rust-version.workspace = true
 axum.workspace = true
 rlogs-game-bpsr = { path = "../../plugins/games/blue-protocol-star-resonance" }
 rlogs-combat = { path = "../../engine/combat" }
+rlogs-events = { path = "../../engine/events" }
 rlogs-log-format = { path = "../../engine/log-format" }
 rlogs-plugin-combat-meter = { path = "../../plugins/builtin/combat-meter" }
 rlogs-plugin-encounter-recorder = { path = "../../plugins/builtin/encounter-recorder" }
@@ -23,6 +24,5 @@ tower-http.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-rlogs-events = { path = "../../engine/events" }
 tempfile = "3.27.0"
 tower = { version = "0.5", features = ["util"] }

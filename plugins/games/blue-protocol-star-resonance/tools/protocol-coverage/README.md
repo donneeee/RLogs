@@ -1,7 +1,7 @@
 # Protocol coverage
 
 ```text
-rlogs-protocol-coverage [--json] [--pack <pack.json>] <capture.jsonl>
+rlogs-protocol-coverage [--json] [--recover-truncated-tail] [--pack <pack.json>] <capture.jsonl>
 ```
 
 Without a pack, the tool reports every observed fragment and route. With a
@@ -23,3 +23,7 @@ cargo run -p rlogs-protocol-coverage -- --json <capture.jsonl>
 
 The command validates record sequence and monotonic time while streaming the
 file. It does not retain raw packet payloads in memory.
+
+`--recover-truncated-tail` accepts only a final unterminated JSON record whose
+parser error is end-of-input. It reports that tail explicitly and still rejects
+malformed complete lines or corruption in the middle of a journal.

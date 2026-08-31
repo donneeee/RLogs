@@ -1,10 +1,19 @@
-# Desktop application
+# Desktop runtime
 
 The Windows and Linux desktop host will manage capture, replay, plug-ins,
 overlays, local logs, and website device pairing.
 
-The current host is deliberately a loopback-only web application. It exercises
-the same Rust runtime that a packaged desktop window will use later:
+The reusable desktop runtime is shared by the native Tauri application and an
+explicit loopback-only browser diagnostics mode.
+
+For the normal native application, from the repository root:
+
+```powershell
+npm --prefix apps/desktop/ui run build
+cargo run -p rlogs-app
+```
+
+For browser diagnostics:
 
 ```powershell
 cd apps\desktop\ui
@@ -21,17 +30,40 @@ Its Session Recorder workspace provides:
 - a sanitized `.rlog` replay through the real bounded Combat Meter plug-in;
 - deterministic whole-run, segment, attempt, pause, and quality projections
   through the built-in Encounter Recorder;
+- a sealed-log Run Report showing run, mobbing, boss, pull, retry, winning
+  attempt, pause, gap, and leaderboard-disposition evidence without
+  recalculating it in the browser;
 - a sealed-log Event Viewer with exact raw canonical IDs, topic/kind/ID
   filtering, bounded forward-only pages, provenance details, and exact
   canonical JSON copy;
 - background PCAP/PCAPNG processing through exact connection filtering, TCP
   reconstruction, the selected BPSR protocol pack, canonical decoding, sealed
   `.rlog` output, and Combat Meter;
-- Windows process-owned live capture with automatic BPSR process and dumpcap
-  interface discovery where available;
-- cooperative Stop, which terminates only the private dumpcap ingress, drains
-  owned frames, atomically publishes private capture evidence, then decodes and
-  seals the canonical log.
+- automatic Windows process-owned monitoring using the saved network device;
+- continuous in-memory TCP reconstruction and BPSR decoding for the lifetime
+  of the game process, including newly opened game sockets;
+- build-aware Steam pack selection from the running executable and
+  `appmanifest_3681810.acf`: exact promoted packs are preferred, followed by
+  exact static candidates and then the nearest compatible pack;
+- visible provisional operation for an unpromoted or compatible pack. History,
+  overlays, submissions, and best-effort rDPS remain active, while runtime
+  status identifies both the observed and source builds and warns that changed
+  routes may affect results;
+- non-blocking rDPS capability preflight: missing evidence families are named
+  in runtime status, but monitoring continues with all available decoders and
+  retains the undecoded records needed to repair the pack;
+- a private zero-extra-payload-copy JSONL journal for every provisional run,
+  retaining framed `World`/`WorldNtf` records and transport gaps under
+  `private-research/live-journals/`; login and account services are excluded;
+- packet-authoritative dungeon persistence: entry opens a run `.rlog`,
+  completion seals it in a background worker, and monitoring immediately
+  continues for the next entry;
+- conserved incremental rDPS in the live overlay, followed automatically by a
+  serialized two-pass replay of every completed sealed run. History keeps the
+  provisional subtotal visible and labels it as queued, then atomically swaps
+  in the exact projection after remote-factor learning and conservation checks;
+- cooperative restart, which drains the current decoder and marks an open run
+  incomplete without turning a completed run into a leaderboard candidate.
 
 Event Viewer verifies and caches the current sealed artifact before exposing
 rows. Each filter owns one resumable stream cursor, reads at most 50,000 source
@@ -39,6 +71,14 @@ events or 100 milliseconds of scanning per request, returns at most 200 rows or
 8 MiB, and replaces rather than accumulates browser table pages. Values that
 may exceed JavaScript's exact integer range—including entity UUIDs, ability
 IDs, and amounts—cross the host API as decimal strings.
+
+Run Report uses that same verified sealed artifact and replays the built-in
+Encounter Recorder on demand. The API returns its typed reducer snapshot,
+bounded by the plug-in runtime's event and 16 MiB output limits. The UI
+validates the complete contract, rejects contradictory eligibility evidence,
+and presents both a human-readable segmented report and exact JSON suitable
+for comparing with future server replay. Unknown BPSR meanings remain raw IDs
+or unresolved labels.
 
 Every completed real capture also prepares—but does not upload—a deterministic
 resumable artifact manifest and persists a local draft under
@@ -75,7 +115,22 @@ only personal character observations from a fully verified sealed log, merges
 partial updates, and atomically stores a current review package under
 `runtime-data/profile-sync/packages/<game>/<deployment>/<region>/<server>/<UID>/`.
 The UI shows bounded summaries and loads exact JSON only when requested.
-Authentication, remote endpoints, and external transport remain disconnected.
+Remote transport remains opt-in. When a submission endpoint is configured,
+the uploader can keep a device bearer token in process memory and send it only
+to that validated endpoint.
+
+Contributor builds may configure that endpoint through
+`GET/POST /api/submissions/connection`. The native host persists only the
+validated endpoint URL in `runtime-data/settings/submission-connection.v1.json`;
+on Windows, the bearer token is stored under the
+`rLogs/submission-device-token/v1` target in Windows Credential Manager. API
+responses expose only whether a credential exists and never return its value.
+`POST /api/submissions/connection/disconnect` removes the credential and the
+saved endpoint. HTTPS is mandatory except for loopback development receivers.
+When Log Uploader and automatic combat logs are enabled, a dedicated bounded
+worker sends one draft at a time without blocking packet capture. A verified
+server receipt advances the durable queue entry to `submitted`; failures leave
+the draft intact for retry.
 
 The host also scans `plugins/installed/` at startup. Each child folder must
 contain a valid `plugin.toml`. Newly discovered packages are disabled until the
@@ -84,14 +139,20 @@ user enables them in Plug-in Manager, and the desired state is stored in
 manifests, missing dependencies, dependency cycles, and blocked workspace
 contributions without preventing unrelated valid packages from loading.
 
-At this stage, installed packages publish validated metadata and workspace
-descriptors only. The host does not execute their WASM, scripts, overlays, or
-external processes until the sandbox/runtime boundary is implemented.
+Installed browser and native-developer packages can publish validated local
+HTML surfaces. Native-developer packages must explicitly request the unsafe
+native-execution capability and remain disabled until the user enables them.
+The host then supervises the validated package entrypoint as a hidden child
+process, supplies package-scoped data/asset paths, records output privately,
+and stops it when the package is disabled or rLogs exits. Sandboxed WASM and
+ordinary external-process adapters remain future runtime boundaries.
 
-Live capture never starts automatically. Start it after entering the world if
-login traffic should not even be observed by the bounded ingress. Credentials,
+Process-owned monitoring starts automatically while BPSR is running and the
+saved adapter is available. Pre-entry traffic may update bounded in-memory
+network/protocol state, but it is not written into dungeon logs. Credentials,
 account-authentication payloads, private chat, and prohibited routes remain
-excluded from canonical output regardless.
+excluded by the compiled game privacy policy; no broad or pre-entry PCAP is
+created by continuous mode.
 
 `ui/` is the framework-free shell prototype. It deliberately contains only
 host responsibilities:

@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "observation_id": "team-member-profile-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "scenario": {
+    "started_after_authentication": true,
+    "included_login_flow": false,
+    "actions": [
+      "enter_normal_dungeon",
+      "complete_dungeon_with_party_companions"
+    ]
+  },
+  "route": {
+    "direction": "server_to_client",
+    "fragment": "notify",
+    "service_id": 966773353,
+    "service_name": "GrpcTeamNtf",
+    "method_id": 2,
+    "method_name": "NoticeUpdateTeamMemberInfo",
+    "packet_count": 13
+  },
+  "verified_public_fields": [
+    "character_id",
+    "display_id",
+    "display_name",
+    "level",
+    "season_level",
+    "profession_id",
+    "combat_power",
+    "season_strength"
+  ],
+  "decoder_policy": {
+    "account_fields_declared": false,
+    "user_image_fields_declared": false,
+    "team_presence_fields_declared": false,
+    "talent_id_observed_semantics": "party_role_damage_1_healer_2_tank_3",
+    "unverified_talent_id_published_as_specialization": false
+  },
+  "retained_data": {
+    "packet_payloads": false,
+    "network_endpoints": false,
+    "character_names": false,
+    "character_ids": false,
+    "account_identifiers": false,
+    "credentials_or_tokens": false
+  }
+}

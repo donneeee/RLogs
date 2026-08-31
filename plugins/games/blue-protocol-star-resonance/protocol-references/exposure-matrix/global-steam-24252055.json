@@ -1,0 +1,298 @@
+{
+  "schema_version": 1,
+  "build": {
+    "deployment_id": "global",
+    "channel": "steam",
+    "build_id": "24252055"
+  },
+  "purpose": "Machine-readable inventory of which privacy-reviewed BPSR character fields are declared, decoded, and proven for the local character or another player. This file also defines the opt-in website fallback used only to fill missing presentation/profile fields.",
+  "evidence_states": {
+    "verified_current_capture": "Observed in a sanitized capture from this exact build and covered by a decoder test.",
+    "verified_schema_and_test": "The exact protobuf shape and selective decoder are covered, but the retained observation does not prove the field for every character scope.",
+    "declared_not_observed": "The field is selectively declared but has not appeared in the retained current-build evidence for this scope.",
+    "not_available_on_surface": "The reviewed source does not carry this field.",
+    "prohibited": "The field category is intentionally undeclared and may never be uploaded or used for profile enrichment."
+  },
+  "identity_join": {
+    "required": [
+      "game_plugin_id",
+      "deployment_id",
+      "region_id",
+      "character_id"
+    ],
+    "additional_when_known": [
+      "realm_id",
+      "world_id"
+    ],
+    "public_character_key": "character_id",
+    "display_name_is_not_a_key": true,
+    "cross_region_uid_match_allowed": false
+  },
+  "future_profile_sync_note": {
+    "state": "deferred",
+    "owner": "BPSR Profile Sync plug-in, not Core and not the base BPSR packet decoder",
+    "idea": "An opted-in website snapshot may eventually fill profile presentation fields that are unavailable for another player locally.",
+    "design_rule": "Design the Profile Sync plug-in lookup and rlogs-website API together; no partial API or merge implementation belongs in the current decoding slice.",
+    "combat_log_policy": "A future profile lookup must not replace captured combat evidence or retroactively rewrite an old run from a current loadout.",
+    "implementation_present": false
+  },
+  "surfaces": [
+    {
+      "surface_id": "local_owner_container",
+      "character_scope": "local_character_owning_the_captured_connection",
+      "sensitivity": "personal_gameplay",
+      "routes": [
+        "WorldNtf/SyncContainerData",
+        "WorldNtf/SyncContainerDirtyData",
+        "WorldNtf/SyncSeason"
+      ],
+      "proof": {
+        "state": "verified_current_capture",
+        "references": [
+          "protocol-references/profile-bridges/global-steam-24252055.json",
+          "protocol-packs/global/steam-24252055/observations/world-load-process-001.json"
+        ]
+      },
+      "decoded_fields": [
+        "character.character_id",
+        "display_id",
+        "display_name",
+        "class_id",
+        "level",
+        "progression",
+        "combat_power",
+        "combat_power_breakdown",
+        "season_strength",
+        "season",
+        "appearance",
+        "equipment",
+        "equipment_suit_entries",
+        "modules",
+        "owned_imagines",
+        "battle_imagine_skills",
+        "equipped_action_slots",
+        "active_skills",
+        "talents",
+        "talent_progress",
+        "combat_professions",
+        "life_professions",
+        "cosmetics",
+        "collection_summary",
+        "activity_progress",
+        "season_medals",
+        "season_cultivation",
+        "reputations",
+        "current_profession_project_id"
+      ],
+      "exact_owner_only_examples": [
+        "module inventory and optimizer state",
+        "owned collections",
+        "complete combat-profession skill and talent records",
+        "exact ordered action slots 21 through 24",
+        "exact equipment instances, attributes, refinements, and enchantments",
+        "current-season active Psychoscope cultivation areas, middle-node factor item IDs, and big-node Fantasy IDs"
+      ],
+      "known_gaps": [
+        "server_id was absent from the verified complete snapshot",
+        "specialization_id requires a current selector, talent, or observed-action bridge",
+        "equipment_suit_entries map keys are retained but their set-family semantics are not proven",
+        "exact dirty-delta paths for live Psychoscope selection changes still require a controlled change capture"
+      ]
+    },
+    {
+      "surface_id": "party_member_snapshot",
+      "character_scope": "each_party_member_including_remote_players",
+      "sensitivity": "public_gameplay",
+      "routes": [
+        "GrpcTeamNtf/NoticeUpdateTeamMemberInfo",
+        "GrpcTeamNtf/NotifyJoinTeam"
+      ],
+      "protobuf_fields": [
+        "TeamMemberData.character_id tag 1",
+        "TeamMemberData.talent_id tag 4",
+        "TeamMemberData.social tag 9",
+        "TeamMemberSocialData.basic tag 1",
+        "TeamMemberSocialData.profession tag 4",
+        "TeamMemberSocialData.equipment tag 5",
+        "TeamMemberSocialData.user_attributes tag 8",
+        "SocialBasicData.character_id tag 1",
+        "SocialBasicData.display_id tag 2",
+        "SocialBasicData.display_name tag 3",
+        "SocialBasicData.level tag 6",
+        "SocialBasicData.scene_id tag 7",
+        "SocialBasicData.season_level tag 19",
+        "SocialProfessionData.profession_id tag 1",
+        "SocialProfessionData.weapon_skin_id tag 2",
+        "SocialEquipmentData.items tag 1",
+        "SocialEquipmentItem.slot_id tag 1",
+        "SocialEquipmentItem.item_id tag 2",
+        "SocialUserAttributes.combat_power tag 4",
+        "SocialUserAttributes.season_strength tag 5"
+      ],
+      "proof": {
+        "state": "verified_current_capture",
+        "references": [
+          "protocol-packs/global/steam-24252055/observations/team-member-profile-001.json",
+          "protocol-packs/global/steam-24252055/observations/team-member-real-player-runs-002.json"
+        ]
+      },
+      "verified_current_capture_fields": [
+        "character_id",
+        "display_id",
+        "display_name",
+        "level",
+        "season_level",
+        "profession_id",
+        "combat_power",
+        "season_strength"
+      ],
+      "schema_declared_but_not_present_in_retained_real_player_snapshot": [
+        "weapon_skin_id",
+        "equipment[].slot_id",
+        "equipment[].item_id"
+      ],
+      "not_available": [
+        "specialization_id",
+        "complete equipment instance details",
+        "modules",
+        "talent tree",
+        "Battle Imagine library",
+        "ordered action-slot map"
+      ],
+      "semantic_warning": "TeamMemberData.talent_id is the party role (damage 1, healer 2, tank 3), not a specialization ID."
+    },
+    {
+      "surface_id": "nearby_player_aoi",
+      "character_scope": "local_and_remote_entities_currently_replicated_to_the_client",
+      "sensitivity": "public_gameplay",
+      "routes": [
+        "WorldNtf/SyncNearEntities",
+        "WorldNtf/SyncNearDelta"
+      ],
+      "protobuf_attributes": [
+        "AttrCollection attribute 1 display name",
+        "AttrCollection attribute 52 position",
+        "AttrCollection attribute 116 active skill level/remodel list",
+        "AttrCollection attribute 200 public equipment configuration",
+        "AttrCollection attribute 220 class/profession ID",
+        "AttrCollection attribute 226 action-slot presentation",
+        "AttrCollection attribute 10000 level",
+        "AttrCollection attribute 10030 combat power",
+        "AttrCollection attribute 11440 season strength"
+      ],
+      "proof": {
+        "state": "verified_current_capture",
+        "references": [
+          "protocol-packs/global/steam-24252055/observations/team-member-real-player-runs-002.json"
+        ]
+      },
+      "verified_or_decoded_fields": [
+        "entity_uuid",
+        "display_name",
+        "position",
+        "class_id",
+        "level",
+        "combat_power",
+        "season_strength",
+        "weapon_item_id",
+        "active skill identities",
+        "skill levels and remodel tiers",
+        "two remote primary Battle Imagine identities and tiers when present",
+        "observed auxiliary role skills or replacement Imagines when present"
+      ],
+      "limitations": [
+        "attribute 116 is an observed skill list, not an ordered slot map",
+        "the two primary Battle Imagine identities do not have proven left-to-right order",
+        "remote auxiliary Imagine and native role-skill observations do not identify slots 21 through 24",
+        "attribute 226 must not be assumed remote until a retained remote-player observation proves it"
+      ]
+    },
+    {
+      "surface_id": "public_social_profile",
+      "character_scope": "character_returned_by_the_game_social_surface",
+      "sensitivity": "public_gameplay",
+      "routes": [
+        "SocialNtf/NotifySocialData"
+      ],
+      "protobuf_fields": [
+        "SocialData.character_id tag 1",
+        "SocialData.basic tag 3",
+        "SocialData.avatar tag 4",
+        "SocialData.profession tag 6",
+        "SocialData.equipment tag 7",
+        "SocialData.scene tag 10",
+        "SocialData.user_attributes tag 11",
+        "SocialData.guild tag 13",
+        "SocialData.personal_zone tag 16"
+      ],
+      "proof": {
+        "state": "verified_schema_and_test",
+        "references": [
+          "protocol-references/profile-bridges/global-steam-24252055.json"
+        ]
+      },
+      "decoded_fields": [
+        "character_id",
+        "display_id",
+        "display_name",
+        "gender_id",
+        "body_size_id",
+        "level",
+        "season_level",
+        "profession_id",
+        "weapon_skin_id",
+        "public equipped item configuration IDs",
+        "combat_power",
+        "season_strength",
+        "avatar_id",
+        "business_card_style_id",
+        "avatar_frame_id",
+        "guild_id",
+        "guild_name",
+        "title_id",
+        "medal map",
+        "scene, map, channel, line, and instance context"
+      ],
+      "intentionally_undeclared": [
+        "account ID and account data",
+        "profile and half-body user-supplied URLs",
+        "unrelated social/account subtrees"
+      ],
+      "not_available": [
+        "complete ProfessionList",
+        "specialization selector",
+        "talent tree",
+        "modules",
+        "Battle Imagine library",
+        "ordered auxiliary slots"
+      ]
+    }
+  ],
+  "prohibited_categories": [
+    {
+      "category": "authentication_and_account",
+      "state": "prohibited",
+      "examples": [
+        "passwords",
+        "account IDs",
+        "open/platform IDs",
+        "credentials",
+        "tokens",
+        "login and session state",
+        "email",
+        "payment and account-security data"
+      ]
+    },
+    {
+      "category": "unrelated_private_content",
+      "state": "prohibited",
+      "examples": [
+        "private chat",
+        "mail",
+        "arbitrary packet-supplied image URLs",
+        "moderation and anti-cheat internals",
+        "precise location history"
+      ]
+    }
+  ]
+}

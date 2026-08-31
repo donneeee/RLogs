@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use rlogs_capture::{CaptureSource, OfflineCapture, ValidatedCapture};
 use rlogs_core::ResearchConnectionFile;
 use rlogs_game_bpsr::{
-    CaptureAdapter, CaptureSession, GameBuild, JsonlJournalWriter, ProtocolPack, ResearchPipeline,
+    BpsrFrameUpLayout, BpsrFramerSetConfig, BpsrFramingConfig, CaptureAdapter, CaptureSession,
+    GameBuild, JsonlJournalWriter, ProtocolPack, ResearchPipeline,
 };
 
 fn main() {
@@ -68,7 +69,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .create_new(true)
         .open(&partial)?;
     let mut writer = JsonlJournalWriter::new(BufWriter::new(file), session)?;
-    let mut pipeline = ResearchPipeline::new(connections);
+    let mut pipeline = if arguments.nested_frame_up {
+        ResearchPipeline::try_with_framing_config(
+            connections,
+            BpsrFramerSetConfig {
+                stream: BpsrFramingConfig {
+                    frame_up_layout: BpsrFrameUpLayout::NestedAfterFourBytes,
+                    ..BpsrFramingConfig::default()
+                },
+                ..BpsrFramerSetConfig::default()
+            },
+        )?
+    } else {
+        ResearchPipeline::new(connections)
+    };
     let mut frames = 0_u64;
     let mut records = 0_u64;
 
@@ -135,6 +149,7 @@ struct Arguments {
     capture_id: String,
     input: PathBuf,
     output: PathBuf,
+    nested_frame_up: bool,
 }
 
 fn arguments() -> Result<Arguments, String> {
@@ -146,12 +161,15 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
     let mut connections = None;
     let mut capture_id = None;
     let mut private_research = false;
+    let mut nested_frame_up = false;
     let mut positional = Vec::new();
     let mut arguments = arguments.into_iter();
 
     while let Some(argument) = arguments.next() {
         if argument == OsStr::new("--private-research") {
             private_research = true;
+        } else if argument == OsStr::new("--nested-frame-up") {
+            nested_frame_up = true;
         } else if argument == OsStr::new("--pack") {
             pack = unique_value(pack, arguments.next(), "--pack")?;
         } else if argument == OsStr::new("--connections") {
@@ -181,6 +199,7 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
         capture_id,
         input: positional.remove(0),
         output: positional.remove(0),
+        nested_frame_up,
     })
 }
 
@@ -212,7 +231,7 @@ fn partial_path(output: &Path) -> Result<PathBuf, String> {
 }
 
 fn usage() -> String {
-    "usage: rlogs-protocol-journal --private-research --pack <pack.json> --connections <connections.json> --capture-id <id> <capture.pcapng> <output.jsonl>".into()
+    "usage: rlogs-protocol-journal --private-research [--nested-frame-up] --pack <pack.json> --connections <connections.json> --capture-id <id> <capture.pcapng> <output.jsonl>".into()
 }
 
 #[cfg(test)]
@@ -239,6 +258,21 @@ mod tests {
         .unwrap();
 
         assert_eq!(parsed.capture_id, "controlled-001");
+        assert!(!parsed.nested_frame_up);
+        let nested = parse_arguments(os(&[
+            "--private-research",
+            "--nested-frame-up",
+            "--pack",
+            "pack.json",
+            "--connections",
+            "connections.json",
+            "--capture-id",
+            "controlled-002",
+            "capture.pcapng",
+            "capture.jsonl",
+        ]))
+        .unwrap();
+        assert!(nested.nested_frame_up);
         assert!(
             parse_arguments(os(&[
                 "--pack",

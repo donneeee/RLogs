@@ -21,10 +21,12 @@ use windows_sys::Win32::{
 };
 
 use crate::dumpcap::DumpcapLiveCapture;
+use crate::npcap::NpcapLiveCapture;
 use crate::{
     CaptureError, CaptureSource, CaptureSourceMetadata, CapturedFrame, DumpcapLiveConfig,
-    LiveCaptureStopHandle, OwnedProcessCapture, OwnedProcessCaptureConfig,
-    OwnedProcessCaptureMetrics, ProcessSocketOwner, TcpConnection, TcpEndpoint,
+    LiveCaptureStopHandle, NpcapLiveConfig, NpcapLiveStopHandle, OwnedProcessCapture,
+    OwnedProcessCaptureConfig, OwnedProcessCaptureMetrics, ProcessSocketOwner, TcpConnection,
+    TcpEndpoint,
 };
 
 const MAX_TABLE_QUERY_ATTEMPTS: usize = 4;
@@ -328,6 +330,139 @@ impl CaptureSource for WindowsOwnedDumpcapCapture {
 
     fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
         self.inner.next_frame()
+    }
+}
+
+/// Native Npcap ingress with the same exact process-ownership privacy gate as
+/// the dumpcap compatibility adapter.
+#[derive(Debug)]
+pub struct WindowsOwnedNpcapCapture {
+    inner: OwnedProcessCapture<NpcapLiveCapture, WindowsProcessSocketOwner>,
+}
+
+impl WindowsOwnedNpcapCapture {
+    pub fn open(
+        process_id: u32,
+        npcap: NpcapLiveConfig,
+        filter: OwnedProcessCaptureConfig,
+    ) -> Result<Self, CaptureError> {
+        let source = NpcapLiveCapture::open(npcap)?;
+        let owner = WindowsProcessSocketOwner::new(process_id)?;
+        Ok(Self {
+            inner: OwnedProcessCapture::new(source, owner, filter)?,
+        })
+    }
+
+    pub fn metrics(&self) -> &OwnedProcessCaptureMetrics {
+        self.inner.metrics()
+    }
+
+    pub fn confirmed_connections(&self) -> Vec<TcpConnection> {
+        self.inner.confirmed_connections()
+    }
+
+    pub fn stop_handle(&self) -> NpcapLiveStopHandle {
+        self.inner.source().stop_handle()
+    }
+}
+
+impl CaptureSource for WindowsOwnedNpcapCapture {
+    fn metadata(&self) -> &CaptureSourceMetadata {
+        self.inner.metadata()
+    }
+
+    fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
+        self.inner.next_frame()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum WindowsLiveCaptureStopHandle {
+    Npcap(NpcapLiveStopHandle),
+    Dumpcap(LiveCaptureStopHandle),
+}
+
+impl WindowsLiveCaptureStopHandle {
+    pub fn request_stop(&self) -> Result<(), CaptureError> {
+        match self {
+            Self::Npcap(handle) => {
+                handle.request_stop();
+                Ok(())
+            }
+            Self::Dumpcap(handle) => handle.request_stop(),
+        }
+    }
+}
+
+/// Prefers direct native Npcap capture and retains dumpcap only as a
+/// compatibility fallback for machines where the native API cannot open.
+#[derive(Debug)]
+pub enum WindowsOwnedLiveCapture {
+    Npcap(WindowsOwnedNpcapCapture),
+    Dumpcap(WindowsOwnedDumpcapCapture),
+}
+
+impl WindowsOwnedLiveCapture {
+    pub fn open(
+        process_id: u32,
+        interface: &str,
+        duration_seconds: u32,
+        dumpcap_fallback: Option<DumpcapLiveConfig>,
+        filter: OwnedProcessCaptureConfig,
+    ) -> Result<Self, CaptureError> {
+        let npcap_result = NpcapLiveConfig::new(interface, duration_seconds)
+            .and_then(|config| WindowsOwnedNpcapCapture::open(process_id, config, filter));
+        match npcap_result {
+            Ok(capture) => Ok(Self::Npcap(capture)),
+            Err(npcap_error) => match dumpcap_fallback {
+                Some(config) => WindowsOwnedDumpcapCapture::spawn(process_id, config, filter)
+                    .map(Self::Dumpcap)
+                    .map_err(|dumpcap_error| CaptureError::Adapter {
+                        adapter: "windows-live-capture".into(),
+                        message: format!(
+                            "native Npcap failed ({npcap_error}); dumpcap fallback also failed ({dumpcap_error})"
+                        ),
+                    }),
+                None => Err(npcap_error),
+            },
+        }
+    }
+
+    pub fn metrics(&self) -> &OwnedProcessCaptureMetrics {
+        match self {
+            Self::Npcap(capture) => capture.metrics(),
+            Self::Dumpcap(capture) => capture.metrics(),
+        }
+    }
+
+    pub fn confirmed_connections(&self) -> Vec<TcpConnection> {
+        match self {
+            Self::Npcap(capture) => capture.confirmed_connections(),
+            Self::Dumpcap(capture) => capture.confirmed_connections(),
+        }
+    }
+
+    pub fn stop_handle(&self) -> WindowsLiveCaptureStopHandle {
+        match self {
+            Self::Npcap(capture) => WindowsLiveCaptureStopHandle::Npcap(capture.stop_handle()),
+            Self::Dumpcap(capture) => WindowsLiveCaptureStopHandle::Dumpcap(capture.stop_handle()),
+        }
+    }
+}
+
+impl CaptureSource for WindowsOwnedLiveCapture {
+    fn metadata(&self) -> &CaptureSourceMetadata {
+        match self {
+            Self::Npcap(capture) => capture.metadata(),
+            Self::Dumpcap(capture) => capture.metadata(),
+        }
+    }
+
+    fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
+        match self {
+            Self::Npcap(capture) => capture.next_frame(),
+            Self::Dumpcap(capture) => capture.next_frame(),
+        }
     }
 }
 

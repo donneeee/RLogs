@@ -47,5 +47,465 @@ name = "framing"
 harness = false
 
 [[bin]]
+name = "rlogs-bpsr-runtime-presentation"
+path = "tools/runtime-presentation.rs"
+
+[[bin]]
+name = "rlogs-bpsr-factor-event-correlation"
+path = "tools/factor-event-correlation.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-effect-audit"
+path = "tools/rdps-effect-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-status-mechanic-trace"
+path = "tools/status-mechanic-trace.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-replay-audit"
+path = "tools/rdps-replay-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-support-timeline"
+path = "tools/support-timeline.rs"
+
+[[bin]]
+name = "rlogs-bpsr-harmony-overlap-ledger-diff"
+path = "tools/harmony-overlap-ledger-diff.rs"
+
+[[bin]]
+name = "rlogs-bpsr-status-event-season-context-proof"
+path = "tools/status-event-season-context-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-party-effect-window-audit"
+path = "tools/party-effect-window-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-validation-audit"
+path = "tools/rdps-validation-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-origin-catalog"
+path = "tools/origin-catalog.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-candidate-inventory"
+path = "tools/rdps-candidate-inventory.rs"
+
+[[bin]]
+name = "rlogs-bpsr-status-scalar-audit"
+path = "tools/status-scalar-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-attribute-scalar-audit"
+path = "tools/attribute-scalar-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-status-attribute-correlation"
+path = "tools/status-attribute-correlation.rs"
+
+[[bin]]
+name = "rlogs-bpsr-event-slice"
+path = "tools/event-slice.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rlog-run-segment"
+path = "tools/rlog-run-segment.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rlog-gap-window-audit"
+path = "tools/rlog-gap-window-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rlog-closure-audit"
+path = "tools/rlog-closure-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rlog-partial-prefix-audit"
+path = "tools/rlog-partial-prefix-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rlog-partial-prefix-recovery"
+path = "tools/rlog-partial-prefix-recovery.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rlog-transition-counterfactual-audit"
+path = "tools/rlog-transition-counterfactual-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-sealed-rlog-candidate-manifest"
+path = "tools/sealed-rlog-candidate-manifest.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rlog-opaque-attribute-audit"
+path = "tools/rlog-opaque-attribute-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-localization-evidence"
+path = "tools/rdps-localization-evidence.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-provider-mechanic-audit"
+path = "tools/rdps-provider-mechanic-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-status-attribute-proof"
+path = "tools/rdps-status-attribute-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-status-proof-compact"
+path = "tools/rdps-status-proof-compact.rs"
+
+[[bin]]
+name = "rlogs-bpsr-attribute-family-formula-proof"
+path = "tools/attribute-family-formula-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-multiplier-proof"
+path = "tools/damage-multiplier-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-external-attack-damage-proof"
+path = "tools/external-attack-damage-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-fight-attribute-worklist"
+path = "tools/fight-attribute-worklist.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-formula-stage-proof"
+path = "tools/damage-formula-stage-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-state-dependent-mechanic-inventory"
+path = "tools/state-dependent-mechanic-inventory.rs"
+
+[[bin]]
+name = "rlogs-bpsr-state-scaling-damage-proof"
+path = "tools/state-scaling-damage-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-state-scaling-healing-proof"
+path = "tools/state-scaling-healing-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-state-scaling-payload-proof"
+path = "tools/state-scaling-payload-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-buff-payload-audit"
+path = "tools/buff-payload-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-attr-packet-correlation"
+path = "tools/damage-attr-packet-correlation.rs"
+
+[[bin]]
+name = "rlogs-bpsr-cooldown-transition-proof"
+path = "tools/cooldown-transition-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-attr-coefficient-proof"
+path = "tools/damage-attr-coefficient-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-hp-state-ledger-proof"
+path = "tools/hp-state-ledger-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-selected-action-target-identity-proof"
+path = "tools/selected-action-target-identity-proof.rs"
+
+[[bin]]
 name = "rlogs-bpsr-severed-chapter-breaking-proof"
 path = "tools/severed-chapter-breaking-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-team-luck-runtime-diff"
+path = "tools/team-luck-runtime-diff.rs"
+
+[[bin]]
+name = "rlogs-bpsr-inspiration-proc-attribution-proof"
+path = "tools/inspiration-proc-attribution-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-attribute-snapshot-audit"
+path = "tools/attribute-snapshot-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-formula-input-state-audit"
+path = "tools/formula-input-state-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-attribute-relation-proof"
+path = "tools/attribute-relation-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-wire-coverage"
+path = "tools/damage-wire-coverage.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-state-ledger"
+path = "tools/damage-state-ledger.rs"
+
+[[bin]]
+name = "rlogs-bpsr-module-profile-proof"
+path = "tools/module-profile-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-module-stack-formula-proof"
+path = "tools/module-stack-formula-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-cast-damage-snapshot-proof"
+path = "tools/cast-damage-snapshot-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-entity-attribute-table-proof"
+path = "tools/entity-attribute-table-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-lucky-value-state-audit"
+path = "tools/lucky-value-state-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-lucky-strike-formula-proof"
+path = "tools/lucky-strike-formula-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-fight-probability-table-proof"
+path = "tools/fight-probability-table-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-fight-attribute-transform-surface"
+path = "tools/fight-attribute-transform-surface.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-attr-field-layout-proof"
+path = "tools/damage-attr-field-layout-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-stage-runtime-catalog"
+path = "tools/damage-stage-runtime-catalog.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-source-route-proof"
+path = "tools/damage-source-route-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-attr-semantic-surface"
+path = "tools/damage-attr-semantic-surface.rs"
+
+[[bin]]
+name = "rlogs-bpsr-status-mismatch-semantic-surface"
+path = "tools/status-mismatch-semantic-surface.rs"
+
+[[bin]]
+name = "rlogs-bpsr-decoded-table-reference-scan"
+path = "tools/decoded-table-reference-scan.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-script-family-worklist"
+path = "tools/damage-script-family-worklist.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-resolution-ledger"
+path = "tools/damage-resolution-ledger.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-script-static-input-inventory"
+path = "tools/damage-script-static-input-inventory.rs"
+
+[[bin]]
+name = "rlogs-bpsr-damage-script-build-migration-gate"
+path = "tools/damage-script-build-migration-gate.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-build-audit"
+path = "tools/rdps-build-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-il2cpp-metadata-scan"
+path = "tools/il2cpp-metadata-scan.rs"
+
+[[bin]]
+name = "rlogs-bpsr-il2cpp-resolved-string-receipt"
+path = "tools/il2cpp-resolved-string-receipt.rs"
+
+[[bin]]
+name = "rlogs-bpsr-il2cpp-combat-surface"
+path = "tools/il2cpp-combat-surface.rs"
+
+[[bin]]
+name = "rlogs-bpsr-protocol-pack-candidate"
+path = "tools/protocol-pack-candidate.rs"
+
+[[bin]]
+name = "rlogs-bpsr-protocol-pack-promotion-audit"
+path = "tools/protocol-pack-promotion-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-protocol-journal-recorder"
+path = "tools/protocol-journal-recorder.rs"
+
+[[bin]]
+name = "rlogs-bpsr-action-correlation-replay"
+path = "tools/action-correlation-replay.rs"
+
+[[bin]]
+name = "rlogs-bpsr-client-build-scan"
+path = "tools/client-build-scan.rs"
+
+[[bin]]
+name = "rlogs-bpsr-ctb-inventory-scan"
+path = "tools/ctb-inventory-scan.rs"
+
+[[bin]]
+name = "rlogs-bpsr-ctb-table-name-resolver"
+path = "tools/ctb-table-name-resolver.rs"
+
+[[bin]]
+name = "rlogs-bpsr-ctb-build-diff"
+path = "tools/ctb-build-diff.rs"
+
+[[bin]]
+name = "rlogs-bpsr-ctb-proof-worklist"
+path = "tools/ctb-proof-worklist.rs"
+
+[[bin]]
+name = "rlogs-bpsr-decoded-table-fingerprint"
+path = "tools/decoded-table-fingerprint.rs"
+
+[[bin]]
+name = "rlogs-bpsr-decoded-table-diff"
+path = "tools/decoded-table-diff.rs"
+
+[[bin]]
+name = "rlogs-bpsr-decoded-row-field-diff"
+path = "tools/decoded-row-field-diff.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rpc-surface-scan"
+path = "tools/rpc-surface-scan.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rpc-dispatch-route-proof"
+path = "tools/rpc-dispatch-route-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rpc-decoder-contract-audit"
+path = "tools/rpc-decoder-contract-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-event-carrier-route-audit"
+path = "tools/rdps-event-carrier-route-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-external-artifact-snapshot"
+path = "tools/external-artifact-snapshot.rs"
+
+[[bin]]
+name = "rlogs-bpsr-static-rdps-worklist"
+path = "tools/static-rdps-worklist.rs"
+
+[[bin]]
+name = "rlogs-bpsr-static-rdps-semantic-audit"
+path = "tools/static-rdps-semantic-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-formula-gap-ledger"
+path = "tools/rdps-formula-gap-ledger.rs"
+
+[[bin]]
+name = "rlogs-bpsr-rdps-recipient-scope-ledger"
+path = "tools/rdps-recipient-scope-ledger.rs"
+
+[[bin]]
+name = "rlogs-bpsr-inspiration-haste-opportunity-proof"
+path = "tools/inspiration-haste-opportunity-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-cooldown-field-audit"
+path = "tools/cooldown-field-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-temp-attribute-audit"
+path = "tools/temp-attribute-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-mastery-consumer-scan"
+path = "tools/mastery-consumer-scan.rs"
+
+[[bin]]
+name = "rlogs-bpsr-inspiration-mastery-gap-proof"
+path = "tools/inspiration-mastery-gap-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-inspiration-elemental-snapshot-proof"
+path = "tools/inspiration-elemental-snapshot-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-target-mitigation-transform-proof"
+path = "tools/target-mitigation-transform-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-status-effect-counterfactual-proof"
+path = "tools/status-effect-counterfactual-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-remote-stage-counterfactual-proof"
+path = "tools/remote-stage-counterfactual-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-status-effect-provider-ownership-proof"
+path = "tools/status-effect-provider-ownership-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-current-aoyi-origin-ledger"
+path = "tools/current-aoyi-origin-ledger.rs"
+
+[[bin]]
+name = "rlogs-bpsr-aoyi-projectile-status-proof"
+path = "tools/aoyi-projectile-status-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-severed-chapter-effect-family-proof"
+path = "tools/severed-chapter-effect-family-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-battle-cry-effect-family-proof"
+path = "tools/battle-cry-effect-family-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-denvel-effect-family-proof"
+path = "tools/denvel-effect-family-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-focused-shot-effect-family-proof"
+path = "tools/focused-shot-effect-family-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-stellar-spark-effect-family-proof"
+path = "tools/stellar-spark-effect-family-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-aoyi-remodel-consumer-proof"
+path = "tools/aoyi-remodel-consumer-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-inspiration-proof-obligation-ledger"
+path = "tools/inspiration-proof-obligation-ledger.rs"
+
+[[bin]]
+name = "rlogs-bpsr-influence-journal-audit"
+path = "tools/influence-journal-audit.rs"
+
+[[bin]]
+name = "rlogs-bpsr-action-speed-damage-time-state-proof"
+path = "tools/action-speed-damage-time-state-proof.rs"
+
+[[bin]]
+name = "rlogs-bpsr-controlled-formula-capture-receipt"
+path = "tools/controlled-formula-capture-receipt.rs"

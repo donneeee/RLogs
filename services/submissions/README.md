@@ -1,0 +1,257 @@
+# Submission service
+
+This service is the first non-leaderboard website backend for rLogs. It owns:
+
+- resumable, digest-verified `.rlog` ingestion;
+- private content-addressed artifact storage;
+- deterministic server replay into a compact public parse projection;
+- link-addressed public or unlisted parses;
+- uploader provenance kept separate from every character in a parse;
+- exact-instance run groups that retain every contributing report instead of
+  silently choosing or merging one observer's timeline;
+- a public browse catalog whose region, activity, scene, difficulty, and run
+  state filters are derived from accepted reports.
+
+It does **not** implement accounts, profiles, rankings, or leaderboard scores.
+The raw artifact is never served by a public endpoint. Public projections are
+server-produced and retain exact client-build and protocol-pack provenance.
+
+Only the desktop's separately sealed privacy export is accepted. PCAPs,
+connection evidence, link/IP/TCP headers, IP and MAC addresses, chat, and
+account/contact/authentication fields are excluded. The receiver replays every
+artifact through the same privacy validator and rejects an outdated or unknown
+privacy-policy digest before writing accepted state or creating a GitHub
+archive job. Character names/UIDs and gameplay/profile evidence remain because
+they are required for run correlation and rDPS research.
+
+The application does not persist or emit a contributor's transport IP address.
+The HTTPS platform still processes it transiently to deliver the connection,
+as every Internet host must, but it is not part of the rLogs evidence package,
+catalog, projection, or private GitHub archive.
+
+## Run locally
+
+```powershell
+$env:RLOGS_SUBMISSION_DATA = "C:\path\to\rlogs-submission-data"
+cargo run -p rlogs-submission-service
+```
+
+The default listen address is `127.0.0.1:8787`. Set
+`RLOGS_AUTH_INTROSPECTION_URL` to the private pairing provider's complete
+introspection endpoint. The receiver forwards the bearer token for validation
+but never stores it. Read endpoints stay public. `RLOGS_PUBLIC_SITE_URL`
+controls the share URL returned in receipts.
+
+The process refuses to listen outside loopback without authentication. A
+disposable, deliberately unauthenticated test can override that guard with
+`RLOGS_ALLOW_UNAUTHENTICATED_INGEST=1`; production deployments must not use
+that override. `RLOGS_INGEST_KEY` remains a temporary single-developer fallback
+and cannot be combined with introspection.
+
+The private provider returns a submitter ID and device ID. The receiver stores
+both only while an upload is incomplete, uses them to prevent one device from
+claiming another device's interrupted upload, and publishes only the submitter
+identity. Provisioning, token hashes, revocation, and account mapping do not
+belong to this public service.
+
+## Private GitHub research archive
+
+The receiver can copy every accepted evidence package into a private GitHub
+repository after validation. GitHub is a secondary research archive, not the
+ingest endpoint: contributors authenticate only to the receiver and never
+receive the repository credential.
+
+```powershell
+$env:RLOGS_GITHUB_ARCHIVE_REPOSITORY = "owner/private-evidence-repository"
+$env:RLOGS_GITHUB_ARCHIVE_TOKEN = "server-only-fine-grained-token"
+cargo run -p rlogs-submission-service
+```
+
+Use a fine-grained token restricted to that single private repository with
+Contents write access. Keep the token in the receiver host's secret store; do
+not place it in a plug-in, `.env` file committed to Git, projection, or tester
+instructions.
+
+Each sealed artifact gets one prerelease tagged with its full SHA-256 digest.
+The release contains a server-produced projection, a digest-named evidence
+manifest, and one or more digest-named binary artifact parts. Parts default to
+512 MiB so large captures do not exceed GitHub's per-asset limit or need to be
+loaded into RAM. `RLOGS_GITHUB_ARCHIVE_PART_BYTES` can set a value from 8 MiB
+through 1 GiB. `RLOGS_GITHUB_API_URL` exists only for GitHub Enterprise or
+loopback tests and otherwise defaults to `https://api.github.com/`.
+
+Archiving is asynchronous and idempotent. A failed attempt leaves its job in
+`archive-outbox/` and is retried without invalidating the already accepted
+report. An `archive-receipts/` record is written only after every expected
+release asset is present with the correct byte length. Starting the receiver
+also reconciles older accepted projections into the outbox, so enabling the
+archive later does not require hand-authored jobs.
+
+An operator can drain the archive without opening the HTTP listener:
+
+```powershell
+cargo run -p rlogs-submission-service -- --archive-once
+```
+
+This is useful for deployment jobs and for verifying the private archive
+credential before enabling the background worker.
+
+An operator can also apply the receiver's exact privacy and integrity checks to
+an existing sealed artifact without starting the HTTP listener:
+
+```powershell
+cargo run -p rlogs-submission-service -- --audit-artifact C:\path\to\artifact.rlog
+```
+
+## Run correlation
+
+Reports from different observers are grouped only when their canonical run
+identity contains the same exact game instance ID in the same deployment,
+region, scene, and client build. The game build prevents a historically reused
+instance number from collapsing unrelated runs. The protocol-pack digest is
+deliberately not part of game-run identity: two RLogs versions can record the
+same server instance. A protocol-pack mismatch is instead exposed as a joint
+replay blocker, so the website can show that the uploads are the same run
+without mixing decoder evidence that has not been proven compatible.
+Optional metadata such as world visibility is deliberately excluded because it
+can differ between observers. If the exact instance ID is missing, the report
+gets an artifact-local group and is never timestamp-matched or guessed into
+another run.
+
+The catalog exposes every contributing report ID, contribution count, and
+distinct submitter count. Source artifacts and projections remain independent,
+so disagreements can be compared and resolved as evidence rather than erased.
+
+### Cross-vantage rDPS reconciliation
+
+An exact-instance run group is also the server boundary for reconciling the
+same fight recorded by different local players. A player who is remote in one
+artifact can supply a privacy-reviewed local character-profile witness in a
+second artifact. The catalog records how many distinct run participants have
+such local witnesses and reports whether the group is still single-vantage,
+has cross-vantage evidence available, or has a completed reconciliation.
+
+Joint replay follows these rules:
+
+1. Partition an exact-instance group by client build and protocol-pack digest.
+   Evidence never crosses either boundary.
+2. Select one sealed artifact as the canonical combat-event spine. Other
+   artifacts are evidence witnesses; their duplicate casts, damage, healing,
+   and status events are never added to the spine.
+3. Match participants by stable game character ID and retain the supplying
+   report ID, artifact digest, canonical event sequence, and observation time
+   for every imported fact.
+4. Prefer exact event-local evidence from the spine, then exact local evidence
+   from another observer of the same run, then formula-bounded inference. A
+   missing field is never converted to zero.
+5. Reject or surface conflicting exact witnesses instead of averaging them.
+   Time-scoped loadout or attribute changes must be ordered before they can
+   affect a counterfactual.
+6. Run one conserved attribution replay over the canonical spine. Ordinary
+   damage remains unchanged, each marginal is transferred once, and every
+   result records whether it is exact, cross-vantage exact, or inferred.
+7. Rebuild the derived reconciliation when a new observer report arrives,
+   retaining the prior version and all input provenance.
+
+The receiver implements exact-instance grouping, local-profile witness
+inventory, sealed-witness verification, and conserved joint replay. Only
+`personal_gameplay` profile observations qualify as local witnesses;
+public/social profile observations are excluded. Each run keeps the latest
+qualifying snapshot at or before its start and every qualifying in-run change,
+committed by artifact digest, event sequence, observation time, and
+profile-payload digest.
+
+After that personal profile proves the local character, the same run also
+commits that character's exact `EntityAttributes` and `TemporaryAttributes`
+events. State replay begins at the latest authoritative pre-run snapshot,
+retains every later delta through the run end, and records server game-time
+when the packet carries it. Secondary artifacts still contribute no damage,
+healing, cast, cooldown, or status events to the canonical combat spine.
+
+The verified personal profile itself is also a state witness. A pre-run
+profile is inserted immediately after the canonical run entry; an in-run
+profile is inserted only before a canonical event with a strictly later server
+game-time. This exposes exact personal loadout/module state (including Life
+Wave level 5 versus 6) to the same projector without importing a second copy of
+combat results. Missing server time on an in-run profile is a reconciliation
+blocker, not permission to apply the snapshot at run start.
+
+`GET /v1/run-groups/{run_group_id}/reconciliation` returns the derived,
+versioned evidence and replay product. It identifies the canonical event
+spine, every contributing report, per-character local witness coverage, and
+any multi-report snapshot set that still requires temporal ordering. The
+manifest reports both total and server-time-alignable state-witness counts.
+Before replay, the receiver reopens every selected sealed artifact and verifies
+the committed event sequence, local-profile sensitivity and identity, state
+kind, actor/entity identity, update kind, observation time, server time, and
+payload digest. A mismatch blocks reconciliation.
+
+Ready state is remapped by stable character identity onto the canonical
+runtime entity and inserted after that run's entry boundary. In-run changes
+are admitted only before a canonical event with a strictly later
+packet-authored server time; an equal timestamp remains unordered and cannot
+affect that event. One two-pass BPSR attribution replay then emits reconciled
+participants and an exact conservation receipt. The service marks
+`attribution_replay_completed` true and the status `reconciled` only when the
+ordinary per-actor damage map is unchanged, total contribution given equals
+total contribution received, and total party rDPS damage equals raw party
+damage. Source parses remain immutable beside this derived result.
+
+State replay readiness is independent from report count. A pre-run baseline
+can be placed at the canonical run start without synchronizing two local
+monotonic clocks. Every in-run state change requires packet-authored game-time;
+otherwise the manifest names the character and missing-time count as a blocker.
+Coverage is reported as distinct local-vantage characters over distinct run
+participants and is explicitly partial or complete.
+
+Multiple artifacts from the same local character are reported as
+`multiple_reports_no_additional_vantage`; they do not satisfy the
+`cross_vantage_evidence_available` gate. That status requires exact local
+profile witnesses for at least two distinct run participants.
+
+## Connect the desktop client
+
+Configure the native desktop host, then restart it:
+
+```powershell
+$env:RLOGS_SUBMISSION_API_URL = "https://receiver.example.com"
+$env:RLOGS_SUBMISSION_DEVICE_TOKEN = "the-token-shown-during-device-pairing"
+```
+
+The Log Uploader queue sends only missing chunks and finalizes after the
+receiver verifies the complete artifact digest. Remote endpoints must use
+HTTPS; plain HTTP is accepted only for loopback development.
+
+## Container deployment
+
+Build from the repository root so Cargo can see the complete workspace:
+
+```powershell
+docker build -f services/submissions/Dockerfile -t rlogs-submissions .
+docker run --rm -p 8787:8787 -v rlogs-submissions:/data `
+  -e RLOGS_AUTH_INTROSPECTION_URL="https://pairing.internal/v1/auth/introspect" `
+  -e RLOGS_PUBLIC_SITE_URL="https://donneeee.github.io/rlogs-website/" `
+  rlogs-submissions
+```
+
+The container listens on `0.0.0.0:8787`, stores all mutable state below
+`/data`, runs as an unprivileged user, and exposes `/health` for hosting
+platform probes. A persistent volume is required: ephemeral container storage
+would discard private artifacts and the rebuildable catalog on redeploy.
+
+## Storage layout
+
+```text
+artifacts/sha256/<prefix>/<digest>.rlog  private immutable source artifacts
+projections/<report-id>.json            public-safe server projections
+reconciliations/<run-group-id>.json      derived cross-vantage evidence manifests
+uploads/<upload-id>/                     resumable temporary chunks
+archive-outbox/<report-id>.json           retryable private archive jobs
+archive-receipts/<report-id>.json         completed private archive receipts
+catalog.v1.json                           compact rebuildable discovery index
+```
+
+The filesystem artifact boundary is intentionally narrow so a deployment can
+replace it with S3/R2-compatible object storage without changing the public
+API or website. The catalog is derived data and can be rebuilt from projection
+files; dungeon and season filter values are never maintained by hand.

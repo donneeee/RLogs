@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "observation_id": "highland-blood-2110125-observed-final-direct-runtime-001",
+  "game_build": "24687926",
+  "protocol_pack_digest": "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+  "protocol_identity_role": "historical decoder identity recorded by the sealed run",
+  "current_protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+  "subject": "Highland Blood effect 2110125 exact observed-final direct recipient transfer",
+  "effect_identity": {
+    "effect_id": 2110125,
+    "provider_marker_effect_id": 2110124,
+    "provider_imagine_ability_id": 3957,
+    "companion_lockout_effect_id": 2110050
+  },
+  "sealed_input": {
+    "rlog": "runtime-data/logs/monitor-1787003553387.run-0002.rlog",
+    "sealed_content_sha256": "sha256:faf84fe519edbcce38cf26bc74e6d0c3de165814aa5c7b2c7686e0813e2ecd9a",
+    "bytes": 34669776,
+    "recipient_actor_id": 13,
+    "tcp_gap_truncated_eligible_damage_rows": 418,
+    "eligible_observed_damage": "116785543",
+    "damage_property": 7
+  },
+  "fight_attribute_evidence": {
+    "source": "plugins/games/blue-protocol-star-resonance/game-data/catalog/formulas/fight-attributes.current-build.v1.json",
+    "fixed_point_denominator": 10000,
+    "all_element": {
+      "id": 13100,
+      "internal_name": "AttrElementDamage",
+      "row_index": 119
+    },
+    "property_final_attribute_by_damage_property": {
+      "1": { "id": 13110, "internal_name": "AttrFireDamage", "row_index": 120 },
+      "2": { "id": 13120, "internal_name": "AttrWaterDamage", "row_index": 121 },
+      "3": { "id": 13140, "internal_name": "AttrElectricityDamage", "row_index": 123 },
+      "4": { "id": 13130, "internal_name": "AttrWoodDamage", "row_index": 122 },
+      "5": { "id": 13150, "internal_name": "AttrWindDamage", "row_index": 124 },
+      "6": { "id": 13160, "internal_name": "AttrRockDamage", "row_index": 125 },
+      "7": { "id": 13170, "internal_name": "AttrLightDamage", "row_index": 126 },
+      "8": { "id": 13180, "internal_name": "AttrDarkDamage", "row_index": 127 }
+    }
+  },
+  "formula_boundary": {
+    "runtime_formula": "observed_damage * provider_delta / (10000 + current_13100 + current_property_final_attribute)",
+    "meaning": "removing one additive all-element provider from the already observed final damage cancels every unchanged upstream and downstream factor",
+    "third_party_corroboration": {
+      "url": "https://domaticcode.github.io/BPSR-dmg-calc/damage-calc.html",
+      "function": "calc_skill",
+      "behavior": "all-element and matching property-specific bonuses are additive inputs to one elemDmgPct multiplicative bucket"
+    },
+    "authority_limits": [
+      "the third-party calculator is corroboration, not a runtime identity key",
+      "this receipt does not claim generic hidden server stage order",
+      "this receipt does not claim generic server integer rounding authority",
+      "property 0, unknown property, or missing current property state emits no transfer"
+    ]
+  },
+  "provider_tier_join": {
+    "source": "exact current actor loadout for ability 3957",
+    "status_level_used_as_tier": false,
+    "single_provider_required": true,
+    "recipient_packet_transition_required": true,
+    "packet_proven_deltas": [600, 700, 800, 900, 1000]
+  },
+  "observed_state_groups": [
+    { "current_13100": 1016, "current_13170": 3756, "rows": 19, "damage": "6163498" },
+    { "current_13100": 1016, "current_13170": 4056, "rows": 10, "damage": "4537865" },
+    { "current_13100": 1016, "current_13170": 4236, "rows": 139, "damage": "47957539" },
+    { "current_13100": 1316, "current_13170": 3666, "rows": 56, "damage": "11806591" },
+    { "current_13100": 1316, "current_13170": 3756, "rows": 1, "damage": "26555" },
+    { "current_13100": 1316, "current_13170": 4056, "rows": 1, "damage": "19126" },
+    { "current_13100": 1316, "current_13170": 4146, "rows": 112, "damage": "25205857" },
+    { "current_13100": 1316, "current_13170": 4236, "rows": 80, "damage": "21068512" }
+  ],
+  "exact_result": {
+    "provider_500": {
+      "tier": 2,
+      "delta": 700,
+      "rows": 168,
+      "observed_damage": "58658902",
+      "exact_numerator": "15940415035897975",
+      "exact_denominator": "5895416568",
+      "decimal_rdmg": "2703865.76623"
+    },
+    "provider_476": {
+      "tier": 5,
+      "delta": 1000,
+      "rows": 250,
+      "observed_damage": "58126641",
+      "exact_numerator": "527754620442742036375",
+      "exact_denominator": "139767275193084",
+      "decimal_rdmg": "3775952.70219"
+    },
+    "combined_exact_numerator": "2834013645547250072799725725",
+    "combined_exact_denominator": "437360037068748838968",
+    "combined_decimal_rdmg": "6479818.46842",
+    "grouped_half_up_rdmg": "6479818",
+    "half_up_is_presentation_aggregation_only": true
+  },
+  "gap_and_overlap_gates": {
+    "first_real_tcp_gap_truncates_active_lifecycle": true,
+    "decode_failure_alone_truncates_active_lifecycle": false,
+    "same_wire_transition_rejected": true,
+    "multiple_or_unresolved_provider_rejected": true,
+    "same_or_earlier_stage_overlap_rejected_without_allocation_proof": true
+  },
+  "ordinary_damage_conservation": {
+    "ordinary_damage_units_before": "116785543",
+    "ordinary_damage_units_after": "116785543",
+    "ordinary_damage_mutated": false
+  },
+  "runtime_decision": {
+    "runtime_transfer_enabled": true,
+    "remote_paired_output_runtime_transfer_enabled": false,
+    "exact_current_build_only": true,
+    "sealed_run_historical_decoder_identity_enabled": true,
+    "prior_game_build_runtime_identities_enabled": false,
+    "canonical_timeline_effect_retained": true,
+    "ordinary_damage_retained": true
+  }
+}

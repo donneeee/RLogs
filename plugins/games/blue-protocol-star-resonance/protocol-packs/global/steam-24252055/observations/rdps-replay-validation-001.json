@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "observation_id": "rdps-replay-validation-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "game_build": "24252055",
+  "status": "exact_reviewed_direct_rules_ready",
+  "enabled_effect_ids": [
+    2203031,
+    2205031
+  ],
+  "model": {
+    "event_source": "canonical status-effect lifecycles and damage events",
+    "provider_identity": "exact nonzero status source entity",
+    "recipient_identity": "damage source actor",
+    "target_identity": "status and damage target actor",
+    "single_effect_formula": "observed_damage - observed_damage / (1 + magnitude)",
+    "overlap_policy": "symmetric Shapley allocation across multiplicative effects",
+    "rounding_policy": "integer largest remainder",
+    "self_buff_policy": "retain damage on its original actor",
+    "unknown_effect_policy": "retain canonical evidence and do not attribute",
+    "party_conservation_required": true
+  },
+  "replay_corpus": {
+    "sealed_rlog_count": 29,
+    "canonical_event_count": 4905626,
+    "damage_event_count": 838277,
+    "attributed_damage_event_count": 883,
+    "attributed_bonus_damage": 12781568,
+    "missing_source_status_count": 0,
+    "raw_party_damage": 92800116268,
+    "rdps_party_damage": 92800116268,
+    "contribution_given": 12781568,
+    "contribution_received": 12781568,
+    "all_reports_conserved": true
+  },
+  "performance": {
+    "elapsed_micros": 64976650,
+    "events_per_second": 75498.29053975543,
+    "scope": "sealed RLOG read, block decompression, canonical event traversal, lifecycle indexing, and contribution reduction"
+  },
+  "nonzero_replays": [
+    {
+      "session_id": "monitor-1785609048000.run-0001",
+      "canonical_event_count": 49906,
+      "attributed_damage_event_count": 424,
+      "attributed_bonus_damage": 6199377,
+      "missing_source_status_count": 0,
+      "provider_recipient_effect_combinations": 12
+    },
+    {
+      "session_id": "monitor-1785609048000.run-0003",
+      "canonical_event_count": 58277,
+      "attributed_damage_event_count": 459,
+      "attributed_bonus_damage": 6582191,
+      "missing_source_status_count": 0,
+      "provider_recipient_effect_combinations": 12
+    }
+  ],
+  "accuracy_boundary": {
+    "included": [
+      "reviewed fixed direct damage amplification",
+      "reviewed fixed enemy target vulnerability"
+    ],
+    "not_fabricated": [
+      "haste-generated extra actions",
+      "offensive-stat counterfactual damage",
+      "critical-rate expected damage",
+      "conditional next-skill amplification",
+      "effects without an exact player provider"
+    ],
+    "promotion_requirement": "provider, recipient, target scope, magnitude, stacking, and counterfactual formula must all be proven for this build"
+  },
+  "retained_data": {
+    "packet_payloads": false,
+    "network_endpoints": false,
+    "character_names": false,
+    "character_ids": false,
+    "account_identifiers": false,
+    "credentials_or_tokens": false
+  }
+}

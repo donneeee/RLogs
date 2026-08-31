@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "observation_id": "spring-breeze-2404261-state-scaled-damage-runtime-001",
+  "deployment_id": "global",
+  "client_build": "24687926",
+  "effect": {
+    "effect_id": 2404261,
+    "technical_design_name": "【S2套装2B】-子BUFF",
+    "presentation_name": "Spring Breeze — Season 2 healer 2-piece",
+    "presentation_provenance": "description-derived current-build official English",
+    "direct_effect_locale_present": false,
+    "parent_description_id": 2404260,
+    "parent_official_english": "Direct-healing Class Skills grant the target 1 stack of Spring Breeze: Max HP +2.5% for 10s. Stacks up to 5 times."
+  },
+  "origin": {
+    "source_type_id": 1,
+    "source_config_id": 2404260,
+    "required_level": 1,
+    "required_count": -1,
+    "required_part_id": null,
+    "duration_millis": 10000
+  },
+  "current_build_identity": {
+    "buff_table_sha256": "d5f1380424947cdb8052d1bafb2f3a3541827819beb3030c7a3573ed44d6bb1c",
+    "attribute_description_sha256": "9d8587987f4331af467933d77e1a66ff2301f7141623fdaa857e8153264edfe1",
+    "mechanic_matrix_v3_sha256": "fbc4dfcf3e885f586782bccbe2f20e1f40faef5eb18c7fbda51efabcb5cedb34",
+    "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+    "replay_decoder_identity_digest": "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b"
+  },
+  "lifecycle_proof": {
+    "status_events": 839,
+    "applied_events": 208,
+    "stacked_events": 425,
+    "removed_events": 206,
+    "lifecycle_instances": 208,
+    "terminally_closed_instances": 206,
+    "capture_boundary_open_instances": 2,
+    "provider_count": 1,
+    "recipient_count": 20,
+    "external_status_events": 794,
+    "self_status_events": 45,
+    "external_applies": 197,
+    "self_applies": 11,
+    "observed_stack_range": [
+      1,
+      5
+    ],
+    "stack_five_events": 81,
+    "stack_five_same_instance_immediate_removals": 81,
+    "historical_max_four_is_stale": true,
+    "current_maximum_stacks": 5
+  },
+  "attribute_transition_proof": {
+    "artifact_name": "effect-2404261.source-10361902989952.attribute-11324.transition-proof.current-build-24687926.v1.json",
+    "artifact_sha256": "0fc526bbea0fc56e7166bcab9f20976da0502847ed1870a3666f1b1e27e048cd",
+    "complete_selected_transitions": 36,
+    "selected_transitions": 36,
+    "missing_before_or_after": 0,
+    "single_effect_stack_equations": 5,
+    "coefficient_raw_per_stack": 250,
+    "active_stack_four_instances": [
+      {
+        "instance_id": 1173,
+        "current_raw_attribute_11324": 5227,
+        "without_effect_raw_attribute_11324": 4227,
+        "proof": "last two +250 transitions plus exact four-stack reducer"
+      },
+      {
+        "instance_id": 8804,
+        "current_raw_attribute_11324": 5027,
+        "without_effect_raw_attribute_11324": 4027,
+        "proof": "complete four-step +250 lineage"
+      }
+    ],
+    "bounded_authority": "the exact current-build active stack-four packet cohort; the generic cross-run transition proof remains independently fail-closed"
+  },
+  "ability_formula": {
+    "ability_id": 2206290,
+    "damage_id": 2220629005,
+    "hit_event_id": 5,
+    "official_current_build_description": "Every 50 times damage is taken, the next Judgment deals additional fixed damage equal to 200% Max HP...",
+    "static_body": "2 * recipient attribute 11320",
+    "fixed_point_scale": 10000,
+    "packet_final_equation": "reported_damage = floor((2 * attribute_11320 * m) / 10000)",
+    "inverse_integer_interval": "ceil(reported_damage * 10000 / (2 * attribute_11320)) <= m <= ceil((reported_damage + 1) * 10000 / (2 * attribute_11320)) - 1",
+    "unique_multiplier": 13680,
+    "hidden_server_integer_required": false
+  },
+  "exact_damage_cohort": {
+    "ability_rows_in_capture": 345,
+    "shared_capture_rows": 5,
+    "active_external_stack_four_rows": 2,
+    "ordinary_rows": 3,
+    "rows": [
+      {
+        "observed_damage": 3520301,
+        "effect_instance_id": 1173,
+        "effect_stacks": 4,
+        "age_micros": 617048,
+        "recipient_attributes": {
+          "11320": 1286660,
+          "11321": 765907,
+          "11322": 502988,
+          "11324": 5227,
+          "11325": 6799
+        },
+        "without_effect_intermediate_attribute_11321": 715609,
+        "without_effect_final_attribute_11320": 1202164,
+        "max_hp_marginal": 84496,
+        "inferred_multiplier": 13680,
+        "counterfactual_damage": 3289120,
+        "exact_rdps": 231181
+      },
+      {
+        "observed_damage": 3474063,
+        "effect_instance_id": 8804,
+        "effect_stacks": 4,
+        "age_micros": 169565,
+        "recipient_attributes": {
+          "11320": 1269760,
+          "11321": 755847,
+          "11322": 502988,
+          "11324": 5027,
+          "11325": 6799
+        },
+        "without_effect_intermediate_attribute_11321": 705548,
+        "without_effect_final_attribute_11320": 1185263,
+        "max_hp_marginal": 84497,
+        "inferred_multiplier": 13680,
+        "counterfactual_damage": 3242879,
+        "exact_rdps": 231184
+      }
+    ],
+    "observed_damage_total": 6994364,
+    "exact_rdps_total": 462365
+  },
+  "runtime_predicate": {
+    "exact_origin_level_count_part_and_duration_required": true,
+    "single_active_external_provider_required": true,
+    "provider_and_recipient_entity_identity_required": true,
+    "exact_active_stack_four_window_required": true,
+    "complete_attributes_required": [
+      11320,
+      11321,
+      11322,
+      11324,
+      11325
+    ],
+    "static_stack_magnitude_raw": 1000,
+    "ability_2206290_required": true,
+    "unique_integer_multiplier_required": true,
+    "ordinary_packet_recomputation_required": true,
+    "unresolved_overlap_fails_closed": true,
+    "transition_cache_is_not_packet_authority": true,
+    "actor_or_instance_identity_hardcoded": false,
+    "ordinary_damage_is_immutable": true
+  },
+  "conservation_replay": {
+    "artifact_name": "spring-breeze-2404261.current-build-24687926.runtime-replay.v2.json",
+    "artifact_sha256": "00c1e9e8dd63b8dd01ccb9e905209dc894fa6910f037fdf0d6ddf1c4943ebea3",
+    "schema_version": 27,
+    "sealed_rlogs": 26,
+    "canonical_events": 6411565,
+    "runtime_identity_matches": 26,
+    "conserved_rlogs": 26,
+    "damage_events": 734040,
+    "attributed_damage_events": 287060,
+    "spring_breeze_emitted_events": 2,
+    "spring_breeze_sessions": 1,
+    "spring_breeze_observed_damage": 6994364,
+    "spring_breeze_exact_rdps": 462365,
+    "rational_projection_overflow_count": 0
+  },
+  "policy": {
+    "component_scoped_runtime_authority": true,
+    "generic_fixed_magnitude_catalog_authority": false,
+    "provider_rdps_credit_authorized_for_exact_predicate": true,
+    "all_unproved_rows_remain_ordinary_damage": true,
+    "global_runtime_promotion_allowed": false
+  }
+}

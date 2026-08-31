@@ -1,0 +1,346 @@
+{
+  "schema_version": 9,
+  "client_build": "24252055",
+  "generated_at": "2026-08-03",
+  "subject": "packet-observed HP-dependent mechanic retention and proof worklist",
+  "generator": {
+    "binary": "rlogs-bpsr-state-dependent-mechanic-inventory",
+    "source_schema_version": 5,
+    "reproducible_output": ".codex_tmp/state-dependent-mechanic-inventory.current-captures.v5.json",
+    "formula_proof_binary": "rlogs-bpsr-state-scaling-damage-proof",
+    "formula_proof_schema_version": 26,
+    "bash_pursuit_reproducible_output": ".codex_tmp/state-scaling-bash-pursuit-2201540.v26.cap-counterfactual.json",
+    "judgment_pursuit_reproducible_output": ".codex_tmp/judgment-pursuit-hp-proof.v24.json",
+    "formula_reference": "BPSR-UID-Extractors/output/ModifierFormulaTermTable.json",
+    "source_reference": "BPSR-UID-Extractors/output/ModifierSourceIndex.json",
+    "attribute_family_proof_binary": "rlogs-bpsr-attribute-family-formula-proof",
+    "attribute_family_proof_schema_version": 2,
+    "max_hp_family_reproducible_output": ".codex_tmp/max-hp-family-proof.v2.json",
+    "focused_external_provider_output": ".codex_tmp/rdps-status-attribute-2404261-target-1489989468800.v8.json",
+    "focused_external_provider_schema_version": 8,
+    "cross_effect_hp_correlation_output": ".codex_tmp/external-player-hp-provider-discovery.compact.v8.json",
+    "cross_effect_hp_correlation_schema_version": 8,
+    "healing_formula_proof_binary": "rlogs-bpsr-state-scaling-healing-proof",
+    "healing_formula_proof_schema_version": 2,
+    "healing_formula_output": ".codex_tmp/state-scaling-healing-3059210-3059080.current-captures.v2.json",
+    "raw_healing_timing_proof_binary": "rlogs-bpsr-state-scaling-payload-proof",
+    "raw_healing_timing_proof_schema_version": 5,
+    "raw_healing_timing_output": ".codex_tmp/state-scaling-healing-raw-payload-010829.v5.json",
+    "all_damage_formula_output": ".codex_tmp/state-scaling-damage-all.current-captures.v26.json",
+    "focused_reality_factor_output": ".codex_tmp/state-scaling-damage-3054440.v26.json",
+    "focused_reality_factor_payload_outputs": [
+      ".codex_tmp/factor-3054440-buff-payload-1881.v1.json",
+      ".codex_tmp/factor-3054440-buff-payload-2020.v1.json",
+      ".codex_tmp/factor-3054440-buff-payload-2026.v1.json",
+      ".codex_tmp/factor-3054440-buff-payload-2058.v1.json",
+      ".codex_tmp/factor-3054440-buff-payload-2100.v1.json"
+    ]
+  },
+  "policy": {
+    "packet_events_are_occurrence_truth": true,
+    "game_descriptions_are_numeric_formula_truth": false,
+    "hp_events_or_attributes_discarded": false,
+    "mixed_hp_roles_collapsed": false,
+    "unresolved_rows_hidden": false,
+    "missing_family_members_coerced_to_zero": false,
+    "cross_actor_lifetime_state_reused": false,
+    "runtime_rdps_enabled_from_this_inventory": "only the separately proved effect-2404261 two-stack Judgment Pursuit marginal is enabled; all other rows remain retained proof work",
+    "enablement_requirement": "exact packet source, provider, recipient, HP surface, operation order, stacking, integer rounding, and marginal replay equality"
+  },
+  "capture_scope": {
+    "sessions": 4,
+    "ability_events": 508290,
+    "status_events": 573591,
+    "status_origin_observations": 530590,
+    "attribute_values": 639203
+  },
+  "packet_observed_hp_worklist": {
+    "rows": 63,
+    "distinct_source_ids": 47,
+    "distinct_effect_ids": 61,
+    "role_counts": {
+      "hp_dependent_damage_candidate": 8,
+      "hp_dependent_healing_candidate": 19,
+      "hp_dependent_shield_candidate": 1,
+      "max_hp_stat_modifier": 10,
+      "hp_threshold_or_gate": 18,
+      "maximum_hp_surface": 46,
+      "current_hp_surface": 4,
+      "missing_hp_surface": 2
+    },
+    "count_semantics": "A source may occupy multiple roles. Counts are worklist coverage, not proof that every row contributes to rDPS."
+  },
+  "proved_packet_semantics": {
+    "status_layer_direction": {
+      "raw_event_type_6_known_before_after_transitions": 175136,
+      "increases": 33257,
+      "decreases": 9895,
+      "unchanged": 131984,
+      "proof": "Current-build raw event type 6 is a generic layer change, not a directional consume event. When BuffChange.layer is present, the decoded before/after count determines Stacked, Consumed, or Refreshed. Without the resulting layer value, direction remains an explicit decode gap rather than a guessed lifecycle state."
+    },
+    "lightforged_barrier": {
+      "effect_id": 55416,
+      "target_entity": 1489989468800,
+      "exact_stack_to_attribute_samples": [
+        {
+          "stacks": 8,
+          "extra_max_hp_percent_attribute_11325": 3627,
+          "final_max_hp_attribute_11320": 775542
+        },
+        {
+          "stacks": 9,
+          "extra_max_hp_percent_attribute_11325": 4080,
+          "final_max_hp_attribute_11320": 801323
+        },
+        {
+          "stacks": 10,
+          "extra_max_hp_percent_attribute_11325": 4533,
+          "final_max_hp_attribute_11320": 827104
+        },
+        {
+          "stacks": 11,
+          "extra_max_hp_percent_attribute_11325": 4987,
+          "final_max_hp_attribute_11320": 852942
+        },
+        {
+          "stacks": 12,
+          "extra_max_hp_percent_attribute_11325": 5440,
+          "final_max_hp_attribute_11320": 878723
+        }
+      ],
+      "fixed_point_equality": "floor(569116*5440/10000)-floor(569116*4987/10000)=25781",
+      "boundary": "Other simultaneous modifier cohorts are retained; these samples do not assert a universal per-stack scalar."
+    },
+    "max_hp_attribute_family": {
+      "members": {
+        "11320": "current",
+        "11321": "total",
+        "11322": "add",
+        "11323": "extra_add",
+        "11324": "percent",
+        "11325": "extra_percent"
+      },
+      "packet_percentage_scale": 10000,
+      "scale_100_rejected": true,
+      "percent_to_total_transition": {
+        "formula": "delta(total) = trunc(add * new_percent / 10000) - trunc(add * old_percent / 10000)",
+        "evaluable_transitions": 1585,
+        "exact_matches": 995,
+        "within_one_packet_unit": 561,
+        "compound_or_stale_state_transitions_retained_for_further_correlation": 29
+      },
+      "extra_percent_to_current_transition": {
+        "formula": "delta(current) = trunc(total * new_extra_percent / 10000) - trunc(total * old_extra_percent / 10000)",
+        "evaluable_transitions": 107,
+        "exact_matches": 88,
+        "within_one_packet_unit": 18,
+        "compound_or_stale_state_transitions_retained_for_further_correlation": 1
+      },
+      "proof_boundary": "The fixed-point scale and clean transition stages are packet-proved. Larger residuals remain retained evidence and are excluded only from single-modifier proof because their packet boundary contains an unresolved compound or lifetime transition; their underlying attribute, status, and ability events remain canonical.",
+      "missing_member_rule": "An omitted family member remains unknown unless previously observed in the same actor lifetime. It is never converted to zero merely to make a formula evaluable."
+    },
+    "max_hp_scaled_healing": {
+      "ability_3059210": {
+        "retained_healing_events": 124,
+        "formula": "amount = floor(calculation-time target MaxHP * 150 / 10000)",
+        "display_rate_percent": 1.5,
+        "events_matching_wire_start_or_event_order_max_hp": 123,
+        "compound_wire_exception_sequence": 14002,
+        "compound_wire_exception_proof": "Effect 2404261 from provider 42310107776 is active at one stack before the delta. The first heal 10704 equals floor(713600*150/10000), where 713600=floor(504525*(10000+4144)/10000) and raw percent 4144 is the recipient baseline plus one 250-unit provider stack. The same delta changes the provider effect through two and three stacks; the second heal 11082 equals floor(738840*150/10000), matching the final three-stack MaxHP attribute."
+      },
+      "ability_3059080": {
+        "retained_healing_events": 47,
+        "formula": "amount = floor(calculation-time target MaxHP * 1666 / 10000)",
+        "display_rate_percent": 16.66,
+        "events_matching_wire_start_or_event_order_max_hp": 46,
+        "compound_wire_exception_sequence": 12772,
+        "compound_wire_exception_proof": "Effect 2404261 from provider 42310107776 is active at two stacks before the delta. Heal 62677 equals floor(376216*1666/10000), where 376216=floor(338927*(10000+1100)/10000) and raw percent 1100 is the recipient baseline plus two 250-unit provider stacks. The same delta changes the effect to three stacks and publishes final raw percent 1350 and MaxHP 384689."
+      },
+      "calculation_order": "DamageInfo entries use the server calculation-time MaxHP, which can be the status/attribute state at the start of a compound delta or a later state inside that delta. Final serialized attributes are not universally the calculation input.",
+      "rdps_boundary": "These are healing formulas, not direct damage transfers. They remain exact HPS/state evidence and may affect later damage only through a separately proved causal chain; they are never credited as rDPS merely because an external MaxHP provider changed their amount."
+    },
+    "judgment_pursuit": {
+      "ability_id": 2206290,
+      "retained_damage_events": 11,
+      "activations": 2,
+      "distinct_calculation_time_max_hp_values": [827104, 912334],
+      "exact_integer_solution_events": 11,
+      "unmatched_events": 0,
+      "event_order_max_hp_matches": 9,
+      "wire_start_max_hp_matches": 2,
+      "formula": "amount = 3 * calculation-time source MaxHP - 1",
+      "calculation_time_state_rule": "Infer MaxHP exactly as (amount+1)/3, then require it to match a source MaxHP state surrounding the same wire message. Do not assume canonical notification order equals server calculation order.",
+      "first_activation_equality": "2481311 = 3 * 827104 - 1",
+      "second_activation_equality": "2737001 = 3 * 912334 - 1",
+      "retention_and_recount": "Every original 2206290 damage event remains canonical evidence and may be recounted under its proved parent without being hidden.",
+      "rdps_boundary": "The HP-scaled component formula is exact. External credit is permitted only for a separately packet-proved marginal MaxHP contribution present in the calculation-time snapshot."
+    },
+    "bash_pursuit": {
+      "ability_id": 2201540,
+      "retained_damage_events": 225,
+      "events_with_exact_packet_inputs": 225,
+      "formula": "source MaxHP + 3 * min(source current shield total, floor(1.5 * source MaxHP)), followed by separately observed target/status stages",
+      "events_with_exact_transient_aggregate_shield_state": 10,
+      "transient_provider_ownership_resolved_events": 10,
+      "transient_provider_ownership_unresolved_events": 0,
+      "transient_candidate_provider_entity_uuid": 257187840640,
+      "transient_provider_relation": "self_provided",
+      "external_rdps_transfer_required": false,
+      "external_shield_cap_counterfactual": {
+        "effect_id": 2202705,
+        "source_config_id": 20301,
+        "provider_entity_uuid": 42310107776,
+        "recipient_entity_uuid": 257187840640,
+        "retained_damage_events": 5,
+        "events_without_provider_current_value": 5,
+        "known_non_provider_current_shield_per_event": 1312504,
+        "shield_input_cap_per_event": 1297461,
+        "exact_zero_marginal_events": 5,
+        "proof": "The packet-known non-provider shields alone exceed the Bash Pursuit shield-input cap, so provider removal cannot change the capped formula input even though this provider shield's current_value is absent."
+      },
+      "retention_and_attribution": "Every hit, MaxHP value, aggregate shield total, individual shield instance, and provider identity remains canonical. The exact split of the transient aggregate across shield instances is not guessed; because every feasible instance is packet-owned by the damage source, the external rDPS transfer is nevertheless exactly zero. Missing external shield magnitude also does not remove an event: where packet-known non-provider shields alone saturate the input cap, zero marginal is exact; otherwise the event remains visible and only its unproved external transfer is withheld."
+    },
+    "reality_factor_3054440": {
+      "ability_id": 3054440,
+      "retained_damage_events": 11,
+      "source_actor_entity_uuid": 1489989468800,
+      "packet_chain": [
+        "source actor receives self effect 3054441 from source config 3054440",
+        "target receives marker effect 3054141 from the same source actor and source config 3054441",
+        "ability 3054440 damage is emitted with the same source actor",
+        "the marker and self effect are removed by their packet lifecycles"
+      ],
+      "provider_is_damage_source": true,
+      "external_rdps_transfer_required": false,
+      "formula_status": "The eleven exact damage amounts and surrounding HP states are retained, but the current corpus does not isolate the internal current-HP coefficient from the rest of the target damage pipeline.",
+      "rdps_boundary": "The packet proves this is a self-owned proc. Its full packet damage remains the actor's ordinary damage. A separate external HP provider can receive only a separately proved marginal change to this output; the factor itself never transfers its own damage to another provider."
+    },
+    "current_corpus_hp_capture_gaps": {
+      "searched_runtime_sources": "all current workspace RLOG packet corpora and the exhaustive schema-26 damage inventory",
+      "absent_ids": [2201170, 2201172, 2206270, 119090102, 2220117203],
+      "candidate_sources": [
+        {
+          "source_id": 916,
+          "label": "Resolute Breath",
+          "table_linked_effect_id": 2201170,
+          "table_linked_damage_ids": [119090102, 2220117203]
+        },
+        {
+          "source_id": 1226,
+          "label": "Ruthless Rewind",
+          "table_linked_effect_id": 2206270
+        }
+      ],
+      "proof_status": "not packet-observed in the current corpus",
+      "retention_rule": "These are named acquisition gaps, not zero-valued mechanics and not inferred formulas. They become eligible for proof only after their exact current-build status and damage events are captured."
+    },
+    "external_max_hp_provider_2404261": {
+      "effect_id": 2404261,
+      "origin": {
+        "source_type_id": 1,
+        "source_config_id": 2404260
+      },
+      "provider_entity_uuid": 42310107776,
+      "recipient_entity_uuid": 1489989468800,
+      "provider_is_recipient": false,
+      "raw_percent_units_per_completed_increment": 250,
+      "display_percent_per_completed_increment": 2.5,
+      "packet_lifecycle": [
+        {
+          "status_sequence": 61908,
+          "state": "applied",
+          "reported_stacks": 1,
+          "attribute_11324_before": 2200,
+          "attribute_11324_after": 2450,
+          "attribute_11321_before": 577153,
+          "attribute_11321_after": 588980
+        },
+        {
+          "status_sequence": 63265,
+          "state": "consumed",
+          "reported_stacks": 2,
+          "attribute_11324_before": 2450,
+          "attribute_11324_after": 2700,
+          "attribute_11321_before": 588980,
+          "attribute_11321_after": 600807
+        },
+        {
+          "status_sequence": 63961,
+          "state": "consumed",
+          "reported_stacks": 3,
+          "attribute_11324_before": 2700,
+          "attribute_11324_after": 2950,
+          "attribute_11321_before": 600807,
+          "attribute_11321_after": 612634,
+          "calculation_timing_note": "This third increment serialized in the same later wire message as the damage but Judgment Pursuit used the earlier 912334 MaxHP snapshot, so only two completed increments were present in that action calculation."
+        }
+      ],
+      "judgment_pursuit_packet_proof": {
+        "damage_sequences": [64054, 64072],
+        "damage_per_target": 2737001,
+        "calculation_time_max_hp": 912334,
+        "base_add_attribute_11322": 473072,
+        "current_percent_attribute_11324": 2700,
+        "provider_percent_units_in_calculation": 500,
+        "current_total_attribute_11321": 600807,
+        "current_extra_percent_attribute_11325": 5185,
+        "intermediate_marginal": 23654,
+        "final_max_hp_marginal": 35919,
+        "damage_marginal_per_target": 107757,
+        "targets_hit": 2,
+        "total_provider_damage_credit": 215514,
+        "packet_final_max_hp_attribute_11320": 912334,
+        "equalities": [
+          "23654 = trunc(473072*2700/10000)-trunc(473072*2200/10000)",
+          "35919 = 23654 + trunc(600807*5185/10000)-trunc((600807-23654)*5185/10000)",
+          "107757 = 3*35919",
+          "215514 = 2*107757"
+        ],
+        "conservation": "Each original damage event remains unchanged. For rDPS, exactly 107757 moves from the recipient's attributed share to provider 42310107776 for each of the two targets; party total remains unchanged."
+      },
+      "enablement_boundary": "Only the packet-proved two-completed-increment state (500 raw percentage units), provider, recipient, final MaxHP attribute 11320, calculation-time state, and linear damage formula are enabled. One-, three-, and four-stack events remain visible and canonical but are not projected until their one-unit rounding boundaries are proved. Status presence alone never enables HP-based rDPS.",
+      "runtime_replay_proof": {
+        "output": ".codex_tmp/rdps-replay-exact-state.v2.json",
+        "canonical_events": 951782,
+        "effect_2404261_projected_events": 2,
+        "effect_2404261_total_credit": 215514,
+        "party_damage_conserved": true
+      }
+    },
+    "cross_effect_hp_correlation_guard": {
+      "selected_cross_player_effects": 34,
+      "attribute_family": [11320, 11321, 11322, 11323, 11324, 11325],
+      "rule": "A status transition and an HP-family attribute transition sharing one wire message are retained correlation evidence, not sufficient causal attribution.",
+      "effect_21404": {
+        "packet_role": "cross-player current-HP recovery-over-time status",
+        "observed_source_config_ids": [2202230, 2202630],
+        "max_hp_attribution": "disabled",
+        "reason": "Its same-wire MaxHP-family transitions co-occur with other statuses; its exact current-game presentation and source routes identify recovery-over-time rather than a MaxHP modifier. Its healing, status lifecycle, and any HP-scaled output remain retained."
+      },
+      "effect_2404271": {
+        "packet_role": "four-piece equipment-set conversion child status",
+        "observed_source_config_id": 2404270,
+        "max_hp_attribution": "disabled",
+        "reason": "Its strongest same-wire percentage deltas are negative because conversion removes or replaces the separately observed 2404261 stack state. The packet correlation does not make 2404271 a direct MaxHP provider. Its shield and downstream state remain retained for separate formula proof."
+      },
+      "effect_2404261": {
+        "packet_role": "two-piece equipment-set MaxHP stack child status",
+        "observed_source_config_id": 2404260,
+        "dominant_external_percent_transition_units": 250,
+        "causal_status": "enabled only for the separately proved two-completed-increment Judgment Pursuit slice"
+      },
+      "retention": "No HP-scaled damage, healing, shield, status, or attribute event is removed when causal attribution is unresolved. It remains canonical and contributes to its ordinary meter metric; only the unproved rDPS transfer is withheld."
+    }
+  },
+  "rdps_accounting": {
+    "self_hp_scaling": "remains the actor's own damage unless another actor supplied a proven marginal change to the HP input",
+    "external_hp_or_shield_provider": "can receive only the exact marginal output obtained by replaying the recipient action with that provider contribution removed",
+    "hp_based_healing": "remains first-class HPS evidence and is not silently converted to rDPS",
+    "hp_cost_threshold_or_state_change": "remains ordered state evidence because it can select a later formula branch or change a later HP-based output",
+    "raw_component_damage": "remains its own packet row until an exact recount parent and formula relationship are proved"
+  },
+  "performance": {
+    "inventory_and_formula_correlation": "offline research and submission-validation path",
+    "live_parser": "retains already decoded canonical state and event fields; it does not scan descriptions or load this worklist on the hot path"
+  }
+}

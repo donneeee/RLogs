@@ -1,0 +1,145 @@
+{
+  "schema_version": 2,
+  "observation_id": "status-effect-lifecycle-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "scenario": {
+    "started_after_authentication": true,
+    "included_login_flow": false,
+    "source_kind": "retained_process-owned_gameplay_capture"
+  },
+  "verified_packet_surfaces": [
+    {
+      "route": "WorldNtf.SyncNearEntities",
+      "message": "Entity.BuffInfoSync",
+      "entity_field": 7,
+      "verified_values": [
+        "target_entity_uuid",
+        "buff_instance_uuid",
+        "static_effect_id",
+        "source_entity_uuid",
+        "stack_count",
+        "duration_millis"
+      ]
+    },
+    {
+      "route": "WorldNtf.SyncNearDelta and WorldNtf.SyncToMeDelta",
+      "message": "AoiSyncDelta.BuffEffectSync",
+      "delta_field": 10,
+      "verified_values": [
+        "target_entity_uuid",
+        "buff_instance_uuid",
+        "lifecycle_event_type",
+        "embedded_add_payload",
+        "embedded_change_payload"
+      ]
+    }
+  ],
+  "canonical_identity_policy": {
+    "effect_identity": "BuffInfo.base_id",
+    "instance_identity": "BuffInfo.buff_uuid",
+    "source_identity": "BuffInfo.fire_uuid when nonzero",
+    "removal_identity": "resolved through the bounded active instance index",
+    "unknown_removal_policy": "emit a data-quality gap and never guess a static effect ID",
+    "payload_free_layer_policy": "retain the exact stacked or consumed lifecycle state with an absent resulting stack count"
+  },
+  "consumed_stack_semantics": {
+    "decoder_behavior": "BuffChange.layer is the post-change remaining stack count. A remove-layer event is emitted as consumed but remains active while that count is nonzero; only zero or a final remove event closes the instance.",
+    "evidence_policy": "Every intermediate count remains available to formulas and recounts. Consumed never means that an HP-dependent effect or its attribute surface may be discarded."
+  },
+  "hp_dependent_surface_proof": {
+    "effect_id": 55416,
+    "current_build_identity": "Lightforged Barrier",
+    "target_entity_uuid": 1489989468800,
+    "attribute_family": {
+      "final_max_hp": 11320,
+      "intermediate_max_hp": 11321,
+      "base_add": 11322,
+      "raw_percent": 11324,
+      "raw_extra_percent": 11325,
+      "percent_scale": 10000
+    },
+    "exact_post_wire_examples": [
+      {
+        "remaining_stacks": 8,
+        "raw_extra_percent": 3627,
+        "final_max_hp": 775542,
+        "observed_micros": 94217178,
+        "capture_sequence": 4640
+      },
+      {
+        "remaining_stacks": 9,
+        "raw_extra_percent": 4080,
+        "final_max_hp": 801323,
+        "observed_micros": 92257798,
+        "capture_sequence": 4509
+      },
+      {
+        "remaining_stacks": 10,
+        "raw_extra_percent": 4533,
+        "final_max_hp": 827104,
+        "observed_micros": 91924054,
+        "capture_sequence": 4487
+      },
+      {
+        "remaining_stacks": 11,
+        "raw_extra_percent": 4987,
+        "final_max_hp": 852942,
+        "observed_micros": 92760175,
+        "capture_sequence": 4547
+      },
+      {
+        "remaining_stacks": 12,
+        "raw_extra_percent": 5440,
+        "final_max_hp": 878723,
+        "observed_micros": 94700424,
+        "capture_sequence": 4677
+      }
+    ],
+    "fixed_point_transition": "With intermediate MaxHP 11321 fixed at 569116, moving raw extra percent 11325 from 5440 to 4987 changes final MaxHP by exactly floor(569116*5440/10000)-floor(569116*4987/10000)=25781.",
+    "localized_behavior_evidence": "Current-build Shield Knight talent text explicitly names Judgment, Zeal Crusade, and Radiance as healing or damage-reduction behaviors based on MaxHP. That text establishes which mechanics require the preserved HP surface, while packet attributes and damage rows remain the authority for numeric formulas.",
+    "unresolved_without_guessing": "Other simultaneous modifiers produce additional observed stack/value cohorts, and the localized +2% per-stack text does not equal the isolated live 453-or-454 basis-point transition. Those cohorts remain visible; they are not collapsed into one guessed scalar.",
+    "runtime_cost": "The stack-to-attribute proof is generated offline from canonical rlogs. The live decoder only emits the already-required status and attribute events."
+  },
+  "retained_capture_replay": {
+    "frame_count": 62578,
+    "protocol_record_count": 49347,
+    "canonical_event_count": 951781,
+    "status_event_count": 400449,
+    "status_states": {
+      "applied": 113920,
+      "refreshed": 2608,
+      "stacked": 9,
+      "consumed": 176632,
+      "removed": 107280
+    },
+    "unresolved_instance_lifecycle_gap_count": 467,
+    "decode_failure_count": 0
+  },
+  "runtime_policy": {
+    "decode_path": "single_pass_live_hot_path",
+    "live_consumers_run_before_archive_serialization": true,
+    "archive_writer": "bounded_asynchronous_worker",
+    "history_replays_packet_archives": false,
+    "history_consumes_canonical_status_events": true,
+    "presentation_join": "effect names and icons are joined after numeric event reduction"
+  },
+  "implemented_follow_up": {
+    "archive_encoding": "log-format v2 bounded independent zstd blocks",
+    "legacy_replay": "v1 newline-delimited JSON remains auto-detected and replayable",
+    "canonical_integrity": "event order, payloads, count, and canonical SHA-256 remain unchanged",
+    "rdps_classification": "UID-first reviewed candidates with retain-unclassified-event fallback",
+    "attribution_gate": "no candidate contributes to rDPS until provider, target, magnitude, and stacking are confirmed"
+  },
+  "remaining_work": [
+    "promote reviewed rDPS candidates only after provider ownership, target scope, magnitude, and stacking are proven from current-build evidence",
+    "observe the standalone WorldNtf.BuffInfoSync route before promoting its currently opaque pack entry"
+  ],
+  "retained_data": {
+    "packet_payloads": false,
+    "network_endpoints": false,
+    "character_names": false,
+    "character_ids": false,
+    "account_identifiers": false,
+    "credentials_or_tokens": false
+  }
+}

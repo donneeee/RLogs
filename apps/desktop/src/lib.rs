@@ -46,9 +46,10 @@ use profile_packages::{
 use rlogs_capture::{CaptureSource, OfflineCapture};
 #[cfg(windows)]
 use rlogs_capture::{
-    DumpcapLiveConfig, LiveCaptureStopHandle, OwnedProcessCaptureConfig, WindowsCaptureAdapter,
-    WindowsCaptureAdapterRecommendationSource, WindowsOwnedDumpcapCapture,
-    recommend_windows_capture_adapter, windows_capture_adapters,
+    DumpcapLiveConfig, OwnedProcessCaptureConfig, WindowsCaptureAdapter,
+    WindowsCaptureAdapterRecommendationSource, WindowsLiveCaptureStopHandle,
+    WindowsOwnedLiveCapture, npcap_available, npcap_device_name, recommend_windows_capture_adapter,
+    windows_capture_adapters,
 };
 use rlogs_core::{GameConnection, ResearchConnectionFile};
 use rlogs_events::{
@@ -2365,6 +2366,7 @@ struct LiveSessionRequest {
     session_id: String,
     process_id: u32,
     interface: String,
+    #[serde(default)]
     dumpcap_path: String,
     duration_seconds: u32,
     #[serde(default)]
@@ -3225,7 +3227,7 @@ struct RuntimeController {
     combat_history_feed: Arc<CombatHistoryRevisionFeed>,
     history_rdps_backfill: Arc<HistoryRdpsBackfillQueue>,
     #[cfg(windows)]
-    live_stop: Arc<Mutex<Option<LiveCaptureStopHandle>>>,
+    live_stop: Arc<Mutex<Option<WindowsLiveCaptureStopHandle>>>,
     #[cfg(windows)]
     live_process_id: Arc<Mutex<Option<u32>>>,
 }
@@ -3386,11 +3388,11 @@ impl RuntimeController {
         self: &Arc<Self>,
         shutdown: Option<Arc<AtomicBool>>,
     ) -> Result<(), String> {
-        // Do not scan archived sessions at startup. A newly stale session is
-        // queued only when the user explicitly opens it. Work that was
-        // already queued before a restart is restored from the bounded state
-        // file and may resume here; the refreshed projection is then persisted
-        // into that history artifact.
+        // Do not scan archived sessions at startup. A newly stale historical
+        // session is queued when the user opens it, while every newly sealed
+        // live run is queued immediately so its capture-time provisional
+        // subtotal is replaced by the exact two-pass projection. Work already
+        // queued before a restart is restored from the bounded state file.
         let controller = Arc::clone(self);
         thread::Builder::new()
             .name("rlogs-history-rdps".into())
@@ -3666,23 +3668,28 @@ impl RuntimeController {
                             .dumpcap_path
                             .map(PathBuf::from)
                             .or_else(default_dumpcap_path);
-                        let interface = settings.capture_interface.or_else(|| {
-                            let dumpcap_path = dumpcap_path.as_deref()?;
-                            if !dumpcap_path.is_file() {
-                                return None;
-                            }
-                            let mut interfaces = discover_capture_interfaces(dumpcap_path).ok()?;
-                            enrich_windows_capture_interfaces(&mut interfaces, &processes)
-                                .map(|(interface, _, _)| interface)
-                        });
-                        if let (Some(interface), Some(dumpcap_path)) = (interface, dumpcap_path)
-                            && dumpcap_path.is_file()
-                        {
+                        let saved_interface = settings.capture_interface;
+                        let mut interfaces = discover_runtime_capture_interfaces(
+                            dumpcap_path.as_deref().filter(|path| path.is_file()),
+                        );
+                        let recommendation =
+                            enrich_windows_capture_interfaces(&mut interfaces, &processes);
+                        let interface = select_runtime_capture_interface(
+                            saved_interface.as_deref(),
+                            &interfaces,
+                            recommendation.as_ref(),
+                        )
+                        .or(saved_interface);
+                        if let Some(interface) = interface {
                             let request = LiveSessionRequest {
                                 session_id: format!("monitor-{}", unix_millis()),
                                 process_id: process.process_id,
                                 interface,
-                                dumpcap_path: display_path(&dumpcap_path),
+                                dumpcap_path: dumpcap_path
+                                    .as_deref()
+                                    .filter(|path| path.is_file())
+                                    .map(display_path)
+                                    .unwrap_or_default(),
                                 // Zero removes dumpcap's wall-clock deadline.
                                 // Process exit or host shutdown stops ingress.
                                 duration_seconds: 0,
@@ -4874,10 +4881,17 @@ impl RuntimeController {
             Some(baseline)
         };
 
-        let capture = WindowsOwnedDumpcapCapture::spawn(
+        let dumpcap_fallback = nonempty(request.dumpcap_path.as_str())
+            .map(PathBuf::from)
+            .filter(|path| path.is_file())
+            .and_then(|path| {
+                DumpcapLiveConfig::new(path, interface, request.duration_seconds).ok()
+            });
+        let capture = WindowsOwnedLiveCapture::open(
             request.process_id,
-            DumpcapLiveConfig::new(&request.dumpcap_path, interface, request.duration_seconds)
-                .map_err(|error| error.to_string())?,
+            interface,
+            request.duration_seconds,
+            dumpcap_fallback,
             OwnedProcessCaptureConfig::default(),
         )
         .map_err(|error| error.to_string())?;
@@ -4931,6 +4945,7 @@ impl RuntimeController {
         let submission_queue = Arc::clone(&self.submission_queue);
         let combat_history = Arc::clone(&self.combat_history);
         let combat_history_feed = Arc::clone(&self.combat_history_feed);
+        let history_rdps_backfill = Arc::clone(&self.history_rdps_backfill);
         let character_identities = Arc::clone(&self.character_identities);
         let profile_packages = Arc::clone(&self.profile_packages);
         let policy = self
@@ -5435,6 +5450,7 @@ impl RuntimeController {
                                 Arc::clone(&submission_queue),
                                 Arc::clone(&combat_history),
                                 Arc::clone(&combat_history_feed),
+                                Arc::clone(&history_rdps_backfill),
                                 Arc::clone(&profile_packages),
                                 automatic_submissions,
                                 default_visibility,
@@ -5478,6 +5494,7 @@ impl RuntimeController {
                             Arc::clone(&submission_queue),
                             Arc::clone(&combat_history),
                             Arc::clone(&combat_history_feed),
+                            Arc::clone(&history_rdps_backfill),
                             Arc::clone(&profile_packages),
                             automatic_submissions,
                             default_visibility,
@@ -5924,6 +5941,7 @@ fn postprocess_continuous_run(
     submission_queue: Arc<Mutex<LocalSubmissionQueue>>,
     combat_history: Arc<Mutex<CombatHistoryStore>>,
     combat_history_feed: Arc<CombatHistoryRevisionFeed>,
+    history_rdps_backfill: Arc<HistoryRdpsBackfillQueue>,
     profile_packages: Arc<Mutex<LocalProfilePackageStore>>,
     automatic_submissions: bool,
     default_visibility: ReportVisibility,
@@ -5932,7 +5950,10 @@ fn postprocess_continuous_run(
     let completed = log.is_completed();
     let session_id = log.session_id.clone();
     projection.history.session_id.clone_from(&session_id);
-    let history = projection.history.clone();
+    let mut history = projection.history.clone();
+    if completed {
+        prepare_capture_time_history_for_exact_replay(&mut history);
+    }
     let mut result = match capture_time_continuous_run_result(
         &log,
         projection,
@@ -5959,8 +5980,12 @@ fn postprocess_continuous_run(
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         snapshot.detail = match history_result {
+            Ok(_) if completed => format!(
+                "Monitoring; run {session_id} history is available from its conserved capture-time projection; exact sealed rDPS replay is queued. Submission: {}; profile sync: {}.",
+                result.submission_queue_status, result.profile_sync_status
+            ),
             Ok(_) => format!(
-                "Monitoring; run {session_id} history is ready from capture-time projections. Submission: {}; profile sync: {}.",
+                "Monitoring; incomplete run {session_id} history is ready from capture-time projections. Submission: {}; profile sync: {}.",
                 result.submission_queue_status, result.profile_sync_status
             ),
             Err(error) => format!(
@@ -5971,6 +5996,19 @@ fn postprocess_continuous_run(
         drop(snapshot);
         if history_recorded {
             combat_history_feed.publish();
+        }
+    }
+    if completed {
+        match history_rdps_backfill.enqueue(session_id.clone()) {
+            Ok(_) => combat_history_feed.publish_progress(),
+            Err(error) => {
+                let mut snapshot = state
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                snapshot.detail = format!(
+                    "Monitoring; run {session_id} history was saved, but exact sealed rDPS replay could not be queued: {error}"
+                );
+            }
         }
     }
 
@@ -7086,6 +7124,18 @@ fn mark_history_rdps_projection_refreshing(snapshot: &mut CombatHistorySnapshot,
     }
 }
 
+fn prepare_capture_time_history_for_exact_replay(snapshot: &mut CombatHistorySnapshot) {
+    // The incremental projection is conserved and useful immediately, but it
+    // cannot learn every remote factor that becomes available only after the
+    // completed artifact is sealed. Withhold a formula identity until the
+    // serialized two-pass replay atomically replaces this provisional view.
+    snapshot.rdps_formula_identity = None;
+    mark_history_rdps_projection_refreshing(
+        snapshot,
+        "formula_refresh_queued: capture-time rDPS is provisional until exact sealed replay completes",
+    );
+}
+
 fn combat_timeline_snapshot(report: &PluginRunReport) -> Result<CombatTimelineSnapshot, String> {
     let mut matching = report.outputs.iter().filter_map(|output| match output {
         PluginOutput::Snapshot {
@@ -7303,10 +7353,7 @@ fn display_path(path: &Path) -> String {
 fn runtime_environment() -> RuntimeEnvironment {
     let dumpcap = default_dumpcap_path().filter(|path| path.is_file());
     let game_processes = discover_game_processes().unwrap_or_default();
-    let mut capture_interfaces = dumpcap
-        .as_deref()
-        .and_then(|path| discover_capture_interfaces(path).ok())
-        .unwrap_or_default();
+    let mut capture_interfaces = discover_runtime_capture_interfaces(dumpcap.as_deref());
     #[cfg(windows)]
     let recommendation =
         enrich_windows_capture_interfaces(&mut capture_interfaces, &game_processes);
@@ -7321,6 +7368,74 @@ fn runtime_environment() -> RuntimeEnvironment {
         recommended_capture_source: recommendation.as_ref().map(|(_, source, _)| *source),
         recommended_capture_reason: recommendation.map(|(_, _, reason)| reason),
     }
+}
+
+fn discover_runtime_capture_interfaces(dumpcap: Option<&Path>) -> Vec<CaptureInterfaceView> {
+    #[cfg(windows)]
+    if npcap_available()
+        && let Ok(adapters) = windows_capture_adapters()
+    {
+        return adapters
+            .into_iter()
+            .map(|adapter| CaptureInterfaceView {
+                value: npcap_device_name(&adapter.adapter_name),
+                label: adapter_display_name(&adapter).into(),
+                friendly_name: nonempty(adapter.friendly_name.as_str()),
+                description: nonempty(adapter.description.as_str()),
+                mac_address: format_physical_address(&adapter.physical_address),
+                is_up: Some(adapter.operational),
+                is_virtual: Some(is_likely_virtual_adapter(&adapter)),
+                recommendation: None,
+            })
+            .collect();
+    }
+    dumpcap
+        .and_then(|path| discover_capture_interfaces(path).ok())
+        .unwrap_or_default()
+}
+
+fn select_runtime_capture_interface(
+    saved_value: Option<&str>,
+    interfaces: &[CaptureInterfaceView],
+    recommendation: Option<&(String, &'static str, String)>,
+) -> Option<String> {
+    let usable = |interface: &&CaptureInterfaceView| interface.is_up != Some(false);
+    let recommended = recommendation.and_then(|(value, source, _)| {
+        interfaces
+            .iter()
+            .find(|interface| interface.value == *value && usable(interface))
+            .map(|interface| (interface, *source))
+    });
+
+    // A process-socket match is stronger than a manually saved dumpcap index:
+    // those numeric indices can change after installation or adapter changes.
+    if let Some((interface, "game_traffic")) = recommended {
+        return Some(interface.value.clone());
+    }
+    if let Some(saved_value) = saved_value.map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(saved) = interfaces
+            .iter()
+            .find(|interface| interface.value == saved_value && usable(interface))
+        {
+            return Some(saved.value.clone());
+        }
+        if interfaces.is_empty() {
+            return Some(saved_value.to_owned());
+        }
+    }
+    if let Some((interface, _)) = recommended {
+        return Some(interface.value.clone());
+    }
+    interfaces
+        .iter()
+        .find(|interface| interface.is_up == Some(true) && interface.is_virtual != Some(true))
+        .or_else(|| {
+            interfaces
+                .iter()
+                .find(|interface| interface.is_up == Some(true))
+        })
+        .or_else(|| interfaces.first())
+        .map(|interface| interface.value.clone())
 }
 
 fn default_dumpcap_path() -> Option<PathBuf> {
@@ -9426,6 +9541,114 @@ mod tests {
         assert!(combat_overlay_image_format(b"not an image").is_err());
     }
 
+    fn capture_interface_fixture(
+        value: &str,
+        is_up: bool,
+        is_virtual: bool,
+    ) -> CaptureInterfaceView {
+        CaptureInterfaceView {
+            value: value.into(),
+            label: format!("{value}. fixture"),
+            friendly_name: None,
+            description: None,
+            mac_address: None,
+            is_up: Some(is_up),
+            is_virtual: Some(is_virtual),
+            recommendation: None,
+        }
+    }
+
+    #[test]
+    fn first_run_automatically_selects_the_direct_bpsr_interface() {
+        let interfaces = vec![
+            capture_interface_fixture("3", true, false),
+            capture_interface_fixture("8", true, false),
+        ];
+        let recommendation = (
+            "8".into(),
+            "game_traffic",
+            "Ethernet carries BPSR traffic.".into(),
+        );
+
+        assert_eq!(
+            select_runtime_capture_interface(None, &interfaces, Some(&recommendation)).as_deref(),
+            Some("8")
+        );
+    }
+
+    #[test]
+    fn direct_bpsr_match_replaces_a_stale_or_different_saved_index() {
+        let interfaces = vec![
+            capture_interface_fixture("3", true, false),
+            capture_interface_fixture("8", true, false),
+        ];
+        let recommendation = (
+            "8".into(),
+            "game_traffic",
+            "Ethernet carries BPSR traffic.".into(),
+        );
+
+        assert_eq!(
+            select_runtime_capture_interface(Some("3"), &interfaces, Some(&recommendation))
+                .as_deref(),
+            Some("8")
+        );
+        assert_eq!(
+            select_runtime_capture_interface(Some("99"), &interfaces, Some(&recommendation))
+                .as_deref(),
+            Some("8")
+        );
+    }
+
+    #[test]
+    fn active_saved_interface_wins_over_a_route_only_fallback() {
+        let interfaces = vec![
+            capture_interface_fixture("3", true, false),
+            capture_interface_fixture("8", true, false),
+        ];
+        let recommendation = (
+            "8".into(),
+            "system_route",
+            "Ethernet is the active route.".into(),
+        );
+
+        assert_eq!(
+            select_runtime_capture_interface(Some("3"), &interfaces, Some(&recommendation))
+                .as_deref(),
+            Some("3")
+        );
+    }
+
+    #[test]
+    fn first_run_falls_back_to_an_active_physical_interface() {
+        let interfaces = vec![
+            capture_interface_fixture("1", false, false),
+            capture_interface_fixture("2", true, true),
+            capture_interface_fixture("3", true, false),
+        ];
+
+        assert_eq!(
+            select_runtime_capture_interface(None, &interfaces, None).as_deref(),
+            Some("3")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn installed_npcap_discovers_native_interfaces_without_dumpcap() {
+        if !npcap_available() {
+            return;
+        }
+        let interfaces = discover_runtime_capture_interfaces(None);
+        assert!(!interfaces.is_empty());
+        assert!(interfaces.iter().all(|interface| {
+            interface
+                .value
+                .to_ascii_lowercase()
+                .contains(r"\device\npf_")
+        }));
+    }
+
     use super::*;
 
     static TEMPORARY_ROOT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -9994,6 +10217,32 @@ mod tests {
     }
 
     #[test]
+    fn completed_capture_keeps_conserved_subtotal_visible_and_withholds_formula_identity() {
+        let mut snapshot = captured_marksman_history();
+        snapshot.rdps_formula_identity = Some("sha256:capture-time".into());
+        let actor = &mut snapshot.runs[0].views[0].actors[0];
+        let ordinary_damage = actor.damage;
+        actor.rdps = Some(2.0);
+        actor.rdps_damage = Some(2);
+        actor.rdps_contribution_given = Some(1);
+        actor.rdps_contribution_received = Some(1);
+
+        prepare_capture_time_history_for_exact_replay(&mut snapshot);
+
+        assert_eq!(snapshot.rdps_formula_identity, None);
+        assert_eq!(
+            snapshot.runs[0].rdps_status,
+            "formula_refresh_queued: capture-time rDPS is provisional until exact sealed replay completes"
+        );
+        let actor = &snapshot.runs[0].views[0].actors[0];
+        assert_eq!(actor.damage, ordinary_damage);
+        assert_eq!(actor.rdps, Some(2.0));
+        assert_eq!(actor.rdps_damage, Some(2));
+        assert_eq!(actor.rdps_contribution_given, Some(1));
+        assert_eq!(actor.rdps_contribution_received, Some(1));
+    }
+
+    #[test]
     fn stale_history_returns_cached_rdps_and_queues_background_refresh_without_raw_log() {
         let root = temporary_root();
         let controller = RuntimeController::new(root.clone()).unwrap();
@@ -10239,6 +10488,55 @@ mod tests {
             "formula_identity={}",
             refreshed.rdps_formula_identity.as_deref().unwrap()
         );
+        for history_run in &refreshed.runs {
+            let live_run = live_projection
+                .runs
+                .iter()
+                .find(|run| run.run_index == history_run.run_index)
+                .expect("one-pass live replay should retain every history run");
+            for history_view in &history_run.views {
+                let live_view = live_run
+                    .views
+                    .iter()
+                    .find(|view| view.id == history_view.id)
+                    .expect("one-pass live replay should retain every history view");
+                let ordinary_damage = |view: &rlogs_plugin_combat_meter::CombatHistoryView| {
+                    view.actors
+                        .iter()
+                        .filter(|actor| actor.damage != 0)
+                        .map(|actor| (actor.actor_id.clone(), actor.damage))
+                        .collect::<BTreeMap<_, _>>()
+                };
+                assert_eq!(
+                    ordinary_damage(live_view),
+                    ordinary_damage(history_view),
+                    "one-pass live and sealed history must retain identical ordinary damage for run {} view {}",
+                    history_run.run_index,
+                    history_view.id,
+                );
+                let (live_given, live_received) =
+                    live_view
+                        .actors
+                        .iter()
+                        .fold((0_i128, 0_i128), |(given, received), actor| {
+                            (
+                                given
+                                    + i128::from(actor.rdps_contribution_given.expect(
+                                        "live actor must have a complete relative-damage tuple",
+                                    )),
+                                received
+                                    + i128::from(actor.rdps_contribution_received.expect(
+                                        "live actor must have a complete relative-damage tuple",
+                                    )),
+                            )
+                        });
+                assert_eq!(
+                    live_given, live_received,
+                    "one-pass live attribution must conserve every provisional transfer for run {} view {}",
+                    history_run.run_index, history_view.id,
+                );
+            }
+        }
         let history_remote_harmony = refreshed
             .runs
             .iter()
@@ -10282,13 +10580,9 @@ mod tests {
             })
             .sum::<i128>();
         eprintln!("live_one_pass_remote_harmony={live_remote_harmony}");
-        assert!(
-            live_remote_harmony > 0,
-            "the live projector should attribute at least one proven remote Harmony row"
-        );
         assert_eq!(
             live_remote_harmony, history_remote_harmony,
-            "one-pass live and sealed two-pass history must transfer the same remote Harmony amount"
+            "when remote Harmony is present, one-pass live and sealed history must transfer the same amount"
         );
     }
 

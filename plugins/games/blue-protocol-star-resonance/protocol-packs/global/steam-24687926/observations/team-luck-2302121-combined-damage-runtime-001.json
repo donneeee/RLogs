@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "observation_id": "team-luck-2302121-combined-damage-runtime-001",
+  "deployment_id": "global",
+  "client_build": "24687926",
+  "effect_id": 2302121,
+  "origin": {
+    "source_type_id": 1,
+    "source_config_id": 2302120
+  },
+  "attributes": [
+    {
+      "attribute_id": 12510,
+      "semantic": "critical_damage",
+      "raw_delta": 520
+    },
+    {
+      "attribute_id": 12530,
+      "semantic": "lucky_damage",
+      "raw_delta": 340
+    }
+  ],
+  "packet_component_proof": {
+    "artifact_sha256": "a31f207d55a5d75ecbdcd38c6b4df7cce72ab5abdba53b5fc6eeb8dd697fe38d",
+    "timeline_rows": 56090,
+    "damage_rows": 52465,
+    "source_linked_damage_rows": 51581,
+    "combined_critical_lucky_rows": 5017,
+    "approved_hit_event_3_rows": 5017,
+    "lucky_value_only_rows": 5017,
+    "reported_amount_equals_lucky_value_rows": 5017,
+    "rows_with_normal_value": 0
+  },
+  "runtime_differential_proof": {
+    "artifact_sha256": "5496fdacaca45af42e72cc825b195d86552229c6166bcf4775ce9890e55b2d58",
+    "sealed_rlogs": 26,
+    "sessions_with_combined_rows": 20,
+    "combined_lifecycle_eligible_rows": 977,
+    "combined_emitted_rows": 973,
+    "combined_overlap_suppressed_rows": 4,
+    "combined_emitted_outside_lifecycle_rows": 0,
+    "invalid_factor_rows": 0,
+    "transition_identity": "run-plus-wire-plus-recipient-entity-uuid"
+  },
+  "conservation_replay": {
+    "artifact_sha256": "976632bcf673e0fd23238ab621e7e1d9309d87ca5a4de1c03932706b275ca740",
+    "schema_version": 27,
+    "sealed_rlogs": 26,
+    "canonical_events": 6411565,
+    "runtime_identity_matches": 26,
+    "conserved_rlogs": 26,
+    "team_luck_emitted_events": 204067,
+    "team_luck_provider_recipient_pairs": 53,
+    "team_luck_projected_rdmg": 683146042,
+    "rational_projection_overflow_count": 0
+  },
+  "formula": {
+    "accounting_stage": "observed-final-damage-proportional-stage-share",
+    "critical_factor": "10000 + current_critical_damage_raw",
+    "lucky_factor": "current_lucky_damage_raw",
+    "provider_share": "D * (C * L - (C - 520) * (L - 340)) / (C * L)",
+    "integer_projection": "sum-exact-then-half-up-per-effect-provider-recipient",
+    "server_integer_counterfactual_authority": false,
+    "shared_cross_term_removed_once": true
+  },
+  "runtime_scope": {
+    "single_external_provider_required": true,
+    "exact_recipient_lifecycle_required": true,
+    "both_factor_snapshots_required": true,
+    "approved_lucky_component_route_required": true,
+    "same_recipient_same_wire_transition_rejected": true,
+    "unresolved_later_stage_overlap_fails_closed": true,
+    "ordinary_damage_is_immutable": true,
+    "global_runtime_promotion_allowed": false,
+    "component_scoped_promotion_only": true
+  }
+}

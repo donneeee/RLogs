@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "client_build": "steam-24252055",
+  "purpose": "Preserve the packet-proven fixed-point formula component for module effect 2104 without treating its self-only damage as rDPS.",
+  "proof_artifacts": [
+    ".codex_tmp/module-profile-effect-2104.current-build.v1.json",
+    ".codex_tmp/module-stack-formula-2300621.current-build.v1.json"
+  ],
+  "module_profile": {
+    "module_effect_id": 2104,
+    "level": 6,
+    "required_link_points": 20,
+    "packet_values": [2000, 275],
+    "parent_effect_id": 2300620,
+    "stack_effect_id": 2300621
+  },
+  "exact_packet_ladder": {
+    "session_id": "formula-snapshot-20260731-010829",
+    "capture_sequence": 27742,
+    "source_entity_uuid": 216009015936,
+    "target_entity_uuid": 7602240,
+    "ability_id": 220111,
+    "pre_wire_stacks": 0,
+    "post_wire_stacks": 2,
+    "stack_amounts": [[0, 33395], [1, 34230], [2, 35065]],
+    "adjacent_increments": [835, 835],
+    "independent_baseline_raw": 1000,
+    "independent_baseline_source": "source attribute 12730 in the authoritative packet snapshot",
+    "selected_exact_model": {
+      "rounding": "positive_round_half_up",
+      "integer_base_damage": 30359,
+      "formula": "round_half_up(30359 * (10000 + 1000 + stacks * 275) / 10000)"
+    }
+  },
+  "broader_capture_audit": {
+    "canonical_lines": 672000,
+    "exact_wire_groups": 10716,
+    "selected_status_events": 10652,
+    "mechanically_possible_ladders": 72,
+    "independently_anchored_exact_ladders": 1,
+    "unanchored_ladders_promoted": 0,
+    "unresolved_evidence_hidden": false
+  },
+  "proven": [
+    "The second level-6 packet value is 275 raw fixed-point damage-zone units per exact 2300621 stack.",
+    "Effect 2300621 is attacker-scoped on each target and cannot be summed across different providers.",
+    "The module contribution is self-only and must never transfer damage credit to a different rDPS provider."
+  ],
+  "not_proven": [
+    "The first packet value 2000 is not assigned a runtime formula role by this ladder alone.",
+    "Mechanically compatible ladders without an independent packet-side baseline remain candidates and are not formula authority."
+  ],
+  "runtime_policy": {
+    "attribution_enabled": false,
+    "personal_damage_formula_component": true,
+    "canonical_status_and_damage_events_retained": true
+  }
+}

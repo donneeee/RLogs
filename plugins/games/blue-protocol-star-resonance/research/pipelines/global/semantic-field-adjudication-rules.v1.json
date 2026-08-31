@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "adjudications_reduce_search_only": true,
+    "source_occurrences_remain_preserved": true,
+    "rules_must_be_reproved_per_build": true,
+    "failed_proof_keeps_field_actionable": true
+  },
+  "rules": [
+    {
+      "semantic_field_key": "RogueEntryTable/EntryDatabaseId",
+      "semantic_role": "scene-entry-database-membership",
+      "disposition": "non-actionable-for-exact-output-routing",
+      "source": {
+        "table": "RogueEntryTable",
+        "field": "EntryDatabaseId",
+        "row_identity_field": "EntryId"
+      },
+      "corroboration": {
+        "table": "RogueSceneTable",
+        "field": "EntryDatabaseIds",
+        "row_identity_field": "SceneId"
+      },
+      "required_proofs": [
+        "semantic-field-has-no-accepted-target",
+        "semantic-field-has-no-proven-binary-target",
+        "source-values-are-non-injective",
+        "source-values-equal-corroborating-membership-union"
+      ]
+    },
+    {
+      "semantic_field_key": "SkillTable/SlotPositionId",
+      "semantic_role": "skill-slot-position-reference",
+      "disposition": "non-actionable-for-exact-output-routing",
+      "source": {
+        "table": "SkillTable",
+        "field": "SlotPositionId",
+        "row_identity_field": "Id",
+        "sentinel_values": [
+          "0"
+        ]
+      },
+      "corroboration": {
+        "table": "SkillSlotPositionTable",
+        "field": "Id",
+        "row_identity_field": "Id",
+        "required_fields": [
+          "KeyPositionId",
+          "SlotLogicType",
+          "SkillId"
+        ]
+      },
+      "required_proofs": [
+        "semantic-field-has-no-accepted-target",
+        "semantic-field-has-no-proven-binary-target",
+        "source-non-sentinel-values-contained-in-corroborating-identity-set",
+        "corroborating-identity-values-are-unique",
+        "corroborating-required-fields-present"
+      ]
+    }
+  ]
+}

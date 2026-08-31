@@ -5,11 +5,16 @@ one header, ordered canonical event records, and one integrity seal. It never
 contains raw packets, credentials, login payloads, private chat, or account
 data.
 
-The first format is newline-delimited JSON so fixtures remain inspectable and
-language-neutral. Replay is still bounded: the reader caps line length and
-event count, validates session/region/schema identity and monotonic sequences,
-and verifies a SHA-256 digest over canonical event content before accepting the
-seal.
+Format v2 writes the header and integrity seal around independently compressed,
+bounded zstd event blocks. Each block has explicit compressed, decoded, and
+event-count limits, so replay remains incremental and corruption cannot request
+an unbounded allocation. The SHA-256 seal is still calculated over the same
+canonical event JSON plus newline; compact encoding does not alter, omit, or
+reorder an event.
+
+The reader auto-detects and replays legacy v1 newline-delimited JSON logs. New
+writers default to v2, while fixtures may deliberately request v1 when testing
+compatibility.
 
 The reader delivers events incrementally. It does not load the entire dungeon
 timeline into memory. Consumers may pull one event at a time, pause between

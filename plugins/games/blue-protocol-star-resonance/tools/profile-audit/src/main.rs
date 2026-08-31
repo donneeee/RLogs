@@ -1,12 +1,12 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     ffi::{OsStr, OsString},
     fs::File,
-    io::BufReader,
+    io::{BufReader, BufWriter, Write},
     path::PathBuf,
 };
 
-use rlogs_events::{CanonicalEvent, RegionIdentity, WorldContext};
+use rlogs_events::{CanonicalEvent, EvidenceSource, RegionIdentity, WorldContext};
 use rlogs_game_bpsr::{
     AllowedDataDomain, CaptureRecordKind, CharacterProfilePatch, DecoderKind, FragmentKind,
     JsonlJournalReader, MappingConfidence, PacketDirection, ProtocolDecodeStatus, ProtocolPack,
@@ -75,7 +75,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Vec::new(),
         ProtocolRuntimeConfig::default(),
     )?;
-    let mut summary = ProfileAuditSummary::default();
+    let mut summary = ProfileAuditSummary {
+        schema_version: 1,
+        generated_by: "rlogs-profile-audit",
+        game_build: build.build_id.clone(),
+        capture_id: journal.session().capture_id.clone(),
+        source_protocol_pack_digest: journal.session().protocol_pack_digest.clone(),
+        audit_protocol_pack_digest: candidate_pack.digest().to_owned(),
+        source_record_count: journal.records().len(),
+        source_journal: arguments.journal.display().to_string(),
+        target_talent_node_id: arguments.target_talent_node,
+        target_talent_node_selected: arguments.target_talent_node.map(|_| false),
+        target_profession_id: arguments.target_profession,
+        target_character_id: arguments.target_character_id.clone(),
+        target_character_id_matched: arguments.target_character_id.as_ref().map(|_| false),
+        ..ProfileAuditSummary::default()
+    };
     let mut structure = None;
 
     for record in journal.records() {
@@ -110,10 +125,57 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         for event in batch.events {
+            let event_sequence = event.sequence;
+            let observed_micros = event.time.observed_micros;
+            let capture_sequence = match &event.provenance.source {
+                EvidenceSource::Wire {
+                    capture_sequence, ..
+                } => Some(*capture_sequence),
+                _ => None,
+            };
             match event.event {
                 CanonicalEvent::CharacterProfileObserved { profile } => {
                     summary.profile_events = summary.profile_events.saturating_add(1);
                     let profile = CharacterProfilePatch::from_game_event(&profile)?;
+                    if let (Some(target), Some(matched)) = (
+                        summary.target_character_id.as_deref(),
+                        summary.target_character_id_matched.as_mut(),
+                    ) {
+                        *matched |= profile.character.character_id == target;
+                    }
+                    if let (Some(target), Some(selected)) = (
+                        summary.target_talent_node_id,
+                        summary.target_talent_node_selected.as_mut(),
+                    ) {
+                        *selected |=
+                            profile
+                                .combat_professions
+                                .as_ref()
+                                .is_some_and(|professions| {
+                                    professions.iter().any(|profession| {
+                                        profession.talent_node_ids.contains(&target)
+                                    })
+                                });
+                    }
+                    if let Some(target_profession) = summary.target_profession_id {
+                        if let Some(profession) =
+                            profile.combat_professions.as_ref().and_then(|professions| {
+                                professions.iter().find(|profession| {
+                                    profession.profession_id == target_profession
+                                })
+                            })
+                        {
+                            summary
+                                .target_profession_talent_node_ids
+                                .extend(profession.talent_node_ids.iter().copied());
+                        }
+                    }
+                    summary.profile_observations.push(profile_observation(
+                        event_sequence,
+                        capture_sequence,
+                        observed_micros,
+                        &profile,
+                    ));
                     summary.profile_fields.observe(&profile);
                 }
                 CanonicalEvent::WorldChanged(context) => {
@@ -131,18 +193,39 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         decoder_declares_open_id: false,
         raw_values_rendered: false,
     };
-    serde_json::to_writer_pretty(std::io::stdout().lock(), &summary)?;
-    println!();
+    if let Some(output) = arguments.output {
+        let mut writer = BufWriter::new(File::create(output)?);
+        serde_json::to_writer_pretty(&mut writer, &summary)?;
+        writer.write_all(b"\n")?;
+    } else {
+        serde_json::to_writer_pretty(std::io::stdout().lock(), &summary)?;
+        println!();
+    }
     Ok(())
 }
 
 #[derive(Debug, Default, Serialize)]
 struct ProfileAuditSummary {
+    schema_version: u32,
+    generated_by: &'static str,
+    game_build: String,
+    capture_id: String,
+    source_protocol_pack_digest: Option<String>,
+    audit_protocol_pack_digest: String,
+    source_record_count: usize,
+    source_journal: String,
     candidate_packets: u64,
     decoded_packets: u64,
     decode_failed_packets: u64,
     profile_events: u64,
+    profile_observations: Vec<ProfileEventObservation>,
     world_events: u64,
+    target_talent_node_id: Option<i64>,
+    target_talent_node_selected: Option<bool>,
+    target_profession_id: Option<i32>,
+    target_profession_talent_node_ids: BTreeSet<i64>,
+    target_character_id: Option<String>,
+    target_character_id_matched: Option<bool>,
     profile_fields: ProfileFieldPresence,
     world_fields: WorldFieldPresence,
     structure: StructuralAudit,
@@ -171,12 +254,17 @@ struct ProfileFieldPresence {
     equipment_count: usize,
     equipment_with_attributes: usize,
     equipment_with_enchantments: usize,
+    equipment_items: BTreeSet<EquipmentItemAudit>,
+    equipment_suit_entry_count: usize,
+    equipment_suit_entries: BTreeSet<EquipmentSuitEntryAudit>,
     modules: bool,
     equipped_module_slot_count: usize,
     module_inventory_count: usize,
     module_part_count: usize,
     module_upgrade_record_count: usize,
     modules_with_initial_link_points: usize,
+    module_link_point_audit: ModuleLinkPointAudit,
+    equipped_modules: BTreeSet<EquippedModuleAudit>,
     combat_power_component_count: usize,
     combat_power_subcomponent_count: usize,
     season_profile: bool,
@@ -220,9 +308,14 @@ struct ProfileFieldPresence {
     season_medals: bool,
     season_medal_hole_count: usize,
     season_medal_node_count: usize,
+    current_season_ids: BTreeSet<i64>,
     season_cultivation_count: usize,
     cultivation_line_count: usize,
     cultivation_area_count: usize,
+    current_active_cultivation_area_count: usize,
+    current_active_cultivation_areas: BTreeSet<CultivationAreaAudit>,
+    current_active_middle_node_item_ids: BTreeSet<i64>,
+    current_active_big_node_fantasy_ids: BTreeSet<i64>,
     reputation_count: usize,
     current_profession_project: bool,
     social_display: bool,
@@ -263,6 +356,11 @@ impl ProfileFieldPresence {
         self.equipment |= profile.equipment.is_some();
         if let Some(equipment) = &profile.equipment {
             self.equipment_count = self.equipment_count.max(equipment.len());
+            self.equipment_items
+                .extend(equipment.iter().map(|item| EquipmentItemAudit {
+                    slot_id: item.slot_id,
+                    item_id: item.item_id,
+                }));
             self.equipment_with_attributes = self.equipment_with_attributes.max(
                 equipment
                     .iter()
@@ -275,6 +373,21 @@ impl ProfileFieldPresence {
                     .filter(|item| !item.enchantments.is_empty())
                     .count(),
             );
+        }
+        if let Some(entries) = &profile.equipment_suit_entries {
+            self.equipment_suit_entry_count = self.equipment_suit_entry_count.max(entries.len());
+            self.equipment_suit_entries
+                .extend(entries.iter().map(|entry| {
+                    EquipmentSuitEntryAudit {
+                        map_key: entry.map_key,
+                        attribute_type: entry.attribute_type,
+                        attributes: entry
+                            .attributes
+                            .iter()
+                            .map(|(attribute_id, value)| (*attribute_id, *value))
+                            .collect(),
+                    }
+                }));
         }
         self.modules |= profile.modules.is_some();
         if let Some(modules) = &profile.modules {
@@ -308,6 +421,50 @@ impl ProfileFieldPresence {
                     })
                     .count(),
             );
+            let module_link_point_audit = ModuleLinkPointAudit::from_modules(modules);
+            if module_link_point_audit.part_records >= self.module_link_point_audit.part_records {
+                self.module_link_point_audit = module_link_point_audit;
+            }
+            for (slot_id, instance_id) in &modules.equipped_slots {
+                let Some(module) = modules
+                    .inventory
+                    .iter()
+                    .find(|module| &module.instance_id == instance_id)
+                else {
+                    continue;
+                };
+                let parts = module
+                    .parts
+                    .iter()
+                    .map(|part| {
+                        let matching_upgrades = module
+                            .upgrade_records
+                            .iter()
+                            .filter(|upgrade| upgrade.part_id == part.part_id);
+                        ModulePartAudit {
+                            part_id: part.part_id,
+                            initial_link_points: part.initial_link_points,
+                            successful_upgrades: matching_upgrades
+                                .clone()
+                                .filter(|upgrade| upgrade.succeeded == Some(true))
+                                .count(),
+                            failed_upgrades: matching_upgrades
+                                .filter(|upgrade| upgrade.succeeded == Some(false))
+                                .count(),
+                        }
+                    })
+                    .collect();
+                self.equipped_modules.insert(EquippedModuleAudit {
+                    slot_id: *slot_id,
+                    config_id: module.config_id,
+                    module_type: module.module_type,
+                    level: module.level,
+                    quality: module.quality,
+                    load_flag: module.load_flag,
+                    success_rate: module.success_rate,
+                    parts,
+                });
+            }
         }
         if let Some(power) = &profile.combat_power_breakdown {
             self.combat_power_component_count = self
@@ -322,6 +479,14 @@ impl ProfileFieldPresence {
             );
         }
         self.season_profile |= profile.season.is_some();
+        let current_season_id = profile
+            .season
+            .as_ref()
+            .and_then(|season| season.season_id)
+            .filter(|season_id| *season_id > 0);
+        if let Some(season_id) = current_season_id {
+            self.current_season_ids.insert(season_id);
+        }
         self.season_experience |= profile
             .season
             .as_ref()
@@ -469,6 +634,42 @@ impl ProfileFieldPresence {
                     .map(|line| line.areas.len())
                     .sum::<usize>(),
             );
+            let mut active_area_count = 0;
+            for season in seasons {
+                if current_season_id != Some(i64::from(season.season_id)) {
+                    continue;
+                }
+                for line in &season.lines {
+                    for area in &line.areas {
+                        if area.active != Some(true) || !line.area_ids.contains(&area.area_id) {
+                            continue;
+                        }
+                        active_area_count += 1;
+                        self.current_active_cultivation_areas
+                            .insert(CultivationAreaAudit {
+                                season_id: season.season_id,
+                                line_type_id: line.line_type_id,
+                                area_id: area.area_id,
+                                active_effect_score: area.active_effect_score,
+                            });
+                        self.current_active_middle_node_item_ids.extend(
+                            area.middle_node_item_ids
+                                .values()
+                                .copied()
+                                .filter(|item_id| *item_id > 0),
+                        );
+                        self.current_active_big_node_fantasy_ids.extend(
+                            area.big_node_fantasy_ids
+                                .values()
+                                .copied()
+                                .filter(|fantasy_id| *fantasy_id > 0),
+                        );
+                    }
+                }
+            }
+            self.current_active_cultivation_area_count = self
+                .current_active_cultivation_area_count
+                .max(active_area_count);
         }
         self.reputation_count = self
             .reputation_count
@@ -483,6 +684,238 @@ impl ProfileFieldPresence {
             self.medal_slot_count = self.medal_slot_count.max(social.medal_slots.len());
             self.profile_theme |= social.profile_theme_id.is_some();
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct EquipmentItemAudit {
+    slot_id: i32,
+    item_id: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct EquipmentSuitEntryAudit {
+    map_key: i32,
+    attribute_type: Option<i32>,
+    attributes: Vec<(i32, i32)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct EquippedModuleAudit {
+    slot_id: i32,
+    config_id: i32,
+    module_type: Option<i32>,
+    level: Option<u32>,
+    quality: Option<i32>,
+    load_flag: Option<i32>,
+    success_rate: Option<i32>,
+    parts: Vec<ModulePartAudit>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct ModulePartAudit {
+    part_id: i32,
+    initial_link_points: Option<i32>,
+    successful_upgrades: usize,
+    failed_upgrades: usize,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct ModuleLinkPointAudit {
+    part_records: usize,
+    parts_with_initial_link_points: usize,
+    parts_without_initial_link_points: usize,
+    parts_initial_equals_successes: usize,
+    parts_initial_greater_than_successes: usize,
+    parts_initial_less_than_successes: usize,
+    successful_upgrade_records: usize,
+    failed_upgrade_records: usize,
+    initial_link_points_min: Option<i32>,
+    initial_link_points_max: Option<i32>,
+    successful_upgrades_per_part_min: Option<usize>,
+    successful_upgrades_per_part_max: Option<usize>,
+    initial_success_failure_distribution: BTreeMap<String, usize>,
+}
+
+impl ModuleLinkPointAudit {
+    fn from_modules(modules: &rlogs_game_bpsr::ModuleProfile) -> Self {
+        let mut audit = Self::default();
+        for module in &modules.inventory {
+            for part in &module.parts {
+                audit.part_records = audit.part_records.saturating_add(1);
+                let successful_upgrades = module
+                    .upgrade_records
+                    .iter()
+                    .filter(|upgrade| {
+                        upgrade.part_id == part.part_id && upgrade.succeeded == Some(true)
+                    })
+                    .count();
+                let failed_upgrades = module
+                    .upgrade_records
+                    .iter()
+                    .filter(|upgrade| {
+                        upgrade.part_id == part.part_id && upgrade.succeeded == Some(false)
+                    })
+                    .count();
+                audit.successful_upgrade_records = audit
+                    .successful_upgrade_records
+                    .saturating_add(successful_upgrades);
+                audit.failed_upgrade_records =
+                    audit.failed_upgrade_records.saturating_add(failed_upgrades);
+                audit.successful_upgrades_per_part_min = Some(
+                    audit
+                        .successful_upgrades_per_part_min
+                        .map_or(successful_upgrades, |value| value.min(successful_upgrades)),
+                );
+                audit.successful_upgrades_per_part_max = Some(
+                    audit
+                        .successful_upgrades_per_part_max
+                        .map_or(successful_upgrades, |value| value.max(successful_upgrades)),
+                );
+
+                let Some(initial_link_points) = part.initial_link_points else {
+                    audit.parts_without_initial_link_points =
+                        audit.parts_without_initial_link_points.saturating_add(1);
+                    let key = format!("missing:{successful_upgrades}:{failed_upgrades}");
+                    *audit
+                        .initial_success_failure_distribution
+                        .entry(key)
+                        .or_default() += 1;
+                    continue;
+                };
+                audit.parts_with_initial_link_points =
+                    audit.parts_with_initial_link_points.saturating_add(1);
+                audit.initial_link_points_min = Some(
+                    audit
+                        .initial_link_points_min
+                        .map_or(initial_link_points, |value| value.min(initial_link_points)),
+                );
+                audit.initial_link_points_max = Some(
+                    audit
+                        .initial_link_points_max
+                        .map_or(initial_link_points, |value| value.max(initial_link_points)),
+                );
+                match i64::from(initial_link_points).cmp(&(successful_upgrades as i64)) {
+                    std::cmp::Ordering::Equal => {
+                        audit.parts_initial_equals_successes =
+                            audit.parts_initial_equals_successes.saturating_add(1)
+                    }
+                    std::cmp::Ordering::Greater => {
+                        audit.parts_initial_greater_than_successes =
+                            audit.parts_initial_greater_than_successes.saturating_add(1)
+                    }
+                    std::cmp::Ordering::Less => {
+                        audit.parts_initial_less_than_successes =
+                            audit.parts_initial_less_than_successes.saturating_add(1)
+                    }
+                }
+                let key = format!("{initial_link_points}:{successful_upgrades}:{failed_upgrades}");
+                *audit
+                    .initial_success_failure_distribution
+                    .entry(key)
+                    .or_default() += 1;
+            }
+        }
+        audit
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct CultivationAreaAudit {
+    season_id: i32,
+    line_type_id: i32,
+    area_id: i32,
+    active_effect_score: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct ProfileEventObservation {
+    event_sequence: u64,
+    capture_sequence: Option<u64>,
+    observed_micros: u64,
+    character_id: String,
+    current_season_id: Option<i64>,
+    battle_imagine_skills: Vec<BattleImagineSkillAudit>,
+    fantasy_atlas_stages: BTreeMap<i64, u32>,
+    active_cultivation_areas: Vec<CultivationAreaSelectionAudit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct BattleImagineSkillAudit {
+    skill_id: i64,
+    base_skill_id: Option<i64>,
+    level: Option<u32>,
+    remodel_level: Option<u32>,
+    equipped_slot: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct CultivationAreaSelectionAudit {
+    season_id: i32,
+    line_type_id: i32,
+    area_id: i32,
+    active_effect_score: Option<i32>,
+    middle_node_item_ids: BTreeMap<i32, i64>,
+    big_node_fantasy_ids: BTreeMap<i32, i64>,
+}
+
+fn profile_observation(
+    event_sequence: u64,
+    capture_sequence: Option<u64>,
+    observed_micros: u64,
+    profile: &CharacterProfilePatch,
+) -> ProfileEventObservation {
+    let current_season_id = profile.season.as_ref().and_then(|season| season.season_id);
+    let mut battle_imagine_skills = profile
+        .battle_imagine_skills
+        .iter()
+        .flatten()
+        .map(|skill| BattleImagineSkillAudit {
+            skill_id: skill.skill_id,
+            base_skill_id: skill.base_skill_id,
+            level: skill.level,
+            remodel_level: skill.remodel_level,
+            equipped_slot: skill.equipped_slot,
+        })
+        .collect::<Vec<_>>();
+    battle_imagine_skills.sort();
+    let fantasy_atlas_stages = profile
+        .collection_summary
+        .as_ref()
+        .map(|collection| collection.fantasy_atlas_stages.clone())
+        .unwrap_or_default();
+    let mut active_cultivation_areas = profile
+        .season_cultivation
+        .iter()
+        .flatten()
+        .filter(|season| current_season_id == Some(i64::from(season.season_id)))
+        .flat_map(|season| {
+            season.lines.iter().flat_map(move |line| {
+                line.areas.iter().filter_map(move |area| {
+                    (area.active == Some(true) && line.area_ids.contains(&area.area_id)).then(
+                        || CultivationAreaSelectionAudit {
+                            season_id: season.season_id,
+                            line_type_id: line.line_type_id,
+                            area_id: area.area_id,
+                            active_effect_score: area.active_effect_score,
+                            middle_node_item_ids: area.middle_node_item_ids.clone(),
+                            big_node_fantasy_ids: area.big_node_fantasy_ids.clone(),
+                        },
+                    )
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    active_cultivation_areas.sort_by_key(|area| (area.season_id, area.line_type_id, area.area_id));
+    ProfileEventObservation {
+        event_sequence,
+        capture_sequence,
+        observed_micros,
+        character_id: profile.character.character_id.clone(),
+        current_season_id,
+        battle_imagine_skills,
+        fantasy_atlas_stages,
+        active_cultivation_areas,
     }
 }
 
@@ -698,6 +1131,10 @@ enum WireAuditError {
 struct Arguments {
     pack: PathBuf,
     journal: PathBuf,
+    target_talent_node: Option<i64>,
+    target_profession: Option<i32>,
+    target_character_id: Option<String>,
+    output: Option<PathBuf>,
 }
 
 fn arguments() -> Result<Arguments, String> {
@@ -708,6 +1145,10 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
     let mut private_research = false;
     let mut pack = None;
     let mut journal = None;
+    let mut target_talent_node = None;
+    let mut target_profession = None;
+    let mut target_character_id = None;
+    let mut output = None;
     let mut arguments = arguments.into_iter();
 
     while let Some(argument) = arguments.next() {
@@ -715,6 +1156,41 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
             private_research = true;
         } else if argument == OsStr::new("--pack") {
             pack = unique_value(pack, arguments.next(), "--pack")?;
+        } else if argument == OsStr::new("--target-talent-node") {
+            let value =
+                unique_value(None, arguments.next(), "--target-talent-node")?.ok_or_else(usage)?;
+            let parsed = value
+                .to_str()
+                .ok_or_else(usage)?
+                .parse::<i64>()
+                .map_err(|_| usage())?;
+            if parsed <= 0 || target_talent_node.replace(parsed).is_some() {
+                return Err(usage());
+            }
+        } else if argument == OsStr::new("--target-profession") {
+            let value =
+                unique_value(None, arguments.next(), "--target-profession")?.ok_or_else(usage)?;
+            let parsed = value
+                .to_str()
+                .ok_or_else(usage)?
+                .parse::<i32>()
+                .map_err(|_| usage())?;
+            if parsed <= 0 || target_profession.replace(parsed).is_some() {
+                return Err(usage());
+            }
+        } else if argument == OsStr::new("--output") {
+            output = unique_value(output, arguments.next(), "--output")?;
+        } else if argument == OsStr::new("--target-character-id") {
+            let value = unique_value(None, arguments.next(), "--target-character-id")?
+                .ok_or_else(usage)?
+                .into_string()
+                .map_err(|_| usage())?;
+            if value.is_empty()
+                || !value.bytes().all(|byte| byte.is_ascii_digit())
+                || target_character_id.replace(value).is_some()
+            {
+                return Err(usage());
+            }
         } else if argument.to_string_lossy().starts_with('-') || journal.is_some() {
             return Err(usage());
         } else {
@@ -727,6 +1203,10 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
     Ok(Arguments {
         pack: pack.map(PathBuf::from).ok_or_else(usage)?,
         journal: journal.ok_or_else(usage)?,
+        target_talent_node,
+        target_profession,
+        target_character_id,
+        output: output.map(PathBuf::from),
     })
 }
 
@@ -743,7 +1223,7 @@ fn unique_value(
 }
 
 fn usage() -> String {
-    "usage: rlogs-profile-audit --private-research --pack <pack.json> <journal.jsonl>".into()
+    "usage: rlogs-profile-audit --private-research --pack <pack.json> [--target-talent-node <id>] [--target-profession <id>] [--target-character-id <id>] [--output <audit.json>] <journal.jsonl>".into()
 }
 
 #[cfg(test)]

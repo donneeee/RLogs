@@ -1,0 +1,84 @@
+{
+  "schema_version": 2,
+  "client_build": "24252055",
+  "generated_at": "2026-08-02",
+  "subject": "packet-proved external MaxHP marginal attribution for effect 2404261 and Judgment Pursuit",
+  "source_rlog": ".codex_tmp/formula-replay-critical-flags-20260802/session-20260731-010829.rlog",
+  "reproducible_outputs": [
+    ".codex_tmp/rdps-status-attribute-2404261-target-1489989468800.v8.json",
+    ".codex_tmp/judgment-pursuit-hp-proof.v24.json",
+    ".codex_tmp/judgment-2404261-window.jsonl"
+  ],
+  "policy": {
+    "canonical_hp_dependent_events_discarded": false,
+    "unresolved_hp_events_hidden": false,
+    "status_presence_alone_grants_rdps": false,
+    "only_exact_marginal_credit_is_moved": true,
+    "party_damage_is_conserved": true,
+    "final_max_hp_is_read_from_packet_attribute_11320": true,
+    "unproved_stack_counts_remain_visible": true
+  },
+  "provider_effect": {
+    "effect_id": 2404261,
+    "origin_source_type_id": 1,
+    "origin_source_config_id": 2404260,
+    "provider_entity_uuid": 42310107776,
+    "recipient_entity_uuid": 1489989468800,
+    "raw_percent_units_per_completed_increment": 250,
+    "fixed_point_scale": 10000,
+    "display_percent_per_completed_increment": 2.5
+  },
+  "calculation_window": {
+    "ability_id": 2206290,
+    "damage_sequences": [64054, 64072],
+    "damage_wire_capture_sequence": 7031,
+    "damage_per_target": 2737001,
+    "calculation_time_max_hp": 912334,
+    "included_provider_increments": 2,
+    "included_provider_raw_percent_units": 500,
+    "excluded_same-window_increment": {
+      "status_sequence": 63961,
+      "reported_stacks": 3,
+      "raw_percent_transition": "2700 to 2950",
+      "reason": "The action amount proves the earlier 912334 MaxHP calculation snapshot. The third increment's 930294 final MaxHP serialized in damage wire 7031 and was not used by this action."
+    }
+  },
+  "counterfactual": {
+    "base_add": 473072,
+    "current_raw_percent": 2700,
+    "without_provider_raw_percent": 2200,
+    "current_intermediate": 600807,
+    "intermediate_marginal": 23654,
+    "current_raw_extra_percent": 5185,
+    "packet_final_max_hp": 912334,
+    "final_max_hp_marginal": 35919,
+    "state_scaled_damage_multiplier": 3,
+    "damage_marginal_per_target": 107757,
+    "targets_hit": 2,
+    "total_provider_credit": 215514,
+    "equalities": [
+      "23654 = trunc(473072*2700/10000)-trunc(473072*2200/10000)",
+      "35919 = 23654 + trunc(600807*5185/10000)-trunc((600807-23654)*5185/10000)",
+      "107757 = 3*35919",
+      "215514 = 2*107757"
+    ]
+  },
+  "runtime_math": {
+    "module": "rlogs_game_bpsr::state_formula",
+    "projector": "rlogs_game_bpsr::BpsrStateDamageContributionProjector",
+    "catalog": "game-data/runtime/external-state-rdps.v1.json",
+    "live_complexity": "constant time per enabled state-scaled event",
+    "offline_work": "provider, recipient, effect increment, stage order, and ability formula proof",
+    "retention": "The original damage, healing, shielding, status, and attribute events remain canonical and are never replaced by the rDPS projection.",
+    "enabled_provider_state": "exactly 500 raw percentage units from two completed increments; other stack counts remain canonical but are not projected until their one-unit rounding boundaries are proved",
+    "real_replay": {
+      "output": ".codex_tmp/rdps-replay-exact-state.v2.json",
+      "canonical_events": 951782,
+      "damage_events": 125115,
+      "projected_damage_events": 2,
+      "provider_credit": 215514,
+      "party_damage_conserved": true,
+      "events_per_second_debug_build": 79124.9088452256
+    }
+  }
+}

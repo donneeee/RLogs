@@ -4,8 +4,9 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 
 use rlogs_game_bpsr::{
-    CaptureGapKind, CompressionState, FragmentKind, JsonlJournalReader, JsonlJournalSummary,
-    PacketDirection, ProtocolFeature, ProtocolPack, ProtocolPackCoverageSummary,
+    CaptureGapKind, CompressionState, FragmentKind, JsonlJournalError, JsonlJournalReader,
+    JsonlJournalSummary, PacketDirection, ProtocolFeature, ProtocolPack,
+    ProtocolPackCoverageSummary,
 };
 use serde::Serialize;
 
@@ -20,7 +21,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let arguments = arguments()?;
     let path = arguments.capture_path;
     let file = File::open(&path)?;
-    let summary = JsonlJournalReader::new(BufReader::new(file)).summarize()?;
+    let mut stream = JsonlJournalReader::new(BufReader::new(file)).into_record_stream()?;
+    let mut truncated_tail = None;
+    loop {
+        match stream.next_record() {
+            Ok(Some(_)) => {}
+            Ok(None) => break,
+            Err(JsonlJournalError::InvalidJson { line, source })
+                if arguments.recover_truncated_tail
+                    && source.is_eof()
+                    && stream
+                        .truncated_tail()
+                        .is_some_and(|(tail_line, _, _)| tail_line == line) =>
+            {
+                truncated_tail = stream.truncated_tail();
+                break;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    let summary = stream.summary();
     let pack = arguments
         .pack_path
         .as_ref()
@@ -30,9 +50,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .transpose()?;
 
     if arguments.json {
-        print_json(&path, &summary, pack.as_ref())?;
+        print_json(&path, &summary, pack.as_ref(), truncated_tail)?;
     } else {
-        print_text(&path, &summary, pack.as_ref());
+        print_text(&path, &summary, pack.as_ref(), truncated_tail);
     }
     Ok(())
 }
@@ -40,6 +60,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[derive(Debug, PartialEq, Eq)]
 struct Arguments {
     json: bool,
+    recover_truncated_tail: bool,
     pack_path: Option<PathBuf>,
     capture_path: PathBuf,
 }
@@ -50,6 +71,7 @@ fn arguments() -> Result<Arguments, String> {
 
 fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Arguments, String> {
     let mut json = false;
+    let mut recover_truncated_tail = false;
     let mut pack_path = None;
     let mut capture_path = None;
     let mut arguments = arguments.into_iter();
@@ -57,6 +79,8 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
     while let Some(argument) = arguments.next() {
         if argument == OsStr::new("--json") {
             json = true;
+        } else if argument == OsStr::new("--recover-truncated-tail") {
+            recover_truncated_tail = true;
         } else if argument == OsStr::new("--pack") {
             if pack_path.is_some() {
                 return Err(usage());
@@ -71,16 +95,22 @@ fn parse_arguments(arguments: impl IntoIterator<Item = OsString>) -> Result<Argu
 
     Ok(Arguments {
         json,
+        recover_truncated_tail,
         pack_path,
         capture_path: capture_path.ok_or_else(usage)?,
     })
 }
 
 fn usage() -> String {
-    "usage: rlogs-protocol-coverage [--json] [--pack <pack.json>] <capture.jsonl>".into()
+    "usage: rlogs-protocol-coverage [--json] [--recover-truncated-tail] [--pack <pack.json>] <capture.jsonl>".into()
 }
 
-fn print_text(path: &Path, summary: &JsonlJournalSummary, pack: Option<&ProtocolPack>) {
+fn print_text(
+    path: &Path,
+    summary: &JsonlJournalSummary,
+    pack: Option<&ProtocolPack>,
+    truncated_tail: Option<(usize, usize, u64)>,
+) {
     let coverage = &summary.coverage;
     println!("Capture: {}", path.display());
     println!("Capture ID: {}", summary.session.capture_id);
@@ -91,6 +121,11 @@ fn print_text(path: &Path, summary: &JsonlJournalSummary, pack: Option<&Protocol
         summary.session.game_build.build_id
     );
     println!("Records: {}", summary.record_count);
+    if let Some((line, bytes, after_observed_micros)) = truncated_tail {
+        println!(
+            "Recovered truncated final line: line {line}, {bytes} bytes, after {after_observed_micros} observed micros"
+        );
+    }
     println!("Packets: {}", coverage.packet_count);
     println!("Gaps: {}", coverage.gap_count);
     println!("Unrouted packets: {}", coverage.unrouted_packet_count);
@@ -182,6 +217,7 @@ fn print_json(
     path: &Path,
     summary: &JsonlJournalSummary,
     pack: Option<&ProtocolPack>,
+    truncated_tail: Option<(usize, usize, u64)>,
 ) -> Result<(), serde_json::Error> {
     let coverage = &summary.coverage;
     let report = JsonReport {
@@ -192,6 +228,13 @@ fn print_json(
         channel: summary.session.game_build.channel.clone(),
         build_id: summary.session.game_build.build_id.clone(),
         record_count: summary.record_count,
+        truncated_tail: truncated_tail.map(|(line, bytes, after_observed_micros)| {
+            JsonTruncatedTail {
+                line,
+                bytes,
+                after_observed_micros,
+            }
+        }),
         packet_count: coverage.packet_count,
         gap_count: coverage.gap_count,
         unrouted_packet_count: coverage.unrouted_packet_count,
@@ -332,6 +375,7 @@ struct JsonReport {
     channel: String,
     build_id: String,
     record_count: u64,
+    truncated_tail: Option<JsonTruncatedTail>,
     packet_count: u64,
     gap_count: u64,
     unrouted_packet_count: u64,
@@ -343,6 +387,13 @@ struct JsonReport {
     fragments: Vec<JsonFragment>,
     routes: Vec<JsonRoute>,
     protocol_pack: Option<JsonPackReport>,
+}
+
+#[derive(Serialize)]
+struct JsonTruncatedTail {
+    line: usize,
+    bytes: usize,
+    after_observed_micros: u64,
 }
 
 #[derive(Serialize)]
@@ -423,25 +474,33 @@ mod tests {
             parse_arguments(args(&["capture.jsonl"])).unwrap(),
             Arguments {
                 json: false,
+                recover_truncated_tail: false,
                 pack_path: None,
-                capture_path: PathBuf::from("capture.jsonl")
+                capture_path: PathBuf::from("capture.jsonl"),
             }
         );
         assert_eq!(
             parse_arguments(args(&["--json", "capture.jsonl"])).unwrap(),
             Arguments {
                 json: true,
+                recover_truncated_tail: false,
                 pack_path: None,
-                capture_path: PathBuf::from("capture.jsonl")
+                capture_path: PathBuf::from("capture.jsonl"),
             }
         );
         assert_eq!(
             parse_arguments(args(&["capture.jsonl", "--json", "--pack", "pack.json"])).unwrap(),
             Arguments {
                 json: true,
+                recover_truncated_tail: false,
                 pack_path: Some(PathBuf::from("pack.json")),
-                capture_path: PathBuf::from("capture.jsonl")
+                capture_path: PathBuf::from("capture.jsonl"),
             }
+        );
+        assert!(
+            parse_arguments(args(&["--recover-truncated-tail", "capture.jsonl",]))
+                .unwrap()
+                .recover_truncated_tail
         );
     }
 

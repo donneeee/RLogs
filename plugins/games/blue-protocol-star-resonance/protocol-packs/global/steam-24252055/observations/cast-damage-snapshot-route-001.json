@@ -1,0 +1,39 @@
+{
+  "schema_version": 2,
+  "client_build": "24252055",
+  "session_id": "cast-origin-validation-dungeon-20260802",
+  "source_evidence": ".codex_tmp/cast-origin-validation-dungeon-20260802/coverage.json",
+  "capture": {
+    "frame_count": 10520,
+    "record_count": 8536,
+    "packet_count": 8529,
+    "canonical_event_count": 39711,
+    "route_count": 46,
+    "tcp_gap_count": 2,
+    "malformed_frame_count": 5
+  },
+  "cast_route": {
+    "service_id": 1664308034,
+    "method_id": 67,
+    "direction": "server_to_client",
+    "fragment_kind": "notify",
+    "route_records_observed": 0,
+    "canonical_cast_events_observed": 0
+  },
+  "conclusion": {
+    "decoder_loss_proven": false,
+    "route_absence_proven_for_this_capture": true,
+    "cast_snapshot_timing_proven": false,
+    "policy": "Do not infer or synthesize cast timestamps for this archive. Preserve damage, status, and attribute evidence and continue formula proof through those packet-owned states."
+  },
+  "sealed_replay_expansion": {
+    "report": ".codex_tmp/cast-damage-snapshot-proof.recent-30.v2.json",
+    "sealed_rlogs": 30,
+    "damage_events": 839400,
+    "damage_events_with_ability_and_hit": 789286,
+    "canonical_cast_events": 0,
+    "damage_events_with_same_source_recent_cast": 0,
+    "unique_table_linked_cast_snapshots": 0,
+    "interpretation": "The missing cast boundary is not isolated to the original validation capture. Across 30 sealed histories, the canonical stream retains 789286 ability-and-hit-identified damage events and no cast event, so the current corpus cannot authorize a server action-snapshot formula."
+  }
+}

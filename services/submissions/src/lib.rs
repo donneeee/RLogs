@@ -1,7 +1,7 @@
 //! Private artifact ingestion and public parse projections for rLogs.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fs::{File, OpenOptions},
     io::{BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
@@ -19,10 +19,14 @@ use axum::{
 };
 use reqwest::Url;
 use rlogs_combat::{RunAnalysis, RunSegmentKind, RunSubmissionDisposition};
+use rlogs_events::{
+    CanonicalEvent, EntityAttributeUpdateKind, EntityRef, EventEnvelope, EventProvenance,
+    EventSensitivity, GameProfileEvent, RunState, TimelineEventKind,
+};
 use rlogs_game_bpsr::{
-    BPSR_GAME_PLUGIN_ID, BpsrStateDamageContributionProjector, bundled_run_reducer_config,
-    confirmed_damage_contribution_rules, localized_class_name, localized_scene_name,
-    localized_specialization_name,
+    BPSR_GAME_PLUGIN_ID, BpsrRemoteFactorLearner, BpsrStateDamageContributionProjector,
+    bundled_run_reducer_config, confirmed_damage_contribution_rules, localized_class_name,
+    localized_scene_name, localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use rlogs_plugin_combat_meter::{CombatHistorySnapshot, CombatTimelinePlugin, HistoryActorSummary};
@@ -42,8 +46,9 @@ mod github_archive;
 
 use github_archive::{ArchiveJob, GithubArchive};
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 1;
-pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 1;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 5;
+pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 5;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 4;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -135,6 +140,133 @@ struct ServiceInner {
     writes: Mutex<()>,
 }
 
+struct CatalogRunGroup {
+    representative: PublicParseCatalogEntry,
+    representative_quality: CanonicalSpineQuality,
+    submitters: BTreeSet<String>,
+    local_profile_witnesses: BTreeSet<String>,
+    reconciliation_sources: Vec<ReconciliationRunSource>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CanonicalSpineQuality {
+    authoritative_start: bool,
+    authoritative_completion: bool,
+    data_gap_count: u64,
+    event_count: u64,
+    report_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct LocalProfileObservation {
+    character_id: String,
+    event_sequence: u64,
+    observed_micros: u64,
+    game_time_millis: Option<i64>,
+    payload_sha256: String,
+}
+
+#[derive(Debug, Clone)]
+struct RawLocalStateObservation {
+    actor_id: u64,
+    entity_uuid: i64,
+    kind: LocalStateWitnessKind,
+    update_kind: EntityAttributeUpdateKind,
+    event_sequence: u64,
+    observed_micros: u64,
+    game_time_millis: Option<i64>,
+    payload_sha256: String,
+}
+
+#[derive(Debug, Clone)]
+struct LocalStateObservation {
+    character_id: String,
+    raw: RawLocalStateObservation,
+}
+
+#[derive(Debug, Clone)]
+struct VerifiedCrossVantageStateEvent {
+    report_id: String,
+    character_id: String,
+    placement: LocalStateWitnessPlacement,
+    game_time_millis: Option<i64>,
+    envelope: EventEnvelope,
+}
+
+#[derive(Debug, Default)]
+struct SelectedArtifactWitnesses {
+    profiles: Vec<PublicLocalProfileWitness>,
+    states: Vec<(String, PublicLocalStateWitness)>,
+}
+
+struct CrossVantageReplayResult {
+    participants: Vec<PublicReconciledParticipant>,
+    conservation: PublicAttributionConservation,
+}
+
+#[derive(Debug, Clone)]
+struct ReconciliationRunSource {
+    report_id: String,
+    run_index: u32,
+    artifact_sha256: String,
+    protocol_pack_digest: String,
+    created_unix_millis: u64,
+    quality: CanonicalSpineQuality,
+    local_profile_witnesses: Vec<PublicLocalProfileWitness>,
+    local_state_witnesses: Vec<PublicLocalStateWitness>,
+    participant_character_ids: Vec<String>,
+}
+
+impl ReconciliationRunSource {
+    fn from_report(report: &PublicParseReport, run: &PublicRun) -> Self {
+        Self {
+            report_id: report.report_id.clone(),
+            run_index: run.run_index,
+            artifact_sha256: report.verification.artifact_sha256.clone(),
+            protocol_pack_digest: report.protocol_pack_digest.clone(),
+            created_unix_millis: report.created_unix_millis,
+            quality: CanonicalSpineQuality::from_report(report, run),
+            local_profile_witnesses: run.local_profile_witnesses.clone(),
+            local_state_witnesses: run.local_state_witnesses.clone(),
+            participant_character_ids: run
+                .participants
+                .iter()
+                .filter_map(|participant| participant.character_id.clone())
+                .collect(),
+        }
+    }
+}
+
+impl CanonicalSpineQuality {
+    fn from_report(report: &PublicParseReport, run: &PublicRun) -> Self {
+        Self {
+            authoritative_start: run.authoritative_start,
+            authoritative_completion: run.authoritative_completion,
+            data_gap_count: run.data_gap_count,
+            event_count: report.verification.event_count,
+            report_id: report.report_id.clone(),
+        }
+    }
+
+    fn is_better_than(&self, other: &Self) -> bool {
+        (
+            self.authoritative_start && self.authoritative_completion,
+            self.authoritative_start,
+            self.authoritative_completion,
+            std::cmp::Reverse(self.data_gap_count),
+            self.event_count,
+            std::cmp::Reverse(self.report_id.as_str()),
+        ) > (
+            other.authoritative_start && other.authoritative_completion,
+            other.authoritative_start,
+            other.authoritative_completion,
+            std::cmp::Reverse(other.data_gap_count),
+            other.event_count,
+            std::cmp::Reverse(other.report_id.as_str()),
+        )
+    }
+}
+
 impl SubmissionService {
     pub fn open(
         root: PathBuf,
@@ -190,6 +322,7 @@ impl SubmissionService {
             "uploads",
             "artifacts/sha256",
             "projections",
+            "reconciliations",
             "archive-outbox",
             "archive-receipts",
         ] {
@@ -379,6 +512,316 @@ impl SubmissionService {
         Ok(report)
     }
 
+    pub fn reconciliation(
+        &self,
+        run_group_id: &str,
+    ) -> Result<PublicRunReconciliation, ServiceError> {
+        read_json(&self.reconciliation_path(run_group_id)?)
+    }
+
+    fn load_verified_cross_vantage_state_events(
+        &self,
+        reconciliation: &PublicRunReconciliation,
+    ) -> Result<Vec<VerifiedCrossVantageStateEvent>, ServiceError> {
+        let mut selected_by_report = BTreeMap::<String, SelectedArtifactWitnesses>::new();
+        for character in &reconciliation.characters {
+            let Some(selected_report_id) = character.selected_report_id.as_deref() else {
+                continue;
+            };
+            if selected_report_id == reconciliation.canonical_spine.report_id {
+                continue;
+            }
+            let source = character
+                .witnesses
+                .iter()
+                .find(|source| source.report_id == selected_report_id)
+                .ok_or_else(|| ServiceError::CrossVantageReplay(format!(
+                    "selected report {selected_report_id} has no witness source for character {}",
+                    character.character_id
+                )))?;
+            let selected = selected_by_report
+                .entry(selected_report_id.to_owned())
+                .or_default();
+            selected.profiles.extend(source.snapshots.clone());
+            selected.states.extend(
+                source
+                    .state_snapshots
+                    .iter()
+                    .cloned()
+                    .map(|witness| (character.character_id.clone(), witness)),
+            );
+        }
+
+        let mut verified = Vec::new();
+        for (report_id, mut selected) in selected_by_report {
+            selected
+                .profiles
+                .sort_by_key(|witness| witness.event_sequence);
+            selected
+                .profiles
+                .dedup_by_key(|witness| witness.event_sequence);
+            selected
+                .states
+                .sort_by_key(|(_, witness)| witness.event_sequence);
+            selected
+                .states
+                .dedup_by_key(|(_, witness)| witness.event_sequence);
+            let report = reconciliation
+                .reports
+                .iter()
+                .find(|report| report.report_id == report_id)
+                .ok_or_else(|| {
+                    ServiceError::CrossVantageReplay(format!(
+                        "selected report {report_id} is absent from the reconciliation manifest"
+                    ))
+                })?;
+            let digest = Sha256Digest::parse(report.artifact_sha256.clone())?;
+            let path = self.artifact_path(&digest)?;
+            let file = File::open(&path).map_err(|error| {
+                ServiceError::CrossVantageReplay(format!(
+                    "could not open selected artifact {} for report {report_id}: {error}",
+                    path.display()
+                ))
+            })?;
+            let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
+            let mut seen_profiles = BTreeSet::new();
+            let mut seen_states = BTreeSet::new();
+            reader.replay(|envelope| {
+                if let Ok(index) = selected
+                    .profiles
+                    .binary_search_by_key(&envelope.sequence, |witness| witness.event_sequence)
+                {
+                    let witness = &selected.profiles[index];
+                    verify_profile_witness_event(&report_id, witness, envelope)
+                        .map_err(|error| error.to_string())?;
+                    seen_profiles.insert(witness.event_sequence);
+                    verified.push(VerifiedCrossVantageStateEvent {
+                        report_id: report_id.clone(),
+                        character_id: witness.character_id.clone(),
+                        placement: witness.placement,
+                        game_time_millis: witness.game_time_millis,
+                        envelope: envelope.clone(),
+                    });
+                }
+                if let Ok(index) = selected
+                    .states
+                    .binary_search_by_key(&envelope.sequence, |(_, witness)| witness.event_sequence)
+                {
+                    let (character_id, witness) = &selected.states[index];
+                    verify_state_witness_event(&report_id, witness, envelope)
+                        .map_err(|error| error.to_string())?;
+                    seen_states.insert(witness.event_sequence);
+                    verified.push(VerifiedCrossVantageStateEvent {
+                        report_id: report_id.clone(),
+                        character_id: character_id.clone(),
+                        placement: witness.placement,
+                        game_time_millis: witness.game_time_millis,
+                        envelope: envelope.clone(),
+                    });
+                }
+                Ok(())
+            })?;
+            if let Some(sequence) = selected
+                .profiles
+                .iter()
+                .map(|witness| witness.event_sequence)
+                .filter(|sequence| !seen_profiles.contains(sequence))
+                .chain(
+                    selected
+                        .states
+                        .iter()
+                        .map(|(_, witness)| witness.event_sequence)
+                        .filter(|sequence| !seen_states.contains(sequence)),
+                )
+                .next()
+            {
+                return Err(ServiceError::CrossVantageWitnessMismatch {
+                    report_id,
+                    event_sequence: sequence,
+                });
+            }
+        }
+        verified.sort_by(|left, right| {
+            (
+                left.placement,
+                left.game_time_millis,
+                &left.report_id,
+                left.envelope.sequence,
+            )
+                .cmp(&(
+                    right.placement,
+                    right.game_time_millis,
+                    &right.report_id,
+                    right.envelope.sequence,
+                ))
+        });
+        Ok(verified)
+    }
+
+    fn replay_cross_vantage_attribution(
+        &self,
+        reconciliation: &PublicRunReconciliation,
+        mut imported_events: Vec<VerifiedCrossVantageStateEvent>,
+    ) -> Result<CrossVantageReplayResult, ServiceError> {
+        let canonical_digest =
+            Sha256Digest::parse(reconciliation.canonical_spine.artifact_sha256.clone())?;
+        let canonical_path = self.artifact_path(&canonical_digest)?;
+        let canonical_entities = canonical_character_entities(&canonical_path)?;
+        remap_cross_vantage_state_entities(&mut imported_events, &canonical_entities)?;
+
+        let mut remote_factor_learner =
+            BpsrRemoteFactorLearner::new().map_err(ServiceError::Replay)?;
+        replay_canonical_with_cross_vantage_state(
+            &canonical_path,
+            reconciliation.canonical_spine.run_index,
+            &imported_events,
+            |envelope, _imported| {
+                remote_factor_learner.observe(envelope);
+                Ok(())
+            },
+        )?;
+        let remote_factors = remote_factor_learner.finish();
+
+        let mut meter = CombatTimelinePlugin::with_damage_contribution_projection(
+            confirmed_damage_contribution_rules().map_err(ServiceError::Replay)?,
+            Some(Box::new(
+                BpsrStateDamageContributionProjector::new_with_remote_factor_timeline(
+                    remote_factors,
+                )
+                .map_err(ServiceError::Replay)?,
+            )),
+        )
+        .map_err(ServiceError::Replay)?;
+        let mut encounter = EncounterRecorderPlugin::new(
+            bundled_run_reducer_config()
+                .map_err(|error| ServiceError::Replay(error.to_string()))?,
+        );
+        let header_file = File::open(&canonical_path)?;
+        let header_reader = RlogReader::new(BufReader::new(header_file), RlogLimits::default())?;
+        let header = header_reader.header().clone();
+        meter.begin_live(&header);
+        encounter.begin_live(&header);
+        replay_canonical_with_cross_vantage_state(
+            &canonical_path,
+            reconciliation.canonical_spine.run_index,
+            &imported_events,
+            |envelope, imported| {
+                meter.observe_live(envelope);
+                if !imported {
+                    encounter
+                        .observe_live(envelope)
+                        .map_err(|error| error.to_string())?;
+                }
+                Ok(())
+            },
+        )?;
+        let run_projection = encounter
+            .live_snapshot()
+            .map_err(|error| ServiceError::Replay(error.to_string()))?;
+        let history = meter
+            .history_snapshot(&run_projection.runs)
+            .map_err(|error| ServiceError::Replay(error.to_string()))?;
+        let run = history
+            .runs
+            .iter()
+            .find(|run| run.run_index == reconciliation.canonical_spine.run_index)
+            .ok_or_else(|| {
+                ServiceError::CrossVantageReplay(format!(
+                    "canonical history has no run index {}",
+                    reconciliation.canonical_spine.run_index
+                ))
+            })?;
+        let view = run
+            .views
+            .iter()
+            .find(|view| view.kind == "all")
+            .or_else(|| run.views.first())
+            .ok_or_else(|| ServiceError::CrossVantageReplay("canonical run has no view".into()))?;
+
+        let canonical_report: PublicParseReport =
+            read_json(&self.projection_path(&reconciliation.canonical_spine.report_id)?)?;
+        let canonical_run = canonical_report
+            .runs
+            .iter()
+            .find(|run| run.run_index == reconciliation.canonical_spine.run_index)
+            .ok_or_else(|| {
+                ServiceError::CrossVantageReplay(
+                    "canonical public projection is missing the selected run".into(),
+                )
+            })?;
+        let canonical_damage = canonical_run
+            .participants
+            .iter()
+            .map(|participant| (public_participant_key(participant), participant.damage))
+            .collect::<BTreeMap<_, _>>();
+        let replay_damage = view
+            .actors
+            .iter()
+            .filter(|actor| is_public_participant(actor))
+            .map(|actor| {
+                let participant = public_participant(actor);
+                (public_participant_key(&participant), participant.damage)
+            })
+            .collect::<BTreeMap<_, _>>();
+        if canonical_damage != replay_damage {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "state injection changed ordinary participant damage: canonical={canonical_damage:?}, replay={replay_damage:?}"
+            )));
+        }
+
+        let participants = view
+            .actors
+            .iter()
+            .filter(|actor| is_public_participant(actor))
+            .map(|actor| PublicReconciledParticipant {
+                participant: public_participant(actor),
+                rdps_damage: actor.rdps_damage,
+                contribution_given: actor.rdps_contribution_given,
+                contribution_received: actor.rdps_contribution_received,
+                rdps_incomplete: actor.rdps_incomplete,
+            })
+            .collect::<Vec<_>>();
+        let raw_damage = checked_i64_sum(
+            participants
+                .iter()
+                .map(|participant| participant.participant.damage),
+        )?;
+        let rdps_damage = checked_optional_i64_sum(
+            participants
+                .iter()
+                .map(|participant| participant.rdps_damage),
+            "rDPS damage",
+        )?;
+        let contribution_given = checked_optional_i64_sum(
+            participants
+                .iter()
+                .map(|participant| participant.contribution_given),
+            "contribution given",
+        )?;
+        let contribution_received = checked_optional_i64_sum(
+            participants
+                .iter()
+                .map(|participant| participant.contribution_received),
+            "contribution received",
+        )?;
+        let conservation = PublicAttributionConservation {
+            raw_damage,
+            rdps_damage,
+            contribution_given,
+            contribution_received,
+            conserved: contribution_given == contribution_received && raw_damage == rdps_damage,
+        };
+        if !conservation.conserved {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "party conservation failed: raw={raw_damage}, rdps={rdps_damage}, given={contribution_given}, received={contribution_received}"
+            )));
+        }
+        Ok(CrossVantageReplayResult {
+            participants,
+            conservation,
+        })
+    }
+
     pub fn catalog(&self, query: &CatalogQuery) -> Result<PublicParseCatalog, ServiceError> {
         let mut catalog: PublicParseCatalog = read_json(&self.catalog_path())?;
         catalog.entries.retain(|entry| query.matches(entry));
@@ -448,7 +891,7 @@ impl SubmissionService {
     }
 
     fn rebuild_catalog_locked(&self) -> Result<(), ServiceError> {
-        let mut grouped = BTreeMap::<String, (PublicParseCatalogEntry, BTreeSet<String>)>::new();
+        let mut grouped = BTreeMap::<String, CatalogRunGroup>::new();
         for file in std::fs::read_dir(self.inner.root.join("projections"))? {
             let file = file?;
             if file.path().extension().and_then(|value| value.to_str()) != Some("json") {
@@ -460,6 +903,8 @@ impl SubmissionService {
             }
             for run in &report.runs {
                 let entry = PublicParseCatalogEntry::from_report(&report, run);
+                let quality = CanonicalSpineQuality::from_report(&report, run);
+                let reconciliation_source = ReconciliationRunSource::from_report(&report, run);
                 let submitter = report.submission_provenance.submitter_id.clone();
                 match grouped.entry(entry.run_group_id.clone()) {
                     std::collections::btree_map::Entry::Vacant(vacant) => {
@@ -467,23 +912,37 @@ impl SubmissionService {
                         if let Some(submitter) = submitter {
                             submitters.insert(submitter);
                         }
-                        vacant.insert((entry, submitters));
+                        let local_profile_witnesses =
+                            run.local_profile_character_ids.iter().cloned().collect();
+                        vacant.insert(CatalogRunGroup {
+                            representative: entry,
+                            representative_quality: quality,
+                            submitters,
+                            local_profile_witnesses,
+                            reconciliation_sources: vec![reconciliation_source],
+                        });
                     }
                     std::collections::btree_map::Entry::Occupied(mut occupied) => {
-                        let (representative, submitters) = occupied.get_mut();
-                        representative.report_ids.push(report.report_id.clone());
-                        representative.report_ids.sort();
-                        representative.report_ids.dedup();
-                        representative.contribution_count = representative.report_ids.len();
+                        let group = occupied.get_mut();
+                        let mut report_ids = group.representative.report_ids.clone();
+                        report_ids.push(report.report_id.clone());
+                        report_ids.sort();
+                        report_ids.dedup();
                         if let Some(submitter) = submitter {
-                            submitters.insert(submitter);
+                            group.submitters.insert(submitter);
                         }
-                        representative.distinct_submitter_count = submitters.len();
-                        if report.created_unix_millis > representative.created_unix_millis {
-                            representative.report_id = report.report_id.clone();
-                            representative.run_index = run.run_index;
-                            representative.created_unix_millis = report.created_unix_millis;
+                        group
+                            .local_profile_witnesses
+                            .extend(run.local_profile_character_ids.iter().cloned());
+                        group.reconciliation_sources.push(reconciliation_source);
+                        if quality.is_better_than(&group.representative_quality) {
+                            group.representative = entry;
+                            group.representative_quality = quality;
                         }
+                        group.representative.report_ids = report_ids;
+                        group.representative.contribution_count =
+                            group.representative.report_ids.len();
+                        group.representative.distinct_submitter_count = group.submitters.len();
                     }
                 }
             }
@@ -491,13 +950,61 @@ impl SubmissionService {
                 return Err(ServiceError::CatalogTooLarge);
             }
         }
-        let mut entries = grouped
-            .into_values()
-            .map(|(mut entry, submitters)| {
-                entry.distinct_submitter_count = submitters.len();
-                entry
-            })
-            .collect::<Vec<_>>();
+        let mut entries = Vec::with_capacity(grouped.len());
+        for group in grouped.into_values() {
+            let mut reconciliation = build_public_reconciliation(&group);
+            let replay_ready = matches!(
+                reconciliation.state_replay_readiness,
+                CrossVantageStateReplayReadiness::PartialCoverageReady
+                    | CrossVantageStateReplayReadiness::FullCoverageReady
+            );
+            let artifacts_available = reconciliation.reports.iter().all(|report| {
+                Sha256Digest::parse(report.artifact_sha256.clone())
+                    .ok()
+                    .and_then(|digest| self.artifact_path(&digest).ok())
+                    .is_some_and(|path| path.is_file())
+            });
+            if replay_ready && artifacts_available {
+                match self.load_verified_cross_vantage_state_events(&reconciliation) {
+                    Ok(events) => {
+                        reconciliation.verified_state_input_sha256 =
+                            Some(verified_state_input_digest(&reconciliation, &events)?);
+                        match self.replay_cross_vantage_attribution(&reconciliation, events) {
+                            Ok(result) => {
+                                reconciliation.status =
+                                    RunAttributionReconciliationStatus::Reconciled;
+                                reconciliation.reconciled_participants = result.participants;
+                                reconciliation.conservation = Some(result.conservation);
+                                reconciliation.attribution_replay_completed = true;
+                            }
+                            Err(error) => {
+                                reconciliation.state_replay_readiness =
+                                    CrossVantageStateReplayReadiness::Blocked;
+                                reconciliation
+                                    .state_replay_blockers
+                                    .push(format!("conserved_replay_failed:{error}"));
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        reconciliation.state_replay_readiness =
+                            CrossVantageStateReplayReadiness::Blocked;
+                        reconciliation
+                            .state_replay_blockers
+                            .push(format!("sealed_witness_verification_failed:{error}"));
+                    }
+                }
+            }
+            write_json_atomic(
+                &self.reconciliation_path(&reconciliation.run_group_id)?,
+                &reconciliation,
+            )?;
+            let mut entry = group.representative;
+            entry.distinct_submitter_count = group.submitters.len();
+            entry.local_profile_witness_character_count = group.local_profile_witnesses.len();
+            entry.attribution_reconciliation_status = reconciliation.status;
+            entries.push(entry);
+        }
         entries.sort_by_key(|entry| std::cmp::Reverse(entry.created_unix_millis));
         let facets = CatalogFacets::from_entries(&entries);
         write_json_atomic(
@@ -686,6 +1193,15 @@ impl SubmissionService {
             .join(format!("{value}.rlog")))
     }
 
+    fn reconciliation_path(&self, run_group_id: &str) -> Result<PathBuf, ServiceError> {
+        validate_identifier(run_group_id, "run group ID")?;
+        Ok(self
+            .inner
+            .root
+            .join("reconciliations")
+            .join(format!("{run_group_id}.json")))
+    }
+
     fn github_archive_outbox_path(&self) -> PathBuf {
         self.inner.root.join("archive-outbox")
     }
@@ -718,6 +1234,10 @@ pub fn router(service: SubmissionService) -> Router {
         .route("/v1/uploads/{upload_id}/finalize", post(finalize_upload))
         .route("/v1/parses", get(list_parses))
         .route("/v1/parses/{report_id}", get(get_parse))
+        .route(
+            "/v1/run-groups/{run_group_id}/reconciliation",
+            get(get_run_reconciliation),
+        )
         .layer(DefaultBodyLimit::max(16 * 1024 * 1024))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
@@ -770,6 +1290,13 @@ async fn get_parse(
     AxumPath(report_id): AxumPath<String>,
 ) -> Result<Json<PublicParseReport>, ApiError> {
     Ok(Json(service.report(&report_id)?))
+}
+
+async fn get_run_reconciliation(
+    State(service): State<SubmissionService>,
+    AxumPath(run_group_id): AxumPath<String>,
+) -> Result<Json<PublicRunReconciliation>, ApiError> {
+    Ok(Json(service.reconciliation(&run_group_id)?))
 }
 
 async fn authorize(
@@ -989,8 +1516,69 @@ pub struct PublicRun {
     pub authoritative_start: bool,
     pub authoritative_completion: bool,
     pub submission_disposition: RunSubmissionDisposition,
+    /// Stable characters for which this observer's artifact contains a
+    /// privacy-reviewed local profile witness. A same-instance run group may
+    /// use these witnesses to replace another report's remote inference, but
+    /// never to duplicate that report's combat events.
+    #[serde(default)]
+    pub local_profile_character_ids: Vec<String>,
+    /// Run-scoped, personal-gameplay profile snapshots. The digest commits to
+    /// the exact trusted plug-in payload without publishing that payload in
+    /// the parse. Cross-vantage replay uses these references to retrieve and
+    /// verify the corresponding event from the private sealed artifact.
+    #[serde(default)]
+    pub local_profile_witnesses: Vec<PublicLocalProfileWitness>,
+    /// Exact state events for the character proven local by a personal profile
+    /// observation. These are commitments and provenance only; values stay in
+    /// the private sealed artifact until a joint replay verifies and consumes
+    /// the referenced canonical event.
+    #[serde(default)]
+    pub local_state_witnesses: Vec<PublicLocalStateWitness>,
     pub segments: Vec<PublicRunSegment>,
     pub participants: Vec<PublicParticipant>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicLocalProfileWitness {
+    pub character_id: String,
+    #[serde(default)]
+    pub placement: LocalStateWitnessPlacement,
+    pub event_sequence: u64,
+    pub observed_micros: u64,
+    #[serde(default)]
+    pub game_time_millis: Option<i64>,
+    pub payload_sha256: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalStateWitnessKind {
+    EntityAttributes,
+    TemporaryAttributes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicLocalStateWitness {
+    pub character_id: String,
+    pub actor_id: u64,
+    pub entity_uuid: i64,
+    pub kind: LocalStateWitnessKind,
+    pub update_kind: String,
+    #[serde(default)]
+    pub placement: LocalStateWitnessPlacement,
+    pub event_sequence: u64,
+    pub observed_micros: u64,
+    pub game_time_millis: Option<i64>,
+    pub payload_sha256: String,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalStateWitnessPlacement {
+    #[default]
+    Unspecified,
+    PreRunBaseline,
+    InRun,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1078,6 +1666,10 @@ pub struct PublicParseCatalogEntry {
     pub contribution_count: usize,
     #[serde(default)]
     pub distinct_submitter_count: usize,
+    #[serde(default)]
+    pub local_profile_witness_character_count: usize,
+    #[serde(default)]
+    pub attribution_reconciliation_status: RunAttributionReconciliationStatus,
     pub created_unix_millis: u64,
     pub deployment_id: String,
     pub region_id: String,
@@ -1090,6 +1682,132 @@ pub struct PublicParseCatalogEntry {
     pub terminal_state: String,
     pub total_run_time_micros: Option<u64>,
     pub participant_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunAttributionReconciliationStatus {
+    #[default]
+    SingleVantage,
+    MultipleReportsNoAdditionalVantage,
+    CrossVantageEvidenceAvailable,
+    Reconciled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicRunReconciliation {
+    pub schema_version: u16,
+    pub reconciliation_id: String,
+    pub run_group_id: String,
+    pub status: RunAttributionReconciliationStatus,
+    pub canonical_spine: PublicCanonicalSpine,
+    pub reports: Vec<PublicReconciliationReport>,
+    pub characters: Vec<PublicReconciliationCharacter>,
+    pub participant_character_count: usize,
+    pub local_vantage_character_count: usize,
+    pub complete_local_vantage_coverage: bool,
+    pub state_replay_readiness: CrossVantageStateReplayReadiness,
+    pub state_replay_blockers: Vec<String>,
+    /// Deterministic digest of the canonical artifact plus every exact state
+    /// witness successfully re-read and verified from its sealed artifact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_state_input_sha256: Option<String>,
+    /// Reconciled actor totals derived from one canonical combat spine. Source
+    /// reports remain immutable and are never summed together.
+    #[serde(default)]
+    pub reconciled_participants: Vec<PublicReconciledParticipant>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conservation: Option<PublicAttributionConservation>,
+    /// This product inventories and selects evidence. It does not claim that
+    /// the conserved counterfactual replay has already consumed it.
+    pub attribution_replay_completed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicReconciledParticipant {
+    #[serde(flatten)]
+    pub participant: PublicParticipant,
+    pub rdps_damage: Option<i64>,
+    pub contribution_given: Option<i64>,
+    pub contribution_received: Option<i64>,
+    pub rdps_incomplete: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicAttributionConservation {
+    pub raw_damage: i64,
+    pub rdps_damage: i64,
+    pub contribution_given: i64,
+    pub contribution_received: i64,
+    pub conserved: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CrossVantageStateReplayReadiness {
+    #[default]
+    SingleVantage,
+    MultipleReportsNoAdditionalVantage,
+    Blocked,
+    PartialCoverageReady,
+    FullCoverageReady,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicCanonicalSpine {
+    pub report_id: String,
+    pub run_index: u32,
+    pub artifact_sha256: String,
+    pub authoritative_start: bool,
+    pub authoritative_completion: bool,
+    pub data_gap_count: u64,
+    pub event_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicReconciliationReport {
+    pub report_id: String,
+    pub run_index: u32,
+    pub artifact_sha256: String,
+    /// Decoder/protocol identity is replay compatibility evidence, not game
+    /// run identity. Reports from the same exact game instance remain grouped
+    /// when this differs, but their state cannot be mixed automatically.
+    #[serde(default)]
+    pub protocol_pack_digest: String,
+    pub created_unix_millis: u64,
+    pub canonical_spine: bool,
+    pub local_profile_witnesses: Vec<PublicLocalProfileWitness>,
+    pub local_state_witnesses: Vec<PublicLocalStateWitness>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicReconciliationCharacter {
+    pub character_id: String,
+    pub participant_report_count: usize,
+    pub disposition: ProfileWitnessDisposition,
+    pub selected_report_id: Option<String>,
+    pub state_witness_count: usize,
+    pub game_time_aligned_state_witness_count: usize,
+    pub witnesses: Vec<PublicCharacterWitnessSource>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicCharacterWitnessSource {
+    pub report_id: String,
+    pub run_index: u32,
+    pub artifact_sha256: String,
+    pub snapshots: Vec<PublicLocalProfileWitness>,
+    pub state_snapshots: Vec<PublicLocalStateWitness>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileWitnessDisposition {
+    #[default]
+    Missing,
+    SingleReportExact,
+    MultipleReportsIdentical,
+    MultipleReportsRequireOrdering,
 }
 
 impl PublicParseCatalogEntry {
@@ -1108,6 +1826,8 @@ impl PublicParseCatalogEntry {
             distinct_submitter_count: usize::from(
                 report.submission_provenance.submitter_id.is_some(),
             ),
+            local_profile_witness_character_count: run.local_profile_character_ids.len(),
+            attribution_reconciliation_status: RunAttributionReconciliationStatus::SingleVantage,
             created_unix_millis: report.created_unix_millis,
             deployment_id: report.deployment_id.clone(),
             region_id: report.region_id.clone(),
@@ -1199,10 +1919,21 @@ fn build_public_report(
             manifest.metadata.game_plugin_id.clone(),
         ));
     }
+    let first_pass_file = File::open(path)?;
+    let first_pass_reader =
+        RlogReader::new(BufReader::new(first_pass_file), RlogLimits::default())?;
+    let mut remote_factor_learner = BpsrRemoteFactorLearner::new().map_err(ServiceError::Replay)?;
+    first_pass_reader.replay(|event| {
+        remote_factor_learner.observe(event);
+        Ok(())
+    })?;
+    let remote_factors = remote_factor_learner.finish();
+
     let mut meter = CombatTimelinePlugin::with_damage_contribution_projection(
         confirmed_damage_contribution_rules().map_err(ServiceError::Replay)?,
         Some(Box::new(
-            BpsrStateDamageContributionProjector::new().map_err(ServiceError::Replay)?,
+            BpsrStateDamageContributionProjector::new_with_remote_factor_timeline(remote_factors)
+                .map_err(ServiceError::Replay)?,
         )),
     )
     .map_err(ServiceError::Replay)?;
@@ -1214,7 +1945,67 @@ fn build_public_report(
     let header = reader.header().clone();
     meter.begin_live(&header);
     encounter.begin_live(&header);
+    let mut local_profile_observations = Vec::new();
+    let mut character_id_by_entity_uuid = BTreeMap::<i64, Option<String>>::new();
+    let mut raw_local_state_observations = Vec::new();
     let replay = reader.replay(|event| {
+        if event.sensitivity == EventSensitivity::PersonalGameplay
+            && let CanonicalEvent::CharacterProfileObserved { profile } = &event.event
+        {
+            local_profile_observations.push(LocalProfileObservation {
+                character_id: profile.character.character_id.clone(),
+                event_sequence: event.sequence,
+                observed_micros: event.time.observed_micros,
+                game_time_millis: event.time.game_time_millis,
+                payload_sha256: local_profile_payload_digest(profile)
+                    .map_err(|error| error.to_string())?,
+            });
+        }
+        if let CanonicalEvent::Timeline(timeline) = &event.event {
+            match &timeline.kind {
+                TimelineEventKind::Actor(actor) => {
+                    if let Some(character_id) = actor.character_id.as_ref() {
+                        character_id_by_entity_uuid
+                            .entry(actor.actor.entity_uuid.0)
+                            .and_modify(|known| {
+                                if known.as_deref() != Some(character_id.as_str()) {
+                                    *known = None;
+                                }
+                            })
+                            .or_insert_with(|| Some(character_id.clone()));
+                    }
+                }
+                TimelineEventKind::EntityAttributes(attributes) => {
+                    let payload =
+                        serde_json::to_vec(&timeline.kind).map_err(|error| error.to_string())?;
+                    raw_local_state_observations.push(RawLocalStateObservation {
+                        actor_id: attributes.actor.actor_id.0,
+                        entity_uuid: attributes.actor.entity_uuid.0,
+                        kind: LocalStateWitnessKind::EntityAttributes,
+                        update_kind: attributes.update_kind,
+                        event_sequence: event.sequence,
+                        observed_micros: event.time.observed_micros,
+                        game_time_millis: event.time.game_time_millis,
+                        payload_sha256: local_state_payload_digest(&payload),
+                    });
+                }
+                TimelineEventKind::TemporaryAttributes(attributes) => {
+                    let payload =
+                        serde_json::to_vec(&timeline.kind).map_err(|error| error.to_string())?;
+                    raw_local_state_observations.push(RawLocalStateObservation {
+                        actor_id: attributes.actor.actor_id.0,
+                        entity_uuid: attributes.actor.entity_uuid.0,
+                        kind: LocalStateWitnessKind::TemporaryAttributes,
+                        update_kind: attributes.update_kind,
+                        event_sequence: event.sequence,
+                        observed_micros: event.time.observed_micros,
+                        game_time_millis: event.time.game_time_millis,
+                        payload_sha256: local_state_payload_digest(&payload),
+                    });
+                }
+                _ => {}
+            }
+        }
         meter.observe_live(event);
         encounter
             .observe_live(event)
@@ -1233,7 +2024,30 @@ fn build_public_report(
     {
         return Err(ServiceError::NoCompletedRun);
     }
-    let runs = public_runs(&history, &run_projection.runs);
+    let local_character_ids = local_profile_observations
+        .iter()
+        .map(|observation| observation.character_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let local_state_observations = raw_local_state_observations
+        .into_iter()
+        .filter_map(|raw| {
+            let character_id = character_id_by_entity_uuid
+                .get(&raw.entity_uuid)
+                .and_then(Option::as_ref)?;
+            local_character_ids
+                .contains(character_id.as_str())
+                .then(|| LocalStateObservation {
+                    character_id: character_id.clone(),
+                    raw,
+                })
+        })
+        .collect::<Vec<_>>();
+    let runs = public_runs(
+        &history,
+        &run_projection.runs,
+        &local_profile_observations,
+        &local_state_observations,
+    );
     if runs.is_empty() {
         return Err(ServiceError::NoCompletedRun);
     }
@@ -1260,7 +2074,12 @@ fn build_public_report(
     })
 }
 
-fn public_runs(history: &CombatHistorySnapshot, analyses: &[RunAnalysis]) -> Vec<PublicRun> {
+fn public_runs(
+    history: &CombatHistorySnapshot,
+    analyses: &[RunAnalysis],
+    local_profile_observations: &[LocalProfileObservation],
+    local_state_observations: &[LocalStateObservation],
+) -> Vec<PublicRun> {
     history
         .runs
         .iter()
@@ -1274,6 +2093,25 @@ fn public_runs(history: &CombatHistorySnapshot, analyses: &[RunAnalysis]) -> Vec
                 .iter()
                 .find(|view| view.kind == "all")
                 .or_else(|| run.views.first());
+            let participant_character_ids = view
+                .into_iter()
+                .flat_map(|view| &view.actors)
+                .filter_map(|actor| actor.character_id.clone())
+                .collect::<BTreeSet<_>>();
+            let local_profile_witnesses = run_scoped_profile_witnesses(
+                analysis,
+                &participant_character_ids,
+                local_profile_observations,
+            );
+            let local_profile_character_ids = local_profile_witnesses
+                .iter()
+                .map(|witness| witness.character_id.clone())
+                .collect::<BTreeSet<_>>();
+            let local_state_witnesses = run_scoped_state_witnesses(
+                analysis,
+                &local_profile_character_ids,
+                local_state_observations,
+            );
             Some(PublicRun {
                 run_index: run.run_index,
                 run_group_id: run_group_id(history, analysis, run.run_index),
@@ -1308,6 +2146,9 @@ fn public_runs(history: &CombatHistorySnapshot, analyses: &[RunAnalysis]) -> Vec
                 authoritative_start: analysis.authoritative_start,
                 authoritative_completion: analysis.authoritative_completion,
                 submission_disposition: analysis.submission_disposition,
+                local_profile_character_ids: local_profile_character_ids.iter().cloned().collect(),
+                local_profile_witnesses,
+                local_state_witnesses,
                 segments: analysis
                     .segments
                     .iter()
@@ -1334,12 +2175,885 @@ fn public_runs(history: &CombatHistorySnapshot, analyses: &[RunAnalysis]) -> Vec
         .collect()
 }
 
+fn local_profile_payload_digest(profile: &GameProfileEvent) -> Result<String, serde_json::Error> {
+    let payload = serde_json::to_vec(&profile.payload)?;
+    let mut hasher = Sha256::new();
+    hasher.update(b"rlogs-local-profile-witness-v1\0");
+    hasher.update(profile.game_plugin_id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(profile.payload_schema_id.as_bytes());
+    hasher.update(profile.payload_schema_version.to_le_bytes());
+    hasher.update(b"\0");
+    hasher.update(&payload);
+    Ok(format!("sha256:{:x}", hasher.finalize()))
+}
+
+fn run_scoped_profile_witnesses(
+    analysis: &RunAnalysis,
+    participant_character_ids: &BTreeSet<String>,
+    observations: &[LocalProfileObservation],
+) -> Vec<PublicLocalProfileWitness> {
+    let started_micros = analysis.timing.started_micros;
+    let ended_micros = analysis
+        .timing
+        .ended_micros
+        .unwrap_or(analysis.timing.observed_until_micros);
+    let mut latest_before = BTreeMap::<&str, &LocalProfileObservation>::new();
+    for observation in observations.iter().filter(|observation| {
+        participant_character_ids.contains(observation.character_id.as_str())
+            && observation.observed_micros <= started_micros
+    }) {
+        latest_before
+            .entry(observation.character_id.as_str())
+            .and_modify(|existing| {
+                if (observation.observed_micros, observation.event_sequence)
+                    > (existing.observed_micros, existing.event_sequence)
+                {
+                    *existing = observation;
+                }
+            })
+            .or_insert(observation);
+    }
+
+    let mut selected = latest_before
+        .into_values()
+        .map(|observation| (observation, LocalStateWitnessPlacement::PreRunBaseline))
+        .chain(
+            observations
+                .iter()
+                .filter(|observation| {
+                    participant_character_ids.contains(observation.character_id.as_str())
+                        && observation.observed_micros > started_micros
+                        && observation.observed_micros <= ended_micros
+                })
+                .map(|observation| (observation, LocalStateWitnessPlacement::InRun)),
+        )
+        .map(|(observation, placement)| PublicLocalProfileWitness {
+            character_id: observation.character_id.clone(),
+            placement,
+            event_sequence: observation.event_sequence,
+            observed_micros: observation.observed_micros,
+            game_time_millis: observation.game_time_millis,
+            payload_sha256: observation.payload_sha256.clone(),
+        })
+        .collect::<Vec<_>>();
+    selected.sort_by_key(|witness| (witness.observed_micros, witness.event_sequence));
+    selected.dedup_by_key(|witness| witness.event_sequence);
+    selected
+}
+
+fn local_state_payload_digest(payload: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rlogs-local-state-witness-v1\0");
+    hasher.update(payload);
+    format!("sha256:{:x}", hasher.finalize())
+}
+
+fn verified_state_input_digest(
+    reconciliation: &PublicRunReconciliation,
+    events: &[VerifiedCrossVantageStateEvent],
+) -> Result<String, serde_json::Error> {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rlogs-cross-vantage-verified-state-and-profile-v2\0");
+    hasher.update(reconciliation.canonical_spine.artifact_sha256.as_bytes());
+    hasher.update(reconciliation.canonical_spine.run_index.to_le_bytes());
+    for event in events {
+        hasher.update(b"\0");
+        hasher.update(event.report_id.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(event.character_id.as_bytes());
+        hasher.update(event.envelope.sequence.to_le_bytes());
+        hasher.update(event.game_time_millis.unwrap_or(i64::MIN).to_le_bytes());
+        hasher.update(match event.placement {
+            LocalStateWitnessPlacement::Unspecified => b"unspecified".as_slice(),
+            LocalStateWitnessPlacement::PreRunBaseline => b"pre-run-baseline".as_slice(),
+            LocalStateWitnessPlacement::InRun => b"in-run".as_slice(),
+        });
+        hasher.update(serde_json::to_vec(&event.envelope.event)?);
+    }
+    Ok(format!("sha256:{:x}", hasher.finalize()))
+}
+
+fn canonical_character_entities(path: &Path) -> Result<BTreeMap<String, EntityRef>, ServiceError> {
+    let file = File::open(path)?;
+    let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
+    let mut entities = BTreeMap::<String, EntityRef>::new();
+    reader.replay(|envelope| {
+        let CanonicalEvent::Timeline(timeline) = &envelope.event else {
+            return Ok(());
+        };
+        let TimelineEventKind::Actor(actor) = &timeline.kind else {
+            return Ok(());
+        };
+        let Some(character_id) = actor.character_id.as_ref() else {
+            return Ok(());
+        };
+        match entities.entry(character_id.clone()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(actor.actor);
+            }
+            std::collections::btree_map::Entry::Occupied(entry) if *entry.get() != actor.actor => {
+                return Err(format!(
+                    "canonical character {character_id} changes runtime entity from {:?} to {:?}",
+                    entry.get(),
+                    actor.actor
+                ));
+            }
+            std::collections::btree_map::Entry::Occupied(_) => {}
+        }
+        Ok(())
+    })?;
+    Ok(entities)
+}
+
+fn remap_cross_vantage_state_entities(
+    events: &mut [VerifiedCrossVantageStateEvent],
+    canonical_entities: &BTreeMap<String, EntityRef>,
+) -> Result<(), ServiceError> {
+    for event in events {
+        if let CanonicalEvent::CharacterProfileObserved { profile } = &event.envelope.event {
+            if profile.character.character_id != event.character_id {
+                return Err(ServiceError::CrossVantageReplay(format!(
+                    "verified profile event {} changed character identity",
+                    event.envelope.sequence
+                )));
+            }
+            continue;
+        }
+        let canonical = canonical_entities
+            .get(&event.character_id)
+            .copied()
+            .ok_or_else(|| {
+                ServiceError::CrossVantageReplay(format!(
+                    "canonical spine has no runtime entity for selected character {}",
+                    event.character_id
+                ))
+            })?;
+        let CanonicalEvent::Timeline(timeline) = &mut event.envelope.event else {
+            return Err(ServiceError::CrossVantageReplay(format!(
+                "verified evidence event {} is neither a profile nor timeline event",
+                event.envelope.sequence
+            )));
+        };
+        match &mut timeline.kind {
+            TimelineEventKind::EntityAttributes(attributes) => attributes.actor = canonical,
+            TimelineEventKind::TemporaryAttributes(attributes) => attributes.actor = canonical,
+            _ => {
+                return Err(ServiceError::CrossVantageReplay(format!(
+                    "verified evidence event {} is no longer an attribute event",
+                    event.envelope.sequence
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn imported_wire_namespace(report_id: &str, character_id: &str) -> u64 {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rlogs-cross-vantage-wire-v1\0");
+    hasher.update(report_id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(character_id.as_bytes());
+    let digest = hasher.finalize();
+    let mut bytes = [0_u8; 8];
+    bytes.copy_from_slice(&digest[..8]);
+    u64::from_le_bytes(bytes) | (1_u64 << 63)
+}
+
+fn aligned_cross_vantage_envelope(
+    imported: &VerifiedCrossVantageStateEvent,
+    observed_micros: u64,
+    region: &rlogs_events::RegionContext,
+) -> EventEnvelope {
+    let mut envelope = imported.envelope.clone();
+    envelope.region = region.clone();
+    envelope.time.observed_micros = observed_micros;
+    let provenance = EventProvenance::wire(
+        imported.envelope.sequence,
+        imported_wire_namespace(&imported.report_id, &imported.character_id),
+        imported.envelope.sequence,
+    );
+    envelope.provenance = provenance.clone();
+    if let CanonicalEvent::Timeline(timeline) = &mut envelope.event {
+        timeline.time = envelope.time;
+        timeline.provenance = provenance;
+    }
+    envelope
+}
+
+fn replay_canonical_with_cross_vantage_state(
+    path: &Path,
+    target_run_index: u32,
+    imported_events: &[VerifiedCrossVantageStateEvent],
+    mut observe: impl FnMut(&EventEnvelope, bool) -> Result<(), String>,
+) -> Result<rlogs_log_format::RlogReplaySummary, ServiceError> {
+    let file = File::open(path)?;
+    let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
+    let region = reader.header().region.clone();
+    let mut baselines = imported_events
+        .iter()
+        .filter(|event| event.placement == LocalStateWitnessPlacement::PreRunBaseline)
+        .cloned()
+        .collect::<VecDeque<_>>();
+    let mut in_run = imported_events
+        .iter()
+        .filter(|event| event.placement == LocalStateWitnessPlacement::InRun)
+        .cloned()
+        .collect::<Vec<_>>();
+    in_run.sort_by(|left, right| {
+        (
+            left.game_time_millis,
+            &left.report_id,
+            left.envelope.sequence,
+        )
+            .cmp(&(
+                right.game_time_millis,
+                &right.report_id,
+                right.envelope.sequence,
+            ))
+    });
+    let mut in_run = VecDeque::from(in_run);
+    let mut next_run_index = 0_u32;
+    let mut active_run_index = None;
+    let mut target_seen = false;
+
+    let summary = reader.replay(|envelope| {
+        let run_state = match &envelope.event {
+            CanonicalEvent::Timeline(timeline) => match timeline.kind {
+                TimelineEventKind::RunBoundary { state, .. } => Some(state),
+                _ => None,
+            },
+            _ => None,
+        };
+        let begins_run = match run_state {
+            Some(RunState::Entered) => true,
+            Some(RunState::Started) => active_run_index.is_none(),
+            _ => false,
+        };
+        if begins_run {
+            active_run_index = Some(next_run_index);
+            next_run_index = next_run_index.saturating_add(1);
+            target_seen |= active_run_index == Some(target_run_index);
+            observe(envelope, false)?;
+            if active_run_index == Some(target_run_index) {
+                while let Some(imported) = baselines.pop_front() {
+                    let aligned = aligned_cross_vantage_envelope(
+                        &imported,
+                        envelope.time.observed_micros,
+                        &region,
+                    );
+                    observe(&aligned, true)?;
+                }
+            }
+            return Ok(());
+        }
+
+        if active_run_index == Some(target_run_index)
+            && let Some(canonical_game_time) = envelope.time.game_time_millis
+        {
+            while in_run.front().is_some_and(|imported| {
+                imported
+                    .game_time_millis
+                    .is_some_and(|game_time| game_time < canonical_game_time)
+            }) {
+                let imported = in_run.pop_front().expect("front was present");
+                let aligned = aligned_cross_vantage_envelope(
+                    &imported,
+                    envelope.time.observed_micros,
+                    &region,
+                );
+                observe(&aligned, true)?;
+            }
+        }
+        observe(envelope, false)?;
+        if matches!(
+            run_state,
+            Some(RunState::Ended | RunState::Completed | RunState::Failed | RunState::Exited)
+        ) {
+            active_run_index = None;
+        }
+        Ok(())
+    })?;
+    if !target_seen {
+        return Err(ServiceError::CrossVantageReplay(format!(
+            "canonical artifact has no run index {target_run_index}"
+        )));
+    }
+    if !baselines.is_empty() || !in_run.is_empty() {
+        return Err(ServiceError::CrossVantageReplay(format!(
+            "{} selected state witnesses could not be conservatively aligned to canonical server time",
+            baselines.len().saturating_add(in_run.len())
+        )));
+    }
+    Ok(summary)
+}
+
+fn verify_profile_witness_event(
+    report_id: &str,
+    witness: &PublicLocalProfileWitness,
+    envelope: &EventEnvelope,
+) -> Result<(), ServiceError> {
+    if envelope.sequence != witness.event_sequence
+        || envelope.time.observed_micros != witness.observed_micros
+        || envelope.time.game_time_millis != witness.game_time_millis
+        || envelope.sensitivity != EventSensitivity::PersonalGameplay
+    {
+        return Err(ServiceError::CrossVantageWitnessMismatch {
+            report_id: report_id.into(),
+            event_sequence: witness.event_sequence,
+        });
+    }
+    let CanonicalEvent::CharacterProfileObserved { profile } = &envelope.event else {
+        return Err(ServiceError::CrossVantageWitnessMismatch {
+            report_id: report_id.into(),
+            event_sequence: witness.event_sequence,
+        });
+    };
+    if profile.character.character_id != witness.character_id
+        || local_profile_payload_digest(profile)? != witness.payload_sha256
+    {
+        return Err(ServiceError::CrossVantageWitnessMismatch {
+            report_id: report_id.into(),
+            event_sequence: witness.event_sequence,
+        });
+    }
+    Ok(())
+}
+
+fn verify_state_witness_event(
+    report_id: &str,
+    witness: &PublicLocalStateWitness,
+    envelope: &EventEnvelope,
+) -> Result<(), ServiceError> {
+    if envelope.sequence != witness.event_sequence
+        || envelope.time.observed_micros != witness.observed_micros
+        || envelope.time.game_time_millis != witness.game_time_millis
+    {
+        return Err(ServiceError::CrossVantageWitnessMismatch {
+            report_id: report_id.into(),
+            event_sequence: witness.event_sequence,
+        });
+    }
+    let CanonicalEvent::Timeline(timeline) = &envelope.event else {
+        return Err(ServiceError::CrossVantageWitnessMismatch {
+            report_id: report_id.into(),
+            event_sequence: witness.event_sequence,
+        });
+    };
+    let (actor_id, entity_uuid, update_kind, actual_kind) = match &timeline.kind {
+        TimelineEventKind::EntityAttributes(attributes) => (
+            attributes.actor.actor_id.0,
+            attributes.actor.entity_uuid.0,
+            attributes.update_kind,
+            LocalStateWitnessKind::EntityAttributes,
+        ),
+        TimelineEventKind::TemporaryAttributes(attributes) => (
+            attributes.actor.actor_id.0,
+            attributes.actor.entity_uuid.0,
+            attributes.update_kind,
+            LocalStateWitnessKind::TemporaryAttributes,
+        ),
+        _ => {
+            return Err(ServiceError::CrossVantageWitnessMismatch {
+                report_id: report_id.into(),
+                event_sequence: witness.event_sequence,
+            });
+        }
+    };
+    let expected_update_kind = match update_kind {
+        EntityAttributeUpdateKind::Unknown => "unknown",
+        EntityAttributeUpdateKind::Snapshot => "snapshot",
+        EntityAttributeUpdateKind::Delta => "delta",
+    };
+    let payload = serde_json::to_vec(&timeline.kind)?;
+    if actual_kind != witness.kind
+        || actor_id != witness.actor_id
+        || entity_uuid != witness.entity_uuid
+        || expected_update_kind != witness.update_kind
+        || local_state_payload_digest(&payload) != witness.payload_sha256
+    {
+        return Err(ServiceError::CrossVantageWitnessMismatch {
+            report_id: report_id.into(),
+            event_sequence: witness.event_sequence,
+        });
+    }
+    Ok(())
+}
+
+fn run_scoped_state_witnesses(
+    analysis: &RunAnalysis,
+    local_character_ids: &BTreeSet<String>,
+    observations: &[LocalStateObservation],
+) -> Vec<PublicLocalStateWitness> {
+    let started_micros = analysis.timing.started_micros;
+    let ended_micros = analysis
+        .timing
+        .ended_micros
+        .unwrap_or(analysis.timing.observed_until_micros);
+    let mut groups =
+        BTreeMap::<(String, LocalStateWitnessKind), Vec<&LocalStateObservation>>::new();
+    for observation in observations.iter().filter(|observation| {
+        local_character_ids.contains(&observation.character_id)
+            && observation.raw.observed_micros <= ended_micros
+    }) {
+        groups
+            .entry((observation.character_id.clone(), observation.raw.kind))
+            .or_default()
+            .push(observation);
+    }
+
+    let mut selected = Vec::new();
+    for (_, mut observations) in groups {
+        observations.sort_by_key(|observation| {
+            (
+                observation.raw.observed_micros,
+                observation.raw.event_sequence,
+            )
+        });
+        let first_relevant = observations
+            .iter()
+            .enumerate()
+            .filter(|(_, observation)| {
+                observation.raw.observed_micros <= started_micros
+                    && observation.raw.update_kind == EntityAttributeUpdateKind::Snapshot
+            })
+            .map(|(index, _)| index)
+            .next_back()
+            .unwrap_or_default();
+        selected.extend(
+            observations
+                .into_iter()
+                .skip(first_relevant)
+                .map(|observation| PublicLocalStateWitness {
+                    character_id: observation.character_id.clone(),
+                    actor_id: observation.raw.actor_id,
+                    entity_uuid: observation.raw.entity_uuid,
+                    kind: observation.raw.kind,
+                    update_kind: match observation.raw.update_kind {
+                        EntityAttributeUpdateKind::Unknown => "unknown",
+                        EntityAttributeUpdateKind::Snapshot => "snapshot",
+                        EntityAttributeUpdateKind::Delta => "delta",
+                    }
+                    .into(),
+                    placement: if observation.raw.observed_micros <= started_micros {
+                        LocalStateWitnessPlacement::PreRunBaseline
+                    } else {
+                        LocalStateWitnessPlacement::InRun
+                    },
+                    event_sequence: observation.raw.event_sequence,
+                    observed_micros: observation.raw.observed_micros,
+                    game_time_millis: observation.raw.game_time_millis,
+                    payload_sha256: observation.raw.payload_sha256.clone(),
+                }),
+        );
+    }
+    selected.sort_by_key(|witness| (witness.observed_micros, witness.event_sequence));
+    selected.dedup_by_key(|witness| witness.event_sequence);
+    selected
+}
+
+fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliation {
+    let canonical_report_id = group.representative.report_id.as_str();
+    let canonical_run_index = group.representative.run_index;
+    let canonical = group
+        .reconciliation_sources
+        .iter()
+        .find(|source| {
+            source.report_id == canonical_report_id && source.run_index == canonical_run_index
+        })
+        .expect("catalog representative must have a reconciliation source");
+
+    let mut sources = group.reconciliation_sources.clone();
+    sources.sort_by(|left, right| {
+        (&left.report_id, left.run_index).cmp(&(&right.report_id, right.run_index))
+    });
+    let mut character_ids = sources
+        .iter()
+        .flat_map(|source| source.participant_character_ids.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    character_ids.extend(
+        sources
+            .iter()
+            .flat_map(|source| source.local_profile_witnesses.iter())
+            .map(|witness| witness.character_id.clone()),
+    );
+    let participant_character_count = character_ids.len();
+
+    let characters = character_ids
+        .into_iter()
+        .map(|character_id| {
+            let participant_report_count = sources
+                .iter()
+                .filter(|source| source.participant_character_ids.contains(&character_id))
+                .count();
+            let witnesses = sources
+                .iter()
+                .filter_map(|source| {
+                    let mut snapshots = source
+                        .local_profile_witnesses
+                        .iter()
+                        .filter(|witness| witness.character_id == character_id)
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    let mut state_snapshots = source
+                        .local_state_witnesses
+                        .iter()
+                        .filter(|witness| witness.character_id == character_id)
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if snapshots.is_empty() && state_snapshots.is_empty() {
+                        return None;
+                    }
+                    snapshots
+                        .sort_by_key(|witness| (witness.observed_micros, witness.event_sequence));
+                    state_snapshots
+                        .sort_by_key(|witness| (witness.observed_micros, witness.event_sequence));
+                    Some(PublicCharacterWitnessSource {
+                        report_id: source.report_id.clone(),
+                        run_index: source.run_index,
+                        artifact_sha256: source.artifact_sha256.clone(),
+                        snapshots,
+                        state_snapshots,
+                    })
+                })
+                .collect::<Vec<_>>();
+            let (disposition, selected_report_id) =
+                profile_witness_disposition(&witnesses, canonical_report_id);
+            PublicReconciliationCharacter {
+                character_id,
+                participant_report_count,
+                disposition,
+                selected_report_id,
+                state_witness_count: witnesses
+                    .iter()
+                    .map(|source| source.state_snapshots.len())
+                    .sum(),
+                game_time_aligned_state_witness_count: witnesses
+                    .iter()
+                    .flat_map(|source| &source.state_snapshots)
+                    .filter(|snapshot| snapshot.game_time_millis.is_some())
+                    .count(),
+                witnesses,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let reports = sources
+        .iter()
+        .map(|source| PublicReconciliationReport {
+            report_id: source.report_id.clone(),
+            run_index: source.run_index,
+            artifact_sha256: source.artifact_sha256.clone(),
+            protocol_pack_digest: source.protocol_pack_digest.clone(),
+            created_unix_millis: source.created_unix_millis,
+            canonical_spine: source.report_id == canonical_report_id
+                && source.run_index == canonical_run_index,
+            local_profile_witnesses: source.local_profile_witnesses.clone(),
+            local_state_witnesses: source.local_state_witnesses.clone(),
+        })
+        .collect::<Vec<_>>();
+    let local_vantage_character_count = reports
+        .iter()
+        .flat_map(|report| &report.local_profile_witnesses)
+        .map(|witness| witness.character_id.as_str())
+        .collect::<BTreeSet<_>>()
+        .len();
+    let complete_local_vantage_coverage = participant_character_count > 0
+        && local_vantage_character_count == participant_character_count;
+    let (state_replay_readiness, state_replay_blockers) = cross_vantage_state_readiness(
+        &reports,
+        &characters,
+        canonical_report_id,
+        complete_local_vantage_coverage,
+    );
+
+    let mut hasher = Sha256::new();
+    hasher.update(b"rlogs-cross-vantage-reconciliation-v1\0");
+    hasher.update(group.representative.run_group_id.as_bytes());
+    hasher.update(b"\0");
+    for report in &reports {
+        hasher.update(report.report_id.as_bytes());
+        hasher.update(report.run_index.to_le_bytes());
+        hasher.update(report.artifact_sha256.as_bytes());
+        hasher.update(report.protocol_pack_digest.as_bytes());
+        for witness in &report.local_profile_witnesses {
+            hasher.update(witness.character_id.as_bytes());
+            hasher.update(match witness.placement {
+                LocalStateWitnessPlacement::Unspecified => b"unspecified".as_slice(),
+                LocalStateWitnessPlacement::PreRunBaseline => b"pre-run-baseline".as_slice(),
+                LocalStateWitnessPlacement::InRun => b"in-run".as_slice(),
+            });
+            hasher.update(witness.event_sequence.to_le_bytes());
+            hasher.update(witness.observed_micros.to_le_bytes());
+            hasher.update(witness.game_time_millis.unwrap_or(i64::MIN).to_le_bytes());
+            hasher.update(witness.payload_sha256.as_bytes());
+        }
+        for witness in &report.local_state_witnesses {
+            hasher.update(witness.character_id.as_bytes());
+            hasher.update(witness.actor_id.to_le_bytes());
+            hasher.update(witness.entity_uuid.to_le_bytes());
+            hasher.update(match witness.kind {
+                LocalStateWitnessKind::EntityAttributes => b"entity-attributes".as_slice(),
+                LocalStateWitnessKind::TemporaryAttributes => b"temporary-attributes".as_slice(),
+            });
+            hasher.update(witness.update_kind.as_bytes());
+            hasher.update(match witness.placement {
+                LocalStateWitnessPlacement::Unspecified => b"unspecified".as_slice(),
+                LocalStateWitnessPlacement::PreRunBaseline => b"pre-run-baseline".as_slice(),
+                LocalStateWitnessPlacement::InRun => b"in-run".as_slice(),
+            });
+            hasher.update(witness.event_sequence.to_le_bytes());
+            hasher.update(witness.observed_micros.to_le_bytes());
+            hasher.update(witness.game_time_millis.unwrap_or(i64::MIN).to_le_bytes());
+            hasher.update(witness.payload_sha256.as_bytes());
+        }
+    }
+    let reconciliation_id = format!("rec_{:x}", hasher.finalize())[..36].to_owned();
+
+    PublicRunReconciliation {
+        schema_version: PUBLIC_RECONCILIATION_SCHEMA_VERSION,
+        reconciliation_id,
+        run_group_id: group.representative.run_group_id.clone(),
+        status: reconciliation_status(&reports),
+        canonical_spine: PublicCanonicalSpine {
+            report_id: canonical.report_id.clone(),
+            run_index: canonical.run_index,
+            artifact_sha256: canonical.artifact_sha256.clone(),
+            authoritative_start: canonical.quality.authoritative_start,
+            authoritative_completion: canonical.quality.authoritative_completion,
+            data_gap_count: canonical.quality.data_gap_count,
+            event_count: canonical.quality.event_count,
+        },
+        reports,
+        characters,
+        participant_character_count,
+        local_vantage_character_count,
+        complete_local_vantage_coverage,
+        state_replay_readiness,
+        state_replay_blockers,
+        verified_state_input_sha256: None,
+        reconciled_participants: Vec::new(),
+        conservation: None,
+        attribution_replay_completed: false,
+    }
+}
+
+fn cross_vantage_state_readiness(
+    reports: &[PublicReconciliationReport],
+    characters: &[PublicReconciliationCharacter],
+    canonical_report_id: &str,
+    complete_local_vantage_coverage: bool,
+) -> (CrossVantageStateReplayReadiness, Vec<String>) {
+    if reports.len() <= 1 {
+        return (CrossVantageStateReplayReadiness::SingleVantage, Vec::new());
+    }
+    let canonical_local_characters = reports
+        .iter()
+        .find(|report| report.canonical_spine && report.report_id == canonical_report_id)
+        .into_iter()
+        .flat_map(|report| &report.local_profile_witnesses)
+        .map(|witness| witness.character_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let additional_local_characters = reports
+        .iter()
+        .filter(|report| report.report_id != canonical_report_id)
+        .flat_map(|report| &report.local_profile_witnesses)
+        .map(|witness| witness.character_id.as_str())
+        .filter(|character_id| !canonical_local_characters.contains(character_id))
+        .collect::<BTreeSet<_>>();
+    if additional_local_characters.is_empty() {
+        return (
+            CrossVantageStateReplayReadiness::MultipleReportsNoAdditionalVantage,
+            vec!["no_additional_local_vantage".into()],
+        );
+    }
+
+    let protocol_pack_digests = reports
+        .iter()
+        .map(|report| report.protocol_pack_digest.as_str())
+        .collect::<BTreeSet<_>>();
+    if protocol_pack_digests.len() != 1 || protocol_pack_digests.contains("") {
+        return (
+            CrossVantageStateReplayReadiness::Blocked,
+            vec![format!(
+                "protocol_pack_digest_mismatch:{}",
+                protocol_pack_digests.len()
+            )],
+        );
+    }
+
+    let mut blockers = Vec::new();
+    for character_id in additional_local_characters {
+        let Some(character) = characters
+            .iter()
+            .find(|character| character.character_id == character_id)
+        else {
+            blockers.push(format!("character:{character_id}:missing_manifest_row"));
+            continue;
+        };
+        if character.disposition == ProfileWitnessDisposition::MultipleReportsRequireOrdering {
+            blockers.push(format!(
+                "character:{character_id}:profile_snapshots_require_ordering"
+            ));
+            continue;
+        }
+        let Some(selected_report_id) = character.selected_report_id.as_deref() else {
+            blockers.push(format!(
+                "character:{character_id}:no_selected_profile_witness"
+            ));
+            continue;
+        };
+        let Some(source) = character
+            .witnesses
+            .iter()
+            .find(|source| source.report_id == selected_report_id)
+        else {
+            blockers.push(format!("character:{character_id}:selected_report_missing"));
+            continue;
+        };
+        if source.state_snapshots.is_empty() {
+            blockers.push(format!("character:{character_id}:no_local_state_witness"));
+            continue;
+        }
+        let unspecified_profiles = source
+            .snapshots
+            .iter()
+            .filter(|snapshot| snapshot.placement == LocalStateWitnessPlacement::Unspecified)
+            .count();
+        if unspecified_profiles > 0 {
+            blockers.push(format!(
+                "character:{character_id}:unspecified_profile_placement:{unspecified_profiles}"
+            ));
+        }
+        let profiles_missing_game_time = source
+            .snapshots
+            .iter()
+            .filter(|snapshot| {
+                snapshot.placement == LocalStateWitnessPlacement::InRun
+                    && snapshot.game_time_millis.is_none()
+            })
+            .count();
+        if profiles_missing_game_time > 0 {
+            blockers.push(format!(
+                "character:{character_id}:in_run_profile_missing_game_time:{profiles_missing_game_time}"
+            ));
+        }
+        let unspecified = source
+            .state_snapshots
+            .iter()
+            .filter(|snapshot| snapshot.placement == LocalStateWitnessPlacement::Unspecified)
+            .count();
+        if unspecified > 0 {
+            blockers.push(format!(
+                "character:{character_id}:unspecified_state_placement:{unspecified}"
+            ));
+        }
+        let missing_game_time = source
+            .state_snapshots
+            .iter()
+            .filter(|snapshot| {
+                snapshot.placement == LocalStateWitnessPlacement::InRun
+                    && snapshot.game_time_millis.is_none()
+            })
+            .count();
+        if missing_game_time > 0 {
+            blockers.push(format!(
+                "character:{character_id}:in_run_state_missing_game_time:{missing_game_time}"
+            ));
+        }
+    }
+    if !blockers.is_empty() {
+        return (CrossVantageStateReplayReadiness::Blocked, blockers);
+    }
+    (
+        if complete_local_vantage_coverage {
+            CrossVantageStateReplayReadiness::FullCoverageReady
+        } else {
+            CrossVantageStateReplayReadiness::PartialCoverageReady
+        },
+        Vec::new(),
+    )
+}
+
+fn reconciliation_status(
+    reports: &[PublicReconciliationReport],
+) -> RunAttributionReconciliationStatus {
+    if reports.len() <= 1 {
+        return RunAttributionReconciliationStatus::SingleVantage;
+    }
+    let distinct_local_characters = reports
+        .iter()
+        .flat_map(|report| &report.local_profile_witnesses)
+        .map(|witness| witness.character_id.as_str())
+        .collect::<BTreeSet<_>>()
+        .len();
+    if distinct_local_characters > 1 {
+        RunAttributionReconciliationStatus::CrossVantageEvidenceAvailable
+    } else {
+        RunAttributionReconciliationStatus::MultipleReportsNoAdditionalVantage
+    }
+}
+
+fn profile_witness_disposition(
+    witnesses: &[PublicCharacterWitnessSource],
+    canonical_report_id: &str,
+) -> (ProfileWitnessDisposition, Option<String>) {
+    match witnesses {
+        [] => (ProfileWitnessDisposition::Missing, None),
+        [only] => (
+            ProfileWitnessDisposition::SingleReportExact,
+            Some(only.report_id.clone()),
+        ),
+        _ => {
+            let payload_sets = witnesses
+                .iter()
+                .map(|source| {
+                    source
+                        .snapshots
+                        .iter()
+                        .map(|snapshot| {
+                            (
+                                snapshot.payload_sha256.as_str(),
+                                snapshot.placement,
+                                snapshot.game_time_millis,
+                            )
+                        })
+                        .collect::<BTreeSet<_>>()
+                })
+                .collect::<Vec<_>>();
+            let identical = payload_sets.windows(2).all(|pair| pair[0] == pair[1]);
+            if !identical {
+                return (
+                    ProfileWitnessDisposition::MultipleReportsRequireOrdering,
+                    None,
+                );
+            }
+            let selected = witnesses
+                .iter()
+                .find(|source| source.report_id == canonical_report_id)
+                .unwrap_or(&witnesses[0]);
+            (
+                ProfileWitnessDisposition::MultipleReportsIdentical,
+                Some(selected.report_id.clone()),
+            )
+        }
+    }
+}
+
 fn run_group_id(history: &CombatHistorySnapshot, analysis: &RunAnalysis, run_index: u32) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(b"rlogs-run-group-v1\0");
+    hasher.update(b"rlogs-run-group-v3\0");
     hasher.update(history.deployment_id.as_bytes());
     hasher.update(b"\0");
     hasher.update(history.region_id.as_bytes());
+    hasher.update(b"\0");
+    // An instance number is not assumed to be globally unique forever. The
+    // game build prevents historical reuse across patches from collapsing
+    // unrelated runs into one evidence group. Protocol-pack identity belongs
+    // to replay compatibility: two RLogs versions can observe the same game
+    // instance and must still be discoverable as the same run.
+    hasher.update(history.client_build.as_bytes());
     hasher.update(b"\0");
     // Exact instance identity is authoritative. Optional world visibility can
     // differ between observers, so including it would split the same run.
@@ -1409,6 +3123,34 @@ fn public_participant(actor: &HistoryActorSummary) -> PublicParticipant {
         rdps: actor.rdps,
         deaths: actor.deaths,
     }
+}
+
+fn public_participant_key(participant: &PublicParticipant) -> String {
+    // Both sides of this invariant are projections of the same canonical
+    // combat spine, so its exact runtime actor ID is the strongest key. A
+    // presentation enrichment may attach a character ID to only one side and
+    // must not turn that harmless metadata difference into a replay failure.
+    format!("actor:{}", participant.actor_id)
+}
+
+fn checked_i64_sum(values: impl IntoIterator<Item = i64>) -> Result<i64, ServiceError> {
+    values.into_iter().try_fold(0_i64, |total, value| {
+        total.checked_add(value).ok_or(ServiceError::SizeOverflow)
+    })
+}
+
+fn checked_optional_i64_sum(
+    values: impl IntoIterator<Item = Option<i64>>,
+    field: &str,
+) -> Result<i64, ServiceError> {
+    let mut total = 0_i64;
+    for value in values {
+        let value = value.ok_or_else(|| {
+            ServiceError::CrossVantageReplay(format!("reconciled participant is missing {field}"))
+        })?;
+        total = total.checked_add(value).ok_or(ServiceError::SizeOverflow)?;
+    }
+    Ok(total)
 }
 
 fn validate_manifest(manifest: &UploadManifest) -> Result<(), ServiceError> {
@@ -1588,6 +3330,15 @@ pub enum ServiceError {
     UnsupportedGamePlugin(String),
     #[error("server replay failed: {0}")]
     Replay(String),
+    #[error(
+        "cross-vantage witness {event_sequence} in report {report_id} does not match its sealed artifact commitment"
+    )]
+    CrossVantageWitnessMismatch {
+        report_id: String,
+        event_sequence: u64,
+    },
+    #[error("cross-vantage replay failed: {0}")]
+    CrossVantageReplay(String),
     #[error("the sealed log does not contain a completed run")]
     NoCompletedRun,
     #[error("upload manifest contains {actual} chunks; maximum is {maximum}")]
@@ -1743,6 +3494,8 @@ mod tests {
             run_group_id: "run_a".into(),
             contribution_count: 1,
             distinct_submitter_count: 1,
+            local_profile_witness_character_count: 1,
+            attribution_reconciliation_status: RunAttributionReconciliationStatus::SingleVantage,
             created_unix_millis: 1,
             deployment_id: "global".into(),
             region_id: "north-america".into(),
@@ -1771,6 +3524,8 @@ mod tests {
             run_group_id: "run_a".into(),
             contribution_count: 1,
             distinct_submitter_count: 1,
+            local_profile_witness_character_count: 1,
+            attribution_reconciliation_status: RunAttributionReconciliationStatus::SingleVantage,
             created_unix_millis: 1,
             deployment_id: "global".into(),
             region_id: "north-america".into(),
@@ -1809,7 +3564,7 @@ mod tests {
     }
 
     #[test]
-    fn run_groups_require_exact_instance_evidence() {
+    fn run_groups_use_exact_game_instance_identity_not_parser_version() {
         let mut history = CombatHistorySnapshot {
             schema_version: 1,
             session_id: "history".into(),
@@ -1827,6 +3582,36 @@ mod tests {
         history.world_id = None;
         let exact_b = run_group_id(&history, &analysis, 0);
         assert_eq!(exact_a, exact_b);
+
+        history.client_build = "next-build".into();
+        let other_build = run_group_id(&history, &analysis, 0);
+        assert_ne!(exact_a, other_build);
+        history.client_build = "test".into();
+
+        history.protocol_pack_digest = "next-protocol".into();
+        let other_protocol = run_group_id(&history, &analysis, 0);
+        assert_eq!(exact_a, other_protocol);
+        history.protocol_pack_digest = "test".into();
+
+        analysis.identity.scene_id = Some(6566);
+        let other_scene = run_group_id(&history, &analysis, 0);
+        assert_ne!(exact_a, other_scene);
+        analysis.identity.scene_id = Some(6565);
+
+        analysis.identity.instance_id = Some("instance-43".into());
+        let other_instance = run_group_id(&history, &analysis, 0);
+        assert_ne!(exact_a, other_instance);
+        analysis.identity.instance_id = Some("instance-42".into());
+
+        history.region_id = "other-region".into();
+        let other_region = run_group_id(&history, &analysis, 0);
+        assert_ne!(exact_a, other_region);
+        history.region_id = "asteria".into();
+
+        history.deployment_id = "other-deployment".into();
+        let other_deployment = run_group_id(&history, &analysis, 0);
+        assert_ne!(exact_a, other_deployment);
+        history.deployment_id = "global".into();
 
         analysis.identity.instance_id = None;
         let isolated_b = run_group_id(&history, &analysis, 0);
@@ -1867,6 +3652,897 @@ mod tests {
     }
 
     #[test]
+    fn run_scoped_profile_witnesses_keep_only_personal_state_relevant_to_the_run() {
+        let analysis = fixture_analysis("capture-a", Some("instance-42"));
+        let participants = ["character-a".to_owned()].into_iter().collect();
+        let observations = vec![
+            LocalProfileObservation {
+                character_id: "character-a".into(),
+                event_sequence: 1,
+                observed_micros: 0,
+                game_time_millis: None,
+                payload_sha256: "sha256:old".into(),
+            },
+            LocalProfileObservation {
+                character_id: "character-a".into(),
+                event_sequence: 2,
+                observed_micros: 1,
+                game_time_millis: None,
+                payload_sha256: "sha256:start".into(),
+            },
+            LocalProfileObservation {
+                character_id: "character-a".into(),
+                event_sequence: 3,
+                observed_micros: 2,
+                game_time_millis: Some(2),
+                payload_sha256: "sha256:during".into(),
+            },
+            LocalProfileObservation {
+                character_id: "character-a".into(),
+                event_sequence: 4,
+                observed_micros: 3,
+                game_time_millis: Some(3),
+                payload_sha256: "sha256:after".into(),
+            },
+            LocalProfileObservation {
+                character_id: "not-a-participant".into(),
+                event_sequence: 5,
+                observed_micros: 2,
+                game_time_millis: Some(2),
+                payload_sha256: "sha256:unrelated".into(),
+            },
+        ];
+
+        let selected = run_scoped_profile_witnesses(&analysis, &participants, &observations);
+        assert_eq!(
+            selected
+                .iter()
+                .map(|witness| witness.event_sequence)
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+    }
+
+    #[test]
+    fn run_scoped_attribute_witnesses_replay_from_latest_pre_run_snapshot() {
+        let analysis = fixture_analysis("capture-a", Some("instance-42"));
+        let local_characters = ["character-a".to_owned()].into_iter().collect();
+        let observation = |sequence: u64,
+                           observed_micros: u64,
+                           update_kind: EntityAttributeUpdateKind|
+         -> LocalStateObservation {
+            LocalStateObservation {
+                character_id: "character-a".into(),
+                raw: RawLocalStateObservation {
+                    actor_id: 8,
+                    entity_uuid: 80,
+                    kind: LocalStateWitnessKind::EntityAttributes,
+                    update_kind,
+                    event_sequence: sequence,
+                    observed_micros,
+                    game_time_millis: Some(observed_micros as i64),
+                    payload_sha256: format!("sha256:{sequence}"),
+                },
+            }
+        };
+        let observations = vec![
+            observation(1, 0, EntityAttributeUpdateKind::Snapshot),
+            observation(2, 1, EntityAttributeUpdateKind::Snapshot),
+            observation(3, 2, EntityAttributeUpdateKind::Delta),
+            observation(4, 3, EntityAttributeUpdateKind::Delta),
+        ];
+
+        let selected = run_scoped_state_witnesses(&analysis, &local_characters, &observations);
+        assert_eq!(
+            selected
+                .iter()
+                .map(|witness| witness.event_sequence)
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        assert!(
+            selected
+                .iter()
+                .all(|witness| witness.game_time_millis.is_some())
+        );
+    }
+
+    #[test]
+    fn profile_witness_selection_is_fail_closed_across_reports() {
+        let source = |report_id: &str, payloads: &[&str]| PublicCharacterWitnessSource {
+            report_id: report_id.into(),
+            run_index: 0,
+            artifact_sha256: format!("sha256:{report_id}"),
+            snapshots: payloads
+                .iter()
+                .enumerate()
+                .map(|(index, payload)| PublicLocalProfileWitness {
+                    character_id: "character-a".into(),
+                    placement: LocalStateWitnessPlacement::PreRunBaseline,
+                    event_sequence: index as u64 + 1,
+                    observed_micros: index as u64 + 1,
+                    game_time_millis: None,
+                    payload_sha256: (*payload).into(),
+                })
+                .collect(),
+            state_snapshots: Vec::new(),
+        };
+
+        assert_eq!(
+            profile_witness_disposition(&[], "rpt_a"),
+            (ProfileWitnessDisposition::Missing, None)
+        );
+        assert_eq!(
+            profile_witness_disposition(&[source("rpt_a", &["sha256:one"])], "rpt_a"),
+            (
+                ProfileWitnessDisposition::SingleReportExact,
+                Some("rpt_a".into())
+            )
+        );
+        assert_eq!(
+            profile_witness_disposition(
+                &[
+                    source("rpt_a", &["sha256:one"]),
+                    source("rpt_b", &["sha256:one"]),
+                ],
+                "rpt_b",
+            ),
+            (
+                ProfileWitnessDisposition::MultipleReportsIdentical,
+                Some("rpt_b".into())
+            )
+        );
+        assert_eq!(
+            profile_witness_disposition(
+                &[
+                    source("rpt_a", &["sha256:one"]),
+                    source("rpt_b", &["sha256:two"]),
+                ],
+                "rpt_a",
+            ),
+            (
+                ProfileWitnessDisposition::MultipleReportsRequireOrdering,
+                None
+            )
+        );
+    }
+
+    #[test]
+    fn catalog_rebuild_materializes_cross_vantage_reconciliation_without_double_counting() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let report_a =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "character-a", 2);
+        let report_b =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "character-b", 0);
+        write_json_atomic(
+            &service.projection_path(&report_a.report_id).unwrap(),
+            &report_a,
+        )
+        .unwrap();
+        write_json_atomic(
+            &service.projection_path(&report_b.report_id).unwrap(),
+            &report_b,
+        )
+        .unwrap();
+
+        service.rebuild_catalog_locked().unwrap();
+        let catalog = service.catalog(&CatalogQuery::default()).unwrap();
+        assert_eq!(catalog.entries.len(), 1);
+        let entry = &catalog.entries[0];
+        assert_eq!(entry.contribution_count, 2);
+        assert_eq!(entry.local_profile_witness_character_count, 2);
+        assert_eq!(
+            entry.attribution_reconciliation_status,
+            RunAttributionReconciliationStatus::CrossVantageEvidenceAvailable
+        );
+
+        let reconciliation = service
+            .reconciliation("run_exact000000000000000000000000000")
+            .unwrap();
+        assert_eq!(
+            reconciliation.canonical_spine.report_id,
+            "rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        );
+        assert_eq!(reconciliation.reports.len(), 2);
+        assert_eq!(reconciliation.characters.len(), 2);
+        assert_eq!(reconciliation.participant_character_count, 2);
+        assert_eq!(reconciliation.local_vantage_character_count, 2);
+        assert!(reconciliation.complete_local_vantage_coverage);
+        assert_eq!(
+            reconciliation.state_replay_readiness,
+            CrossVantageStateReplayReadiness::FullCoverageReady
+        );
+        assert!(reconciliation.state_replay_blockers.is_empty());
+        assert!(reconciliation.characters.iter().all(|character| {
+            character.disposition == ProfileWitnessDisposition::SingleReportExact
+                && character.selected_report_id.is_some()
+        }));
+        assert!(!reconciliation.attribution_replay_completed);
+    }
+
+    #[test]
+    fn duplicate_reports_from_one_local_character_are_not_cross_vantage() {
+        let report = |report_id: &str| PublicReconciliationReport {
+            report_id: report_id.into(),
+            run_index: 0,
+            artifact_sha256: format!("sha256:{report_id}"),
+            protocol_pack_digest: "sha256:pack".into(),
+            created_unix_millis: 1,
+            canonical_spine: report_id.ends_with('a'),
+            local_profile_witnesses: vec![PublicLocalProfileWitness {
+                character_id: "same-character".into(),
+                placement: LocalStateWitnessPlacement::PreRunBaseline,
+                event_sequence: 1,
+                observed_micros: 1,
+                game_time_millis: None,
+                payload_sha256: "sha256:profile".into(),
+            }],
+            local_state_witnesses: Vec::new(),
+        };
+        assert_eq!(
+            reconciliation_status(&[report("rpt_a"), report("rpt_b")]),
+            RunAttributionReconciliationStatus::MultipleReportsNoAdditionalVantage
+        );
+    }
+
+    #[test]
+    fn in_run_cross_vantage_state_without_game_time_blocks_replay() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let report_a =
+            fixture_public_report("rpt_cccccccccccccccccccccccccccccccc", "character-a", 0);
+        let mut report_b =
+            fixture_public_report("rpt_dddddddddddddddddddddddddddddddd", "character-b", 0);
+        let state = &mut report_b.runs[0].local_state_witnesses[0];
+        state.placement = LocalStateWitnessPlacement::InRun;
+        state.game_time_millis = None;
+        write_json_atomic(
+            &service.projection_path(&report_a.report_id).unwrap(),
+            &report_a,
+        )
+        .unwrap();
+        write_json_atomic(
+            &service.projection_path(&report_b.report_id).unwrap(),
+            &report_b,
+        )
+        .unwrap();
+
+        service.rebuild_catalog_locked().unwrap();
+        let reconciliation = service
+            .reconciliation("run_exact000000000000000000000000000")
+            .unwrap();
+        assert_eq!(
+            reconciliation.state_replay_readiness,
+            CrossVantageStateReplayReadiness::Blocked
+        );
+        assert_eq!(
+            reconciliation.state_replay_blockers,
+            vec!["character:character-b:in_run_state_missing_game_time:1"]
+        );
+    }
+
+    #[test]
+    fn same_game_run_with_different_protocol_packs_groups_but_blocks_joint_replay() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let report_a =
+            fixture_public_report("rpt_12121212121212121212121212121212", "character-a", 0);
+        let mut report_b =
+            fixture_public_report("rpt_34343434343434343434343434343434", "character-b", 0);
+        report_b.protocol_pack_digest = "sha256:different-pack".into();
+        write_json_atomic(
+            &service.projection_path(&report_a.report_id).unwrap(),
+            &report_a,
+        )
+        .unwrap();
+        write_json_atomic(
+            &service.projection_path(&report_b.report_id).unwrap(),
+            &report_b,
+        )
+        .unwrap();
+
+        service.rebuild_catalog_locked().unwrap();
+        let catalog = service.catalog(&CatalogQuery::default()).unwrap();
+        assert_eq!(catalog.entries.len(), 1);
+        assert_eq!(catalog.entries[0].contribution_count, 2);
+        let reconciliation = service
+            .reconciliation("run_exact000000000000000000000000000")
+            .unwrap();
+        assert_eq!(
+            reconciliation.state_replay_readiness,
+            CrossVantageStateReplayReadiness::Blocked
+        );
+        assert_eq!(
+            reconciliation.state_replay_blockers,
+            vec!["protocol_pack_digest_mismatch:2"]
+        );
+        assert!(!reconciliation.attribution_replay_completed);
+    }
+
+    fn cross_vantage_test_region() -> rlogs_events::RegionContext {
+        rlogs_events::RegionContext {
+            identity: rlogs_events::RegionIdentity {
+                deployment_id: "global".into(),
+                region_id: "north-america".into(),
+                realm_id: None,
+                world_id: Some("world-1".into()),
+            },
+            client_build: "24687926".into(),
+            protocol_pack_digest: "sha256:test-pack".into(),
+            evidence: Vec::new(),
+        }
+    }
+
+    fn cross_vantage_timeline_envelope(
+        sequence: u64,
+        observed_micros: u64,
+        game_time_millis: Option<i64>,
+        kind: TimelineEventKind,
+    ) -> EventEnvelope {
+        let time = rlogs_events::EventTime {
+            observed_micros,
+            game_time_millis,
+        };
+        let provenance = EventProvenance::wire(sequence, 1, 1);
+        EventEnvelope {
+            schema_version: rlogs_events::EVENT_SCHEMA_VERSION,
+            session_id: "canonical-session".into(),
+            sequence,
+            region: cross_vantage_test_region(),
+            time,
+            provenance: provenance.clone(),
+            sensitivity: EventSensitivity::PublicGameplay,
+            event: CanonicalEvent::Timeline(rlogs_events::TimelineEvent {
+                sequence,
+                time,
+                provenance,
+                kind,
+            }),
+        }
+    }
+
+    fn cross_vantage_attribute_envelope(
+        sequence: u64,
+        observed_micros: u64,
+        game_time_millis: Option<i64>,
+        value: i64,
+    ) -> EventEnvelope {
+        cross_vantage_timeline_envelope(
+            sequence,
+            observed_micros,
+            game_time_millis,
+            TimelineEventKind::EntityAttributes(rlogs_events::EntityAttributeEvent {
+                actor: EntityRef {
+                    actor_id: rlogs_events::ActorId(22),
+                    entity_uuid: rlogs_events::EntityUuid(222),
+                },
+                update_kind: EntityAttributeUpdateKind::Snapshot,
+                ownership: None,
+                attributes: vec![rlogs_events::EntityAttribute {
+                    attribute_id: 11320,
+                    raw_value: value.to_le_bytes().to_vec(),
+                    decoded: Some(rlogs_events::EntityAttributeValue::Integer(value)),
+                }],
+            }),
+        )
+    }
+
+    fn cross_vantage_profile_envelope(
+        sequence: u64,
+        observed_micros: u64,
+        game_time_millis: Option<i64>,
+        character_id: &str,
+    ) -> EventEnvelope {
+        let region = cross_vantage_test_region();
+        EventEnvelope {
+            schema_version: rlogs_events::EVENT_SCHEMA_VERSION,
+            session_id: "secondary-session".into(),
+            sequence,
+            region: region.clone(),
+            time: rlogs_events::EventTime {
+                observed_micros,
+                game_time_millis,
+            },
+            provenance: EventProvenance::wire(sequence, 2, 2),
+            sensitivity: EventSensitivity::PersonalGameplay,
+            event: CanonicalEvent::CharacterProfileObserved {
+                profile: Box::new(GameProfileEvent {
+                    game_plugin_id: BPSR_GAME_PLUGIN_ID.into(),
+                    payload_schema_id: rlogs_game_bpsr::BPSR_PROFILE_SCHEMA_ID.into(),
+                    payload_schema_version: rlogs_game_bpsr::BPSR_PROFILE_SCHEMA_VERSION,
+                    character: rlogs_events::CharacterIdentity {
+                        region: region.identity,
+                        character_id: character_id.into(),
+                    },
+                    payload: serde_json::json!({}),
+                }),
+            },
+        }
+    }
+
+    fn cross_vantage_actor_envelope(
+        sequence: u64,
+        observed_micros: u64,
+        actor_id: u64,
+        entity_uuid: i64,
+        character_id: &str,
+    ) -> EventEnvelope {
+        cross_vantage_timeline_envelope(
+            sequence,
+            observed_micros,
+            Some(observed_micros as i64),
+            TimelineEventKind::Actor(rlogs_events::ActorEvent {
+                actor: EntityRef {
+                    actor_id: rlogs_events::ActorId(actor_id),
+                    entity_uuid: rlogs_events::EntityUuid(entity_uuid),
+                },
+                state: rlogs_events::ActorState::Spawned,
+                entity_type_id: 1,
+                kind: rlogs_events::ActorKind::Player,
+                monster_id: None,
+                character_id: Some(character_id.into()),
+                display_name: Some(character_id.into()),
+                class_id: Some(4),
+                specialization_id: Some(2),
+                level: Some(80),
+                ability_score: None,
+                weapon_item_id: None,
+                weapon_breakthrough_count: None,
+                seasonal_score: None,
+                primary_loadout: Vec::new(),
+                auxiliary_loadout: Vec::new(),
+                loadout_observation: rlogs_events::ActorLoadoutObservation::default(),
+            }),
+        )
+    }
+
+    fn cross_vantage_dungeon_envelope(
+        sequence: u64,
+        observed_micros: u64,
+        kind: rlogs_events::DungeonEventKind,
+    ) -> EventEnvelope {
+        let time = rlogs_events::EventTime {
+            observed_micros,
+            game_time_millis: Some(observed_micros as i64),
+        };
+        let provenance = EventProvenance::wire(sequence, 1, 1);
+        EventEnvelope {
+            schema_version: rlogs_events::EVENT_SCHEMA_VERSION,
+            session_id: "canonical-session".into(),
+            sequence,
+            region: cross_vantage_test_region(),
+            time,
+            provenance,
+            sensitivity: EventSensitivity::PublicGameplay,
+            event: CanonicalEvent::Dungeon(rlogs_events::DungeonEvent {
+                kind,
+                dungeon_id: Some(rlogs_events::DungeonId(7152)),
+                instance_id: Some("instance-test".into()),
+                difficulty_id: None,
+                objective_map_key: None,
+                objective_id: None,
+                objective_value: None,
+                objective_complete: None,
+                objective_catalog: None,
+                flow: None,
+            }),
+        }
+    }
+
+    fn cross_vantage_monster_envelope(sequence: u64, observed_micros: u64) -> EventEnvelope {
+        let mut envelope = cross_vantage_actor_envelope(
+            sequence,
+            observed_micros,
+            99,
+            999,
+            "temporary-monster-key",
+        );
+        let CanonicalEvent::Timeline(timeline) = &mut envelope.event else {
+            unreachable!();
+        };
+        let TimelineEventKind::Actor(actor) = &mut timeline.kind else {
+            unreachable!();
+        };
+        actor.kind = rlogs_events::ActorKind::Monster;
+        actor.monster_id = Some(rlogs_events::MonsterId(9001));
+        actor.character_id = None;
+        actor.display_name = Some("fixture monster".into());
+        actor.class_id = None;
+        actor.specialization_id = None;
+        envelope
+    }
+
+    fn cross_vantage_damage_envelope(
+        sequence: u64,
+        observed_micros: u64,
+        amount: i64,
+    ) -> EventEnvelope {
+        cross_vantage_timeline_envelope(
+            sequence,
+            observed_micros,
+            Some(observed_micros as i64),
+            TimelineEventKind::Damage(rlogs_events::DamageEvent {
+                source: EntityRef {
+                    actor_id: rlogs_events::ActorId(11),
+                    entity_uuid: rlogs_events::EntityUuid(111),
+                },
+                direct_source: None,
+                target: EntityRef {
+                    actor_id: rlogs_events::ActorId(99),
+                    entity_uuid: rlogs_events::EntityUuid(999),
+                },
+                ability: Some(rlogs_events::AbilityId(1001)),
+                amount,
+                actual_amount: Some(amount),
+                hp_loss: Some(amount),
+                shield_loss: Some(0),
+                hit_event_id: Some(1),
+                damage_source: Some(1),
+                damage_type: Some(1),
+                flags: rlogs_events::DamageFlags::default(),
+                packet: rlogs_events::DamagePacketDetail::default(),
+            }),
+        )
+    }
+
+    #[test]
+    fn sealed_state_witness_commitment_is_verified_before_import() {
+        let envelope = cross_vantage_attribute_envelope(7, 70, Some(700), 1234);
+        let CanonicalEvent::Timeline(timeline) = &envelope.event else {
+            unreachable!();
+        };
+        let payload = serde_json::to_vec(&timeline.kind).unwrap();
+        let witness = PublicLocalStateWitness {
+            character_id: "character-b".into(),
+            actor_id: 22,
+            entity_uuid: 222,
+            kind: LocalStateWitnessKind::EntityAttributes,
+            update_kind: "snapshot".into(),
+            placement: LocalStateWitnessPlacement::InRun,
+            event_sequence: 7,
+            observed_micros: 70,
+            game_time_millis: Some(700),
+            payload_sha256: local_state_payload_digest(&payload),
+        };
+        verify_state_witness_event("rpt_b", &witness, &envelope).unwrap();
+
+        let mut tampered = envelope;
+        let CanonicalEvent::Timeline(timeline) = &mut tampered.event else {
+            unreachable!();
+        };
+        let TimelineEventKind::EntityAttributes(attributes) = &mut timeline.kind else {
+            unreachable!();
+        };
+        attributes.attributes[0].decoded = Some(rlogs_events::EntityAttributeValue::Integer(1235));
+        assert!(matches!(
+            verify_state_witness_event("rpt_b", &witness, &tampered),
+            Err(ServiceError::CrossVantageWitnessMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn cross_vantage_state_uses_baseline_then_strict_server_time_ordering() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("canonical.rlog");
+        let header = rlogs_log_format::RlogHeader::new(
+            "canonical-session",
+            cross_vantage_test_region(),
+            "unit-test",
+        );
+        let mut writer = rlogs_log_format::RlogWriter::new(Vec::new(), header).unwrap();
+        let events = [
+            cross_vantage_timeline_envelope(
+                1,
+                10,
+                Some(90),
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Entered,
+                    scene_id: Some(rlogs_events::SceneId(7152)),
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                2,
+                20,
+                Some(100),
+                TimelineEventKind::CombatBoundary {
+                    state: rlogs_events::CombatState::Started,
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                3,
+                30,
+                Some(101),
+                TimelineEventKind::CombatBoundary {
+                    state: rlogs_events::CombatState::Ended,
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                4,
+                40,
+                Some(102),
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Completed,
+                    scene_id: Some(rlogs_events::SceneId(7152)),
+                    reason: rlogs_events::BoundaryReason::Completion,
+                },
+            ),
+        ];
+        for event in &events {
+            writer.push(event).unwrap();
+        }
+        std::fs::write(&path, writer.finish().unwrap()).unwrap();
+
+        let imported = vec![
+            VerifiedCrossVantageStateEvent {
+                report_id: "rpt_b".into(),
+                character_id: "character-b".into(),
+                placement: LocalStateWitnessPlacement::PreRunBaseline,
+                game_time_millis: Some(70),
+                envelope: cross_vantage_profile_envelope(89, 4, Some(70), "character-b"),
+            },
+            VerifiedCrossVantageStateEvent {
+                report_id: "rpt_b".into(),
+                character_id: "character-b".into(),
+                placement: LocalStateWitnessPlacement::PreRunBaseline,
+                game_time_millis: Some(80),
+                envelope: cross_vantage_attribute_envelope(90, 5, Some(80), 1000),
+            },
+            VerifiedCrossVantageStateEvent {
+                report_id: "rpt_b".into(),
+                character_id: "character-b".into(),
+                placement: LocalStateWitnessPlacement::InRun,
+                game_time_millis: Some(100),
+                envelope: cross_vantage_attribute_envelope(91, 15, Some(100), 1100),
+            },
+        ];
+        let mut imported = imported;
+        remap_cross_vantage_state_entities(
+            &mut imported,
+            &BTreeMap::from([(
+                "character-b".into(),
+                EntityRef {
+                    actor_id: rlogs_events::ActorId(22),
+                    entity_uuid: rlogs_events::EntityUuid(222),
+                },
+            )]),
+        )
+        .unwrap();
+        let mut order = Vec::new();
+        replay_canonical_with_cross_vantage_state(&path, 0, &imported, |event, imported| {
+            order.push(format!(
+                "{}{}",
+                if imported { "I" } else { "C" },
+                event.sequence
+            ));
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(order, vec!["C1", "I89", "I90", "C2", "I91", "C3", "C4"]);
+    }
+
+    #[test]
+    fn joint_replay_preserves_ordinary_damage_and_party_conservation() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let mut region = cross_vantage_test_region();
+        region.protocol_pack_digest =
+            "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395".into();
+        let header =
+            rlogs_log_format::RlogHeader::new("canonical-session", region.clone(), "unit-test");
+        let mut writer = rlogs_log_format::RlogWriter::new(Vec::new(), header).unwrap();
+        let mut events = vec![
+            cross_vantage_dungeon_envelope(1, 5, rlogs_events::DungeonEventKind::Started),
+            cross_vantage_timeline_envelope(
+                2,
+                10,
+                Some(10),
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Entered,
+                    scene_id: Some(rlogs_events::SceneId(7152)),
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_actor_envelope(3, 20, 11, 111, "character-a"),
+            cross_vantage_actor_envelope(4, 30, 22, 222, "character-b"),
+            cross_vantage_monster_envelope(5, 35),
+            cross_vantage_timeline_envelope(
+                6,
+                40,
+                Some(40),
+                TimelineEventKind::CombatBoundary {
+                    state: rlogs_events::CombatState::Started,
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_damage_envelope(7, 45, 100),
+            cross_vantage_timeline_envelope(
+                8,
+                50,
+                Some(50),
+                TimelineEventKind::CombatBoundary {
+                    state: rlogs_events::CombatState::Ended,
+                    reason: rlogs_events::BoundaryReason::AuthoritativePacket,
+                },
+            ),
+            cross_vantage_timeline_envelope(
+                9,
+                60,
+                Some(60),
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Completed,
+                    scene_id: Some(rlogs_events::SceneId(7152)),
+                    reason: rlogs_events::BoundaryReason::Completion,
+                },
+            ),
+            cross_vantage_dungeon_envelope(10, 65, rlogs_events::DungeonEventKind::Completed),
+        ];
+        let mut timeline_sequence = 0_u64;
+        for event in &mut events {
+            event.region = region.clone();
+            if let CanonicalEvent::Timeline(timeline) = &mut event.event {
+                timeline_sequence += 1;
+                timeline.sequence = timeline_sequence;
+            }
+            writer.push(event).unwrap();
+        }
+        let bytes = writer.finish().unwrap();
+        let digest = digest_bytes(&bytes).unwrap();
+        let artifact_path = service.artifact_path(&digest).unwrap();
+        std::fs::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+        std::fs::write(&artifact_path, bytes).unwrap();
+
+        let report_id = "rpt_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        let mut report = fixture_public_report(report_id, "character-a", 0);
+        report.protocol_pack_digest = region.protocol_pack_digest.clone();
+        report.verification.artifact_sha256 = digest.to_string();
+        report.verification.event_count = 10;
+        report.runs[0].local_state_witnesses.clear();
+        for (actor_id, character_id) in [("11", "character-a"), ("22", "character-b")] {
+            let participant = report.runs[0]
+                .participants
+                .iter_mut()
+                .find(|participant| participant.character_id.as_deref() == Some(character_id))
+                .unwrap();
+            participant.actor_id = actor_id.into();
+        }
+        report.runs[0]
+            .participants
+            .retain(|participant| participant.character_id.as_deref() == Some("character-a"));
+        report.runs[0].participants[0].damage = 100;
+        write_json_atomic(&service.projection_path(report_id).unwrap(), &report).unwrap();
+        let group = CatalogRunGroup {
+            representative: PublicParseCatalogEntry::from_report(&report, &report.runs[0]),
+            representative_quality: CanonicalSpineQuality::from_report(&report, &report.runs[0]),
+            submitters: BTreeSet::new(),
+            local_profile_witnesses: ["character-a".to_owned()].into_iter().collect(),
+            reconciliation_sources: vec![ReconciliationRunSource::from_report(
+                &report,
+                &report.runs[0],
+            )],
+        };
+        let reconciliation = build_public_reconciliation(&group);
+        let imported = vec![VerifiedCrossVantageStateEvent {
+            report_id: "rpt_secondary".into(),
+            character_id: "character-b".into(),
+            placement: LocalStateWitnessPlacement::PreRunBaseline,
+            game_time_millis: Some(5),
+            envelope: cross_vantage_attribute_envelope(2, 5, Some(5), 1000),
+        }];
+        let result = service
+            .replay_cross_vantage_attribution(&reconciliation, imported)
+            .unwrap();
+        assert_eq!(result.participants.len(), 1);
+        assert!(result.conservation.conserved);
+        assert_eq!(result.conservation.raw_damage, 100);
+        assert_eq!(result.conservation.rdps_damage, 100);
+    }
+
+    fn fixture_public_report(
+        report_id: &str,
+        local_character_id: &str,
+        data_gap_count: u64,
+    ) -> PublicParseReport {
+        let participant = |character_id: &str| PublicParticipant {
+            actor_id: character_id.into(),
+            character_id: Some(character_id.into()),
+            display_name: None,
+            actor_kind: Some("player".into()),
+            class_id: None,
+            class_name: None,
+            specialization_id: None,
+            specialization_name: None,
+            damage: 0,
+            dps: 0.0,
+            encounter_dps: 0.0,
+            hps: 0.0,
+            tps: 0.0,
+            rdps: None,
+            deaths: 0,
+        };
+        PublicParseReport {
+            schema_version: PUBLIC_PARSE_SCHEMA_VERSION,
+            report_id: report_id.into(),
+            visibility: ReportVisibility::Public,
+            created_unix_millis: 1,
+            game_plugin_id: BPSR_GAME_PLUGIN_ID.into(),
+            deployment_id: "global".into(),
+            region_id: "north-america".into(),
+            world_id: None,
+            client_build: "24687926".into(),
+            protocol_pack_digest: "sha256:pack".into(),
+            verification: PublicVerification {
+                tier: VerificationTier::Replayed,
+                artifact_sha256: format!("sha256:artifact-{report_id}"),
+                canonical_content_sha256: format!("sha256:content-{report_id}"),
+                event_count: 100,
+                privacy_policy_digest: "sha256:privacy".into(),
+            },
+            submission_provenance: PublicSubmissionProvenance {
+                submitter_id: Some(format!("submitter-{local_character_id}")),
+                authentication: "device_token".into(),
+            },
+            runs: vec![PublicRun {
+                run_index: 0,
+                run_group_id: "run_exact000000000000000000000000000".into(),
+                correlation_method: RunCorrelationMethod::ExactInstanceId,
+                activity_id: None,
+                activity_family_id: None,
+                scene_id: Some(7152),
+                scene_name: None,
+                difficulty_family: None,
+                difficulty_tier: None,
+                terminal_state: "completed".into(),
+                total_run_time_micros: Some(10),
+                game_time_micros: Some(10),
+                active_combat_micros: 10,
+                true_time_micros: None,
+                retry_count: 0,
+                boss_retry_count: 0,
+                rdps_status: "pending_cross_vantage".into(),
+                data_gap_count,
+                authoritative_start: true,
+                authoritative_completion: true,
+                submission_disposition: RunSubmissionDisposition::RankCandidate,
+                local_profile_character_ids: vec![local_character_id.into()],
+                local_profile_witnesses: vec![PublicLocalProfileWitness {
+                    character_id: local_character_id.into(),
+                    placement: LocalStateWitnessPlacement::PreRunBaseline,
+                    event_sequence: 1,
+                    observed_micros: 1,
+                    game_time_millis: None,
+                    payload_sha256: format!("sha256:profile-{local_character_id}"),
+                }],
+                local_state_witnesses: vec![PublicLocalStateWitness {
+                    character_id: local_character_id.into(),
+                    actor_id: 8,
+                    entity_uuid: 216_009_015_936,
+                    kind: LocalStateWitnessKind::EntityAttributes,
+                    update_kind: "snapshot".into(),
+                    placement: LocalStateWitnessPlacement::PreRunBaseline,
+                    event_sequence: 2,
+                    observed_micros: 1,
+                    game_time_millis: Some(100),
+                    payload_sha256: format!("sha256:state-{local_character_id}"),
+                }],
+                segments: Vec::new(),
+                participants: vec![participant("character-a"), participant("character-b")],
+            }],
+        }
+    }
+
+    #[test]
     fn catalog_paginates_after_filtering_and_keeps_full_facets() {
         let root = tempfile::tempdir().unwrap();
         let service =
@@ -1879,6 +4555,8 @@ mod tests {
             run_group_id: format!("run_{index:032x}"),
             contribution_count: 1,
             distinct_submitter_count: 1,
+            local_profile_witness_character_count: 1,
+            attribution_reconciliation_status: RunAttributionReconciliationStatus::SingleVantage,
             created_unix_millis: u64::from(index),
             deployment_id: "global".into(),
             region_id: region.into(),

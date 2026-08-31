@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "client_build": "24252055",
+  "subject": "Inspiration packet vector and provider-side Full Bloom potency snapshot",
+  "effects": {
+    "inspiration": {
+      "effect_id": 2202041,
+      "source_configuration_id": 2202040,
+      "observed_level": 5,
+      "duration_millis": 1500
+    },
+    "full_bloom": {
+      "effect_id": 2404271,
+      "source_configuration_id": 2404270,
+      "duration_millis": 10000
+    }
+  },
+  "policy": {
+    "runtime_enabled": false,
+    "provider_mode_is_sampled_at_inspiration_apply_or_refresh": true,
+    "recipient_full_bloom_is_a_potency_switch": false,
+    "packet_attribute_deltas_are_runtime_magnitude_authority": true,
+    "localization_is_formula_authority": false,
+    "derived_attributes_are_independent_rdps_axes": false,
+    "partial_effect_credit_is_allowed_in_displayed_rdps": false,
+    "unresolved_evidence_is_hidden": false
+  },
+  "provider_mode_proof": {
+    "correlation_attribute_id": 11950,
+    "correlation_attribute_name": "Versatility",
+    "exact_isolated_transitions": 12,
+    "contradictions": 0,
+    "groups": [
+      {
+        "raw_delta": 300,
+        "provider_full_bloom_at_latest_inspiration_apply_or_refresh": false,
+        "occurrences": 1
+      },
+      {
+        "raw_delta": -300,
+        "provider_full_bloom_at_latest_inspiration_apply_or_refresh": false,
+        "occurrences": 5
+      },
+      {
+        "raw_delta": -360,
+        "provider_full_bloom_at_latest_inspiration_apply_or_refresh": true,
+        "occurrences": 6
+      }
+    ],
+    "counterexample_to_recipient_side_inference": {
+      "session_id": "formula-snapshot-20260731-010829",
+      "run_ordinal": 2,
+      "inspiration_instance_id": 11962,
+      "latest_inspiration_state": "refreshed",
+      "provider_full_bloom": false,
+      "recipient_full_bloom": true,
+      "removal_delta": -300,
+      "conclusion": "Full Bloom on the recipient does not enhance an Inspiration instance when the provider was not in Full Bloom at that instance's latest apply-or-refresh snapshot."
+    }
+  },
+  "packet_proven_level_5_vectors": {
+    "normal": {
+      "provider_full_bloom": false,
+      "raw_add_deltas": {
+        "strength_11012": 540,
+        "intellect_11022": 540,
+        "agility_11032": 540,
+        "vitality_11042": 540,
+        "critical_chance_11712": 300,
+        "lucky_chance_11782": 300,
+        "mastery_11942": 300,
+        "versatility_11952": 300
+      },
+      "derived_ext_damage_11840": 105
+    },
+    "full_bloom": {
+      "provider_full_bloom": true,
+      "potency_ratio": {
+        "numerator": 6,
+        "denominator": 5
+      },
+      "raw_add_deltas": {
+        "strength_11012": 648,
+        "intellect_11022": 648,
+        "agility_11032": 648,
+        "vitality_11042": 648,
+        "critical_chance_11712": 360,
+        "lucky_chance_11782": 360,
+        "mastery_11942": 360,
+        "versatility_11952": 360
+      },
+      "derived_ext_damage_11840": 126
+    }
+  },
+  "derived_family_proof": {
+    "physical_attack_family": {
+      "final_attribute_id": 11330,
+      "intermediate_attribute_id": 11331,
+      "base_add_attribute_id": 11332,
+      "raw_extra_add_attribute_id": 11333,
+      "raw_percent_attribute_id": 11334,
+      "raw_extra_percent_attribute_id": 11335,
+      "formula": "intermediate = floor(base_add * (10000 + raw_percent) / 10000); final = intermediate + extra_add when the packet supplies extra_add",
+      "exact_wire_input_transitions": 86,
+      "exact_intermediate_delta_matches": 86,
+      "intermediate_delta_mismatches": 0,
+      "inspiration_base_add_deltas_observed": [360, 373, 385, 447, 454, 462, 469],
+      "accounting": "The packet-observed Inspiration contribution to base_add and its recomputed final Attack marginal are one counterfactual axis. The raw and derived values must never be credited independently."
+    },
+    "versatility": {
+      "raw_add_attribute_id": 11952,
+      "final_attribute_id": 11950,
+      "derived_ext_damage_attribute_id": 11840,
+      "relation": "derived_ext_damage = floor(final_versatility * 35 / 100)",
+      "normal_delta": 105,
+      "full_bloom_delta": 126,
+      "accounting": "Versatility and its derived external-damage value are one counterfactual axis."
+    },
+    "mastery": {
+      "raw_add_attribute_id": 11942,
+      "final_attribute_id": 11940,
+      "generic_damage_multiplier": false,
+      "accounting": "Mastery feeds class- and specialization-specific derived attributes. Remove the packet Mastery contribution and replay the recipient's proven class relation; never multiply all damage directly by Mastery."
+    }
+  },
+  "runtime_blockers": [
+    "The exact standard damage path still needs the defense-affected Attack component, defense-ignoring Refined Attack and elemental Attack components, action coefficient, target defense, season transform, and downstream integer stage order.",
+    "Mastery must be replayed through the recipient's class-specific derived attribute relation.",
+    "Haste changes action opportunity rather than the amount of one existing damage event and therefore requires a separate temporal counterfactual.",
+    "Combined Critical-plus-Lucky outcomes require a proven non-overlapping stage order.",
+    "Displayed Inspiration rDPS must remain disabled until every packet-proven offensive component is removed together and exact party-damage conservation holds."
+  ],
+  "sealed_replay_evidence": {
+    "sessions": [
+      "formula-snapshot-20260730-235717",
+      "formula-snapshot-20260731-010244",
+      "formula-snapshot-20260731-010829"
+    ],
+    "recipient_entity_uuid": 216009015936,
+    "provider_entity_uuid": 42310107776,
+    "research_artifacts": [
+      ".codex_tmp/rdps-inspiration-full-bloom-provider-context.current.v26.json",
+      ".codex_tmp/rdps-inspiration-complete-family-vector.current.v28.json"
+    ]
+  }
+}

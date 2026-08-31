@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "client_build": 24252055,
+  "deployment": "global",
+  "channel": "steam",
+  "subject": "Inspiration combined Critical-plus-Lucky occurrence attribution",
+  "effect_id": 2202041,
+  "source_configuration_id": 2202040,
+  "packet_component_identity": {
+    "eligible_combined_candidates": 428,
+    "value_shape_count": 1,
+    "normal_value_only": 0,
+    "lucky_value_only": 428,
+    "both_values": 0,
+    "neither_value": 0,
+    "amount_matches_lucky_value": 428,
+    "packet_shape": {
+      "reported_critical": null,
+      "type_flags": 1,
+      "hit_event_id": 3,
+      "damage_source": 2
+    },
+    "conclusion": "A canonical Critical-plus-Lucky row is the dedicated packet Lucky damage component carrying the critical type flag. It is not a normal-plus-Lucky combined damage total."
+  },
+  "exact_external_window_replay": {
+    "combined_candidates_with_one_exact_external_player_window": 20,
+    "minimum_exact_windows_per_candidate": 1,
+    "maximum_exact_windows_per_candidate": 1,
+    "provider_entity_uuid": 42310107776,
+    "packet_observed_critical_raw_deltas": [250, 300, 360],
+    "packet_observed_lucky_raw_deltas": [300, 360],
+    "emitted_joint_contributions": 20,
+    "retained_without_exact_window_magnitude": 408,
+    "arithmetic_overflows": 0,
+    "combined_fraction_buckets": 12
+  },
+  "exact_joint_counterfactual": {
+    "symbols": {
+      "D": "observed packet lucky_value component",
+      "C": "current packet critical chance raw value",
+      "dc": "packet-proven provider critical chance raw delta",
+      "L": "current packet Lucky chance raw value",
+      "dl": "packet-proven provider Lucky chance raw delta",
+      "cd": "current packet critical damage raw value"
+    },
+    "formula": "D * (dl*C*(10000+cd) + cd*dc*(L-dl)) / (L*C*(10000+cd))",
+    "decomposition": [
+      "The provider owns the complete Lucky component on the dl/L share of Lucky occurrences caused by that provider.",
+      "On the remaining (L-dl)/L Lucky occurrences, the provider owns only the critical bonus fraction caused by dc/C.",
+      "The two terms are combined before reduction, so their intersection is assigned exactly once and the observed Lucky component is conserved."
+    ],
+    "numeric_runtime": "checked i128 exact rational; no per-event floating point and no per-hit truncation"
+  },
+  "retained_scope": {
+    "candidate_combined_events_before_transition_wire_exclusion": 517,
+    "eligible_candidates_after_transition_wire_exclusion": 428,
+    "unattributed_candidates_retained": 408,
+    "policy": "Rows without an exact packet-proven external Inspiration instance magnitude remain visible and contribute no guessed transfer."
+  },
+  "evidence": {
+    "sealed_rlog_sha256": "ed7b6985afcbf6522a42c58f6b33f18b37cdb229b8e66c9b44fc568390c7ef76",
+    "proof_report": ".codex_tmp/rdps-inspiration-proc-attribution.joint-reduced.v6.json",
+    "proof_report_sha256": "916b3cfb4b78e473b33f30ee651517ca8676371f7ef04f69f19edb612a07d21f",
+    "proof_tool": "plugins/games/blue-protocol-star-resonance/tools/inspiration-proc-attribution-proof.rs",
+    "production_math": "plugins/games/blue-protocol-star-resonance/src/state_formula.rs#exact_external_combined_critical_lucky_chance_fraction"
+  },
+  "runtime_promotion": {
+    "chance_stage": "packet_proven_exact_joint_counterfactual",
+    "complete_inspiration_effect": "disabled_until_all_remaining_packet_observed_stages_are_composed_and_conserved",
+    "partial_effect_credit_is_displayed": false
+  }
+}

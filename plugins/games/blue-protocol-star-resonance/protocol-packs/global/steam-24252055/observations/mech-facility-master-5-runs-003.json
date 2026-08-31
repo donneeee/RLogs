@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "observation_id": "mech-facility-master-5-runs-003",
+  "target_pack_id": "global-steam-24252055-research",
+  "client_build": "24252055",
+  "scenario": {
+    "scene_id": 6525,
+    "scene_name_en_us": "Chaotic - Mech Facility",
+    "activity_family": "mech-facility",
+    "difficulty_family": "master",
+    "capture_operator_confirmed_tier": 5,
+    "completed_run_count": 2,
+    "exited_attempt_count": 3
+  },
+  "difficulty_evidence": {
+    "valid_tier_range_from_current_game_data": [1, 20],
+    "tier_5_present_on_exited_attempt_entry_packets": true,
+    "completed_segment_entry_snapshot_omitted_tier_delta": true,
+    "policy": "retain a captured tier or a reviewed session annotation; never default every scene 6525 run to Master 5"
+  },
+  "boundary_evidence": {
+    "mobbing_completion_objective_map_key": 6521006,
+    "final_objective_id": 6521003,
+    "boss_monster_id": 33500,
+    "boss_name_en_us": "Thanatos - Final Form",
+    "exit_transition": "WorldChanged from scene 6525 to scene 8",
+    "explicit_failed_or_exited_dungeon_event_present": false,
+    "exact_terminal_cause": "exited"
+  },
+  "reviewed_completed_timing_micros": {
+    "total_instance_entry_to_completion": 452370507,
+    "game_time_reviewed_intervals": 424246575,
+    "true_time_projected_best": 419280938,
+    "active_combat": 413649765,
+    "game_display_time_reported_by_capture_operator": "7:05"
+  },
+  "history_policy": {
+    "completed_runs_are_retained": true,
+    "failed_and_exited_attempts_are_retained": true,
+    "exited_attempts_are_presented_as_failed_runs": true,
+    "only_completed_runs_are_submission_eligible": true
+  },
+  "privacy": {
+    "contains_raw_payloads": false,
+    "contains_credentials": false,
+    "contains_account_authentication": false,
+    "contains_chat_content": false,
+    "contains_character_names_or_ids": false
+  },
+  "review_status": "verified_exact_replay"
+}

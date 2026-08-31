@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "client_build": "24252055",
+  "subject": "packet-proven primary-stat and physical-attack attribute family stages",
+  "scope": {
+    "entity_uuid": 216009015936,
+    "sealed_rlogs": [
+      ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260730-235717.rlog",
+      ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260731-010244.rlog",
+      ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260731-010829.rlog"
+    ],
+    "source_audit": ".codex_tmp/primary-attack-family-formula.v3.json"
+  },
+  "formula": {
+    "fixed_point_scale": 10000,
+    "total": "floor(add * (10000 + percent) / 10000)",
+    "current_when_extra_add_is_present": "total + extra_add",
+    "rounding": "positive integer truncation, equivalent to mathematical floor for the observed domain"
+  },
+  "proof": [
+    {
+      "family_base_attribute_id": 11010,
+      "semantic_name": "Strength",
+      "complete_snapshot_exact_matches": 16,
+      "complete_snapshot_mismatches": 0,
+      "percent_transition_exact_matches": 56,
+      "percent_transition_within_one_packet_unit": 0,
+      "percent_transition_mismatches_beyond_one": 0,
+      "add_transition_exact_matches": 150,
+      "add_transition_within_one_packet_unit": 0,
+      "add_transition_mismatches_beyond_one": 0
+    },
+    {
+      "family_base_attribute_id": 11020,
+      "semantic_name": "Intellect",
+      "complete_snapshot_exact_matches": 16,
+      "complete_snapshot_mismatches": 0,
+      "percent_transition_exact_matches": 56,
+      "percent_transition_within_one_packet_unit": 0,
+      "percent_transition_mismatches_beyond_one": 0,
+      "add_transition_exact_matches": 150,
+      "add_transition_within_one_packet_unit": 0,
+      "add_transition_mismatches_beyond_one": 0
+    },
+    {
+      "family_base_attribute_id": 11030,
+      "semantic_name": "Agility",
+      "complete_snapshot_exact_matches": 17,
+      "complete_snapshot_mismatches": 0,
+      "percent_transition_exact_matches": 107,
+      "percent_transition_within_one_packet_unit": 3,
+      "percent_transition_mismatches_beyond_one": 0,
+      "add_transition_exact_matches": 133,
+      "add_transition_within_one_packet_unit": 21,
+      "add_transition_mismatches_beyond_one": 0,
+      "rounding_note": "All non-exact transitions differ by exactly one packet unit; no larger residual exists. Agility remains excluded from exact provider attribution until the additional rounding source is isolated."
+    },
+    {
+      "family_base_attribute_id": 11330,
+      "semantic_name": "Physical Attack",
+      "complete_total_snapshot_exact_matches": 12,
+      "complete_total_snapshot_mismatches": 0,
+      "percent_transition_exact_matches": 34,
+      "percent_transition_within_one_packet_unit": 0,
+      "percent_transition_mismatches_beyond_one": 0,
+      "add_transition_exact_matches": 252,
+      "add_transition_within_one_packet_unit": 0,
+      "add_transition_mismatches_beyond_one": 0,
+      "current_equals_total_plus_extra_add_exact_matches": 6,
+      "current_equals_total_plus_extra_add_mismatches": 0
+    }
+  ],
+  "rejected_formula": {
+    "candidate": "delta(physical_attack) = floor(delta(strength_add) * 80 / 100)",
+    "transition_candidates": 131,
+    "exact_matches": 27,
+    "mismatches": 104,
+    "reason": "Physical Attack is its own packet family with independent add, percent, and extra-add inputs. A direct Strength-to-Attack scalar would over-credit unrelated simultaneous changes."
+  },
+  "observed_provider_replays": [
+    {
+      "effect_id": 2202041,
+      "component": "Strength add",
+      "current_add": 1125,
+      "current_percent": 1900,
+      "provider_add": 648,
+      "exact_current_marginal": 771
+    },
+    {
+      "effect_id": 2202041,
+      "component": "Physical Attack add",
+      "current_add": 5248,
+      "current_percent": 1600,
+      "provider_add": 447,
+      "exact_current_marginal": 518
+    }
+  ],
+  "accounting_policy": {
+    "provider_components_are_removed_together": true,
+    "derived_current_and_raw_components_are_independent_rdps_axes": false,
+    "double_counting_forbidden": true,
+    "newer_profile_snapshot_may_rewrite_historical_event_state": false,
+    "missing_attribute_is_zero": false,
+    "unresolved_evidence_is_hidden": false
+  },
+  "runtime": {
+    "attribute_family_replay_authority": true,
+    "damage_stage_authority": false,
+    "displayed_rdps_enabled_for_these_components": false,
+    "promotion_blocker": "The exact stage where packet current Attack enters final damage, including action variance and later integer rounding, remains to be proven."
+  }
+}

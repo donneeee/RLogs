@@ -1,0 +1,206 @@
+{
+  "effect_id": 2202041,
+  "game": "blue-protocol-star-resonance",
+  "generated_by": "rlogs-bpsr-inspiration-proof-obligation-ledger",
+  "inputs": {
+    "component_aware_external_proofs": [
+      {
+        "bytes": 61234983,
+        "path": ".\\.codex_tmp\\rdps-inspiration-attack-external-light.full-bloom-status-gated.v32.json",
+        "sha256": "sha256:01352e4ad4537dd64f8fd0f3f314deecfb3e070bed520d37294ee50e1611af04"
+      },
+      {
+        "bytes": 58333890,
+        "path": ".\\.codex_tmp\\rdps-inspiration-attack-external-light.base-mode-status-gated.v33.json",
+        "sha256": "sha256:ccb1a5f7fe02c03698ce63e5fe98fb59513e55850ed1e1d3db9edddc14c498c8"
+      },
+      {
+        "bytes": 58539342,
+        "path": ".\\.codex_tmp\\rdps-inspiration-attack-external-light.base-mode-status-gated.v37.json",
+        "sha256": "sha256:0144eadc0b8b3eb7de1471b2291a8924f0d6923dafbe60680b2214e1d6a34195"
+      }
+    ],
+    "exact_build_mastery_consumers": {
+      "bytes": 21895,
+      "path": ".\\.codex_tmp\\mastery-consumer-scan.exact-build-24252055.v2.json",
+      "sha256": "sha256:558394bbaa90bc8a153e1029da47a6eae0a5f7fa38c52430a94576e2f14b7666"
+    },
+    "packet_attribute_closure": {
+      "bytes": 5625,
+      "path": ".\\plugins\\games\\blue-protocol-star-resonance\\game-data\\catalog\\formulas\\inspiration-packet-attribute-closure.global-steam-24252055.v1.json",
+      "sha256": "sha256:a29b83a4b1f253fcdca8ce75e7862a446a8e684626721ed8ad20760968a5f5b3"
+    },
+    "runtime": {
+      "bytes": 4873,
+      "path": ".\\plugins\\games\\blue-protocol-star-resonance\\game-data\\runtime\\rdps-formula-runtime.v1.json",
+      "sha256": "sha256:62d6b1c787d46442c88baa4721c7a74f036d23a09f9ee73934ad40d1efb6231b"
+    },
+    "status_mismatch_semantic_surface": {
+      "bytes": 1192974,
+      "path": ".\\.codex_tmp\\inspiration-status-mismatch-semantic-surface.24252055.v1.json",
+      "sha256": "sha256:cbd3d80deda456d4102195fecbc77d54f2af8f44e9d7f3e61c74b8ff1418b4c7"
+    },
+    "mastery_light_wire_boundary_proof": {
+      "bytes": 482673,
+      "path": ".\\.codex_tmp\\inspiration-mastery-gap-proof.wire-boundaries.v7.json",
+      "sha256": "sha256:cd9227d1f019eb13c7e0eb7aa2a14946ac526e6e272a906789710bfdaa5ce9fe"
+    }
+  },
+  "packet_build": "24252055",
+  "packet_proven_vectors": [
+    {
+      "external_damage_delta": 105,
+      "property_damage_raw_delta": 180,
+      "primary_raw_add_delta": 540,
+      "provider_full_bloom": false,
+      "secondary_raw_add_delta": 300
+    },
+    {
+      "external_damage_delta": 126,
+      "property_damage_raw_delta": 216,
+      "primary_raw_add_delta": 648,
+      "provider_full_bloom": true,
+      "secondary_raw_add_delta": 360
+    }
+  ],
+  "pairing_diagnostics": {
+    "candidate_pair_mentions_retained": 185358,
+    "co_active_mismatch_effects_retained": 105,
+    "interpretation": "relaxing status controls did not produce a formula witness; no mismatch effect is silently ignored",
+    "mismatch_effects_with_packet_attribute_evidence": 53,
+    "relaxed_diagnostic_pairs": 10997,
+    "relaxed_exact_ratio_matches": 0,
+    "strict_pairs": 0
+  },
+  "policy": {
+    "current_tables_reinterpret_historical_packets": false,
+    "diagnostic_status_ignores_are_formula_authority": false,
+    "localized_descriptions_are_formula_authority": false,
+    "partial_vector_transfer_allowed": false,
+    "promotion_requires_complete_event_level_conservation": true,
+    "purpose": "one versioned, reproducible boundary between packet-proven Inspiration components and the remaining formula obligations",
+    "unresolved_evidence_hidden": false
+  },
+  "promotion_gate": {
+    "all_class_specific_mastery_consumers_proven": false,
+    "complete_vector_conservation_proven": false,
+    "complete_vector_counterfactual_proven": false,
+    "falconry_attack_external_light_candidate_conservation_complete": true,
+    "falconry_light_stage_placement_and_snapshot_proven": false,
+    "falconry_mastery_to_light_packet_relation_proven": true,
+    "critical_lucky_combined_occurrence_proven": true,
+    "haste_opportunity_model_proven": false,
+    "runtime_transfer_allowed": false
+  },
+  "promotion_state": "blocked-by-explicit-proof-obligations",
+  "server_integer_counterfactual_boundary": {
+    "finding": "Exact grouped packet state can produce different final damage for the same action and DamageAttr row, including 3343 then 3460 from the same reconstructed active base 1644. The per-hit server variance roll is not serialized.",
+    "integer_damage_without_provider_recoverable": false,
+    "policy": "Never manufacture a hypothetical rounded server integer. Attribute a reduced rational share of the actual packet-observed damage by removing all proven provider stages from one composite, so the roll is conserved rather than guessed.",
+    "runtime_primitive": "state_formula::exact_external_attack_and_factors_fraction"
+  },
+  "proof_components": [
+    {
+      "component": "primary-stat-to-attack",
+      "coverage_gap_buckets": 175,
+      "covered_events": 32373,
+      "covered_observed_damage": "3689715670",
+      "eligible_events": 41059,
+      "evidence_state": "exact-conserved-rational-share-for-resolved-standard-attack-events",
+      "remaining_obligation": "compose this base-stage share with every other provider-caused Inspiration stage once, without double-counting cross terms",
+      "runtime_component_enabled": false
+    },
+    {
+      "component": "critical-chance",
+      "evidence_state": "packet-transition-and-chance-occurrence-counterfactual-proven",
+      "remaining_obligation": "prove allocation only when an independent external critical-chance provider overlaps Inspiration; the single-provider critical-only and combined Critical-plus-Lucky event formulas are exact and conserved",
+      "runtime_component_enabled": false
+    },
+    {
+      "component": "lucky-strike-chance",
+      "evidence_state": "packet-transition-and-chance-occurrence-counterfactual-proven",
+      "remaining_obligation": "prove allocation only when an independent external lucky-chance provider overlaps Inspiration; the single-provider lucky-only and combined Critical-plus-Lucky event formulas are exact and conserved",
+      "runtime_component_enabled": false
+    },
+    {
+      "component": "versatility-to-external-damage",
+      "composite_events": 32373,
+      "composite_failures": 0,
+      "composite_observed_damage": "3689715670",
+      "configured_packet_proven_vectors": [
+        {
+          "attack_raw_delta": 360,
+          "external_damage_raw_delta": 126,
+          "property_damage_attribute_id": 13170,
+          "property_damage_raw_delta": 216,
+          "provider_full_bloom": true,
+          "required_damage_property": 7,
+          "status_gate": {
+            "effect_id": 2404271,
+            "expected_active": true,
+            "source_config_id": 2404270
+          }
+        },
+        {
+          "attack_raw_delta": 300,
+          "external_damage_raw_delta": 105,
+          "property_damage_attribute_id": 13170,
+          "property_damage_raw_delta": 180,
+          "provider_full_bloom": false,
+          "required_damage_property": 7,
+          "status_gate": {
+            "effect_id": 2404271,
+            "expected_active": false,
+            "source_config_id": 2404270
+          }
+        }
+      ],
+      "evidence_state": "packet-transition-conversion-and-cross-term-safe-composite-accounting-proven-factor-placement-unproven",
+      "partitioned_events": 41031,
+      "remaining_obligation": "prove the External Damage integer stage and snapshot against packet outcomes; do not count raw Versatility and derived External Damage twice",
+      "runtime_component_enabled": false,
+      "unclassified_events": 28
+    },
+    {
+      "attack_external_composite_events": 32373,
+      "attack_external_light_composite_events": 30955,
+      "attack_external_light_composite_failures": 0,
+      "attack_external_light_composite_observed_damage": "3634703784",
+      "component": "class-and-spec-specific-mastery",
+      "evidence_state": "exact-build-consumer-inventory-plus-falconry-mastery-to-light-transition-and-property-classified-three-stage-candidate-conservation",
+      "exact_build_consumer_count": 16,
+      "falconry_class_id": 11,
+      "falconry_light_damage_attribute_id": 13170,
+      "falconry_light_damage_property_id": 7,
+      "falconry_specialization_id": 117,
+      "general_or_other_property_events_retained": 1418,
+      "light_property_matching_events": 30955,
+      "mastery_to_light_integer_relation": {
+        "denominator": 100,
+        "numerator": 60,
+        "rounding": "floor-for-nonnegative-packet-deltas"
+      },
+      "remaining_obligation": "prove Light-property stage placement/order and calculation snapshot against packet outcomes, then prove applicability and integer formula separately for every other packet-observed class/spec/ability consumer; Mastery is not a universal damage factor",
+      "runtime_component_enabled": false,
+      "snapshot_gap_events": 374,
+      "state_controlled_observations": 0,
+      "wire_boundary_proof": {
+        "gap_damage_events": 397,
+        "gap_light_damage_events": 374,
+        "gap_damage_on_mastery_wire": 0,
+        "gap_damage_on_light_wire": 0,
+        "gap_damage_on_distinct_wire": 397,
+        "finding": "The serialized Mastery-to-Light gap is authoritative packet order, not a canonical event ordering artifact. Calculation-value selection remains unresolved."
+      }
+    },
+    {
+      "component": "haste-action-opportunity",
+      "evidence_state": "packet-attribute-transition-proven-opportunity-counterfactual-unproven",
+      "remaining_obligation": "prove additional actions in a conserved time-window model without assigning hypothetical unobserved hits",
+      "runtime_component_enabled": false
+    }
+  ],
+  "runtime_transfer_enabled": false,
+  "schema_version": 6,
+  "source_config_id": 2202040
+}

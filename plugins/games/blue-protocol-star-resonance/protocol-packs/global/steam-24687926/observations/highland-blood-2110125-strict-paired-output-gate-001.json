@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "observation_id": "highland-blood-2110125-strict-paired-output-gate-001",
+  "game_build": "24687926",
+  "protocol_pack_digest": "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+  "protocol_identity_role": "historical decoder identity recorded by the sealed runs",
+  "current_protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+  "subject": "Highland Blood effect 2110125 remote paired-output runtime gate",
+  "effect_identity": {
+    "effect_id": 2110125,
+    "provider_marker_effect_id": 2110124,
+    "provider_imagine_ability_id": 3957,
+    "companion_lockout_effect_id": 2110050
+  },
+  "sealed_inputs": [
+    {
+      "rlog": "runtime-data/logs/monitor-1787012554337.run-0002.rlog",
+      "sealed_content_sha256": "sha256:93515b91813e1a2656524bfcceaa8df36f880be81019a591238019ac2cb80219",
+      "bytes": 23402581,
+      "canonical_events": 606889,
+      "ordinary_damage_events": 78588,
+      "ordinary_damage_units": "9055909906",
+      "data_gaps": 5282,
+      "previous_paired_output_rows": 10,
+      "previous_paired_output_rdmg": "20952"
+    },
+    {
+      "rlog": "runtime-data/logs/monitor-1787015608640.run-0001.rlog",
+      "sealed_content_sha256": "sha256:fbfaede95269a7c18b0330c3ced90b3a0d674b5687759d35d926b0d89432454e",
+      "bytes": 16838479,
+      "canonical_events": 448546,
+      "ordinary_damage_events": 53639,
+      "ordinary_damage_units": "6793849706",
+      "data_gaps": 433,
+      "previous_paired_output_rows": 4,
+      "previous_paired_output_rdmg": "80925"
+    }
+  ],
+  "strict_counterfactual_audit": {
+    "damage_relationship": "source",
+    "effect_active_damage_events": 23119,
+    "effect_absent_damage_events": 109108,
+    "opposite_state_recent_comparisons": 897840,
+    "same_normalized_damage_context_pairs": 319,
+    "configured_endpoint_transition_pairs": 48,
+    "exact_observed_input_candidate_pairs": 0,
+    "strict_controlled_counterfactual_pairs": 0,
+    "minimum_residual_observed_state_dimensions": 13,
+    "spatial_state_safe_to_exclude": false,
+    "previous_paired_output_rows": 14,
+    "previous_paired_output_rdmg": "101877",
+    "strict_surviving_rows": 0,
+    "strict_surviving_rdmg": "0"
+  },
+  "ordinary_damage_conservation": {
+    "damage_events_before": 132227,
+    "damage_events_after": 132227,
+    "damage_units_before": "15849759612",
+    "damage_units_after": "15849759612",
+    "ordinary_damage_mutated": false
+  },
+  "runtime_decision": {
+    "runtime_transfer_enabled": true,
+    "direct_observed_final_runtime_transfer_enabled": true,
+    "remote_paired_output_runtime_transfer_enabled": false,
+    "sealed_run_historical_decoder_identity_enabled": true,
+    "prior_game_build_runtime_identities_enabled": false,
+    "paired_output_provider_rdps_credit_allowed": false,
+    "canonical_timeline_effect_retained": true,
+    "ordinary_damage_retained": true,
+    "retroactive_replay_when_strict_proof_closes": true
+  },
+  "open_proof_obligations": [
+    "complete source target and provider state baselines across capture gaps",
+    "exact packet and spatial input identity",
+    "proof that no hidden damage-stage input changed",
+    "exact operation order and integer rounding",
+    "canonical party-wide conservation replay"
+  ]
+}

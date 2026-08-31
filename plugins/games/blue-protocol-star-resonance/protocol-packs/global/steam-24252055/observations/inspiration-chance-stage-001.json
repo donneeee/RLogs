@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "game_build": "24252055",
+  "effect": {
+    "effect_id": 2202041,
+    "source_configuration_id": 2202040,
+    "name": "Inspiration",
+    "provider_scope": "external_player",
+    "recipient_scope": "player"
+  },
+  "policy": {
+    "runtime_enabled": false,
+    "unresolved_evidence_is_hidden": false,
+    "magnitude_source": "same-wire packet transition",
+    "fixed_catalog_magnitude_is_allowed": false,
+    "partial_effect_credit_is_allowed_in_displayed_rdps": false
+  },
+  "proven_chance_relations": [
+    {
+      "family": "critical_chance",
+      "final_attribute_id": 11710,
+      "raw_add_attribute_id": 11712,
+      "integer_relation": "delta(final_attribute) = delta(raw_add_attribute)",
+      "packet_observed_external_deltas": [250, 300, 360],
+      "unit": "ten_thousandths",
+      "proof_state": "packet_proven_reversible_dynamic_magnitude"
+    },
+    {
+      "family": "lucky_chance",
+      "final_attribute_id": 11780,
+      "raw_add_attribute_id": 11782,
+      "integer_relation": "delta(final_attribute) = delta(raw_add_attribute)",
+      "packet_observed_external_deltas": [300, 360],
+      "unit": "ten_thousandths",
+      "proof_state": "packet_proven_reversible_dynamic_magnitude"
+    }
+  ],
+  "exact_accounting_components": [
+    {
+      "component": "critical_occurrence_bonus",
+      "applies_when": "packet critical = true and packet lucky = false",
+      "critical_damage_attribute_id": 12510,
+      "formula": "observed_damage * critical_damage_raw * provider_critical_chance_delta / ((10000 + critical_damage_raw) * current_critical_chance_raw)",
+      "representation": "reduced rational",
+      "proof_state": "exact_conserved_accounting_component"
+    },
+    {
+      "component": "lucky_occurrence_row",
+      "applies_when": "packet critical = false and packet lucky = true",
+      "formula": "observed_damage * provider_lucky_chance_delta / current_lucky_chance_raw",
+      "representation": "reduced rational",
+      "proof_state": "exact_conserved_accounting_component"
+    }
+  ],
+  "sealed_replay_audit": {
+    "artifact": ".codex_tmp/rdps-inspiration-proc-attribution.sealed.v3.json",
+    "complete_dynamic_magnitude_instances": 5,
+    "conflicting_complete_instances": 0,
+    "external_windows_with_candidate_damage": 82,
+    "critical_candidate_events": 60594,
+    "lucky_candidate_events": 12960,
+    "combined_candidate_events": 517,
+    "events_with_exact_instance_magnitude": 1695,
+    "critical_component_events": 1691,
+    "lucky_component_events": 4,
+    "combined_events_with_exact_instance_magnitude_retained_unattributed": 428
+  },
+  "runtime_blockers": [
+    "Inspiration also changes primary stats, Mastery, Versatility, and Haste; those downstream damage and action-opportunity marginals are not yet exact.",
+    "Critical plus Lucky packet rows need one proven, non-overlapping component ordering before either occurrence component can be emitted for that row.",
+    "A displayed effect total must not present the exact chance component as complete Inspiration rDPS while the other packet-proven components remain unresolved."
+  ],
+  "evidence": [
+    ".codex_tmp/rdps-inspiration-chance-transitions.sealed.v1.json",
+    ".codex_tmp/rdps-inspiration-proc-attribution.sealed.v3.json",
+    "protocol-packs/global/steam-24252055/observations/damage-formula-fixed-point-001.json"
+  ]
+}

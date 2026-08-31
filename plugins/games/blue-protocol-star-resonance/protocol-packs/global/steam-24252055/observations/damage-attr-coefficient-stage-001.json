@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "game_build": "24252055",
+  "subject": "DamageAttr coefficient stage and calculation-mode boundary",
+  "sources": {
+    "damage_attr_table": {
+      "stable_key": "ctb.DamageAttrTable",
+      "sha256": "sha256:503bfab2c61908fa2258a57d952dae4af5a622e73c35dff7714456ab1240f092"
+    },
+    "text_description_table": {
+      "stable_key": "ctb.TextDescription",
+      "sha256": "sha256:696b96d3415e863155da993ee0c8c0634f5194e79de0d686186618ac32aef3cd"
+    }
+  },
+  "packet_selection_rule": {
+    "key": ["ability_id", "hit_event_suffix"],
+    "equivalent_table_fields": ["linked_source_id", "damage_id suffix"],
+    "state": "current_build_correlated"
+  },
+  "proofs": [
+    {
+      "ability_id": 2352,
+      "hit_event_suffix": 1,
+      "damage_id": 123520101,
+      "calculation_mode": "standard_attack",
+      "damage_input": "Attack",
+      "stored_coefficient_basis_points": 50000,
+      "current_english_description_percent": 500,
+      "conclusion": "exact 1/10000 coefficient scale"
+    },
+    {
+      "ability_id": 2352,
+      "hit_event_suffix": 3,
+      "damage_id": 123520103,
+      "calculation_mode": "standard_attack",
+      "damage_input": "Attack",
+      "stored_coefficient_basis_points": 8000,
+      "current_english_description_percent": 80,
+      "conclusion": "independent exact 1/10000 coefficient scale"
+    },
+    {
+      "ability_id": 2203531,
+      "hit_event_suffix": 1,
+      "damage_id": 2220353101,
+      "calculation_mode": "master_special_skill_attack",
+      "damage_input": "Attack",
+      "stored_coefficient_basis_points": 30000,
+      "current_english_description_percent": 400,
+      "conclusion": "stored coefficient is not the displayed total in this special mode"
+    }
+  ],
+  "policy": {
+    "standard_attack_coefficient_stage": "exact_and_eligible_for_stage_replay",
+    "master_special_skill_attack": "retain_event_and_row_but_return_no_counterfactual_until_formula_is_proven",
+    "final_damage_rdps": "not_enabled_by_this_observation"
+  }
+}

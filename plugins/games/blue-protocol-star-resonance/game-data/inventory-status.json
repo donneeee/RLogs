@@ -8,11 +8,11 @@
   "catalog": {
     "path": "game-data/catalog",
     "region_partitioned": false,
-    "records": 36136,
-    "localization_entries": 172502,
-    "assets": 54,
-    "compiled_shards": 1737,
-    "compiled_digest": "sha256:23cf320c6d3205981f1de14dba23391fdca296c11dd852e49a8990e605caec98"
+    "records": 38146,
+    "localization_entries": 195630,
+    "assets": 823,
+    "compiled_shards": 2296,
+    "compiled_digest": "sha256:9637057268a727472730b61cc0b88da149228686ee2646a7b0c5ed6532318b43"
   },
   "inventory": "research/game-file-inventory/global/steam-24252055",
   "domains": [
@@ -26,7 +26,7 @@
         "confirmed_rows": 329764,
         "distinct_row_ids": 153905,
         "named_rows_evaluated": 260189,
-        "corroborated_semantic_fields": 864,
+        "corroborated_semantic_fields": 866,
         "validated_row_key_tables": 548,
         "rejected_or_unresolved_semantic_seeds": 52,
         "exact_pool_reference_candidates": 1448,
@@ -136,34 +136,82 @@
     },
     {
       "domain": "world_and_instances",
-      "state": "first_core_catalog_promoted",
+      "state": "overworld_behavior_and_seasonal_instances_promoted",
       "evidence": {
         "named_domain_tables": 49,
         "promoted_records": {
           "scenes": 610,
           "maps": 203,
-          "dungeons": 589
+          "dungeons": 589,
+          "dungeon_seasons": 4,
+          "overworld_scenes": 16,
+          "world_areas": 120,
+          "world_events": 78,
+          "map_stickers": 56,
+          "subscenes": 22,
+          "activity_targets": 799,
+          "scene_events": 42,
+          "world_activities_identity_only": 6
+        },
+        "overworld_scan": {
+          "scene_transitions": 25,
+          "unresolved_transition_targets": 2,
+          "world_points": 1171,
+          "monster_placements": 3509,
+          "npc_placements": 5323,
+          "scene_object_placements": 2847,
+          "zone_placements": 3593,
+          "cross_domain_placement_id_collisions": 21,
+          "unassigned_subscenes": 9,
+          "unresolved_activity_target_scenes": 27,
+          "scene_event_target_references": 81,
+          "unresolved_scene_event_targets": 2,
+          "behavior_localization_entries": 8832,
+          "behavior_localization_locales": 11,
+          "missing_behavior_locale_cells": 1,
+          "scene_ownership_rule": "scene_id = floor(static_entity_definition_id / 10000000)",
+          "identity_boundary": "static entity-definition IDs are not runtime packet UUIDs",
+          "world_activity_policy": "publish the six proven row identities only; retain unnamed WorldAct fields in private build-scoped evidence"
+        },
+        "master_mode_scan": {
+          "activities": 19,
+          "tiers_per_activity": 20,
+          "tier_rows": 380,
+          "normalized_label_formats": 11,
+          "season_activity_counts": {
+            "1": 6,
+            "2": 6,
+            "3": 6,
+            "4": 1
+          },
+          "identity_state": "promoted_current_build",
+          "localized_label_state": "normalized_11_locale_formats_promoted_raw_70_mismatches_retained_as_evidence"
         },
         "reviewed_examples": [
           "SceneTable.ctb",
           "DungeonsTable.ctb",
           "MapInfoTable.ctb",
           "SceneAreaTable.ctb",
+          "SubSceneTable.ctb",
+          "TargetTable.ctb",
+          "SceneEventTable.ctb",
+          "WorldActTable.ctb",
           "DungeonStageTable.ctb",
           "DungeonTitleTable.ctb",
           "RaidDungeonTable.ctb"
         ]
       },
-      "next": "type remaining objectives, bosses, phases, region selectors, and unresolved array fields"
+      "next": "correlate the promoted objective graph with runtime completion packets, resolve the 27 missing scene references and two missing target IDs, independently name WorldAct fields, then type remaining Master score, reward, boss, and phase data"
     },
     {
       "domain": "entities",
-      "state": "first_core_catalog_promoted",
+      "state": "static_definitions_and_overworld_placements_promoted",
       "evidence": {
         "named_domain_tables": 37,
         "promoted_records": {
           "monsters": 3128,
-          "npcs": 4339
+          "npcs": 4339,
+          "referenced_world_objects": 613
         },
         "reviewed_examples": [
           "MonsterTable.ctb",
@@ -175,7 +223,7 @@
         ],
         "identity_boundary": "entity-definition IDs and static positions are not runtime entity UUIDs"
       },
-      "next": "type summons, entity owners, static entity-definition relations, and runtime UUID layouts without conflating row keys"
+      "next": "type summons and owners, then bridge the promoted static placement definitions to runtime UUID layouts with controlled packet evidence"
     },
     {
       "domain": "localization",
@@ -184,8 +232,11 @@
         "locales": 11,
         "union_ids": 171474,
         "promoted_referenced_ids": 15723,
-        "compiled_entries": 172502,
+        "compiled_distinct_keys": 17785,
+        "behavior_keys": 803,
+        "compiled_entries": 195630,
         "unresolved_official_references_preserved_as_ids": 41,
+        "current_behavior_locale_gap": "activity-target 111123 has no Thai text in the current th-TH client table; the other 10 shipped locales are preserved",
         "runtime_ownership_target": "data-only locale add-ons under plugins/builtin/localization/<locale>"
       },
       "next": "continue mapping beside the catalog, then move stable-key JSON shards into per-locale game namespaces and add UI namespaces"
@@ -202,7 +253,7 @@
         "icon_layout": "assets/blue-protocol-star-resonance/shared/icons/classes/<class>/horizontal.png",
         "guild_icon_layout": "assets/blue-protocol-star-resonance/shared/icons/guilds/badges/<id>-<name>.png",
         "imagine_icon_layout": "assets/blue-protocol-star-resonance/shared/icons/imagines/battle/<item-id>-<name>.png",
-        "compiled_assets": 140
+        "compiled_assets": 823
       },
       "next": "resolve skill, status, equipment, entity, map, and profile icons into matching searchable domain folders"
     },

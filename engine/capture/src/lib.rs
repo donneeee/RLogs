@@ -2,6 +2,8 @@
 
 #[cfg(windows)]
 mod dumpcap;
+#[cfg(windows)]
+mod npcap;
 mod offline;
 mod pcap_writer;
 mod process_filter;
@@ -16,6 +18,8 @@ use thiserror::Error;
 
 #[cfg(windows)]
 pub use dumpcap::{DumpcapLiveConfig, LiveCaptureStopHandle};
+#[cfg(windows)]
+pub use npcap::{NpcapLiveConfig, NpcapLiveStopHandle, npcap_available, npcap_device_name};
 pub use offline::OfflineCapture;
 pub use pcap_writer::{PcapWriteError, PcapWriter};
 pub use process_filter::{
@@ -29,7 +33,8 @@ pub use recording::{
 #[cfg(windows)]
 pub use windows::{
     WindowsCaptureAdapter, WindowsCaptureAdapterRecommendation,
-    WindowsCaptureAdapterRecommendationSource, WindowsOwnedDumpcapCapture,
+    WindowsCaptureAdapterRecommendationSource, WindowsLiveCaptureStopHandle,
+    WindowsOwnedDumpcapCapture, WindowsOwnedLiveCapture, WindowsOwnedNpcapCapture,
     WindowsProcessSocketOwner, recommend_windows_capture_adapter, windows_capture_adapters,
 };
 

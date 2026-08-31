@@ -1,0 +1,163 @@
+{
+  "schema_version": 2,
+  "observation_id": "oblivion-dream-effect-3003012-critical-family-toggle-001",
+  "game_build": "24687926",
+  "subject": "Rejected Oblivion Dream effect 3003012 candidate: decoded skill-effect component shapes differ",
+  "policy": {
+    "runtime_formula_authority": false,
+    "unresolved_events_are_retained": true,
+    "unproven_attribution_is_guessed": false,
+    "retroactive_recalculation_supported": true,
+    "diagnostic_attributes_select_pairs": false
+  },
+  "selected_effect": {
+    "effect_id": 3003012,
+    "nominal_bonus_raw": 1000,
+    "nominal_unit": "basis_points",
+    "observed_scope": "target",
+    "ignored_non_damage_control_effect_ids": [3003014]
+  },
+  "capture": {
+    "rlog": "runtime-data/logs/monitor-1787015608640.run-0001.rlog",
+    "source_entity_uuid": 216009015936,
+    "direct_source_entity_uuid": 3441344,
+    "target_entity_uuid": 7208501312,
+    "ability_id": 55240,
+    "hit_event_id": 3,
+    "damage_source": 2,
+    "type_flags": 1,
+    "inactive_sequence": 43420,
+    "active_sequence": 44120,
+    "gap_micros": 159029,
+    "inactive_selected_effect_stacks": 0,
+    "active_selected_effect_stacks": 1,
+    "inactive_damage": 62390,
+    "active_damage": 67563,
+    "inactive_skill_effect_component": {
+      "group_index": 22,
+      "component_index": 0,
+      "component_count": 2
+    },
+    "active_skill_effect_component": {
+      "group_index": 18,
+      "component_index": 0,
+      "component_count": 1
+    },
+    "critical": true,
+    "lucky": false
+  },
+  "attribute_observations": {
+    "critical_damage_family": [
+      {
+        "attribute_id": 12510,
+        "name": "AttrCritDamage",
+        "inactive_value": 20626,
+        "active_value": 20401,
+        "delta": -225
+      },
+      {
+        "attribute_id": 12511,
+        "name": "AttrCritDamageTotal",
+        "inactive_value": 20626,
+        "active_value": 20401,
+        "delta": -225
+      },
+      {
+        "attribute_id": 12512,
+        "name": "AttrCritDamageAdd",
+        "inactive_value": 20626,
+        "active_value": 20401,
+        "delta": -225
+      }
+    ],
+    "interpretation": "The three serialized values move together and are one observed critical-damage-family state change. This observation does not treat them as three independent modifiers.",
+    "luck_damage_attribute_12530": {
+      "inactive_value": 4125,
+      "active_value": 4125,
+      "delta": 0
+    }
+  },
+  "control_result": {
+    "all_other_semantic_source_and_target_statuses_equal_in_legacy_coarse_pair": true,
+    "selected_effect_only_status_toggle_after_ignored_controls_in_legacy_coarse_pair": true,
+    "exact_decoded_skill_effect_component_identity_equal": false,
+    "critical_damage_attribute_stable": false,
+    "diagnostic_critical_family_co_moved": true,
+    "status": "rejected-component-shape-mismatch"
+  },
+  "concurrent_target_statuses": {
+    "stable_in_both_hits": [
+      {
+        "effect_id": 510083,
+        "source_rule_id": "mrs:b1b6d36f47c4",
+        "classification": "observed-dungeon-state-marker",
+        "outgoing_rdps_eligible": null,
+        "pair_effect": "cancels-because-stable"
+      },
+      {
+        "effect_id": 510087,
+        "source_rule_id": "mrs:c78a5712b46c",
+        "classification": "observed-dungeon-state-marker",
+        "outgoing_rdps_eligible": null,
+        "pair_effect": "cancels-because-stable"
+      },
+      {
+        "effect_id": 702001,
+        "source_rule_id": "mrs:d2f28ed5b866",
+        "classification": "observed-season-state-marker",
+        "outgoing_rdps_eligible": null,
+        "pair_effect": "cancels-because-stable"
+      },
+      {
+        "effect_id": 2203031,
+        "source_talent_id": 1102,
+        "source_talent_name": "Vulnerable Strike",
+        "classification": "self-only-target-vulnerability",
+        "nominal_bonus_raw": 1000,
+        "outgoing_rdps_eligible": false,
+        "pair_effect": "cancels-because-stable",
+        "reason": "The source talent states that it increases damage dealt by the applying player, including locales that explicitly say damage from yourself. The shorter buff text is not authority for party transfer."
+      },
+      {
+        "effect_id": 2203571,
+        "source_buff_id": 2203570,
+        "source_talent_id": 1157,
+        "source_talent_name": "Light Energy Stasis",
+        "source_rule_id": "mrs:5083ee8b68f4",
+        "classification": "movement-speed-reduction",
+        "outgoing_rdps_eligible": false,
+        "pair_effect": "cancels-because-stable"
+      },
+      {
+        "effect_id": 2203572,
+        "source_buff_id": 2203570,
+        "source_talent_id": 1157,
+        "source_talent_name": "Light Energy Stasis",
+        "source_rule_id": "mrs:f2ab8060a6f6",
+        "classification": "source-specific-guaranteed-critical-marker",
+        "outgoing_rdps_eligible": false,
+        "pair_effect": "cancels-because-stable"
+      }
+    ],
+    "proven_external_transferable_general_damage_overlaps": [],
+    "interpretation": "No other proven externally transferable general-damage provider overlaps this pair. Stable statuses cancel in the relative comparison, but unresolved state markers remain retained and prevent claims about the absolute server formula."
+  },
+  "formula_check": {
+    "critical_formula": "floor(precritical_damage * (10000 + AttrCritDamage) / 10000)",
+    "selected_effect_candidate": "10 percent multiplicative target-side damage increase",
+    "corrected_formula_residual_damage": -561,
+    "residual_is_diagnostic_only": true,
+    "candidate_rejected_before_formula_evaluation": true,
+    "exact_replay": false,
+    "runtime_attribution_promoted": false
+  },
+  "conclusion": [
+    "The legacy coarse selector found an apparent 3003012 inactive-to-active toggle for the same source, direct source, target, ability, hit event, critical outcome, and lucky outcome.",
+    "The two hits are not the same decoded damage component: the inactive hit is group 22 component 0 of 2, while the active hit is group 18 component 0 of 1.",
+    "The pair also is not attribute-stable because the critical-damage family changes concurrently by -225.",
+    "The previously calculated -561 residual is retained as diagnostic evidence only; the component mismatch rejects the pair before any formula or attribution claim.",
+    "Schema 26 now requires exact skill-effect UUID, group, component index, and component count, producing zero status-controlled pairs and no rDPS promotion for this capture.",
+    "The underlying event remains eligible for retroactive attribution when a later evidence-backed rule resolves the formula."
+  ],
+  "proof_artifact": "private-research/rdps/current-build-24687926.effect-3003012.oblivion-component-strict.v4.json"
+}

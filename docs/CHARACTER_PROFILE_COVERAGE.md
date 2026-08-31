@@ -35,6 +35,7 @@ Reference pins:
 | game profile and half-body pictures | future reviewed image reference | URL tag and changed verification substructure verified without rendering values | explicit opt-in through reviewed CDN proxy |
 | equipped gear | `equipment` | 11 slots joined to item instance/config IDs in the complete snapshot; quality and exact-build static definitions available | public |
 | refinement, enchantments, and sets | nested equipment fields | refinement/failure counts, attribute maps, and enchantment IDs/levels/types verified; effective item level and set ID remain unmapped | public |
+| equipment suit-entry map | `equipment_suit_entries` | current tag-6 map shape verified with keys 5 and 6; both nested records were empty, so the keys are retained without claiming they are set-family IDs | public only after exact set identity is proven |
 | equipped modules and module inventory | `modules` | verified: 5 equipped slots and 649 package-5 module instances, with browser-safe string instance IDs | opt-in public |
 | module parts, initial links, upgrade history, type, level, quality, and success rate | nested `modules.inventory` fields | verified: 1,937 current parts, initial-link values on all 649 modules, and 9,526 upgrade records | opt-in public |
 | owned/equipped Imagine item state | `owned_imagines` | decoder implemented; the verified snapshot carried no entries on this source | opt-in public |
@@ -48,7 +49,7 @@ Reference pins:
 | fashion, mount, weapon-skin, and dye ownership/collection points | `collection_summary` | 10 equipped fashion slots, owned IDs, and collection-point totals verified | opt-in public |
 | rides, ride skins, emojis, vanity pets, Fantasy Atlas, and handbook | nested `collection_summary` fields | 1 ride, 1 ride skin, 53 emojis, 2 pets, 2 atlas stages, and 440 handbook entries verified | opt-in public |
 | dungeon, master-mode, and weekly-tower progression | `activity_progress` | 133 master-mode rows and weekly-tower state verified; normal challenge arrays were empty | opt-in public |
-| seasonal medals and cultivation | `season_medals`, `season_cultivation` | 7 holes, 8 nodes, 2 season records, 4 lines, and 16 areas verified | opt-in public |
+| seasonal medals and cultivation | `season_medals`, `season_cultivation` | 7 holes, 8 nodes, 2 season records, 4 lines, and 16 areas verified; season 3 explicitly selected 2 active areas, 12 middle-node factor item IDs, and 5 big-node Fantasy IDs | opt-in public |
 | reputation and current profession project | `reputations`, `current_profession_project_id` | one reputation row and a current project ID verified | opt-in public |
 | guild, titles, and medal map | `social_display` | guild identity/name and title verified; medal IDs are retained locally while owned-vs-displayed semantics remain pending | public guild identity/display; opt-in titles and medals |
 | combat-power component breakdown | `combat_power_breakdown` | total plus 6 function components and 4 nested subcomponents verified | public per build |
@@ -89,9 +90,43 @@ also verifies 29 Battle Imagine skill records with 2 equipped slots, 4
 profession talent loadouts containing 200 selected nodes, total talent points,
 extended ride/emoji/pet/atlas/handbook collections, 133 master-mode dungeon
 rows, weekly-tower progress, seasonal medal and cultivation state, reputation,
-and the current profession project. The snapshot did not carry server ID,
+and the current profession project. A later selective replay also verified the
+equipment tag-6 `suit_info_dict` shape. It contained map keys `5` and `6`, but
+both nested records had no attribute type or attribute values. RLogs therefore
+retains the two entries as structural evidence and does not reinterpret either
+key as a set-family ID. The snapshot did not carry server ID,
 talent reset count, talent-stage configuration, or scene data, so
 region/world and map context remain separate evidence requirements.
+
+## Local and remote character scope
+
+Character availability is tracked separately from protobuf declaration. The
+machine-readable matrix is
+`plugins/games/blue-protocol-star-resonance/protocol-references/exposure-matrix/global-steam-24252055.json`.
+
+- Owner-container routes expose the complete local character snapshot,
+including inventories, modules, professions, talents, collections, and the
+owner's exact ordered action slots. The complete snapshot also carries the
+owner's current Psychoscope cultivation selection: the current season, active
+line areas, middle-node factor grade item IDs, and big-node Fantasy IDs. These
+runtime IDs are resolved against the exact-build BPSR catalog by the game
+plug-in; inventory ownership alone is never treated as selection.
+- Party snapshots currently prove public UID, display identity, class, level,
+  ability score, and seasonal strength for each member. Public equipment item
+  IDs exist in the reviewed schema but were absent from the retained real-player
+  team observation.
+- Nearby-player AOI state exposes entity UUID, class, level, ability score,
+  seasonal strength, weapon configuration, and observed skill/remodel evidence.
+  That evidence can identify remote primary Imagines and observed auxiliary
+  actions, but it is not an ordered remote slot map.
+- The public social surface exposes public character presentation such as
+  avatar/card/frame IDs, guild, title/medal display, equipment configuration,
+  and current scene context. It does not contain a complete `ProfessionList`,
+  talent tree, modules, or ordered auxiliary slots.
+
+Website-assisted profile lookup is intentionally deferred. It will belong to
+the BPSR Profile Sync plug-in and must be designed together with the website
+API; it is not a Core or base packet-decoder responsibility.
 
 The current character container has observed top-level tags through `121`.
 The current BPSR-Deeps schema names every observed top-level tag, including
@@ -146,7 +181,8 @@ inventory and unresolved worklist are under
 - proven names for the three remaining module-initialization roll dimensions
   and user-facing optimizer scoring presets;
 - specialization selectors, passive ownership, cooldown configuration, and
-  seasonal cultivation choices;
+  the dirty-delta path used to update already-verified seasonal cultivation
+  choices without waiting for another complete snapshot;
 - the website implementation of the now-promoted exact talent-board layout,
   active-stage filtering, icons, and accessible list view;
 - seasonal power, rank/reduction levels, and other progression systems;

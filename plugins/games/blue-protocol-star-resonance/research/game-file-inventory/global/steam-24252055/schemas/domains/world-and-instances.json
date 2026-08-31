@@ -10843,9 +10843,9 @@
       },
       {
         "offset": 73,
-        "name": "end_time_seconds",
-        "type": "i32",
-        "semantic": "scalar",
+        "name": "monster_level_rules",
+        "type": "u32",
+        "semantic": "int_pool_array_offset",
         "state": "current_build_validated",
         "confidence": "corroborated_reference_current_build",
         "evidence": [
@@ -10855,9 +10855,9 @@
       },
       {
         "offset": 77,
-        "name": "monster_combat_power",
-        "type": "i32",
-        "semantic": "scalar",
+        "name": "season_ids",
+        "type": "u32",
+        "semantic": "int_pool_array_offset",
         "state": "current_build_validated",
         "confidence": "corroborated_reference_current_build",
         "evidence": [
@@ -10866,7 +10866,31 @@
         ]
       },
       {
-        "offset": 97,
+        "offset": 81,
+        "name": "season_level_requirements",
+        "type": "u32",
+        "semantic": "int_pool_array_offset",
+        "state": "current_build_validated",
+        "confidence": "corroborated_reference_current_build",
+        "evidence": [
+          "reviewed_public_reference_decoder",
+          "current_build_structural_validation"
+        ]
+      },
+      {
+        "offset": 85,
+        "name": "season_rank_requirements",
+        "type": "u32",
+        "semantic": "int_pool_array_offset",
+        "state": "current_build_validated",
+        "confidence": "corroborated_reference_current_build",
+        "evidence": [
+          "reviewed_public_reference_decoder",
+          "current_build_structural_validation"
+        ]
+      },
+      {
+        "offset": 89,
         "name": "loads_rank",
         "type": "bool",
         "semantic": "scalar",
@@ -10878,7 +10902,7 @@
         ]
       },
       {
-        "offset": 98,
+        "offset": 90,
         "name": "result_hud_type",
         "type": "i32",
         "semantic": "scalar",

@@ -118,6 +118,28 @@ sibling folder without modifying the game-neutral Core contracts.
 
 User-facing analysis belongs in plugins whenever practical.
 
+### Shared combat projection contract
+
+Combat History, the live meter, overlays, submissions, and future analysis
+plug-ins are consumers of the same resolved combat model. They must not own
+parallel BPSR interpretation code.
+
+- Core decodes and orders each canonical event once.
+- The combat reducer derives shared actor, target, segment, timing, aggregate,
+  and rDPS state once from that event stream.
+- The selected trusted game plug-in is the sole authority for game-specific
+  actor identity, class and specialization presentation, scene/run identity,
+  boss identity, game asset references, localization keys, and recount rules.
+- Feature plug-ins receive those resolved values and may choose how to render
+  them. They must not rescan packets, re-resolve IDs, or recalculate an
+  alternate copy of the same combat state.
+
+Historical projections freeze the resolved evidence captured for that run.
+Live projections incrementally update the same model. Only genuinely live
+concerns such as the current clock, active segment, visibility delay, and
+native window behavior belong to the overlay adapter. Therefore a resolver or
+catalog fix becomes visible to every consumer without a feature-specific port.
+
 ## Plugin model
 
 Bundled plugins and third-party plugins use the same versioned API. Initial

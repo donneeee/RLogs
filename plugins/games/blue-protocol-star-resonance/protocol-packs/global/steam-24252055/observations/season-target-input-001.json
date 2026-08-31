@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "client_build": "24252055",
+  "subject": "packet-proven source-side mirror of the current damage target's season strength",
+  "policy": {
+    "runtime_formula_authority": false,
+    "packet_input_identity_authority": true,
+    "static_table_label_is_runtime_authority": false,
+    "unresolved_evidence_is_hidden": false,
+    "rdps_enablement": "The mirror may be used as an exact observed formula input, but no season counterfactual is enabled until the integer transform, row selection, caps, and rounding order replay exactly."
+  },
+  "scope": {
+    "sealed_rlogs": [
+      ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260730-235717.rlog",
+      ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260731-010244.rlog",
+      ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260731-010829.rlog"
+    ],
+    "audit": ".codex_tmp/all-abilities-formula-proof.wire-start.v36.json",
+    "tool": "rlogs-bpsr-state-scaling-damage-proof",
+    "tool_schema_version": 36,
+    "damage_events": 166236
+  },
+  "attribute_identity": {
+    "source_attribute_id": 11450,
+    "target_attribute_id": 11440,
+    "source_attribute_role": "target-season input mirrored into the damage source's packet state",
+    "target_attribute_role": "target season strength",
+    "comparison_timing": "wire-message start before mutations carried by the same decoded message"
+  },
+  "proof": {
+    "samples_with_source_target_input": 154071,
+    "samples_with_target_season_strength": 160950,
+    "comparable_samples": 151014,
+    "exact_match_samples": 151014,
+    "mismatch_samples": 0,
+    "source_target_input_without_target_strength_samples": 3057,
+    "target_strength_without_source_target_input_samples": 9936,
+    "distinct_mismatches": []
+  },
+  "conclusion": "For every current-build damage event where both values were packet-observed, source attribute 11450 exactly equaled the current target's attribute 11440. The client table's static label is therefore insufficient to exclude 11450 from damage research.",
+  "remaining_boundaries": [
+    "the numeric season transform and its FightAttrTran row selection",
+    "the integer placement and rounding order relative to attack, defense, mastery, versatility, and outgoing buckets",
+    "the meaning of samples where only one side of the mirror was present",
+    "whether the server snapshots this input at cast, projectile, or hit time for delayed attacks"
+  ]
+}

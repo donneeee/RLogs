@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "client_build": "24252055",
+  "scope": "saved-combat-history-observed-action-resolution",
+  "history_artifacts_reviewed": 11,
+  "unique_observed_action_ids": 333,
+  "unresolved_before_reviewed_overlay": 31,
+  "unresolved_after_reviewed_overlay": 23,
+  "unresolved_player_action_ids_before": 12,
+  "unresolved_player_action_ids_after": 6,
+  "policy": "Preserve the raw action ID and unresolved state until a current-build packet or table relation proves one display identity.",
+  "remaining_player_actions": [
+    {
+      "ability_id": 2203291,
+      "observed_damage": 7054441689,
+      "design_evidence": "Firmament Fall child status effect",
+      "candidate_recount_relations": [
+        {
+          "recount_group_id": 94,
+          "localization_key": "recount_group.94.name",
+          "encoded_damage_id": "2220329107"
+        },
+        {
+          "recount_group_id": 95,
+          "localization_key": "recount_group.95.name",
+          "encoded_damage_id": "2220329109"
+        }
+      ],
+      "missing_discriminator": "The current canonical damage event retains action 2203291 but not the terminal 07 or 09 damage-source discriminator.",
+      "review_state": "ambiguous-two-way-relation"
+    },
+    {
+      "ability_id": 2203531,
+      "observed_damage": 1898632601,
+      "design_evidence": "Phantom Falcon AOE status effect",
+      "candidate_recount_relations": [],
+      "missing_discriminator": "The current RecountTable places encoded damage ID 2220353101 only in the generic Other group; an exact parent skill or effect-source relation is still required.",
+      "review_state": "design-only"
+    },
+    {
+      "ability_id": 3054440,
+      "observed_damage": 38519442,
+      "design_evidence": "Season 3 next-damage Holy Sword trigger with maximum-health percentage damage",
+      "candidate_recount_relations": [],
+      "missing_discriminator": "The current RecountTable places encoded damage ID 2305444006 only in the generic Other group; the granting season factor or skill source is not yet proven.",
+      "review_state": "design-only"
+    },
+    {
+      "ability_id": 3003213,
+      "observed_damage": 10630358,
+      "design_evidence": "Illusory Judgment child status-effect skill",
+      "candidate_recount_relations": [],
+      "missing_discriminator": "The current RecountTable places encoded damage ID 2300321301 only in the generic Other group; the exact parent action is not yet proven.",
+      "review_state": "design-only"
+    },
+    {
+      "ability_id": 3524,
+      "observed_damage": 9999999,
+      "design_evidence": null,
+      "candidate_recount_relations": [],
+      "missing_discriminator": "No direct current-build SkillTable, BuffTable, Battle Imagine, auxiliary-action, or specific RecountTable identity was found.",
+      "review_state": "identity-missing"
+    },
+    {
+      "ability_id": 3525,
+      "observed_damage": 9999999,
+      "design_evidence": null,
+      "candidate_recount_relations": [],
+      "missing_discriminator": "No direct current-build SkillTable, BuffTable, Battle Imagine, auxiliary-action, or specific RecountTable identity was found.",
+      "review_state": "identity-missing"
+    }
+  ]
+}

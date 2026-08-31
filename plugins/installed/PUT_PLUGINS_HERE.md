@@ -1,5 +1,9 @@
 # Put installed plug-ins here
 
+Everything under this folder except this guide is ignored by Git. This keeps
+locally installed plug-in code, credentials, and machine-specific settings out
+of the public rLogs repository.
+
 Create or extract each plug-in as its own folder:
 
 ```text

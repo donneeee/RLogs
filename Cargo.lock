@@ -3061,6 +3061,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlogs-bpsr-factor-capture-audit"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "rlogs-game-bpsr",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rlogs-bpsr-module-optimizer"
 version = "0.1.0"
 dependencies = [
@@ -3223,6 +3233,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "walkdir",
+ "zstd",
 ]
 
 [[package]]

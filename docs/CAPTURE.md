@@ -28,8 +28,11 @@ deterministic monotonic replay time.
 `engine/core` pipeline now carries exact-allowlisted offline frames through
 link/IP/TCP decoding and bounded reconstruction. The selected trusted game
 plug-in receives only the resulting directional streams; the bundled BPSR
-plug-in performs BPSR framing and private JSONL journaling. A native live
-Npcap/libpcap adapter remains a later slice.
+plug-in performs BPSR framing and private JSONL journaling. The Windows desktop
+loads the installed Npcap `wpcap.dll` directly from the trusted system
+directory and opens the selected `\\Device\\NPF_{GUID}` adapter without
+requiring Wireshark or `dumpcap.exe`. A configured dumpcap path remains a
+compatibility fallback. A portable Linux libpcap adapter remains a later slice.
 
 ## Stored formats
 
@@ -55,8 +58,8 @@ transition that rotates the remote server. See
 [Controlled Global capture](CONTROLLED_CAPTURE.md).
 
 The Windows live adapter tracks the process-owned socket table while capturing.
-Dumpcap sends broad TCP frames only through a child-process pipe; it receives no
-filesystem output path. RLogs holds unattributed frames in bounded memory long
+Native Npcap ingress, or the optional dumpcap compatibility pipe, never receives
+a filesystem output path. RLogs holds unattributed frames in bounded memory long
 enough to confirm ownership, then discards unrelated traffic before TCP
 reconstruction, protocol decoding, or persistence. A newly observed flow can
 be retained only after its exact tuple is attributed to the selected game
@@ -73,4 +76,6 @@ privilege-separated helper, or platform-specific drivers. They are alternate
 frame sources, not alternate decoders. The canonical pipeline remains singular.
 
 Npcap redistribution and installer terms must be reviewed before RLogs bundles
-an installer. Early development may require users to install Npcap separately.
+the driver itself. The rLogs installer does not redistribute Npcap; it uses an
+existing Npcap installation directly and reports a clear capture error when the
+driver is absent.

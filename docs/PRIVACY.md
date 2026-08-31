@@ -51,6 +51,26 @@ and accepts only a safe relative endpoint; the host alone owns the configured
 website origin and authentication. Raw packet journals are never the
 submission artifact.
 
+## Submission export boundary
+
+The desktop creates a separate sealed upload artifact. It never uploads the
+private PCAP, connection evidence, Ethernet/IP/TCP headers, source or
+destination IP addresses, MAC addresses, interface identifiers, or unrelated
+network traffic. The export removes chat events and free-form region evidence,
+then rejects the entire artifact if it contains a local-sensitive event or a
+protected account, contact, authentication, credential, or payment field.
+
+Character gameplay identity remains intentional evidence: character name and
+UID, class/spec, captured loadout and progression, combat actions, effects,
+entities, dungeon context, and timing may be retained. The receiver repeats the
+same validation and accepts only the current privacy-policy digest before it
+stores or archives an artifact.
+
+The HTTPS hosting provider necessarily handles a contributor's network address
+while routing a live connection. The rLogs receiver does not place that address
+in manifests, projections, application logs, stored artifacts, or the private
+GitHub research archive.
+
 Game-file research follows the same boundary. Checked-in inventories may
 contain relative client paths, digests, public game identifiers, table shapes,
 asset identities, and aggregate relationship evidence. Raw client payloads,

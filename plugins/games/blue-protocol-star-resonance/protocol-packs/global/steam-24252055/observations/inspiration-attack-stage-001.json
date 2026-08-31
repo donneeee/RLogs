@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "game_build": "24252055",
+  "effect": {
+    "effect_id": 2202041,
+    "source_configuration_id": 2202040,
+    "name": "Inspiration",
+    "provider_scope": "external_player",
+    "recipient_scope": "player"
+  },
+  "policy": {
+    "runtime_enabled": false,
+    "unresolved_evidence_is_hidden": false,
+    "partial_effect_credit_is_allowed_in_displayed_rdps": false,
+    "game_table_is_packet_occurrence_authority": false,
+    "provider_magnitude_source": "same-wire packet attribute transition"
+  },
+  "selected_packet_transition": {
+    "recipient_entity_uuid": 216009015936,
+    "attack_family": "physical",
+    "final_attribute_id": 11330,
+    "intermediate_attribute_id": 11331,
+    "base_add_attribute_id": 11332,
+    "extra_add_attribute_id": 11333,
+    "raw_percent_attribute_id": 11334,
+    "provider_base_add_delta": 360,
+    "integer_family_formula": "final=floor(base_add*(10000+raw_percent)/10000)+extra_add",
+    "counterfactual": "remove exactly 360 from base_add before replaying the same packet family"
+  },
+  "exact_accounting_stage": {
+    "eligible_damage_scripts": ["Attack", "MAttack"],
+    "formula": "active_body=floor(active_attack*coefficient/10000)+fixed; provider_body=active_body-(floor(provider_removed_attack*coefficient/10000)+fixed); provider_share=observed_damage*provider_body/active_body",
+    "representation": "reduced rational grouped by exact denominator",
+    "later_unresolved_stages": "preserved proportionally without guessing their integer implementation",
+    "proof_state": "exact_conserved_standard_damage_attr_attack_stage"
+  },
+  "sealed_replay_audit": {
+    "artifact": ".codex_tmp/rdps-inspiration-attack-base-add-proof.v28.json",
+    "artifact_sha256": "46191712134545f3652e89e9327fc222cfad4d5ad195a6ea8b2201a4b1bb03ed",
+    "canonical_rlog": ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260731-010829.rlog",
+    "canonical_rlog_sha256": "9350b856534d124283a10441cc3ef7722fa847e1cd3b101dd1db03616a9ceaea",
+    "damage_surface": ".codex_tmp/damage-formula-surface.current-24252055.v1.json",
+    "damage_surface_sha256": "9af67b71adc26662efe918e4e7867a379baf0f2b741cb47c86ddf528e30d89ac",
+    "selected_status_events": 3154,
+    "external_active_damage_events": 31362,
+    "events_with_exact_attack_family_reversal": 31267,
+    "events_with_unique_damage_row": 30958,
+    "events_with_standard_attack_script": 30159,
+    "events_with_exact_stage_coefficient": 30159,
+    "events_with_exact_conserved_share": 30159,
+    "exact_conserved_share_observed_damage": 3326630368,
+    "exact_denominator_buckets": 594,
+    "denominator_buckets_failing_conservation": 0
+  },
+  "retained_coverage_gaps": [
+    {
+      "reason": "packet Attack family could not be reversed exactly",
+      "events": 95,
+      "observed_damage": 12494638,
+      "runtime_policy": "retain canonical damage and do not attribute this stage"
+    },
+    {
+      "reason": "missing or non-unique current-build DamageAttr key",
+      "events": 309,
+      "observed_damage": 4587095,
+      "runtime_policy": "retain canonical damage and exact ability/hit identity for catalog repair"
+    },
+    {
+      "reason": "DamageAttr script is not standard Attack or MAttack",
+      "events": 799,
+      "observed_damage": 81922010,
+      "runtime_policy": "retain canonical damage and prove each other script family separately"
+    }
+  ],
+  "runtime_blockers": [
+    "The standard Attack stage is only one component of Inspiration; chance, Mastery, Versatility, and Haste must be composed without overlapping cross-terms.",
+    "The selected +360 base-add transition applies only to the filtered recipient. Runtime must use each recipient's packet-proven dynamic delta rather than a fixed catalog value.",
+    "Nonstandard DamageAttr scripts and rows without a unique current-build key remain explicit coverage gaps.",
+    "Displayed Inspiration rDPS remains disabled until the complete effect conserves exactly."
+  ]
+}

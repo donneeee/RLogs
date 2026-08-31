@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "observation_id": "dungeon-no-wipe-001",
+  "target_pack_id": "global-steam-24252055-research",
+  "client_build": "24252055",
+  "scenario": "One authenticated Global dungeon run captured from before entry through the post-completion return to the world. Login and authentication were outside the capture window.",
+  "capture": {
+    "session_id": "dungeon-no-wipe-20260730-172151",
+    "packet_count": 8529,
+    "canonical_event_count_before_promotion": 32254,
+    "data_gap_count": 7
+  },
+  "route_evidence": {
+    "direction": "server_to_client",
+    "fragment": "notify",
+    "service_id": 1664308034,
+    "method_id": 24,
+    "service_name": "WorldNtf",
+    "method_name": "SyncDungeonDirtyData",
+    "packet_count": 60,
+    "disposition_before_review": "opaque",
+    "decoder_under_review": "sync_dungeon_dirty_data_v1"
+  },
+  "world_evidence": {
+    "origin_scene_id": 8,
+    "dungeon_scene_id": 1631,
+    "scene_localization_key": "scene.1631.name",
+    "scene_name_en_us": "Chaotic - Tina's Mindrealm",
+    "difficulty_family": "normal",
+    "difficulty_source": "capture_operator_confirmed",
+    "observed_instance_id": "14783",
+    "returned_to_origin_scene": true
+  },
+  "decoded_flow_evidence": {
+    "decoded_packet_count": 60,
+    "decode_failure_count": 0,
+    "state_sequence": [1, 2, 3, 4, 5, 6],
+    "playing_state_id": 3,
+    "end_state_id": 4,
+    "successful_result_id": 1,
+    "objective_ids": [100178, 100176, 100164],
+    "completed_objective_ids": [100178, 100176, 100164]
+  },
+  "timing_evidence_micros": {
+    "run_started": 44659281,
+    "first_hostile_damage": 61934505,
+    "mobbing_objective_completed": 78525111,
+    "boss_phase_gate_completed": 101012712,
+    "boss_first_hostile_damage": 108276509,
+    "boss_died": 122372916,
+    "run_completed": 127440052,
+    "wall_time": 82780771
+  },
+  "actor_evidence": {
+    "boss_monster_id": 33701,
+    "boss_localization_key": "monster.33701.name",
+    "boss_name_en_us": "Tina - Void Reverie",
+    "boss_entity_uuid": 6818431040,
+    "boss_level": 60
+  },
+  "privacy": {
+    "contains_raw_payloads": false,
+    "contains_credentials": false,
+    "contains_account_authentication": false,
+    "contains_chat_content": false
+  },
+  "review_status": "verified_exact_replay"
+}

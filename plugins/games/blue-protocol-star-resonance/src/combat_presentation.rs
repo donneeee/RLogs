@@ -579,7 +579,13 @@ mod tests {
             (997_538, "Synergy Crit Field"),
             (997_570, "Tactical Blessing"),
             (998_542, "All-Class Aura"),
+            (2_100_154, "Blessing"),
+            (2_110_034, "Arcane! Time Decree — Lower CD"),
             (2_110_065, "Fiery Battle Will"),
+            (
+                2_110_096,
+                "Arcane! Thunder Roar — Electro Shield (Thunderstrike)",
+            ),
             (2_110_099, "Arcane! Poison Explosion — Vulnerability"),
             (2_110_125, "Highland Blood"),
             (2_110_140, "Mechanical Power"),
@@ -592,7 +598,9 @@ mod tests {
             (2_404_261, "Spring Breeze — Season 2 healer 2-piece"),
             (2_404_271, "Full Bloom"),
             (3_003_052, "Harmony Grace"),
+            (3_003_411, "Endless Mind"),
         ];
+        assert_eq!(cases.len(), 28);
 
         for (effect_id, expected_name) in cases {
             let presentation = rdps_attribution_effect_presentation(effect_id, "en-US")

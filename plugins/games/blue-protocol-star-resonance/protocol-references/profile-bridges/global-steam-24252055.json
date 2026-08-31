@@ -7,6 +7,7 @@
     "build_id": "24252055"
   },
   "purpose": "Join privacy-reviewed character runtime evidence to exact-build static definitions without treating catalog membership as character ownership.",
+  "character_scope_reference": "../exposure-matrix/global-steam-24252055.json",
   "runtime_schema_references": [
     {
       "project": "Blue-Protocol-Source/BPSR-Deeps",
@@ -189,7 +190,8 @@
     {
       "surface": "equipment",
       "canonical_fields": [
-        "equipment"
+        "equipment",
+        "equipment_suit_entries"
       ],
       "runtime": {
         "route": "WorldNtf/SyncContainerData",
@@ -202,12 +204,27 @@
           "equipment[].refinement_level",
           "equipment[].refinement_failed_count",
           "equipment[].attributes",
-          "equipment[].enchantments"
+          "equipment[].enchantments",
+          "equipment_suit_entries[].map_key",
+          "equipment_suit_entries[].attribute_type",
+          "equipment_suit_entries[].attributes"
         ],
         "unmapped_fields": [
           "equipment[].level",
-          "set bonuses"
-        ]
+          "effective set-family identity for equipment_suit_entries map keys",
+          "four unresolved EquipmentSetEffects attribute libraries 5000 through 5003"
+        ],
+        "snapshot_counts": {
+          "equipment_items": 11,
+          "equipment_suit_entries": 2,
+          "equipment_suit_entry_map_keys": [
+            5,
+            6
+          ],
+          "equipment_suit_entries_with_attribute_type": 0,
+          "equipment_suit_entry_attributes": 0
+        },
+        "semantic_note": "The current snapshot proves the tag-6 map shape and keys 5 and 6. It does not prove that a map key is an EquipSuitTable family ID; no set identity is guessed."
       },
       "static_definitions": [
         "ctb.ItemTable",
@@ -370,6 +387,31 @@
         "ctb.VehicleBaseTable"
       ],
       "website_policy": "opt-in"
+    },
+    {
+      "surface": "psychoscope_cultivation",
+      "canonical_fields": [
+        "season_cultivation[].season_id",
+        "season_cultivation[].lines[].line_type_id",
+        "season_cultivation[].lines[].area_ids",
+        "season_cultivation[].lines[].areas[].active",
+        "season_cultivation[].lines[].areas[].active_effect_score",
+        "season_cultivation[].lines[].areas[].middle_node_item_ids",
+        "season_cultivation[].lines[].areas[].big_node_fantasy_ids"
+      ],
+      "runtime": {
+        "route": "WorldNtf/SyncContainerData",
+        "state": "verified_current_build",
+        "verified_result": "season 3 selected two current active areas containing 12 middle-node factor item IDs and 5 big-node Fantasy IDs",
+        "observation": "protocol-packs/global/steam-24252055/observations/psychoscope-factor-capture-001.json",
+        "dirty_delta_state": "the complete snapshot is verified; exact SyncContainerDirtyData update paths require a controlled factor-change capture"
+      },
+      "static_definitions": [
+        "CTB hash 2553675475 Phantom Factor definitions",
+        "CTB hash 4192598123 Phantom Factor descriptions",
+        "ItemTable.ctb factor grade items"
+      ],
+      "website_policy": "opt-in; exact-build static definitions resolve runtime-selected item IDs, while inventory ownership alone never implies selection"
     },
     {
       "surface": "social_display",

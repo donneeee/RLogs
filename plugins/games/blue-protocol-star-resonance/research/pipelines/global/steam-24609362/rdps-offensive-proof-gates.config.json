@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "same_deployment_historical_packet_proof_remains_usable": true,
+    "build_mismatch_is_a_warning_not_an_automatic_blank": true,
+    "unproven_formula_transfer_is_never_enabled": true,
+    "unresolved_evidence_hidden": false
+  },
+  "candidates": [
+    {
+      "source_rule_id": "current-component:effect:2110092",
+      "evidence_build": "24252055",
+      "compatibility_behavior": "retain historical target lifecycle and exact player ownership provisionally; require formula proof before transferred credit",
+      "gates": {
+        "packet_occurrence": {
+          "status": "proven-historical",
+          "evidence": ["plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/blade-sweep-projectile-status-proof.v1.json"],
+          "detail": "Projectile 10040102 applied and removed target status 2110092 three times."
+        },
+        "provider_recipient_identity": {
+          "status": "proven-historical",
+          "evidence": [
+            "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/blade-sweep-projectile-status-proof.v1.json",
+            "private-research/rdps/remaining-rdps-effect-families-24252055.provider-audit.v1.json"
+          ],
+          "detail": "Three balanced status windows on enemy entity 1704000 resolve through the summoned source-owner chain to player Syllus (entity 149391344256), whose retained loadout contains Goblin March skill 3946 in slot 7."
+        },
+        "lifecycle": {
+          "status": "proven-historical",
+          "evidence": ["plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/blade-sweep-projectile-status-proof.v1.json"],
+          "detail": "The enemy status has balanced apply/remove evidence and a static ten-second duration."
+        },
+        "magnitude_formula": {
+          "status": "needed",
+          "evidence": ["plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/blade-sweep-projectile-status-proof.v1.json"],
+          "detail": "The exact armor or mitigation formula and encoded magnitude are not proven."
+        },
+        "counterfactual_replay": {
+          "status": "needed",
+          "evidence": [],
+          "detail": "No baseline-versus-status target damage replay exists."
+        },
+        "party_conservation": {
+          "status": "needed",
+          "evidence": [],
+          "detail": "No transferred-credit conservation replay exists."
+        }
+      }
+    },
+    {
+      "source_rule_id": "mrs:dc24757b6559",
+      "evidence_build": "24252055",
+      "compatibility_behavior": "retain controller and owner-child evidence; require the ally Haste child and cadence formula before transferred credit",
+      "gates": {
+        "packet_occurrence": {
+          "status": "proven-historical",
+          "evidence": ["plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/battle-cry-effect-family-proof.v1.json"],
+          "detail": "The controller and two runtime children occur in retained packet lifecycles."
+        },
+        "provider_recipient_identity": {
+          "status": "needed",
+          "evidence": ["plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/battle-cry-effect-family-proof.v1.json"],
+          "detail": "Observed children are caster-only; the external ally Haste recipient child is not identified."
+        },
+        "lifecycle": {
+          "status": "needed",
+          "evidence": ["plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/battle-cry-effect-family-proof.v1.json"],
+          "detail": "The official ten-second external Haste window is not represented by a proven packet child."
+        },
+        "magnitude_formula": {
+          "status": "needed",
+          "evidence": ["plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/battle-cry-effect-family-proof.v1.json"],
+          "detail": "The 10 percent value is statically exact, but Haste placement in action cadence and overlap winner behavior are not proven."
+        },
+        "counterfactual_replay": {
+          "status": "needed",
+          "evidence": [],
+          "detail": "No recipient action-cadence counterfactual replay exists."
+        },
+        "party_conservation": {
+          "status": "needed",
+          "evidence": [],
+          "detail": "No transferred-credit conservation replay exists."
+        }
+      }
+    },
+    {
+      "source_rule_id": "mrs:9b87362531f1",
+      "evidence_build": "24252055",
+      "compatibility_behavior": "retain cross-actor child lifecycles provisionally; require broken-target condition and formula proof before transferred credit",
+      "gates": {
+        "packet_occurrence": {
+          "status": "proven-historical",
+          "evidence": ["plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/severed-chapter-effect-family-proof.v1.json"],
+          "detail": "Child 2207121 occurs in retained packet evidence."
+        },
+        "provider_recipient_identity": {
+          "status": "proven-historical",
+          "evidence": ["plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/severed-chapter-effect-family-proof.v1.json"],
+          "detail": "The child has 11 cross-actor windows and no missing source windows."
+        },
+        "lifecycle": {
+          "status": "proven-historical",
+          "evidence": [
+            "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/severed-chapter-effect-family-proof.v1.json",
+            "private-research/rdps/severed-chapter-breaking-stage-24252055.proof.v1.json"
+          ],
+          "detail": "The child has 217 events across 16 resolved player windows. Packet attribute 455 is the exact EBreakingStage target signal: 0 is Breaking and 1 is BreakEnd."
+        },
+        "magnitude_formula": {
+          "status": "needed",
+          "evidence": [
+            "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/severed-chapter-effect-family-proof.v1.json",
+            "private-research/rdps/severed-chapter-breaking-stage-24252055.proof.v1.json"
+          ],
+          "detail": "The 15 percent static value and target-state enum are exact. Historical 2207121 windows contain 67 damage events while targets are explicitly Breaking, 234 after explicit BreakEnd, and 1113 without a preceding target-state observation. Unknown state is never inferred; the server formula stage remains unproven."
+        },
+        "counterfactual_replay": {
+          "status": "needed",
+          "evidence": [
+            "private-research/rdps/severed-chapter-breaking-stage-24252055.proof.v1.json"
+          ],
+          "detail": "The bounded counterfactual inventory retains 67 Breaking-state hits with child 2207121 active and 1,179 without it, including 16 exact packet-shape contexts on both sides. Their mean ratios range far from a stable 1.15 multiplier, so these uncontrolled historical hits reject naive 15/115 replay but do not identify the authoritative final-damage stage. Actor-state and server-variance controls are still required."
+        },
+        "party_conservation": {
+          "status": "needed",
+          "evidence": [],
+          "detail": "No transferred-credit conservation replay exists."
+        }
+      }
+    }
+  ]
+}

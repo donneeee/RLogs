@@ -24,8 +24,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    BPSR_FIXED_POINT_SCALE, CriticalDamageFactorInterpretation, PacketDamageScriptFamily,
-    PositiveFixedPointRounding, class_role,
+    BPSR_FIXED_POINT_SCALE, CharacterProfilePatch, CriticalDamageFactorInterpretation,
+    ModuleProfile, PacketDamageScriptFamily, PositiveFixedPointRounding, class_role,
     damage_stage::{
         OffensiveStatKind, SelectedDamageStage, damage_attr_id_for_action, select_damage_stage,
         validate_damage_stage_catalog,
@@ -60,15 +60,33 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v42";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v46";
+// Current-build Life Wave static identity. The child is a refreshable
+// five-second recipient status produced by module family 2404. Its secondary-
+// stat marginal is not promoted yet; these constants authorize only trigger
+// ownership/timer tracking and explicit incomplete-rDPS signaling.
+const LIFE_WAVE_SOURCE_TYPE_ID: i32 = 1;
+const LIFE_WAVE_SOURCE_CONFIG_ID: i64 = 2_302_420;
+const LIFE_WAVE_EFFECT_ID: i64 = 2_302_421;
+const LIFE_WAVE_DURATION_MILLIS: u64 = 5_000;
+const LIFE_WAVE_MODULE_EFFECT_ID: i32 = 2_404;
+const LIFE_WAVE_ALLOWED_MODULE_CONFIG_IDS: [i32; 12] = [
+    5_500_101, 5_500_102, 5_500_103, 5_500_104, 5_500_201, 5_500_202, 5_500_203, 5_500_204,
+    5_500_301, 5_500_302, 5_500_303, 5_500_304,
+];
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
 const REMOTE_FACTOR_MAX_MECHANIC_GROUPS: usize = 4_096;
 const LIVE_REMOTE_FACTOR_EVIDENCE_HORIZON_MICROS: u64 =
     REMOTE_FACTOR_BUCKET_MICROS * REMOTE_FACTOR_NEAREST_BUCKET_LIMIT;
-const LIVE_DEFERRED_TEAM_LUCK_LIMIT: usize = 4_096;
-const LIVE_DEFERRED_REMOTE_HARMONY_LIMIT: usize = 4_096;
+// A 20-player encounter can exceed 4,096 eligible hits inside the 30-second
+// remote-factor evidence horizon. Keep the queue bounded, but size it for the
+// packet ceiling of a dense raid rather than silently evicting ordinary raid
+// traffic. At the current entry sizes both queues together remain well below
+// 64 MiB at their hard limits.
+const LIVE_DEFERRED_TEAM_LUCK_LIMIT: usize = 262_144;
+const LIVE_DEFERRED_REMOTE_HARMONY_LIMIT: usize = 262_144;
 const LIVE_FULL_BLOOM_WINDOW_LIMIT: usize = 4_096;
 // Kept per effect so unrelated paired-output rules cannot starve one another.
 // This remains a hard memory bound; one observation can belong only to a
@@ -989,6 +1007,38 @@ struct EffectWindowKey {
     target_actor_id: u64,
     provider_actor_id: u64,
     instance_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct LifeWaveWindowKey {
+    target_actor_id: u64,
+    instance_id: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum LifeWaveTriggerOwnership {
+    SelfTriggered,
+    UniqueExternal {
+        provider_actor_id: u64,
+    },
+    Ambiguous {
+        candidate_provider_actor_ids: BTreeSet<u64>,
+    },
+    Unknown,
+}
+
+#[derive(Debug, Clone)]
+struct LifeWaveWindow {
+    target_entity_uuid: i64,
+    expires_at_observed_micros: u64,
+    bonus_basis_points: Option<i64>,
+    trigger_ownership: LifeWaveTriggerOwnership,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PendingLifeWaveActivation {
+    target_entity_uuid: i64,
+    expires_at_observed_micros: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2203,6 +2253,16 @@ pub struct BpsrStateDamageContributionProjector {
     deferred_team_luck_critical_damage: VecDeque<DeferredTeamLuckCriticalDamage>,
     deferred_remote_harmony_damage: VecDeque<DeferredRemoteHarmonyDamage>,
     incomplete_rdps_actor_ids: HashSet<u64>,
+    /// Life Wave's exact five-second child lifecycle. A same-packet healing
+    /// cohort can identify the trigger owner, but no damage marginal is
+    /// emitted until the selected secondary lane and counterfactual are exact.
+    life_wave_windows: HashMap<LifeWaveWindowKey, LifeWaveWindow>,
+    pending_life_wave_activations: HashMap<LifeWaveWindowKey, PendingLifeWaveActivation>,
+    life_wave_heal_providers_current_wire: HashMap<(u64, i64), BTreeSet<u64>>,
+    life_wave_bonus_basis_points_by_character_id: HashMap<String, i64>,
+    life_wave_character_id_by_actor: HashMap<u64, String>,
+    life_wave_entity_uuid_by_actor: HashMap<u64, i64>,
+    life_wave_bonus_basis_points_by_entity_uuid: HashMap<i64, i64>,
     effect_windows: HashMap<EffectWindowKey, EffectWindow>,
     team_luck_windows: HashSet<TeamLuckWindowKey>,
     team_luck_transition_wires: HashMap<u64, WireKey>,
@@ -2401,6 +2461,13 @@ impl Default for BpsrStateDamageContributionProjector {
             deferred_team_luck_critical_damage: VecDeque::new(),
             deferred_remote_harmony_damage: VecDeque::new(),
             incomplete_rdps_actor_ids: HashSet::new(),
+            life_wave_windows: HashMap::new(),
+            pending_life_wave_activations: HashMap::new(),
+            life_wave_heal_providers_current_wire: HashMap::new(),
+            life_wave_bonus_basis_points_by_character_id: HashMap::new(),
+            life_wave_character_id_by_actor: HashMap::new(),
+            life_wave_entity_uuid_by_actor: HashMap::new(),
+            life_wave_bonus_basis_points_by_entity_uuid: HashMap::new(),
             effect_windows: HashMap::new(),
             team_luck_windows: HashSet::new(),
             team_luck_transition_wires: HashMap::new(),
@@ -2532,13 +2599,11 @@ impl BpsrStateDamageContributionProjector {
         }
         let actor_id = damage.source.actor_id.0;
         let entity_uuid = damage.source.entity_uuid.0;
-        if !self.active_players.contains(&actor_id)
-            || !self.team_luck_windows.iter().any(|window| {
-                window.target_entity_uuid == entity_uuid
-                    && window.provider_entity_uuid != entity_uuid
-                    && self.active_players.contains(&window.provider_actor_id)
-            })
-        {
+        if !self.team_luck_windows.iter().any(|window| {
+            window.target_entity_uuid == entity_uuid
+                && window.provider_entity_uuid != entity_uuid
+                && self.active_players.contains(&window.provider_actor_id)
+        }) {
             return;
         }
         if let Some(timeline) = self.remote_factor_timeline.as_mut() {
@@ -2627,7 +2692,12 @@ impl BpsrStateDamageContributionProjector {
 
     fn buffer_deferred_remote_harmony_damage(&mut self, candidate: DeferredRemoteHarmonyDamage) {
         if self.deferred_remote_harmony_damage.len() >= LIVE_DEFERRED_REMOTE_HARMONY_LIMIT {
-            self.deferred_remote_harmony_damage.pop_front();
+            if let Some(dropped) = self.deferred_remote_harmony_damage.pop_front() {
+                self.incomplete_rdps_actor_ids
+                    .insert(dropped.provider_actor_id);
+                self.incomplete_rdps_actor_ids
+                    .insert(dropped.recipient_actor_id);
+            }
         }
         self.deferred_remote_harmony_damage.push_back(candidate);
     }
@@ -2764,12 +2834,11 @@ impl BpsrStateDamageContributionProjector {
         }
         let recipient_actor_id = damage.source.actor_id.0;
         let recipient_entity_uuid = damage.source.entity_uuid.0;
-        if !self.active_players.contains(&recipient_actor_id)
-            || self
-                .team_luck_transition_wires
-                .get(&recipient_actor_id)
-                .copied()
-                == self.current_wire
+        if self
+            .team_luck_transition_wires
+            .get(&recipient_actor_id)
+            .copied()
+            == self.current_wire
         {
             return None;
         }
@@ -2815,7 +2884,12 @@ impl BpsrStateDamageContributionProjector {
         candidate: DeferredTeamLuckCriticalDamage,
     ) {
         if self.deferred_team_luck_critical_damage.len() >= LIVE_DEFERRED_TEAM_LUCK_LIMIT {
-            self.deferred_team_luck_critical_damage.pop_front();
+            if let Some(dropped) = self.deferred_team_luck_critical_damage.pop_front() {
+                self.incomplete_rdps_actor_ids
+                    .insert(dropped.provider_actor_id);
+                self.incomplete_rdps_actor_ids
+                    .insert(dropped.recipient_actor_id);
+            }
         }
         self.deferred_team_luck_critical_damage.push_back(candidate);
     }
@@ -3032,6 +3106,10 @@ impl BpsrStateDamageContributionProjector {
             self.clear_state();
             return;
         }
+        if let CanonicalEvent::CharacterProfileObserved { profile } = &envelope.event {
+            self.observe_life_wave_profile(profile);
+            return;
+        }
         let Some(wire) = wire_key(envelope) else {
             return;
         };
@@ -3051,6 +3129,7 @@ impl BpsrStateDamageContributionProjector {
         self.expire_blessing_windows(envelope.time.observed_micros);
         self.expire_synergy_luck_field_windows(envelope.time.observed_micros);
         self.expire_coordinated_strike_windows(envelope.time.observed_micros);
+        self.expire_life_wave_windows(envelope.time.observed_micros);
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
             return;
         };
@@ -3073,7 +3152,7 @@ impl BpsrStateDamageContributionProjector {
                 rational_output.extend(
                     self.drain_ready_deferred_team_luck(envelope.time.observed_micros, true),
                 );
-                self.clear_run_state();
+                self.clear_finished_run_state();
             }
             TimelineEventKind::EncounterBoundary {
                 state: EncounterState::Wiped,
@@ -3106,6 +3185,20 @@ impl BpsrStateDamageContributionProjector {
                 }
                 if actor.state != ActorState::Despawned {
                     self.actor_ancestry.observe_entity(actor.actor);
+                    if let Some(character_id) = actor.character_id.as_ref() {
+                        self.life_wave_character_id_by_actor
+                            .insert(actor_id, character_id.clone());
+                        self.life_wave_entity_uuid_by_actor
+                            .insert(actor_id, actor.actor.entity_uuid.0);
+                        if let Some(bonus_basis_points) = self
+                            .life_wave_bonus_basis_points_by_character_id
+                            .get(character_id)
+                            .copied()
+                        {
+                            self.life_wave_bonus_basis_points_by_entity_uuid
+                                .insert(actor.actor.entity_uuid.0, bonus_basis_points);
+                        }
+                    }
                     self.entity_type_by_actor
                         .insert(actor_id, actor.entity_type_id);
                     if let Some(class_id) = actor.class_id {
@@ -3173,6 +3266,7 @@ impl BpsrStateDamageContributionProjector {
                 self.clear_tactical_blessing_after_gap(gap.kind);
                 self.clear_inspire_haste_after_gap(gap.kind);
                 self.clear_full_bloom_after_gap(gap.kind);
+                self.clear_life_wave_after_gap(gap.kind);
             }
             TimelineEventKind::EntityAttributes(attributes) => self.observe_attributes(
                 attributes.actor.actor_id.0,
@@ -3185,6 +3279,7 @@ impl BpsrStateDamageContributionProjector {
             TimelineEventKind::Damage(damage) => {
                 self.actor_ancestry
                     .observe_damage(envelope.time.observed_micros, damage);
+                self.mark_life_wave_incomplete(envelope.time.observed_micros, damage);
                 if let Some(ability) = damage.ability {
                     self.observed_ability_ids_by_actor
                         .entry(damage.source.actor_id.0)
@@ -4111,6 +4206,7 @@ impl BpsrStateDamageContributionProjector {
                     healing.direct_source,
                 );
                 self.actor_ancestry.observe_entity(healing.target);
+                self.observe_life_wave_healing(healing);
             }
             _ => {}
         }
@@ -4201,6 +4297,7 @@ impl BpsrStateDamageContributionProjector {
 
     fn advance_wire(&mut self, wire: WireKey) {
         if self.current_wire.is_some_and(|current| current != wire) {
+            self.reconcile_life_wave_current_wire();
             self.reconcile_inspiration_staged_states();
             self.reconcile_attribute_transfer_staged_states();
             self.reconcile_thunderwind_staged_states();
@@ -4226,6 +4323,228 @@ impl BpsrStateDamageContributionProjector {
             self.formula_status_prior_values_current_wire.clear();
         }
         self.current_wire = Some(wire);
+    }
+
+    fn observe_life_wave_profile(&mut self, profile: &rlogs_events::GameProfileEvent) {
+        let Ok(profile) = CharacterProfilePatch::from_game_event(profile) else {
+            return;
+        };
+        let Some(modules) = profile.modules.as_ref() else {
+            return;
+        };
+        let character_id = profile.character.character_id;
+        match life_wave_module_bonus_basis_points(modules) {
+            Ok(Some(bonus_basis_points)) => {
+                self.life_wave_bonus_basis_points_by_character_id
+                    .insert(character_id.clone(), bonus_basis_points);
+            }
+            Ok(None) | Err(()) => {
+                // `Some(modules)` is an authoritative module snapshot. An
+                // inactive or internally inconsistent Life Wave loadout must
+                // remove prior authority instead of retaining stale credit.
+                self.life_wave_bonus_basis_points_by_character_id
+                    .remove(&character_id);
+            }
+        }
+
+        let actor_ids = self
+            .life_wave_character_id_by_actor
+            .iter()
+            .filter_map(|(actor_id, known)| (known == &character_id).then_some(*actor_id))
+            .collect::<Vec<_>>();
+        for actor_id in actor_ids {
+            let Some(entity_uuid) = self.life_wave_entity_uuid_by_actor.get(&actor_id).copied()
+            else {
+                continue;
+            };
+            if let Some(bonus_basis_points) = self
+                .life_wave_bonus_basis_points_by_character_id
+                .get(&character_id)
+                .copied()
+            {
+                self.life_wave_bonus_basis_points_by_entity_uuid
+                    .insert(entity_uuid, bonus_basis_points);
+            } else {
+                self.life_wave_bonus_basis_points_by_entity_uuid
+                    .remove(&entity_uuid);
+            }
+        }
+    }
+
+    fn reconcile_life_wave_current_wire(&mut self) {
+        let pending = std::mem::take(&mut self.pending_life_wave_activations);
+        let heal_providers = std::mem::take(&mut self.life_wave_heal_providers_current_wire);
+        for (key, activation) in pending {
+            let recipient_actor_id = self.resolve_owner_actor_id(key.target_actor_id);
+            let providers = heal_providers
+                .get(&(key.target_actor_id, activation.target_entity_uuid))
+                .cloned()
+                .unwrap_or_default();
+            let trigger_ownership = match providers.len() {
+                0 => LifeWaveTriggerOwnership::Unknown,
+                1 => {
+                    let provider_actor_id = *providers
+                        .first()
+                        .expect("one-member Life Wave provider set");
+                    if provider_actor_id == recipient_actor_id {
+                        LifeWaveTriggerOwnership::SelfTriggered
+                    } else {
+                        LifeWaveTriggerOwnership::UniqueExternal { provider_actor_id }
+                    }
+                }
+                _ => LifeWaveTriggerOwnership::Ambiguous {
+                    candidate_provider_actor_ids: providers,
+                },
+            };
+
+            // A refresh resets the five-second window. A replacement instance
+            // for the same recipient also supersedes stale ownership rather
+            // than allowing two overlapping trigger labels to double count.
+            self.life_wave_windows.retain(|existing_key, window| {
+                existing_key.target_actor_id != key.target_actor_id
+                    && (activation.target_entity_uuid == 0
+                        || window.target_entity_uuid != activation.target_entity_uuid)
+            });
+            self.life_wave_windows.insert(
+                key,
+                LifeWaveWindow {
+                    target_entity_uuid: activation.target_entity_uuid,
+                    expires_at_observed_micros: activation.expires_at_observed_micros,
+                    bonus_basis_points: self
+                        .life_wave_bonus_basis_points_by_entity_uuid
+                        .get(&activation.target_entity_uuid)
+                        .copied(),
+                    trigger_ownership,
+                },
+            );
+        }
+    }
+
+    fn observe_life_wave_status(
+        &mut self,
+        status: &rlogs_events::StatusEvent,
+        observed_micros: u64,
+    ) {
+        if status.effect.0 != LIFE_WAVE_EFFECT_ID {
+            return;
+        }
+        let target_actor_id = status.target.actor_id.0;
+        let target_entity_uuid = status.target.entity_uuid.0;
+        let instance_id = status.instance_id.map(|instance| instance.0);
+        match status.state {
+            StatusState::Consumed | StatusState::Removed => {
+                self.pending_life_wave_activations
+                    .retain(|key, activation| {
+                        !((key.target_actor_id == target_actor_id
+                            || (target_entity_uuid != 0
+                                && activation.target_entity_uuid == target_entity_uuid))
+                            && instance_id.is_none_or(|instance_id| key.instance_id == instance_id))
+                    });
+                self.life_wave_windows.retain(|key, window| {
+                    !((key.target_actor_id == target_actor_id
+                        || (target_entity_uuid != 0
+                            && window.target_entity_uuid == target_entity_uuid))
+                        && instance_id.is_none_or(|instance_id| key.instance_id == instance_id))
+                });
+            }
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                let exact_origin = status
+                    .origin
+                    .map(|origin| (origin.source_type_id, origin.source_config_id))
+                    == Some((LIFE_WAVE_SOURCE_TYPE_ID, LIFE_WAVE_SOURCE_CONFIG_ID));
+                let exact_shape = status.duration_millis == Some(LIFE_WAVE_DURATION_MILLIS);
+                let Some(instance_id) = instance_id else {
+                    return;
+                };
+                if !exact_origin || !exact_shape {
+                    return;
+                }
+                let Some(expires_at_observed_micros) =
+                    observed_micros.checked_add(LIFE_WAVE_DURATION_MILLIS.saturating_mul(1_000))
+                else {
+                    return;
+                };
+                self.pending_life_wave_activations.insert(
+                    LifeWaveWindowKey {
+                        target_actor_id,
+                        instance_id,
+                    },
+                    PendingLifeWaveActivation {
+                        target_entity_uuid,
+                        expires_at_observed_micros,
+                    },
+                );
+            }
+        }
+    }
+
+    fn observe_life_wave_healing(&mut self, healing: &rlogs_events::HealingEvent) {
+        // Explicit zero effective healing cannot itself be the HP-change
+        // trigger. When effective_amount is absent, the exact child activation
+        // still proves a real HP/max-HP transition and this attributed source
+        // remains a candidate, matching the canonical proof cohort.
+        if healing.amount <= 0 || healing.effective_amount == Some(0) {
+            return;
+        }
+        let provider_actor_id = self.resolve_owner_actor_id(healing.source.actor_id.0);
+        self.life_wave_heal_providers_current_wire
+            .entry((healing.target.actor_id.0, healing.target.entity_uuid.0))
+            .or_default()
+            .insert(provider_actor_id);
+    }
+
+    fn mark_life_wave_incomplete(
+        &mut self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) {
+        if damage.amount <= 0 {
+            return;
+        }
+        let recipient_actor_id = self.resolve_owner_actor_id(damage.source.actor_id.0);
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let mut affected = HashSet::new();
+        for (key, window) in &self.life_wave_windows {
+            debug_assert!(
+                window
+                    .bonus_basis_points
+                    .is_none_or(|value| value == 600 || value == 1_000)
+            );
+            if observed_micros >= window.expires_at_observed_micros
+                || (self.resolve_owner_actor_id(key.target_actor_id) != recipient_actor_id
+                    && (recipient_entity_uuid == 0
+                        || window.target_entity_uuid != recipient_entity_uuid))
+            {
+                continue;
+            }
+            match &window.trigger_ownership {
+                LifeWaveTriggerOwnership::SelfTriggered => {}
+                LifeWaveTriggerOwnership::UniqueExternal { provider_actor_id } => {
+                    affected.insert(recipient_actor_id);
+                    affected.insert(*provider_actor_id);
+                }
+                LifeWaveTriggerOwnership::Ambiguous {
+                    candidate_provider_actor_ids,
+                } => {
+                    affected.insert(recipient_actor_id);
+                    affected.extend(
+                        candidate_provider_actor_ids
+                            .iter()
+                            .copied()
+                            .filter(|provider| *provider != recipient_actor_id),
+                    );
+                }
+                LifeWaveTriggerOwnership::Unknown => {
+                    affected.insert(recipient_actor_id);
+                }
+            }
+        }
+        self.incomplete_rdps_actor_ids.extend(affected);
+    }
+
+    fn expire_life_wave_windows(&mut self, observed_micros: u64) {
+        self.life_wave_windows
+            .retain(|_, window| window.expires_at_observed_micros > observed_micros);
     }
 
     fn damage_has_unresolved_status_confounder(&self, damage: &rlogs_events::DamageEvent) -> bool {
@@ -4493,6 +4812,17 @@ impl BpsrStateDamageContributionProjector {
         }
     }
 
+    fn clear_life_wave_after_gap(&mut self, kind: DataGapKind) {
+        if kind == DataGapKind::TcpGap {
+            // A missing range can hide a refresh, terminal, or another HP
+            // source in the activation packet. Drop both active and staged
+            // ownership so no provider candidate survives the evidence gap.
+            self.life_wave_windows.clear();
+            self.pending_life_wave_activations.clear();
+            self.life_wave_heal_providers_current_wire.clear();
+        }
+    }
+
     fn clear_celestial_guardian_after_gap(&mut self, kind: DataGapKind) {
         if kind == DataGapKind::TcpGap {
             self.celestial_guardian_windows.clear();
@@ -4537,6 +4867,7 @@ impl BpsrStateDamageContributionProjector {
 
     fn observe_status(&mut self, status: &rlogs_events::StatusEvent, observed_micros: u64) {
         self.observe_formula_status(status);
+        self.observe_life_wave_status(status, observed_micros);
         if status.effect.0 == self.runtime.poison_explosion_vulnerability.effect_id {
             self.observe_poison_explosion_status(status, observed_micros);
         }
@@ -8596,9 +8927,6 @@ impl BpsrStateDamageContributionProjector {
     fn mark_team_luck_incomplete(&mut self, damage: &rlogs_events::DamageEvent) {
         let recipient_actor_id = damage.source.actor_id.0;
         let recipient_entity_uuid = damage.source.entity_uuid.0;
-        if !self.active_players.contains(&recipient_actor_id) {
-            return;
-        }
         let providers = self
             .team_luck_windows
             .iter()
@@ -15056,6 +15384,20 @@ impl BpsrStateDamageContributionProjector {
             .remove(&actor_id);
         self.team_luck_lucky_cleared_by_snapshot.remove(&actor_id);
         self.incomplete_rdps_actor_ids.remove(&actor_id);
+        self.life_wave_character_id_by_actor.remove(&actor_id);
+        if let Some(entity_uuid) = self.life_wave_entity_uuid_by_actor.remove(&actor_id) {
+            self.life_wave_bonus_basis_points_by_entity_uuid
+                .remove(&entity_uuid);
+        }
+        self.life_wave_windows
+            .retain(|key, _| key.target_actor_id != actor_id);
+        self.pending_life_wave_activations
+            .retain(|key, _| key.target_actor_id != actor_id);
+        self.life_wave_heal_providers_current_wire
+            .retain(|(target_actor_id, _), providers| {
+                providers.remove(&actor_id);
+                *target_actor_id != actor_id
+            });
         if let Some(entity_uuid) = self.attribute_state_entity_uuid_by_actor.remove(&actor_id) {
             if self.attribute_state_actor_by_entity_uuid.get(&entity_uuid) == Some(&actor_id) {
                 self.attribute_state_actor_by_entity_uuid
@@ -15203,6 +15545,9 @@ impl BpsrStateDamageContributionProjector {
         self.team_luck_critical_cleared_by_snapshot.clear();
         self.team_luck_lucky_cleared_by_snapshot.clear();
         self.incomplete_rdps_actor_ids.clear();
+        self.life_wave_windows.clear();
+        self.pending_life_wave_activations.clear();
+        self.life_wave_heal_providers_current_wire.clear();
         self.effect_windows.clear();
         self.team_luck_windows.clear();
         self.team_luck_transition_wires.clear();
@@ -15279,6 +15624,16 @@ impl BpsrStateDamageContributionProjector {
         self.observed_ability_ids_by_actor.clear();
     }
 
+    fn clear_finished_run_state(&mut self) {
+        // The live overlay and persisted history are commonly rendered after
+        // the terminal boundary. Preserve the run-level completeness receipt
+        // while clearing every attribution window; the next Entered boundary
+        // and a full reset still start with a clean receipt.
+        let incomplete_rdps_actor_ids = std::mem::take(&mut self.incomplete_rdps_actor_ids);
+        self.clear_run_state();
+        self.incomplete_rdps_actor_ids = incomplete_rdps_actor_ids;
+    }
+
     /// A wipe restarts encounter-local combat state, but Lightfall talent 1122
     /// status 2203220 (`暴击双生`) is a permanent recipient talent status whose
     /// catalog lifecycle explicitly has `delete_on_death = false`. Preserve only
@@ -15288,12 +15643,18 @@ impl BpsrStateDamageContributionProjector {
     fn clear_wiped_state(&mut self) {
         let inspiration_recipient_dependency_entities =
             std::mem::take(&mut self.inspiration_recipient_dependency_entities);
+        let incomplete_rdps_actor_ids = std::mem::take(&mut self.incomplete_rdps_actor_ids);
         self.clear_run_state();
         self.inspiration_recipient_dependency_entities = inspiration_recipient_dependency_entities;
+        self.incomplete_rdps_actor_ids = incomplete_rdps_actor_ids;
     }
 
     fn clear_state(&mut self) {
         self.clear_run_state();
+        self.life_wave_bonus_basis_points_by_character_id.clear();
+        self.life_wave_character_id_by_actor.clear();
+        self.life_wave_entity_uuid_by_actor.clear();
+        self.life_wave_bonus_basis_points_by_entity_uuid.clear();
         self.fatal_spiral_equipped_basis_points_by_entity_uuid
             .clear();
         self.fatal_spiral_provider_basis_points_by_entity_uuid
@@ -16698,6 +17059,58 @@ fn option_delta(previous: Option<i64>, next: Option<i64>) -> Option<i64> {
     next?.checked_sub(previous?)
 }
 
+/// Resolve only Life Wave's exact-build module level from one authoritative
+/// personal module snapshot. Upgrade records are not added because the
+/// canonical module profile already carries the current per-part link points.
+fn life_wave_module_bonus_basis_points(modules: &ModuleProfile) -> Result<Option<i64>, ()> {
+    let mut inventory = BTreeMap::<&str, Option<&crate::ModuleItemProfile>>::new();
+    for module in &modules.inventory {
+        match inventory.entry(module.instance_id.as_str()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(Some(module));
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                entry.insert(None);
+            }
+        }
+    }
+
+    let mut equipped_instances = HashSet::new();
+    let mut total_link_points = 0_i32;
+    for instance_id in modules.equipped_slots.values() {
+        if !equipped_instances.insert(instance_id.as_str()) {
+            return Err(());
+        }
+        let module = inventory
+            .get(instance_id.as_str())
+            .copied()
+            .flatten()
+            .ok_or(())?;
+        let mut life_wave_parts = module
+            .parts
+            .iter()
+            .filter(|part| part.part_id == LIFE_WAVE_MODULE_EFFECT_ID);
+        let Some(part) = life_wave_parts.next() else {
+            continue;
+        };
+        if life_wave_parts.next().is_some()
+            || !LIFE_WAVE_ALLOWED_MODULE_CONFIG_IDS.contains(&module.config_id)
+        {
+            return Err(());
+        }
+        let link_points = part.initial_link_points.ok_or(())?;
+        if link_points < 0 {
+            return Err(());
+        }
+        total_link_points = total_link_points.checked_add(link_points).ok_or(())?;
+    }
+    Ok(match total_link_points {
+        20.. => Some(1_000),
+        16..=19 => Some(600),
+        _ => None,
+    })
+}
+
 fn attribute_transfer_lane_transition(
     previous: &ActorHpState,
     next: &ActorHpState,
@@ -17021,6 +17434,231 @@ mod tests {
             flags: rlogs_events::DamageFlags::default(),
             packet: rlogs_events::DamagePacketDetail::default(),
         })
+    }
+
+    fn life_wave_test_status(
+        target_actor_id: u64,
+        instance_id: i64,
+        state: StatusState,
+    ) -> rlogs_events::StatusEvent {
+        let target = test_entity(
+            target_actor_id,
+            i64::try_from(target_actor_id.saturating_mul(10)).unwrap(),
+        );
+        rlogs_events::StatusEvent {
+            source: Some(target),
+            target,
+            effect: rlogs_events::StatusEffectId(LIFE_WAVE_EFFECT_ID),
+            instance_id: Some(rlogs_events::StatusEffectInstanceId(instance_id)),
+            origin: Some(rlogs_events::StatusOrigin {
+                source_type_id: LIFE_WAVE_SOURCE_TYPE_ID,
+                source_config_id: LIFE_WAVE_SOURCE_CONFIG_ID,
+            }),
+            state,
+            stacks: Some(1),
+            duration_millis: Some(LIFE_WAVE_DURATION_MILLIS),
+            level: Some(1),
+            part_id: None,
+            count: Some(1),
+            created_at_millis: None,
+        }
+    }
+
+    fn life_wave_test_healing(
+        provider_actor_id: u64,
+        target_actor_id: u64,
+        effective_amount: Option<i64>,
+    ) -> rlogs_events::HealingEvent {
+        rlogs_events::HealingEvent {
+            source: test_entity(
+                provider_actor_id,
+                i64::try_from(provider_actor_id.saturating_mul(10)).unwrap(),
+            ),
+            direct_source: None,
+            target: test_entity(
+                target_actor_id,
+                i64::try_from(target_actor_id.saturating_mul(10)).unwrap(),
+            ),
+            ability: Some(rlogs_events::AbilityId(123)),
+            amount: 1_000,
+            actual_amount: None,
+            hp_loss: None,
+            shield_loss: None,
+            hit_event_id: None,
+            damage_source: None,
+            damage_type: None,
+            effective_amount,
+            overheal: None,
+            critical: None,
+            periodic: None,
+            packet: rlogs_events::DamagePacketDetail::default(),
+        }
+    }
+
+    fn life_wave_wire(capture_sequence: u64) -> WireKey {
+        WireKey {
+            connection_id: 1,
+            stream_id: 2,
+            capture_sequence,
+        }
+    }
+
+    fn life_wave_test_modules(link_points: i32) -> ModuleProfile {
+        ModuleProfile {
+            equipped_slots: BTreeMap::from([(1, "life-wave-module".into())]),
+            inventory: vec![crate::ModuleItemProfile {
+                instance_id: "life-wave-module".into(),
+                config_id: LIFE_WAVE_ALLOWED_MODULE_CONFIG_IDS[0],
+                count: Some(1),
+                quality: None,
+                load_flag: None,
+                module_type: None,
+                level: None,
+                parts: vec![crate::ModulePartProfile {
+                    part_id: LIFE_WAVE_MODULE_EFFECT_ID,
+                    initial_link_points: Some(link_points),
+                }],
+                upgrade_records: Vec::new(),
+                success_rate: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn life_wave_personal_module_profile_resolves_only_exact_level_five_and_six_magnitudes() {
+        assert_eq!(
+            life_wave_module_bonus_basis_points(&life_wave_test_modules(15)),
+            Ok(None)
+        );
+        assert_eq!(
+            life_wave_module_bonus_basis_points(&life_wave_test_modules(16)),
+            Ok(Some(600))
+        );
+        assert_eq!(
+            life_wave_module_bonus_basis_points(&life_wave_test_modules(20)),
+            Ok(Some(1_000))
+        );
+
+        let mut invalid = life_wave_test_modules(20);
+        invalid.inventory[0].config_id = i32::MAX;
+        assert_eq!(life_wave_module_bonus_basis_points(&invalid), Err(()));
+
+        let character = rlogs_events::CharacterIdentity {
+            region: rlogs_events::RegionIdentity {
+                deployment_id: runtime().deployment_id.clone(),
+                region_id: "global".into(),
+                realm_id: None,
+                world_id: None,
+            },
+            character_id: "life-wave-local".into(),
+        };
+        let profile = rlogs_events::GameProfileEvent {
+            game_plugin_id: crate::BPSR_GAME_PLUGIN_ID.into(),
+            payload_schema_id: crate::BPSR_PROFILE_SCHEMA_ID.into(),
+            payload_schema_version: crate::BPSR_PROFILE_SCHEMA_VERSION,
+            character: character.clone(),
+            payload: serde_json::json!({
+                "character": character,
+                "modules": life_wave_test_modules(20),
+            }),
+        };
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        projector
+            .life_wave_character_id_by_actor
+            .insert(2, "life-wave-local".into());
+        projector.life_wave_entity_uuid_by_actor.insert(2, 20);
+        projector.clear_run_state();
+        projector.observe_life_wave_profile(&profile);
+        assert_eq!(
+            projector
+                .life_wave_bonus_basis_points_by_character_id
+                .get("life-wave-local"),
+            Some(&1_000)
+        );
+        assert_eq!(
+            projector
+                .life_wave_bonus_basis_points_by_entity_uuid
+                .get(&20),
+            Some(&1_000)
+        );
+    }
+
+    #[test]
+    fn life_wave_refresh_replaces_trigger_owner_and_resets_exact_five_second_window() {
+        let mut projector = BpsrStateDamageContributionProjector::default();
+        projector.current_wire = Some(life_wave_wire(1));
+        projector.observe_life_wave_status(
+            &life_wave_test_status(2, 77, StatusState::Applied),
+            1_000_000,
+        );
+        projector.observe_life_wave_healing(&life_wave_test_healing(4, 2, Some(500)));
+        projector.advance_wire(life_wave_wire(2));
+
+        projector.observe_life_wave_status(
+            &life_wave_test_status(2, 77, StatusState::Refreshed),
+            4_000_000,
+        );
+        projector.observe_life_wave_healing(&life_wave_test_healing(3, 2, None));
+        projector.advance_wire(life_wave_wire(3));
+
+        let damage = poison_explosion_test_damage(test_entity(2, 20), test_entity(9, 90));
+        projector.mark_life_wave_incomplete(8_999_999, &damage);
+        assert!(projector.incomplete_rdps_actor_ids.contains(&2));
+        assert!(projector.incomplete_rdps_actor_ids.contains(&3));
+        assert!(!projector.incomplete_rdps_actor_ids.contains(&4));
+
+        projector.incomplete_rdps_actor_ids.clear();
+        projector.expire_life_wave_windows(9_000_000);
+        projector.mark_life_wave_incomplete(9_000_000, &damage);
+        assert!(projector.incomplete_rdps_actor_ids.is_empty());
+    }
+
+    #[test]
+    fn life_wave_self_ambiguous_and_unknown_triggers_never_invent_exact_credit() {
+        let damage = poison_explosion_test_damage(test_entity(2, 20), test_entity(9, 90));
+
+        let mut self_triggered = BpsrStateDamageContributionProjector::default();
+        self_triggered.current_wire = Some(life_wave_wire(1));
+        self_triggered.observe_life_wave_status(
+            &life_wave_test_status(2, 70, StatusState::Applied),
+            1_000_000,
+        );
+        self_triggered.observe_life_wave_healing(&life_wave_test_healing(2, 2, Some(1)));
+        self_triggered.advance_wire(life_wave_wire(2));
+        self_triggered.mark_life_wave_incomplete(2_000_000, &damage);
+        assert!(self_triggered.incomplete_rdps_actor_ids.is_empty());
+
+        let mut ambiguous = BpsrStateDamageContributionProjector::default();
+        ambiguous.current_wire = Some(life_wave_wire(1));
+        ambiguous.observe_life_wave_status(
+            &life_wave_test_status(2, 71, StatusState::Applied),
+            1_000_000,
+        );
+        ambiguous.observe_life_wave_healing(&life_wave_test_healing(3, 2, Some(1)));
+        ambiguous.observe_life_wave_healing(&life_wave_test_healing(4, 2, Some(1)));
+        ambiguous.advance_wire(life_wave_wire(2));
+        ambiguous.mark_life_wave_incomplete(2_000_000, &damage);
+        assert_eq!(
+            ambiguous.incomplete_rdps_actor_ids,
+            HashSet::from([2, 3, 4])
+        );
+        ambiguous.clear_finished_run_state();
+        assert_eq!(
+            ambiguous.incomplete_rdps_actor_ids,
+            HashSet::from([2, 3, 4])
+        );
+        ambiguous.clear_run_state();
+        assert!(ambiguous.incomplete_rdps_actor_ids.is_empty());
+
+        let mut unknown = BpsrStateDamageContributionProjector::default();
+        unknown.current_wire = Some(life_wave_wire(1));
+        unknown.observe_life_wave_status(
+            &life_wave_test_status(2, 72, StatusState::Applied),
+            1_000_000,
+        );
+        unknown.advance_wire(life_wave_wire(2));
+        unknown.mark_life_wave_incomplete(2_000_000, &damage);
+        assert_eq!(unknown.incomplete_rdps_actor_ids, HashSet::from([2]));
     }
 
     fn observe_harmony_grace_test_envelope(
@@ -18339,6 +18977,8 @@ mod tests {
                 .map(|damage| damage.event_sequence),
             Some(2)
         );
+        assert!(projector.incomplete_rdps_actor_ids.contains(&2));
+        assert!(projector.incomplete_rdps_actor_ids.contains(&4));
     }
 
     #[test]

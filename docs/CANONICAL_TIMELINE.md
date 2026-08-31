@@ -38,6 +38,16 @@ written when capture resumes, remains part of run wall time, and is distinct
 from involuntary capture/decode gaps. The reader remains compatible with
 schema-v1 logs.
 
+Event schema v7 adds `party_roster_observed` without changing the older
+`party_changed` projection. It distinguishes a complete join snapshot from an
+incremental member observation, a single member-leave notification, and a
+party-dissolve notification. Exact numeric party IDs and raw leave-type values
+are retained when present. Each listed member also retains the exact raw entry
+time, online-state, scene, and subgroup integers when the packet supplies them;
+their meanings are not inferred. A partial observation is never treated as a
+full roster, and logs predating schema v7 remain explicitly without this
+evidence.
+
 ## Canonical boundary
 
 The Event Viewer begins after the trusted game plug-in has framed, decoded, and
@@ -60,6 +70,54 @@ Each event keeps:
 - decoded numeric facts and flags;
 - evidence provenance and confidence;
 - explicit capture, TCP, unknown-route, and decoder gaps.
+
+Support attribution is projected as two allegiance-neutral relationships over
+that ordered evidence:
+
+```text
+provider -> effect/status lifecycle -> recipient or enemy target
+                                      |
+                                      v
+                           recipient damage action -> recipient or enemy target
+```
+
+The lifecycle endpoint and the damage-action target are independent
+identities. Either may later be proven to be a party member, a hostile entity,
+some other entity, or may remain unresolved. In particular, the endpoint of a
+damage action is
+not assumed to be an enemy: reflected damage, friendly-fire-like mechanics,
+and other player-targeted actions must remain representable. Actor kind and
+party membership come only from event-time canonical evidence. The projection
+does not infer allegiance from the direction of an arrow, a localized name, or
+a current character snapshot.
+The downward relationship has two exact, separately reviewed forms. For a
+source-side support effect, the lifecycle endpoint must equal the later damage
+actor. For a target-side vulnerability or mitigation-changing effect, the
+lifecycle endpoint must equal the later damage target. Ordered timestamps and
+an identity match identify only a candidate relationship; effect kind,
+magnitude, scope, stacking, operation order, and integer rounding still need
+exact-build proof before any provider credit is transferred.
+When the packet does not prove the provider, the provider identity remains
+nullable evidence; the relationship is not discarded and no provider is
+invented.
+
+For BPSR build `24687926`, the support-timeline projection also exposes raw
+entity attribute `194` (`AttrTeamId`) and attribute `195`
+(`AttrTeamMemberNums`) as allegiance-neutral `party_affiliation` observations.
+The numeric meaning is gated to that exact build; another build retains the
+canonical raw attribute event but leaves its party meaning unresolved. A
+positive team ID is rendered as a decimal string, zero is an observed clear,
+and malformed or non-canonical varints remain unresolved. Matching last-seen
+team IDs are evidence for later scope review, not party-membership, formula,
+rDPS-credit, runtime, or UI authority while current-build protocol-event
+coverage remains open.
+
+BPSR healing is carried by the same `DamageInfo` result as damage. Its
+canonical healing event retains the packet's actual value, HP/shield loss,
+semantic hit, damage source/type, normal/lucky values, owner level/stage, hit
+parts, passive, mode, and enclosing skill-effect component identity. Generic
+meters may ignore those research fields, but offline formula and rDPS proof
+must not reconstruct or lose them.
 
 Packet bytes, encrypted payloads, passwords, login tokens, account
 authentication, private chat, and unreviewed protocol fields never cross this
@@ -139,11 +197,14 @@ Boss adds do not define boundaries. See
 [`RUN_SUBMISSIONS.md`](RUN_SUBMISSIONS.md) for the reducer and leaderboard
 contract.
 
-## Storage evolution
+## Storage encoding
 
-The inspectable newline-delimited JSON `.rlog` is appropriate for the first
-schema and fixtures because it already streams without loading an entire run.
-If production size or bandwidth requires it, a later log-format version may
-use independently compressed event blocks, delta timestamps, typed integer
-IDs, and sidecar indexes. That changes encoding, not the canonical event
-contract or calculation ownership.
+Log-format v2 stores canonical events in independently compressed, bounded zstd
+blocks. The reader streams one block at a time, enforces encoded/decoded/event
+limits before exposing its records, and verifies the same canonical SHA-256
+event digest at the final seal. This reduces archive size without pruning,
+summarizing, localizing, or reordering the timeline.
+
+Legacy v1 newline-delimited JSON logs remain replayable through format
+auto-detection. The encoding version is separate from the canonical event
+schema and from the server-owned calculation policy.

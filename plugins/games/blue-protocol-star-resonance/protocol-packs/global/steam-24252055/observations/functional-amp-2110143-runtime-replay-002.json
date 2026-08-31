@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "client_build": "24252055",
+  "effect_id": 2110143,
+  "proof_state": "enabled_standard_attack_and_magic_attack_stage",
+  "sealed_session": "formula-current-20260731-010829",
+  "coverage": {
+    "canonical_events": 951782,
+    "independent_external_active_damage_events": 622,
+    "standard_attack_or_magic_attack_events": 619,
+    "live_projector_events": 619,
+    "unsupported_attack_lucky_events": 3,
+    "hidden_or_discarded_events": 0
+  },
+  "accounting": {
+    "allocation": "exact_reduced_rational",
+    "party_damage_conserved": true,
+    "provider_and_recipient_sum_equals_observed_damage": true,
+    "later_team_luck_stage_owns_only_the_body_remaining_after_functional_amp": true
+  },
+  "projector_correction": {
+    "fault": "a global same-wire transition marker suppressed stable recipients when another target refreshed Functional Amp in the same decoded packet",
+    "correction": "transition markers are keyed by recipient actor",
+    "example_damage_outer_sequence": 151300,
+    "recipient_actor_id": 5,
+    "provider_actor_id": 2,
+    "active_window": {
+      "applied_outer_sequence": 148125,
+      "refreshed_outer_sequence": 149649,
+      "removed_outer_sequence": 153967
+    }
+  },
+  "performance": {
+    "events_per_second": 156762.52,
+    "live_state_complexity": "O(players + active effect windows)",
+    "archive_replay_on_live_path": false
+  },
+  "artifacts": {
+    "replay_report": ".codex_tmp/rdps-functional-amp-current-decode-replay-v8.json",
+    "replay_report_sha256": "600448538476dd821855fdf6b0d3207694e93a74453af3925bf875b8ad00abef",
+    "independent_coverage_ledger": ".codex_tmp/rdps-functional-amp-runtime-coverage-ledger.v11.json",
+    "independent_coverage_ledger_sha256": "e741674c9a583549553e93a6a84285438fa674296ead873b71511c5d6119c22d",
+    "actor_lifecycle_slice": ".codex_tmp/functional-amp-actor-5-lifecycle.jsonl"
+  }
+}

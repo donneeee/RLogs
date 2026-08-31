@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "client_build": "24252055",
+  "subject": "DamageAttr DamageType and DamageScript boundary",
+  "sources": {
+    "field_layout": {
+      "path": "game-data/catalog/formulas/damage-attr-field-layout.current-build.v1.json",
+      "sha256": "sha256:ad7e028ab9a1bbee6c4fb57b79b80c5119359019a29d29fdca6efd1ef598b2f5"
+    },
+    "replay_report": {
+      "path": ".codex_tmp/rdps-external-attack-2110143-damage-proof.current-decode-v59.json",
+      "sha256": "sha256:ad1901b65c31100d30b9952344bacd8f451869775b698aa811f6ba2263fcc1c3"
+    }
+  },
+  "current_build_field_layout": [
+    {
+      "offset": 12,
+      "field": "Name",
+      "encoding": "string_pool_pointer"
+    },
+    {
+      "offset": 16,
+      "field": "DamageType",
+      "encoding": "i32_enum"
+    },
+    {
+      "offset": 20,
+      "field": "TypeEnum",
+      "encoding": "i32"
+    },
+    {
+      "offset": 24,
+      "field": "DamageScript",
+      "encoding": "string_pool_pointer"
+    }
+  ],
+  "rejected_interpretation": {
+    "offset": 16,
+    "aligned_i32_value": 2,
+    "heuristic_string_pool_candidate": "MstSpSkillAttack",
+    "reason": "The string-pool value at byte offset 2 is an unrelated candidate reached only by interpreting the integer enum as a pointer. DamageType must remain numeric."
+  },
+  "functional_amp_external_damage_replay": {
+    "external_active_damage_events": 622,
+    "standard_attack_script_events": 619,
+    "events_with_nonzero_numeric_damage_type": 619,
+    "events_with_exact_stage_coefficient": 619,
+    "events_with_exact_conserved_attack_stage_share": 619,
+    "exact_conserved_share_observed_damage": 106566259,
+    "all_observed_damage": 106668490,
+    "unsupported_damage_script_events": 3,
+    "unsupported_observed_damage": 102231
+  },
+  "unsupported_script_family": {
+    "ability_id": 2031109,
+    "hit_event_id": 3,
+    "damage_id": 2203110903,
+    "damage_type": 2,
+    "damage_script": "AttackLucky",
+    "events": 3,
+    "observed_damage": 102231,
+    "event_group_evidence": [
+      {
+        "sequence": 149152,
+        "observed_micros": 279146692,
+        "source_entity_uuid": 216009015936,
+        "target_entity_uuid": 458816,
+        "amount": 22304,
+        "skill_effect_group_index": 13,
+        "skill_effect_component_index": 3,
+        "skill_effect_component_count": 12,
+        "damage_mode": 1
+      },
+      {
+        "sequence": 378519,
+        "observed_micros": 391339543,
+        "source_entity_uuid": 216009015936,
+        "target_entity_uuid": 786496,
+        "amount": 34322,
+        "skill_effect_group_index": 4,
+        "skill_effect_component_index": 5,
+        "skill_effect_component_count": 9,
+        "damage_mode": 1
+      },
+      {
+        "sequence": 528881,
+        "observed_micros": 497432469,
+        "source_entity_uuid": 216009015936,
+        "target_entity_uuid": 9306176,
+        "amount": 45605,
+        "skill_effect_group_index": 13,
+        "skill_effect_component_index": 0,
+        "skill_effect_component_count": 2,
+        "damage_mode": 1
+      }
+    ]
+  },
+  "policy": {
+    "damage_type": "retain the exact numeric enum; never reinterpret it as a string-pool pointer",
+    "damage_script": "use the exact string to select a proven formula family",
+    "standard_attack": "eligible for exact conserved Attack-coefficient attribution",
+    "attack_lucky": "retain all events and damage, but do not force the standard Attack formula until its separate current-build calculation is proven",
+    "unresolved_evidence_is_hidden": false
+  }
+}

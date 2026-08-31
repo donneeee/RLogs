@@ -113,10 +113,10 @@ cd apps/desktop/ui
 npm install
 npm run build
 cd ../../..
-cargo run -p rlogs-desktop-host
+cargo run -p rlogs-app
 ```
 
-Open `http://127.0.0.1:7419`. Session Recorder can verify the bundled replay,
+The native rLogs window opens automatically. Session Recorder can verify the bundled replay,
 process an existing PCAP plus exact connection evidence, or start a Windows
 process-owned capture and cooperatively stop/finalize it. Private PCAP and
 connection evidence remain local; the sealed `.rlog` is the privacy-reviewed

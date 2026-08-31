@@ -1,0 +1,103 @@
+{
+  "schema_version": 3,
+  "game": "blue-protocol-star-resonance",
+  "client_build": "24252055",
+  "subject": "packet-delayed Mastery contribution to Light Damage",
+  "scope": {
+    "entity_uuid": 216009015936,
+    "mastery_attribute_id": 11940,
+    "light_damage_attribute_id": 13170,
+    "transition_window_micros": 250000,
+    "sealed_rlogs": [
+      ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260730-235717.rlog",
+      ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260731-010244.rlog",
+      ".codex_tmp/formula-replay-snapshot-scope-20260804/session-20260731-010829.rlog"
+    ]
+  },
+  "proof": {
+    "transition_formula": "delta(light_damage) = floor(delta(mastery) * 60 / 100)",
+    "transition_candidates": 155,
+    "delayed_exact_matches": 143,
+    "delayed_mismatches": 0,
+    "same_wire_exact_matches": 0,
+    "same_wire_mismatches": 12,
+    "expired_candidates": 9,
+    "same_wire_mismatch_interpretation": "Each mismatch is a zero-latency bulk reset in which other Light Damage sources changed in the same packet. These rows are retained and are not evidence against the isolated delayed relation.",
+    "source_audit": ".codex_tmp/mastery-light-transition.entity-216009015936.v3.json"
+  },
+  "packet_order_evidence": [
+    {
+      "transition": "Inspiration removal",
+      "mastery": {
+        "old": 2500,
+        "new": 2200,
+        "delta": -300
+      },
+      "light_damage": {
+        "old": 3038,
+        "new": 2858,
+        "delta": -180
+      },
+      "observed_order": "Mastery changed first; Light Damage followed in a later packet."
+    },
+    {
+      "transition": "Inspiration application",
+      "mastery": {
+        "old": 2200,
+        "new": 2500,
+        "delta": 300
+      },
+      "light_damage": {
+        "old": 2858,
+        "new": 3038,
+        "delta": 180
+      },
+      "observed_order": "Mastery changed first; Light Damage followed in a later packet."
+    }
+  ],
+  "wire_boundary_proof": {
+    "source_audit": ".codex_tmp/inspiration-mastery-gap-proof.wire-boundaries.v7.json",
+    "source_audit_bytes": 482673,
+    "source_audit_sha256": "sha256:cd9227d1f019eb13c7e0eb7aa2a14946ac526e6e272a906789710bfdaa5ce9fe",
+    "matching_mastery_transitions": 60,
+    "matching_light_transitions": 57,
+    "mismatched_light_transitions": 3,
+    "same_wire_light_transitions": 3,
+    "distinct_wire_light_transitions": 57,
+    "gap_damage_events": 397,
+    "gap_light_damage_events": 374,
+    "gap_damage_on_mastery_wire": 0,
+    "gap_damage_on_light_wire": 0,
+    "gap_damage_on_distinct_wire": 397,
+    "conclusion": "Every damage event observed between a Mastery transition and its delayed Light Damage transition arrived on a wire distinct from both attribute updates. The gap is therefore present in authoritative packet order and is not introduced by canonical-event expansion or same-message event ordering.",
+    "remaining_boundary": "Distinct wire order proves that the serialized Light attribute can lag while damage is emitted. It does not by itself reveal whether the server action used the serialized old Light value, the logically derived new Light value, or an earlier action snapshot."
+  },
+  "accounting_policy": {
+    "mastery_and_derived_light_are_independent_multipliers": false,
+    "double_counting_forbidden": true,
+    "absolute_light_formula_proven": false,
+    "reason_absolute_formula_is_not_proven": "Light Damage also contains independent sources, so only the isolated transition contribution is proven.",
+    "hit_time_latest_attribute_state_is_formula_authority": false,
+    "reason_hit_time_state_is_not_authority": "The derived Light Damage packet can arrive after the Mastery packet and after a damage event. A cast or server calculation snapshot must be proven before using a latest-value counterfactual.",
+    "unresolved_evidence_is_hidden": false
+  },
+  "runtime": {
+    "formula_authority": false,
+    "displayed_rdps_enabled": false,
+    "promotion_blocker": "The authoritative damage-stage input and calculation snapshot boundary are not yet proven."
+  },
+  "production_implementation": {
+    "arithmetic_primitive": "plugins/games/blue-protocol-star-resonance/src/state_formula.rs::exact_positive_linear_conversion_delta",
+    "allocation_free": true,
+    "floating_point_used": false,
+    "covered_relation": "positive provider delta only; numerator 60 and denominator 100 reproduce the isolated packet transition",
+    "tests": [
+      "state_formula::tests::packet_proven_mastery_conversion_uses_exact_integer_arithmetic",
+      "state_formula::tests::linear_conversion_fails_closed_on_invalid_evidence"
+    ],
+    "runtime_state_policy": "Attribute 13170 is retained independently. The provider Light component is absent during the serialized Mastery-to-Light gap, becomes eligible only after an exact +180 or +216 packet transition, and is cleared on any unexplained property change.",
+    "composite_accounting_primitive": "plugins/games/blue-protocol-star-resonance/src/state_formula.rs::exact_external_attack_and_factors_fraction",
+    "runtime_transfer_enabled": false,
+    "reason": "The exact transition arithmetic, conserved Attack/External/Light share, and single-provider Critical-plus-Lucky occurrence formula are implemented. Haste opportunity ownership and overlapping independent chance-provider allocation still prevent complete-vector promotion."
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "client_build": "24252055",
+  "effect_id": 2110143,
+  "name": "Functional Amp",
+  "source_origin": {
+    "source_type_id": 1,
+    "source_kind": "buff",
+    "source_config_id": 2110151,
+    "source_table": "BuffTable.ctb"
+  },
+  "packet_lifecycle": {
+    "seal_valid_sessions": 3,
+    "status_events": 900,
+    "windows": 55,
+    "cross_actor_windows": 44,
+    "source_missing_windows": 0,
+    "packet_origin_observations": 48,
+    "applied": 48,
+    "consumed": 804,
+    "removed": 48,
+    "minimum_stacks": 1,
+    "maximum_stacks": 1
+  },
+  "proven_reversible_attribute_coefficients": [
+    {
+      "attribute_id": 11334,
+      "attribute": "AttrAttack.percent",
+      "delta_units": 360,
+      "unit": "ten_thousandths",
+      "apply_occurrences": 2,
+      "remove_occurrences": 3,
+      "independent_run_contexts": 2
+    },
+    {
+      "attribute_id": 11344,
+      "attribute": "AttrMAttack.percent",
+      "delta_units": 360,
+      "unit": "ten_thousandths",
+      "apply_occurrences": 1,
+      "remove_occurrences": 3,
+      "independent_run_contexts": 2
+    },
+    {
+      "attribute_ids": [11720, 11721, 11722],
+      "attribute": "AttrAttackSpeedPCT.family",
+      "delta_units": 360,
+      "unit": "ten_thousandths",
+      "proof_state": "each listed family member has a reversible +360 packet coefficient"
+    },
+    {
+      "attribute_ids": [11730, 11731, 11732],
+      "attribute": "AttrCastSpeedPCT.family",
+      "delta_units": 720,
+      "unit": "ten_thousandths",
+      "proof_state": "each listed family member has a reversible +720 packet coefficient"
+    }
+  ],
+  "attribute_family_field_correction": {
+    "packet_family_order": [
+      "current",
+      "total",
+      "add",
+      "extra_add",
+      "percent",
+      "extra_percent"
+    ],
+    "physical_attack_family_ids": [11330, 11331, 11332, 11333, 11334, 11335],
+    "magical_attack_family_ids": [11340, 11341, 11342, 11343, 11344, 11345],
+    "rejected_label": "11334 and 11344 are not flat extra-add fields",
+    "proof": "The packet-proven family equation is total=floor(add*(10000+percent)/10000), current=total+extra_add. The strict current-build snapshot [5569,5359,4620,210,1600] reproduces exactly only when 11333 is extra_add and 11334 is percent."
+  },
+  "strict_pair_physical_attack_counterfactual": {
+    "current_family": {
+      "current": 5569,
+      "total": 5359,
+      "add": 4620,
+      "extra_add": 210,
+      "percent": 1600
+    },
+    "functional_amp_percent": 360,
+    "without_provider_percent": 1240,
+    "without_provider_total": 5192,
+    "without_provider_current": 5402,
+    "provider_owned_current_attack": 167,
+    "integer_formula": "5569 - (floor(4620 * (10000 + 1600 - 360) / 10000) + 210) = 167",
+    "damage_attribution_enabled": true,
+    "enabled_scope": "exact conserved Attack and MAttack coefficient-stage allocation",
+    "unsupported_scope": "AttackLucky remains visible and unattributed"
+  },
+  "accounting_policy": {
+    "classification": "composite_offensive_stat_and_temporal_support",
+    "direct_damage_stage": "Attack and magical Attack counterfactuals",
+    "temporal_stage": "Attack Speed and Cast Speed action-opportunity counterfactuals",
+    "collapse_to_one_multiplier": false,
+    "double_count_components": false,
+    "attribution_enabled": true,
+    "enabled_scope": "per-hit Attack and MAttack allocation only",
+    "temporal_attribution_enabled": false,
+    "temporal_blocker": "action-opportunity counterfactual remains a separate unproven temporal model"
+  },
+  "evidence_sources": [
+    "research/runtime-evidence/global/steam-24252055/observed-status-origins.v1.json",
+    ".codex_tmp/rdps-cross-actor-all-fight-attributes.seal-valid.v4.json",
+    ".codex_tmp/rdps-cross-actor-all-fight-attributes.seal-valid.compact.v4.json",
+    ".codex_tmp/rdps-functional-amp-attack.seal-valid.v8.json",
+    ".codex_tmp/rdps-functional-amp-magic-attack.seal-valid.v8.json"
+  ]
+}

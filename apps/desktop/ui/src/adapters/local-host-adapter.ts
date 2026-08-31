@@ -1347,10 +1347,10 @@ function mountNetworkSettingsSurface(container: HTMLElement): MountedSurface {
   );
   interfaceLabel.append(interfaceCopy, captureInterface, interfaceStatus);
   const dumpcap = field(
-    "dumpcap executable",
+    "Compatibility dumpcap executable (optional)",
     "text",
     "",
-    "C:\\Program Files\\Wireshark\\dumpcap.exe",
+    "Native Npcap is used automatically",
   );
   const actions = document.createElement("div");
   actions.className = "runtime-card-actions";
@@ -1829,16 +1829,16 @@ function mountControlSurface(container: HTMLElement): MountedSurface {
   processId.input.min = "1";
   processId.input.step = "1";
   const captureInterface = field(
-    "dumpcap interface",
+    "Native capture interface",
     "text",
-    "1",
-    "interface number or \\\\Device\\\\NPF_…",
+    "",
+    "\\\\Device\\\\NPF_{adapter-guid}",
   );
   const dumpcapPath = field(
-    "dumpcap executable",
+    "Compatibility dumpcap executable (optional)",
     "text",
-    "C:\\Program Files\\Wireshark\\dumpcap.exe",
-    "absolute path to dumpcap.exe",
+    "",
+    "optional absolute fallback path",
   );
   const logOutput = field(
     "Canonical log folder",
@@ -1940,7 +1940,7 @@ function mountControlSurface(container: HTMLElement): MountedSurface {
       } else if (core.captureInterface !== null) {
         captureInterface.input.value = core.captureInterface;
         captureInterface.input.title =
-          "Saved device was not present in the latest dumpcap scan.";
+          "Saved device was not present in the latest native adapter scan.";
       }
       const processDetail =
         process === undefined

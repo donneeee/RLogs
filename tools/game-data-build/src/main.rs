@@ -616,6 +616,10 @@ mod tests {
         assert_eq!(domain_kind("monsters"), Some(SymbolKind::Monster));
         assert_eq!(domain_kind("maps"), Some(SymbolKind::Map));
         assert_eq!(domain_kind("dungeons"), Some(SymbolKind::Dungeon));
+        assert_eq!(
+            domain_kind("dungeon-seasons"),
+            Some(SymbolKind::DungeonSeason)
+        );
         assert_eq!(domain_kind("modules"), Some(SymbolKind::Module));
         assert_eq!(
             domain_kind("module-effects"),

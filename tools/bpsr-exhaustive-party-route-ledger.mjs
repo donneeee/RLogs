@@ -728,6 +728,24 @@ const broadOwnerIds = new Set(
 const originalAoyiDescendantIds = new Set(
   aoyi.skills.flatMap((skill) => descendantIdsForSkill(skill)),
 );
+const productionEffectEvidenceGaps = [...provenEffectIds]
+  .sort((left, right) => left - right)
+  .flatMap((effectId) => {
+    const evidence = runtimeEvidenceForEffect(effectId);
+    const missing = [];
+    if (evidence.source_files_containing_exact_id.length === 0) missing.push("runtime-source");
+    if (evidence.test_functions.length === 0) missing.push("exact-id-test");
+    const compiledCatalogBinding = evidence.source_files_containing_exact_id.includes(
+      "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+    ) && evidence.test_functions.some((test) =>
+      test.file === "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs");
+    if (evidence.runtime_config_locations.length === 0
+      && evidence.runtime_reference_locations.length === 0
+      && !compiledCatalogBinding) {
+      missing.push("runtime-config-or-compiled-catalog-binding");
+    }
+    return missing.length > 0 ? [{ effect_id: effectId, missing }] : [];
+  });
 
 assertCount(parentRows.length, 73, "Aoyi parent skills");
 assertCount(broadOwnerIds.size, 108, "broad owner-family descendants");
@@ -737,10 +755,12 @@ assertCount(partySkillRows.length, 56, "party skill rows");
 assertCount(partyBuffRows.length, 101, "party buff rows");
 assertCount(rogueRows.length, 22, "rogue party rows");
 assertCount(externalRows.length, 124, "observed external effects");
-assertCount(classification.effects.length, 262, "runtime classification effects");
+assertCount(classification.effects.length, 266, "runtime classification effects");
 assertCount(aoyiComponentRouteRows.length, 52, "Aoyi component routes");
 assertCount(aoyiDamageRouteRows.length, 136, "Aoyi parent-to-damage-ID routes");
 assertCount(provenEffectIds.size, 28, "production effect IDs");
+assertCount(productionEffectEvidenceGaps.length, 0,
+  "production effect IDs missing runtime source, exact-ID tests, or runtime bindings");
 assertCount(
   externalRows.filter((row) => row.runtime_classification === null).length,
   0,
@@ -771,8 +791,8 @@ assertCount(
   exactIdRouteRows.length,
   "unique exact effect route keys",
 );
-assertCount(exactIdRouteRows.length, 1578, "flattened exact ID/route rows");
-assertCount(new Set(exactIdRouteRows.map((row) => row.exact_id)).size, 657,
+assertCount(exactIdRouteRows.length, 1584, "flattened exact ID/route rows");
+assertCount(new Set(exactIdRouteRows.map((row) => row.exact_id)).size, 659,
   "unique exact IDs represented by flattened routes");
 const missingCanonicalExactRouteIds = consolidatedEffectRows
   .filter((effect) => !exactIdRouteRows.some((row) =>
@@ -858,6 +878,10 @@ const report = {
     exact_id_route_rows: exactIdRouteRows.length,
     exact_id_route_unique_ids: new Set(exactIdRouteRows.map((row) => row.exact_id)).size,
     production_effect_ids: provenEffectIds.size,
+    production_effect_ids_missing_runtime_source_tests_or_config:
+      productionEffectEvidenceGaps,
+    zero_production_effect_ids_missing_runtime_source_tests_or_config:
+      productionEffectEvidenceGaps.length === 0,
     production_aoyi_parents: 8,
     open_offensive_aoyi_parents: 3,
     open_offensive_aoyi_parent_skill_ids: [...openOffensiveParents.keys()].sort((left, right) => left - right),

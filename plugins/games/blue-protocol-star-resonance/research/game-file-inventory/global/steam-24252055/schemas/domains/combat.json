@@ -6621,6 +6621,20 @@
           "reviewed_public_reference_decoder",
           "current_build_structural_validation"
         ]
+      },
+      {
+        "offset": 28,
+        "name": "formula_coefficient_curve",
+        "type": "u32",
+        "semantic": "int_pool_array_offset",
+        "state": "current_build_formula_mode_scoped",
+        "confidence": "packet_and_localization_proven_for_standard_attack",
+        "evidence": [
+          "packet_linked_ability_and_hit_suffix",
+          "current_build_localized_500_percent_matches_50000",
+          "current_build_localized_80_percent_matches_8000",
+          "mst_special_skill_attack_uses_different_semantics"
+        ]
       }
     ],
     "strong_candidates": [

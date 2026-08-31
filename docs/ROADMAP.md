@@ -40,7 +40,8 @@
 - [in progress] retain BPSR's raw full-snapshot dungeon flow evidence and wire
   reviewed authoritative boss, retry, raid-route, and completion meanings
   into game-owned versioned rules;
-- expose the segmented dungeon timeline and winning-attempt comparison;
+- [done] expose the segmented dungeon timeline and winning-attempt comparison
+  through the sealed-log Run Report;
 - [done] merge personal BPSR profile observations from sealed canonical logs
   into privacy-reviewed character packages while excluding public social
   lookups for other characters;
@@ -61,13 +62,16 @@
 - [done] atomically persist current BPSR character-profile packages behind the
   separate Profile Sync permission and expose bounded summaries plus lazy exact
   JSON review;
-- derive local previews from the same canonical events submitted for
+- [done] derive local previews from the same canonical events submitted for
   server-owned leaderboard replay.
 
 ## Community runtime
 
 - add a sandboxed component adapter for directory-installed plug-ins;
-- expose enable/disable state and user-reviewed permissions;
+- [done] expose persisted enable/disable state and require the manifest's
+  unsafe-native permission before supervising a native developer package;
+- [done] mount validated installed browser/native settings surfaces without
+  exposing arbitrary package files;
 - add deterministic fixture suites and compatibility checks to the SDK;
 - keep native game decoders outside the ordinary community trust boundary.
 

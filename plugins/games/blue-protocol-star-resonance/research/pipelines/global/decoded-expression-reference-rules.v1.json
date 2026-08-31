@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "rules": [
+    {
+      "id": "skill-effect-damage-merge-to-damage-attr",
+      "source_table": "SkillEffectTable",
+      "source_field": "SkillAttrDes",
+      "expression_kind": "named-function-brace-list-first-argument",
+      "function_name": "skillpara.damageMerge",
+      "relationship": "skill-effect-produced-damage",
+      "target_table": "DamageAttrTable"
+    },
+    {
+      "id": "skill-effect-damage-to-damage-attr",
+      "source_table": "SkillEffectTable",
+      "source_field": "SkillAttrDes",
+      "expression_kind": "named-function-scalar-first-argument",
+      "function_name": "skillpara.damage",
+      "relationship": "skill-effect-produced-damage",
+      "target_table": "DamageAttrTable"
+    }
+  ],
+  "non_reference_functions": [
+    {
+      "source_table": "SkillEffectTable",
+      "source_field": "SkillAttrDes",
+      "function_name": "skillpara.effect",
+      "classification": "non-reference-field-selector",
+      "rationale": "The first argument is an effect-field name such as shieldHp, not a numeric table identity."
+    }
+  ]
+}

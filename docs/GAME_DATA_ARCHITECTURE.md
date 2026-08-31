@@ -67,6 +67,19 @@ that locale's separate `ui/` namespace. Exact
 deployment/channel/client-build availability lives on each canonical record
 and official game string. Player regions never split either tree.
 
+Status effects use one canonical ID namespace. `buff`, `debuff`, target
+polarity, source ownership, recipient scope, and attribution policy are
+properties of that definition or a reviewed runtime relation, not separate
+duplicate ID databases. This is required for owner-specific target effects:
+an effect placed on a monster can increase only its owner's damage without
+being a generic party debuff.
+
+Build-specific activity rules are similarly separate from static definitions.
+They map reviewed scene, objective, boss, route, and difficulty evidence into
+the game-neutral run reducer. Difficulty families and tiers are distinct
+fields—for example, BPSR Master is one family with tiers `M1`-`M20`—while the
+raw wire ID remains unchanged for replay and audit.
+
 Several records may intentionally reference one physical icon when the game
 uses the same address. The compiler emits one asset alias per record key while
 retaining one shared file path, so shared visuals never require copied bytes.
@@ -92,6 +105,13 @@ fallback are opened. Other locales and icon bytes are not loaded implicitly.
 Each shard and manifest has an independent digest, and decompression cannot
 exceed the declared length.
 
+Packet-derived activity-objective IDs are bridged through the build-pinned
+`ActivityTarget` record. That record contains stable scene-event
+backreferences generated and cross-validated against each `SceneEvent`
+forward-reference. A decoder therefore loads one numeric record shard and
+adds only stable keys to the canonical event. Raw IDs remain authoritative;
+human-readable text is joined later from the selected locale add-on.
+
 ## Client updates
 
 A new client build gets a new build-scoped research inventory. Diffing happens
@@ -100,6 +120,23 @@ reviewed relations. Unchanged canonical records gain the new build in their
 availability metadata after explicit digest-backed review. Changed or unknown
 rows return to the research worklist instead of silently overwriting shared
 content.
+
+Seasonal activities use the same gate. An external scanner produces one
+build-scoped package per season, with activities grouped once and a compact
+complete tier identity attached to each difficulty family. Per-tier rows enter
+the runtime package only after differing fields such as score, power, rewards,
+or affixes are reviewed. The review compares source fingerprints,
+activity membership, tier completeness, scene relations, objectives, and
+localization. A row-layout change stops promotion; it never falls back to
+offsets learned from an older client. Only the reviewed compact package enters
+the catalog, so historical seasons can remain available without loading every
+season into memory. Public records live under `dungeon-seasons/`, one file per
+season. They reference canonical `dungeon.<id>` records instead of duplicating
+dungeon definitions, and the sharded runtime loads a season record only when a
+consumer requests that season. Difficulty display uses a localized format such
+as `Master {tier}` joined with the reviewed numeric tier. Raw official labels
+whose displayed number disagrees with that identity remain audit evidence and
+cannot alter parsing, submissions, or leaderboard partitions.
 
 The catalog is universal, while capture and submission identity remains:
 

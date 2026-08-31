@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "gameBuild": "24609362",
+  "historicalPacketBuild": "24252055",
+  "baselineLedger": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-recipient-scope-ledger.v9.json",
+  "summaryOutput": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-batch-summary.v1.json",
+  "proofCatalogOutput": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/mechanic-proof-catalog.v1.json",
+  "relationshipOverviewOutput": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/damage-attribution-relationship-overview.v1.json",
+  "bundleManifestOutput": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-research-bundle-manifest.v1.json",
+  "runtimeCompatibility": {
+    "runtime": "plugins/games/blue-protocol-star-resonance/game-data/runtime/rdps-formula-runtime.v1.json",
+    "carryForward": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/formula-proof-carry-forward.v2.json",
+    "rowDiff": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/decoded-direct-table-diff.candidate.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-runtime-compatibility.v1.json"
+  },
+  "offensiveReadiness": {
+    "formulaGaps": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/formula-magnitude-gap-ledger.v11.json",
+    "proofGates": "plugins/games/blue-protocol-star-resonance/research/pipelines/global/steam-24609362/rdps-offensive-proof-gates.config.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-offensive-readiness.v1.json"
+  },
+  "staticValueProof": {
+    "factors": "../BPSR-UID-Extractors/output-build-24609362/SeasonPhantomFactors.json",
+    "battleImagines": "../BPSR-UID-Extractors/output-build-24609362/BattleImagineDescriptions.json",
+    "rogueDescriptions": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/RogueEntryDescriptionTable.json",
+    "attributeDescriptions": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/AttrDescription.json",
+    "textDescriptions": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/TextDescription.json",
+    "talents": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/TalentTable.json",
+    "buffs": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/BuffTable.json",
+    "aoyiStars": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/SkillAoyiStarTable.json",
+    "skillEffects": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/SkillEffectTable.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-static-value-proof.v1.json"
+  },
+  "remainingTrace": {
+    "relationships": "../BPSR-UID-Extractors/output-build-24609362/ModifierRelationshipTable.json",
+    "componentBridge": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/current-component-relationship-bridge.v1.json",
+    "valueProof": "../BPSR-UID-Extractors/output-build-24609362/ModifierValueProofRuntime.json",
+    "effectSources": "../BPSR-UID-Extractors/output-build-24609362/EffectSources.json",
+    "packetInventory": "plugins/games/blue-protocol-star-resonance/research/runtime-evidence/global/steam-24252055/current-source-rows.v1.json",
+    "providerAudit": "private-research/rdps/remaining-rdps-effect-families-24252055.provider-audit.v1.json",
+    "formulaModels": "plugins/games/blue-protocol-star-resonance/game-data/catalog/formulas/rdps-offline-model-closure.current-build.v1.json",
+    "factorClosure": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/psychoscope-factor-offline-closure.v1.json",
+    "providerCandidateOutput": "private-research/rdps/remaining-rdps-effect-families-24252055.candidates.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-remaining-trace.v1.json"
+  },
+  "factorClosure": {
+    "factors": "../BPSR-UID-Extractors/output-build-24609362/SeasonPhantomFactors.json",
+    "recount": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/RecountTable.json",
+    "skills": "../BPSR-UID-Extractors/output-build-24609362/skillnames.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/psychoscope-factor-offline-closure.v1.json"
+  },
+  "primaryStatAttackTransformProof": {
+    "professionTable": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/ProfessionSystemTable.json",
+    "talentTable": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/TalentTable.json",
+    "talentStageTable": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/TalentStageTable.json",
+    "fightAttrTable": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/FightAttrTable.json",
+    "attrDescription": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/AttrDescription.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/primary-stat-attack-transform-proof.v1.json"
+  },
+  "targetMitigationOfflineProof": {
+    "luaDefinitionAudit": "private-research/rdps/lua53-attack-simply-definition-24609362.v1.json",
+    "luaConsumerAudit": "private-research/rdps/lua53-attack-simply-consumer-24609362.v1.json",
+    "directCallsiteAudit": "../.codex_tmp/attack-simply-direct-callsites.24609362.v1.json",
+    "fightAttributeProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/fight-attribute-transform-evaluator-proof.v1.json",
+    "packetPairProof": ".codex_tmp/target-mitigation-transform-proof.v1.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/target-mitigation-offline-exhaustion-proof.v1.json"
+  },
+  "masteryPropertyOfflineProof": {
+    "inventory": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/mastery-consumer-inventory.json",
+    "fightAttributeProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/fight-attribute-transform-evaluator-proof.v1.json",
+    "historicalFalconryProof": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/observations/mastery-light-derived-relation-001.json",
+    "snapshotProof": ".codex_tmp/inspiration-elemental-snapshot-proof.composite.v33.json",
+    "castSnapshotProof": ".codex_tmp/cast-damage-snapshot-proof.replayed-current-decoder.v3.json",
+    "skills": "../BPSR-UID-Extractors/output-build-24609362/skillnames.json",
+    "buffs": "../BPSR-UID-Extractors/output-build-24609362/BuffDescriptions.json",
+    "skillTable": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/SkillTable.json",
+    "effectSources": "../BPSR-UID-Extractors/output-build-24609362/EffectSources.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/mastery-property-offline-exhaustion-proof.v1.json"
+  },
+  "globalOfflineGate": {
+    "effectSources": "../BPSR-UID-Extractors/output-build-24609362/EffectSources.json",
+    "talentOwnership": "../BPSR-UID-Extractors/output-build-24609362/TalentSpecOwnership.json",
+    "equipmentSets": "../BPSR-UID-Extractors/output-build-24609362/EquipmentSetEffects.json",
+    "formulaModels": "plugins/games/blue-protocol-star-resonance/game-data/catalog/formulas/rdps-offline-model-closure.current-build.v1.json",
+    "damageLedger": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/damage-resolution-ledger.v2.json",
+    "packetDamageScope": "plugins/games/blue-protocol-star-resonance/research/runtime-evidence/global/steam-24252055/packet-observed-damage-scope.v1.json",
+    "semanticAudit": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/static-rdps-semantic-audit.json",
+    "remainingTrace": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-remaining-trace.v1.json",
+    "reachability": "../BPSR-UID-Extractors/output-build-24609362/EffectReachability.json",
+    "factorClosure": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/psychoscope-factor-offline-closure.v1.json",
+    "aoyiLedger": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/current-aoyi-rdps-origin-ledger.candidate.json",
+    "staticValueProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-static-value-proof.v1.json",
+    "producedDamageReferenceScan": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/semantic-produced-damage-reference-scan.v1.json",
+    "formulaExecutionProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/damage-attr-coefficient-proof.historical-packet.v5.json",
+    "formulaApplicabilityProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/damage-formula-applicability-proof.historical-packet.v1.json",
+    "luckyExecutorProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/lucky-damage-executor-proof.historical-packet.v1.json",
+    "serverAuthoredExecutorProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/server-authored-damage-executor-proof.historical-packet.v1.json",
+    "missingScriptDispositionProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/missing-script-damage-disposition-proof.historical-packet.v1.json",
+    "primaryStatAttackTransformProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/primary-stat-attack-transform-proof.v1.json",
+    "targetMitigationOfflineProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/target-mitigation-offline-exhaustion-proof.v1.json",
+    "masteryPropertyOfflineProof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/mastery-property-offline-exhaustion-proof.v1.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-global-offline-gate.v1.json"
+  },
+  "matchingBuildValidation": {
+    "damageStage": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/damage-stage-rdps.candidate.v14.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-matching-build-validation-manifest.v1.json",
+    "runtimeOutput": "plugins/games/blue-protocol-star-resonance/game-data/runtime/rdps-validation-watch.candidate.v1.json"
+  },
+  "runtimeProofWorklist": {
+    "reportSchema": 8,
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-runtime-proof-worklist.v1.json"
+  },
+  "currentComponentBridge": {
+    "originLedger": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/current-aoyi-rdps-origin-ledger.candidate.json",
+    "decodedRoot": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/current-component-relationship-bridge.v1.json"
+  },
+  "extractor": {
+    "root": "../BPSR-UID-Extractors",
+    "outputDirectory": "output-build-24609362",
+    "derivedScripts": [
+      "BattleImagineBehaviorLinks.gen",
+      "EffectSources.gen",
+      "EquipmentSetEffects.gen",
+      "ModifierSourceIndex.gen",
+      "ModifierObservedUidBridge.gen",
+      "ModifierDisplayTable.gen",
+      "ModifierDescriptions.gen",
+      "ModifierRecountTable.gen",
+      "ModifierClassificationTable.gen",
+      "ModifierContributionTable.gen",
+      "ModifierFormulaTermTable.gen",
+      "ModifierValueProofTable.gen"
+    ]
+  },
+  "staticWorklist": {
+    "classification": "../BPSR-UID-Extractors/output-build-24609362/ModifierClassificationRuntime.json",
+    "contribution": "../BPSR-UID-Extractors/output-build-24609362/ModifierContributionRuntime.json",
+    "recount": "../BPSR-UID-Extractors/output-build-24609362/ModifierRecountTable.json",
+    "valueProof": "../BPSR-UID-Extractors/output-build-24609362/ModifierValueProofRuntime.json",
+    "buffTable": "../.codex_tmp/current-build-24609362-table-extract-candidate/Excels/BuffTable.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/static-rdps-worklist.json",
+    "watchlistOutput": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-magnitude-proof-watchlist.v5.json"
+  },
+  "semanticAudit": {
+    "effectSources": "../BPSR-UID-Extractors/output-build-24609362/EffectSources.json",
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/static-rdps-semantic-audit.json"
+  },
+  "reachability": {
+    "script": "EffectReachability.gen",
+    "output": "../BPSR-UID-Extractors/output-build-24609362/EffectReachability.json"
+  },
+  "relationshipEvidence": {
+    "attributeFamilyFormulaProof": "private-research/rdps/attribute-family-formula-proof-24252055.v1.json",
+    "fightAttributeTransformSurface": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/fight-attribute-transform-surface.v1.json",
+    "attributeDependencyOutput": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/attribute-transform-dependency-ledger.v1.json"
+  },
+  "ledger": {
+    "output": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/rdps-recipient-scope-ledger.v13.json",
+    "display": "../BPSR-UID-Extractors/output-build-24609362/ModifierDisplayTable.json",
+    "proofInputs": {
+      "packet-proof": "private-research/rdps/formula-magnitude-discovery-24252055.compact.v1.json",
+      "packet-inventory": "plugins/games/blue-protocol-star-resonance/research/runtime-evidence/global/steam-24252055/current-source-rows.v1.json",
+      "provider-audit": "private-research/rdps/recipient-scope-all-static-candidates-24252055.v1.json",
+      "exhaustive-provider-audit": "private-research/rdps/remaining-rdps-effect-families-24252055.provider-audit.v1.json",
+      "component-packet-proof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/blade-sweep-projectile-status-proof.v1.json",
+      "severed-chapter-proof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/severed-chapter-effect-family-proof.v1.json",
+      "severed-chapter-audit": "private-research/rdps/severed-chapter-effect-family-24252055.provider-audit.v1.json",
+      "battle-cry-proof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/battle-cry-effect-family-proof.v1.json",
+      "battle-cry-audit": "private-research/rdps/battle-cry-effect-family-24252055.provider-audit.v1.json",
+      "denvel-proof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/denvel-effect-family-proof.v1.json",
+      "denvel-audit": "private-research/rdps/denvel-effect-family-24252055.provider-audit.v1.json",
+      "focused-shot-proof": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/focused-shot-effect-family-proof.v1.json",
+      "focused-shot-audit": "private-research/rdps/focused-shot-effect-family-24252055.provider-audit.v1.json",
+      "stellar-spark-proof": "private-research/rdps/stellar-spark-effect-family-proof.v1.json",
+      "stellar-spark-audit": "private-research/rdps/stellar-spark-effect-family-24252055.provider-audit.v1.json",
+      "origin-ledger": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/current-aoyi-rdps-origin-ledger.candidate.json"
+    }
+  }
+}

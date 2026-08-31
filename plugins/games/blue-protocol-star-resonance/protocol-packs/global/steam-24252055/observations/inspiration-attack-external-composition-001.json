@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "client_build": 24252055,
+  "deployment": "global",
+  "channel": "steam",
+  "subject": "Inspiration non-overlapping Attack and External Damage accounting composition",
+  "effect_id": 2202041,
+  "source_configuration_id": 2202040,
+  "policy": {
+    "runtime_rdps_attribution_enabled": false,
+    "partial_effect_credit_displayed": false,
+    "unresolved_packet_evidence_hidden": false,
+    "independent_axis_summation_allowed": false
+  },
+  "packet_proven_inputs": {
+    "attack_family_formula": "final=floor(base_add*(10000+raw_percent)/10000)+extra_add",
+    "standard_damage_body": "A=floor(active_attack*coefficient/10000)+fixed_parameter",
+    "provider_removed_damage_body": "A0=floor((active_attack-provider_attack_marginal)*coefficient/10000)+fixed_parameter",
+    "external_damage_factor": "E=10000+current_external_damage_raw",
+    "provider_removed_external_damage_factor": "E0=E-provider_external_damage_raw_delta",
+    "fixed_point_scale": 10000
+  },
+  "exact_accounting_primitive": {
+    "provider_marginal": "A*E-A0*E0",
+    "provider_share": "observed_damage*(A*E-A0*E0)/(A*E)",
+    "representation": "checked i128 reduced rational",
+    "cross_term_policy": "The shared Attack-times-External-Damage cross-term is removed once. Summing separate Attack-only and External-only marginals is forbidden because it counts the intersection twice.",
+    "single_axis_limits": "With either provider delta equal to zero, the primitive reduces exactly to the already tested single-axis accounting formula."
+  },
+  "production_implementation": {
+    "source": "plugins/games/blue-protocol-star-resonance/src/state_formula.rs",
+    "function": "exact_external_attack_and_damage_bonus_fraction",
+    "tests": [
+      "combined_attack_and_external_damage_removes_the_cross_term_once",
+      "combined_attack_and_external_damage_accepts_single_axis_limits"
+    ]
+  },
+  "promotion_boundary": {
+    "math_primitive_exact": true,
+    "complete_inspiration_counterfactual_proven": false,
+    "remaining_requirements": [
+      "matching packet calculation snapshot for every composed attribute stage",
+      "specialization-specific Mastery consumer and integer placement",
+      "Haste action-opportunity attribution from canonical action events",
+      "nonstandard DamageAttr script-family models",
+      "one complete effect-level conservation audit across all components"
+    ]
+  }
+}

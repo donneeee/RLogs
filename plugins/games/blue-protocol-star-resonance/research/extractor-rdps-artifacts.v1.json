@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "source_name": "BPSR-UID-Extractors",
+  "policy": {
+    "extraction_runs_outside_live_parser": true,
+    "fingerprints_are_build_scoped": true,
+    "absolute_paths_exported": false,
+    "missing_required_artifacts_fail": true,
+    "artifacts_are_runtime_authority": false
+  },
+  "files": [
+    { "id": "buff-identities", "path": "BuffName.json", "role": "buff and status identity", "required": true },
+    { "id": "damage-attributes", "path": "DamageAttrIdName.json", "role": "packet damage id identity", "required": true },
+    { "id": "damage-formula-surface", "path": "DamageFormulaSurface.json", "role": "damage formula input surface", "required": false },
+    { "id": "fight-attribute-transform", "path": "FightAttributeTransform.json", "role": "fixed-point attribute transformation", "required": false },
+    { "id": "skill-identities", "path": "skillnames.json", "role": "skill and effect identity", "required": true },
+    { "id": "skill-damage-chains", "path": "SkillDamageChainBridge.json", "role": "skill to emitted damage relationship", "required": true },
+    { "id": "skill-breakdown", "path": "SkillBreakdownDetails.json", "role": "packet ability presentation and ownership", "required": true },
+    { "id": "talent-model", "path": "probing-reports/TalentEffectModelProbe.json", "role": "talent effect records and relationships", "required": true },
+    { "id": "talent-ownership", "path": "TalentSpecOwnership.json", "role": "class and specialization ownership", "required": true },
+    { "id": "season-factors", "path": "SeasonPhantomFactors.json", "role": "psychoscope factor relationships", "required": true },
+    { "id": "equipment-sets", "path": "EquipmentSetEffects.json", "role": "equipment set effect relationships", "required": true },
+    { "id": "effect-sources", "path": "EffectSources.json", "role": "full modifier source graph", "required": true },
+    { "id": "modifier-source-index", "path": "ModifierSourceIndex.json", "role": "UID-first modifier source index", "required": true },
+    { "id": "modifier-recount", "path": "ModifierRecountTable.json", "role": "UID-first recount policy", "required": true },
+    { "id": "modifier-relationships", "path": "ModifierRelationshipTable.json", "role": "typed UID relationship graph", "required": true },
+    { "id": "modifier-classification", "path": "ModifierClassificationTable.json", "role": "modifier domain classification", "required": true },
+    { "id": "modifier-classification-runtime", "path": "ModifierClassificationRuntime.json", "role": "compact candidate classification", "required": true },
+    { "id": "modifier-contribution", "path": "ModifierContributionTable.json", "role": "contribution readiness", "required": true },
+    { "id": "modifier-contribution-runtime", "path": "ModifierContributionRuntime.json", "role": "compact candidate contribution rules", "required": true },
+    { "id": "modifier-formula-terms", "path": "ModifierFormulaTermTable.json", "role": "formula and value grounding", "required": true },
+    { "id": "modifier-formula-runtime", "path": "ModifierFormulaTermRuntime.json", "role": "compact candidate formula terms", "required": true },
+    { "id": "modifier-value-proof", "path": "ModifierValueProofTable.json", "role": "value-selection proof state", "required": true },
+    { "id": "modifier-value-proof-runtime", "path": "ModifierValueProofRuntime.json", "role": "compact candidate value selectors", "required": true },
+    { "id": "lucky-strike", "path": "LuckyStrikeTable.json", "role": "luck and lucky-strike proof graph", "required": true },
+    { "id": "lucky-strike-runtime", "path": "LuckyStrikeRuntime.json", "role": "compact luck candidate rules", "required": true }
+  ]
+}

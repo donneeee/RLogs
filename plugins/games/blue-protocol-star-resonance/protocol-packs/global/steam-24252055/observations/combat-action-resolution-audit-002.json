@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "client_build": "24252055",
+  "scope": "saved-combat-history-observed-action-resolution",
+  "history_artifacts_reviewed": 15,
+  "unique_observed_action_ids": 361,
+  "resolved_action_ids": 361,
+  "unresolved_action_ids": 0,
+  "generated_observed_rows": 122,
+  "exact_recount_child_relations": 5,
+  "technical_identity_rows": 117,
+  "runtime_reviewed_overlays": 161,
+  "locales_validated": 11,
+  "policy": "Every observed event remains visible. Raw action IDs are authoritative. Unique current-build recount joins form explicit parent-child rows; all other nonlocalized identities retain their exact design, actor, monster, and action-kind evidence as build-scoped technical names instead of guessed player skills.",
+  "runtime_policy": "The BPSR plug-in resolves packet identity and ownership into compact sorted lookup tables. Combat History renders the canonical hierarchy without replaying packets. Future rDPS attribution remains a separate consumer and may not rename, hide, or discard source events.",
+  "generator": "BPSR-UID-Extractors/GenerateRLogsObservedActions.gen",
+  "generated_catalog": "game-data/catalog/combat-actions/observed-technical.v1.json"
+}

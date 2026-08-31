@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "observation_id": "team-member-real-player-runs-002",
+  "target_pack_id": "global-steam-24252055-research",
+  "scenario": {
+    "started_after_authentication": true,
+    "included_login_flow": false,
+    "completed_run_count": 3,
+    "party_kind": "real_players"
+  },
+  "verified_team_snapshot_fields": [
+    "character_id",
+    "display_name",
+    "level",
+    "season_level",
+    "profession_id",
+    "combat_power",
+    "season_strength"
+  ],
+  "not_present_in_observed_team_snapshots": [
+    "specialization_id",
+    "equipment",
+    "battle_imagine_skills",
+    "equipped_action_slots"
+  ],
+  "primary_battle_imagine_evidence": {
+    "source": "WorldNtf.SyncNearEntities AttrCollection attribute 116 SkillLevelInfo entries",
+    "verified_on_retained_real_player_capture": true,
+    "classification": "current-build Battle Imagine skill catalog membership",
+    "verified_result": "two remote primary Battle Imagine identities and remodel tiers remain distinguishable when the same attribute contains a role-imagine replacement action",
+    "role_imagine_replacement_filter": "auxiliary action IDs are classified by the separate current-build auxiliary action catalog and are never accepted as primary Battle Imagine identities",
+    "zero_tier_encoding": "an omitted remodel_level on a confirmed Battle Imagine skill is protobuf zero and is normalized as T0/no tier",
+    "remote_primary_position_status": "the two identities are proven but their left-to-right primary slot order is not proven by attribute 116"
+  },
+  "auxiliary_slot_evidence": {
+    "exact_owner_source": "WorldNtf.SyncContainerData CharSerialize slots and ProfessionInfo.slot_skill_info_map",
+    "owner_source_scope": "the character owning the captured client connection",
+    "remote_aoi_source": "WorldNtf.SyncNearEntities AttrCollection attribute 116 SkillLevelInfo entries",
+    "remote_aoi_provides": [
+      "role skill identities and levels",
+      "role-imagine action identities and tiers when present"
+    ],
+    "remote_aoi_does_not_provide": [
+      "auxiliary slot positions 21 through 24",
+      "which native role skill a role-imagine action replaced"
+    ],
+    "team_fast_sync_fields": [
+      "character_id",
+      "scene_id",
+      "position",
+      "hp",
+      "max_hp",
+      "state",
+      "scene_area_id"
+    ],
+    "social_profile_has_slot_map": false,
+    "current_build_game_data_result": "slots 21 through 24 are generic positions and auxiliary actions 3021 through 3028 are selectable choices; no fixed action-to-slot mapping was found",
+    "skill_use_notification_result": "target UUID and skill level ID only; no caster or slot position",
+    "exact_remote_slot_status": "not observable from the reviewed passive teammate packet stream",
+    "exact_cross_client_strategy": "merge each opted-in player's owner-exact snapshot by public character UID and capture time"
+  },
+  "specialization_evidence": {
+    "team_talent_id_semantics": "party_role_damage_1_healer_2_tank_3",
+    "team_talent_id_is_specialization": false,
+    "combat_ability_candidates": [
+      {
+        "class_id": 12,
+        "ability_id": 2406,
+        "canonical_specialization_id": 123,
+        "evidence": "current_build_ctb_selector_replacement_skill",
+        "status": "verified"
+      },
+      {
+        "class_id": 5,
+        "ability_id": 1541,
+        "canonical_specialization_id": null,
+        "evidence": "observed_real_player_ability_and_current_build_skill_row",
+        "status": "needs_direct_specialization_bridge"
+      },
+      {
+        "class_id": 11,
+        "ability_id": 2233,
+        "canonical_specialization_id": null,
+        "evidence": "observed_real_player_ability_and_current_build_skill_row",
+        "status": "needs_direct_specialization_bridge"
+      }
+    ]
+  },
+  "decoder_policy": {
+    "history_decodes_packets": false,
+    "missing_team_loadout_values_are_invented": false,
+    "remote_primary_imagines_use_disjoint_current_build_membership": true,
+    "observed_remote_auxiliary_skills_are_not_assigned_to_guessed_slots": true,
+    "specialization_requires_direct_game_data_or_runtime_evidence": true
+  },
+  "retained_data": {
+    "packet_payloads": false,
+    "network_endpoints": false,
+    "character_names": false,
+    "character_ids": false,
+    "account_identifiers": false,
+    "credentials_or_tokens": false
+  }
+}

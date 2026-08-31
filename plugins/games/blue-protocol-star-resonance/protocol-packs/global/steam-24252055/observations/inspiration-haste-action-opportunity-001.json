@@ -1,0 +1,151 @@
+{
+  "schema_version": 2,
+  "game_build": "24252055",
+  "effect": {
+    "effect_id": 2202041,
+    "source_configuration_id": 2202040,
+    "name": "Inspiration",
+    "provider_scope": "external_player",
+    "recipient_scope": "player"
+  },
+  "policy": {
+    "runtime_rdps_attribution_enabled": false,
+    "partial_haste_credit_emitted": false,
+    "unresolved_evidence_hidden": false,
+    "damage_hits_used_as_cast_substitutes": false,
+    "current_build_static_metadata_is_old_build_packet_authority": false
+  },
+  "packet_attribute_boundary": {
+    "source_artifact": ".codex_tmp/inspiration-2202041-haste-speed-families.v1.json",
+    "source_artifact_sha256": "cdcb9792db273ce194d484f896152c5ca1dce666e554c65c3e2b42bffc18b99c",
+    "selected_exact_external_provider_pair": {
+      "source_entity_uuid": 42310107776,
+      "target_entity_uuid": 216009015936,
+      "effect_level": 5,
+      "matched_lifecycle_pairs": 1,
+      "attribute_coefficients": [
+        {
+          "family": "attack_speed",
+          "final_attribute_id": 11720,
+          "total_attribute_id": 11721,
+          "raw_add_attribute_id": 11722,
+          "coefficient_units": 230
+        },
+        {
+          "family": "cast_speed",
+          "final_attribute_id": 11730,
+          "total_attribute_id": 11731,
+          "raw_add_attribute_id": 11732,
+          "coefficient_units": 382
+        },
+        {
+          "family": "haste",
+          "final_attribute_id": 11930,
+          "total_attribute_id": 11931,
+          "raw_add_attribute_id": 11932,
+          "coefficient_units": 382
+        }
+      ]
+    },
+    "proof_state": "insufficient_matched_lifecycle_pairs",
+    "reason": "One clean external-provider application/removal pair proves the observed split but cannot authorize a universal coefficient. Additional final-family pairs include contradictory deltas while other combat state changes overlap."
+  },
+  "current_client_static_boundary": {
+    "game_build": "24609362",
+    "contract": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24609362/use-skill-attribute-envelope.v2.json",
+    "native_proof_sha256": "f41135e53e37621de8e1f742e8774f3b341f04534de3cc90bf2ec34fe82860a7",
+    "use_slot_wire_proof_sha256": "0e751f9591e8912e8939c03743eaf0f305092ba9f177e20b50e33a5ae30d76f0",
+    "use_skill_param_wire_proof_sha256": "b66541398eeaaa26ea517f730f5b33f3a4b422e7bfbd8479690031881c118389",
+    "skill_speed_formula": "1 + selected_speed_attribute / 10000",
+    "stage_family_selection": {
+      "normal_attack_speed_attribute_id": 11720,
+      "singing_cast_speed_attribute_id": 11730,
+      "energy_charge_speed_attribute_id": 11740,
+      "pet_attack_speed_attribute_id": 11990
+    },
+    "direct_client_skill_use": {
+      "service_name": "World",
+      "current_build_service_id": null,
+      "current_build_service_id_state": "exact_native_proxy_uuid_virtualized_current_service_id_unresolved",
+      "prior_packet_observed_service_id_decimal": 103198054,
+      "prior_packet_observed_service_id_build": "24252055",
+      "prior_service_id_is_not_current_route_authority": true,
+      "method_name": "UseSlot",
+      "method_id_decimal": 249858,
+      "method_id_hex": "0x3D002",
+      "use_slot_type_skill_value": 1,
+      "use_slot_request_attr_data_field": 4,
+      "attr_data_contract": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24568685/use-skill-attribute-envelope.json",
+      "attr_data_fields": [
+        {
+          "protobuf_tag": 1,
+          "name": "timestamp",
+          "type": "uint64 varint"
+        },
+        {
+          "protobuf_tag": 2,
+          "name": "velocity",
+          "type": "fixed32 float"
+        },
+        {
+          "protobuf_tag": 3,
+          "name": "attack_speed_pct",
+          "type": "int32 varint",
+          "related_attribute_id": 11720
+        },
+        {
+          "protobuf_tag": 4,
+          "name": "cast_speed_pct",
+          "type": "int32 varint",
+          "related_attribute_id": 11730
+        },
+        {
+          "protobuf_tag": 5,
+          "name": "charge_speed_pct",
+          "type": "int32 varint",
+          "related_attribute_id": 11740
+        }
+      ],
+      "envelope": "IV(16) || HMAC-SHA256(IV || ciphertext)(32) || AES-128-CBC-PKCS7 ciphertext",
+      "decoder_contract_state": "build_24609362_method_wire_plaintext_and_key_contract_exact_service_id_unresolved",
+      "packet_route_state": "disabled_until_exact_build_replay"
+    },
+    "server_skill_notification_is_not_direct_attr_data_route": {
+      "service_name": "WorldNtf",
+      "method_id": 40,
+      "fields": [
+        "skill_target_uuid",
+        "skill_level_id"
+      ]
+    }
+  },
+  "sealed_replay_audit": {
+    "tool": "plugins/games/blue-protocol-star-resonance/tools/inspiration-haste-opportunity-proof.rs",
+    "runtime_corpus_artifact": ".codex_tmp/inspiration-haste-opportunity-all-runtime-rlogs.v1.json",
+    "runtime_corpus_artifact_sha256": "f741b976d50a66d059a89ee7d836441547164a6079453bff008299197afcbf9e",
+    "integrity_sealed_runtime_logs": 29,
+    "inspiration_windows_started": 4,
+    "inspiration_windows_ended": 69,
+    "canonical_cast_events": 0,
+    "retained_same_ability_intervals": 0,
+    "formula_replay_status_events": 5702,
+    "formula_replay_canonical_cast_events": 0,
+    "exact_build_pack_sync_client_use_skill_method_id": 67,
+    "exact_build_capture_packets_on_method_67": 0
+  },
+  "runtime_blockers": [
+    "The sealed packet corpus predates build 24609362 and contains no authorized same-build World.UseSlot 0x3D002 replay.",
+    "The build-24609362 WorldProxy.Uuid native body is virtualized; prior-build packet service ID 103198054 is retained as evidence but is not promoted to current-build route authority.",
+    "Damage hits cannot replace cast starts because passive procs, periodic hits, multi-hit stages, pets, and triggered attacks would overcount player actions.",
+    "One matched Haste lifecycle pair is insufficient to promote a universal attribute coefficient.",
+    "WorldNtf method 40 is a separate server notification and does not carry the direct client AttrData envelope.",
+    "The build-24609362 World.UseSlot 0x3D002 static contract must be verified by same-build packet replay before a versioned protocol pack can authorize it.",
+    "Each action still must join its exact stage-speed family and external provider delta to one action-to-damage recount parent before the conserved observed-damage speed-capacity fraction can be emitted."
+  ],
+  "next_required_evidence": [
+    "Authorize a build-24609362 protocol pack only after exact-build replay proves World.UseSlot 0x3D002 and successfully authenticates/decrypts AttrData.",
+    "Retain canonical local action starts with exact slot, UseSkillParam, timestamp, velocity, attack speed, cast speed, and charge speed while recording the packet-observed Inspiration provider window.",
+    "Repeat matched Inspiration apply/remove pairs across recipients and provider potency states.",
+    "Prove action-to-recount-parent joins and emit only the reduced (observed speed - provider-removed speed) / observed speed share of already observed linked damage, without attributing ordinary player execution or self-only speed."
+  ]
+}
