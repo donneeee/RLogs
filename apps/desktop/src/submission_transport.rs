@@ -57,6 +57,14 @@ pub struct ProfilePublishResult {
     pub profile_url: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct DeviceAuthenticationResponse {
+    schema_version: u16,
+    submitter_id: String,
+    device_id: String,
+    authentication: String,
+}
+
 impl SubmissionTransport {
     pub fn from_environment() -> Result<Option<Self>, String> {
         let endpoint = match std::env::var(ENDPOINT_ENVIRONMENT_VARIABLE) {
@@ -126,6 +134,32 @@ impl SubmissionTransport {
 
     pub fn endpoint_url(&self) -> String {
         self.endpoint.as_str().trim_end_matches('/').to_owned()
+    }
+
+    pub fn validate_device_authentication(&self) -> Result<(), String> {
+        if self.device_token.is_none() {
+            return Err("an rLogs app token is required".into());
+        }
+        let response: DeviceAuthenticationResponse = self
+            .authorized(self.client.get(self.url("v1/auth/device")?))
+            .send()
+            .map_err(|error| {
+                format!("submission receiver could not validate the app token: {error}")
+            })?
+            .error_for_status()
+            .map_err(|error| format!("submission receiver rejected the app token: {error}"))?
+            .json()
+            .map_err(|error| {
+                format!("submission receiver returned an invalid app-token receipt: {error}")
+            })?;
+        if response.schema_version != 1
+            || response.authentication != "device_token"
+            || validate_identifier(&response.submitter_id, "submitter ID").is_err()
+            || validate_identifier(&response.device_id, "device ID").is_err()
+        {
+            return Err("submission receiver returned an invalid app-token receipt".into());
+        }
+        Ok(())
     }
 
     pub fn upload(
@@ -406,6 +440,33 @@ fn validate_identifier(value: &str, label: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    fn mock_device_auth_response(
+        status: u16,
+        body: &'static str,
+    ) -> (String, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let read = std::io::Read::read(&mut stream, &mut request).unwrap();
+            let request = String::from_utf8_lossy(&request[..read]);
+            assert!(request.starts_with("GET /v1/auth/device HTTP/1.1"));
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer rld_test")
+            );
+            let reason = if status == 200 { "OK" } else { "Unauthorized" };
+            let response = format!(
+                "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            std::io::Write::write_all(&mut stream, response.as_bytes()).unwrap();
+        });
+        (format!("http://{address}"), handle)
+    }
+
     #[test]
     fn identifiers_reject_paths_and_empty_values() {
         assert!(validate_identifier("upload_0123-ab", "upload ID").is_ok());
@@ -425,5 +486,26 @@ mod tests {
         assert!(
             SubmissionTransport::new("https://token@receiver.example.com", Some("token")).is_err()
         );
+    }
+
+    #[test]
+    fn device_authentication_is_verified_before_connection_storage() {
+        let (endpoint, server) = mock_device_auth_response(
+            200,
+            r#"{"schema_version":1,"submitter_id":"sub_test","device_id":"device_test","authentication":"device_token"}"#,
+        );
+        SubmissionTransport::new(&endpoint, Some("rld_test"))
+            .unwrap()
+            .validate_device_authentication()
+            .unwrap();
+        server.join().unwrap();
+
+        let (endpoint, server) = mock_device_auth_response(401, r#"{"error":"unauthorized"}"#);
+        let error = SubmissionTransport::new(&endpoint, Some("rld_test"))
+            .unwrap()
+            .validate_device_authentication()
+            .unwrap_err();
+        assert!(error.contains("rejected the app token"));
+        server.join().unwrap();
     }
 }

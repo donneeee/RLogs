@@ -257,6 +257,13 @@ ordinary per-actor damage map is unchanged, total contribution given equals
 total contribution received, and total party rDPS damage equals raw party
 damage. Source parses remain immutable beside this derived result.
 
+Before the desktop stores a newly pasted app token, it calls
+`GET /v1/auth/device` with that bearer token. The endpoint is read-only and
+returns only the pseudonymous submitter and device IDs. Invalid, revoked, or
+non-device credentials are rejected before Windows Credential Manager is
+updated, so a local UID package cannot appear connected and then fail only at
+its first claim attempt.
+
 State replay readiness is independent from report count. A pre-run baseline
 can be placed at the canonical run start without synchronizing two local
 monotonic clocks. Every in-run state change requires packet-authored game-time;

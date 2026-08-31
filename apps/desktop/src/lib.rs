@@ -4296,6 +4296,7 @@ impl RuntimeController {
     ) -> Result<SubmissionConnectionView, String> {
         let transport =
             SubmissionTransport::new(&request.endpoint_url, Some(request.device_token.as_str()))?;
+        transport.validate_device_authentication()?;
         let view = self
             .submission_connection
             .lock()

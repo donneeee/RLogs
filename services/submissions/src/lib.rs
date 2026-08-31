@@ -1323,6 +1323,7 @@ pub fn router(service: SubmissionService) -> Router {
         )
         .route("/v1/auth/session/exchange", post(exchange_auth_code))
         .route("/v1/auth/me", get(get_account))
+        .route("/v1/auth/device", get(get_device_account))
         .route("/v1/auth/profiles", get(get_account_profiles))
         .route("/v1/auth/app-tokens", post(issue_app_token))
         .route("/v1/uploads", post(begin_upload))
@@ -1418,6 +1419,30 @@ async fn get_account(
             .accounts
             .authenticate_web(token, unix_millis()?)?,
     ))
+}
+
+async fn get_device_account(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let token = bearer_token(&headers)
+        .filter(|token| token.starts_with("rld_"))
+        .ok_or(ApiError::Unauthorized)?;
+    let identity =
+        service
+            .inner
+            .accounts
+            .authenticate_device(token)
+            .map_err(|error| match error {
+                AccountError::NotConfigured | AccountError::Unauthorized => ApiError::Unauthorized,
+                other => ApiError::Account(other),
+            })?;
+    Ok(Json(serde_json::json!({
+        "schema_version": 1,
+        "submitter_id": identity.submitter_id,
+        "device_id": identity.device_id,
+        "authentication": "device_token"
+    })))
 }
 
 async fn issue_app_token(
