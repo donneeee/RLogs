@@ -60,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v41";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v42";
 const REMOTE_FACTOR_BUCKET_MICROS: u64 = 5_000_000;
 const REMOTE_FACTOR_NEAREST_BUCKET_LIMIT: u64 = 6;
 const REMOTE_FACTOR_MAX_DISTINCT_AMOUNTS: usize = 96;
@@ -3760,6 +3760,31 @@ impl BpsrStateDamageContributionProjector {
                         );
                         return;
                     }
+                    let joint_inspiration_team_luck = match (
+                        team_luck_contribution,
+                        inspiration_occurrence_contribution,
+                        attribute_transfer_occurrence_contribution,
+                        tactical_blessing_occurrence_contribution,
+                        critical_cold_occurrence_contribution,
+                        synergy_crit_field_contribution,
+                        thunderwind_contribution,
+                        target_vulnerability_rational_contributions.as_slice(),
+                    ) {
+                        (Some(team_luck), Some(inspiration), None, None, None, None, None, []) => {
+                            self.joint_inspiration_team_luck_contribution(
+                                envelope.time.observed_micros,
+                                damage,
+                                inspiration,
+                                team_luck,
+                            )
+                            .map(|team_luck| {
+                                let mut joint = inspiration_occurrence_components.clone();
+                                joint.push(team_luck);
+                                joint
+                            })
+                        }
+                        _ => None,
+                    };
                     let later_contributions = match (
                         team_luck_contribution,
                         inspiration_occurrence_contribution,
@@ -3772,6 +3797,9 @@ impl BpsrStateDamageContributionProjector {
                     ) {
                         (Some(team_luck), None, None, None, None, None, None, []) => {
                             vec![team_luck]
+                        }
+                        (Some(_), Some(_), None, None, None, None, None, []) => {
+                            joint_inspiration_team_luck.unwrap_or_default()
                         }
                         (None, Some(_), None, None, None, None, None, []) => {
                             inspiration_occurrence_components.clone()
@@ -8596,6 +8624,66 @@ impl BpsrStateDamageContributionProjector {
         }
     }
 
+    /// Returns the exact pre-selector Team Luck candidate for replay audits.
+    /// Production still routes the candidate through the ordered overlap
+    /// allocator; exposing it here lets the audit distinguish missing evidence
+    /// from a later, deliberately fail-closed overlap suppression.
+    pub fn team_luck_audit_contribution(
+        &self,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        self.team_luck_decision(self.latest_observed_micros, damage)
+            .ok()
+    }
+
+    pub fn team_luck_simultaneous_later_candidate_signature(
+        &self,
+        envelope: &EventEnvelope,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<String> {
+        let team_luck = self
+            .team_luck_decision(envelope.time.observed_micros, damage)
+            .ok()?;
+        let mut candidates = vec![format!(
+            "{}:{}:{:?}",
+            team_luck.effect_id, team_luck.provider_actor_id, team_luck.scope
+        )];
+        if let Some(contribution) =
+            self.inspiration_occurrence_contribution(envelope.time.observed_micros, damage)
+        {
+            candidates.push(format!(
+                "{}:{}:{:?}",
+                contribution.effect_id, contribution.provider_actor_id, contribution.scope
+            ));
+        }
+        if let Some(contribution) =
+            self.critical_cold_occurrence_contribution(envelope.time.observed_micros, damage)
+        {
+            candidates.push(format!(
+                "{}:{}:{:?}",
+                contribution.effect_id, contribution.provider_actor_id, contribution.scope
+            ));
+        }
+        if let Some(contribution) =
+            self.synergy_crit_field_contribution(envelope.time.observed_micros, damage)
+        {
+            candidates.push(format!(
+                "{}:{}:{:?}",
+                contribution.effect_id, contribution.provider_actor_id, contribution.scope
+            ));
+        }
+        if let Some(contribution) =
+            self.thunderwind_contribution(envelope.time.observed_micros, damage)
+        {
+            candidates.push(format!(
+                "{}:{}:{:?}",
+                contribution.effect_id, contribution.provider_actor_id, contribution.scope
+            ));
+        }
+        candidates.sort_unstable();
+        Some(candidates.join(" | "))
+    }
+
     fn team_luck_decision(
         &self,
         observed_micros: u64,
@@ -13155,6 +13243,103 @@ impl BpsrStateDamageContributionProjector {
     ) -> Option<[ExactRationalDamageContributionEvent; 2]> {
         self.joint_critical_cold_team_luck_decision(damage, critical_cold, team_luck)
             .ok()
+    }
+
+    /// Orders Inspiration's occurrence chance before Team Luck's outcome
+    /// multiplier. The chance provider owns the critical/Lucky occurrences it
+    /// creates with every then-active damage component; Team Luck owns its
+    /// multiplier only across the chance that remains without Inspiration.
+    /// Keeping Inspiration's already-composite marginal and scaling Team Luck
+    /// by `(C-dC)/C` removes their shared cross-term exactly once.
+    fn joint_inspiration_team_luck_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+        inspiration: ExactRationalDamageContributionEvent,
+        mut team_luck: ExactRationalDamageContributionEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        if inspiration.effect_id != self.runtime.inspiration.effect_id
+            || team_luck.effect_id != self.runtime.team_luck.effect_id
+            || inspiration.recipient_actor_id != team_luck.recipient_actor_id
+            || inspiration.observed_damage != team_luck.observed_damage
+        {
+            return None;
+        }
+        let recipient_actor_id = damage.source.actor_id.0;
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let route = &self.runtime.inspiration.combined_critical_lucky_route;
+        let exact_windows = self
+            .inspiration_windows
+            .iter()
+            .filter(|(key, window)| {
+                (key.target_actor_id == recipient_actor_id
+                    || (recipient_entity_uuid != 0
+                        && window.target_entity_uuid == recipient_entity_uuid))
+                    && window.origin_source_type_id == Some(route.provider_origin_source_type_id)
+                    && window.origin_source_config_id
+                        == Some(self.runtime.inspiration.source_config_id)
+                    && window
+                        .expires_at_observed_micros
+                        .is_some_and(|expires_at| observed_micros <= expires_at)
+            })
+            .filter_map(|(key, window)| {
+                let source_level = window.source_level?;
+                let chance_raw_delta = self
+                    .runtime
+                    .inspiration
+                    .chance_raw_delta_for_effect_level_and_mode(
+                        source_level,
+                        window.provider_full_bloom,
+                    )?;
+                let provider_actor_id = self
+                    .actor_ancestry
+                    .actor_for_entity(window.provider_entity_uuid)
+                    .unwrap_or(key.provider_actor_id);
+                Some((provider_actor_id, chance_raw_delta))
+            })
+            .collect::<Vec<_>>();
+        let [(provider_actor_id, provider_chance_raw_delta)] = exact_windows.as_slice() else {
+            return None;
+        };
+        if *provider_actor_id != inspiration.provider_actor_id {
+            return None;
+        }
+        let state = self
+            .team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)
+            .and_then(|actor_id| self.states.get(&actor_id))?;
+        let (current_chance_raw, expected_scope, joint_scope) =
+            match (damage.flags.critical, damage.flags.lucky) {
+                (Some(true), Some(false)) => (
+                    state.critical_chance_raw?,
+                    DamageContributionScope::Component("team-luck-critical-damage"),
+                    DamageContributionScope::Component(
+                        "team-luck-critical-damage-joint-inspiration-ordered",
+                    ),
+                ),
+                (Some(false), Some(true)) => (
+                    state.lucky_chance_raw?,
+                    DamageContributionScope::Component("team-luck-lucky-damage"),
+                    DamageContributionScope::Component(
+                        "team-luck-lucky-damage-joint-inspiration-ordered",
+                    ),
+                ),
+                _ => return None,
+            };
+        if team_luck.scope != expected_scope
+            || current_chance_raw <= *provider_chance_raw_delta
+            || *provider_chance_raw_delta <= 0
+        {
+            return None;
+        }
+        let remaining_chance = current_chance_raw.checked_sub(*provider_chance_raw_delta)?;
+        team_luck.numerator = team_luck
+            .numerator
+            .checked_mul(i128::from(remaining_chance))?;
+        team_luck.denominator = team_luck
+            .denominator
+            .checked_mul(i128::from(current_chance_raw))?;
+        team_luck.scope = joint_scope;
+        Some(team_luck)
     }
 
     pub fn critical_cold_team_luck_joint_audit_gate(
@@ -24357,6 +24542,95 @@ mod tests {
         assert_eq!(
             (staged[1].numerator, staged[1].denominator),
             (first[1].numerator, first[1].denominator)
+        );
+    }
+
+    #[test]
+    fn inspiration_team_luck_joint_allocation_removes_the_shared_occurrence_cross_term() {
+        let recipient = test_entity(4, 40);
+        let projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 3, 4]),
+            inspiration_windows: HashMap::from([(
+                EffectWindowKey {
+                    target_actor_id: 4,
+                    provider_actor_id: 2,
+                    instance_id: Some(77),
+                },
+                InspirationWindow {
+                    provider_full_bloom: false,
+                    full_bloom_provider_actor_id: None,
+                    full_bloom_provider_entity_uuid: None,
+                    target_entity_uuid: 40,
+                    provider_entity_uuid: 20,
+                    source_level: Some(2),
+                    origin_source_type_id: Some(1),
+                    origin_source_config_id: Some(2_202_040),
+                    expires_at_observed_micros: Some(30_000_000),
+                },
+            )]),
+            states: HashMap::from([(
+                4,
+                ActorHpState {
+                    critical_chance_raw: Some(7_416),
+                    lucky_chance_raw: Some(800),
+                    ..ActorHpState::default()
+                },
+            )]),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let mut damage = critical_test_damage(recipient, 987_654);
+        damage.flags.lucky = Some(false);
+        let event = |effect_id, provider_actor_id, scope, numerator, denominator| {
+            ExactRationalDamageContributionEvent {
+                observed_micros: 123,
+                effect_id,
+                provider_actor_id,
+                recipient_actor_id: 4,
+                scope: DamageContributionScope::Component(scope),
+                numerator,
+                denominator,
+                observed_damage: damage.amount,
+                included: true,
+                deferred_damage_context: None,
+            }
+        };
+        let inspiration = event(
+            projector.runtime.inspiration.effect_id,
+            2,
+            "inspiration-critical-chance",
+            11,
+            13,
+        );
+        let team_luck = event(
+            projector.runtime.team_luck.effect_id,
+            3,
+            "team-luck-critical-damage",
+            17,
+            19,
+        );
+        let allocated = projector
+            .joint_inspiration_team_luck_contribution(123, &damage, inspiration, team_luck)
+            .expect("the exact Crit-only overlap has an ordered allocation");
+
+        // Level-2 Inspiration supplies 150 raw Crit chance. Team Luck therefore
+        // owns only the remaining 7,266 / 7,416 of its standalone marginal.
+        assert_eq!(allocated.numerator, 17 * 7_266);
+        assert_eq!(allocated.denominator, 19 * 7_416);
+        assert_eq!(allocated.provider_actor_id, 3);
+        assert_eq!(
+            allocated.scope,
+            DamageContributionScope::Component(
+                "team-luck-critical-damage-joint-inspiration-ordered"
+            )
+        );
+
+        let mut combined = damage;
+        combined.flags.lucky = Some(true);
+        assert!(
+            projector
+                .joint_inspiration_team_luck_contribution(123, &combined, inspiration, team_luck,)
+                .is_none(),
+            "combined Crit+Lucky remains fail-closed until its full joint route is proven"
         );
     }
 
