@@ -275,11 +275,11 @@ pub use state_formula::{
     exact_external_critical_chance_fraction, exact_external_critical_damage_fraction,
     exact_external_damage_bonus_fraction, exact_external_linear_derived_damage_factor_fraction,
     exact_external_lucky_chance_and_damage_fraction, exact_external_lucky_chance_fraction,
-    exact_external_lucky_damage_fraction, exact_joint_critical_cold_team_luck_fractions,
-    exact_positive_linear_conversion_delta, fixed_point_percent_input_marginal,
-    linear_state_scaled_damage_marginal, packet_attack_coefficient_stage_provider_marginal,
-    packet_attribute_family_provider_marginal, packet_attribute_family_value,
-    two_stage_percent_input_marginal,
+    exact_external_lucky_damage_fraction, exact_external_target_defense_fraction,
+    exact_joint_critical_cold_team_luck_fractions, exact_positive_linear_conversion_delta,
+    fixed_point_percent_input_marginal, linear_state_scaled_damage_marginal,
+    packet_attack_coefficient_stage_provider_marginal, packet_attribute_family_provider_marginal,
+    packet_attribute_family_value, two_stage_percent_input_marginal,
 };
 pub use state_rdps::{
     BpsrLifeWaveTriggerLearner, BpsrLifeWaveTriggerTimeline, BpsrRemoteFactorLearner,

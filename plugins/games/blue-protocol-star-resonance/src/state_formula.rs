@@ -1143,6 +1143,70 @@ pub fn exact_external_composite_damage_fraction(
     Some((numerator, reduced_denominator))
 }
 
+/// Returns the exact conserved share of packet-observed damage owned by one
+/// external reduction of the target's effective physical or magical defense.
+///
+/// `defense_affected_body` and `defense_free_body` are adjacent, already
+/// selected pre-multiplier stage bodies in the same units. The first is
+/// transformed by the current-season defense curve; the second contains only
+/// terms proven to bypass that curve. For build 24687926 the selected
+/// `FightAttrTranTable.DefPara` constant is 22,000, but it remains an explicit
+/// input so a caller cannot silently reuse the formula after a build change.
+///
+/// The active effective defense must be lower than the provider-removed value.
+/// Both values must already include every packet-proven target defense and
+/// source penetration/ignore input in the authoritative operation order. This
+/// accounting primitive deliberately does not infer those inputs or claim that
+/// a character-sheet transform is the combat transform.
+pub fn exact_external_target_defense_fraction(
+    observed_damage: i64,
+    defense_affected_body: i64,
+    defense_free_body: i64,
+    active_effective_defense: i64,
+    provider_removed_effective_defense: i64,
+    defense_curve_constant: i64,
+) -> Option<(i128, i128)> {
+    if observed_damage <= 0
+        || defense_affected_body <= 0
+        || defense_free_body < 0
+        || active_effective_defense < 0
+        || provider_removed_effective_defense <= active_effective_defense
+        || defense_curve_constant <= 0
+    {
+        return None;
+    }
+
+    let affected = i128::from(defense_affected_body);
+    let bypass = i128::from(defense_free_body);
+    let curve = i128::from(defense_curve_constant);
+    let active_denominator = i128::from(active_effective_defense).checked_add(curve)?;
+    let removed_denominator = i128::from(provider_removed_effective_defense).checked_add(curve)?;
+
+    // body(defense) = affected * curve / (defense + curve) + bypass.
+    // Keep both states rational so no client-UI display truncation or guessed
+    // server integer boundary can enter the conserved accounting share.
+    let active_numerator = affected
+        .checked_mul(curve)?
+        .checked_add(bypass.checked_mul(active_denominator)?)?;
+    let removed_numerator = affected
+        .checked_mul(curve)?
+        .checked_add(bypass.checked_mul(removed_denominator)?)?;
+    if active_numerator <= 0 {
+        return None;
+    }
+
+    let marginal_numerator = active_numerator
+        .checked_mul(removed_denominator)?
+        .checked_sub(removed_numerator.checked_mul(active_denominator)?)?;
+    if marginal_numerator <= 0 {
+        return None;
+    }
+
+    let numerator = i128::from(observed_damage).checked_mul(marginal_numerator)?;
+    let denominator = active_numerator.checked_mul(removed_denominator)?;
+    reduce_positive_fraction(numerator, denominator)
+}
+
 /// Returns the exact conserved provider share of a Lucky damage multiplier.
 ///
 /// Packet evidence proves that attribute 12530 is the complete Lucky-row
@@ -2065,6 +2129,72 @@ mod tests {
                 < attack_only.0 * combined.1 * external_only.1
                     + external_only.0 * combined.1 * attack_only.1,
             "independent stage removal must be larger because it double-counts the cross-term"
+        );
+    }
+
+    #[test]
+    fn target_defense_share_preserves_the_defense_free_body_and_conserves() {
+        let observed_damage = 100_000_i64;
+        let affected = 1_000_i64;
+        let bypass = 200_i64;
+        let active_defense = 8_000_i64;
+        let provider_removed_defense = 10_000_i64;
+        let curve = 22_000_i64;
+        let share = exact_external_target_defense_fraction(
+            observed_damage,
+            affected,
+            bypass,
+            active_defense,
+            provider_removed_defense,
+            curve,
+        )
+        .expect("a lower active defense must have a positive conserved share");
+
+        let active_denominator = i128::from(active_defense + curve);
+        let removed_denominator = i128::from(provider_removed_defense + curve);
+        let active_numerator =
+            i128::from(affected * curve) + i128::from(bypass) * active_denominator;
+        let removed_numerator =
+            i128::from(affected * curve) + i128::from(bypass) * removed_denominator;
+        let marginal_numerator =
+            active_numerator * removed_denominator - removed_numerator * active_denominator;
+        assert_eq!(
+            share.0 * active_numerator * removed_denominator,
+            i128::from(observed_damage) * share.1 * marginal_numerator,
+        );
+
+        let without_bypass = exact_external_target_defense_fraction(
+            observed_damage,
+            affected,
+            0,
+            active_defense,
+            provider_removed_defense,
+            curve,
+        )
+        .unwrap();
+        assert!(
+            share.0 * without_bypass.1 < without_bypass.0 * share.1,
+            "defense-free attack must dilute rather than receive armor-reduction credit",
+        );
+    }
+
+    #[test]
+    fn target_defense_share_fails_closed_on_incomplete_or_reversed_inputs() {
+        assert_eq!(
+            exact_external_target_defense_fraction(100, 1_000, 0, 8_000, 8_000, 22_000),
+            None,
+        );
+        assert_eq!(
+            exact_external_target_defense_fraction(100, 1_000, 0, 10_000, 8_000, 22_000),
+            None,
+        );
+        assert_eq!(
+            exact_external_target_defense_fraction(100, 0, 200, 8_000, 10_000, 22_000),
+            None,
+        );
+        assert_eq!(
+            exact_external_target_defense_fraction(100, 1_000, 200, 8_000, 10_000, 0),
+            None,
         );
     }
 
