@@ -75,6 +75,11 @@ impl SubmissionTransport {
                 "{ENDPOINT_ENVIRONMENT_VARIABLE} cannot contain a query or fragment"
             ));
         }
+        if !endpoint.username().is_empty() || endpoint.password().is_some() {
+            return Err(format!(
+                "{ENDPOINT_ENVIRONMENT_VARIABLE} cannot contain embedded credentials"
+            ));
+        }
         let secure = endpoint.scheme() == "https";
         let loopback = endpoint.scheme() == "http"
             && endpoint
@@ -369,6 +374,9 @@ mod tests {
         assert!(SubmissionTransport::new("http://receiver.example.com", Some("token")).is_err());
         assert!(
             SubmissionTransport::new("https://receiver.example.com?a=b", Some("token")).is_err()
+        );
+        assert!(
+            SubmissionTransport::new("https://token@receiver.example.com", Some("token")).is_err()
         );
     }
 }

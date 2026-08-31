@@ -103,6 +103,20 @@ an existing sealed artifact without starting the HTTP listener:
 cargo run -p rlogs-submission-service -- --audit-artifact C:\path\to\artifact.rlog
 ```
 
+For an end-to-end ingest test, an operator can produce the same separately
+sealed privacy export and resumable upload manifest as the desktop client. The
+output paths must not already exist, which prevents an accidental overwrite:
+
+```powershell
+cargo run -p rlogs-submission-service -- --prepare-submission `
+  C:\path\to\completed-source.rlog `
+  C:\path\to\private-upload-artifact.rlog `
+  C:\path\to\upload-manifest.json
+```
+
+The resulting manifest defaults to unlisted visibility. This command prepares
+local files only; it does not transmit them or expose a GitHub credential.
+
 ## Run correlation
 
 Reports from different observers are grouped only when their canonical run
@@ -249,6 +263,39 @@ The container listens on `0.0.0.0:8787`, stores all mutable state below
 `/data`, runs as an unprivileged user, and exposes `/health` for hosting
 platform probes. A persistent volume is required: ephemeral container storage
 would discard private artifacts and the rebuildable catalog on redeploy.
+
+## Small-sample Cloudflare gateway
+
+GitHub Pages cannot safely receive uploads: a static page has nowhere to run
+the replay service, and embedding a GitHub token would give every visitor the
+archive credential. For a small invited test, GitHub remains the private
+evidence archive while the Worker in `cloudflare-gateway/` provides a stable
+HTTPS API origin in front of this receiver. This follows the same GitHub Pages
+plus Cloudflare Worker boundary as Aniipedia.
+
+The gateway is deliberately a narrow streaming reverse proxy. It exposes only
+the documented health, ingest, parse, and reconciliation routes; it cannot
+serve the private artifact store. The receiver still owns authentication,
+privacy validation, deterministic replay, persistence, and GitHub archiving.
+The receiver host must remain online during this initial test phase.
+
+Start a Cloudflare quick tunnel to the loopback receiver and copy its HTTPS
+origin. Then deploy the stable Worker and store that changing origin as a
+Worker secret rather than committing it:
+
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8787 --no-autoupdate
+Set-Location services/submissions/cloudflare-gateway
+npm.cmd install
+"https://generated-name.trycloudflare.com" | npx.cmd wrangler secret put ORIGIN_BASE_URL
+npx.cmd wrangler deploy
+```
+
+Set the `RLOGS_API_BASE_URL` GitHub Actions repository variable in
+`donneeee/rlogs-website` to the deployed `workers.dev` origin and rerun its
+Pages workflow. The desktop submission URL is that same origin. Quick tunnels
+have no uptime guarantee; replace the origin with a named tunnel or a hosted
+receiver when testing expands beyond the initial invited sample.
 
 ## Storage layout
 

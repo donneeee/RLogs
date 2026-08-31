@@ -64,6 +64,10 @@ import {
   parseSubmissionVerificationResult,
 } from "./submission-queue";
 import {
+  type SubmissionConnectionView,
+  parseSubmissionConnection,
+} from "./submission-connection";
+import {
   type SubmissionPolicy,
   type SubmissionPolicyView,
   editableSubmissionPolicy,
@@ -1065,10 +1069,139 @@ function mountLogUploaderSettingsSurface(
   container: HTMLElement,
 ): MountedSurface {
   return mountCombinedSettingsSurface(container, [
+    mountSubmissionConnectionSurface,
     (target) =>
       mountSubmissionPolicyOptionsSurface(target, "log_uploader"),
     mountSubmissionQueueSurface,
   ]);
+}
+
+function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurface {
+  let alive = true;
+  let current: SubmissionConnectionView | null = null;
+  const root = document.createElement("div");
+  root.className = "plugin-surface submission-connection-surface";
+  const heading = actionCard(
+    "Submission receiver",
+    "Connect this PC to the server-replay receiver. The token is written to Windows Credential Manager and is never returned to the interface.",
+  );
+  const form = document.createElement("form");
+  form.className = "content-card submission-policy-form";
+  const endpoint = field(
+    "Receiver HTTPS URL",
+    "url",
+    "",
+    "https://rlogs-submissions.example.workers.dev",
+  );
+  const token = field("Invited tester token", "password", "", "Paste the token once");
+  token.input.autocomplete = "new-password";
+  const actions = document.createElement("div");
+  actions.className = "runtime-card-actions submission-policy-actions";
+  const connect = button("Connect receiver", "primary-button");
+  connect.type = "submit";
+  const disconnect = button("Disconnect", "quiet-button");
+  disconnect.disabled = true;
+  const message = text("span", "Loading receiver connection…", "runtime-action-message");
+  actions.append(connect, disconnect, message);
+  form.append(endpoint.label, token.label, actions);
+  const details = document.createElement("section");
+  details.className = "content-card runtime-file-list submission-policy-details";
+  root.append(heading, form, details);
+  container.append(root);
+
+  const applyView = (view: SubmissionConnectionView) => {
+    current = view;
+    endpoint.input.value = view.endpointUrl ?? endpoint.input.value;
+    token.input.value = "";
+    details.replaceChildren(
+      fileRow("Receiver", view.endpointUrl ?? "Not connected"),
+      fileRow("Credential", view.credentialPresent ? "Stored" : "Not stored"),
+      fileRow("Credential store", view.credentialStore),
+    );
+    disconnect.disabled = view.endpointUrl === null && !view.credentialPresent;
+    connect.disabled = false;
+    message.classList.remove("error");
+    message.textContent = view.endpointUrl
+      ? "Receiver connected. Enable Log Uploader below to permit submissions."
+      : "Enter the invited endpoint and token to connect this PC.";
+  };
+
+  const load = () =>
+    apiJson<unknown>("/api/submissions/connection")
+      .then(parseSubmissionConnection)
+      .then((view) => {
+        if (alive) applyView(view);
+      })
+      .catch((error: unknown) => {
+        if (!alive) return;
+        message.textContent = errorMessage(error);
+        message.classList.add("error");
+      });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    connect.disabled = true;
+    disconnect.disabled = true;
+    message.classList.remove("error");
+    message.textContent = "Validating and storing the receiver connection…";
+    try {
+      const view = parseSubmissionConnection(
+        await apiJson<unknown>("/api/submissions/connection", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            endpointUrl: endpoint.input.value,
+            deviceToken: token.input.value,
+          }),
+        }),
+      );
+      if (alive) {
+        applyView(view);
+        window.dispatchEvent(new Event("rlogs:submission-connection-changed"));
+      }
+    } catch (error) {
+      if (alive) {
+        message.textContent = errorMessage(error);
+        message.classList.add("error");
+        connect.disabled = false;
+        disconnect.disabled = current === null;
+      }
+    }
+  });
+
+  disconnect.addEventListener("click", async () => {
+    disconnect.disabled = true;
+    connect.disabled = true;
+    message.classList.remove("error");
+    message.textContent = "Removing the saved receiver credential…";
+    try {
+      const view = parseSubmissionConnection(
+        await apiJson<unknown>("/api/submissions/connection/disconnect", {
+          method: "POST",
+        }),
+      );
+      if (alive) {
+        endpoint.input.value = "";
+        applyView(view);
+        window.dispatchEvent(new Event("rlogs:submission-connection-changed"));
+      }
+    } catch (error) {
+      if (alive) {
+        message.textContent = errorMessage(error);
+        message.classList.add("error");
+        connect.disabled = false;
+        disconnect.disabled = false;
+      }
+    }
+  });
+
+  void load();
+  return {
+    dispose() {
+      alive = false;
+      root.remove();
+    },
+  };
 }
 
 function mountProfileSyncSettingsSurface(
@@ -2437,7 +2570,7 @@ function mountSubmissionPolicyOptionsSurface(
   const enable = checkboxOption(
     isUploader ? "Enable Log Uploader" : "Enable BPSR Profile Sync",
     isUploader
-      ? "Permits local dry runs now and external submission only after a website transport is implemented."
+      ? "Permits local dry runs and verified uploads to the connected receiver."
       : "Reserves permission for profile projection and submission; neither is connected yet.",
   );
   const automatic = checkboxOption(
@@ -2445,7 +2578,7 @@ function mountSubmissionPolicyOptionsSurface(
       ? "Automatically submit completed combat logs"
       : "Automatically sync character profiles",
     isUploader
-      ? "Applies only after a real external transport exists. Sealed local drafts are still created either way."
+      ? "Uploads completed sealed logs when a receiver is connected. Local drafts are still created either way."
       : "Applies only after a profile projection and external transport exist.",
   );
   form.append(enable.label, automatic.label);
@@ -2576,23 +2709,35 @@ function mountSubmissionPolicyOptionsSurface(
     }
   });
 
-  void apiJson<unknown>("/api/submissions/policy")
-    .then(parseSubmissionPolicy)
-    .then((view) => {
-      if (alive) {
-        applyView(view);
-      }
-    })
-    .catch((error: unknown) => {
-      if (alive) {
-        message.textContent = errorMessage(error);
-        message.classList.add("error");
-      }
-    });
+  const load = () => {
+    void apiJson<unknown>("/api/submissions/policy")
+      .then(parseSubmissionPolicy)
+      .then((view) => {
+        if (alive) {
+          applyView(view);
+        }
+      })
+      .catch((error: unknown) => {
+        if (alive) {
+          message.textContent = errorMessage(error);
+          message.classList.add("error");
+        }
+      });
+  };
+  const refreshAfterConnectionChange = () => load();
+  window.addEventListener(
+    "rlogs:submission-connection-changed",
+    refreshAfterConnectionChange,
+  );
+  load();
 
   return {
     dispose() {
       alive = false;
+      window.removeEventListener(
+        "rlogs:submission-connection-changed",
+        refreshAfterConnectionChange,
+      );
     },
   };
 }
