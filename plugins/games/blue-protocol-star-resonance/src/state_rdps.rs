@@ -60,11 +60,11 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v47";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v48";
 // Current-build Life Wave static identity. The child is a refreshable
-// five-second recipient status produced by module family 2404. Its secondary-
-// stat marginal is not promoted yet; these constants authorize only trigger
-// ownership/timer tracking and explicit incomplete-rDPS signaling.
+// five-second recipient status produced by module family 2404. Exact selected-
+// secondary-lane marginals require the authoritative local module profile and
+// adjacent recipient attribute transition; unresolved routes fail closed.
 const LIFE_WAVE_SOURCE_TYPE_ID: i32 = 1;
 const LIFE_WAVE_SOURCE_CONFIG_ID: i64 = 2_302_420;
 const LIFE_WAVE_EFFECT_ID: i64 = 2_302_421;
@@ -278,6 +278,9 @@ pub fn proven_state_damage_contribution_effect_ids() -> Result<Vec<i64>, String>
     }
     if runtime.effect_runtime_transfer_enabled(runtime.attribute_transfer.effect_id) {
         effect_ids.push(runtime.attribute_transfer.effect_id);
+    }
+    if runtime.effect_runtime_transfer_enabled(runtime.life_wave.effect_id) {
+        effect_ids.push(runtime.life_wave.effect_id);
     }
     if runtime.effect_runtime_transfer_enabled(runtime.inspire.effect_id) {
         effect_ids.push(runtime.inspire.effect_id);
@@ -1030,14 +1033,29 @@ enum LifeWaveTriggerOwnership {
 #[derive(Debug, Clone)]
 struct LifeWaveWindow {
     target_entity_uuid: i64,
+    opened_observed_micros: u64,
+    opened_wire: Option<WireKey>,
     expires_at_observed_micros: u64,
     bonus_basis_points: Option<i64>,
     trigger_ownership: LifeWaveTriggerOwnership,
+    transition: Option<LifeWaveTransition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LifeWaveTransition {
+    lane: AttributeTransferLane,
+    critical_damage_raw_delta: Option<i64>,
+    lucky_damage_raw_delta: Option<i64>,
+    external_damage_raw_delta: Option<i64>,
+    normal_action_speed_basis_points_delta: Option<i64>,
+    guide_action_speed_basis_points_delta: Option<i64>,
+    element_damage_by_property_delta: BTreeMap<i32, i64>,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct PendingLifeWaveActivation {
     target_entity_uuid: i64,
+    opened_observed_micros: u64,
     expires_at_observed_micros: u64,
 }
 
@@ -1107,6 +1125,7 @@ impl BpsrLifeWaveTriggerLearner {
                     },
                     PendingLifeWaveActivation {
                         target_entity_uuid: status.target.entity_uuid.0,
+                        opened_observed_micros: envelope.time.observed_micros,
                         expires_at_observed_micros: envelope
                             .time
                             .observed_micros
@@ -3538,15 +3557,24 @@ impl BpsrStateDamageContributionProjector {
                     self.inspire_haste_contribution(envelope.time.observed_micros, damage);
                 let arcane_time_decree_contribution =
                     self.arcane_time_decree_contribution(envelope.time.observed_micros, damage);
-                let opportunity_contribution =
-                    match (inspire_haste_contribution, arcane_time_decree_contribution) {
-                        (Some(inspire), None) => Some(inspire),
-                        (None, Some(arcane)) => Some(arcane),
-                        // Action speed and cooldown acceleration alter different
-                        // cadence constraints. Without a unique joint schedule,
-                        // suppress both shares while retaining per-hit stages.
-                        _ => None,
-                    };
+                let life_wave_haste_contribution =
+                    self.life_wave_haste_contribution(envelope.time.observed_micros, damage);
+                let opportunity_candidates = [
+                    inspire_haste_contribution,
+                    arcane_time_decree_contribution,
+                    life_wave_haste_contribution,
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+                // Action speed and cooldown acceleration alter different
+                // cadence constraints. Without a unique joint schedule,
+                // suppress every opportunity share while retaining per-hit
+                // stages.
+                let opportunity_contribution = match opportunity_candidates.as_slice() {
+                    [only] => Some(*only),
+                    _ => None,
+                };
                 let team_luck_contribution = self.team_luck_contribution(envelope, damage);
                 let functional_amp_contribution =
                     self.functional_amp_contribution(envelope.time.observed_micros, damage);
@@ -3576,6 +3604,10 @@ impl BpsrStateDamageContributionProjector {
                         envelope.time.observed_micros,
                         damage,
                     );
+                let life_wave_versatility_contribution =
+                    self.life_wave_versatility_contribution(envelope.time.observed_micros, damage);
+                let life_wave_mastery_contribution =
+                    self.life_wave_mastery_contribution(envelope.time.observed_micros, damage);
                 let mechanical_power_contribution =
                     self.mechanical_power_contribution(envelope.time.observed_micros, damage);
                 let stat_resonance_contribution =
@@ -3600,6 +3632,8 @@ impl BpsrStateDamageContributionProjector {
                         envelope.time.observed_micros,
                         damage,
                     );
+                let life_wave_occurrence_contribution =
+                    self.life_wave_occurrence_contribution(envelope.time.observed_micros, damage);
                 let tactical_blessing_occurrence_contribution = self
                     .tactical_blessing_occurrence_contribution(
                         envelope.time.observed_micros,
@@ -3795,8 +3829,16 @@ impl BpsrStateDamageContributionProjector {
                         unresolved_per_hit_attack_overlap,
                     )
                 };
+                let versatility_contribution = match (
+                    attribute_transfer_versatility_contribution,
+                    life_wave_versatility_contribution,
+                ) {
+                    (Some(_), Some(_)) => None,
+                    (Some(contribution), None) | (None, Some(contribution)) => Some(contribution),
+                    (None, None) => None,
+                };
                 let (attack_contributions, unresolved_attack_overlap) =
-                    if let Some(versatility) = attribute_transfer_versatility_contribution {
+                    if let Some(versatility) = versatility_contribution {
                         if unresolved_attack_overlap || attack_contributions.is_empty() {
                             // Versatility is a later multiplicative factor and
                             // remains independently exact when an earlier
@@ -3876,6 +3918,7 @@ impl BpsrStateDamageContributionProjector {
                 let element_bucket_contributions = [
                     fatal_spiral_direct_contribution,
                     element_sharing_contribution,
+                    life_wave_mastery_contribution,
                 ]
                 .into_iter()
                 .flatten()
@@ -3886,6 +3929,7 @@ impl BpsrStateDamageContributionProjector {
                     + element_bucket_contributions.len()
                     + usize::from(inspiration_occurrence_contribution.is_some())
                     + usize::from(attribute_transfer_occurrence_contribution.is_some())
+                    + usize::from(life_wave_occurrence_contribution.is_some())
                     + usize::from(tactical_blessing_occurrence_contribution.is_some())
                     + usize::from(critical_cold_occurrence_contribution.is_some())
                     + usize::from(synergy_crit_field_contribution.is_some())
@@ -4016,7 +4060,7 @@ impl BpsrStateDamageContributionProjector {
                         }
                         _ => None,
                     };
-                    let later_contributions = match (
+                    let later_contributions_without_life_wave = match (
                         team_luck_contribution,
                         inspiration_occurrence_contribution,
                         attribute_transfer_occurrence_contribution,
@@ -4063,6 +4107,26 @@ impl BpsrStateDamageContributionProjector {
                         // constant, so retain it while suppressing only the
                         // ambiguous later-stage allocation.
                         _ => Vec::new(),
+                    };
+                    let other_later_candidate_count = usize::from(team_luck_contribution.is_some())
+                        + usize::from(inspiration_occurrence_contribution.is_some())
+                        + usize::from(attribute_transfer_occurrence_contribution.is_some())
+                        + usize::from(tactical_blessing_occurrence_contribution.is_some())
+                        + usize::from(critical_cold_occurrence_contribution.is_some())
+                        + usize::from(synergy_crit_field_contribution.is_some())
+                        + usize::from(thunderwind_contribution.is_some())
+                        + usize::from(!target_vulnerability_rational_contributions.is_empty());
+                    let later_contributions = match (
+                        life_wave_occurrence_contribution,
+                        other_later_candidate_count,
+                    ) {
+                        (None, _) => later_contributions_without_life_wave,
+                        (Some(life_wave), 0) => vec![life_wave],
+                        // Chance-family overlaps require a joint removal from
+                        // the shared occurrence denominator. Until that order
+                        // is proved, suppress every later-stage member rather
+                        // than double-counting their packet-final marginals.
+                        (Some(_), _) => Vec::new(),
                     };
                     let joint_critical_cold_team_luck = match (
                         team_luck_contribution,
@@ -4434,6 +4498,7 @@ impl BpsrStateDamageContributionProjector {
     fn advance_wire(&mut self, wire: WireKey) {
         if self.current_wire.is_some_and(|current| current != wire) {
             self.reconcile_life_wave_current_wire();
+            self.reconcile_life_wave_staged_states();
             self.reconcile_inspiration_staged_states();
             self.reconcile_attribute_transfer_staged_states();
             self.reconcile_thunderwind_staged_states();
@@ -4500,9 +4565,24 @@ impl BpsrStateDamageContributionProjector {
             {
                 self.life_wave_bonus_basis_points_by_entity_uuid
                     .insert(entity_uuid, bonus_basis_points);
+                for window in self
+                    .life_wave_windows
+                    .values_mut()
+                    .filter(|window| window.target_entity_uuid == entity_uuid)
+                {
+                    window.bonus_basis_points = Some(bonus_basis_points);
+                }
             } else {
                 self.life_wave_bonus_basis_points_by_entity_uuid
                     .remove(&entity_uuid);
+                for window in self
+                    .life_wave_windows
+                    .values_mut()
+                    .filter(|window| window.target_entity_uuid == entity_uuid)
+                {
+                    window.bonus_basis_points = None;
+                    window.transition = None;
+                }
             }
         }
     }
@@ -4545,14 +4625,56 @@ impl BpsrStateDamageContributionProjector {
                 key,
                 LifeWaveWindow {
                     target_entity_uuid: activation.target_entity_uuid,
+                    opened_observed_micros: activation.opened_observed_micros,
+                    opened_wire: self.current_wire,
                     expires_at_observed_micros: activation.expires_at_observed_micros,
                     bonus_basis_points: self
                         .life_wave_bonus_basis_points_by_entity_uuid
                         .get(&activation.target_entity_uuid)
                         .copied(),
                     trigger_ownership,
+                    transition: None,
                 },
             );
+        }
+    }
+
+    fn reconcile_life_wave_staged_states(&mut self) {
+        let Some(current_wire) = self.current_wire else {
+            return;
+        };
+        let keys = self
+            .life_wave_windows
+            .iter()
+            .filter_map(|(key, window)| {
+                (window.opened_wire == Some(current_wire) && window.transition.is_none())
+                    .then_some(*key)
+            })
+            .collect::<Vec<_>>();
+        for key in keys {
+            let Some(window) = self.life_wave_windows.get(&key) else {
+                continue;
+            };
+            let Some(bonus_basis_points) = window.bonus_basis_points else {
+                continue;
+            };
+            let state_actor_id = self
+                .attribute_state_actor_by_entity_uuid
+                .get(&window.target_entity_uuid)
+                .copied()
+                .unwrap_or(key.target_actor_id);
+            let (Some(previous), Some(next)) = (
+                self.states.get(&state_actor_id),
+                self.staged_states.get(&state_actor_id),
+            ) else {
+                continue;
+            };
+            let Some(transition) = life_wave_transition(previous, next, bonus_basis_points) else {
+                continue;
+            };
+            if let Some(window) = self.life_wave_windows.get_mut(&key) {
+                window.transition = Some(transition);
+            }
         }
     }
 
@@ -4603,6 +4725,8 @@ impl BpsrStateDamageContributionProjector {
                 key,
                 LifeWaveWindow {
                     target_entity_uuid: trigger.target_entity_uuid,
+                    opened_observed_micros: trigger.observed_micros,
+                    opened_wire: self.current_wire,
                     expires_at_observed_micros: trigger
                         .observed_micros
                         .saturating_add(LIFE_WAVE_DURATION_MILLIS * 1_000),
@@ -4611,6 +4735,7 @@ impl BpsrStateDamageContributionProjector {
                         .get(&trigger.target_entity_uuid)
                         .copied(),
                     trigger_ownership,
+                    transition: None,
                 },
             );
         }
@@ -4667,6 +4792,7 @@ impl BpsrStateDamageContributionProjector {
                     },
                     PendingLifeWaveActivation {
                         target_entity_uuid,
+                        opened_observed_micros: observed_micros,
                         expires_at_observed_micros,
                     },
                 );
@@ -4689,12 +4815,287 @@ impl BpsrStateDamageContributionProjector {
             .insert(provider_actor_id);
     }
 
+    fn life_wave_window_for_damage(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Result<(&LifeWaveWindow, u64), &'static str> {
+        if !self.runtime.life_wave.runtime_transfer_enabled {
+            return Err("runtime_transfer_disabled");
+        }
+        if damage.amount <= 0 {
+            return Err("non_positive_damage");
+        }
+        let recipient_actor_id = self.resolve_owner_actor_id(damage.source.actor_id.0);
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let mut matching = self.life_wave_windows.iter().filter(|(key, window)| {
+            (self.resolve_owner_actor_id(key.target_actor_id) == recipient_actor_id
+                || (recipient_entity_uuid != 0
+                    && window.target_entity_uuid == recipient_entity_uuid))
+                && observed_micros > window.opened_observed_micros
+                && observed_micros < window.expires_at_observed_micros
+        });
+        let (_, window) = matching.next().ok_or("provider_window_missing")?;
+        if matching.next().is_some() {
+            return Err("provider_window_ambiguous");
+        }
+        let provider_actor_id = match window.trigger_ownership {
+            LifeWaveTriggerOwnership::UniqueExternal { provider_actor_id } => provider_actor_id,
+            LifeWaveTriggerOwnership::SelfTriggered => return Err("provider_is_recipient"),
+            LifeWaveTriggerOwnership::Ambiguous { .. } => return Err("provider_window_ambiguous"),
+            LifeWaveTriggerOwnership::Unknown => return Err("provider_window_missing"),
+        };
+        if provider_actor_id == recipient_actor_id {
+            return Err("provider_is_recipient");
+        }
+        if !self.active_players.contains(&provider_actor_id) {
+            return Err("provider_inactive");
+        }
+        window
+            .bonus_basis_points
+            .filter(|bonus| *bonus == 600 || *bonus == 1_000)
+            .ok_or("magnitude_missing")?;
+        window.transition.as_ref().ok_or("transition_missing")?;
+        Ok((window, provider_actor_id))
+    }
+
+    fn life_wave_occurrence_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        let (window, provider_actor_id) = self
+            .life_wave_window_for_damage(observed_micros, damage)
+            .ok()?;
+        let transition = window.transition.as_ref()?;
+        let critical = transition.lane == AttributeTransferLane::CriticalChance
+            && damage.flags.critical == Some(true);
+        let lucky = transition.lane == AttributeTransferLane::LuckyChance
+            && damage.flags.lucky == Some(true);
+        if !critical && !lucky {
+            return None;
+        }
+        let recipient_actor_id = self.resolve_owner_actor_id(damage.source.actor_id.0);
+        let recipient_entity_uuid = damage.source.entity_uuid.0;
+        let state_actor_id =
+            self.team_luck_state_actor_id(recipient_actor_id, recipient_entity_uuid, false)?;
+        let state = self.states.get(&state_actor_id)?;
+        let bonus_basis_points = window.bonus_basis_points?;
+        let critical_damage_delta = if critical {
+            match transition.critical_damage_raw_delta? {
+                0 => None,
+                delta if delta > 0 => Some(delta),
+                _ => return None,
+            }
+        } else {
+            None
+        };
+        let lucky_damage_delta = if lucky {
+            match transition.lucky_damage_raw_delta? {
+                0 => None,
+                delta if delta > 0 => Some(delta),
+                _ => return None,
+            }
+        } else {
+            None
+        };
+        let (numerator, denominator) = exact_inspiration_occurrence_fraction(
+            damage.amount,
+            critical,
+            lucky,
+            state.critical_chance_raw.unwrap_or_default(),
+            state.lucky_chance_raw.unwrap_or_default(),
+            bonus_basis_points,
+            state.critical_damage_raw.unwrap_or_default(),
+            critical_damage_delta,
+            state.lucky_damage_raw,
+            lucky_damage_delta,
+            self.runtime.critical_damage_factor_interpretation,
+        )?;
+        Some(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: self.runtime.life_wave.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(if critical {
+                "life-wave-critical-chance"
+            } else {
+                "life-wave-lucky-chance-and-derived-lucky-damage"
+            }),
+            numerator,
+            denominator,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn life_wave_versatility_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        let (window, provider_actor_id) = self
+            .life_wave_window_for_damage(observed_micros, damage)
+            .ok()?;
+        let transition = window.transition.as_ref()?;
+        if transition.lane != AttributeTransferLane::Versatility {
+            return None;
+        }
+        let provider_external = transition.external_damage_raw_delta?;
+        if provider_external <= 0 {
+            return None;
+        }
+        let recipient_actor_id = self.resolve_owner_actor_id(damage.source.actor_id.0);
+        let state_actor_id =
+            self.team_luck_state_actor_id(recipient_actor_id, damage.source.entity_uuid.0, false)?;
+        let current_external = self.states.get(&state_actor_id)?.external_damage_raw?;
+        if current_external < provider_external {
+            return None;
+        }
+        let denominator = i128::from(BPSR_FIXED_POINT_SCALE.checked_add(current_external)?);
+        let numerator = i128::from(damage.amount).checked_mul(i128::from(provider_external))?;
+        let divisor = greatest_common_divisor(numerator, denominator);
+        Some(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: self.runtime.life_wave.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component("life-wave-versatility-external-damage"),
+            numerator: numerator / divisor,
+            denominator: denominator / divisor,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn life_wave_mastery_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        let (window, provider_actor_id) = self
+            .life_wave_window_for_damage(observed_micros, damage)
+            .ok()?;
+        let transition = window.transition.as_ref()?;
+        if transition.lane != AttributeTransferLane::Mastery {
+            return None;
+        }
+        let property = damage.packet.property?;
+        let provider_delta = *transition.element_damage_by_property_delta.get(&property)?;
+        if provider_delta <= 0 {
+            return None;
+        }
+        let recipient_actor_id = self.resolve_owner_actor_id(damage.source.actor_id.0);
+        let state_actor_id =
+            self.team_luck_state_actor_id(recipient_actor_id, damage.source.entity_uuid.0, false)?;
+        let current = *self
+            .states
+            .get(&state_actor_id)?
+            .element_damage_by_property
+            .get(&property)?;
+        if current < provider_delta {
+            return None;
+        }
+        let denominator = i128::from(BPSR_FIXED_POINT_SCALE.checked_add(current)?);
+        let numerator = i128::from(damage.amount).checked_mul(i128::from(provider_delta))?;
+        let divisor = greatest_common_divisor(numerator, denominator);
+        Some(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: self.runtime.life_wave.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component("life-wave-mastery-property-damage"),
+            numerator: numerator / divisor,
+            denominator: denominator / divisor,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
+    fn life_wave_haste_contribution(
+        &self,
+        observed_micros: u64,
+        damage: &rlogs_events::DamageEvent,
+    ) -> Option<ExactRationalDamageContributionEvent> {
+        let (window, provider_actor_id) = self
+            .life_wave_window_for_damage(observed_micros, damage)
+            .ok()?;
+        let transition = window.transition.as_ref()?;
+        if transition.lane != AttributeTransferLane::Haste {
+            return None;
+        }
+        let ability_id = damage.ability?.0;
+        let owner_stage = damage.packet.owner_stage?;
+        let lane = self.runtime.inspire.action_lane(ability_id, owner_stage)?;
+        let recipient_actor_id = self.resolve_owner_actor_id(damage.source.actor_id.0);
+        let state_actor_id =
+            self.team_luck_state_actor_id(recipient_actor_id, damage.source.entity_uuid.0, false)?;
+        let state = self.states.get(&state_actor_id)?;
+        let (observed_speed_basis_points, provider_speed_delta, speed_family) = match lane {
+            InspireSpeedLaneRuntimeConfig::Normal => (
+                state.normal_action_speed_basis_points?,
+                transition.normal_action_speed_basis_points_delta?,
+                SkillStageSpeedFamily::Normal,
+            ),
+            InspireSpeedLaneRuntimeConfig::Guide => (
+                state.guide_action_speed_basis_points?,
+                transition.guide_action_speed_basis_points_delta?,
+                SkillStageSpeedFamily::Guide,
+            ),
+        };
+        if provider_speed_delta <= 0 || observed_speed_basis_points < provider_speed_delta {
+            return None;
+        }
+        let speed_inputs = |speed_basis_points| SkillStageSpeedInputs {
+            attack_speed_enabled: true,
+            attack_speed_basis_points: if lane == InspireSpeedLaneRuntimeConfig::Normal {
+                speed_basis_points
+            } else {
+                0
+            },
+            cast_speed_basis_points: if lane == InspireSpeedLaneRuntimeConfig::Guide {
+                speed_basis_points
+            } else {
+                0
+            },
+            ..SkillStageSpeedInputs::default()
+        };
+        let observed_speed =
+            skill_stage_speed(speed_family, speed_inputs(observed_speed_basis_points))?;
+        let without_provider_speed = skill_stage_speed(
+            speed_family,
+            speed_inputs(observed_speed_basis_points.checked_sub(provider_speed_delta)?),
+        )?;
+        let (numerator, denominator) = exact_external_speed_capacity_fraction(
+            damage.amount,
+            observed_speed,
+            without_provider_speed,
+        )?;
+        Some(ExactRationalDamageContributionEvent {
+            observed_micros,
+            effect_id: self.runtime.life_wave.effect_id,
+            provider_actor_id,
+            recipient_actor_id,
+            scope: DamageContributionScope::Component(
+                "life-wave-packet-final-action-speed-opportunity",
+            ),
+            numerator,
+            denominator,
+            observed_damage: damage.amount,
+            included: true,
+            deferred_damage_context: None,
+        })
+    }
+
     fn mark_life_wave_incomplete(
         &mut self,
         observed_micros: u64,
         damage: &rlogs_events::DamageEvent,
     ) {
-        if damage.amount <= 0 {
+        if !self.runtime.life_wave.runtime_transfer_enabled || damage.amount <= 0 {
             return;
         }
         let recipient_actor_id = self.resolve_owner_actor_id(damage.source.actor_id.0);
@@ -4716,8 +5117,42 @@ impl BpsrStateDamageContributionProjector {
             match &window.trigger_ownership {
                 LifeWaveTriggerOwnership::SelfTriggered => {}
                 LifeWaveTriggerOwnership::UniqueExternal { provider_actor_id } => {
-                    affected.insert(recipient_actor_id);
-                    affected.insert(*provider_actor_id);
+                    let unresolved = window.bonus_basis_points.is_none()
+                        || window.transition.as_ref().is_none_or(|transition| {
+                            match transition.lane {
+                                AttributeTransferLane::CriticalChance => {
+                                    damage.flags.critical == Some(true)
+                                        && self
+                                            .life_wave_occurrence_contribution(
+                                                observed_micros,
+                                                damage,
+                                            )
+                                            .is_none()
+                                }
+                                AttributeTransferLane::LuckyChance => {
+                                    damage.flags.lucky == Some(true)
+                                        && self
+                                            .life_wave_occurrence_contribution(
+                                                observed_micros,
+                                                damage,
+                                            )
+                                            .is_none()
+                                }
+                                AttributeTransferLane::Versatility => self
+                                    .life_wave_versatility_contribution(observed_micros, damage)
+                                    .is_none(),
+                                AttributeTransferLane::Mastery => self
+                                    .life_wave_mastery_contribution(observed_micros, damage)
+                                    .is_none(),
+                                AttributeTransferLane::Haste => self
+                                    .life_wave_haste_contribution(observed_micros, damage)
+                                    .is_none(),
+                            }
+                        });
+                    if unresolved {
+                        affected.insert(recipient_actor_id);
+                        affected.insert(*provider_actor_id);
+                    }
                 }
                 LifeWaveTriggerOwnership::Ambiguous {
                     candidate_provider_actor_ids,
@@ -17378,6 +17813,136 @@ fn attribute_transfer_lane_transition(
         .find_map(|(lane, signature)| (deltas == signature).then_some(lane))
 }
 
+fn life_wave_selected_lane(state: &ActorHpState) -> Option<AttributeTransferLane> {
+    // The current calculator/game rule evaluates the post-Will secondary
+    // percentages in this exact order and retains the earlier lane on ties.
+    let candidates = [
+        (
+            AttributeTransferLane::CriticalChance,
+            state.critical_chance_raw?,
+        ),
+        (AttributeTransferLane::LuckyChance, state.lucky_chance_raw?),
+        (AttributeTransferLane::Mastery, state.mastery_raw?),
+        (AttributeTransferLane::Versatility, state.versatility_raw?),
+        (
+            AttributeTransferLane::Haste,
+            state.haste_percent_basis_points?,
+        ),
+    ];
+    candidates
+        .into_iter()
+        .reduce(|best, candidate| {
+            if candidate.1 > best.1 {
+                candidate
+            } else {
+                best
+            }
+        })
+        .map(|(lane, _)| lane)
+}
+
+fn life_wave_transition(
+    previous: &ActorHpState,
+    next: &ActorHpState,
+    bonus_basis_points: i64,
+) -> Option<LifeWaveTransition> {
+    let selected = life_wave_selected_lane(previous)?;
+    if bonus_basis_points <= 0 {
+        return None;
+    }
+    let final_deltas = [
+        option_delta(previous.critical_chance_raw, next.critical_chance_raw)?,
+        option_delta(previous.lucky_chance_raw, next.lucky_chance_raw)?,
+        option_delta(previous.mastery_raw, next.mastery_raw)?,
+        option_delta(previous.versatility_raw, next.versatility_raw)?,
+        option_delta(
+            previous.haste_percent_basis_points,
+            next.haste_percent_basis_points,
+        )?,
+    ];
+    let selected_index = match selected {
+        AttributeTransferLane::CriticalChance => 0,
+        AttributeTransferLane::LuckyChance => 1,
+        AttributeTransferLane::Mastery => 2,
+        AttributeTransferLane::Versatility => 3,
+        AttributeTransferLane::Haste => 4,
+    };
+    if final_deltas.iter().enumerate().any(|(index, delta)| {
+        *delta
+            != if index == selected_index {
+                bonus_basis_points
+            } else {
+                0
+            }
+    }) {
+        return None;
+    }
+    // Some packet shapes mirror final secondary changes into their Add field,
+    // while the calculator applies Life Wave after Will directly to the final
+    // percentage. Accept only those two exact serializations.
+    let raw_add_deltas = [
+        option_delta(
+            previous.critical_chance_raw_add,
+            next.critical_chance_raw_add,
+        )?,
+        option_delta(previous.lucky_chance_raw_add, next.lucky_chance_raw_add)?,
+        option_delta(previous.mastery_raw_add, next.mastery_raw_add)?,
+        option_delta(previous.versatility_raw_add, next.versatility_raw_add)?,
+    ];
+    if raw_add_deltas.iter().enumerate().any(|(index, delta)| {
+        if index == selected_index && selected_index < raw_add_deltas.len() {
+            *delta != 0 && *delta != bonus_basis_points
+        } else {
+            *delta != 0
+        }
+    }) {
+        return None;
+    }
+    let expected_external_delta = if selected == AttributeTransferLane::Versatility {
+        bonus_basis_points.checked_mul(35)?.checked_div(100)?
+    } else {
+        0
+    };
+    if option_delta(previous.external_damage_raw, next.external_damage_raw)?
+        != expected_external_delta
+    {
+        return None;
+    }
+    let mut element_damage_by_property_delta = BTreeMap::new();
+    for property in 1..=8 {
+        if let (Some(previous), Some(next)) = (
+            previous.element_damage_by_property.get(&property),
+            next.element_damage_by_property.get(&property),
+        ) {
+            let delta = next.checked_sub(*previous)?;
+            if delta != 0 {
+                element_damage_by_property_delta.insert(property, delta);
+            }
+        }
+    }
+    Some(LifeWaveTransition {
+        lane: selected,
+        critical_damage_raw_delta: option_delta(
+            previous.critical_damage_raw,
+            next.critical_damage_raw,
+        ),
+        lucky_damage_raw_delta: option_delta(previous.lucky_damage_raw, next.lucky_damage_raw),
+        external_damage_raw_delta: option_delta(
+            previous.external_damage_raw,
+            next.external_damage_raw,
+        ),
+        normal_action_speed_basis_points_delta: option_delta(
+            previous.normal_action_speed_basis_points,
+            next.normal_action_speed_basis_points,
+        ),
+        guide_action_speed_basis_points_delta: option_delta(
+            previous.guide_action_speed_basis_points,
+            next.guide_action_speed_basis_points,
+        ),
+        element_damage_by_property_delta,
+    })
+}
+
 fn fixed_point_family_component_deltas(
     previous: &FixedPointFamilyState,
     next: &FixedPointFamilyState,
@@ -17776,6 +18341,195 @@ mod tests {
                 .life_wave_bonus_basis_points_by_entity_uuid
                 .get(&20),
             Some(&1_000)
+        );
+    }
+
+    fn life_wave_lane_state(lane: AttributeTransferLane) -> ActorHpState {
+        let mut state = ActorHpState {
+            critical_damage_raw: Some(5_000),
+            lucky_damage_raw: Some(3_000),
+            critical_chance_raw: Some(2_000),
+            critical_chance_raw_add: Some(2_000),
+            lucky_chance_raw: Some(2_000),
+            lucky_chance_raw_add: Some(2_000),
+            mastery_raw: Some(2_000),
+            mastery_raw_add: Some(2_000),
+            versatility_raw: Some(2_000),
+            versatility_raw_add: Some(2_000),
+            external_damage_raw: Some(700),
+            haste_percent_basis_points: Some(2_000),
+            normal_action_speed_basis_points: Some(2_000),
+            guide_action_speed_basis_points: Some(2_000),
+            element_damage_by_property: BTreeMap::from([(7, 1_200)]),
+            ..ActorHpState::default()
+        };
+        match lane {
+            AttributeTransferLane::CriticalChance => {
+                state.critical_chance_raw = Some(5_000);
+                state.critical_chance_raw_add = Some(5_000);
+            }
+            AttributeTransferLane::LuckyChance => {
+                state.lucky_chance_raw = Some(5_000);
+                state.lucky_chance_raw_add = Some(5_000);
+            }
+            AttributeTransferLane::Haste => state.haste_percent_basis_points = Some(5_000),
+            AttributeTransferLane::Mastery => {
+                state.mastery_raw = Some(5_000);
+                state.mastery_raw_add = Some(5_000);
+            }
+            AttributeTransferLane::Versatility => {
+                state.versatility_raw = Some(5_000);
+                state.versatility_raw_add = Some(5_000);
+            }
+        }
+        state
+    }
+
+    fn life_wave_lane_transition_states(
+        lane: AttributeTransferLane,
+    ) -> (ActorHpState, ActorHpState) {
+        let previous = life_wave_lane_state(lane);
+        let mut next = previous.clone();
+        match lane {
+            AttributeTransferLane::CriticalChance => {
+                next.critical_chance_raw = Some(6_000);
+                next.critical_chance_raw_add = Some(6_000);
+            }
+            AttributeTransferLane::LuckyChance => {
+                next.lucky_chance_raw = Some(6_000);
+                next.lucky_chance_raw_add = Some(6_000);
+                next.lucky_damage_raw = Some(3_250);
+            }
+            AttributeTransferLane::Haste => {
+                next.haste_percent_basis_points = Some(6_000);
+                next.normal_action_speed_basis_points = Some(2_500);
+            }
+            AttributeTransferLane::Mastery => {
+                next.mastery_raw = Some(6_000);
+                next.mastery_raw_add = Some(6_000);
+                next.element_damage_by_property.insert(7, 1_800);
+            }
+            AttributeTransferLane::Versatility => {
+                next.versatility_raw = Some(6_000);
+                next.versatility_raw_add = Some(6_000);
+                next.external_damage_raw = Some(1_050);
+            }
+        }
+        (previous, next)
+    }
+
+    #[test]
+    fn life_wave_reverses_all_five_selected_lanes_and_preserves_tie_order() {
+        for lane in [
+            AttributeTransferLane::CriticalChance,
+            AttributeTransferLane::LuckyChance,
+            AttributeTransferLane::Mastery,
+            AttributeTransferLane::Versatility,
+            AttributeTransferLane::Haste,
+        ] {
+            let (previous, next) = life_wave_lane_transition_states(lane);
+            let transition = life_wave_transition(&previous, &next, 1_000).unwrap();
+            assert_eq!(transition.lane, lane);
+        }
+
+        let tied = ActorHpState {
+            critical_chance_raw: Some(5_000),
+            lucky_chance_raw: Some(5_000),
+            mastery_raw: Some(5_000),
+            versatility_raw: Some(5_000),
+            haste_percent_basis_points: Some(5_000),
+            ..ActorHpState::default()
+        };
+        assert_eq!(
+            life_wave_selected_lane(&tied),
+            Some(AttributeTransferLane::CriticalChance)
+        );
+    }
+
+    fn life_wave_lane_projector(
+        lane: AttributeTransferLane,
+    ) -> (
+        BpsrStateDamageContributionProjector,
+        rlogs_events::DamageEvent,
+    ) {
+        let (previous, next) = life_wave_lane_transition_states(lane);
+        let transition = life_wave_transition(&previous, &next, 1_000).unwrap();
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            states: HashMap::from([(4, next)]),
+            attribute_state_actor_by_entity_uuid: HashMap::from([(40, 4)]),
+            attribute_state_entity_uuid_by_actor: HashMap::from([(4, 40)]),
+            ..Default::default()
+        };
+        projector.life_wave_windows.insert(
+            LifeWaveWindowKey {
+                target_actor_id: 4,
+                instance_id: 77,
+            },
+            LifeWaveWindow {
+                target_entity_uuid: 40,
+                opened_observed_micros: 1_000_000,
+                opened_wire: Some(life_wave_wire(1)),
+                expires_at_observed_micros: 6_000_000,
+                bonus_basis_points: Some(1_000),
+                trigger_ownership: LifeWaveTriggerOwnership::UniqueExternal {
+                    provider_actor_id: 2,
+                },
+                transition: Some(transition),
+            },
+        );
+        let mut damage = critical_test_damage(test_entity(4, 40), 100_000);
+        damage.packet.property = Some(7);
+        damage.packet.owner_stage = Some(2);
+        if lane == AttributeTransferLane::Haste {
+            damage.ability = Some(rlogs_events::AbilityId(1_419));
+        }
+        (projector, damage)
+    }
+
+    #[test]
+    fn life_wave_lane_counterfactuals_emit_only_exact_external_credit() {
+        let (critical, damage) = life_wave_lane_projector(AttributeTransferLane::CriticalChance);
+        let critical = critical
+            .life_wave_occurrence_contribution(2_000_000, &damage)
+            .unwrap();
+        assert_eq!(critical.effect_id, LIFE_WAVE_EFFECT_ID);
+        assert_eq!(critical.provider_actor_id, 2);
+        assert!(critical.numerator > 0 && critical.numerator < critical.denominator * 100_000);
+
+        let (versatility, damage) = life_wave_lane_projector(AttributeTransferLane::Versatility);
+        assert!(
+            versatility
+                .life_wave_versatility_contribution(2_000_000, &damage)
+                .is_some()
+        );
+
+        let (mastery, damage) = life_wave_lane_projector(AttributeTransferLane::Mastery);
+        assert!(
+            mastery
+                .life_wave_mastery_contribution(2_000_000, &damage)
+                .is_some()
+        );
+
+        let (haste, damage) = life_wave_lane_projector(AttributeTransferLane::Haste);
+        assert!(
+            haste
+                .life_wave_haste_contribution(2_000_000, &damage)
+                .is_some()
+        );
+
+        let (mut self_triggered, damage) =
+            life_wave_lane_projector(AttributeTransferLane::CriticalChance);
+        self_triggered
+            .life_wave_windows
+            .values_mut()
+            .next()
+            .unwrap()
+            .trigger_ownership = LifeWaveTriggerOwnership::SelfTriggered;
+        assert!(
+            self_triggered
+                .life_wave_occurrence_contribution(2_000_000, &damage)
+                .is_none()
         );
     }
 
@@ -20817,7 +21571,7 @@ mod tests {
                 31_602, 55_228, 55_333, 997_511, 997_513, 997_515, 997_518, 997_534, 997_538,
                 997_570, 998_542, 2_100_154, 2_110_034, 2_110_065, 2_110_096, 2_110_099, 2_110_125,
                 2_110_140, 2_110_143, 2_110_167, 2_202_041, 2_204_471, 2_207_252, 2_302_121,
-                2_404_261, 2_404_271, 3_003_052, 3_003_411
+                2_302_421, 2_404_261, 2_404_271, 3_003_052, 3_003_411
             ],
             "only effects with current production authority are exposed; Arcane! Thunder Roar transfers only Electro Shield's exact Thunderstrike output, Endless Mind is limited to Shattered Illusion's description-defined Mastery consumer, Thunderwind Power remains owner-only, and Mechanical Power is limited to its exact class-11 tier-0 route"
         );
@@ -21658,7 +22412,7 @@ mod tests {
                 31_602, 55_228, 55_333, 997_511, 997_513, 997_515, 997_518, 997_534, 997_538,
                 997_570, 998_542, 2_100_154, 2_110_034, 2_110_065, 2_110_096, 2_110_099, 2_110_125,
                 2_110_140, 2_110_143, 2_110_167, 2_202_041, 2_204_471, 2_207_252, 2_302_121,
-                2_404_261, 2_404_271, 3_003_052, 3_003_411
+                2_302_421, 2_404_261, 2_404_271, 3_003_052, 3_003_411
             ]
         );
         assert_eq!(projector.status(), "partial_packet_proven_rules");

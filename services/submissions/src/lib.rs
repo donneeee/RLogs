@@ -4314,6 +4314,20 @@ mod tests {
         game_time_millis: Option<i64>,
         value: i64,
     ) -> EventEnvelope {
+        cross_vantage_attributes_envelope(
+            sequence,
+            observed_micros,
+            game_time_millis,
+            &[(11320, value)],
+        )
+    }
+
+    fn cross_vantage_attributes_envelope(
+        sequence: u64,
+        observed_micros: u64,
+        game_time_millis: Option<i64>,
+        values: &[(i32, i64)],
+    ) -> EventEnvelope {
         cross_vantage_timeline_envelope(
             sequence,
             observed_micros,
@@ -4325,11 +4339,14 @@ mod tests {
                 },
                 update_kind: EntityAttributeUpdateKind::Snapshot,
                 ownership: None,
-                attributes: vec![rlogs_events::EntityAttribute {
-                    attribute_id: 11320,
-                    raw_value: value.to_le_bytes().to_vec(),
-                    decoded: Some(rlogs_events::EntityAttributeValue::Integer(value)),
-                }],
+                attributes: values
+                    .iter()
+                    .map(|(attribute_id, value)| rlogs_events::EntityAttribute {
+                        attribute_id: *attribute_id,
+                        raw_value: value.to_le_bytes().to_vec(),
+                        decoded: Some(rlogs_events::EntityAttributeValue::Integer(*value)),
+                    })
+                    .collect(),
             }),
         )
     }
@@ -4365,6 +4382,40 @@ mod tests {
                 }),
             },
         }
+    }
+
+    fn cross_vantage_life_wave_profile_envelope(
+        sequence: u64,
+        observed_micros: u64,
+        character_id: &str,
+    ) -> EventEnvelope {
+        let mut envelope =
+            cross_vantage_profile_envelope(sequence, observed_micros, None, character_id);
+        let CanonicalEvent::CharacterProfileObserved { profile } = &mut envelope.event else {
+            unreachable!();
+        };
+        profile.payload = serde_json::json!({
+            "character": profile.character.clone(),
+            "modules": {
+                "equipped_slots": { "1": "life-wave-module" },
+                "inventory": [{
+                    "instance_id": "life-wave-module",
+                    "config_id": 5500101,
+                    "count": 1,
+                    "quality": null,
+                    "load_flag": null,
+                    "module_type": null,
+                    "level": null,
+                    "parts": [{
+                        "part_id": 2404,
+                        "initial_link_points": 20
+                    }],
+                    "upgrade_records": [],
+                    "success_rate": null
+                }]
+            }
+        });
+        envelope
     }
 
     fn cross_vantage_actor_envelope(
@@ -4467,11 +4518,11 @@ mod tests {
         cross_vantage_timeline_envelope(
             sequence,
             observed_micros,
-            Some(observed_micros as i64),
+            Some(i64::try_from(observed_micros / 1_000).unwrap()),
             TimelineEventKind::Damage(rlogs_events::DamageEvent {
                 source: EntityRef {
-                    actor_id: rlogs_events::ActorId(11),
-                    entity_uuid: rlogs_events::EntityUuid(111),
+                    actor_id: rlogs_events::ActorId(22),
+                    entity_uuid: rlogs_events::EntityUuid(222),
                 },
                 direct_source: None,
                 target: EntityRef {
@@ -4486,7 +4537,10 @@ mod tests {
                 hit_event_id: Some(1),
                 damage_source: Some(1),
                 damage_type: Some(1),
-                flags: rlogs_events::DamageFlags::default(),
+                flags: rlogs_events::DamageFlags {
+                    critical: Some(true),
+                    ..Default::default()
+                },
                 packet: rlogs_events::DamagePacketDetail::default(),
             }),
         )
@@ -4710,7 +4764,7 @@ mod tests {
     }
 
     #[test]
-    fn joint_replay_preserves_ordinary_damage_and_party_conservation() {
+    fn joint_replay_attributes_life_wave_and_preserves_party_conservation() {
         let root = tempfile::tempdir().unwrap();
         let service =
             SubmissionService::open(root.path().into(), "https://example.test".into(), None)
@@ -4745,10 +4799,10 @@ mod tests {
                     reason: rlogs_events::BoundaryReason::AuthoritativePacket,
                 },
             ),
-            cross_vantage_damage_envelope(7, 45, 100),
+            cross_vantage_damage_envelope(7, 45_000, 100),
             cross_vantage_timeline_envelope(
                 8,
-                50,
+                50_000,
                 Some(50),
                 TimelineEventKind::CombatBoundary {
                     state: rlogs_events::CombatState::Ended,
@@ -4757,7 +4811,7 @@ mod tests {
             ),
             cross_vantage_timeline_envelope(
                 9,
-                60,
+                60_000,
                 Some(60),
                 TimelineEventKind::RunBoundary {
                     state: RunState::Completed,
@@ -4765,7 +4819,7 @@ mod tests {
                     reason: rlogs_events::BoundaryReason::Completion,
                 },
             ),
-            cross_vantage_dungeon_envelope(10, 65, rlogs_events::DungeonEventKind::Completed),
+            cross_vantage_dungeon_envelope(10, 65_000, rlogs_events::DungeonEventKind::Completed),
         ];
         let mut timeline_sequence = 0_u64;
         for event in &mut events {
@@ -4798,8 +4852,10 @@ mod tests {
         }
         report.runs[0]
             .participants
-            .retain(|participant| participant.character_id.as_deref() == Some("character-a"));
-        report.runs[0].participants[0].damage = 100;
+            .iter_mut()
+            .find(|participant| participant.character_id.as_deref() == Some("character-b"))
+            .unwrap()
+            .damage = 100;
         write_json_atomic(&service.projection_path(report_id).unwrap(), &report).unwrap();
         let group = CatalogRunGroup {
             representative: PublicParseCatalogEntry::from_report(&report, &report.runs[0]),
@@ -4879,8 +4935,34 @@ mod tests {
                 character_id: "character-b".into(),
                 related_character_id: None,
                 placement: LocalStateWitnessPlacement::PreRunBaseline,
-                game_time_millis: Some(5),
-                envelope: cross_vantage_attribute_envelope(2, 5, Some(5), 1000),
+                game_time_millis: None,
+                envelope: cross_vantage_life_wave_profile_envelope(1, 1, "character-b"),
+            },
+            VerifiedCrossVantageStateEvent {
+                report_id: "rpt_secondary".into(),
+                character_id: "character-b".into(),
+                related_character_id: None,
+                placement: LocalStateWitnessPlacement::InRun,
+                game_time_millis: Some(41),
+                envelope: cross_vantage_attributes_envelope(
+                    2,
+                    41,
+                    Some(41),
+                    &[
+                        (11710, 5_000),
+                        (11712, 5_000),
+                        (11780, 2_000),
+                        (11782, 2_000),
+                        (11940, 2_000),
+                        (11942, 2_000),
+                        (11950, 2_000),
+                        (11952, 2_000),
+                        (11840, 700),
+                        (11930, 2_000),
+                        (12510, 5_000),
+                        (12530, 3_000),
+                    ],
+                ),
             },
             VerifiedCrossVantageStateEvent {
                 report_id: "rpt_secondary".into(),
@@ -4898,14 +4980,73 @@ mod tests {
                 game_time_millis: Some(42),
                 envelope: trigger_healing,
             },
+            VerifiedCrossVantageStateEvent {
+                report_id: "rpt_secondary".into(),
+                character_id: "character-b".into(),
+                related_character_id: None,
+                placement: LocalStateWitnessPlacement::InRun,
+                game_time_millis: Some(43),
+                envelope: cross_vantage_attributes_envelope(
+                    102,
+                    43,
+                    Some(43),
+                    &[
+                        (11710, 6_000),
+                        (11712, 6_000),
+                        (11780, 2_000),
+                        (11782, 2_000),
+                        (11940, 2_000),
+                        (11942, 2_000),
+                        (11950, 2_000),
+                        (11952, 2_000),
+                        (11840, 700),
+                        (11930, 2_000),
+                        (12510, 5_000),
+                        (12530, 3_000),
+                    ],
+                ),
+            },
         ];
         let result = service
             .replay_cross_vantage_attribution(&reconciliation, imported)
             .unwrap();
-        assert_eq!(result.participants.len(), 1);
         assert!(result.conservation.conserved);
         assert_eq!(result.conservation.raw_damage, 100);
         assert_eq!(result.conservation.rdps_damage, 100);
+        assert!(result.conservation.contribution_given > 0);
+        assert_eq!(
+            result.conservation.contribution_given,
+            result.conservation.contribution_received
+        );
+        assert_eq!(result.participants.len(), 2);
+        let provider = result
+            .participants
+            .iter()
+            .find(|participant| participant.participant.actor_id == "11")
+            .unwrap();
+        let recipient = result
+            .participants
+            .iter()
+            .find(|participant| participant.participant.actor_id == "22")
+            .unwrap();
+        assert_eq!(
+            provider.contribution_given,
+            Some(result.conservation.contribution_given)
+        );
+        assert_eq!(
+            provider.rdps_damage,
+            Some(result.conservation.contribution_given)
+        );
+        assert_eq!(
+            recipient.contribution_received,
+            Some(result.conservation.contribution_received)
+        );
+        assert_eq!(
+            recipient.rdps_damage,
+            Some(100 - result.conservation.contribution_received)
+        );
+        assert!(!provider.rdps_incomplete);
+        assert!(!recipient.rdps_incomplete);
     }
 
     fn fixture_public_report(

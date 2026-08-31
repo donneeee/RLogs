@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
-const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 36;
+const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 37;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -1809,6 +1809,35 @@ pub(crate) struct AttributeTransferRuntimeConfig {
     pub runtime_transfer_enabled: bool,
 }
 
+/// Module part 2404, Life Wave. The provider is the exact HP/max-HP changer
+/// paired with child 2302421; the recipient's adjacent attribute vector proves
+/// both the calculator-selected lane and any build-specific derived factor.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LifeWaveRuntimeConfig {
+    pub effect_id: i64,
+    pub source_type_id: i32,
+    pub source_config_id: i64,
+    pub module_effect_id: i32,
+    pub duration_millis: u64,
+    pub level_five_bonus_basis_points: i64,
+    pub level_six_bonus_basis_points: i64,
+    pub versatility_to_external_damage_numerator: i64,
+    pub versatility_to_external_damage_denominator: i64,
+    pub calculator_lane_selection_authority: bool,
+    pub exact_module_profile_magnitude_authority: bool,
+    pub exact_child_status_identity_authority: bool,
+    pub cross_vantage_trigger_ownership_authority: bool,
+    pub exact_adjacent_lane_transition_authority: bool,
+    pub packet_final_counterfactual_authority: bool,
+    pub reviewed_action_route_required: bool,
+    pub unresolved_overlap_fails_closed: bool,
+    pub ordinary_damage_unchanged: bool,
+    pub accounting_method: String,
+    pub rational_integer_projection: String,
+    pub runtime_transfer_enabled: bool,
+}
+
 /// Rogue entry 349, Tactical Blessing. Root effect 997557 makes Pulse Beam
 /// grant the exact ten-second recipient child 997570 to friendly units. The
 /// installed description supplies simultaneous +10% Crit and +10% Luck;
@@ -2112,6 +2141,7 @@ pub(crate) struct RdpsRuntimeConfig {
     pub coordinated_strike: CoordinatedStrikeRuntimeConfig,
     pub all_class_aura: AllClassAuraRuntimeConfig,
     pub attribute_transfer: AttributeTransferRuntimeConfig,
+    pub life_wave: LifeWaveRuntimeConfig,
     pub tactical_blessing: TacticalBlessingRuntimeConfig,
     pub endless_mind: EndlessMindRuntimeConfig,
     pub arcane_time_decree: ArcaneTimeDecreeRuntimeConfig,
@@ -2169,6 +2199,7 @@ impl RdpsRuntimeConfig {
             || self.coordinated_strike.runtime_transfer_enabled
             || self.all_class_aura.runtime_transfer_enabled
             || self.attribute_transfer.runtime_transfer_enabled
+            || self.life_wave.runtime_transfer_enabled
             || self.tactical_blessing.runtime_transfer_enabled
             || self.endless_mind.runtime_transfer_enabled
             || self.arcane_time_decree.runtime_transfer_enabled
@@ -2238,6 +2269,7 @@ impl RdpsRuntimeConfig {
                 && self.all_class_aura.runtime_transfer_enabled)
             || (effect_id == self.attribute_transfer.effect_id
                 && self.attribute_transfer.runtime_transfer_enabled)
+            || (effect_id == self.life_wave.effect_id && self.life_wave.runtime_transfer_enabled)
             || (effect_id == self.tactical_blessing.effect_id
                 && self.tactical_blessing.runtime_transfer_enabled)
             || (effect_id == self.endless_mind.effect_id
@@ -3409,6 +3441,38 @@ impl RdpsRuntimeConfig {
         {
             return Err(
                 "bundled BPSR Attribute Transfer (Rogue entry 197; recipient effect 997515) formula is not ready for runtime transfer"
+                    .into(),
+            );
+        }
+
+        let life_wave = &self.life_wave;
+        let life_wave_current_authority = life_wave.calculator_lane_selection_authority
+            && life_wave.exact_module_profile_magnitude_authority
+            && life_wave.exact_child_status_identity_authority
+            && life_wave.cross_vantage_trigger_ownership_authority
+            && life_wave.exact_adjacent_lane_transition_authority
+            && life_wave.packet_final_counterfactual_authority
+            && life_wave.reviewed_action_route_required
+            && life_wave.unresolved_overlap_fails_closed
+            && life_wave.ordinary_damage_unchanged
+            && life_wave.accounting_method
+                == "observed-final-damage-selected-secondary-lane-counterfactual"
+            && life_wave.rational_integer_projection
+                == "sum-exact-then-half-up-per-effect-provider-recipient";
+        if life_wave.effect_id != 2_302_421
+            || life_wave.source_type_id != 1
+            || life_wave.source_config_id != 2_302_420
+            || life_wave.module_effect_id != 2_404
+            || life_wave.duration_millis != 5_000
+            || life_wave.level_five_bonus_basis_points != 600
+            || life_wave.level_six_bonus_basis_points != 1_000
+            || life_wave.versatility_to_external_damage_numerator != 35
+            || life_wave.versatility_to_external_damage_denominator != 100
+            || (self.game_build == "24687926" && !life_wave_current_authority)
+            || life_wave.runtime_transfer_enabled != (self.game_build == "24687926")
+        {
+            return Err(
+                "bundled BPSR Life Wave (module part 2404; recipient effect 2302421) formula is not ready for runtime transfer"
                     .into(),
             );
         }
@@ -4753,6 +4817,31 @@ mod tests {
         .unwrap();
         assert!(!historical.attribute_transfer.runtime_transfer_enabled);
         assert!(!historical.effect_runtime_transfer_enabled(997_515));
+    }
+
+    #[test]
+    fn life_wave_is_exact_current_build_selected_lane_authority_only() {
+        let current = runtime_from_value(bundled_runtime_value());
+        assert!(current.validate().is_ok());
+        let config = &current.life_wave;
+        assert_eq!(config.effect_id, 2_302_421);
+        assert_eq!(config.source_config_id, 2_302_420);
+        assert_eq!(config.module_effect_id, 2_404);
+        assert_eq!(config.duration_millis, 5_000);
+        assert_eq!(config.level_five_bonus_basis_points, 600);
+        assert_eq!(config.level_six_bonus_basis_points, 1_000);
+        assert!(config.runtime_transfer_enabled);
+        assert!(current.effect_runtime_transfer_enabled(config.effect_id));
+
+        let historical = rdps_runtime_config_for_identity(
+            "global",
+            "24252055",
+            "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!historical.life_wave.runtime_transfer_enabled);
+        assert!(!historical.effect_runtime_transfer_enabled(config.effect_id));
     }
 
     #[test]

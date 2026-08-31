@@ -1,5 +1,5 @@
 {
-  "schema_version": 36,
+  "schema_version": 37,
   "deployment_id": "global",
   "builds": [
     {
@@ -138,6 +138,9 @@
           "runtime_transfer_enabled": false
         },
         "attribute_transfer": {
+          "runtime_transfer_enabled": false
+        },
+        "life_wave": {
           "runtime_transfer_enabled": false
         },
         "tactical_blessing": {
