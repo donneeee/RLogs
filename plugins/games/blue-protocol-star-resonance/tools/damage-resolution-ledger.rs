@@ -119,6 +119,8 @@ struct StageCandidate {
     is_profession: Option<bool>,
 }
 
+type GapFormulaIndex = BTreeMap<(String, i64), (String, StageCandidate)>;
+
 #[derive(Debug, Deserialize)]
 struct FamilyWorklist {
     schema_version: u16,
@@ -535,9 +537,7 @@ fn standard_formula_index(
     Ok(index)
 }
 
-fn gap_formula_index(
-    stage: &StageCatalog,
-) -> Result<BTreeMap<(String, i64), (String, StageCandidate)>, String> {
+fn gap_formula_index(stage: &StageCatalog) -> Result<GapFormulaIndex, String> {
     let mut index = BTreeMap::new();
     for gap in &stage.coverage_gaps {
         if gap.gap_class != "nonstandard-or-missing-script" {

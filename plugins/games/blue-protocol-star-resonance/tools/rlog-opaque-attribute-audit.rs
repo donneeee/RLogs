@@ -1,3 +1,5 @@
+#![allow(clippy::field_reassign_with_default, clippy::type_complexity)]
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     env,

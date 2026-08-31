@@ -439,7 +439,7 @@ fn is_method_signature(line: &str) -> bool {
 }
 
 fn metadata_token(line: &str, label: &str) -> Option<String> {
-    let value = line.split(label).nth(1)?.trim().split_whitespace().next()?;
+    let value = line.split(label).nth(1)?.split_whitespace().next()?;
     (value != "-1").then(|| value.to_string())
 }
 

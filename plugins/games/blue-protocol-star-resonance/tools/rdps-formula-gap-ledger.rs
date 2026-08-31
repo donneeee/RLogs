@@ -1606,7 +1606,7 @@ mod tests {
             strong_owner_skill_ids: vec![],
             broad_owner_skill_ids: vec![],
             semantic_owner_skill_ids: vec![],
-            semantic_recipient_scopes: vec![].into(),
+            semantic_recipient_scopes: vec![],
             semantic_rdps_dispositions: vec![],
             exact_component_recipient_scopes: vec!["summon-owner-only".to_owned()],
             exact_component_rdps_dispositions: vec![

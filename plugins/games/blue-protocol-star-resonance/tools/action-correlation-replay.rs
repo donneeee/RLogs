@@ -398,18 +398,16 @@ fn discover(records: &[CaptureRecord]) -> Discovery {
                 && route.fragment == FragmentKind::Call
                 && route.service_id == service_id
                 && route.method_id != USE_SLOT_METHOD_ID
+                && let Ok(stage) = decode_client_skill_stage_trigger(payload)
+                && stage.skill_uuid > 0
+                && known_trigger_type(stage.trigger_type)
             {
-                if let Ok(stage) = decode_client_skill_stage_trigger(payload)
-                    && stage.skill_uuid > 0
-                    && known_trigger_type(stage.trigger_type)
-                {
-                    let counts = trigger.entry(route).or_default();
-                    counts.packet_count = counts.packet_count.saturating_add(1);
-                    counts.valid_payload_count = counts.valid_payload_count.saturating_add(1);
-                    if action_instance_ids.contains(&stage.skill_uuid) {
-                        counts.action_uuid_match_count =
-                            counts.action_uuid_match_count.saturating_add(1);
-                    }
+                let counts = trigger.entry(route).or_default();
+                counts.packet_count = counts.packet_count.saturating_add(1);
+                counts.valid_payload_count = counts.valid_payload_count.saturating_add(1);
+                if action_instance_ids.contains(&stage.skill_uuid) {
+                    counts.action_uuid_match_count =
+                        counts.action_uuid_match_count.saturating_add(1);
                 }
             }
             if route == exact_server_stage_end_route() {
@@ -523,15 +521,13 @@ fn discovery_blockers(discovery: &Discovery, gap_count: u64) -> Vec<String> {
             "matching-build replay contains {gap_count} capture gaps"
         ));
     }
-    if discovery.exact_client_service_id.is_none() {
-        blockers
-            .push("World.UseSlot did not converge on one strictly decoded client service".into());
-    } else if discovery.exact_client_service_id != Some(WORLD_SERVICE_ID) {
-        blockers.push(format!(
-            "World.UseSlot appeared on service {}, not statically proven World service {}",
-            discovery.exact_client_service_id.unwrap(),
-            WORLD_SERVICE_ID
-        ));
+    match discovery.exact_client_service_id {
+        None => blockers
+            .push("World.UseSlot did not converge on one strictly decoded client service".into()),
+        Some(service_id) if service_id != WORLD_SERVICE_ID => blockers.push(format!(
+            "World.UseSlot appeared on service {service_id}, not statically proven World service {WORLD_SERVICE_ID}"
+        )),
+        Some(_) => {}
     }
     if discovery.exact_trigger_method_id.is_none() {
         blockers.push(

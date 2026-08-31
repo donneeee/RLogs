@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     env,
@@ -2213,12 +2215,16 @@ fn formula_selection_receipt(args: &Arguments) -> FormulaSelectionReceipt {
         all_abilities: args.all_abilities,
         ability_ids: args.abilities.iter().copied().collect(),
         selected_effect_ids: selected_effect_ids.clone(),
-        source_effect_ids: (args.formula_effect_locus == FormulaEffectLocus::Source)
-            .then_some(selected_effect_ids.clone())
-            .unwrap_or_default(),
-        target_effect_ids: (args.formula_effect_locus == FormulaEffectLocus::Target)
-            .then_some(selected_effect_ids)
-            .unwrap_or_default(),
+        source_effect_ids: if args.formula_effect_locus == FormulaEffectLocus::Source {
+            selected_effect_ids.clone()
+        } else {
+            Vec::new()
+        },
+        target_effect_ids: if args.formula_effect_locus == FormulaEffectLocus::Target {
+            selected_effect_ids
+        } else {
+            Vec::new()
+        },
         effect_locus: args.formula_effect_locus,
         target_effect_scope: match args.formula_effect_locus {
             FormulaEffectLocus::Source => {
@@ -2247,7 +2253,7 @@ fn load_formula_gap_window_filter(
 ) -> Result<FormulaGapWindowFilter, Box<dyn std::error::Error>> {
     let bytes = fs::read(path)?;
     let bundle: FormulaGapWindowAuditBundle = serde_json::from_slice(&bytes)?;
-    if !matches!(bundle.schema_version, 1 | 2 | 3)
+    if !matches!(bundle.schema_version, 1..=3)
         || bundle.generated_by != "rlogs-bpsr-rlog-gap-window-audit"
         || bundle.game_build != game_build
         || selected_effects != &BTreeSet::from([bundle.effect_id])
@@ -5637,13 +5643,13 @@ fn state_snapshot(
                     .collect()
             })
             .unwrap_or_default(),
-        all_packet_attributes: retain_all_packet_attributes
-            .then(|| {
-                values
-                    .map(|entries| entries.values().cloned().collect())
-                    .unwrap_or_default()
-            })
-            .unwrap_or_default(),
+        all_packet_attributes: if retain_all_packet_attributes {
+            values
+                .map(|entries| entries.values().cloned().collect())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -6758,7 +6764,7 @@ fn formula_coefficient_pair_report(
             },
         )
         .collect::<Vec<_>>();
-    packet_input_pairs.sort_by(|left, right| right.comparisons.cmp(&left.comparisons));
+    packet_input_pairs.sort_by_key(|entry| std::cmp::Reverse(entry.comparisons));
     packet_input_pairs.truncate(FORMULA_PROOF_EXAMPLE_LIMIT);
     examples.sort_by(|left, right| {
         left.cross_product_residual

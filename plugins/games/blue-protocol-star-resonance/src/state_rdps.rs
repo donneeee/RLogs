@@ -17585,8 +17585,10 @@ mod tests {
 
     #[test]
     fn life_wave_refresh_replaces_trigger_owner_and_resets_exact_five_second_window() {
-        let mut projector = BpsrStateDamageContributionProjector::default();
-        projector.current_wire = Some(life_wave_wire(1));
+        let mut projector = BpsrStateDamageContributionProjector {
+            current_wire: Some(life_wave_wire(1)),
+            ..Default::default()
+        };
         projector.observe_life_wave_status(
             &life_wave_test_status(2, 77, StatusState::Applied),
             1_000_000,
@@ -17617,8 +17619,10 @@ mod tests {
     fn life_wave_self_ambiguous_and_unknown_triggers_never_invent_exact_credit() {
         let damage = poison_explosion_test_damage(test_entity(2, 20), test_entity(9, 90));
 
-        let mut self_triggered = BpsrStateDamageContributionProjector::default();
-        self_triggered.current_wire = Some(life_wave_wire(1));
+        let mut self_triggered = BpsrStateDamageContributionProjector {
+            current_wire: Some(life_wave_wire(1)),
+            ..Default::default()
+        };
         self_triggered.observe_life_wave_status(
             &life_wave_test_status(2, 70, StatusState::Applied),
             1_000_000,
@@ -17628,8 +17632,10 @@ mod tests {
         self_triggered.mark_life_wave_incomplete(2_000_000, &damage);
         assert!(self_triggered.incomplete_rdps_actor_ids.is_empty());
 
-        let mut ambiguous = BpsrStateDamageContributionProjector::default();
-        ambiguous.current_wire = Some(life_wave_wire(1));
+        let mut ambiguous = BpsrStateDamageContributionProjector {
+            current_wire: Some(life_wave_wire(1)),
+            ..Default::default()
+        };
         ambiguous.observe_life_wave_status(
             &life_wave_test_status(2, 71, StatusState::Applied),
             1_000_000,
@@ -17650,8 +17656,10 @@ mod tests {
         ambiguous.clear_run_state();
         assert!(ambiguous.incomplete_rdps_actor_ids.is_empty());
 
-        let mut unknown = BpsrStateDamageContributionProjector::default();
-        unknown.current_wire = Some(life_wave_wire(1));
+        let mut unknown = BpsrStateDamageContributionProjector {
+            current_wire: Some(life_wave_wire(1)),
+            ..Default::default()
+        };
         unknown.observe_life_wave_status(
             &life_wave_test_status(2, 72, StatusState::Applied),
             1_000_000,

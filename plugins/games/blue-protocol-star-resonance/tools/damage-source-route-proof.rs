@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
@@ -1122,8 +1124,8 @@ mod tests {
     #[test]
     fn resolves_damage_id_that_embeds_a_different_exact_bullet_id() {
         let bullets = json!({
-            "10130301": { "Id": 10130301, "BulletAttrId": 3_101_303_010_0_u64 },
-            "10130401": { "Id": 10130401, "BulletAttrId": 3_101_304_010_0_u64 }
+            "10130301": { "Id": 10130301, "BulletAttrId": 31_013_030_100_u64 },
+            "10130401": { "Id": 10130401, "BulletAttrId": 31_013_040_100_u64 }
         });
         let empty = json!({});
         let routes = exact_routes(

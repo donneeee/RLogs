@@ -995,8 +995,7 @@ mod tests {
     #[test]
     fn rejects_literal_without_one_prefix_key() {
         let error = decode_literal("WorldNtf", "WorldNtf::SyncClientUseSkill")
-            .err()
-            .expect("plaintext should not satisfy the encrypted prefix policy");
+            .expect_err("plaintext should not satisfy the encrypted prefix policy");
         assert!(error.to_string().contains("plaintext"));
     }
 

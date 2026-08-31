@@ -1,3 +1,5 @@
+#![allow(clippy::enum_variant_names, clippy::field_reassign_with_default)]
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     env,
@@ -981,11 +983,11 @@ fn candidate_reports(
                     basis_points,
                     percent: basis_points as f64 / 100.0,
                     events: support.events,
-                    coverage_basis_points: if denominator_events == 0 {
-                        0
-                    } else {
-                        support.events.saturating_mul(10_000) / denominator_events
-                    },
+                    coverage_basis_points: support
+                        .events
+                        .saturating_mul(10_000)
+                        .checked_div(denominator_events)
+                        .unwrap_or_default(),
                     distinct_numerators: support.numerators.len(),
                     distinct_denominators: support.denominators.len(),
                     numerator_examples: support.numerators.into_iter().take(8).collect(),

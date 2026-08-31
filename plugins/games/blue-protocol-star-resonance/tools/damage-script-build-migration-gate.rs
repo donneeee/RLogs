@@ -88,6 +88,8 @@ struct CtbVersion {
     shape: CtbShape,
 }
 
+type RawTableChangeResult = (String, Option<CtbVersion>, Option<CtbVersion>, i64);
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct CtbShape {
     rows: usize,
@@ -310,7 +312,7 @@ fn raw_table_change(
     change: Option<&CtbChange>,
     current_rows: &BTreeMap<i64, Value>,
     baseline_rows: Option<&BTreeMap<i64, Value>>,
-) -> Result<(String, Option<CtbVersion>, Option<CtbVersion>, i64), Box<dyn std::error::Error>> {
+) -> Result<RawTableChangeResult, Box<dyn std::error::Error>> {
     if let Some(change) = change {
         if change.change != "changed" {
             return Err("listed DamageAttrTable must be explicitly classified as changed".into());

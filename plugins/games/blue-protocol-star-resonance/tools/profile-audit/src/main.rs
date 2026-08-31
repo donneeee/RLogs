@@ -891,18 +891,19 @@ fn profile_observation(
         .filter(|season| current_season_id == Some(i64::from(season.season_id)))
         .flat_map(|season| {
             season.lines.iter().flat_map(move |line| {
-                line.areas.iter().filter_map(move |area| {
-                    (area.active == Some(true) && line.area_ids.contains(&area.area_id)).then(
-                        || CultivationAreaSelectionAudit {
-                            season_id: season.season_id,
-                            line_type_id: line.line_type_id,
-                            area_id: area.area_id,
-                            active_effect_score: area.active_effect_score,
-                            middle_node_item_ids: area.middle_node_item_ids.clone(),
-                            big_node_fantasy_ids: area.big_node_fantasy_ids.clone(),
-                        },
-                    )
-                })
+                line.areas
+                    .iter()
+                    .filter(move |area| {
+                        area.active == Some(true) && line.area_ids.contains(&area.area_id)
+                    })
+                    .map(move |area| CultivationAreaSelectionAudit {
+                        season_id: season.season_id,
+                        line_type_id: line.line_type_id,
+                        area_id: area.area_id,
+                        active_effect_score: area.active_effect_score,
+                        middle_node_item_ids: area.middle_node_item_ids.clone(),
+                        big_node_fantasy_ids: area.big_node_fantasy_ids.clone(),
+                    })
             })
         })
         .collect::<Vec<_>>();

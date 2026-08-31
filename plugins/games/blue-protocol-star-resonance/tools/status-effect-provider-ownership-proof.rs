@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if, clippy::large_enum_variant)]
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     env,

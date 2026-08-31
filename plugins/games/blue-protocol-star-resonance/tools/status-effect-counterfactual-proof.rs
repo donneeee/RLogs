@@ -4319,12 +4319,12 @@ fn evaluate_all_element_damage_candidate(
 fn is_ordinary_unshielded_damage(outcome: &Outcome) -> bool {
     outcome.amount >= 0
         && outcome.normal_value == Some(outcome.amount)
-        && outcome.lucky_value.map_or(true, |value| value == 0)
-        && outcome.shield_loss.map_or(true, |value| value == 0)
+        && outcome.lucky_value.is_none_or(|value| value == 0)
+        && outcome.shield_loss.is_none_or(|value| value == 0)
         && outcome.hp_loss == Some(outcome.amount)
         && outcome
             .actual_amount
-            .map_or(true, |value| value == outcome.amount)
+            .is_none_or(|value| value == outcome.amount)
 }
 
 fn fixed_point_damage_roundings() -> [FixedPointDamageRounding; 2] {
@@ -5653,7 +5653,7 @@ mod tests {
                 stacks: Some(1),
                 level: Some(1),
                 origin_source_type_id: Some(12),
-                origin_source_config_id: Some(i64::from(effect_id)),
+                origin_source_config_id: Some(effect_id),
             })
             .collect::<Vec<_>>();
         let mut review_status_state = vec![review_candidate];

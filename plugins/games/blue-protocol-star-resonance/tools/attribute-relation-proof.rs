@@ -160,6 +160,8 @@ struct SessionReport {
     transition_mismatch_examples: Vec<TransitionExample>,
 }
 
+type SessionEvidence = (SessionReport, BTreeSet<Pair>, BTreeSet<TransitionPair>);
+
 #[derive(Debug, Serialize)]
 struct AuditBundle {
     schema_version: u16,
@@ -267,7 +269,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn read_session(
     path: &Path,
     arguments: &Arguments,
-) -> Result<(SessionReport, BTreeSet<Pair>, BTreeSet<TransitionPair>), Box<dyn std::error::Error>> {
+) -> Result<SessionEvidence, Box<dyn std::error::Error>> {
     let mut reader = RlogReader::new(BufReader::new(File::open(path)?), RlogLimits::default())?;
     let mut session_id = None::<String>;
     let mut run_ordinal = 0_u32;

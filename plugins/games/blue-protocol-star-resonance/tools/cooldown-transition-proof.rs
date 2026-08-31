@@ -76,7 +76,7 @@ impl RawCooldownSample {
         }
     }
 
-    fn progress(self: &Self) -> Option<(ProgressField, i64)> {
+    fn progress(&self) -> Option<(ProgressField, i64)> {
         self.valid_duration_millis
             .map(|value| (ProgressField::ValidDurationMillis, i64::from(value)))
             .or_else(|| {
@@ -262,9 +262,7 @@ fn read_session(
                 );
                 match status.state {
                     StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
-                        let duration_millis = status
-                            .duration_millis
-                            .and_then(|value| u64::try_from(value).ok());
+                        let duration_millis = status.duration_millis;
                         let expected_end_observed_micros = duration_millis.map(|duration| {
                             timeline
                                 .time

@@ -310,7 +310,7 @@ fn plausible_shape(row_count: u32, row_data_bytes: u32) -> Option<u32> {
         return None;
     }
     let row_size = row_data_bytes / row_count;
-    (row_size >= 4 && row_size <= MAX_ROW_SIZE).then_some(row_size)
+    (4..=MAX_ROW_SIZE).contains(&row_size).then_some(row_size)
 }
 
 fn minimum_table_bytes(row_count: u32, row_data_bytes: u32) -> Result<u64, &'static str> {

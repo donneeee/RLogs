@@ -1,3 +1,9 @@
+#![allow(
+    clippy::needless_range_loop,
+    clippy::too_many_arguments,
+    clippy::type_complexity
+)]
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     env,

@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     env,
@@ -2413,7 +2415,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             ability_id: key.ability_id,
             hit_event_id: key.hit_event_id,
             damage_id: key.damage_id.clone(),
-            damage_type: key.damage_type.clone(),
+            damage_type: key.damage_type,
             damage_script: key.damage_script.clone(),
             owner_stage: key.owner_stage,
             critical: key.critical,
@@ -2431,7 +2433,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             ability_id: key.ability_id,
             hit_event_id: key.hit_event_id,
             damage_id: key.damage_id.clone(),
-            damage_type: key.damage_type.clone(),
+            damage_type: key.damage_type,
             damage_script: key.damage_script.clone(),
             owner_stage: key.owner_stage,
             critical: key.critical,

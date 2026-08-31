@@ -629,24 +629,20 @@ impl Tracker {
                     self.summary.cast_events_observed =
                         self.summary.cast_events_observed.saturating_add(1)
                 }
-                TimelineEventKind::EncounterBoundary { state, .. }
-                    if matches!(
-                        state,
-                        EncounterState::Cleared | EncounterState::Wiped | EncounterState::Ended
-                    ) =>
-                {
+                TimelineEventKind::EncounterBoundary {
+                    state: EncounterState::Cleared | EncounterState::Wiped | EncounterState::Ended,
+                    ..
+                } => {
                     self.finish_all(
                         "encounter_boundary",
                         envelope.sequence,
                         envelope.time.observed_micros,
                     );
                 }
-                TimelineEventKind::RunBoundary { state, .. }
-                    if matches!(
-                        state,
-                        RunState::Completed | RunState::Failed | RunState::Exited
-                    ) =>
-                {
+                TimelineEventKind::RunBoundary {
+                    state: RunState::Completed | RunState::Failed | RunState::Exited,
+                    ..
+                } => {
                     self.finish_all(
                         "run_boundary",
                         envelope.sequence,

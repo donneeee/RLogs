@@ -1,3 +1,9 @@
+#![allow(
+    clippy::enum_variant_names,
+    clippy::too_many_arguments,
+    clippy::type_complexity
+)]
+
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     env,

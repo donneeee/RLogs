@@ -507,8 +507,7 @@ mod windows {
             if table_offset == 0 && table_size == 0 {
                 continue;
             }
-            if table_offset < 0x80
-                || table_offset > MAXIMUM_METADATA_LENGTH
+            if !(0x80..=MAXIMUM_METADATA_LENGTH).contains(&table_offset)
                 || table_size > MAXIMUM_METADATA_LENGTH
             {
                 continue;
@@ -558,8 +557,7 @@ mod windows {
         address: usize,
         length: usize,
     ) -> Result<Vec<u8>, Box<dyn Error>> {
-        let bytes =
-            read_process(handle, address, length).ok_or_else(|| io::Error::last_os_error())?;
+        let bytes = read_process(handle, address, length).ok_or_else(io::Error::last_os_error)?;
         if bytes.len() != length {
             return Err(format!(
                 "metadata candidate was found but only {} of {length} bytes could be read",

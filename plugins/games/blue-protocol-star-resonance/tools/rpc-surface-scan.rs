@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_match)]
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,

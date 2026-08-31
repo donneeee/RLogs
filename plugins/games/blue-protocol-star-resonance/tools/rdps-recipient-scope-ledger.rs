@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
@@ -1415,7 +1417,7 @@ fn collect_reachable_packet_family_edges(
     declared_effect_ids: &[i64],
     by_parent: &BTreeMap<i64, Vec<PacketObservedEffectFamilyEdge>>,
 ) -> Vec<PacketObservedEffectFamilyEdge> {
-    let mut pending = declared_effect_ids.iter().copied().collect::<Vec<_>>();
+    let mut pending = declared_effect_ids.to_vec();
     let mut visited = declared_effect_ids.iter().copied().collect::<BTreeSet<_>>();
     let mut edges = BTreeSet::new();
     while let Some(parent) = pending.pop() {

@@ -735,16 +735,14 @@ fn verify_report(report: &AuditReport) -> Result<(), Box<dyn Error>> {
         LEGACY_SCHEMA_VERSION | SCHEMA_VERSION
     ) || report.generated_by != GENERATED_BY
         || report.effect_id <= 0
-        || report.policy.sealed_rlogs_are_streamed_one_event_at_a_time != true
-        || report
+        || !report.policy.sealed_rlogs_are_streamed_one_event_at_a_time
+        || !report
             .policy
             .every_data_gap_and_recorder_pause_is_an_exclusion_boundary
-            != true
-        || report
+        || !report
             .policy
             .structurally_unobservable_remote_player_packets_are_not_acquisition_requirements
-            != true
-        || report.policy.packet_absence_is_not_zero != true
+        || !report.policy.packet_absence_is_not_zero
         || report.policy.formula_authority
         || report.policy.runtime_authority
         || report.policy.provider_rdps_credit_allowed

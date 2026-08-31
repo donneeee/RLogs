@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     env,
@@ -1097,7 +1099,7 @@ fn lucky_goblin_semantic_candidate(
         3_915,
         &["Luck Bonus", "Lucky Strike Multiplier", "20s"],
     )?;
-    require_skill_effect(skill_effects_by_id, 100_730_01, 100_730, None)?;
+    require_skill_effect(skill_effects_by_id, 10_073_001, 100_730, None)?;
     require_runtime_monster(monsters_by_id, 3_000_011, 100_730)?;
     require_buff(
         buffs_by_id,
@@ -1114,7 +1116,7 @@ fn lucky_goblin_semantic_candidate(
         3_915,
         391_501,
         Some(100_730),
-        Some(100_730_01),
+        Some(10_073_001),
         3_000_013,
         10_019,
         Some(3_000_011),
@@ -2111,7 +2113,7 @@ fn exact_component_routes(
                 &json!([[1_120]]),
                 &[3_210_080, 3_210_081],
                 2_110_110,
-                11_010_440_010_2,
+                110_104_400_102,
                 1_010_440,
             );
         }
@@ -2127,7 +2129,7 @@ fn exact_component_routes(
                 &json!([[500, 700]]),
                 &[3_200_035],
                 2_110_132,
-                11_011_312_010_3,
+                110_113_120_103,
                 1_011_312,
             );
         }
