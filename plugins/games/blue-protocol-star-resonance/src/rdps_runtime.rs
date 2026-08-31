@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use crate::state_formula::CriticalDamageFactorInterpretation;
 
 const RDPS_RUNTIME_SCHEMA_VERSION: u16 = 37;
+const RDPS_PROMOTION_INVENTORY_SCHEMA_VERSION: u16 = 1;
 
 const KNOWN_PROMOTION_BLOCKERS: [&str; 6] = [
     "protocol-pack-identity",
@@ -2105,6 +2106,84 @@ pub(crate) struct TargetVulnerabilityRuntimeConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct RdpsPromotionInventoryPolicy {
+    ordinary_damage_and_dps_unchanged: bool,
+    unknown_and_unresolved_events_retained: bool,
+    candidate_effects_grant_provider_credit: bool,
+    production_effect_ids_are_sorted_and_unique: bool,
+    complete_localized_names_required: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RdpsPromotionReviewCoverage {
+    consolidated_unique_effect_ids: usize,
+    exact_id_route_rows: usize,
+    exact_id_route_unique_ids: usize,
+    zero_effect_rows_without_disposition: bool,
+    zero_exact_id_route_rows_without_disposition: bool,
+    exhaustive_ledger_content_sha256: String,
+    ledger_production_effect_ids: usize,
+    post_ledger_production_effect_ids: Vec<i64>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct RdpsPromotionEffect {
+    effect_id: i64,
+    full_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RdpsRemainingCandidate {
+    effect_id: i64,
+    full_name: String,
+    disposition: String,
+    remaining_proof_obligation: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RdpsPromotionInventory {
+    schema_version: u16,
+    deployment_id: String,
+    game_build: String,
+    policy: RdpsPromotionInventoryPolicy,
+    review_coverage: RdpsPromotionReviewCoverage,
+    production_effects: Vec<RdpsPromotionEffect>,
+    remaining_candidates: Vec<RdpsRemainingCandidate>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RdpsAttributionEffectPresentation {
+    schema_version: u16,
+    deployment_id: String,
+    game_build: String,
+    locale: String,
+    effects: Vec<RdpsAttributionPresentedEffect>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RdpsAttributionPresentedEffect {
+    effect_id: i64,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExternalStateRdpsInventory {
+    schema_version: u16,
+    game_build: String,
+    rules: Vec<ExternalStateRdpsInventoryRule>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExternalStateRdpsInventoryRule {
+    effect_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct RdpsRuntimeConfig {
     schema_version: u16,
     pub deployment_id: String,
@@ -3739,6 +3818,118 @@ struct RdpsRuntimeBuildOverrides {
     builds: Vec<RdpsRuntimeBuildOverride>,
 }
 
+fn validate_rdps_promotion_inventory(runtime: &RdpsRuntimeConfig) -> Result<(), String> {
+    let inventory: RdpsPromotionInventory = serde_json::from_str(include_str!(
+        "../game-data/runtime/rdps-promotion-inventory.v1.json"
+    ))
+    .map_err(|error| format!("bundled BPSR rDPS promotion inventory is invalid: {error}"))?;
+    let presentation: RdpsAttributionEffectPresentation = serde_json::from_str(include_str!(
+        "../game-data/runtime/rdps-attribution-effect-presentation.v1.json"
+    ))
+    .map_err(|error| format!("bundled BPSR rDPS attribution presentation is invalid: {error}"))?;
+    let external_state: ExternalStateRdpsInventory = serde_json::from_str(include_str!(
+        "../game-data/runtime/external-state-rdps.v1.json"
+    ))
+    .map_err(|error| format!("bundled BPSR external-state rDPS inventory is invalid: {error}"))?;
+
+    let production_ids = inventory
+        .production_effects
+        .iter()
+        .map(|effect| effect.effect_id)
+        .collect::<Vec<_>>();
+    let candidate_ids = inventory
+        .remaining_candidates
+        .iter()
+        .map(|effect| effect.effect_id)
+        .collect::<Vec<_>>();
+    let external_state_ids = external_state
+        .rules
+        .iter()
+        .map(|rule| rule.effect_id)
+        .collect::<Vec<_>>();
+    let presentation_effects = presentation
+        .effects
+        .into_iter()
+        .map(|effect| RdpsPromotionEffect {
+            effect_id: effect.effect_id,
+            full_name: effect.name,
+        })
+        .collect::<Vec<_>>();
+
+    let sorted_unique_positive = |values: &[i64]| {
+        values.iter().all(|value| *value > 0) && values.windows(2).all(|pair| pair[0] < pair[1])
+    };
+    let coverage = &inventory.review_coverage;
+    let policy = &inventory.policy;
+    let inventory_identity_is_exact = inventory.schema_version
+        == RDPS_PROMOTION_INVENTORY_SCHEMA_VERSION
+        && inventory.deployment_id == runtime.deployment_id
+        && inventory.game_build == runtime.game_build;
+    let presentation_identity_is_exact = presentation.schema_version == 1
+        && presentation.deployment_id == runtime.deployment_id
+        && presentation.game_build == runtime.game_build
+        && presentation.locale == "en-US";
+    let external_state_identity_is_exact =
+        external_state.schema_version == 1 && external_state.game_build == runtime.game_build;
+    let policy_is_fail_closed = policy.ordinary_damage_and_dps_unchanged
+        && policy.unknown_and_unresolved_events_retained
+        && !policy.candidate_effects_grant_provider_credit
+        && policy.production_effect_ids_are_sorted_and_unique
+        && policy.complete_localized_names_required;
+    let review_coverage_is_exact = coverage.consolidated_unique_effect_ids == 513
+        && coverage.exact_id_route_rows == 1_586
+        && coverage.exact_id_route_unique_ids == 660
+        && coverage.zero_effect_rows_without_disposition
+        && coverage.zero_exact_id_route_rows_without_disposition
+        && coverage.exhaustive_ledger_content_sha256
+            == "74d3ff4dd3baa3c99d9a946bed876edd901454b05fe0a24133b35d77c88935cb"
+        && coverage.ledger_production_effect_ids == 29
+        && coverage.post_ledger_production_effect_ids.is_empty()
+        && coverage.ledger_production_effect_ids + coverage.post_ledger_production_effect_ids.len()
+            == inventory.production_effects.len();
+    let production_inventory_is_exact = production_ids.len() == 29
+        && sorted_unique_positive(&production_ids)
+        && inventory.production_effects == presentation_effects
+        && inventory
+            .production_effects
+            .iter()
+            .all(|effect| !effect.full_name.trim().is_empty())
+        && production_ids.iter().all(|effect_id| {
+            runtime.effect_runtime_transfer_enabled(*effect_id)
+                || external_state_ids.contains(effect_id)
+        });
+    let candidate_inventory_is_exact = candidate_ids == [997_520, 2_110_060, 2_110_078, 2_110_092]
+        && sorted_unique_positive(&candidate_ids)
+        && inventory.remaining_candidates.iter().all(|candidate| {
+            candidate.disposition == "candidate-fail-closed"
+                && !candidate.full_name.trim().is_empty()
+                && !candidate.remaining_proof_obligation.trim().is_empty()
+                && !production_ids.contains(&candidate.effect_id)
+                && !runtime.effect_runtime_transfer_enabled(candidate.effect_id)
+                && !external_state_ids.contains(&candidate.effect_id)
+        });
+    let external_state_inventory_is_exact = external_state_ids == [2_404_261]
+        && production_ids
+            .iter()
+            .filter(|effect_id| !runtime.effect_runtime_transfer_enabled(**effect_id))
+            .copied()
+            .collect::<Vec<_>>()
+            == external_state_ids;
+
+    if !inventory_identity_is_exact
+        || !presentation_identity_is_exact
+        || !external_state_identity_is_exact
+        || !policy_is_fail_closed
+        || !review_coverage_is_exact
+        || !production_inventory_is_exact
+        || !candidate_inventory_is_exact
+        || !external_state_inventory_is_exact
+    {
+        return Err("bundled BPSR rDPS promotion inventory drifted from runtime authority".into());
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 struct RdpsRuntimeRegistry {
     deployment_id: String,
@@ -3804,6 +3995,7 @@ fn rdps_runtime_registry() -> Result<&'static RdpsRuntimeRegistry, String> {
             let base: RdpsRuntimeConfig = serde_json::from_value(base_value.clone())
                 .map_err(|error| format!("bundled BPSR rDPS formula pack is invalid: {error}"))?;
             base.validate()?;
+            validate_rdps_promotion_inventory(&base)?;
             if overrides.schema_version != RDPS_RUNTIME_SCHEMA_VERSION
                 || overrides.deployment_id != base.deployment_id
             {

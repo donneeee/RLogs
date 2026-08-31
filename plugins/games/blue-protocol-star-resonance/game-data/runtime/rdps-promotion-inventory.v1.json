@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "deployment_id": "global",
+  "game_build": "24687926",
+  "policy": {
+    "ordinary_damage_and_dps_unchanged": true,
+    "unknown_and_unresolved_events_retained": true,
+    "candidate_effects_grant_provider_credit": false,
+    "production_effect_ids_are_sorted_and_unique": true,
+    "complete_localized_names_required": true
+  },
+  "review_coverage": {
+    "consolidated_unique_effect_ids": 513,
+    "exact_id_route_rows": 1586,
+    "exact_id_route_unique_ids": 660,
+    "zero_effect_rows_without_disposition": true,
+    "zero_exact_id_route_rows_without_disposition": true,
+    "exhaustive_ledger_content_sha256": "74d3ff4dd3baa3c99d9a946bed876edd901454b05fe0a24133b35d77c88935cb",
+    "ledger_production_effect_ids": 29,
+    "post_ledger_production_effect_ids": []
+  },
+  "production_effects": [
+    {"effect_id": 31602, "full_name": "Inspire"},
+    {"effect_id": 55228, "full_name": "Luminary Bolt Vulnerability"},
+    {"effect_id": 55333, "full_name": "Encore"},
+    {"effect_id": 997511, "full_name": "Coordinated Strike"},
+    {"effect_id": 997513, "full_name": "Element Sharing"},
+    {"effect_id": 997515, "full_name": "Attribute Transfer"},
+    {"effect_id": 997518, "full_name": "Enhanced Synergy"},
+    {"effect_id": 997534, "full_name": "Synergy Luck Field"},
+    {"effect_id": 997538, "full_name": "Synergy Crit Field"},
+    {"effect_id": 997570, "full_name": "Tactical Blessing"},
+    {"effect_id": 998542, "full_name": "All-Class Aura"},
+    {"effect_id": 2100154, "full_name": "Blessing"},
+    {"effect_id": 2110034, "full_name": "Arcane! Time Decree — Lower CD"},
+    {"effect_id": 2110065, "full_name": "Fiery Battle Will"},
+    {"effect_id": 2110096, "full_name": "Arcane! Thunder Roar — Electro Shield (Thunderstrike)"},
+    {"effect_id": 2110099, "full_name": "Arcane! Poison Explosion — Vulnerability"},
+    {"effect_id": 2110125, "full_name": "Highland Blood"},
+    {"effect_id": 2110140, "full_name": "Mechanical Power"},
+    {"effect_id": 2110143, "full_name": "Functional Amp"},
+    {"effect_id": 2110167, "full_name": "Morale Reduction — Vulnerability"},
+    {"effect_id": 2202041, "full_name": "Inspiration"},
+    {"effect_id": 2204471, "full_name": "Critical Cold"},
+    {"effect_id": 2207252, "full_name": "Stat Resonance"},
+    {"effect_id": 2302121, "full_name": "Team Luck & Crit"},
+    {"effect_id": 2302421, "full_name": "Life Wave"},
+    {"effect_id": 2404261, "full_name": "Spring Breeze — Season 2 healer 2-piece"},
+    {"effect_id": 2404271, "full_name": "Full Bloom"},
+    {"effect_id": 3003052, "full_name": "Harmony Grace"},
+    {"effect_id": 3003411, "full_name": "Endless Mind"}
+  ],
+  "remaining_candidates": [
+    {
+      "effect_id": 997520,
+      "full_name": "Energy Synergy Domain — Combat Resource Acquisition Efficiency",
+      "disposition": "candidate-fail-closed",
+      "remaining_proof_obligation": "Reconstruct event-time gain, cap and overcap, spend, downstream extra-action selection, provider overlap, and a conserved provider-removed schedule for the 15-second +100% Combat Resource Acquisition Efficiency opportunity lane."
+    },
+    {
+      "effect_id": 2110060,
+      "full_name": "Arcane! Swift Vortex — Ally Haste",
+      "disposition": "candidate-fail-closed",
+      "remaining_proof_obligation": "Resolve the numeric Haste magnitude absent from all installed tables and decoded skill logic, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation."
+    },
+    {
+      "effect_id": 2110078,
+      "full_name": "Stunt! Blink Ambush — Shock Defense Break",
+      "disposition": "candidate-fail-closed",
+      "remaining_proof_obligation": "Reconstruct the defense-affected ATK or MATK subtotal, event-time target defense and source penetration overlap, combat-stage placement, integer rounding, and conserved marginal for the equipped-tier 2/4/6/8/10% Armor reduction."
+    },
+    {
+      "effect_id": 2110092,
+      "full_name": "Stunt! Blade Sweep / Arcane! Goblin March — Target Armor Reduction",
+      "disposition": "candidate-fail-closed",
+      "remaining_proof_obligation": "Select the packet-owned provider for the shared projectile and reconstruct the defense-affected ATK or MATK subtotal, event-time target defense and penetration overlap, combat-stage placement, stacking arbitration, integer rounding, and conserved marginal for the equipped-tier 1.3/2.6/3.9/5.2/6.5% Armor reduction."
+    }
+  ]
+}

@@ -134,13 +134,13 @@ const reviewedComponentDispositions = new Map([
 
 const candidateRemainingObligations = new Map([
   [997520, "reconstruct the 15-second +100% Combat Resource Acquisition opportunity lane with exact gain, cap/overcap, spend, downstream extra-action selection, provider overlap, and conserved counterfactual scheduling"],
-  [2110060, "prove the exact skill-to-status runtime edge and numeric Haste magnitude, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation"],
+  [2110060, "resolve the numeric Haste magnitude absent from all installed tables and decoded skill logic, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation"],
 ]);
 
 const provenEffectIds = new Set([
   31602, 55228, 55333, 997511, 997513, 997515, 997518, 997534, 997538,
   997570, 998542, 2100154, 2110034, 2110065, 2110096, 2110099, 2110125, 2110140,
-  2110143, 2110167, 2202041, 2204471, 2207252, 2302121, 2404261, 2404271, 3003052,
+  2110143, 2110167, 2202041, 2204471, 2207252, 2302121, 2302421, 2404261, 2404271, 3003052,
   3003411,
 ]);
 
@@ -758,7 +758,7 @@ assertCount(externalRows.length, 124, "observed external effects");
 assertCount(classification.effects.length, 266, "runtime classification effects");
 assertCount(aoyiComponentRouteRows.length, 52, "Aoyi component routes");
 assertCount(aoyiDamageRouteRows.length, 136, "Aoyi parent-to-damage-ID routes");
-assertCount(provenEffectIds.size, 28, "production effect IDs");
+assertCount(provenEffectIds.size, 29, "production effect IDs");
 assertCount(productionEffectEvidenceGaps.length, 0,
   "production effect IDs missing runtime source, exact-ID tests, or runtime bindings");
 assertCount(
@@ -791,8 +791,8 @@ assertCount(
   exactIdRouteRows.length,
   "unique exact effect route keys",
 );
-assertCount(exactIdRouteRows.length, 1584, "flattened exact ID/route rows");
-assertCount(new Set(exactIdRouteRows.map((row) => row.exact_id)).size, 659,
+assertCount(exactIdRouteRows.length, 1586, "flattened exact ID/route rows");
+assertCount(new Set(exactIdRouteRows.map((row) => row.exact_id)).size, 660,
   "unique exact IDs represented by flattened routes");
 const missingCanonicalExactRouteIds = consolidatedEffectRows
   .filter((effect) => !exactIdRouteRows.some((row) =>

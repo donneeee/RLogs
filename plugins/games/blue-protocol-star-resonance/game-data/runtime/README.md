@@ -33,6 +33,11 @@ not replace the human-readable source catalogs under `catalog/`.
   effects that may contribute to rDPS. Candidate rows are retained but never
   attributed until provider, target, magnitude, and stacking are confirmed.
   Effects absent from the table remain explicit unclassified timeline evidence.
+- `rdps-promotion-inventory.v1.json` is the build-locked reconciliation of the
+  production effect IDs and the exact remaining fail-closed candidates. Runtime
+  startup validates it against the enabled formula paths, external-state rules,
+  and complete English presentation names, so a promotion, revocation, or new
+  candidate cannot silently leave the reported frontier stale.
 - `psychoscope-factor-attribution.v2.json` is the build- and season-scoped
   factor graph. It joins exact selected factor item IDs to direct attributes,
   primary buffs, energy generation or consumption, triggered actions, skill
