@@ -60,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v46";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v47";
 // Current-build Life Wave static identity. The child is a refreshable
 // five-second recipient status produced by module family 2404. Its secondary-
 // stat marginal is not promoted yet; these constants authorize only trigger
@@ -1039,6 +1039,128 @@ struct LifeWaveWindow {
 struct PendingLifeWaveActivation {
     target_entity_uuid: i64,
     expires_at_observed_micros: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BpsrLifeWaveTriggerEvidence {
+    observed_micros: u64,
+    target_actor_id: u64,
+    target_entity_uuid: i64,
+    instance_id: i64,
+    candidate_provider_actor_ids: BTreeSet<u64>,
+}
+
+/// Exact Life Wave trigger pairs recovered from another sealed local-player
+/// vantage of the same server run. These are projector-only evidence: they
+/// must never be replayed as ordinary healing or status rows because doing so
+/// would duplicate the canonical combat spine.
+#[derive(Debug, Clone, Default)]
+pub struct BpsrLifeWaveTriggerTimeline {
+    triggers: Vec<BpsrLifeWaveTriggerEvidence>,
+}
+
+/// Builds a Life Wave trigger timeline from exact same-wire child-status and
+/// positive-healing pairs. The service verifies each referenced event against
+/// its sealed artifact before this learner sees it.
+#[derive(Debug, Default)]
+pub struct BpsrLifeWaveTriggerLearner {
+    current_wire: Option<WireKey>,
+    pending: HashMap<LifeWaveWindowKey, PendingLifeWaveActivation>,
+    healing_providers: HashMap<(u64, i64), BTreeSet<u64>>,
+    triggers: Vec<BpsrLifeWaveTriggerEvidence>,
+}
+
+impl BpsrLifeWaveTriggerLearner {
+    /// Returns true only for an exact Life Wave evidence row consumed by this
+    /// learner. Callers use this to keep those rows out of ordinary meters.
+    pub fn observe(&mut self, envelope: &EventEnvelope) -> bool {
+        let Some(wire) = wire_key(envelope) else {
+            return false;
+        };
+        if self.current_wire.is_some_and(|current| current != wire) {
+            self.reconcile_current_wire();
+        }
+        self.current_wire = Some(wire);
+        let CanonicalEvent::Timeline(timeline) = &envelope.event else {
+            return false;
+        };
+        match &timeline.kind {
+            TimelineEventKind::Status(status)
+                if status.effect.0 == LIFE_WAVE_EFFECT_ID
+                    && status
+                        .origin
+                        .map(|origin| (origin.source_type_id, origin.source_config_id))
+                        == Some((LIFE_WAVE_SOURCE_TYPE_ID, LIFE_WAVE_SOURCE_CONFIG_ID))
+                    && status.duration_millis == Some(LIFE_WAVE_DURATION_MILLIS)
+                    && matches!(
+                        status.state,
+                        StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+                    ) =>
+            {
+                let Some(instance_id) = status.instance_id.map(|instance| instance.0) else {
+                    return false;
+                };
+                self.pending.insert(
+                    LifeWaveWindowKey {
+                        target_actor_id: status.target.actor_id.0,
+                        instance_id,
+                    },
+                    PendingLifeWaveActivation {
+                        target_entity_uuid: status.target.entity_uuid.0,
+                        expires_at_observed_micros: envelope
+                            .time
+                            .observed_micros
+                            .saturating_add(LIFE_WAVE_DURATION_MILLIS * 1_000),
+                    },
+                );
+                true
+            }
+            TimelineEventKind::Healing(healing)
+                if healing.amount > 0 && healing.effective_amount != Some(0) =>
+            {
+                self.healing_providers
+                    .entry((healing.target.actor_id.0, healing.target.entity_uuid.0))
+                    .or_default()
+                    .insert(healing.source.actor_id.0);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn reconcile_current_wire(&mut self) {
+        for (key, pending) in self.pending.drain() {
+            self.triggers.push(BpsrLifeWaveTriggerEvidence {
+                observed_micros: pending
+                    .expires_at_observed_micros
+                    .saturating_sub(LIFE_WAVE_DURATION_MILLIS * 1_000),
+                target_actor_id: key.target_actor_id,
+                target_entity_uuid: pending.target_entity_uuid,
+                instance_id: key.instance_id,
+                candidate_provider_actor_ids: self
+                    .healing_providers
+                    .get(&(key.target_actor_id, pending.target_entity_uuid))
+                    .cloned()
+                    .unwrap_or_default(),
+            });
+        }
+        self.healing_providers.clear();
+    }
+
+    pub fn finish(mut self) -> BpsrLifeWaveTriggerTimeline {
+        self.reconcile_current_wire();
+        self.triggers.sort_by_key(|trigger| {
+            (
+                trigger.observed_micros,
+                trigger.target_actor_id,
+                trigger.instance_id,
+            )
+        });
+        self.triggers.dedup();
+        BpsrLifeWaveTriggerTimeline {
+            triggers: self.triggers,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2249,6 +2371,8 @@ pub struct BpsrStateDamageContributionProjector {
     team_luck_critical_cleared_by_snapshot: HashSet<u64>,
     team_luck_lucky_cleared_by_snapshot: HashSet<u64>,
     remote_factor_timeline: Option<BpsrRemoteFactorTimeline>,
+    cross_vantage_life_wave_timeline: Option<BpsrLifeWaveTriggerTimeline>,
+    next_cross_vantage_life_wave_trigger: usize,
     live_remote_factor_learner: Option<BpsrRemoteFactorLearner>,
     deferred_team_luck_critical_damage: VecDeque<DeferredTeamLuckCriticalDamage>,
     deferred_remote_harmony_damage: VecDeque<DeferredRemoteHarmonyDamage>,
@@ -2457,6 +2581,8 @@ impl Default for BpsrStateDamageContributionProjector {
             team_luck_critical_cleared_by_snapshot: HashSet::new(),
             team_luck_lucky_cleared_by_snapshot: HashSet::new(),
             remote_factor_timeline: None,
+            cross_vantage_life_wave_timeline: None,
+            next_cross_vantage_life_wave_trigger: 0,
             live_remote_factor_learner: None,
             deferred_team_luck_critical_damage: VecDeque::new(),
             deferred_remote_harmony_damage: VecDeque::new(),
@@ -2565,6 +2691,15 @@ impl BpsrStateDamageContributionProjector {
     ) -> Result<Self, String> {
         let mut projector = Self::new()?;
         projector.remote_factor_timeline = Some(remote_factor_timeline);
+        Ok(projector)
+    }
+
+    pub fn new_with_remote_factor_and_life_wave_timelines(
+        remote_factor_timeline: BpsrRemoteFactorTimeline,
+        life_wave_timeline: BpsrLifeWaveTriggerTimeline,
+    ) -> Result<Self, String> {
+        let mut projector = Self::new_with_remote_factor_timeline(remote_factor_timeline)?;
+        projector.cross_vantage_life_wave_timeline = Some(life_wave_timeline);
         Ok(projector)
     }
 
@@ -3130,6 +3265,7 @@ impl BpsrStateDamageContributionProjector {
         self.expire_synergy_luck_field_windows(envelope.time.observed_micros);
         self.expire_coordinated_strike_windows(envelope.time.observed_micros);
         self.expire_life_wave_windows(envelope.time.observed_micros);
+        self.apply_cross_vantage_life_wave_triggers(envelope.time.observed_micros);
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
             return;
         };
@@ -4413,6 +4549,66 @@ impl BpsrStateDamageContributionProjector {
                     bonus_basis_points: self
                         .life_wave_bonus_basis_points_by_entity_uuid
                         .get(&activation.target_entity_uuid)
+                        .copied(),
+                    trigger_ownership,
+                },
+            );
+        }
+    }
+
+    fn apply_cross_vantage_life_wave_triggers(&mut self, observed_micros: u64) {
+        while let Some(trigger) = self
+            .cross_vantage_life_wave_timeline
+            .as_ref()
+            .and_then(|timeline| {
+                timeline
+                    .triggers
+                    .get(self.next_cross_vantage_life_wave_trigger)
+            })
+            .filter(|trigger| trigger.observed_micros <= observed_micros)
+            .cloned()
+        {
+            self.next_cross_vantage_life_wave_trigger =
+                self.next_cross_vantage_life_wave_trigger.saturating_add(1);
+            let trigger_ownership = match trigger.candidate_provider_actor_ids.len() {
+                0 => LifeWaveTriggerOwnership::Unknown,
+                1 => {
+                    let provider_actor_id = *trigger
+                        .candidate_provider_actor_ids
+                        .first()
+                        .expect("one-member Life Wave provider set");
+                    if provider_actor_id == trigger.target_actor_id {
+                        LifeWaveTriggerOwnership::SelfTriggered
+                    } else {
+                        LifeWaveTriggerOwnership::UniqueExternal { provider_actor_id }
+                    }
+                }
+                _ => LifeWaveTriggerOwnership::Ambiguous {
+                    candidate_provider_actor_ids: trigger.candidate_provider_actor_ids,
+                },
+            };
+            let key = LifeWaveWindowKey {
+                target_actor_id: trigger.target_actor_id,
+                instance_id: trigger.instance_id,
+            };
+            // A refresh replaces the previous recipient lifecycle even when
+            // the server rotates the instance ID. This mirrors the canonical
+            // same-wire path and prevents an older trigger owner from leaking
+            // into the refreshed five-second interval.
+            self.life_wave_windows.retain(|existing_key, window| {
+                existing_key.target_actor_id != key.target_actor_id
+                    || window.target_entity_uuid != trigger.target_entity_uuid
+            });
+            self.life_wave_windows.insert(
+                key,
+                LifeWaveWindow {
+                    target_entity_uuid: trigger.target_entity_uuid,
+                    expires_at_observed_micros: trigger
+                        .observed_micros
+                        .saturating_add(LIFE_WAVE_DURATION_MILLIS * 1_000),
+                    bonus_basis_points: self
+                        .life_wave_bonus_basis_points_by_entity_uuid
+                        .get(&trigger.target_entity_uuid)
                         .copied(),
                     trigger_ownership,
                 },
@@ -17667,6 +17863,75 @@ mod tests {
         unknown.advance_wire(life_wave_wire(2));
         unknown.mark_life_wave_incomplete(2_000_000, &damage);
         assert_eq!(unknown.incomplete_rdps_actor_ids, HashSet::from([2]));
+    }
+
+    #[test]
+    fn cross_vantage_life_wave_timeline_preserves_unique_and_ambiguous_trigger_ownership() {
+        let mut unique = BpsrLifeWaveTriggerLearner::default();
+        assert!(unique.observe(&harmony_grace_wire_envelope(
+            7,
+            1_000_000,
+            TimelineEventKind::Status(life_wave_test_status(2, 70, StatusState::Applied)),
+        )));
+        assert!(unique.observe(&harmony_grace_wire_envelope(
+            7,
+            1_000_000,
+            TimelineEventKind::Healing(life_wave_test_healing(3, 2, Some(10))),
+        )));
+        let timeline = unique.finish();
+        assert_eq!(timeline.triggers.len(), 1);
+        assert_eq!(
+            timeline.triggers[0].candidate_provider_actor_ids,
+            BTreeSet::from([3])
+        );
+
+        let mut projector = BpsrStateDamageContributionProjector {
+            cross_vantage_life_wave_timeline: Some(timeline),
+            life_wave_bonus_basis_points_by_entity_uuid: HashMap::from([(20, 1_000)]),
+            ..Default::default()
+        };
+        projector.apply_cross_vantage_life_wave_triggers(1_000_000);
+        let window = projector.life_wave_windows.values().next().unwrap();
+        assert_eq!(window.expires_at_observed_micros, 6_000_000);
+        assert_eq!(window.bonus_basis_points, Some(1_000));
+        assert!(matches!(
+            window.trigger_ownership,
+            LifeWaveTriggerOwnership::UniqueExternal {
+                provider_actor_id: 3
+            }
+        ));
+
+        let mut ambiguous = BpsrLifeWaveTriggerLearner::default();
+        for kind in [
+            TimelineEventKind::Status(life_wave_test_status(2, 71, StatusState::Refreshed)),
+            TimelineEventKind::Healing(life_wave_test_healing(3, 2, Some(10))),
+            TimelineEventKind::Healing(life_wave_test_healing(4, 2, Some(10))),
+        ] {
+            assert!(ambiguous.observe(&harmony_grace_wire_envelope(8, 2_000_000, kind)));
+        }
+        let timeline = ambiguous.finish();
+        assert_eq!(
+            timeline.triggers[0].candidate_provider_actor_ids,
+            BTreeSet::from([3, 4])
+        );
+    }
+
+    #[test]
+    fn cross_vantage_life_wave_learner_rejects_non_effective_healing_and_wrong_status() {
+        let mut learner = BpsrLifeWaveTriggerLearner::default();
+        assert!(!learner.observe(&harmony_grace_wire_envelope(
+            9,
+            1_000_000,
+            TimelineEventKind::Healing(life_wave_test_healing(3, 2, Some(0))),
+        )));
+        let mut status = life_wave_test_status(2, 72, StatusState::Applied);
+        status.duration_millis = Some(4_999);
+        assert!(!learner.observe(&harmony_grace_wire_envelope(
+            9,
+            1_000_000,
+            TimelineEventKind::Status(status),
+        )));
+        assert!(learner.finish().triggers.is_empty());
     }
 
     fn observe_harmony_grace_test_envelope(

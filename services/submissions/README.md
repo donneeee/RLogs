@@ -168,6 +168,16 @@ retains every later delta through the run end, and records server game-time
 when the packet carries it. Secondary artifacts still contribute no damage,
 healing, cast, cooldown, or status events to the canonical combat spine.
 
+Life Wave is the narrow exception at the evidence layer, not at the combat
+spine. For the proven local recipient only, the receiver commits an exact
+five-second child-status row (`2302421`, origin `1:2302420`) together with every
+positive-healing row for that recipient on the same wire packet. The sealed
+artifact must map both target and healer entity UUIDs back to stable character
+IDs. During joint replay those paired rows become a projector-only trigger
+timeline; they are never sent to the ordinary healing or status reducers. One
+healer proves unique trigger ownership, multiple simultaneous healers remain
+ambiguous, and a missing pair produces no inferred owner.
+
 The verified personal profile itself is also a state witness. A pre-run
 profile is inserted immediately after the canonical run entry; an in-run
 profile is inserted only before a canonical event with a strictly later server
@@ -183,8 +193,9 @@ any multi-report snapshot set that still requires temporal ordering. The
 manifest reports both total and server-time-alignable state-witness counts.
 Before replay, the receiver reopens every selected sealed artifact and verifies
 the committed event sequence, local-profile sensitivity and identity, state
-kind, actor/entity identity, update kind, observation time, server time, and
-payload digest. A mismatch blocks reconciliation.
+kind, actor/entity identity, related healer identity when present, update kind,
+observation time, server time, and payload digest. A mismatch blocks
+reconciliation.
 
 Ready state is remapped by stable character identity onto the canonical
 runtime entity and inserted after that run's entry boundary. In-run changes

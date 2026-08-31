@@ -281,7 +281,8 @@ pub use state_formula::{
     two_stage_percent_input_marginal,
 };
 pub use state_rdps::{
-    BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline, BpsrStateDamageContributionProjector,
+    BpsrLifeWaveTriggerLearner, BpsrLifeWaveTriggerTimeline, BpsrRemoteFactorLearner,
+    BpsrRemoteFactorTimeline, BpsrStateDamageContributionProjector,
     HarmonyGraceFamilyRoundingDiagnostic, HarmonyGraceFormulaTrace,
     InspirationCombinedFormulaTrace, InspirationCombinedPipelineAudit, RemoteRdpsEvidencePolicy,
     proven_state_damage_contribution_effect_ids, remote_rdps_evidence_policy,

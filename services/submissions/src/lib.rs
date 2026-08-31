@@ -21,12 +21,13 @@ use reqwest::Url;
 use rlogs_combat::{RunAnalysis, RunSegmentKind, RunSubmissionDisposition};
 use rlogs_events::{
     CanonicalEvent, EntityAttributeUpdateKind, EntityRef, EventEnvelope, EventProvenance,
-    EventSensitivity, GameProfileEvent, RunState, TimelineEventKind,
+    EventSensitivity, EvidenceSource, GameProfileEvent, RunState, StatusState, TimelineEventKind,
 };
 use rlogs_game_bpsr::{
-    BPSR_GAME_PLUGIN_ID, BpsrRemoteFactorLearner, BpsrStateDamageContributionProjector,
-    bundled_run_reducer_config, confirmed_damage_contribution_rules, localized_class_name,
-    localized_scene_name, localized_specialization_name,
+    BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
+    BpsrStateDamageContributionProjector, bundled_run_reducer_config,
+    confirmed_damage_contribution_rules, localized_class_name, localized_scene_name,
+    localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use rlogs_plugin_combat_meter::{CombatHistorySnapshot, CombatTimelinePlugin, HistoryActorSummary};
@@ -46,15 +47,19 @@ mod github_archive;
 
 use github_archive::{ArchiveJob, GithubArchive};
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 5;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 6;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 5;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 4;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 5;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
 const MAXIMUM_UPLOAD_CHUNKS: usize = 16_384;
 const UPLOAD_OWNER_SCHEMA_VERSION: u16 = 1;
 const AUTH_INTROSPECTION_SCHEMA_VERSION: u16 = 1;
+const LIFE_WAVE_SOURCE_TYPE_ID: i32 = 1;
+const LIFE_WAVE_SOURCE_CONFIG_ID: i64 = 2_302_420;
+const LIFE_WAVE_EFFECT_ID: i64 = 2_302_421;
+const LIFE_WAVE_DURATION_MILLIS: u64 = 5_000;
 
 #[derive(Clone)]
 pub enum SubmissionAuthentication {
@@ -176,11 +181,14 @@ struct RawLocalStateObservation {
     observed_micros: u64,
     game_time_millis: Option<i64>,
     payload_sha256: String,
+    wire: Option<(u64, u64, u64)>,
+    related_entity_uuid: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
 struct LocalStateObservation {
     character_id: String,
+    related_character_id: Option<String>,
     raw: RawLocalStateObservation,
 }
 
@@ -188,6 +196,7 @@ struct LocalStateObservation {
 struct VerifiedCrossVantageStateEvent {
     report_id: String,
     character_id: String,
+    related_character_id: Option<String>,
     placement: LocalStateWitnessPlacement,
     game_time_millis: Option<i64>,
     envelope: EventEnvelope,
@@ -577,6 +586,7 @@ impl SubmissionService {
                 })?;
             let digest = Sha256Digest::parse(report.artifact_sha256.clone())?;
             let path = self.artifact_path(&digest)?;
+            let character_id_by_entity_uuid = artifact_character_id_by_entity_uuid(&path)?;
             let file = File::open(&path).map_err(|error| {
                 ServiceError::CrossVantageReplay(format!(
                     "could not open selected artifact {} for report {report_id}: {error}",
@@ -598,6 +608,7 @@ impl SubmissionService {
                     verified.push(VerifiedCrossVantageStateEvent {
                         report_id: report_id.clone(),
                         character_id: witness.character_id.clone(),
+                        related_character_id: None,
                         placement: witness.placement,
                         game_time_millis: witness.game_time_millis,
                         envelope: envelope.clone(),
@@ -610,10 +621,19 @@ impl SubmissionService {
                     let (character_id, witness) = &selected.states[index];
                     verify_state_witness_event(&report_id, witness, envelope)
                         .map_err(|error| error.to_string())?;
+                    verify_state_witness_characters(
+                        &report_id,
+                        character_id,
+                        witness,
+                        envelope,
+                        &character_id_by_entity_uuid,
+                    )
+                    .map_err(|error| error.to_string())?;
                     seen_states.insert(witness.event_sequence);
                     verified.push(VerifiedCrossVantageStateEvent {
                         report_id: report_id.clone(),
                         character_id: character_id.clone(),
+                        related_character_id: witness.related_character_id.clone(),
                         placement: witness.placement,
                         game_time_millis: witness.game_time_millis,
                         envelope: envelope.clone(),
@@ -671,22 +691,28 @@ impl SubmissionService {
 
         let mut remote_factor_learner =
             BpsrRemoteFactorLearner::new().map_err(ServiceError::Replay)?;
+        let mut life_wave_trigger_learner = BpsrLifeWaveTriggerLearner::default();
         replay_canonical_with_cross_vantage_state(
             &canonical_path,
             reconciliation.canonical_spine.run_index,
             &imported_events,
-            |envelope, _imported| {
+            |envelope, imported| {
+                if imported && life_wave_trigger_learner.observe(envelope) {
+                    return Ok(());
+                }
                 remote_factor_learner.observe(envelope);
                 Ok(())
             },
         )?;
         let remote_factors = remote_factor_learner.finish();
+        let life_wave_triggers = life_wave_trigger_learner.finish();
 
         let mut meter = CombatTimelinePlugin::with_damage_contribution_projection(
             confirmed_damage_contribution_rules().map_err(ServiceError::Replay)?,
             Some(Box::new(
-                BpsrStateDamageContributionProjector::new_with_remote_factor_timeline(
+                BpsrStateDamageContributionProjector::new_with_remote_factor_and_life_wave_timelines(
                     remote_factors,
+                    life_wave_triggers,
                 )
                 .map_err(ServiceError::Replay)?,
             )),
@@ -706,6 +732,18 @@ impl SubmissionService {
             reconciliation.canonical_spine.run_index,
             &imported_events,
             |envelope, imported| {
+                if imported
+                    && matches!(
+                        &envelope.event,
+                        CanonicalEvent::Timeline(timeline)
+                            if matches!(
+                                timeline.kind,
+                                TimelineEventKind::Status(_) | TimelineEventKind::Healing(_)
+                            )
+                    )
+                {
+                    return Ok(());
+                }
                 meter.observe_live(envelope);
                 if !imported {
                     encounter
@@ -1555,11 +1593,17 @@ pub struct PublicLocalProfileWitness {
 pub enum LocalStateWitnessKind {
     EntityAttributes,
     TemporaryAttributes,
+    LifeWaveTriggerStatus,
+    LifeWaveTriggerHealing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicLocalStateWitness {
     pub character_id: String,
+    /// Stable source character for a directional evidence row such as the
+    /// healing half of a Life Wave trigger pair.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub related_character_id: Option<String>,
     pub actor_id: u64,
     pub entity_uuid: i64,
     pub kind: LocalStateWitnessKind,
@@ -1987,6 +2031,8 @@ fn build_public_report(
                         observed_micros: event.time.observed_micros,
                         game_time_millis: event.time.game_time_millis,
                         payload_sha256: local_state_payload_digest(&payload),
+                        wire: event_wire_identity(event),
+                        related_entity_uuid: None,
                     });
                 }
                 TimelineEventKind::TemporaryAttributes(attributes) => {
@@ -2001,6 +2047,54 @@ fn build_public_report(
                         observed_micros: event.time.observed_micros,
                         game_time_millis: event.time.game_time_millis,
                         payload_sha256: local_state_payload_digest(&payload),
+                        wire: event_wire_identity(event),
+                        related_entity_uuid: None,
+                    });
+                }
+                TimelineEventKind::Status(status)
+                    if status.effect.0 == LIFE_WAVE_EFFECT_ID
+                        && status
+                            .origin
+                            .map(|origin| (origin.source_type_id, origin.source_config_id))
+                            == Some((LIFE_WAVE_SOURCE_TYPE_ID, LIFE_WAVE_SOURCE_CONFIG_ID))
+                        && status.duration_millis == Some(LIFE_WAVE_DURATION_MILLIS)
+                        && status.instance_id.is_some()
+                        && matches!(
+                            status.state,
+                            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+                        ) =>
+                {
+                    let payload =
+                        serde_json::to_vec(&timeline.kind).map_err(|error| error.to_string())?;
+                    raw_local_state_observations.push(RawLocalStateObservation {
+                        actor_id: status.target.actor_id.0,
+                        entity_uuid: status.target.entity_uuid.0,
+                        kind: LocalStateWitnessKind::LifeWaveTriggerStatus,
+                        update_kind: EntityAttributeUpdateKind::Unknown,
+                        event_sequence: event.sequence,
+                        observed_micros: event.time.observed_micros,
+                        game_time_millis: event.time.game_time_millis,
+                        payload_sha256: local_state_payload_digest(&payload),
+                        wire: event_wire_identity(event),
+                        related_entity_uuid: None,
+                    });
+                }
+                TimelineEventKind::Healing(healing)
+                    if healing.amount > 0 && healing.effective_amount != Some(0) =>
+                {
+                    let payload =
+                        serde_json::to_vec(&timeline.kind).map_err(|error| error.to_string())?;
+                    raw_local_state_observations.push(RawLocalStateObservation {
+                        actor_id: healing.target.actor_id.0,
+                        entity_uuid: healing.target.entity_uuid.0,
+                        kind: LocalStateWitnessKind::LifeWaveTriggerHealing,
+                        update_kind: EntityAttributeUpdateKind::Unknown,
+                        event_sequence: event.sequence,
+                        observed_micros: event.time.observed_micros,
+                        game_time_millis: event.time.game_time_millis,
+                        payload_sha256: local_state_payload_digest(&payload),
+                        wire: event_wire_identity(event),
+                        related_entity_uuid: Some(healing.source.entity_uuid.0),
                     });
                 }
                 _ => {}
@@ -2028,16 +2122,49 @@ fn build_public_report(
         .iter()
         .map(|observation| observation.character_id.as_str())
         .collect::<BTreeSet<_>>();
+    let life_wave_status_keys = raw_local_state_observations
+        .iter()
+        .filter(|raw| raw.kind == LocalStateWitnessKind::LifeWaveTriggerStatus)
+        .filter_map(|raw| raw.wire.map(|wire| (wire, raw.actor_id, raw.entity_uuid)))
+        .collect::<BTreeSet<_>>();
+    let life_wave_healing_keys = raw_local_state_observations
+        .iter()
+        .filter(|raw| raw.kind == LocalStateWitnessKind::LifeWaveTriggerHealing)
+        .filter_map(|raw| raw.wire.map(|wire| (wire, raw.actor_id, raw.entity_uuid)))
+        .collect::<BTreeSet<_>>();
+    let life_wave_pair_keys = life_wave_status_keys
+        .intersection(&life_wave_healing_keys)
+        .copied()
+        .collect::<BTreeSet<_>>();
     let local_state_observations = raw_local_state_observations
         .into_iter()
         .filter_map(|raw| {
+            if matches!(
+                raw.kind,
+                LocalStateWitnessKind::LifeWaveTriggerStatus
+                    | LocalStateWitnessKind::LifeWaveTriggerHealing
+            ) && !raw.wire.is_some_and(|wire| {
+                life_wave_pair_keys.contains(&(wire, raw.actor_id, raw.entity_uuid))
+            }) {
+                return None;
+            }
             let character_id = character_id_by_entity_uuid
                 .get(&raw.entity_uuid)
                 .and_then(Option::as_ref)?;
+            let related_character_id = match raw.related_entity_uuid {
+                Some(entity_uuid) => Some(
+                    character_id_by_entity_uuid
+                        .get(&entity_uuid)
+                        .and_then(Option::as_ref)?
+                        .clone(),
+                ),
+                None => None,
+            };
             local_character_ids
                 .contains(character_id.as_str())
                 .then(|| LocalStateObservation {
                     character_id: character_id.clone(),
+                    related_character_id,
                     raw,
                 })
         })
@@ -2249,12 +2376,23 @@ fn local_state_payload_digest(payload: &[u8]) -> String {
     format!("sha256:{:x}", hasher.finalize())
 }
 
+fn event_wire_identity(envelope: &EventEnvelope) -> Option<(u64, u64, u64)> {
+    match envelope.provenance.source {
+        EvidenceSource::Wire {
+            capture_sequence,
+            connection_id,
+            stream_id,
+        } => Some((capture_sequence, connection_id, stream_id)),
+        _ => None,
+    }
+}
+
 fn verified_state_input_digest(
     reconciliation: &PublicRunReconciliation,
     events: &[VerifiedCrossVantageStateEvent],
 ) -> Result<String, serde_json::Error> {
     let mut hasher = Sha256::new();
-    hasher.update(b"rlogs-cross-vantage-verified-state-and-profile-v2\0");
+    hasher.update(b"rlogs-cross-vantage-verified-state-profile-and-trigger-v3\0");
     hasher.update(reconciliation.canonical_spine.artifact_sha256.as_bytes());
     hasher.update(reconciliation.canonical_spine.run_index.to_le_bytes());
     for event in events {
@@ -2262,6 +2400,14 @@ fn verified_state_input_digest(
         hasher.update(event.report_id.as_bytes());
         hasher.update(b"\0");
         hasher.update(event.character_id.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(
+            event
+                .related_character_id
+                .as_deref()
+                .unwrap_or("")
+                .as_bytes(),
+        );
         hasher.update(event.envelope.sequence.to_le_bytes());
         hasher.update(event.game_time_millis.unwrap_or(i64::MIN).to_le_bytes());
         hasher.update(match event.placement {
@@ -2306,6 +2452,40 @@ fn canonical_character_entities(path: &Path) -> Result<BTreeMap<String, EntityRe
     Ok(entities)
 }
 
+fn artifact_character_id_by_entity_uuid(
+    path: &Path,
+) -> Result<BTreeMap<i64, String>, ServiceError> {
+    let file = File::open(path)?;
+    let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
+    let mut characters = BTreeMap::<i64, String>::new();
+    reader.replay(|envelope| {
+        let CanonicalEvent::Timeline(timeline) = &envelope.event else {
+            return Ok(());
+        };
+        let TimelineEventKind::Actor(actor) = &timeline.kind else {
+            return Ok(());
+        };
+        let Some(character_id) = actor.character_id.as_ref() else {
+            return Ok(());
+        };
+        match characters.entry(actor.actor.entity_uuid.0) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(character_id.clone());
+            }
+            std::collections::btree_map::Entry::Occupied(entry) if entry.get() != character_id => {
+                return Err(format!(
+                    "artifact entity {} changes stable character from {} to {character_id}",
+                    actor.actor.entity_uuid.0,
+                    entry.get()
+                ));
+            }
+            std::collections::btree_map::Entry::Occupied(_) => {}
+        }
+        Ok(())
+    })?;
+    Ok(characters)
+}
+
 fn remap_cross_vantage_state_entities(
     events: &mut [VerifiedCrossVantageStateEvent],
     canonical_entities: &BTreeMap<String, EntityRef>,
@@ -2338,9 +2518,28 @@ fn remap_cross_vantage_state_entities(
         match &mut timeline.kind {
             TimelineEventKind::EntityAttributes(attributes) => attributes.actor = canonical,
             TimelineEventKind::TemporaryAttributes(attributes) => attributes.actor = canonical,
+            TimelineEventKind::Status(status) => status.target = canonical,
+            TimelineEventKind::Healing(healing) => {
+                healing.target = canonical;
+                let related_character_id =
+                    event.related_character_id.as_deref().ok_or_else(|| {
+                        ServiceError::CrossVantageReplay(format!(
+                            "verified Life Wave healing event {} has no stable source character",
+                            event.envelope.sequence
+                        ))
+                    })?;
+                healing.source = canonical_entities
+                    .get(related_character_id)
+                    .copied()
+                    .ok_or_else(|| {
+                        ServiceError::CrossVantageReplay(format!(
+                            "canonical spine has no runtime entity for Life Wave source character {related_character_id}"
+                        ))
+                    })?;
+            }
             _ => {
                 return Err(ServiceError::CrossVantageReplay(format!(
-                    "verified evidence event {} is no longer an attribute event",
+                    "verified evidence event {} is no longer a supported state or trigger event",
                     event.envelope.sequence
                 )));
             }
@@ -2369,10 +2568,18 @@ fn aligned_cross_vantage_envelope(
     let mut envelope = imported.envelope.clone();
     envelope.region = region.clone();
     envelope.time.observed_micros = observed_micros;
+    let (capture_sequence, stream_id) = match imported.envelope.provenance.source {
+        EvidenceSource::Wire {
+            capture_sequence,
+            stream_id,
+            ..
+        } => (capture_sequence, stream_id),
+        _ => (imported.envelope.sequence, imported.envelope.sequence),
+    };
     let provenance = EventProvenance::wire(
-        imported.envelope.sequence,
+        capture_sequence,
         imported_wire_namespace(&imported.report_id, &imported.character_id),
-        imported.envelope.sequence,
+        stream_id,
     );
     envelope.provenance = provenance.clone();
     if let CanonicalEvent::Timeline(timeline) = &mut envelope.event {
@@ -2458,9 +2665,16 @@ fn replay_canonical_with_cross_vantage_state(
                     .is_some_and(|game_time| game_time < canonical_game_time)
             }) {
                 let imported = in_run.pop_front().expect("front was present");
+                let imported_game_time = imported
+                    .game_time_millis
+                    .expect("in-run evidence without game time is blocked before replay");
+                let delta_millis = canonical_game_time.saturating_sub(imported_game_time);
+                let delta_micros = u64::try_from(delta_millis)
+                    .unwrap_or(u64::MAX)
+                    .saturating_mul(1_000);
                 let aligned = aligned_cross_vantage_envelope(
                     &imported,
-                    envelope.time.observed_micros,
+                    envelope.time.observed_micros.saturating_sub(delta_micros),
                     &region,
                 );
                 observe(&aligned, true)?;
@@ -2554,6 +2768,18 @@ fn verify_state_witness_event(
             attributes.update_kind,
             LocalStateWitnessKind::TemporaryAttributes,
         ),
+        TimelineEventKind::Status(status) => (
+            status.target.actor_id.0,
+            status.target.entity_uuid.0,
+            EntityAttributeUpdateKind::Unknown,
+            LocalStateWitnessKind::LifeWaveTriggerStatus,
+        ),
+        TimelineEventKind::Healing(healing) => (
+            healing.target.actor_id.0,
+            healing.target.entity_uuid.0,
+            EntityAttributeUpdateKind::Unknown,
+            LocalStateWitnessKind::LifeWaveTriggerHealing,
+        ),
         _ => {
             return Err(ServiceError::CrossVantageWitnessMismatch {
                 report_id: report_id.into(),
@@ -2566,11 +2792,38 @@ fn verify_state_witness_event(
         EntityAttributeUpdateKind::Snapshot => "snapshot",
         EntityAttributeUpdateKind::Delta => "delta",
     };
+    let exact_life_wave_evidence = match (&timeline.kind, actual_kind) {
+        (TimelineEventKind::Status(status), LocalStateWitnessKind::LifeWaveTriggerStatus) => {
+            status.effect.0 == LIFE_WAVE_EFFECT_ID
+                && status
+                    .origin
+                    .map(|origin| (origin.source_type_id, origin.source_config_id))
+                    == Some((LIFE_WAVE_SOURCE_TYPE_ID, LIFE_WAVE_SOURCE_CONFIG_ID))
+                && status.duration_millis == Some(LIFE_WAVE_DURATION_MILLIS)
+                && status.instance_id.is_some()
+                && matches!(
+                    status.state,
+                    StatusState::Applied | StatusState::Refreshed | StatusState::Stacked
+                )
+        }
+        (TimelineEventKind::Healing(healing), LocalStateWitnessKind::LifeWaveTriggerHealing) => {
+            healing.amount > 0
+                && healing.effective_amount != Some(0)
+                && witness.related_character_id.is_some()
+        }
+        (
+            _,
+            LocalStateWitnessKind::LifeWaveTriggerStatus
+            | LocalStateWitnessKind::LifeWaveTriggerHealing,
+        ) => false,
+        _ => true,
+    };
     let payload = serde_json::to_vec(&timeline.kind)?;
     if actual_kind != witness.kind
         || actor_id != witness.actor_id
         || entity_uuid != witness.entity_uuid
         || expected_update_kind != witness.update_kind
+        || !exact_life_wave_evidence
         || local_state_payload_digest(&payload) != witness.payload_sha256
     {
         return Err(ServiceError::CrossVantageWitnessMismatch {
@@ -2579,6 +2832,35 @@ fn verify_state_witness_event(
         });
     }
     Ok(())
+}
+
+fn verify_state_witness_characters(
+    report_id: &str,
+    character_id: &str,
+    witness: &PublicLocalStateWitness,
+    envelope: &EventEnvelope,
+    character_id_by_entity_uuid: &BTreeMap<i64, String>,
+) -> Result<(), ServiceError> {
+    let target_character_matches = character_id_by_entity_uuid
+        .get(&witness.entity_uuid)
+        .is_some_and(|observed| observed == character_id);
+    let related_character_matches = match (&witness.related_character_id, &envelope.event) {
+        (None, _) => true,
+        (Some(related), CanonicalEvent::Timeline(timeline)) => match &timeline.kind {
+            TimelineEventKind::Healing(healing) => character_id_by_entity_uuid
+                .get(&healing.source.entity_uuid.0)
+                .is_some_and(|observed| observed == related),
+            _ => false,
+        },
+        (Some(_), _) => false,
+    };
+    if target_character_matches && related_character_matches {
+        return Ok(());
+    }
+    Err(ServiceError::CrossVantageWitnessMismatch {
+        report_id: report_id.into(),
+        event_sequence: witness.event_sequence,
+    })
 }
 
 fn run_scoped_state_witnesses(
@@ -2627,6 +2909,7 @@ fn run_scoped_state_witnesses(
                 .skip(first_relevant)
                 .map(|observation| PublicLocalStateWitness {
                     character_id: observation.character_id.clone(),
+                    related_character_id: observation.related_character_id.clone(),
                     actor_id: observation.raw.actor_id,
                     entity_uuid: observation.raw.entity_uuid,
                     kind: observation.raw.kind,
@@ -2791,11 +3074,25 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
         }
         for witness in &report.local_state_witnesses {
             hasher.update(witness.character_id.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(
+                witness
+                    .related_character_id
+                    .as_deref()
+                    .unwrap_or("")
+                    .as_bytes(),
+            );
             hasher.update(witness.actor_id.to_le_bytes());
             hasher.update(witness.entity_uuid.to_le_bytes());
             hasher.update(match witness.kind {
                 LocalStateWitnessKind::EntityAttributes => b"entity-attributes".as_slice(),
                 LocalStateWitnessKind::TemporaryAttributes => b"temporary-attributes".as_slice(),
+                LocalStateWitnessKind::LifeWaveTriggerStatus => {
+                    b"life-wave-trigger-status".as_slice()
+                }
+                LocalStateWitnessKind::LifeWaveTriggerHealing => {
+                    b"life-wave-trigger-healing".as_slice()
+                }
             });
             hasher.update(witness.update_kind.as_bytes());
             hasher.update(match witness.placement {
@@ -3713,6 +4010,7 @@ mod tests {
          -> LocalStateObservation {
             LocalStateObservation {
                 character_id: "character-a".into(),
+                related_character_id: None,
                 raw: RawLocalStateObservation {
                     actor_id: 8,
                     entity_uuid: 80,
@@ -3722,6 +4020,8 @@ mod tests {
                     observed_micros,
                     game_time_millis: Some(observed_micros as i64),
                     payload_sha256: format!("sha256:{sequence}"),
+                    wire: None,
+                    related_entity_uuid: None,
                 },
             }
         };
@@ -4201,6 +4501,7 @@ mod tests {
         let payload = serde_json::to_vec(&timeline.kind).unwrap();
         let witness = PublicLocalStateWitness {
             character_id: "character-b".into(),
+            related_character_id: None,
             actor_id: 22,
             entity_uuid: 222,
             kind: LocalStateWitnessKind::EntityAttributes,
@@ -4228,6 +4529,76 @@ mod tests {
     }
 
     #[test]
+    fn sealed_life_wave_healing_witness_requires_exact_event_and_stable_healer_identity() {
+        let target = EntityRef {
+            actor_id: rlogs_events::ActorId(22),
+            entity_uuid: rlogs_events::EntityUuid(222),
+        };
+        let source = EntityRef {
+            actor_id: rlogs_events::ActorId(33),
+            entity_uuid: rlogs_events::EntityUuid(333),
+        };
+        let envelope = cross_vantage_timeline_envelope(
+            8,
+            80,
+            Some(800),
+            TimelineEventKind::Healing(rlogs_events::HealingEvent {
+                source,
+                direct_source: None,
+                target,
+                ability: Some(rlogs_events::AbilityId(123)),
+                amount: 500,
+                actual_amount: None,
+                hp_loss: None,
+                shield_loss: None,
+                hit_event_id: None,
+                damage_source: None,
+                damage_type: None,
+                effective_amount: Some(400),
+                overheal: Some(100),
+                critical: None,
+                periodic: None,
+                packet: rlogs_events::DamagePacketDetail::default(),
+            }),
+        );
+        let CanonicalEvent::Timeline(timeline) = &envelope.event else {
+            unreachable!();
+        };
+        let witness = PublicLocalStateWitness {
+            character_id: "character-b".into(),
+            related_character_id: Some("character-a".into()),
+            actor_id: 22,
+            entity_uuid: 222,
+            kind: LocalStateWitnessKind::LifeWaveTriggerHealing,
+            update_kind: "unknown".into(),
+            placement: LocalStateWitnessPlacement::InRun,
+            event_sequence: 8,
+            observed_micros: 80,
+            game_time_millis: Some(800),
+            payload_sha256: local_state_payload_digest(
+                &serde_json::to_vec(&timeline.kind).unwrap(),
+            ),
+        };
+        verify_state_witness_event("rpt_b", &witness, &envelope).unwrap();
+        let characters = BTreeMap::from([(222, "character-b".into()), (333, "character-a".into())]);
+        verify_state_witness_characters("rpt_b", "character-b", &witness, &envelope, &characters)
+            .unwrap();
+
+        let mut wrong_healer = witness.clone();
+        wrong_healer.related_character_id = Some("character-c".into());
+        assert!(matches!(
+            verify_state_witness_characters(
+                "rpt_b",
+                "character-b",
+                &wrong_healer,
+                &envelope,
+                &characters,
+            ),
+            Err(ServiceError::CrossVantageWitnessMismatch { .. })
+        ));
+    }
+
+    #[test]
     fn cross_vantage_state_uses_baseline_then_strict_server_time_ordering() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("canonical.rlog");
@@ -4240,7 +4611,7 @@ mod tests {
         let events = [
             cross_vantage_timeline_envelope(
                 1,
-                10,
+                10_000,
                 Some(90),
                 TimelineEventKind::RunBoundary {
                     state: RunState::Entered,
@@ -4250,7 +4621,7 @@ mod tests {
             ),
             cross_vantage_timeline_envelope(
                 2,
-                20,
+                20_000,
                 Some(100),
                 TimelineEventKind::CombatBoundary {
                     state: rlogs_events::CombatState::Started,
@@ -4259,7 +4630,7 @@ mod tests {
             ),
             cross_vantage_timeline_envelope(
                 3,
-                30,
+                30_000,
                 Some(101),
                 TimelineEventKind::CombatBoundary {
                     state: rlogs_events::CombatState::Ended,
@@ -4268,7 +4639,7 @@ mod tests {
             ),
             cross_vantage_timeline_envelope(
                 4,
-                40,
+                40_000,
                 Some(102),
                 TimelineEventKind::RunBoundary {
                     state: RunState::Completed,
@@ -4286,6 +4657,7 @@ mod tests {
             VerifiedCrossVantageStateEvent {
                 report_id: "rpt_b".into(),
                 character_id: "character-b".into(),
+                related_character_id: None,
                 placement: LocalStateWitnessPlacement::PreRunBaseline,
                 game_time_millis: Some(70),
                 envelope: cross_vantage_profile_envelope(89, 4, Some(70), "character-b"),
@@ -4293,6 +4665,7 @@ mod tests {
             VerifiedCrossVantageStateEvent {
                 report_id: "rpt_b".into(),
                 character_id: "character-b".into(),
+                related_character_id: None,
                 placement: LocalStateWitnessPlacement::PreRunBaseline,
                 game_time_millis: Some(80),
                 envelope: cross_vantage_attribute_envelope(90, 5, Some(80), 1000),
@@ -4300,6 +4673,7 @@ mod tests {
             VerifiedCrossVantageStateEvent {
                 report_id: "rpt_b".into(),
                 character_id: "character-b".into(),
+                related_character_id: None,
                 placement: LocalStateWitnessPlacement::InRun,
                 game_time_millis: Some(100),
                 envelope: cross_vantage_attribute_envelope(91, 15, Some(100), 1100),
@@ -4318,7 +4692,11 @@ mod tests {
         )
         .unwrap();
         let mut order = Vec::new();
+        let mut imported_observed = BTreeMap::new();
         replay_canonical_with_cross_vantage_state(&path, 0, &imported, |event, imported| {
+            if imported {
+                imported_observed.insert(event.sequence, event.time.observed_micros);
+            }
             order.push(format!(
                 "{}{}",
                 if imported { "I" } else { "C" },
@@ -4328,6 +4706,7 @@ mod tests {
         })
         .unwrap();
         assert_eq!(order, vec!["C1", "I89", "I90", "C2", "I91", "C3", "C4"]);
+        assert_eq!(imported_observed.get(&91), Some(&29_000));
     }
 
     #[test]
@@ -4433,13 +4812,93 @@ mod tests {
             )],
         };
         let reconciliation = build_public_reconciliation(&group);
-        let imported = vec![VerifiedCrossVantageStateEvent {
-            report_id: "rpt_secondary".into(),
-            character_id: "character-b".into(),
-            placement: LocalStateWitnessPlacement::PreRunBaseline,
-            game_time_millis: Some(5),
-            envelope: cross_vantage_attribute_envelope(2, 5, Some(5), 1000),
-        }];
+        let target = EntityRef {
+            actor_id: rlogs_events::ActorId(220),
+            entity_uuid: rlogs_events::EntityUuid(222),
+        };
+        let source = EntityRef {
+            actor_id: rlogs_events::ActorId(110),
+            entity_uuid: rlogs_events::EntityUuid(111),
+        };
+        let mut trigger_status = cross_vantage_timeline_envelope(
+            100,
+            42,
+            Some(42),
+            TimelineEventKind::Status(rlogs_events::StatusEvent {
+                source: Some(target),
+                target,
+                effect: rlogs_events::StatusEffectId(LIFE_WAVE_EFFECT_ID),
+                instance_id: Some(rlogs_events::StatusEffectInstanceId(700)),
+                origin: Some(rlogs_events::StatusOrigin {
+                    source_type_id: LIFE_WAVE_SOURCE_TYPE_ID,
+                    source_config_id: LIFE_WAVE_SOURCE_CONFIG_ID,
+                }),
+                state: StatusState::Applied,
+                stacks: Some(1),
+                duration_millis: Some(LIFE_WAVE_DURATION_MILLIS),
+                level: Some(1),
+                part_id: None,
+                count: Some(1),
+                created_at_millis: None,
+            }),
+        );
+        let mut trigger_healing = cross_vantage_timeline_envelope(
+            101,
+            42,
+            Some(42),
+            TimelineEventKind::Healing(rlogs_events::HealingEvent {
+                source,
+                direct_source: None,
+                target,
+                ability: Some(rlogs_events::AbilityId(123)),
+                amount: 500,
+                actual_amount: None,
+                hp_loss: None,
+                shield_loss: None,
+                hit_event_id: None,
+                damage_source: None,
+                damage_type: None,
+                effective_amount: Some(500),
+                overheal: Some(0),
+                critical: None,
+                periodic: None,
+                packet: rlogs_events::DamagePacketDetail::default(),
+            }),
+        );
+        for envelope in [&mut trigger_status, &mut trigger_healing] {
+            let provenance = EventProvenance::wire(500, 9, 9);
+            envelope.provenance = provenance.clone();
+            let CanonicalEvent::Timeline(timeline) = &mut envelope.event else {
+                unreachable!();
+            };
+            timeline.provenance = provenance;
+        }
+        let imported = vec![
+            VerifiedCrossVantageStateEvent {
+                report_id: "rpt_secondary".into(),
+                character_id: "character-b".into(),
+                related_character_id: None,
+                placement: LocalStateWitnessPlacement::PreRunBaseline,
+                game_time_millis: Some(5),
+                envelope: cross_vantage_attribute_envelope(2, 5, Some(5), 1000),
+            },
+            VerifiedCrossVantageStateEvent {
+                report_id: "rpt_secondary".into(),
+                character_id: "character-b".into(),
+                related_character_id: None,
+                placement: LocalStateWitnessPlacement::InRun,
+                game_time_millis: Some(42),
+                envelope: trigger_status,
+            },
+            VerifiedCrossVantageStateEvent {
+                report_id: "rpt_secondary".into(),
+                character_id: "character-b".into(),
+                related_character_id: Some("character-a".into()),
+                placement: LocalStateWitnessPlacement::InRun,
+                game_time_millis: Some(42),
+                envelope: trigger_healing,
+            },
+        ];
         let result = service
             .replay_cross_vantage_attribution(&reconciliation, imported)
             .unwrap();
@@ -4526,6 +4985,7 @@ mod tests {
                 }],
                 local_state_witnesses: vec![PublicLocalStateWitness {
                     character_id: local_character_id.into(),
+                    related_character_id: None,
                     actor_id: 8,
                     entity_uuid: 216_009_015_936,
                     kind: LocalStateWitnessKind::EntityAttributes,
