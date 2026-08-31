@@ -1413,7 +1413,7 @@ mod tests {
     #[test]
     fn inputs_require_exact_build_and_protocol_digest() {
         let pack = ProtocolPack::from_json(include_bytes!(
-            "../research/game-file-inventory/global/steam-24609362/protocol-pack-static-candidate.v2.json"
+            "../protocol-packs/global/steam-24687926/pack.json"
         ))
         .unwrap();
         let target = &pack.definition().target;
