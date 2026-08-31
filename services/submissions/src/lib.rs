@@ -1310,7 +1310,10 @@ pub fn router(service: SubmissionService) -> Router {
         .route("/v1/auth/config", get(auth_config))
         .route("/v1/auth/discord/start", get(begin_discord_auth))
         .route("/v1/auth/discord/callback", get(complete_discord_auth))
-        .route("/v1/auth/discord/complete", post(complete_discord_auth_from_site))
+        .route(
+            "/v1/auth/discord/complete",
+            post(complete_discord_auth_from_site),
+        )
         .route("/v1/auth/session/exchange", post(exchange_auth_code))
         .route("/v1/auth/me", get(get_account))
         .route("/v1/auth/app-tokens", post(issue_app_token))

@@ -248,9 +248,7 @@ impl AccountStore {
         state: &str,
         now: u64,
     ) -> Result<String, AccountError> {
-        let login_code = self
-            .complete_discord_login_code(code, state, now)
-            .await?;
+        let login_code = self.complete_discord_login_code(code, state, now).await?;
         let configuration = self.configuration()?;
         let mut return_url = Url::parse(&configuration.website_url)?;
         return_url
