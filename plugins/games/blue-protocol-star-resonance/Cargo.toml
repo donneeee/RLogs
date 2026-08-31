@@ -45,3 +45,7 @@ rlogs-plugin-host = { path = "../../../engine/plugin-host" }
 [[bench]]
 name = "framing"
 harness = false
+
+[[bin]]
+name = "rlogs-bpsr-severed-chapter-breaking-proof"
+path = "tools/severed-chapter-breaking-proof.rs"
