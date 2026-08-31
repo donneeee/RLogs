@@ -52,6 +52,7 @@ mod specialization_detection;
 mod state_formula;
 mod state_rdps;
 mod stream;
+mod swift_vortex_audit;
 mod use_skill_attr;
 mod weapon_presentation;
 mod website;
@@ -294,6 +295,12 @@ pub use state_rdps::{
 pub use stream::{
     JsonlJournalError, JsonlJournalReader, JsonlJournalRecordStream, JsonlJournalSummary,
     JsonlJournalWriter,
+};
+pub use swift_vortex_audit::{
+    SWIFT_VORTEX_AUDIT_SCHEMA_VERSION, SWIFT_VORTEX_EFFECT_ID,
+    SWIFT_VORTEX_EXPECTED_DURATION_MILLIS, SwiftVortexAppliedMagnitude,
+    SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
+    SwiftVortexMagnitudeReceipt,
 };
 pub use use_skill_attr::{
     BPSR_USE_SKILL_ATTR_BUILD, ClientSkillStageEndSnapshot, ClientSkillStageTriggerSnapshot,

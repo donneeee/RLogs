@@ -165,7 +165,12 @@ Four offensive candidates remain deliberately fail-closed:
 - `997520`, Energy Synergy Field resource gain: resource cap, overcap, spend,
   extra-action selection, provider overlap, and conserved scheduling remain
   unresolved;
-- `2110060`, Swift Vortex: the exact skill-to-status edge, Haste magnitude,
+- `2110060`, Swift Vortex: static data proves party scope, the 10-second field
+  and 10-second linger, refresh-only nonstacking behavior, and the skill
+  ownership route. Reconciliation schema 6 now seals exact paired
+  Haste/action-speed application and symmetric-removal receipts behind a
+  current-build identity and confounder gate. No qualifying receipt has yet
+  supplied the missing magnitude, and the exact skill-to-status edge,
   lingering field arbitration, and action-opportunity conservation remain
   unresolved;
 - `2110078`, Shock Defense Break: equipped tier selection and the exact

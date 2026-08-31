@@ -257,6 +257,18 @@ ordinary per-actor damage map is unchanged, total contribution given equals
 total contribution received, and total party rDPS damage equals raw party
 damage. Source parses remain immutable beside this derived result.
 
+Reconciliation schema 6 also carries an audit-only Swift Vortex candidate
+report when effect `2110060` appears. A magnitude receipt requires the exact
+current deployment/build/protocol identity, a complete Haste/normal-action-
+speed/guide-action-speed baseline, one exact 10-second one-stack status
+instance followed by an unconfounded three-lane positive delta, and an exact
+symmetric three-lane delta when that same instance is removed. Four matching
+paired receipts across at least two providers and two recipients satisfy only
+the magnitude review gate. The report is kept outside participants and
+conservation and always serializes `production_attribution_enabled: false`, so
+neither receipts nor consensus can silently promote the candidate or change
+rDPS.
+
 Before the desktop stores a newly pasted app token, it calls
 `GET /v1/auth/device` with that bearer token. The endpoint is read-only and
 returns only the pseudonymous submitter and device IDs. Invalid, revoked, or

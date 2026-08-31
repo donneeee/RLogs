@@ -25,7 +25,8 @@ use rlogs_events::{
 };
 use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
-    BpsrStateDamageContributionProjector, bundled_run_reducer_config,
+    BpsrStateDamageContributionProjector, SwiftVortexCandidateAuditAnalyzer,
+    SwiftVortexCandidateAuditReport, bundled_run_reducer_config,
     confirmed_damage_contribution_rules, localized_class_name, localized_scene_name,
     localized_specialization_name,
 };
@@ -60,7 +61,7 @@ use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 6;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 5;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 5;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 6;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -224,6 +225,7 @@ struct SelectedArtifactWitnesses {
 struct CrossVantageReplayResult {
     participants: Vec<PublicReconciledParticipant>,
     conservation: PublicAttributionConservation,
+    swift_vortex_candidate_audit: Option<SwiftVortexCandidateAuditReport>,
 }
 
 #[derive(Debug, Clone)]
@@ -777,11 +779,13 @@ impl SubmissionService {
         let header = header_reader.header().clone();
         meter.begin_live(&header);
         encounter.begin_live(&header);
+        let mut swift_vortex_audit = SwiftVortexCandidateAuditAnalyzer::new();
         replay_canonical_with_cross_vantage_state(
             &canonical_path,
             reconciliation.canonical_spine.run_index,
             &imported_events,
             |envelope, imported| {
+                swift_vortex_audit.observe(envelope);
                 if imported
                     && matches!(
                         &envelope.event,
@@ -904,9 +908,14 @@ impl SubmissionService {
                 "party conservation failed: raw={raw_damage}, rdps={rdps_damage}, given={contribution_given}, received={contribution_received}"
             )));
         }
+        let swift_vortex_candidate_audit = swift_vortex_audit.report();
         Ok(CrossVantageReplayResult {
             participants,
             conservation,
+            swift_vortex_candidate_audit: (swift_vortex_candidate_audit
+                .candidate_status_event_count
+                > 0)
+            .then_some(swift_vortex_candidate_audit),
         })
     }
 
@@ -1063,6 +1072,8 @@ impl SubmissionService {
                                     RunAttributionReconciliationStatus::Reconciled;
                                 reconciliation.reconciled_participants = result.participants;
                                 reconciliation.conservation = Some(result.conservation);
+                                reconciliation.swift_vortex_candidate_audit =
+                                    result.swift_vortex_candidate_audit;
                                 reconciliation.attribution_replay_completed = true;
                             }
                             Err(error) => {
@@ -2006,6 +2017,11 @@ pub struct PublicRunReconciliation {
     pub reconciled_participants: Vec<PublicReconciledParticipant>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conservation: Option<PublicAttributionConservation>,
+    /// Audit-only exact paired lifecycle evidence for the unpromoted Swift
+    /// Vortex candidate. This can satisfy the magnitude review gate but can
+    /// never enable production attribution by itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swift_vortex_candidate_audit: Option<SwiftVortexCandidateAuditReport>,
     /// This product inventories and selects evidence. It does not claim that
     /// the conserved counterfactual replay has already consumed it.
     pub attribution_replay_completed: bool,
@@ -3376,6 +3392,7 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
         verified_state_input_sha256: None,
         reconciled_participants: Vec::new(),
         conservation: None,
+        swift_vortex_candidate_audit: None,
         attribution_replay_completed: false,
     }
 }
