@@ -1083,9 +1083,26 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
   const root = document.createElement("div");
   root.className = "plugin-surface submission-connection-surface";
   const heading = actionCard(
-    "Submission receiver",
-    "Connect this PC to the server-replay receiver. The token is written to Windows Credential Manager and is never returned to the interface.",
+    "rLogs account connection",
+    "Connect this PC to your website account once. Log Uploader and BPSR Profile Sync share the connection; the app token is validated before it is written to Windows Credential Manager.",
   );
+  const accountActions = document.createElement("div");
+  accountActions.className = "runtime-card-actions";
+  const openAccount = document.createElement("a");
+  openAccount.className = "primary-button";
+  openAccount.href = "https://rlogs-app.github.io/account/";
+  openAccount.target = "_blank";
+  openAccount.rel = "noopener noreferrer";
+  openAccount.textContent = "Open My Profile to get a token";
+  accountActions.append(
+    openAccount,
+    text(
+      "span",
+      "Sign in with Discord, create one app token for this PC, then paste it below.",
+      "runtime-action-message",
+    ),
+  );
+  heading.append(accountActions);
   const form = document.createElement("form");
   form.className = "content-card submission-policy-form";
   const endpoint = field(
@@ -1094,11 +1111,11 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
     "https://rlogs-submissions.pages.dev",
     "https://rlogs-submissions.pages.dev",
   );
-  const token = field("rLogs app token", "password", "", "Paste the account token once");
+  const token = field("App token from My Profile", "password", "", "Paste the token once");
   token.input.autocomplete = "new-password";
   const actions = document.createElement("div");
   actions.className = "runtime-card-actions submission-policy-actions";
-  const connect = button("Connect receiver", "primary-button");
+  const connect = button("Validate and connect this PC", "primary-button");
   connect.type = "submit";
   const disconnect = button("Disconnect", "quiet-button");
   disconnect.disabled = true;
@@ -1123,8 +1140,8 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
     connect.disabled = false;
     message.classList.remove("error");
     message.textContent = view.endpointUrl
-      ? "Receiver connected. Enable Log Uploader below to permit submissions."
-      : "Sign in on the rLogs website, create an app token, then connect this PC. The token stays in Windows Credential Manager.";
+      ? "This PC is authenticated. Log Uploader and Profile Sync can now use this account connection."
+      : "Not connected. Open My Profile, create a token for this PC, and paste it above.";
   };
 
   const load = () =>
@@ -1209,6 +1226,7 @@ function mountProfileSyncSettingsSurface(
   container: HTMLElement,
 ): MountedSurface {
   return mountCombinedSettingsSurface(container, [
+    mountSubmissionConnectionSurface,
     (target) =>
       mountSubmissionPolicyOptionsSurface(target, "bpsr_profile_sync"),
     mountProfileSyncStatusSurface,

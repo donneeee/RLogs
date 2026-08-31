@@ -2,7 +2,7 @@
 
 Consent-aware character snapshot display and website profile synchronization.
 
-The desktop now publishes a separate **BPSR Profile Sync** workspace with its
+The desktop now publishes a separate **Account & Profiles** settings tab with its
 own disabled-by-default consent and automatic-sync settings. It is deliberately
 independent from Log Uploader consent: enabling combat-log submission must not
 permit profile submission, or vice versa.
@@ -17,5 +17,9 @@ Packages can be inspected as exact JSON in the UI. Each package carries its
 source session, build, protocol-pack identity, canonical log digest,
 observation count, last event sequence, safe relative website endpoint, and
 privacy-reviewed payload. Device pairing, authentication, and external
-transport are not wired yet. This feature must never collect passwords, login
-tokens, credentials, or private account containers.
+transport use the shared **rLogs account connection** shown in this tab. The
+desktop validates a per-device app token before Windows Credential Manager
+stores it. Publishing the first sealed personal package claims that exact
+region-scoped UID for the authenticated account; later packages from the same
+account update its profile and per-character modules. This feature must never
+collect passwords, Discord login tokens, or private account containers.

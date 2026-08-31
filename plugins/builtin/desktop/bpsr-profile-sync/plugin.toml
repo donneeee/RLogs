@@ -11,7 +11,7 @@ allowed_network_domains = []
 
 [[settings_tab_contributions]]
 id = "profile-sync"
-label = "BPSR Profile Sync"
+label = "Account & Profiles"
 entrypoint = "ui/settings.html"
 section = "profile-sync"
 default_order = 400
