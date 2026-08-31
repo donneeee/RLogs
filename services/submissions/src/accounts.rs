@@ -19,8 +19,8 @@ const LOGIN_CODE_LIFETIME_MILLIS: u64 = 5 * 60 * 1_000;
 pub struct DiscordConfiguration {
     pub client_id: String,
     pub client_secret: String,
-    pub public_api_url: String,
     pub website_url: String,
+    pub callback_url: String,
     pub token_pepper: String,
 }
 
@@ -29,6 +29,7 @@ impl DiscordConfiguration {
         let client_id = environment("RLOGS_DISCORD_CLIENT_ID")?;
         let client_secret = environment("RLOGS_DISCORD_CLIENT_SECRET")?;
         let public_api_url = environment("RLOGS_PUBLIC_API_URL")?;
+        let callback_url = environment("RLOGS_DISCORD_CALLBACK_URL")?;
         let token_pepper = environment("RLOGS_AUTH_TOKEN_PEPPER")?;
         let configured = [
             client_id.is_some(),
@@ -36,7 +37,7 @@ impl DiscordConfiguration {
             public_api_url.is_some(),
             token_pepper.is_some(),
         ];
-        if configured.iter().all(|value| !value) {
+        if configured.iter().all(|value| !value) && callback_url.is_none() {
             return Ok(None);
         }
         if configured.iter().any(|value| !value) {
@@ -47,6 +48,10 @@ impl DiscordConfiguration {
         let public_api_url =
             pathless_https_origin(public_api_url.as_deref().unwrap(), "public API")?;
         let website_url = pathless_https_origin(website_url, "website")?;
+        let callback_url = match callback_url {
+            Some(value) => https_callback_url(&value)?,
+            None => format!("{public_api_url}/v1/auth/discord/callback"),
+        };
         let token_pepper = token_pepper.unwrap();
         if token_pepper.len() < 32 {
             return Err(AccountError::InvalidConfiguration(
@@ -56,14 +61,14 @@ impl DiscordConfiguration {
         Ok(Some(Self {
             client_id: client_id.unwrap(),
             client_secret: client_secret.unwrap(),
-            public_api_url,
             website_url,
+            callback_url,
             token_pepper,
         }))
     }
 
-    fn callback_url(&self) -> String {
-        format!("{}/v1/auth/discord/callback", self.public_api_url)
+    fn callback_url(&self) -> &str {
+        &self.callback_url
     }
 }
 
@@ -229,7 +234,7 @@ impl AccountStore {
         let mut url = Url::parse("https://discord.com/oauth2/authorize")?;
         url.query_pairs_mut()
             .append_pair("client_id", &configuration.client_id)
-            .append_pair("redirect_uri", &configuration.callback_url())
+            .append_pair("redirect_uri", configuration.callback_url())
             .append_pair("response_type", "code")
             .append_pair("scope", "identify")
             .append_pair("state", &state)
@@ -238,6 +243,24 @@ impl AccountStore {
     }
 
     pub async fn complete_discord_login(
+        &self,
+        code: &str,
+        state: &str,
+        now: u64,
+    ) -> Result<String, AccountError> {
+        let login_code = self
+            .complete_discord_login_code(code, state, now)
+            .await?;
+        let configuration = self.configuration()?;
+        let mut return_url = Url::parse(&configuration.website_url)?;
+        return_url
+            .query_pairs_mut()
+            .append_pair("auth_code", &login_code);
+        return_url.set_fragment(Some("account"));
+        Ok(return_url.to_string())
+    }
+
+    pub async fn complete_discord_login_code(
         &self,
         code: &str,
         state: &str,
@@ -268,7 +291,7 @@ impl AccountStore {
                 ("client_secret", configuration.client_secret.as_str()),
                 ("grant_type", "authorization_code"),
                 ("code", code),
-                ("redirect_uri", configuration.callback_url().as_str()),
+                ("redirect_uri", configuration.callback_url()),
             ])
             .send()
             .await
@@ -304,12 +327,7 @@ impl AccountStore {
                 expires_unix_millis: now.saturating_add(LOGIN_CODE_LIFETIME_MILLIS),
             },
         )?;
-        let mut return_url = Url::parse(&configuration.website_url)?;
-        return_url
-            .query_pairs_mut()
-            .append_pair("auth_code", &login_code);
-        return_url.set_fragment(Some("account"));
-        Ok(return_url.to_string())
+        Ok(login_code)
     }
 
     pub fn exchange_login_code(
@@ -505,6 +523,24 @@ fn pathless_https_origin(value: &str, label: &str) -> Result<String, AccountErro
     Ok(url.origin().ascii_serialization())
 }
 
+fn https_callback_url(value: &str) -> Result<String, AccountError> {
+    let mut url = Url::parse(value.trim())?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(AccountError::InvalidConfiguration(
+            "Discord callback URL must be HTTPS without credentials, a query, or a fragment".into(),
+        ));
+    }
+    if url.path().is_empty() {
+        url.set_path("/");
+    }
+    Ok(url.to_string())
+}
+
 fn random_token(prefix: &str) -> String {
     format!(
         "{prefix}_{}{}",
@@ -570,8 +606,8 @@ mod tests {
         DiscordConfiguration {
             client_id: "client".into(),
             client_secret: "secret".into(),
-            public_api_url: "https://api.example.test".into(),
             website_url: "https://site.example.test".into(),
+            callback_url: "https://site.example.test/account/".into(),
             token_pepper: "0123456789abcdef0123456789abcdef".into(),
         }
     }
@@ -643,5 +679,11 @@ mod tests {
         assert!(pathless_https_origin("https://api.example.test", "api").is_ok());
         assert!(pathless_https_origin("http://api.example.test", "api").is_err());
         assert!(pathless_https_origin("https://api.example.test/path", "api").is_err());
+        assert_eq!(
+            https_callback_url("https://site.example.test/account/").unwrap(),
+            "https://site.example.test/account/"
+        );
+        assert!(https_callback_url("http://site.example.test/account/").is_err());
+        assert!(https_callback_url("https://site.example.test/account/?code=bad").is_err());
     }
 }

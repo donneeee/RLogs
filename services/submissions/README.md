@@ -70,13 +70,17 @@ Configure all four values together before starting the receiver:
 $env:RLOGS_DISCORD_CLIENT_ID = "Discord application client ID"
 $env:RLOGS_DISCORD_CLIENT_SECRET = "Discord application client secret"
 $env:RLOGS_PUBLIC_API_URL = "https://rlogs-submissions.example.workers.dev"
+$env:RLOGS_DISCORD_CALLBACK_URL = "https://rlogs-app.github.io/account/"
 $env:RLOGS_AUTH_TOKEN_PEPPER = "at least 32 random characters"
 ```
 
-The Discord application redirect URI must be the stable API origin followed by
-`/v1/auth/discord/callback`. OAuth state and login codes are bounded,
-single-use records. Browser sessions expire after 30 days. App tokens are
-independent per device and never appear in a public profile.
+Set the Discord application's redirect URI to `RLOGS_DISCORD_CALLBACK_URL`.
+When it is omitted, the receiver uses the legacy stable API origin followed by
+`/v1/auth/discord/callback`. The website callback keeps the internal API
+hostname out of the browser's address bar and completes the exchange through
+the constrained gateway. OAuth state and login codes are bounded, single-use
+records. Browser sessions expire after 30 days. App tokens are independent per
+device and never appear in a public profile.
 
 The first authenticated `current.profile.json` for an exact
 deployment/region/realm-or-world/character-ID tuple claims that UID. A

@@ -8,6 +8,7 @@ test("only the submission API surface is routable", () => {
   assert.equal(routeAllowed("GET", "/v1/auth/config"), true);
   assert.equal(routeAllowed("GET", "/v1/auth/discord/start"), true);
   assert.equal(routeAllowed("GET", "/v1/auth/discord/callback"), true);
+  assert.equal(routeAllowed("POST", "/v1/auth/discord/complete"), true);
   assert.equal(routeAllowed("POST", "/v1/auth/session/exchange"), true);
   assert.equal(routeAllowed("POST", "/v1/auth/app-tokens"), true);
   assert.equal(routeAllowed("POST", "/v1/uploads"), true);

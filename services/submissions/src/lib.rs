@@ -1310,6 +1310,7 @@ pub fn router(service: SubmissionService) -> Router {
         .route("/v1/auth/config", get(auth_config))
         .route("/v1/auth/discord/start", get(begin_discord_auth))
         .route("/v1/auth/discord/callback", get(complete_discord_auth))
+        .route("/v1/auth/discord/complete", post(complete_discord_auth_from_site))
         .route("/v1/auth/session/exchange", post(exchange_auth_code))
         .route("/v1/auth/me", get(get_account))
         .route("/v1/auth/app-tokens", post(issue_app_token))
@@ -1366,6 +1367,21 @@ async fn complete_discord_auth(
         .complete_discord_login(&query.code, &query.state, unix_millis()?)
         .await?;
     Ok(Redirect::temporary(&url))
+}
+
+async fn complete_discord_auth_from_site(
+    State(service): State<SubmissionService>,
+    Json(request): Json<DiscordCallbackQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let login_code = service
+        .inner
+        .accounts
+        .complete_discord_login_code(&request.code, &request.state, unix_millis()?)
+        .await?;
+    Ok(Json(serde_json::json!({
+        "schema_version": 1,
+        "login_code": login_code
+    })))
 }
 
 async fn exchange_auth_code(
@@ -1603,6 +1619,7 @@ struct IntrospectionResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct DiscordCallbackQuery {
     code: String,
     state: String,
