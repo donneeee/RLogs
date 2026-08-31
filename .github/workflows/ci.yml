@@ -29,7 +29,7 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm test
-          npx wrangler deploy --dry-run
+          npx wrangler pages functions build functions --outdir "${{ runner.temp }}/rlogs-pages-functions" --build-output-directory public
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt

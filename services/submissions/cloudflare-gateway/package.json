@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "deploy:pages": "wrangler pages deploy public --project-name rlogs-submissions --branch main"
   },
   "devDependencies": {
     "wrangler": "4.127.1"

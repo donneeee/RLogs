@@ -300,9 +300,9 @@ would discard private artifacts and the rebuildable catalog on redeploy.
 GitHub Pages cannot safely receive uploads: a static page has nowhere to run
 the replay service, and embedding a GitHub token would give every visitor the
 archive credential. For a small invited test, GitHub remains the private
-evidence archive while the Worker in `cloudflare-gateway/` provides a stable
-HTTPS API origin in front of this receiver. This follows the same GitHub Pages
-plus Cloudflare Worker boundary as Aniipedia.
+evidence archive while the independent Pages project in `cloudflare-gateway/`
+provides a stable, rLogs-namespaced HTTPS API origin in front of this receiver.
+It does not share Aniipedia's public Worker namespace or branding.
 
 The gateway is deliberately a narrow streaming reverse proxy. It exposes only
 the documented health, ingest, parse, and reconciliation routes; it cannot
@@ -311,19 +311,20 @@ privacy validation, deterministic replay, persistence, and GitHub archiving.
 The receiver host must remain online during this initial test phase.
 
 Start a Cloudflare quick tunnel to the loopback receiver and copy its HTTPS
-origin. Then deploy the stable Worker and store that changing origin as a
-Worker secret rather than committing it:
+origin. Then create the independent Pages project, store that changing origin
+as a project secret rather than committing it, and deploy the gateway:
 
 ```powershell
 cloudflared tunnel --url http://127.0.0.1:8787 --no-autoupdate
 Set-Location services/submissions/cloudflare-gateway
 npm.cmd install
-"https://generated-name.trycloudflare.com" | npx.cmd wrangler secret put ORIGIN_BASE_URL
-npx.cmd wrangler deploy
+npx.cmd wrangler pages project create rlogs-submissions --production-branch main
+"https://generated-name.trycloudflare.com" | npx.cmd wrangler pages secret put ORIGIN_BASE_URL --project-name rlogs-submissions
+npm.cmd run deploy:pages
 ```
 
 Set the `RLOGS_API_BASE_URL` GitHub Actions repository variable in
-`donneeee/rlogs-website` to the deployed `workers.dev` origin and rerun its
+`donneeee/rlogs-website` to the deployed `rlogs-submissions.pages.dev` origin and rerun its
 Pages workflow. The desktop submission URL is that same origin. Quick tunnels
 have no uptime guarantee; replace the origin with a named tunnel or a hosted
 receiver when testing expands beyond the initial invited sample.
