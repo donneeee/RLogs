@@ -16,12 +16,20 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: apps/desktop/ui/package-lock.json
+          cache-dependency-path: |
+            apps/desktop/ui/package-lock.json
+            services/submissions/cloudflare-gateway/package-lock.json
       - name: Build desktop UI
         working-directory: apps/desktop/ui
         run: |
           npm ci --ignore-scripts
           npm run build
+      - name: Test Cloudflare submission gateway
+        working-directory: services/submissions/cloudflare-gateway
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npx wrangler deploy --dry-run
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
