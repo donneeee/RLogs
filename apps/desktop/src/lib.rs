@@ -98,6 +98,7 @@ use rlogs_plugin_runtime::{
     PluginOutput, PluginRunLimits, PluginRunMetrics, PluginRunReport, ReplayPlugin,
     replay_rlog_pair,
 };
+use rlogs_profiles::LocalProfilePackage;
 use rlogs_submission::{
     ArtifactBuildLimits, LocalLogArtifact, LogArtifactTrackingReader,
     MAXIMUM_LOCAL_ARTIFACT_PATH_BYTES, MAXIMUM_UPLOAD_CHUNK_BYTES, MockSubmissionReceiver,
@@ -4660,6 +4661,11 @@ impl RuntimeController {
             policy.log_uploader.enabled && policy.log_uploader.automatic_combat_logs;
         let default_visibility = policy.log_uploader.default_visibility;
         let profile_sync = policy.bpsr_profile_sync;
+        let submission_transport = self
+            .submission_transport
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         thread::Builder::new()
             .name(format!("rlogs-offline-{}", request.session_id))
             .spawn(move || {
@@ -4677,6 +4683,7 @@ impl RuntimeController {
                         &mut result,
                         profile_sync.enabled,
                         profile_sync.automatic_profiles,
+                        submission_transport.as_ref(),
                     );
                     (result, queue_warning, profile_warning)
                 });
@@ -4993,6 +5000,11 @@ impl RuntimeController {
             policy.log_uploader.enabled && policy.log_uploader.automatic_combat_logs;
         let default_visibility = policy.log_uploader.default_visibility;
         let profile_sync = policy.bpsr_profile_sync;
+        let submission_transport = self
+            .submission_transport
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         let live_stop = Arc::clone(&self.live_stop);
         let live_process_id = Arc::clone(&self.live_process_id);
         let session_id = request.session_id.clone();
@@ -5490,6 +5502,7 @@ impl RuntimeController {
                                 automatic_submissions,
                                 default_visibility,
                                 profile_sync.clone(),
+                                submission_transport.clone(),
                             );
                         }
                     }
@@ -5534,6 +5547,7 @@ impl RuntimeController {
                             automatic_submissions,
                             default_visibility,
                             profile_sync.clone(),
+                            submission_transport.clone(),
                         );
                     }
                     let _ = checkpoint_writer.finish();
@@ -5981,6 +5995,7 @@ fn postprocess_continuous_run(
     automatic_submissions: bool,
     default_visibility: ReportVisibility,
     profile_sync: submission_policy::ProfileSyncPolicy,
+    submission_transport: Option<SubmissionTransport>,
 ) {
     let completed = log.is_completed();
     let session_id = log.session_id.clone();
@@ -6079,7 +6094,13 @@ fn postprocess_continuous_run(
                 None
             };
             let profile_warning = if build_profile {
-                apply_profile_sync_policy(&profile_packages, &mut result, true, true)
+                apply_profile_sync_policy(
+                    &profile_packages,
+                    &mut result,
+                    true,
+                    true,
+                    submission_transport.as_ref(),
+                )
             } else {
                 None
             };
@@ -6235,6 +6256,7 @@ fn apply_profile_sync_policy(
     result: &mut SessionResult,
     enabled: bool,
     automatic_profiles: bool,
+    transport: Option<&SubmissionTransport>,
 ) -> Option<String> {
     if !enabled {
         result.profile_sync_status = "disabled".into();
@@ -6245,16 +6267,65 @@ fn apply_profile_sync_policy(
         return None;
     }
     match project_completed_profile_session(store, &result.output_rlog, unix_millis()) {
-        Ok((packages, status)) => {
+        Ok((packages, status)) if packages.is_empty() => {
             result.profile_package_count = packages.len();
             result.profile_sync_status = status;
             None
+        }
+        Ok((packages, _)) => {
+            result.profile_package_count = packages.len();
+            let Some(transport) = transport else {
+                result.profile_sync_status = "packaged_waiting_for_authenticated_receiver".into();
+                return None;
+            };
+            let package_ids = packages
+                .iter()
+                .map(|package| package.package_id.clone())
+                .collect::<Vec<_>>();
+            match publish_profile_package_ids(store, &package_ids, |package| {
+                transport.publish_profile(package).map(|_| ())
+            }) {
+                Ok(published) => {
+                    result.profile_sync_status = format!("published:{published}");
+                    None
+                }
+                Err(error) => {
+                    result.profile_sync_status = "publication_failed_retryable".into();
+                    Some(error)
+                }
+            }
         }
         Err(error) => {
             result.profile_sync_status = format!("projection_failed: {error}");
             Some(error)
         }
     }
+}
+
+fn publish_profile_package_ids(
+    store: &Arc<Mutex<LocalProfilePackageStore>>,
+    package_ids: &[String],
+    mut publish: impl FnMut(&LocalProfilePackage) -> Result<(), String>,
+) -> Result<usize, String> {
+    let mut unique_ids = package_ids.to_vec();
+    unique_ids.sort();
+    unique_ids.dedup();
+    let mut published = 0_usize;
+    for package_id in unique_ids {
+        let package = store
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .inspect(&package_id)?
+            .package;
+        let character_id = package.request.payload.routing["character-id"].clone();
+        publish(&package).map_err(|error| {
+            format!(
+                "profile auto-sync stopped after {published} publication(s); UID {character_id} remains local and retryable: {error}"
+            )
+        })?;
+        published = published.saturating_add(1);
+    }
+    Ok(published)
 }
 
 fn project_completed_profile_session(
@@ -12413,6 +12484,31 @@ kind = "content"
         assert!(!inspection_json.contains("password"));
         assert!(!inspection_json.contains("account"));
         assert!(!inspection_json.contains("token"));
+
+        let package_ids = vec![
+            projection.stored_packages[0].package_id.clone(),
+            projection.stored_packages[0].package_id.clone(),
+        ];
+        let profile_packages = Arc::clone(&controller.profile_packages);
+        let mut published_character_ids = Vec::new();
+        assert_eq!(
+            publish_profile_package_ids(&controller.profile_packages, &package_ids, |package| {
+                assert!(profile_packages.try_lock().is_ok());
+                published_character_ids
+                    .push(package.request.payload.routing["character-id"].clone());
+                Ok(())
+            },)
+            .unwrap(),
+            1
+        );
+        assert_eq!(published_character_ids, vec!["123456789"]);
+        let publish_error =
+            publish_profile_package_ids(&controller.profile_packages, &package_ids, |_| {
+                Err("receiver unavailable".into())
+            })
+            .unwrap_err();
+        assert!(publish_error.contains("UID 123456789"));
+        assert!(publish_error.contains("remains local and retryable"));
 
         OpenOptions::new()
             .append(true)

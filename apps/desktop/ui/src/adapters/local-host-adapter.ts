@@ -2580,7 +2580,7 @@ function mountSubmissionPolicyOptionsSurface(
       : "Automatically sync character profiles",
     isUploader
       ? "Uploads completed sealed logs when a receiver is connected. Local drafts are still created either way."
-      : "Builds current per-character packages automatically; publication remains explicit until the authenticated auto-sync queue is enabled.",
+      : "Builds and publishes current per-character packages when an authenticated receiver is connected. If unavailable, the sealed package remains local and retryable.",
   );
   form.append(enable.label, automatic.label);
 
