@@ -1091,8 +1091,8 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
   const endpoint = field(
     "Receiver HTTPS URL",
     "url",
-    "",
-    "https://rlogs-submissions.example.workers.dev",
+    "https://rlogs-submissions.pages.dev",
+    "https://rlogs-submissions.pages.dev",
   );
   const token = field("rLogs app token", "password", "", "Paste the account token once");
   token.input.autocomplete = "new-password";

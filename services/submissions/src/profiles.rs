@@ -222,6 +222,24 @@ impl ProfileRegistry {
         Ok(catalog)
     }
 
+    pub fn owned_catalog(
+        &self,
+        submitter_id: &str,
+    ) -> Result<PublicProfileCatalog, ProfileRegistryError> {
+        let mut catalog = self.catalog(None)?;
+        let mut owned = Vec::new();
+        for profile in catalog.profiles {
+            let claim = read_optional_json::<ProfileClaim>(
+                &self.root.join(&profile.profile_id).join("claim.json"),
+            )?;
+            if claim.is_some_and(|claim| claim.submitter_id == submitter_id) {
+                owned.push(profile);
+            }
+        }
+        catalog.profiles = owned;
+        Ok(catalog)
+    }
+
     fn receipt(&self, profile: &PublicProfile, duplicate: bool) -> ProfilePublishReceipt {
         ProfilePublishReceipt {
             schema_version: 1,
@@ -233,7 +251,7 @@ impl ProfileRegistry {
             module_inventory_count: profile.module_inventory_count,
             equipped_module_count: profile.equipped_module_count,
             profile_url: format!(
-                "{}/?profile={}#profile-lab",
+                "{}/profile-lab/?profile={}",
                 self.public_site_url, profile.profile_id
             ),
         }
@@ -484,6 +502,7 @@ mod tests {
             .unwrap();
         assert!(receipt.claimed);
         assert_eq!(receipt.module_inventory_count, 3);
+        assert!(receipt.profile_url.contains("/profile-lab/?profile=prf_"));
         let published = registry.get(&receipt.profile_id).unwrap();
         assert_eq!(published.character_id, "1000001");
         assert_eq!(
@@ -507,6 +526,23 @@ mod tests {
             .publish(package(11, "1000001", 2), Some("user-two"), 30)
             .unwrap_err();
         assert!(matches!(error, ProfileRegistryError::ClaimConflict { .. }));
+    }
+
+    #[test]
+    fn account_catalog_contains_only_that_accounts_claimed_uids() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        registry
+            .publish(package(10, "1000001", 1), Some("user-one"), 20)
+            .unwrap();
+        registry
+            .publish(package(11, "2000002", 2), Some("user-two"), 30)
+            .unwrap();
+
+        let owned = registry.owned_catalog("user-one").unwrap();
+        assert_eq!(owned.profiles.len(), 1);
+        assert_eq!(owned.profiles[0].character_id, "1000001");
     }
 
     #[test]

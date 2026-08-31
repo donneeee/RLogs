@@ -564,6 +564,13 @@ impl SubmissionService {
         Ok(self.inner.profiles.catalog(query.character_id.as_deref())?)
     }
 
+    fn owned_profile_catalog(
+        &self,
+        submitter_id: &str,
+    ) -> Result<PublicProfileCatalog, ServiceError> {
+        Ok(self.inner.profiles.owned_catalog(submitter_id)?)
+    }
+
     pub fn reconciliation(
         &self,
         run_group_id: &str,
@@ -1316,6 +1323,7 @@ pub fn router(service: SubmissionService) -> Router {
         )
         .route("/v1/auth/session/exchange", post(exchange_auth_code))
         .route("/v1/auth/me", get(get_account))
+        .route("/v1/auth/profiles", get(get_account_profiles))
         .route("/v1/auth/app-tokens", post(issue_app_token))
         .route("/v1/uploads", post(begin_upload))
         .route(
@@ -1423,6 +1431,18 @@ async fn issue_app_token(
             .accounts
             .issue_device_token(token, unix_millis()?)?,
     ))
+}
+
+async fn get_account_profiles(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+) -> Result<Json<PublicProfileCatalog>, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    let account = service
+        .inner
+        .accounts
+        .authenticate_web(token, unix_millis()?)?;
+    Ok(Json(service.owned_profile_catalog(&account.submitter_id)?))
 }
 
 async fn begin_upload(
