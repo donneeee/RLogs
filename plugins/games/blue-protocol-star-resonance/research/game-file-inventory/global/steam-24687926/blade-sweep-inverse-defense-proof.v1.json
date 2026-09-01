@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "generated_by": "tools/bpsr-blade-sweep-inverse-defense-proof.mjs",
   "game_build": "24687926",
   "effect_id": 2110092,
@@ -15,7 +15,9 @@
     "formula_authority": false,
     "runtime_authority": false,
     "ui_display_authority": false,
-    "provider_rdps_credit_allowed": false
+    "provider_rdps_credit_allowed": false,
+    "event_time_static_target_identity_required_for_static_stat_join": true,
+    "unresolved_event_time_target_identity_forbids_static_stat_join": true
   },
   "input": {
     "path": "current-build-all-damage.counterfactual.json",
@@ -428,10 +430,13 @@
     "formula_authority": false,
     "runtime_authority": false,
     "ui_display_authority": false,
-    "provider_rdps_credit_allowed": false
+    "provider_rdps_credit_allowed": false,
+    "every_exact_pair_event_time_static_target_identity_unobserved": true,
+    "event_time_static_target_join_allowed": false
   },
   "blockers": [
     "physical-defense attribute 11350 was not observed on this target",
+    "event-time actor replay over all four exact controls has active target state but no numeric monster/config ID or level, so installed static target stats cannot be joined",
     "the exact client 6500 simple and 22000 current-season transformed curves both retain compatible hidden-defense candidates",
     "floor, ceil, and round-half-up effective-defense variants remain compatible within both curve models",
     "both controls are ability 2031104 lucky_value packets, but the nonstandard AttackLucky upstream pre-defense base formula is unproven",
@@ -439,5 +444,107 @@
     "combat-stage binding, source penetration overlap, stacking arbitration, and event-level conservation remain unproven",
     "remote providers without an observed primary loadout still lack exact equipped-tier evidence"
   ],
-  "content_sha256": "sha256:14e9259ce32237a120af3515c556e5803112744f73799f81a4d6e69fffe2834d"
+  "content_sha256": "sha256:3864a86fab93476d3895b34cdf4e7cdc68e500850514ce6efd24f888c6295ae0",
+  "target_identity_evidence": {
+    "artifact": {
+      "path": "blade-sweep-target-identity-proof.v1.json",
+      "source_bytes": 6449,
+      "canonical_json_sha256": "sha256:69f927220c1d84e2b7d7d4b2a8e4c2e7162fdf302f203eccb300f78add37fe5d",
+      "schema_version": 2,
+      "generated_by": "rlogs-bpsr-selected-action-target-identity-proof"
+    },
+    "selection_source": "blade-sweep-inverse-defense-proof.v1.json",
+    "summary": {
+      "requested_actions": 4,
+      "matched_actions": 4,
+      "missing_actions": 0,
+      "observations_with_active_actor_state": 4,
+      "observations_with_exact_numeric_monster_id": 0,
+      "observations_with_exact_character_id": 0,
+      "observations_with_level": 0,
+      "observations_with_identity_conflict": 0
+    },
+    "observations": [
+      {
+        "session_id": "monitor-1786784310365",
+        "sequence": 12782,
+        "run_ordinal": 0,
+        "source_entity_uuid": 16778330752,
+        "target_entity_uuid": 4915264,
+        "actor_observation_sequence": 12777,
+        "actor_active": true,
+        "entity_type_id": 0,
+        "actor_kind": "unknown",
+        "numeric_monster_id": null,
+        "character_id": null,
+        "level": null,
+        "identity_conflict": false,
+        "exact_identity_kind": "unresolved",
+        "static_target_stat_join_allowed": false,
+        "unresolved_reasons": [
+          "exact-static-target-identity-absent"
+        ]
+      },
+      {
+        "session_id": "monitor-1786784310365",
+        "sequence": 12813,
+        "run_ordinal": 0,
+        "source_entity_uuid": 16778330752,
+        "target_entity_uuid": 4915264,
+        "actor_observation_sequence": 12811,
+        "actor_active": true,
+        "entity_type_id": 0,
+        "actor_kind": "unknown",
+        "numeric_monster_id": null,
+        "character_id": null,
+        "level": null,
+        "identity_conflict": false,
+        "exact_identity_kind": "unresolved",
+        "static_target_stat_join_allowed": false,
+        "unresolved_reasons": [
+          "exact-static-target-identity-absent"
+        ]
+      },
+      {
+        "session_id": "monitor-1786784310365",
+        "sequence": 83471,
+        "run_ordinal": 0,
+        "source_entity_uuid": 16778330752,
+        "target_entity_uuid": 4915264,
+        "actor_observation_sequence": 83466,
+        "actor_active": true,
+        "entity_type_id": 0,
+        "actor_kind": "unknown",
+        "numeric_monster_id": null,
+        "character_id": null,
+        "level": null,
+        "identity_conflict": false,
+        "exact_identity_kind": "unresolved",
+        "static_target_stat_join_allowed": false,
+        "unresolved_reasons": [
+          "exact-static-target-identity-absent"
+        ]
+      },
+      {
+        "session_id": "monitor-1786784310365",
+        "sequence": 83518,
+        "run_ordinal": 0,
+        "source_entity_uuid": 16778330752,
+        "target_entity_uuid": 4915264,
+        "actor_observation_sequence": 83515,
+        "actor_active": true,
+        "entity_type_id": 0,
+        "actor_kind": "unknown",
+        "numeric_monster_id": null,
+        "character_id": null,
+        "level": null,
+        "identity_conflict": false,
+        "exact_identity_kind": "unresolved",
+        "static_target_stat_join_allowed": false,
+        "unresolved_reasons": [
+          "exact-static-target-identity-absent"
+        ]
+      }
+    ]
+  }
 }

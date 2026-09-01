@@ -165,7 +165,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             runtime_authority: false,
             provider_rdps_credit_allowed: false,
         },
-        selection_source: args.selected_actions.display().to_string(),
+        selection_source: args
+            .selected_actions
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or("selected-action input has no UTF-8 file name")?
+            .to_owned(),
         summary,
         missing_action_keys,
         observations,
@@ -535,26 +540,56 @@ fn read_requests(
     path: &Path,
 ) -> Result<BTreeMap<(String, u64), Request>, Box<dyn std::error::Error>> {
     let value: Value = serde_json::from_reader(BufReader::new(File::open(path)?))?;
-    let rows = value
-        .get("observations")
-        .and_then(Value::as_array)
-        .ok_or("selection input must contain observations")?;
     let mut requests = BTreeMap::new();
-    for row in rows {
-        let session_id = required_str(row, "session_id")?.to_owned();
-        let sequence = required_u64(row, "sequence")?;
-        let request = Request {
-            session_id: session_id.clone(),
-            sequence,
-            run_ordinal: u32::try_from(required_u64(row, "run_ordinal")?)?,
-            source_entity_uuid: row.get("source_entity_uuid").and_then(Value::as_i64),
-            target_entity_uuid: required_i64(row, "target_entity_uuid")?,
-        };
-        if requests.insert((session_id, sequence), request).is_some() {
-            return Err("duplicate selected session/sequence".into());
+    if let Some(rows) = value.get("observations").and_then(Value::as_array) {
+        for row in rows {
+            let sequence = required_u64(row, "sequence")?;
+            insert_request(&mut requests, request_from_row(row, sequence)?)?;
         }
+    } else if let Some(pairs) = value.get("exact_pairs").and_then(Value::as_array) {
+        for pair in pairs {
+            for sequence_field in ["absent_sequences", "present_sequences"] {
+                let sequences = pair
+                    .get(sequence_field)
+                    .and_then(Value::as_array)
+                    .ok_or_else(|| format!("exact pair must contain {sequence_field}"))?;
+                for sequence in sequences {
+                    let sequence = sequence
+                        .as_u64()
+                        .ok_or_else(|| format!("{sequence_field} must contain integers"))?;
+                    insert_request(&mut requests, request_from_row(pair, sequence)?)?;
+                }
+            }
+        }
+    } else {
+        return Err("selection input must contain observations or exact_pairs".into());
+    }
+    if requests.is_empty() {
+        return Err("selection input contains no selected actions".into());
     }
     Ok(requests)
+}
+
+fn request_from_row(row: &Value, sequence: u64) -> Result<Request, String> {
+    Ok(Request {
+        session_id: required_str(row, "session_id")?.to_owned(),
+        sequence,
+        run_ordinal: u32::try_from(required_u64(row, "run_ordinal")?)
+            .map_err(|_| "run_ordinal exceeds u32".to_owned())?,
+        source_entity_uuid: row.get("source_entity_uuid").and_then(Value::as_i64),
+        target_entity_uuid: required_i64(row, "target_entity_uuid")?,
+    })
+}
+
+fn insert_request(
+    requests: &mut BTreeMap<(String, u64), Request>,
+    request: Request,
+) -> Result<(), String> {
+    let key = (request.session_id.clone(), request.sequence);
+    if requests.insert(key, request).is_some() {
+        return Err("duplicate selected session/sequence".to_owned());
+    }
+    Ok(())
 }
 
 fn required_str<'a>(value: &'a Value, name: &str) -> Result<&'a str, String> {
@@ -621,6 +656,38 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inverse_defense_exact_pairs_expand_to_every_present_and_absent_sequence() {
+        let value = serde_json::json!({
+            "exact_pairs": [{
+                "session_id": "s",
+                "run_ordinal": 0,
+                "source_entity_uuid": 10,
+                "target_entity_uuid": 20,
+                "absent_sequences": [7, 8],
+                "present_sequences": [9]
+            }]
+        });
+        let mut requests = BTreeMap::new();
+        for pair in value["exact_pairs"].as_array().unwrap() {
+            for sequence_field in ["absent_sequences", "present_sequences"] {
+                for sequence in pair[sequence_field].as_array().unwrap() {
+                    let request = request_from_row(pair, sequence.as_u64().unwrap()).unwrap();
+                    insert_request(&mut requests, request).unwrap();
+                }
+            }
+        }
+
+        assert_eq!(
+            requests.keys().cloned().collect::<Vec<_>>(),
+            vec![
+                ("s".to_owned(), 7),
+                ("s".to_owned(), 8),
+                ("s".to_owned(), 9)
+            ]
+        );
+    }
 
     #[test]
     fn unresolved_actor_never_allows_static_target_join() {

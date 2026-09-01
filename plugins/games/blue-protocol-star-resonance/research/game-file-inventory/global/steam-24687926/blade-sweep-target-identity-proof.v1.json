@@ -1,0 +1,198 @@
+{
+  "schema_version": 2,
+  "generated_by": "rlogs-bpsr-selected-action-target-identity-proof",
+  "game_build": "24687926",
+  "policy": {
+    "exact_session_sequence_and_target_join_only": true,
+    "actor_identity_is_event_time_state": true,
+    "target_allegiance_assumed": false,
+    "target_endpoint_is_allegiance_neutral": true,
+    "recipient_or_enemy_target_are_both_allowed": true,
+    "absent_monster_or_character_identity_zero_filled": false,
+    "conflicting_or_despawned_identity_is_unresolved": true,
+    "numeric_monster_id_is_exact_build_lookup_key_only": true,
+    "localized_name_is_runtime_key": false,
+    "static_target_stats_substituted": false,
+    "runtime_authority": false,
+    "provider_rdps_credit_allowed": false
+  },
+  "selection_source": "blade-sweep-inverse-defense-proof.v1.json",
+  "summary": {
+    "requested_actions": 4,
+    "matched_actions": 4,
+    "missing_actions": 0,
+    "observations_with_active_actor_state": 4,
+    "observations_with_exact_numeric_monster_id": 0,
+    "observations_with_exact_character_id": 0,
+    "observations_with_level": 0,
+    "observations_with_identity_conflict": 0,
+    "observations_with_active_source_actor_state": 4,
+    "observations_with_exact_source_numeric_monster_id": 0,
+    "observations_with_exact_source_character_id": 0,
+    "observations_with_source_identity_conflict": 0,
+    "exact_identity_kind_counts": [
+      {
+        "value": "unresolved",
+        "count": 4
+      }
+    ],
+    "target_actor_kind_counts": [
+      {
+        "value": "unknown",
+        "count": 4
+      }
+    ],
+    "distinct_numeric_monster_ids": 0
+  },
+  "missing_action_keys": [],
+  "observations": [
+    {
+      "session_id": "monitor-1786784310365",
+      "sequence": 12782,
+      "run_ordinal": 0,
+      "scene_id": null,
+      "source_entity_uuid": 16778330752,
+      "source_actor_observation_sequence": 12768,
+      "source_actor_active": true,
+      "source_entity_type_id": 10,
+      "source_actor_kind": "player",
+      "source_numeric_monster_id": null,
+      "source_character_id": null,
+      "source_class_id": 4,
+      "source_specialization_id": 108,
+      "source_level": 60,
+      "source_identity_conflict": false,
+      "source_exact_identity_kind": "unresolved",
+      "source_unresolved_reasons": [
+        "exact-static-source-identity-absent"
+      ],
+      "target_entity_uuid": 4915264,
+      "actor_observation_sequence": 12777,
+      "actor_active": true,
+      "entity_type_id": 0,
+      "actor_kind": "unknown",
+      "numeric_monster_id": null,
+      "character_id": null,
+      "class_id": null,
+      "specialization_id": null,
+      "level": null,
+      "identity_conflict": false,
+      "exact_identity_kind": "unresolved",
+      "static_target_stat_join_allowed": false,
+      "unresolved_reasons": [
+        "exact-static-target-identity-absent"
+      ]
+    },
+    {
+      "session_id": "monitor-1786784310365",
+      "sequence": 12813,
+      "run_ordinal": 0,
+      "scene_id": null,
+      "source_entity_uuid": 16778330752,
+      "source_actor_observation_sequence": 12803,
+      "source_actor_active": true,
+      "source_entity_type_id": 10,
+      "source_actor_kind": "player",
+      "source_numeric_monster_id": null,
+      "source_character_id": null,
+      "source_class_id": 4,
+      "source_specialization_id": 108,
+      "source_level": 60,
+      "source_identity_conflict": false,
+      "source_exact_identity_kind": "unresolved",
+      "source_unresolved_reasons": [
+        "exact-static-source-identity-absent"
+      ],
+      "target_entity_uuid": 4915264,
+      "actor_observation_sequence": 12811,
+      "actor_active": true,
+      "entity_type_id": 0,
+      "actor_kind": "unknown",
+      "numeric_monster_id": null,
+      "character_id": null,
+      "class_id": null,
+      "specialization_id": null,
+      "level": null,
+      "identity_conflict": false,
+      "exact_identity_kind": "unresolved",
+      "static_target_stat_join_allowed": false,
+      "unresolved_reasons": [
+        "exact-static-target-identity-absent"
+      ]
+    },
+    {
+      "session_id": "monitor-1786784310365",
+      "sequence": 83471,
+      "run_ordinal": 0,
+      "scene_id": null,
+      "source_entity_uuid": 16778330752,
+      "source_actor_observation_sequence": 83462,
+      "source_actor_active": true,
+      "source_entity_type_id": 10,
+      "source_actor_kind": "player",
+      "source_numeric_monster_id": null,
+      "source_character_id": null,
+      "source_class_id": 4,
+      "source_specialization_id": 108,
+      "source_level": 60,
+      "source_identity_conflict": false,
+      "source_exact_identity_kind": "unresolved",
+      "source_unresolved_reasons": [
+        "exact-static-source-identity-absent"
+      ],
+      "target_entity_uuid": 4915264,
+      "actor_observation_sequence": 83466,
+      "actor_active": true,
+      "entity_type_id": 0,
+      "actor_kind": "unknown",
+      "numeric_monster_id": null,
+      "character_id": null,
+      "class_id": null,
+      "specialization_id": null,
+      "level": null,
+      "identity_conflict": false,
+      "exact_identity_kind": "unresolved",
+      "static_target_stat_join_allowed": false,
+      "unresolved_reasons": [
+        "exact-static-target-identity-absent"
+      ]
+    },
+    {
+      "session_id": "monitor-1786784310365",
+      "sequence": 83518,
+      "run_ordinal": 0,
+      "scene_id": null,
+      "source_entity_uuid": 16778330752,
+      "source_actor_observation_sequence": 83503,
+      "source_actor_active": true,
+      "source_entity_type_id": 10,
+      "source_actor_kind": "player",
+      "source_numeric_monster_id": null,
+      "source_character_id": null,
+      "source_class_id": 4,
+      "source_specialization_id": 108,
+      "source_level": 60,
+      "source_identity_conflict": false,
+      "source_exact_identity_kind": "unresolved",
+      "source_unresolved_reasons": [
+        "exact-static-source-identity-absent"
+      ],
+      "target_entity_uuid": 4915264,
+      "actor_observation_sequence": 83515,
+      "actor_active": true,
+      "entity_type_id": 0,
+      "actor_kind": "unknown",
+      "numeric_monster_id": null,
+      "character_id": null,
+      "class_id": null,
+      "specialization_id": null,
+      "level": null,
+      "identity_conflict": false,
+      "exact_identity_kind": "unresolved",
+      "static_target_stat_join_allowed": false,
+      "unresolved_reasons": [
+        "exact-static-target-identity-absent"
+      ]
+    }
+  ]
+}

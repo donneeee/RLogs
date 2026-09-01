@@ -4,7 +4,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
+const LEGACY_SCHEMA_VERSION = 2;
 const GENERATOR = "tools/bpsr-blade-sweep-inverse-defense-proof.mjs";
 const SOURCE_GENERATOR = "rlogs-bpsr-status-effect-counterfactual-proof";
 const SOURCE_SCHEMA_VERSION = 22;
@@ -36,15 +37,19 @@ const ROUNDINGS = ["floor", "ceil", "round-half-up"];
 const [command = "help", ...rest] = process.argv.slice(2);
 const options = parseArgs(rest);
 if (command === "analyze") analyze(options);
+else if (command === "upgrade") upgrade(options);
 else if (command === "verify") verifyCommand(options);
 else if (command === "self-test") selfTest();
 else usage(command === "help" ? 0 : 1);
 
 function analyze(parsed) {
   const inputPath = path.resolve(required(parsed, "input"));
+  const targetIdentityPath = path.resolve(required(parsed, "target-identity"));
   const outputPath = path.resolve(required(parsed, "output"));
   const bytes = readFileSync(inputPath);
+  const targetIdentityBytes = readFileSync(targetIdentityPath);
   const source = JSON.parse(bytes.toString("utf8"));
+  const targetIdentity = JSON.parse(targetIdentityBytes.toString("utf8"));
   validateSource(source);
   const effect = source.effects.find(
     (value) => Number(value?.effect_id) === EFFECT_ID && value?.locus === LOCUS,
@@ -62,6 +67,11 @@ function analyze(parsed) {
   }
 
   const pairs = examples.map((example, index) => controlledPair(example, index));
+  const targetIdentityEvidence = buildTargetIdentityEvidence(
+    targetIdentity,
+    targetIdentityPath,
+    pairs,
+  );
   const targetGroups = groupBy(pairs, (pair) => pair.target_key);
   const candidateModels = CURVE_MODELS.map((curveModel) =>
     inverseCandidateModel(curveModel, targetGroups),
@@ -79,6 +89,8 @@ function analyze(parsed) {
       every_exact_client_raw_physical_defense_curve_candidate_must_be_enumerated: true,
       candidate_compatibility_is_not_causal_formula_proof: true,
       observed_lucky_component_does_not_prove_upstream_pre_defense_base_formula: true,
+      event_time_static_target_identity_required_for_static_stat_join: true,
+      unresolved_event_time_target_identity_forbids_static_stat_join: true,
       structurally_unobservable_remote_player_packets_are_not_required: true,
       formula_authority: false,
       runtime_authority: false,
@@ -97,6 +109,7 @@ function analyze(parsed) {
     },
     exact_pair_count: pairs.length,
     exact_pairs: pairs.map(publicPair),
+    target_identity_evidence: targetIdentityEvidence,
     target_count: targetGroups.size,
     candidate_models: candidateModels,
     summary: {
@@ -120,6 +133,8 @@ function analyze(parsed) {
       every_exact_pair_target_physical_defense_unobserved: pairs.every(
         (pair) => !pair.target_physical_defense_observed,
       ),
+      every_exact_pair_event_time_static_target_identity_unobserved: true,
+      event_time_static_target_join_allowed: false,
       upstream_pre_defense_base_formula_proven: false,
       exact_damage_projection_proven: false,
       exact_operation_order_proven: false,
@@ -132,6 +147,7 @@ function analyze(parsed) {
     },
     blockers: [
       "physical-defense attribute 11350 was not observed on this target",
+      "event-time actor replay over all four exact controls has active target state but no numeric monster/config ID or level, so installed static target stats cannot be joined",
       "the exact client 6500 simple and 22000 current-season transformed curves both retain compatible hidden-defense candidates",
       "floor, ceil, and round-half-up effective-defense variants remain compatible within both curve models",
       "both controls are ability 2031104 lucky_value packets, but the nonstandard AttackLucky upstream pre-defense base formula is unproven",
@@ -160,6 +176,61 @@ function analyze(parsed) {
         })),
       })),
     })),
+  }, null, 2));
+}
+
+function upgrade(parsed) {
+  const inputPath = path.resolve(required(parsed, "input"));
+  const targetIdentityPath = path.resolve(required(parsed, "target-identity"));
+  const outputPath = path.resolve(required(parsed, "output"));
+  const inputBytes = readFileSync(inputPath);
+  const targetIdentityBytes = readFileSync(targetIdentityPath);
+  const parsedInput = JSON.parse(inputBytes.toString("utf8"));
+  const targetIdentity = JSON.parse(targetIdentityBytes.toString("utf8"));
+  const legacy = structuredClone(parsedInput);
+  if (Number(legacy.schema_version) === SCHEMA_VERSION) {
+    legacy.schema_version = LEGACY_SCHEMA_VERSION;
+    delete legacy.policy.event_time_static_target_identity_required_for_static_stat_join;
+    delete legacy.policy.unresolved_event_time_target_identity_forbids_static_stat_join;
+    delete legacy.target_identity_evidence;
+    delete legacy.summary.every_exact_pair_event_time_static_target_identity_unobserved;
+    delete legacy.summary.event_time_static_target_join_allowed;
+    legacy.blockers = legacy.blockers.filter((value) =>
+      value !==
+        "event-time actor replay over all four exact controls has active target state but no numeric monster/config ID or level, so installed static target stats cannot be joined");
+    legacy.content_sha256 = contentHash(legacy);
+  }
+  verifyReport(legacy, {
+    schemaVersion: LEGACY_SCHEMA_VERSION,
+    targetIdentityRequired: false,
+  });
+  const report = structuredClone(legacy);
+  report.schema_version = SCHEMA_VERSION;
+  report.policy.event_time_static_target_identity_required_for_static_stat_join = true;
+  report.policy.unresolved_event_time_target_identity_forbids_static_stat_join = true;
+  report.target_identity_evidence = buildTargetIdentityEvidence(
+    targetIdentity,
+    targetIdentityPath,
+    report.exact_pairs,
+  );
+  report.summary.every_exact_pair_event_time_static_target_identity_unobserved = true;
+  report.summary.event_time_static_target_join_allowed = false;
+  const blocker =
+    "event-time actor replay over all four exact controls has active target state but no numeric monster/config ID or level, so installed static target stats cannot be joined";
+  if (!report.blockers.includes(blocker)) report.blockers.splice(1, 0, blocker);
+  report.content_sha256 = contentHash(report);
+  verifyReport(report);
+  mkdirSync(path.dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  verifyReport(JSON.parse(readFileSync(outputPath, "utf8")));
+  console.log(JSON.stringify({
+    status: report.status,
+    schema_version: report.schema_version,
+    exact_pair_count: report.exact_pair_count,
+    matched_target_identity_actions:
+      report.target_identity_evidence.summary.matched_actions,
+    event_time_static_target_join_allowed:
+      report.summary.event_time_static_target_join_allowed,
   }, null, 2));
 }
 
@@ -439,6 +510,146 @@ function validateLuckyOutcome(outcome, amount, name) {
   }
 }
 
+function buildTargetIdentityEvidence(identity, inputPath, pairs) {
+  validateTargetIdentityReceipt(identity, pairs);
+  const evidence = {
+    artifact: {
+      path: path.basename(inputPath),
+      source_bytes: statSync(inputPath).size,
+      canonical_json_sha256:
+        `sha256:${createHash("sha256").update(JSON.stringify(identity)).digest("hex")}`,
+      schema_version: Number(identity.schema_version),
+      generated_by: String(identity.generated_by),
+    },
+    selection_source: String(identity.selection_source),
+    summary: {
+      requested_actions: Number(identity.summary.requested_actions),
+      matched_actions: Number(identity.summary.matched_actions),
+      missing_actions: Number(identity.summary.missing_actions),
+      observations_with_active_actor_state:
+        Number(identity.summary.observations_with_active_actor_state),
+      observations_with_exact_numeric_monster_id:
+        Number(identity.summary.observations_with_exact_numeric_monster_id),
+      observations_with_exact_character_id:
+        Number(identity.summary.observations_with_exact_character_id),
+      observations_with_level: Number(identity.summary.observations_with_level),
+      observations_with_identity_conflict:
+        Number(identity.summary.observations_with_identity_conflict),
+    },
+    observations: identity.observations.map((observation) => ({
+      session_id: String(observation.session_id),
+      sequence: Number(observation.sequence),
+      run_ordinal: Number(observation.run_ordinal),
+      source_entity_uuid: Number(observation.source_entity_uuid),
+      target_entity_uuid: Number(observation.target_entity_uuid),
+      actor_observation_sequence: Number(observation.actor_observation_sequence),
+      actor_active: observation.actor_active,
+      entity_type_id: Number(observation.entity_type_id),
+      actor_kind: String(observation.actor_kind),
+      numeric_monster_id: observation.numeric_monster_id,
+      character_id: observation.character_id,
+      level: observation.level,
+      identity_conflict: observation.identity_conflict,
+      exact_identity_kind: String(observation.exact_identity_kind),
+      static_target_stat_join_allowed: observation.static_target_stat_join_allowed,
+      unresolved_reasons: observation.unresolved_reasons,
+    })),
+  };
+  validateTargetIdentityEvidence(evidence, pairs);
+  return evidence;
+}
+
+function validateTargetIdentityReceipt(identity, pairs) {
+  if (Number(identity?.schema_version) !== 2 ||
+      identity?.generated_by !== "rlogs-bpsr-selected-action-target-identity-proof" ||
+      String(identity?.game_build) !== GAME_BUILD ||
+      identity?.selection_source !== "blade-sweep-inverse-defense-proof.v1.json" ||
+      identity?.policy?.static_target_stats_substituted !== false ||
+      identity?.policy?.runtime_authority !== false ||
+      identity?.policy?.provider_rdps_credit_allowed !== false ||
+      !Array.isArray(identity?.missing_action_keys) ||
+      identity.missing_action_keys.length !== 0 ||
+      !Array.isArray(identity?.observations)) {
+    throw new Error("target-identity receipt is not the reviewed fail-closed report");
+  }
+  validateTargetIdentityRows(identity.summary, identity.observations, pairs);
+}
+
+function validateTargetIdentityEvidence(evidence, pairs) {
+  if (evidence?.artifact?.path !== "blade-sweep-target-identity-proof.v1.json" ||
+      !Number.isSafeInteger(evidence?.artifact?.source_bytes) ||
+      evidence.artifact.source_bytes <= 0 ||
+      !/^sha256:[0-9a-f]{64}$/.test(
+        String(evidence?.artifact?.canonical_json_sha256)) ||
+      Number(evidence?.artifact?.schema_version) !== 2 ||
+      evidence?.artifact?.generated_by !==
+        "rlogs-bpsr-selected-action-target-identity-proof" ||
+      evidence?.selection_source !== "blade-sweep-inverse-defense-proof.v1.json" ||
+      !Array.isArray(evidence?.observations)) {
+    throw new Error("embedded target-identity evidence has invalid provenance");
+  }
+  validateTargetIdentityRows(evidence.summary, evidence.observations, pairs);
+}
+
+function validateTargetIdentityRows(summary, observations, pairs) {
+  const expected = pairs.flatMap((pair) =>
+    [...integerArray(pair.absent_sequences, "absent sequences"),
+      ...integerArray(pair.present_sequences, "present sequences")].map((sequence) => ({
+      session_id: String(pair.session_id),
+      sequence,
+      run_ordinal: nonnegativeInteger(pair.run_ordinal, "run ordinal"),
+      source_entity_uuid: positiveInteger(pair.source_entity_uuid, "source entity UUID"),
+      target_entity_uuid: positiveInteger(pair.target_entity_uuid, "target entity UUID"),
+    })),
+  ).sort(compareActionIdentity);
+  const actual = observations.map((observation, index) => {
+    const row = {
+      session_id: String(observation?.session_id),
+      sequence: positiveInteger(observation?.sequence, `identity sequence ${index}`),
+      run_ordinal: nonnegativeInteger(observation?.run_ordinal, `identity run ${index}`),
+      source_entity_uuid:
+        positiveInteger(observation?.source_entity_uuid, `identity source ${index}`),
+      target_entity_uuid:
+        positiveInteger(observation?.target_entity_uuid, `identity target ${index}`),
+    };
+    if (!Number.isSafeInteger(Number(observation?.actor_observation_sequence)) ||
+        Number(observation.actor_observation_sequence) >= row.sequence ||
+        observation?.actor_active !== true ||
+        Number(observation?.entity_type_id) !== 0 ||
+        observation?.actor_kind !== "unknown" ||
+        observation?.numeric_monster_id != null ||
+        observation?.character_id != null ||
+        observation?.level != null ||
+        observation?.identity_conflict !== false ||
+        observation?.exact_identity_kind !== "unresolved" ||
+        observation?.static_target_stat_join_allowed !== false ||
+        stableJson(observation?.unresolved_reasons) !==
+          stableJson(["exact-static-target-identity-absent"])) {
+      throw new Error(`target-identity observation ${index} is not fail-closed`);
+    }
+    return row;
+  }).sort(compareActionIdentity);
+  if (stableJson(actual) !== stableJson(expected)) {
+    throw new Error("target-identity observations do not exactly cover every control action");
+  }
+  const expectedCount = expected.length;
+  if (Number(summary?.requested_actions) !== expectedCount ||
+      Number(summary?.matched_actions) !== expectedCount ||
+      Number(summary?.missing_actions) !== 0 ||
+      Number(summary?.observations_with_active_actor_state) !== expectedCount ||
+      Number(summary?.observations_with_exact_numeric_monster_id) !== 0 ||
+      Number(summary?.observations_with_exact_character_id) !== 0 ||
+      Number(summary?.observations_with_level) !== 0 ||
+      Number(summary?.observations_with_identity_conflict) !== 0) {
+    throw new Error("target-identity summary does not match the exact control coverage");
+  }
+}
+
+function compareActionIdentity(left, right) {
+  return left.session_id.localeCompare(right.session_id) ||
+    left.sequence - right.sequence || left.run_ordinal - right.run_ordinal;
+}
+
 function validateSource(source) {
   if (Number(source?.schema_version) !== SOURCE_SCHEMA_VERSION ||
       source?.generated_by !== SOURCE_GENERATOR ||
@@ -454,12 +665,30 @@ function validateSource(source) {
 
 function verifyCommand(parsed) {
   const inputPath = path.resolve(required(parsed, "input"));
-  verifyReport(JSON.parse(readFileSync(inputPath, "utf8")));
+  const report = JSON.parse(readFileSync(inputPath, "utf8"));
+  verifyReport(report);
+  verifyTargetIdentityArtifact(report, inputPath);
   console.log("Blade Sweep inverse-defense proof verified");
 }
 
-function verifyReport(report) {
-  if (Number(report?.schema_version) !== SCHEMA_VERSION ||
+function verifyTargetIdentityArtifact(report, reportPath) {
+  const expected = report.target_identity_evidence.artifact;
+  const artifactPath = path.join(path.dirname(reportPath), expected.path);
+  const bytes = readFileSync(artifactPath);
+  const identity = JSON.parse(bytes.toString("utf8"));
+  const semanticHash =
+    `sha256:${createHash("sha256").update(JSON.stringify(identity)).digest("hex")}`;
+  if (semanticHash !== expected.canonical_json_sha256) {
+    throw new Error("target-identity artifact JSON does not match the embedded receipt");
+  }
+  validateTargetIdentityReceipt(identity, report.exact_pairs);
+}
+
+function verifyReport(report, {
+  schemaVersion = SCHEMA_VERSION,
+  targetIdentityRequired = true,
+} = {}) {
+  if (Number(report?.schema_version) !== schemaVersion ||
       report?.generated_by !== GENERATOR ||
       String(report?.game_build) !== GAME_BUILD ||
       Number(report?.effect_id) !== EFFECT_ID ||
@@ -515,6 +744,18 @@ function verifyReport(report) {
       )) {
     throw new Error("inverse-defense report failed its fail-closed verification contract");
   }
+  if (targetIdentityRequired &&
+      (schemaVersion !== SCHEMA_VERSION ||
+       report?.policy?.event_time_static_target_identity_required_for_static_stat_join !== true ||
+       report?.policy?.unresolved_event_time_target_identity_forbids_static_stat_join !== true ||
+       report?.summary?.every_exact_pair_event_time_static_target_identity_unobserved !== true ||
+       report?.summary?.event_time_static_target_join_allowed !== false ||
+       !Array.isArray(report?.blockers) ||
+       !report.blockers.includes(
+         "event-time actor replay over all four exact controls has active target state but no numeric monster/config ID or level, so installed static target stats cannot be joined"
+       ))) {
+    throw new Error("inverse-defense report lacks the event-time target-identity gate");
+  }
   if (!Array.isArray(report.exact_pairs) ||
       report.exact_pairs.length !== report.exact_pair_count) {
     throw new Error("inverse-defense report does not retain every exact pair receipt");
@@ -548,6 +789,9 @@ function verifyReport(report) {
       search_cutoff_exclusive_by_curve: searchCutoffExclusiveByCurve,
     };
   });
+  if (targetIdentityRequired) {
+    validateTargetIdentityEvidence(report.target_identity_evidence, pairs);
+  }
   const targetGroups = groupBy(pairs, (pair) => pair.target_key);
   const recomputedModels = CURVE_MODELS.map((model) =>
     inverseCandidateModel(model, targetGroups),
@@ -744,7 +988,8 @@ function required(parsed, name) {
 function usage(exitCode) {
   console.log(
     "Usage:\n" +
-    "  node tools/bpsr-blade-sweep-inverse-defense-proof.mjs analyze --input <counterfactual.json> --output <proof.json>\n" +
+    "  node tools/bpsr-blade-sweep-inverse-defense-proof.mjs analyze --input <counterfactual.json> --target-identity <identity.json> --output <proof.json>\n" +
+    "  node tools/bpsr-blade-sweep-inverse-defense-proof.mjs upgrade --input <schema-2-proof.json> --target-identity <identity.json> --output <schema-3-proof.json>\n" +
     "  node tools/bpsr-blade-sweep-inverse-defense-proof.mjs verify --input <proof.json>\n" +
     "  node tools/bpsr-blade-sweep-inverse-defense-proof.mjs self-test",
   );
