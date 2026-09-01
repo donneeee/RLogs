@@ -5564,6 +5564,21 @@ impl RuntimeController {
                         .map_or((None, None), |(sender, worker)| {
                             (Some(sender), Some(worker))
                         });
+                    let (run_postprocess_sender, run_postprocess_worker) =
+                        spawn_continuous_run_postprocessor(
+                            Arc::clone(&state),
+                            Arc::clone(&submission_queue),
+                            Arc::clone(&combat_history),
+                            Arc::clone(&combat_history_feed),
+                            Arc::clone(&history_rdps_backfill),
+                            Arc::clone(&profile_packages),
+                            Arc::clone(&profile_publications),
+                            Arc::clone(&profile_publication),
+                            automatic_submissions,
+                            default_visibility,
+                            profile_sync.clone(),
+                            submission_transport.clone(),
+                        )?;
                     loop {
                         let Some(frame) = capture
                             .next_frame()
@@ -6082,22 +6097,14 @@ impl RuntimeController {
                                     log.session_id
                                 )
                             })?;
-                            postprocess_continuous_run(
-                                log,
-                                projection,
-                                Arc::clone(&state),
-                                Arc::clone(&submission_queue),
-                                Arc::clone(&combat_history),
-                                Arc::clone(&combat_history_feed),
-                                Arc::clone(&history_rdps_backfill),
-                                Arc::clone(&profile_packages),
-                                Arc::clone(&profile_publications),
-                                Arc::clone(&profile_publication),
-                                automatic_submissions,
-                                default_visibility,
-                                profile_sync.clone(),
-                                submission_transport.clone(),
-                            );
+                            run_postprocess_sender
+                                .send((log, projection))
+                                .map_err(|error| {
+                                    format!(
+                                        "completed-run postprocessor stopped before accepting {}",
+                                        error.0.0.session_id
+                                    )
+                                })?;
                         }
                     }
                     let sealed = recorder
@@ -6129,23 +6136,19 @@ impl RuntimeController {
                                 log.session_id
                             )
                         })?;
-                        postprocess_continuous_run(
-                            log,
-                            projection,
-                            Arc::clone(&state),
-                            Arc::clone(&submission_queue),
-                            Arc::clone(&combat_history),
-                            Arc::clone(&combat_history_feed),
-                            Arc::clone(&history_rdps_backfill),
-                            Arc::clone(&profile_packages),
-                            Arc::clone(&profile_publications),
-                            Arc::clone(&profile_publication),
-                            automatic_submissions,
-                            default_visibility,
-                            profile_sync.clone(),
-                            submission_transport.clone(),
-                        );
+                        run_postprocess_sender
+                            .send((log, projection))
+                            .map_err(|error| {
+                                format!(
+                                    "completed-run postprocessor stopped before accepting {}",
+                                    error.0.0.session_id
+                                )
+                            })?;
                     }
+                    drop(run_postprocess_sender);
+                    run_postprocess_worker.join().map_err(|_| {
+                        "completed-run postprocessor stopped unexpectedly".to_owned()
+                    })?;
                     drop(photo_publication_sender);
                     if let Some(worker) = photo_publication_worker {
                         worker.join().map_err(|_| {
@@ -6582,6 +6585,57 @@ fn capture_time_plugin_report(
         },
         outputs: vec![output],
     })
+}
+
+const CONTINUOUS_RUN_POSTPROCESS_QUEUE_CAPACITY: usize = 64;
+type ContinuousRunPostprocessItem = (SealedDungeonRunLog, CapturedRunProjection);
+type ContinuousRunPostprocessHandle = (SyncSender<ContinuousRunPostprocessItem>, JoinHandle<()>);
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_continuous_run_postprocessor(
+    state: Arc<Mutex<RuntimeSnapshot>>,
+    submission_queue: Arc<Mutex<LocalSubmissionQueue>>,
+    combat_history: Arc<Mutex<CombatHistoryStore>>,
+    combat_history_feed: Arc<CombatHistoryRevisionFeed>,
+    history_rdps_backfill: Arc<HistoryRdpsBackfillQueue>,
+    profile_packages: Arc<Mutex<LocalProfilePackageStore>>,
+    profile_publications: Arc<Mutex<ProfilePublicationLedger>>,
+    profile_publication: Arc<Mutex<()>>,
+    automatic_submissions: bool,
+    default_visibility: ReportVisibility,
+    profile_sync: submission_policy::ProfileSyncPolicy,
+    submission_transport: Option<SubmissionTransport>,
+) -> Result<ContinuousRunPostprocessHandle, String> {
+    // Run finalization performs JSON projection, atomic history writes, and
+    // optional artifact verification. Keep that work off the ordered packet
+    // capture/decoder loop while preserving floor order through one bounded
+    // FIFO consumer. The capacity covers all sixty Stimen Vault floors while
+    // keeping memory use explicitly bounded.
+    let (sender, receiver) = sync_channel(CONTINUOUS_RUN_POSTPROCESS_QUEUE_CAPACITY);
+    let worker = thread::Builder::new()
+        .name("rlogs-run-postprocessor".into())
+        .spawn(move || {
+            while let Ok((log, projection)) = receiver.recv() {
+                postprocess_continuous_run(
+                    log,
+                    projection,
+                    Arc::clone(&state),
+                    Arc::clone(&submission_queue),
+                    Arc::clone(&combat_history),
+                    Arc::clone(&combat_history_feed),
+                    Arc::clone(&history_rdps_backfill),
+                    Arc::clone(&profile_packages),
+                    Arc::clone(&profile_publications),
+                    Arc::clone(&profile_publication),
+                    automatic_submissions,
+                    default_visibility,
+                    profile_sync.clone(),
+                    submission_transport.clone(),
+                );
+            }
+        })
+        .map_err(|error| format!("could not start completed-run postprocessor: {error}"))?;
+    Ok((sender, worker))
 }
 
 #[allow(clippy::too_many_arguments)]
