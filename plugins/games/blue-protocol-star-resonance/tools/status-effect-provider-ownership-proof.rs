@@ -11,8 +11,9 @@ use std::{
 
 use rlogs_combat::{ActorAncestryResolver, ActorOwnershipEvidence};
 use rlogs_events::{
-    ActorEvent, ActorKind, ActorOwnershipUpdate, ActorState, CanonicalEvent, EncounterState,
-    EntityRef, EvidenceSource, RunState, StatusEvent, StatusState, TimelineEventKind,
+    ActorEvent, ActorKind, ActorLoadoutEvidence, ActorLoadoutSlot, ActorOwnershipUpdate,
+    ActorState, CanonicalEvent, EncounterState, EntityRef, EvidenceSource, RunState, StatusEvent,
+    StatusState, TimelineEventKind,
 };
 use rlogs_game_bpsr::character_id_from_entity_uuid;
 use rlogs_log_format::{RlogLimits, RlogReader};
@@ -67,6 +68,8 @@ struct ProofPolicy {
     conflicting_status_instance_owners_disable_inheritance: bool,
     later_attributed_combat_relation_in_same_exact_wire_packet_may_resolve_provider: bool,
     same_wire_packet_resolution_requires_exact_capture_connection_stream_and_observed_time: bool,
+    player_loadout_is_reported_only_from_the_resolved_player_actor_snapshot: bool,
+    loadout_tier_is_evidence_only_not_formula_authority: bool,
     future_actor_snapshots_may_backfill_prior_status_events: bool,
     unknown_and_unresolved_events_preserved: bool,
     formula_authority: bool,
@@ -98,6 +101,7 @@ struct Summary {
     selected_events_with_same_wire_packet_player_owner: u64,
     selected_events_with_prior_status_instance_player_owner: u64,
     selected_events_with_stable_player_character_id: u64,
+    selected_events_with_player_primary_loadout_evidence: u64,
     unique_selected_source_entities: usize,
     unique_proven_player_character_ids: usize,
 }
@@ -122,7 +126,9 @@ struct EffectAccumulator {
     classes: BTreeMap<ResolutionClass, u64>,
     source_entities: BTreeSet<i64>,
     player_character_ids: BTreeSet<String>,
+    player_primary_loadouts: BTreeSet<PlayerPrimaryLoadoutEvidence>,
     events_with_stable_player_character_id: u64,
+    events_with_player_primary_loadout_evidence: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -132,9 +138,12 @@ struct EffectReport {
     resolution_counts: BTreeMap<ResolutionClass, u64>,
     unique_source_entities: usize,
     proven_player_character_ids: Vec<String>,
+    proven_player_primary_loadouts: Vec<PlayerPrimaryLoadoutEvidence>,
     player_actor_ownership_proven_for_every_sourced_event: bool,
     status_events_with_stable_player_character_id: u64,
     stable_player_character_id_proven_for_every_sourced_event: bool,
+    status_events_with_player_primary_loadout_evidence: u64,
+    player_primary_loadout_proven_for_every_player_owned_event: bool,
     formula_authority: bool,
     runtime_authority: bool,
 }
@@ -149,6 +158,8 @@ struct ActorSnapshot {
     display_name: Option<String>,
     class_id: Option<i32>,
     specialization_id: Option<i32>,
+    primary_loadout: Vec<LoadoutSlotEvidence>,
+    primary_loadout_evidence: ActorLoadoutEvidence,
     observed_sequence: u64,
     observed_micros: u64,
 }
@@ -175,6 +186,23 @@ struct OwnershipLink {
     confirmed_entity_attributes: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct LoadoutSlotEvidence {
+    slot_id: i32,
+    ability_id: Option<i64>,
+    item_id: Option<i64>,
+    tier: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct PlayerPrimaryLoadoutEvidence {
+    character_id: String,
+    actor_id: u64,
+    entity_uuid: i64,
+    evidence: ActorLoadoutEvidence,
+    slots: Vec<LoadoutSlotEvidence>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ResolutionKey {
     rlog: String,
@@ -189,6 +217,7 @@ struct ResolutionKey {
     ownership_chain: Vec<OwnershipLink>,
     same_wire_packet_ownership_sequence: Option<u64>,
     prior_status_instance_ownership_sequence: Option<u64>,
+    player_primary_loadout_evidence: Option<PlayerPrimaryLoadoutEvidence>,
 }
 
 #[derive(Debug, Default)]
@@ -219,6 +248,7 @@ struct ResolutionReport {
     ownership_chain: Vec<OwnershipLink>,
     same_wire_packet_ownership_sequence: Option<u64>,
     prior_status_instance_ownership_sequence: Option<u64>,
+    player_primary_loadout_evidence: Option<PlayerPrimaryLoadoutEvidence>,
     source_display_name_evidence: Vec<String>,
     owner_display_name_evidence: Vec<String>,
     status_events: u64,
@@ -275,6 +305,7 @@ struct ProviderResolution {
     source_display_name: Option<String>,
     owner_display_name: Option<String>,
     player_character_id: Option<String>,
+    player_primary_loadout_evidence: Option<PlayerPrimaryLoadoutEvidence>,
     same_wire_packet_ownership_sequence: Option<u64>,
     prior_status_instance_ownership_sequence: Option<u64>,
 }
@@ -374,6 +405,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             later_attributed_combat_relation_in_same_exact_wire_packet_may_resolve_provider: true,
             same_wire_packet_resolution_requires_exact_capture_connection_stream_and_observed_time:
                 true,
+            player_loadout_is_reported_only_from_the_resolved_player_actor_snapshot: true,
+            loadout_tier_is_evidence_only_not_formula_authority: true,
             future_actor_snapshots_may_backfill_prior_status_events: false,
             unknown_and_unresolved_events_preserved: true,
             formula_authority: false,
@@ -859,6 +892,15 @@ fn observe_selected_status(
             .selected_events_with_stable_player_character_id
             .saturating_add(1);
     }
+    if let Some(loadout) = &resolution.player_primary_loadout_evidence {
+        effect.player_primary_loadouts.insert(loadout.clone());
+        effect.events_with_player_primary_loadout_evidence = effect
+            .events_with_player_primary_loadout_evidence
+            .saturating_add(1);
+        summary.selected_events_with_player_primary_loadout_evidence = summary
+            .selected_events_with_player_primary_loadout_evidence
+            .saturating_add(1);
+    }
 
     let source_actor_snapshot = status
         .source
@@ -885,6 +927,7 @@ fn observe_selected_status(
         same_wire_packet_ownership_sequence: resolution.same_wire_packet_ownership_sequence,
         prior_status_instance_ownership_sequence: resolution
             .prior_status_instance_ownership_sequence,
+        player_primary_loadout_evidence: resolution.player_primary_loadout_evidence,
     };
     let accumulator = resolutions.entry(key).or_default();
     accumulator.status_events = accumulator.status_events.saturating_add(1);
@@ -1016,6 +1059,7 @@ fn classify_provider(
             source_display_name: None,
             owner_display_name: None,
             player_character_id: None,
+            player_primary_loadout_evidence: None,
             same_wire_packet_ownership_sequence: None,
             prior_status_instance_ownership_sequence: None,
         };
@@ -1051,6 +1095,12 @@ fn classify_provider(
         }
         _ => None,
     };
+    let player_primary_loadout_evidence = match class {
+        ResolutionClass::DirectPlayer => source_snapshot,
+        ResolutionClass::OwnedByPlayer => owner_snapshot,
+        _ => None,
+    }
+    .and_then(player_primary_loadout);
 
     ProviderResolution {
         class,
@@ -1061,6 +1111,7 @@ fn classify_provider(
         source_display_name: source_snapshot.and_then(|snapshot| snapshot.display_name.clone()),
         owner_display_name: owner_snapshot.and_then(|snapshot| snapshot.display_name.clone()),
         player_character_id,
+        player_primary_loadout_evidence,
         same_wire_packet_ownership_sequence: None,
         prior_status_instance_ownership_sequence: None,
     }
@@ -1254,6 +1305,10 @@ fn observe_actor(
             if event.specialization_id.is_some() {
                 snapshot.specialization_id = event.specialization_id;
             }
+            if event.loadout_observation.primary != ActorLoadoutEvidence::Unobserved {
+                snapshot.primary_loadout = loadout_slots(&event.primary_loadout);
+                snapshot.primary_loadout_evidence = event.loadout_observation.primary;
+            }
             snapshot.observed_sequence = sequence;
             snapshot.observed_micros = observed_micros;
         }
@@ -1269,6 +1324,8 @@ fn observe_actor(
                     display_name: event.display_name.clone(),
                     class_id: event.class_id,
                     specialization_id: event.specialization_id,
+                    primary_loadout: loadout_slots(&event.primary_loadout),
+                    primary_loadout_evidence: event.loadout_observation.primary,
                     observed_sequence: sequence,
                     observed_micros,
                 },
@@ -1276,6 +1333,33 @@ fn observe_actor(
         }
     }
     Ok(())
+}
+
+fn loadout_slots(slots: &[ActorLoadoutSlot]) -> Vec<LoadoutSlotEvidence> {
+    slots
+        .iter()
+        .map(|slot| LoadoutSlotEvidence {
+            slot_id: slot.slot_id,
+            ability_id: slot.ability_id,
+            item_id: slot.item_id,
+            tier: slot.tier,
+        })
+        .collect()
+}
+
+fn player_primary_loadout(snapshot: &ActorSnapshot) -> Option<PlayerPrimaryLoadoutEvidence> {
+    if snapshot.kind != ActorKind::Player
+        || snapshot.primary_loadout_evidence == ActorLoadoutEvidence::Unobserved
+    {
+        return None;
+    }
+    Some(PlayerPrimaryLoadoutEvidence {
+        character_id: snapshot.character_id.clone()?,
+        actor_id: snapshot.actor.actor_id.0,
+        entity_uuid: snapshot.actor.entity_uuid.0,
+        evidence: snapshot.primary_loadout_evidence,
+        slots: snapshot.primary_loadout.clone(),
+    })
 }
 
 fn proven_character_id(event: &ActorEvent) -> Result<(Option<String>, Option<String>), String> {
@@ -1403,12 +1487,17 @@ impl EffectAccumulator {
             resolution_counts: self.classes,
             unique_source_entities: self.source_entities.len(),
             proven_player_character_ids: self.player_character_ids.into_iter().collect(),
+            proven_player_primary_loadouts: self.player_primary_loadouts.into_iter().collect(),
             player_actor_ownership_proven_for_every_sourced_event: sourced_events > 0
                 && proven_events == sourced_events,
             status_events_with_stable_player_character_id: self
                 .events_with_stable_player_character_id,
             stable_player_character_id_proven_for_every_sourced_event: sourced_events > 0
                 && self.events_with_stable_player_character_id == sourced_events,
+            status_events_with_player_primary_loadout_evidence: self
+                .events_with_player_primary_loadout_evidence,
+            player_primary_loadout_proven_for_every_player_owned_event: proven_events > 0
+                && self.events_with_player_primary_loadout_evidence == proven_events,
             formula_authority: false,
             runtime_authority: false,
         }
@@ -1430,6 +1519,7 @@ impl ResolutionAccumulator {
             ownership_chain: key.ownership_chain,
             same_wire_packet_ownership_sequence: key.same_wire_packet_ownership_sequence,
             prior_status_instance_ownership_sequence: key.prior_status_instance_ownership_sequence,
+            player_primary_loadout_evidence: key.player_primary_loadout_evidence,
             source_display_name_evidence: self.source_display_names.into_iter().collect(),
             owner_display_name_evidence: self.owner_display_names.into_iter().collect(),
             status_events: self.status_events,
@@ -1626,6 +1716,8 @@ mod tests {
             display_name: name.map(str::to_owned),
             class_id: None,
             specialization_id: None,
+            primary_loadout: Vec::new(),
+            primary_loadout_evidence: ActorLoadoutEvidence::Unobserved,
             observed_sequence: 1,
             observed_micros: 10,
         }
@@ -1699,6 +1791,31 @@ mod tests {
             resolution.player_character_id.as_deref(),
             Some("character-1")
         );
+    }
+
+    #[test]
+    fn resolved_player_snapshot_carries_exact_primary_loadout_tier() {
+        let player = entity(1, 100);
+        let mut player_snapshot = snapshot(player, ActorKind::Player, Some("provider"));
+        player_snapshot.primary_loadout_evidence = ActorLoadoutEvidence::ExactSlots;
+        player_snapshot.primary_loadout = vec![LoadoutSlotEvidence {
+            slot_id: 7,
+            ability_id: Some(3946),
+            item_id: Some(3_000_045),
+            tier: Some(5),
+        }];
+        let actors = HashMap::from([(1, player_snapshot)]);
+        let mut ancestry = ActorAncestryResolver::default();
+        ancestry.observe_entity(player);
+
+        let resolution = classify_provider(Some(player), 20, &actors, &ancestry);
+        let loadout = resolution
+            .player_primary_loadout_evidence
+            .expect("exact provider loadout");
+        assert_eq!(loadout.character_id, "character-1");
+        assert_eq!(loadout.evidence, ActorLoadoutEvidence::ExactSlots);
+        assert_eq!(loadout.slots[0].ability_id, Some(3946));
+        assert_eq!(loadout.slots[0].tier, Some(5));
     }
 
     #[test]

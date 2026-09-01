@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "current_game_build": "24687926",
+  "historical_packet_build": "24252055",
+  "proof_state": "current-static-chain-exact-plus-current-packet-projectile-status-owner-and-equipped-tier-proven-formula-live-gated",
+  "current_static": {
+    "direct_owner_skill_id": 3914,
+    "shared_owner_skill_ids": [
+      3914,
+      3946
+    ],
+    "skill_effect_ids": [
+      391401,
+      394601
+    ],
+    "projectile_config_id": 10040102,
+    "damage_attr_id": 31004010200,
+    "recount_id": 270,
+    "target_status_id": 2110092,
+    "target_status_duration_seconds": 10.0,
+    "target_status_tags": [
+      78
+    ],
+    "projectile_duration_seconds": 1.0,
+    "projectile_hit_camp_types": [
+      1
+    ],
+    "damage_script": "AutoAttack"
+  },
+  "historical_packet": {
+    "session_id": "monitor-1785609048000.run-0003",
+    "activity_id": "scene.12023",
+    "source_actor_kind": "projectile",
+    "source_actor_ids": [
+      "252",
+      "254",
+      "255"
+    ],
+    "source_entity_uuids": [
+      "1671552",
+      "1737088",
+      "1802624"
+    ],
+    "source_projectile_config_id": 10040102,
+    "target_actor_ids": [
+      "176"
+    ],
+    "target_entity_uuids": [
+      "1704000"
+    ],
+    "target_actor_kinds": [
+      "monster"
+    ],
+    "applied_count": 3,
+    "removed_count": 3
+  },
+  "current_packet": {
+    "source_rlogs": [
+      {
+        "session_id": "monitor-1788127739720.run-0001",
+        "bytes": 90709,
+        "sha256": "sha256:b228780ce269f2d06286fcc12bff128f2460ac733d20507d1978e2540d7c8ee1"
+      },
+      {
+        "session_id": "monitor-1788127739720.run-0002",
+        "bytes": 22362280,
+        "sha256": "sha256:278c41cd87f335cdbd882506d9c4524b16cc28e626615e8a6f7bbca559a42341"
+      }
+    ],
+    "provider_ownership_proof": {
+      "tool": "rlogs-bpsr-status-effect-provider-ownership-proof",
+      "schema_version": 5,
+      "canonical_events_scanned": 447393,
+      "status_events_scanned": 224390,
+      "selected_status_events": 8,
+      "unique_projectile_source_entities": 4,
+      "resolution_counts": {
+        "owned_by_player": 2,
+        "same_wire_packet_owned_by_player": 4,
+        "prior_status_instance_player": 2
+      },
+      "player_actor_ownership_proven_for_every_sourced_event": true,
+      "stable_player_character_id_proven_for_every_sourced_event": true,
+      "player_primary_loadout_proven_for_every_player_owned_event": true
+    },
+    "provider": {
+      "character_id": "5541918",
+      "display_name_evidence": "abrandoned",
+      "entity_uuid": 363195138688,
+      "class_id": 4,
+      "specialization_id": 108,
+      "primary_loadout_evidence": "observed_set",
+      "selected_shared_owner": {
+        "ability_id": 3946,
+        "item_id": 3000045,
+        "equipped_tier": 5
+      },
+      "other_observed_primary_loadout": {
+        "ability_id": 3969,
+        "item_id": 3000121,
+        "equipped_tier": 5
+      }
+    },
+    "selected_static_scalar": {
+      "equipped_tier": 5,
+      "armor_reduction_percent": 6.5,
+      "armor_reduction_basis_points": 650,
+      "source": "SkillAoyiStarTable equipped-tier ladder 1.3/2.6/3.9/5.2/6.5% joined through shared owner skill 3946"
+    }
+  },
+  "ownership_limits": {
+    "player_provider_identity_available_in_historical_projection": false,
+    "current_build_packet_lifecycle_observed": true,
+    "current_build_player_provider_identity_proven": true,
+    "current_build_equipped_shared_owner_and_tier_proven": true,
+    "exact_owner_selection_rule": "attribute the status to the packet-observed projectile owner, then use that exact player's packet-observed primary loadout to select between Blade Sweep and Goblin March and its equipped tier; never select from shared projectile config alone",
+    "remaining_formula_gate": "reconstruct the defense-affected ATK or MATK subtotal, event-time target defense and source penetration overlap, combat-stage placement, stacking arbitration, integer rounding, and conserved marginal",
+    "rdps_gate": "preserve the enemy status window and exact provider/tier now; enable transferred damage only after the remaining armor formula gate is proven",
+    "formula_authority": false,
+    "runtime_authority": false,
+    "provider_rdps_credit_allowed": false
+  }
+}
