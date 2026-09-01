@@ -21,6 +21,10 @@ jobs:
             services/submissions/cloudflare-gateway/package-lock.json
       - name: Verify BPSR promotion frontier
         run: node tools/bpsr-promotion-frontier-audit.mjs verify
+      - name: Verify Blade Sweep inverse-defense proof
+        run: |
+          node tools/bpsr-blade-sweep-inverse-defense-proof.mjs self-test
+          node tools/bpsr-blade-sweep-inverse-defense-proof.mjs verify --input plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/blade-sweep-inverse-defense-proof.v1.json
       - name: Build desktop UI
         working-directory: apps/desktop/ui
         run: |

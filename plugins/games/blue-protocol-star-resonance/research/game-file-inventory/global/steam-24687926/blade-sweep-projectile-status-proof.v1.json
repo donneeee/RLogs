@@ -2,7 +2,7 @@
   "schema_version": 1,
   "current_game_build": "24687926",
   "historical_packet_build": "24252055",
-  "proof_state": "current-static-chain-exact-plus-current-packet-projectile-status-owner-and-equipped-tier-proven-formula-live-gated",
+  "proof_state": "current-static-chain-exact-plus-current-packet-projectile-status-owner-proven-reviewed-provider-tier-proven-hidden-defense-inversely-constrained-formula-live-gated",
   "current_static": {
     "direct_owner_skill_id": 3914,
     "shared_owner_skill_ids": [
@@ -108,13 +108,45 @@
       "source": "SkillAoyiStarTable equipped-tier ladder 1.3/2.6/3.9/5.2/6.5% joined through shared owner skill 3946"
     }
   },
+  "current_build_corpus": {
+    "sealed_rlogs_with_effect_2110092": 7,
+    "canonical_events_scanned": 2057052,
+    "status_events_scanned": 772404,
+    "selected_status_events": 314,
+    "unique_projectile_source_entities": 43,
+    "unique_stable_player_character_ids": 4,
+    "player_actor_ownership_proven_for_every_sourced_event": true,
+    "stable_player_character_id_proven_for_every_sourced_event": true,
+    "status_events_with_player_primary_loadout_evidence": 8,
+    "player_primary_loadout_proven_for_every_player_owned_event": false,
+    "effect_2110078_status_events": 0,
+    "decision": "current-build projectile-to-player ownership is broadly proven, but exact equipped-tier selection remains restricted to providers whose primary loadout is packet-observed in the same run"
+  },
+  "inverse_defense_candidate": {
+    "artifact": "blade-sweep-inverse-defense-proof.v1.json",
+    "file_sha256": "47be5565510a45f3064fa2aefd4484702bdcc178306fcfe020d22b8130a9042f",
+    "content_sha256": "sha256:296947ccd5d5a0e9564a389709531e9b73a0106f38bc271160f4368b90aad5e9",
+    "counterfactual_report_sha256": "sha256:a8711fede629cfdb295db2377c11a17eab71772161ff90bc7804551a15c10bcd",
+    "formula_cohort_sha256": "sha256:78f7afc0fd4f84e89752bef125f91bb54b1a51afa742e638d2f363191aeeeeca",
+    "exact_controlled_divergent_pairs": 2,
+    "exact_targets": 1,
+    "hidden_target_physical_defense_candidate_minimum": 13062,
+    "hidden_target_physical_defense_candidate_maximum": 13107,
+    "all_floor_ceil_and_round_half_up_variants_remain_compatible": true,
+    "search_bound_proven_complete_for_every_larger_nonnegative_defense": true,
+    "exact_target_physical_defense_proven": false,
+    "exact_integer_rounding_proven": false,
+    "formula_authority": false,
+    "provider_rdps_credit_allowed": false
+  },
   "ownership_limits": {
     "player_provider_identity_available_in_historical_projection": false,
     "current_build_packet_lifecycle_observed": true,
     "current_build_player_provider_identity_proven": true,
-    "current_build_equipped_shared_owner_and_tier_proven": true,
+    "current_build_equipped_shared_owner_and_tier_proven_for_reviewed_provider": true,
+    "current_build_equipped_shared_owner_and_tier_proven_for_every_provider": false,
     "exact_owner_selection_rule": "attribute the status to the packet-observed projectile owner, then use that exact player's packet-observed primary loadout to select between Blade Sweep and Goblin March and its equipped tier; never select from shared projectile config alone",
-    "remaining_formula_gate": "reconstruct the defense-affected ATK or MATK subtotal, event-time target defense and source penetration overlap, combat-stage placement, stacking arbitration, integer rounding, and conserved marginal",
+    "remaining_formula_gate": "the two exact present/absent controls exhaustively constrain the hidden target defense to 13062 through 13107 across the enumerated candidate models, but do not select the exact defense or integer rounding; reconstruct event-time target defense and source penetration overlap, combat-stage placement, stacking arbitration, exact rounding, equipped tier for every provider, and the conserved marginal",
     "rdps_gate": "preserve the enemy status window and exact provider/tier now; enable transferred damage only after the remaining armor formula gate is proven",
     "formula_authority": false,
     "runtime_authority": false,
