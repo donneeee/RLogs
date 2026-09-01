@@ -35,13 +35,14 @@ requiring Wireshark or `dumpcap.exe`. A configured dumpcap path remains a
 compatibility fallback. A portable Linux libpcap adapter remains a later slice.
 
 Npcap installs `wpcap.dll` and its lower-level `Packet.dll` as a matched pair.
-If an interrupted or partial update leaves incompatible versions, Windows can
-otherwise display a blocking "Entry Point Not Found" dialog while an app probes
-capture support. rLogs checks the sibling `Packet.dll` export table before it
-loads `wpcap.dll`, suppresses that system dialog only around its trusted
-system-DLL probe, tries both trusted installation locations, and reports an
-actionable repair/update diagnostic in Settings. It never loads a capture DLL
-from the application or working directory.
+Windows can otherwise reuse an incompatible `Packet.dll` that another component
+loaded first and display a blocking "Entry Point Not Found" dialog when an app
+probes capture support. rLogs now detects any already-loaded `Packet.dll`,
+validates every Packet API required by the installed `wpcap.dll`, or explicitly
+loads and pins the sibling DLL before touching `wpcap.dll`. System loader dialogs
+are disabled for the process and failures become actionable Settings
+diagnostics. rLogs tries both trusted installation locations and never loads a
+capture DLL from the application or working directory.
 
 ## Stored formats
 

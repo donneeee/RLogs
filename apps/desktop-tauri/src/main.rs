@@ -14,8 +14,11 @@ use std::{
 #[cfg(windows)]
 use windows_sys::Win32::{
     Foundation::CloseHandle,
-    System::Threading::{
-        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+    System::{
+        Diagnostics::Debug::{
+            GetErrorMode, SEM_FAILCRITICALERRORS, SEM_NOOPENFILEERRORBOX, SetErrorMode,
+        },
+        Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW},
     },
     UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
 };
@@ -33,12 +36,23 @@ use tauri::{
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 fn main() {
+    #[cfg(windows)]
+    suppress_system_loader_dialogs();
     if let Err(error) = run() {
         let message = format!("rLogs application failed: {error}");
         eprintln!("{message}");
         #[cfg(windows)]
         show_startup_error(&message);
         std::process::exit(1);
+    }
+}
+
+#[cfg(windows)]
+fn suppress_system_loader_dialogs() {
+    // Capture DLL failures belong in rLogs diagnostics. Windows must never
+    // replace the application with an unowned Entry Point Not Found dialog.
+    unsafe {
+        SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
     }
 }
 

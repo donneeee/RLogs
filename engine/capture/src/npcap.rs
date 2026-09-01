@@ -18,7 +18,7 @@ use windows_sys::Win32::{
             GetThreadErrorMode, SEM_FAILCRITICALERRORS, SEM_NOOPENFILEERRORBOX, SetThreadErrorMode,
         },
         LibraryLoader::{
-            DONT_RESOLVE_DLL_REFERENCES, GetProcAddress, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
+            GetModuleFileNameW, GetModuleHandleW, GetProcAddress, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
             LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW,
         },
     },
@@ -33,6 +33,37 @@ const PCAP_ERROR_BUFFER_SIZE: usize = 256;
 const PCAP_SNAPSHOT_BYTES: c_int = 262_144;
 const PCAP_READ_TIMEOUT_MILLIS: c_int = 250;
 const MAXIMUM_CAPTURED_FRAME_BYTES: usize = 16 * 1024 * 1024;
+const REQUIRED_PACKET_EXPORTS: &[&[u8]] = &[
+    b"PacketSetMinToCopy\0",
+    b"PacketGetAirPcapHandle\0",
+    b"PacketCloseAdapter\0",
+    b"PacketGetReadEvent\0",
+    b"PacketGetInfo\0",
+    b"PacketRequest\0",
+    b"PacketGetNetInfoEx\0",
+    b"PacketGetAdapterNames\0",
+    b"PacketSetHwFilter\0",
+    b"PacketReceivePacket\0",
+    b"PacketInitPacket\0",
+    b"PacketSendPackets\0",
+    b"PacketSendPacket\0",
+    b"PacketOpenAdapter\0",
+    b"PacketGetMonitorMode\0",
+    b"PacketSetMonitorMode\0",
+    b"PacketIsMonitorModeSupported\0",
+    b"PacketIsLoopbackAdapter\0",
+    b"PacketGetNetType\0",
+    b"PacketSetBuff\0",
+    b"PacketGetStatsEx\0",
+    b"PacketGetStats\0",
+    b"PacketGetTimestampModes\0",
+    b"PacketSetTimestampMode\0",
+    b"PacketSetLoopbackBehavior\0",
+    b"PacketSetBpf\0",
+    b"PacketSetReadTimeout\0",
+    b"PacketSetMode\0",
+    b"PacketGetVersion\0",
+];
 
 type PcapOpenLive =
     unsafe extern "C" fn(*const c_char, c_int, c_int, c_int, *mut c_char) -> *mut c_void;
@@ -67,6 +98,7 @@ struct BpfProgram {
 
 struct NpcapApi {
     module: HMODULE,
+    _packet_dependency: PacketDependency,
     open_live: PcapOpenLive,
     next_ex: PcapNextEx,
     data_link: PcapDataLink,
@@ -104,7 +136,7 @@ impl NpcapApi {
     }
 
     fn load_from_path(path: &Path) -> Result<Self, CaptureError> {
-        verify_packet_monitor_mode_export(path)?;
+        let packet_dependency = PacketDependency::load_for(path)?;
         let wide_path = path
             .as_os_str()
             .encode_wide()
@@ -139,6 +171,7 @@ impl NpcapApi {
         let loaded = (|| {
             Ok(Self {
                 module,
+                _packet_dependency: packet_dependency,
                 // SAFETY: each required export is checked for presence and
                 // cast to the signature defined by the public libpcap ABI.
                 open_live: unsafe { required_export(module, b"pcap_open_live\0")? },
@@ -160,57 +193,110 @@ impl NpcapApi {
     }
 }
 
-fn verify_packet_monitor_mode_export(wpcap_path: &Path) -> Result<(), CaptureError> {
-    let Some(directory) = wpcap_path.parent() else {
-        return Err(adapter_error(format!(
-            "Npcap path has no parent directory: {}",
-            wpcap_path.display()
-        )));
-    };
-    let packet_path = directory.join("Packet.dll");
-    if !packet_path.is_file() {
-        return Err(adapter_error(format!(
-            "Npcap's sibling Packet.dll was not found beside {}",
-            wpcap_path.display()
-        )));
+struct PacketDependency {
+    module: HMODULE,
+    owned: bool,
+}
+
+impl PacketDependency {
+    fn load_for(wpcap_path: &Path) -> Result<Self, CaptureError> {
+        let packet_name = "Packet.dll\0".encode_utf16().collect::<Vec<_>>();
+        // Windows resolves a dependency by base name against modules already in
+        // the process before considering the requested DLL's directory. A
+        // legacy Packet.dll injected or loaded by another component therefore
+        // must be rejected before wpcap.dll is touched.
+        let existing = unsafe { GetModuleHandleW(packet_name.as_ptr()) };
+        if !existing.is_null() {
+            let path = loaded_module_path(existing)
+                .unwrap_or_else(|| PathBuf::from("an already-loaded Packet.dll"));
+            validate_packet_exports(existing, &path, wpcap_path)?;
+            return Ok(Self {
+                module: existing,
+                owned: false,
+            });
+        }
+
+        let Some(directory) = wpcap_path.parent() else {
+            return Err(adapter_error(format!(
+                "Npcap path has no parent directory: {}",
+                wpcap_path.display()
+            )));
+        };
+        let packet_path = directory.join("Packet.dll");
+        if !packet_path.is_file() {
+            return Err(adapter_error(format!(
+                "Npcap's sibling Packet.dll was not found beside {}",
+                wpcap_path.display()
+            )));
+        }
+        let wide_path = packet_path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let _error_mode = DllLoadErrorModeGuard::suppress_system_dialogs();
+        let module = unsafe {
+            LoadLibraryExW(
+                wide_path.as_ptr(),
+                ptr::null_mut(),
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
+            )
+        };
+        if module.is_null() {
+            return Err(adapter_error(format!(
+                "could not load {} before wpcap.dll: {}",
+                packet_path.display(),
+                std::io::Error::last_os_error()
+            )));
+        }
+        let dependency = Self {
+            module,
+            owned: true,
+        };
+        validate_packet_exports(module, &packet_path, wpcap_path)?;
+        Ok(dependency)
     }
-    let wide_path = packet_path
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
+}
+
+impl Drop for PacketDependency {
+    fn drop(&mut self) {
+        if self.owned {
+            unsafe { FreeLibrary(self.module) };
+        }
+    }
+}
+
+fn validate_packet_exports(
+    module: HMODULE,
+    packet_path: &Path,
+    wpcap_path: &Path,
+) -> Result<(), CaptureError> {
+    let missing = REQUIRED_PACKET_EXPORTS
+        .iter()
+        .filter_map(|name| {
+            let found = unsafe { GetProcAddress(module, name.as_ptr()) }.is_some();
+            (!found).then(|| String::from_utf8_lossy(&name[..name.len() - 1]).into_owned())
+        })
         .collect::<Vec<_>>();
-    let _error_mode = DllLoadErrorModeGuard::suppress_system_dialogs();
-    // Map Packet.dll without resolving imports or running its entry point. The
-    // export check happens before wpcap.dll is loaded, so Windows never reaches
-    // the blocking "Entry Point Not Found" path for this known mixed-version
-    // Npcap failure.
-    let module = unsafe {
-        LoadLibraryExW(
-            wide_path.as_ptr(),
-            ptr::null_mut(),
-            DONT_RESOLVE_DLL_REFERENCES
-                | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR
-                | LOAD_LIBRARY_SEARCH_SYSTEM32,
-        )
-    };
-    if module.is_null() {
-        return Err(adapter_error(format!(
-            "could not inspect {}: {}",
-            packet_path.display(),
-            std::io::Error::last_os_error()
-        )));
+    if missing.is_empty() {
+        return Ok(());
     }
-    let has_monitor_mode =
-        unsafe { GetProcAddress(module, c"PacketGetMonitorMode".as_ptr().cast()) }.is_some();
-    unsafe { FreeLibrary(module) };
-    if !has_monitor_mode {
-        return Err(adapter_error(format!(
-            "{} does not export PacketGetMonitorMode, so it is incompatible with {}; repair or update Npcap",
-            packet_path.display(),
-            wpcap_path.display()
-        )));
+    Err(adapter_error(format!(
+        "{} is incompatible with {} because it lacks required exports: {}; close software that preloads a legacy Packet.dll or restart Windows, then refresh capture devices",
+        packet_path.display(),
+        wpcap_path.display(),
+        missing.join(", ")
+    )))
+}
+
+fn loaded_module_path(module: HMODULE) -> Option<PathBuf> {
+    let mut buffer = vec![0u16; 32_768];
+    let length = unsafe { GetModuleFileNameW(module, buffer.as_mut_ptr(), buffer.len() as u32) };
+    if length == 0 || length as usize >= buffer.len() {
+        return None;
     }
-    Ok(())
+    buffer.truncate(length as usize);
+    Some(PathBuf::from(String::from_utf16_lossy(&buffer)))
 }
 
 struct DllLoadErrorModeGuard {
@@ -657,11 +743,76 @@ mod tests {
             Err(error) => error.to_string(),
         };
         assert!(
-            error.contains("does not export PacketGetMonitorMode"),
+            error.contains("lacks required exports") && error.contains("PacketGetMonitorMode"),
             "{error}"
         );
 
         std::fs::remove_dir_all(fixture).expect("remove Npcap fixture");
+    }
+
+    #[test]
+    fn preloaded_legacy_packet_dll_is_rejected_before_wpcap_loads() {
+        const CHILD_ENV: &str = "RLOGS_PRELOADED_PACKET_TEST_CHILD";
+        if std::env::var_os(CHILD_ENV).is_some() {
+            run_preloaded_legacy_packet_child();
+            return;
+        }
+        let status = std::process::Command::new(std::env::current_exe().expect("current test exe"))
+            .args([
+                "--exact",
+                "npcap::tests::preloaded_legacy_packet_dll_is_rejected_before_wpcap_loads",
+                "--nocapture",
+            ])
+            .env(CHILD_ENV, "1")
+            .status()
+            .expect("run isolated preloaded Packet.dll test");
+        assert!(status.success(), "isolated Packet.dll test failed");
+    }
+
+    fn run_preloaded_legacy_packet_child() {
+        let Some(source_wpcap) = installed_wpcap_paths().into_iter().next() else {
+            return;
+        };
+        let Some(system_root) = std::env::var_os("SystemRoot").map(PathBuf::from) else {
+            return;
+        };
+        let unrelated_dll = system_root.join("System32/version.dll");
+        if !unrelated_dll.is_file() {
+            return;
+        }
+        let fixture = std::env::temp_dir().join(format!(
+            "rlogs-preloaded-packet-fixture-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&fixture).expect("create preloaded Packet fixture");
+        let packet_path = fixture.join("Packet.dll");
+        std::fs::copy(unrelated_dll, &packet_path).expect("copy legacy Packet fixture");
+        let wide_path = packet_path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let module = unsafe {
+            LoadLibraryExW(
+                wide_path.as_ptr(),
+                ptr::null_mut(),
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
+            )
+        };
+        assert!(!module.is_null(), "preload incompatible Packet fixture");
+
+        let error = match NpcapApi::load_from_path(&source_wpcap) {
+            Ok(_) => panic!("wpcap loaded against an already-loaded incompatible Packet.dll"),
+            Err(error) => error.to_string(),
+        };
+        assert!(
+            error.contains(&packet_path.display().to_string())
+                && error.contains("PacketGetMonitorMode"),
+            "{error}"
+        );
+
+        unsafe { FreeLibrary(module) };
+        std::fs::remove_dir_all(fixture).expect("remove preloaded Packet fixture");
     }
 
     #[test]

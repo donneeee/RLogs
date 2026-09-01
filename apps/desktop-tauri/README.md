@@ -24,8 +24,9 @@ the installed resources under the user's local application-data tree.
 On Windows the desktop opens installed Npcap directly and discovers the
 process-matched `\\Device\\NPF_{GUID}` interface on first run. Wireshark and
 `dumpcap.exe` are not required; a saved dumpcap path is only a compatibility
-fallback. The installer does not redistribute the Npcap driver itself. A
-mismatched installed `wpcap.dll`/`Packet.dll` pair cannot block application
-startup: rLogs preflights the required `Packet.dll` export, reports the Npcap
-repair requirement in Settings, and keeps the rest of the application
-available. Npcap's free license does not grant redistribution rights.
+fallback. The installer does not redistribute the Npcap driver itself. An
+incompatible `Packet.dll` loaded by another component cannot block application
+startup: rLogs validates the complete Packet API, pins the trusted sibling DLL
+before loading `wpcap.dll`, reports any conflict in Settings, and keeps the rest
+of the application available. Npcap's free license does not grant
+redistribution rights.
