@@ -10,6 +10,7 @@
     "hidden_defense_search_is_exhaustive_under_each_enumerated_candidate_model": true,
     "every_exact_client_raw_physical_defense_curve_candidate_must_be_enumerated": true,
     "candidate_compatibility_is_not_causal_formula_proof": true,
+    "observed_lucky_component_does_not_prove_upstream_pre_defense_base_formula": true,
     "structurally_unobservable_remote_player_packets_are_not_required": true,
     "formula_authority": false,
     "runtime_authority": false,
@@ -44,6 +45,12 @@
       "absent_damage": 78266,
       "present_damage": 80211,
       "damage_difference": 1945,
+      "damage_component": "lucky_value",
+      "target_attribute_ids": [
+        11310
+      ],
+      "target_config_identity_observed": false,
+      "target_physical_defense_observed": false,
       "present_to_absent_ratio_basis_points_floor": 10248,
       "absent_sequences": [
         83471
@@ -73,6 +80,12 @@
       "absent_damage": 96580,
       "present_damage": 98980,
       "damage_difference": 2400,
+      "damage_component": "lucky_value",
+      "target_attribute_ids": [
+        11310
+      ],
+      "target_config_identity_observed": false,
+      "target_physical_defense_observed": false,
       "present_to_absent_ratio_basis_points_floor": 10248,
       "absent_sequences": [
         12782
@@ -402,6 +415,12 @@
     "minimum_hidden_defense_candidate": 3850,
     "maximum_hidden_defense_candidate": 13107,
     "curve_constant_selected": false,
+    "controlled_damage_components": [
+      "lucky_value"
+    ],
+    "every_exact_pair_target_config_identity_unobserved": true,
+    "every_exact_pair_target_physical_defense_unobserved": true,
+    "upstream_pre_defense_base_formula_proven": false,
     "exact_damage_projection_proven": false,
     "exact_operation_order_proven": false,
     "exact_integer_rounding_proven": false,
@@ -415,9 +434,10 @@
     "physical-defense attribute 11350 was not observed on this target",
     "the exact client 6500 simple and 22000 current-season transformed curves both retain compatible hidden-defense candidates",
     "floor, ceil, and round-half-up effective-defense variants remain compatible within both curve models",
+    "both controls are ability 2031104 lucky_value packets, but the nonstandard AttackLucky upstream pre-defense base formula is unproven",
     "the exact controls cover one target and one lucky-damage ability family",
     "combat-stage binding, source penetration overlap, stacking arbitration, and event-level conservation remain unproven",
     "remote providers without an observed primary loadout still lack exact equipped-tier evidence"
   ],
-  "content_sha256": "sha256:14572554bef088bac116f4f23206d0ace764ab495a26e6785776883e6f86a982"
+  "content_sha256": "sha256:14e9259ce32237a120af3515c556e5803112744f73799f81a4d6e69fffe2834d"
 }

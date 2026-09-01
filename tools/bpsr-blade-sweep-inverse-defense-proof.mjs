@@ -78,6 +78,7 @@ function analyze(parsed) {
       hidden_defense_search_is_exhaustive_under_each_enumerated_candidate_model: true,
       every_exact_client_raw_physical_defense_curve_candidate_must_be_enumerated: true,
       candidate_compatibility_is_not_causal_formula_proof: true,
+      observed_lucky_component_does_not_prove_upstream_pre_defense_base_formula: true,
       structurally_unobservable_remote_player_packets_are_not_required: true,
       formula_authority: false,
       runtime_authority: false,
@@ -112,6 +113,14 @@ function analyze(parsed) {
       minimum_hidden_defense_candidate: minimumModelCandidate(candidateModels),
       maximum_hidden_defense_candidate: maximumModelCandidate(candidateModels),
       curve_constant_selected: false,
+      controlled_damage_components: [...new Set(pairs.map((pair) => pair.damage_component))],
+      every_exact_pair_target_config_identity_unobserved: pairs.every(
+        (pair) => !pair.target_config_identity_observed,
+      ),
+      every_exact_pair_target_physical_defense_unobserved: pairs.every(
+        (pair) => !pair.target_physical_defense_observed,
+      ),
+      upstream_pre_defense_base_formula_proven: false,
       exact_damage_projection_proven: false,
       exact_operation_order_proven: false,
       exact_integer_rounding_proven: false,
@@ -125,6 +134,7 @@ function analyze(parsed) {
       "physical-defense attribute 11350 was not observed on this target",
       "the exact client 6500 simple and 22000 current-season transformed curves both retain compatible hidden-defense candidates",
       "floor, ceil, and round-half-up effective-defense variants remain compatible within both curve models",
+      "both controls are ability 2031104 lucky_value packets, but the nonstandard AttackLucky upstream pre-defense base formula is unproven",
       "the exact controls cover one target and one lucky-damage ability family",
       "combat-stage binding, source penetration overlap, stacking arbitration, and event-level conservation remain unproven",
       "remote providers without an observed primary loadout still lack exact equipped-tier evidence",
@@ -177,6 +187,8 @@ function controlledPair(example, index) {
   }
   const absentDamage = positiveInteger(example?.absent_outcome?.amount, "absent amount");
   const presentDamage = positiveInteger(example?.present_outcome?.amount, "present amount");
+  validateLuckyOutcome(example?.absent_outcome, absentDamage, `absent outcome ${index}`);
+  validateLuckyOutcome(example?.present_outcome, presentDamage, `present outcome ${index}`);
   if (presentDamage <= absentDamage) {
     throw new Error(`divergent example ${index} does not increase damage`);
   }
@@ -188,6 +200,8 @@ function controlledPair(example, index) {
     absent.target_attribute_state_id,
     "target attribute state ID",
   );
+  const targetAttributeIds = present.target_attributes.map((attribute) =>
+    positiveInteger(attribute?.attribute_id, "target attribute ID"));
   const targetKey = [
     rlog,
     sessionId,
@@ -211,6 +225,10 @@ function controlledPair(example, index) {
     status_origin_source_config_id: nullableNumber(example.status.origin_source_config_id),
     absent_damage: absentDamage,
     present_damage: presentDamage,
+    damage_component: "lucky_value",
+    target_attribute_ids: targetAttributeIds,
+    target_config_identity_observed: targetAttributeIds.includes(10),
+    target_physical_defense_observed: targetAttributeIds.includes(11_350),
     absent_sequences: integerArray(example.absent_sequences, "absent sequences"),
     present_sequences: integerArray(example.present_sequences, "present sequences"),
     search_cutoff_exclusive_by_curve: Object.fromEntries(
@@ -401,6 +419,10 @@ function publicPair(pair) {
     absent_damage: pair.absent_damage,
     present_damage: pair.present_damage,
     damage_difference: pair.present_damage - pair.absent_damage,
+    damage_component: pair.damage_component,
+    target_attribute_ids: pair.target_attribute_ids,
+    target_config_identity_observed: pair.target_config_identity_observed,
+    target_physical_defense_observed: pair.target_physical_defense_observed,
     present_to_absent_ratio_basis_points_floor:
       Math.floor(pair.present_damage * 10_000 / pair.absent_damage),
     absent_sequences: pair.absent_sequences,
@@ -408,6 +430,13 @@ function publicPair(pair) {
     search_cutoff_exclusive_by_curve: pair.search_cutoff_exclusive_by_curve,
     exact_recorded_input_pair: true,
   };
+}
+
+function validateLuckyOutcome(outcome, amount, name) {
+  if (!outcome || outcome.normal_value != null ||
+      positiveInteger(outcome.lucky_value, `${name} lucky value`) !== amount) {
+    throw new Error(`${name} is not a canonical amount-equals-lucky_value packet component`);
+  }
 }
 
 function validateSource(source) {
@@ -439,10 +468,17 @@ function verifyReport(report) {
       report?.policy?.hidden_defense_search_is_exhaustive_under_each_enumerated_candidate_model !== true ||
       report?.policy
         ?.every_exact_client_raw_physical_defense_curve_candidate_must_be_enumerated !== true ||
+      report?.policy
+        ?.observed_lucky_component_does_not_prove_upstream_pre_defense_base_formula !== true ||
       report?.policy?.formula_authority !== false ||
       report?.summary?.exact_controlled_divergent_pairs < 1 ||
       report?.summary?.models_with_at_least_one_compatible_target < 1 ||
       report?.summary?.curve_constant_selected !== false ||
+      stableJson(report?.summary?.controlled_damage_components) !==
+        stableJson(["lucky_value"]) ||
+      report?.summary?.every_exact_pair_target_config_identity_unobserved !== true ||
+      report?.summary?.every_exact_pair_target_physical_defense_unobserved !== true ||
+      report?.summary?.upstream_pre_defense_base_formula_proven !== false ||
       report?.summary?.exact_damage_projection_proven !== false ||
       report?.summary?.exact_operation_order_proven !== false ||
       report?.summary?.exact_integer_rounding_proven !== false ||
@@ -498,6 +534,10 @@ function verifyReport(report) {
           Math.floor(presentDamage * 10_000 / absentDamage) ||
         stableJson(pair?.search_cutoff_exclusive_by_curve) !==
           stableJson(searchCutoffExclusiveByCurve) ||
+        pair?.damage_component !== "lucky_value" ||
+        stableJson(pair?.target_attribute_ids) !== stableJson([11_310]) ||
+        pair?.target_config_identity_observed !== false ||
+        pair?.target_physical_defense_observed !== false ||
         pair?.exact_recorded_input_pair !== true) {
       throw new Error(`inverse-defense exact pair ${index} failed recomputation`);
     }
