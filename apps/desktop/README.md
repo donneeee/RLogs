@@ -62,7 +62,9 @@ bundled, cataloged, or routable in the public installer. It provides:
 - conserved incremental rDPS in the live overlay, followed automatically by a
   serialized two-pass replay of every completed sealed run. History keeps the
   provisional subtotal visible and labels it as queued, then atomically swaps
-  in the exact projection after remote-factor learning and conservation checks;
+  in the exact projection after remote-factor learning and conservation checks.
+  Passive process-owned monitoring does not block that saved-run replay; only
+  an active run seal or explicit offline processing pauses it;
 - cooperative restart, which drains the current decoder and marks an open run
   incomplete without turning a completed run into a leaderboard candidate.
 
@@ -118,6 +120,14 @@ device token, and atomically stores a current review package under
 `runtime-data/profile-sync/packages/<game>/<deployment>/<region>/<server>/<UID>/`.
 Reference replay, offline processing, imported `.rlog` files, copied history,
 and packages bound to another device cannot claim a UID.
+Automatic profile publication waits for a 15-second quiet interval so the
+partial observations commonly emitted by one scene refresh become one update.
+It compares that current package with the last successfully published full
+baseline and sends only changed top-level profile sections. Character identity,
+routing, source digest, observation ledger, and freshly device-bound live proof
+remain on every outbound patch. An identical projection spends no network
+request. Completed combat artifacts remain independently completion-gated and
+are eligible for immediate upload instead of sharing the profile quiet period.
 The UI shows bounded summaries and loads exact JSON only when requested.
 Remote transport remains opt-in. The public app connects only to the fixed
 rLogs service and never displays its infrastructure hostname. The uploader

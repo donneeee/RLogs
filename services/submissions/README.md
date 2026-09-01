@@ -230,6 +230,16 @@ timeline; they are never sent to the ordinary healing or status reducers. One
 healer proves unique trigger ownership, multiple simultaneous healers remain
 ambiguous, and a missing pair produces no inferred owner.
 
+Stat Resonance is a second projector-only state exception. A secondary
+artifact may contribute the proven local recipient's exact status lifecycle
+only when the same wire packet also carries that recipient's authoritative
+`EntityAttributes` attack family and identifies one stable external provider.
+Conflicting or unresolved same-target status rows reject the witness. Joint
+replay learns the exact single attack-family marginal from those paired
+transitions and applies it only while the canonical spine's own status
+lifecycle is active. The imported status and attributes never enter ordinary
+combat reducers, so no damage, status, or state row is counted twice.
+
 The verified personal profile itself is also a state witness. A pre-run
 profile is inserted immediately after the canonical run entry; an in-run
 profile is inserted only before a canonical event with a strictly later server
@@ -260,7 +270,7 @@ ordinary per-actor damage map is unchanged, total contribution given equals
 total contribution received, and total party rDPS damage equals raw party
 damage. Source parses remain immutable beside this derived result.
 
-Reconciliation schema 6 also carries an audit-only Swift Vortex candidate
+Reconciliation schema 7 also carries an audit-only Swift Vortex candidate
 report when effect `2110060` appears. A magnitude receipt requires the exact
 current deployment/build/protocol identity, a complete Haste/normal-action-
 speed/guide-action-speed baseline, one exact 10-second one-stack status

@@ -1713,7 +1713,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     && examples.len() > stat_resonance_example_count
                     && let Some(example) = examples.last_mut()
                 {
-                    example.push_str(" ");
+                    example.push(' ');
                     example.push_str(&state_projector.stat_resonance_audit_detail(damage));
                 }
                 record_audit_gate(

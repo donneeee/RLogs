@@ -42,7 +42,8 @@ use layout_settings::{LayoutSettings, LayoutSettingsStore};
 use native_plugin_processes::{NativePluginLaunch, NativePluginProcesses};
 use profile_packages::{
     LocalProfilePackageStore, ProfilePackageInspection, ProfilePackageStoreView,
-    ProfilePackageView, ProfilePublicationLedger, ProfilePublicationRecord,
+    ProfilePackageView, ProfilePublicationBaselineStore, ProfilePublicationLedger,
+    ProfilePublicationRecord, profile_publication_delta,
 };
 use rlogs_capture::{CaptureSource, OfflineCapture};
 #[cfg(windows)]
@@ -135,6 +136,10 @@ const MAX_OVERLAY_BACKGROUND_BYTES: usize = 8 * 1024 * 1024;
 const PHOTO_WALL_PUBLICATION_QUEUE_CAPACITY: usize = 64;
 const PHOTO_WALL_PENDING_ASSET_CAPACITY: usize = 256;
 const PHOTO_WALL_RETRY_INTERVAL: Duration = Duration::from_secs(10);
+/// Coalesce the burst of partial profile observations emitted after a scene
+/// refresh into one current package before the automatic publisher spends a
+/// submissions-service request. Manual publication remains immediate.
+const PROFILE_PUBLICATION_SETTLE_INTERVAL: Duration = Duration::from_secs(15);
 const PROVISIONAL_RESEARCH_SERVICE_NAMES: [&str; 3] = ["World", "WorldNtf", "GrpcTeamNtf"];
 
 fn submission_service_url(developer_tools_enabled: bool, developer_override: Option<&str>) -> &str {
@@ -542,6 +547,17 @@ impl Default for RuntimeSnapshot {
             last_result: None,
         }
     }
+}
+
+fn history_rdps_refresh_must_wait(snapshot: &RuntimeSnapshot) -> bool {
+    snapshot.phase == RuntimePhase::Processing
+        && (!snapshot.live_capture_can_stop || snapshot.saving_run)
+}
+
+fn automatic_profile_package_ready(created_unix_millis: u64, now_unix_millis: u64) -> bool {
+    let settle_millis =
+        u64::try_from(PROFILE_PUBLICATION_SETTLE_INTERVAL.as_millis()).unwrap_or(u64::MAX);
+    created_unix_millis <= now_unix_millis.saturating_sub(settle_millis)
 }
 
 const LIVE_COMBAT_FEED_SCHEMA_VERSION: u16 = 1;
@@ -3360,6 +3376,7 @@ struct RuntimeController {
     character_identities: Arc<Mutex<CharacterIdentityStore>>,
     profile_packages: Arc<Mutex<LocalProfilePackageStore>>,
     profile_publications: Arc<Mutex<ProfilePublicationLedger>>,
+    profile_publication_baselines: Arc<Mutex<ProfilePublicationBaselineStore>>,
     profile_publication: Arc<Mutex<()>>,
     photo_wall_publication_status: Arc<Mutex<PhotoWallPublicationStatus>>,
     submission_policy: Mutex<SubmissionPolicyStore>,
@@ -3419,6 +3436,9 @@ impl RuntimeController {
         let mut profile_publications = ProfilePublicationLedger::open(
             install_root.join("runtime-data/profile-sync/publications.v1.json"),
         )?;
+        let profile_publication_baselines = ProfilePublicationBaselineStore::open(
+            install_root.join("runtime-data/profile-sync/packages"),
+        )?;
         profile_publications.reconcile(&active_profile_package_ids)?;
         let submission_policy = SubmissionPolicyStore::open(
             install_root.join("runtime-data/settings/submission-policy.v1.json"),
@@ -3470,6 +3490,7 @@ impl RuntimeController {
             character_identities: Arc::new(Mutex::new(character_identities)),
             profile_packages: Arc::new(Mutex::new(profile_packages)),
             profile_publications: Arc::new(Mutex::new(profile_publications)),
+            profile_publication_baselines: Arc::new(Mutex::new(profile_publication_baselines)),
             profile_publication: Arc::new(Mutex::new(())),
             photo_wall_publication_status: Arc::new(Mutex::new(
                 PhotoWallPublicationStatus::default(),
@@ -3595,7 +3616,7 @@ impl RuntimeController {
                 while let Some(session_id) =
                     controller.history_rdps_backfill.next(shutdown.as_deref())
                 {
-                    if controller.snapshot().phase == RuntimePhase::Processing {
+                    if history_rdps_refresh_must_wait(&controller.snapshot()) {
                         if let Err(error) = controller.history_rdps_backfill.update_progress(
                             HistoryRdpsRefreshProgress {
                                 session_id: session_id.clone(),
@@ -3751,11 +3772,11 @@ impl RuntimeController {
             &raw_log,
             || {
                 shutdown.is_some_and(|shutdown| shutdown.load(Ordering::Acquire))
-                    || state
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .phase
-                        == RuntimePhase::Processing
+                    || history_rdps_refresh_must_wait(
+                        &state
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner),
+                    )
             },
             |processed_events, processed_bytes, total_bytes| {
                 final_processed_events = processed_events;
@@ -3797,7 +3818,7 @@ impl RuntimeController {
             return Ok(HistoryRdpsRefresh::Deferred);
         };
         if shutdown.is_some_and(|shutdown| shutdown.load(Ordering::Acquire))
-            || self.snapshot().phase == RuntimePhase::Processing
+            || history_rdps_refresh_must_wait(&self.snapshot())
         {
             return Ok(HistoryRdpsRefresh::Deferred);
         }
@@ -4312,7 +4333,11 @@ impl RuntimeController {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .upsert(package.clone())?;
         let receipt = transport.publish_profile(&package)?;
-        self.record_profile_publication(&receipt)?;
+        self.profile_publication_baselines
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .record(&package)?;
+        self.record_profile_publication(&package.package_id, &receipt)?;
         Ok(receipt)
     }
 
@@ -4332,6 +4357,7 @@ impl RuntimeController {
             None => return Ok(false),
         };
         let packages = self.profile_packages();
+        let now_unix_millis = unix_millis();
         let active_package_ids = packages
             .entries
             .iter()
@@ -4347,7 +4373,9 @@ impl RuntimeController {
                 .entries
                 .iter()
                 .find(|entry| {
-                    !publications.covers_observation(&entry.package_id, entry.created_unix_millis)
+                    automatic_profile_package_ready(entry.created_unix_millis, now_unix_millis)
+                        && !publications
+                            .covers_observation(&entry.package_id, entry.created_unix_millis)
                 })
                 .map(|entry| entry.package_id.clone())
         };
@@ -4365,19 +4393,67 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .upsert(package.clone())?;
-        let receipt = transport.publish_profile(&package)?;
-        self.record_profile_publication(&receipt)?;
+        let baseline = self
+            .profile_publication_baselines
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .load_for(&package)?;
+        let Some(mut outbound) = profile_publication_delta(&package, baseline.as_ref())? else {
+            let previous = self
+                .profile_publications
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .latest_for_character(&package.request.payload.routing["character-id"])
+                .cloned()
+                .ok_or_else(|| {
+                    "profile delta baseline exists without a prior publication receipt".to_owned()
+                })?;
+            self.profile_publication_baselines
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .record(&package)?;
+            let active_package_ids = self
+                .profile_packages()
+                .entries
+                .into_iter()
+                .map(|entry| entry.package_id)
+                .collect::<BTreeSet<_>>();
+            self.profile_publications
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .record(
+                    ProfilePublicationRecord {
+                        package_id: package.package_id.clone(),
+                        profile_id: previous.profile_id,
+                        character_id: previous.character_id,
+                        published_unix_millis: unix_millis(),
+                    },
+                    &active_package_ids,
+                )?;
+            return Ok(true);
+        };
+        transport.bind_live_profile_packages(std::slice::from_mut(&mut outbound))?;
+        let receipt = transport.publish_profile(&outbound)?;
+        self.profile_publication_baselines
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .record(&package)?;
+        self.record_profile_publication(&package.package_id, &receipt)?;
         Ok(true)
     }
 
-    fn record_profile_publication(&self, receipt: &ProfilePublishResult) -> Result<(), String> {
+    fn record_profile_publication(
+        &self,
+        local_package_id: &str,
+        receipt: &ProfilePublishResult,
+    ) -> Result<(), String> {
         let active_package_ids = self
             .profile_packages()
             .entries
             .into_iter()
             .map(|entry| entry.package_id)
             .collect::<BTreeSet<_>>();
-        if !active_package_ids.contains(&receipt.package_id) {
+        if !active_package_ids.contains(local_package_id) {
             return Ok(());
         }
         self.profile_publications
@@ -4385,7 +4461,7 @@ impl RuntimeController {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .record(
                 ProfilePublicationRecord {
-                    package_id: receipt.package_id.clone(),
+                    package_id: local_package_id.to_owned(),
                     profile_id: receipt.profile_id.clone(),
                     character_id: receipt.character_id.clone(),
                     published_unix_millis: unix_millis(),
@@ -11861,6 +11937,41 @@ mod tests {
         assert_eq!(update.last_hostile_micros, Some(42_000));
         assert_eq!(update.damage_event_count, 1);
         assert!(feed.current().snapshot.is_none());
+    }
+
+    #[test]
+    fn passive_monitoring_does_not_block_saved_rdps_refresh() {
+        let mut snapshot = RuntimeSnapshot {
+            phase: RuntimePhase::Processing,
+            live_capture_can_stop: true,
+            saving_run: false,
+            ..RuntimeSnapshot::default()
+        };
+        assert!(!history_rdps_refresh_must_wait(&snapshot));
+
+        snapshot.saving_run = true;
+        assert!(history_rdps_refresh_must_wait(&snapshot));
+
+        snapshot.live_capture_can_stop = false;
+        snapshot.saving_run = false;
+        assert!(history_rdps_refresh_must_wait(&snapshot));
+
+        snapshot.phase = RuntimePhase::Complete;
+        assert!(!history_rdps_refresh_must_wait(&snapshot));
+    }
+
+    #[test]
+    fn automatic_profile_publication_coalesces_scene_refresh_bursts() {
+        let settle_millis = u64::try_from(PROFILE_PUBLICATION_SETTLE_INTERVAL.as_millis()).unwrap();
+        let created = 1_000_000;
+        assert!(!automatic_profile_package_ready(
+            created,
+            created.saturating_add(settle_millis.saturating_sub(1))
+        ));
+        assert!(automatic_profile_package_ready(
+            created,
+            created.saturating_add(settle_millis)
+        ));
     }
 
     #[test]

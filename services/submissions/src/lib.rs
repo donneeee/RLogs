@@ -28,10 +28,10 @@ use rlogs_events::{
 };
 use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
-    BpsrStateDamageContributionProjector, SwiftVortexCandidateAuditAnalyzer,
-    SwiftVortexCandidateAuditReport, bundled_run_reducer_config,
-    confirmed_damage_contribution_rules, localized_class_name, localized_scene_name,
-    localized_specialization_name,
+    BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
+    SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport, bundled_run_reducer_config,
+    confirmed_damage_contribution_rules, is_stat_resonance_status, localized_class_name,
+    localized_scene_name, localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use rlogs_plugin_combat_meter::{CombatHistorySnapshot, CombatTimelinePlugin, HistoryActorSummary};
@@ -62,9 +62,9 @@ use profiles::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 6;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 7;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 5;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 6;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 7;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -776,11 +776,16 @@ impl SubmissionService {
         let mut remote_factor_learner =
             BpsrRemoteFactorLearner::new().map_err(ServiceError::Replay)?;
         let mut life_wave_trigger_learner = BpsrLifeWaveTriggerLearner::default();
+        let mut stat_resonance_learner =
+            BpsrStatResonanceTransitionLearner::new().map_err(ServiceError::Replay)?;
         replay_canonical_with_cross_vantage_state(
             &canonical_path,
             reconciliation.canonical_spine.run_index,
             &imported_events,
             |envelope, imported| {
+                if imported {
+                    stat_resonance_learner.observe(envelope);
+                }
                 if imported && life_wave_trigger_learner.observe(envelope) {
                     return Ok(());
                 }
@@ -790,13 +795,15 @@ impl SubmissionService {
         )?;
         let remote_factors = remote_factor_learner.finish();
         let life_wave_triggers = life_wave_trigger_learner.finish();
+        let stat_resonance_transitions = stat_resonance_learner.finish();
 
         let mut meter = CombatTimelinePlugin::with_damage_contribution_projection(
             confirmed_damage_contribution_rules().map_err(ServiceError::Replay)?,
             Some(Box::new(
-                BpsrStateDamageContributionProjector::new_with_remote_factor_and_life_wave_timelines(
+                BpsrStateDamageContributionProjector::new_with_cross_vantage_timelines(
                     remote_factors,
                     life_wave_triggers,
+                    stat_resonance_transitions,
                 )
                 .map_err(ServiceError::Replay)?,
             )),
@@ -1932,6 +1939,7 @@ pub enum LocalStateWitnessKind {
     TemporaryAttributes,
     LifeWaveTriggerStatus,
     LifeWaveTriggerHealing,
+    StatResonanceStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2339,6 +2347,7 @@ fn build_public_report(
     let mut local_profile_observations = Vec::new();
     let mut character_id_by_entity_uuid = BTreeMap::<i64, Option<String>>::new();
     let mut raw_local_state_observations = Vec::new();
+    let mut stat_resonance_confounder_keys = BTreeSet::new();
     let replay = reader.replay(|event| {
         if event.sensitivity == EventSensitivity::PersonalGameplay
             && let CanonicalEvent::CharacterProfileObserved { profile } = &event.event
@@ -2353,6 +2362,27 @@ fn build_public_report(
             });
         }
         if let CanonicalEvent::Timeline(timeline) = &event.event {
+            match &timeline.kind {
+                TimelineEventKind::Status(status) if !is_stat_resonance_status(status) => {
+                    if let Some(wire) = event_wire_identity(event) {
+                        stat_resonance_confounder_keys.insert((
+                            wire,
+                            status.target.actor_id.0,
+                            status.target.entity_uuid.0,
+                        ));
+                    }
+                }
+                TimelineEventKind::UnresolvedStatus(status) => {
+                    if let Some(wire) = event_wire_identity(event) {
+                        stat_resonance_confounder_keys.insert((
+                            wire,
+                            status.target.actor_id.0,
+                            status.target.entity_uuid.0,
+                        ));
+                    }
+                }
+                _ => {}
+            }
             match &timeline.kind {
                 TimelineEventKind::Actor(actor) => {
                     if let Some(character_id) = actor.character_id.as_ref() {
@@ -2396,6 +2426,22 @@ fn build_public_report(
                         payload_sha256: local_state_payload_digest(&payload),
                         wire: event_wire_identity(event),
                         related_entity_uuid: None,
+                    });
+                }
+                TimelineEventKind::Status(status) if is_stat_resonance_status(status) => {
+                    let payload =
+                        serde_json::to_vec(&timeline.kind).map_err(|error| error.to_string())?;
+                    raw_local_state_observations.push(RawLocalStateObservation {
+                        actor_id: status.target.actor_id.0,
+                        entity_uuid: status.target.entity_uuid.0,
+                        kind: LocalStateWitnessKind::StatResonanceStatus,
+                        update_kind: EntityAttributeUpdateKind::Unknown,
+                        event_sequence: event.sequence,
+                        observed_micros: event.time.observed_micros,
+                        game_time_millis: event.time.game_time_millis,
+                        payload_sha256: local_state_payload_digest(&payload),
+                        wire: event_wire_identity(event),
+                        related_entity_uuid: status.source.map(|source| source.entity_uuid.0),
                     });
                 }
                 TimelineEventKind::Status(status)
@@ -2483,6 +2529,21 @@ fn build_public_report(
         .intersection(&life_wave_healing_keys)
         .copied()
         .collect::<BTreeSet<_>>();
+    let stat_resonance_status_keys = raw_local_state_observations
+        .iter()
+        .filter(|raw| raw.kind == LocalStateWitnessKind::StatResonanceStatus)
+        .filter_map(|raw| raw.wire.map(|wire| (wire, raw.actor_id, raw.entity_uuid)))
+        .collect::<BTreeSet<_>>();
+    let entity_attribute_keys = raw_local_state_observations
+        .iter()
+        .filter(|raw| raw.kind == LocalStateWitnessKind::EntityAttributes)
+        .filter_map(|raw| raw.wire.map(|wire| (wire, raw.actor_id, raw.entity_uuid)))
+        .collect::<BTreeSet<_>>();
+    let exact_stat_resonance_keys = stat_resonance_status_keys
+        .intersection(&entity_attribute_keys)
+        .filter(|key| !stat_resonance_confounder_keys.contains(key))
+        .copied()
+        .collect::<BTreeSet<_>>();
     let local_state_observations = raw_local_state_observations
         .into_iter()
         .filter_map(|raw| {
@@ -2493,6 +2554,13 @@ fn build_public_report(
             ) && !raw.wire.is_some_and(|wire| {
                 life_wave_pair_keys.contains(&(wire, raw.actor_id, raw.entity_uuid))
             }) {
+                return None;
+            }
+            if raw.kind == LocalStateWitnessKind::StatResonanceStatus
+                && !raw.wire.is_some_and(|wire| {
+                    exact_stat_resonance_keys.contains(&(wire, raw.actor_id, raw.entity_uuid))
+                })
+            {
                 return None;
             }
             let character_id = character_id_by_entity_uuid
@@ -2739,7 +2807,7 @@ fn verified_state_input_digest(
     events: &[VerifiedCrossVantageStateEvent],
 ) -> Result<String, serde_json::Error> {
     let mut hasher = Sha256::new();
-    hasher.update(b"rlogs-cross-vantage-verified-state-profile-and-trigger-v3\0");
+    hasher.update(b"rlogs-cross-vantage-verified-state-profile-and-trigger-v4\0");
     hasher.update(reconciliation.canonical_spine.artifact_sha256.as_bytes());
     hasher.update(reconciliation.canonical_spine.run_index.to_le_bytes());
     for event in events {
@@ -2865,7 +2933,28 @@ fn remap_cross_vantage_state_entities(
         match &mut timeline.kind {
             TimelineEventKind::EntityAttributes(attributes) => attributes.actor = canonical,
             TimelineEventKind::TemporaryAttributes(attributes) => attributes.actor = canonical,
-            TimelineEventKind::Status(status) => status.target = canonical,
+            TimelineEventKind::Status(status) => {
+                status.target = canonical;
+                if is_stat_resonance_status(status) {
+                    let related_character_id =
+                        event.related_character_id.as_deref().ok_or_else(|| {
+                            ServiceError::CrossVantageReplay(format!(
+                                "verified Stat Resonance status event {} has no stable provider character",
+                                event.envelope.sequence
+                            ))
+                        })?;
+                    status.source = Some(
+                        canonical_entities
+                            .get(related_character_id)
+                            .copied()
+                            .ok_or_else(|| {
+                                ServiceError::CrossVantageReplay(format!(
+                                    "canonical spine has no runtime entity for Stat Resonance provider character {related_character_id}"
+                                ))
+                            })?,
+                    );
+                }
+            }
             TimelineEventKind::Healing(healing) => {
                 healing.target = canonical;
                 let related_character_id =
@@ -3119,7 +3208,11 @@ fn verify_state_witness_event(
             status.target.actor_id.0,
             status.target.entity_uuid.0,
             EntityAttributeUpdateKind::Unknown,
-            LocalStateWitnessKind::LifeWaveTriggerStatus,
+            if is_stat_resonance_status(status) {
+                LocalStateWitnessKind::StatResonanceStatus
+            } else {
+                LocalStateWitnessKind::LifeWaveTriggerStatus
+            },
         ),
         TimelineEventKind::Healing(healing) => (
             healing.target.actor_id.0,
@@ -3158,10 +3251,18 @@ fn verify_state_witness_event(
                 && healing.effective_amount != Some(0)
                 && witness.related_character_id.is_some()
         }
+        (TimelineEventKind::Status(status), LocalStateWitnessKind::StatResonanceStatus) => {
+            is_stat_resonance_status(status)
+                && status.source.is_some()
+                && status.instance_id.is_some()
+                && witness.related_character_id.is_some()
+                && matches!(status.state, StatusState::Applied | StatusState::Removed)
+        }
         (
             _,
             LocalStateWitnessKind::LifeWaveTriggerStatus
-            | LocalStateWitnessKind::LifeWaveTriggerHealing,
+            | LocalStateWitnessKind::LifeWaveTriggerHealing
+            | LocalStateWitnessKind::StatResonanceStatus,
         ) => false,
         _ => true,
     };
@@ -3196,6 +3297,10 @@ fn verify_state_witness_characters(
         (Some(related), CanonicalEvent::Timeline(timeline)) => match &timeline.kind {
             TimelineEventKind::Healing(healing) => character_id_by_entity_uuid
                 .get(&healing.source.entity_uuid.0)
+                .is_some_and(|observed| observed == related),
+            TimelineEventKind::Status(status) if is_stat_resonance_status(status) => status
+                .source
+                .and_then(|source| character_id_by_entity_uuid.get(&source.entity_uuid.0))
                 .is_some_and(|observed| observed == related),
             _ => false,
         },
@@ -3440,6 +3545,7 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
                 LocalStateWitnessKind::LifeWaveTriggerHealing => {
                     b"life-wave-trigger-healing".as_slice()
                 }
+                LocalStateWitnessKind::StatResonanceStatus => b"stat-resonance-status".as_slice(),
             });
             hasher.update(witness.update_kind.as_bytes());
             hasher.update(match witness.placement {

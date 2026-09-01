@@ -94,6 +94,128 @@ pub struct ProfilePublicationLedger {
     records: BTreeMap<String, ProfilePublicationRecord>,
 }
 
+#[derive(Debug)]
+pub struct ProfilePublicationBaselineStore {
+    root: PathBuf,
+}
+
+impl ProfilePublicationBaselineStore {
+    pub fn open(root: PathBuf) -> Result<Self, String> {
+        std::fs::create_dir_all(&root)
+            .map_err(|error| format!("could not create profile baseline folder: {error}"))?;
+        Ok(Self { root })
+    }
+
+    pub fn load_for(
+        &self,
+        current: &LocalProfilePackage,
+    ) -> Result<Option<LocalProfilePackage>, String> {
+        let path = publication_baseline_path(&self.root, current)?;
+        let metadata = match std::fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(format!("could not inspect profile baseline: {error}")),
+        };
+        if !metadata.is_file() || metadata.len() > MAXIMUM_PROFILE_PACKAGE_BYTES {
+            return Err("profile publication baseline is not a bounded regular file".into());
+        }
+        let package: LocalProfilePackage = serde_json::from_slice(
+            &std::fs::read(&path)
+                .map_err(|error| format!("could not read profile baseline: {error}"))?,
+        )
+        .map_err(|error| format!("profile publication baseline JSON is invalid: {error}"))?;
+        package
+            .validate()
+            .map_err(|error| format!("profile publication baseline is invalid: {error}"))?;
+        if package.request.payload.routing != current.request.payload.routing
+            || package.request.payload.game_plugin_id != current.request.payload.game_plugin_id
+        {
+            return Err("profile publication baseline routing changed".into());
+        }
+        Ok(Some(package))
+    }
+
+    pub fn record(&self, package: &LocalProfilePackage) -> Result<(), String> {
+        package
+            .validate()
+            .map_err(|error| format!("profile publication baseline is invalid: {error}"))?;
+        let path = publication_baseline_path(&self.root, package)?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| "profile publication baseline path has no parent".to_owned())?;
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("could not create profile baseline route: {error}"))?;
+        let mut bytes = serde_json::to_vec_pretty(package)
+            .map_err(|error| format!("could not encode profile publication baseline: {error}"))?;
+        bytes.push(b'\n');
+        if bytes.len() as u64 > MAXIMUM_PROFILE_PACKAGE_BYTES {
+            return Err("profile publication baseline exceeds the package size limit".into());
+        }
+        atomic_write(&path, &bytes)
+    }
+}
+
+/// Produces a validation-complete profile patch containing only changed
+/// top-level profile sections. Character identity, routing, source evidence,
+/// and live-capture proof inputs remain present on every outbound package.
+pub fn profile_publication_delta(
+    current: &LocalProfilePackage,
+    baseline: Option<&LocalProfilePackage>,
+) -> Result<Option<LocalProfilePackage>, String> {
+    current
+        .validate()
+        .map_err(|error| format!("current profile package is invalid: {error}"))?;
+    let Some(baseline) = baseline else {
+        return Ok(Some(current.clone()));
+    };
+    baseline
+        .validate()
+        .map_err(|error| format!("profile publication baseline is invalid: {error}"))?;
+    if current.request.relative_endpoint != baseline.request.relative_endpoint
+        || current.request.payload.game_plugin_id != baseline.request.payload.game_plugin_id
+        || current.request.payload.payload_kind != baseline.request.payload.payload_kind
+        || current.request.payload.payload_schema_id != baseline.request.payload.payload_schema_id
+        || current.request.payload.payload_schema_version
+            != baseline.request.payload.payload_schema_version
+        || current.request.payload.routing != baseline.request.payload.routing
+    {
+        return Ok(Some(current.clone()));
+    }
+    let current_body = current
+        .request
+        .payload
+        .body
+        .as_object()
+        .ok_or_else(|| "current profile body is not a JSON object".to_owned())?;
+    let baseline_body = baseline
+        .request
+        .payload
+        .body
+        .as_object()
+        .ok_or_else(|| "profile publication baseline body is not a JSON object".to_owned())?;
+    let character = current_body
+        .get("character")
+        .cloned()
+        .ok_or_else(|| "current profile body has no character identity".to_owned())?;
+    let mut delta_body = serde_json::Map::from_iter([("character".into(), character)]);
+    for (key, value) in current_body {
+        if key == "character" || value.is_null() {
+            continue;
+        }
+        if baseline_body.get(key) != Some(value) {
+            delta_body.insert(key.clone(), value.clone());
+        }
+    }
+    if delta_body.len() == 1 {
+        return Ok(None);
+    }
+    let mut request = current.request.clone();
+    request.payload.body = serde_json::Value::Object(delta_body);
+    LocalProfilePackage::new(current.created_unix_millis, current.source.clone(), request)
+        .map(Some)
+        .map_err(|error| format!("could not seal profile publication delta: {error}"))
+}
+
 impl ProfilePublicationLedger {
     pub fn open(path: PathBuf) -> Result<Self, String> {
         let parent = path
@@ -170,7 +292,7 @@ impl ProfilePublicationLedger {
 
     pub fn reconcile(&mut self, active_package_ids: &BTreeSet<String>) -> Result<(), String> {
         let mut candidate = self.records.clone();
-        candidate.retain(|package_id, _| active_package_ids.contains(package_id));
+        retain_active_and_latest_character_records(&mut candidate, active_package_ids);
         if candidate == self.records {
             return Ok(());
         }
@@ -189,8 +311,8 @@ impl ProfilePublicationLedger {
             return Err("published profile package is no longer current locally".into());
         }
         let mut candidate = self.records.clone();
-        candidate.retain(|package_id, _| active_package_ids.contains(package_id));
         candidate.insert(record.package_id.clone(), record);
+        retain_active_and_latest_character_records(&mut candidate, active_package_ids);
         if candidate.len() > MAXIMUM_PROFILE_PUBLICATION_RECORDS {
             return Err(format!(
                 "profile publication ledger exceeds its {MAXIMUM_PROFILE_PUBLICATION_RECORDS}-record safety limit"
@@ -217,6 +339,35 @@ impl ProfilePublicationLedger {
         atomic_write(&self.path, &bytes)
             .map_err(|error| format!("could not persist profile publication ledger: {error}"))
     }
+}
+
+fn retain_active_and_latest_character_records(
+    records: &mut BTreeMap<String, ProfilePublicationRecord>,
+    active_package_ids: &BTreeSet<String>,
+) {
+    let latest_by_character = records
+        .values()
+        .fold(
+            BTreeMap::<String, (u64, String)>::new(),
+            |mut latest, record| {
+                let candidate = (record.published_unix_millis, record.package_id.clone());
+                latest
+                    .entry(record.character_id.clone())
+                    .and_modify(|current| {
+                        if candidate > *current {
+                            *current = candidate.clone();
+                        }
+                    })
+                    .or_insert(candidate);
+                latest
+            },
+        )
+        .into_values()
+        .map(|(_, package_id)| package_id)
+        .collect::<BTreeSet<_>>();
+    records.retain(|package_id, _| {
+        active_package_ids.contains(package_id) || latest_by_character.contains(package_id)
+    });
 }
 
 fn validate_publication_record(record: &ProfilePublicationRecord) -> Result<(), String> {
@@ -422,6 +573,17 @@ fn load_package(root: &Path, path: &Path) -> Result<StoredProfilePackage, String
 }
 
 fn package_path(root: &Path, package: &LocalProfilePackage) -> Result<PathBuf, String> {
+    profile_route_path(root, package).map(|path| path.join("current.profile.json"))
+}
+
+fn publication_baseline_path(
+    root: &Path,
+    package: &LocalProfilePackage,
+) -> Result<PathBuf, String> {
+    profile_route_path(root, package).map(|path| path.join("published.profile.json"))
+}
+
+fn profile_route_path(root: &Path, package: &LocalProfilePackage) -> Result<PathBuf, String> {
     let routing = &package.request.payload.routing;
     let game = safe_component("game_plugin_id", &package.request.payload.game_plugin_id)?;
     let deployment = safe_component("deployment", routing_value(routing, "deployment")?)?;
@@ -439,8 +601,7 @@ fn package_path(root: &Path, package: &LocalProfilePackage) -> Result<PathBuf, S
         .join(deployment)
         .join(region)
         .join(server)
-        .join(character)
-        .join("current.profile.json"))
+        .join(character))
 }
 
 fn routing_value<'a>(
@@ -649,6 +810,15 @@ mod tests {
                     ("character-id".into(), "123456".into()),
                 ]),
                 json!({
+                    "character": {
+                        "region": {
+                            "deployment_id": "global",
+                            "region_id": "north-america",
+                            "realm_id": "asteria",
+                            "world_id": null
+                        },
+                        "character_id": "123456"
+                    },
                     "display_name": "MarieRose",
                     "level": level,
                     "class_id": 5
@@ -719,7 +889,7 @@ mod tests {
     }
 
     #[test]
-    fn publication_ledger_persists_success_and_prunes_superseded_packages() {
+    fn publication_ledger_retains_latest_baseline_until_replacement_succeeds() {
         let root = temporary_root();
         let ledger_path = root.join("publications.v1.json");
         let first = package(59).package_id;
@@ -746,10 +916,47 @@ mod tests {
         restored
             .reconcile(&BTreeSet::from([second.clone()]))
             .unwrap();
-        assert!(!restored.is_published(&first));
+        assert!(restored.is_published(&first));
 
         let restored = ProfilePublicationLedger::open(root.join("publications.v1.json")).unwrap();
-        assert!(!restored.is_published(&first));
+        assert!(restored.is_published(&first));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn publication_delta_sends_only_changed_profile_sections() {
+        let baseline = package(59);
+        let current = package(60);
+        let delta = profile_publication_delta(&current, Some(&baseline))
+            .unwrap()
+            .expect("the level changed");
+        let body = delta.request.payload.body.as_object().unwrap();
+        assert_eq!(body.len(), 2);
+        assert!(body.contains_key("character"));
+        assert_eq!(body["level"], 60);
+        assert!(!body.contains_key("display_name"));
+        assert!(!body.contains_key("class_id"));
+        assert_ne!(delta.package_id, current.package_id);
+
+        assert!(
+            profile_publication_delta(&current, Some(&current))
+                .unwrap()
+                .is_none(),
+            "an unchanged full snapshot must spend no network request"
+        );
+    }
+
+    #[test]
+    fn publication_baseline_round_trips_outside_the_active_package_index() {
+        let root = temporary_root();
+        let baseline_store = ProfilePublicationBaselineStore::open(root.clone()).unwrap();
+        let package = package(60);
+        baseline_store.record(&package).unwrap();
+        let restored = baseline_store.load_for(&package).unwrap().unwrap();
+        assert_eq!(restored, package);
+
+        let active = LocalProfilePackageStore::open(root.clone()).unwrap();
+        assert_eq!(active.snapshot().entry_count, 0);
         std::fs::remove_dir_all(root).unwrap();
     }
 }

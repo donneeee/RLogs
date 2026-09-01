@@ -286,14 +286,15 @@ pub use state_formula::{
 };
 pub use state_rdps::{
     BpsrLifeWaveTriggerLearner, BpsrLifeWaveTriggerTimeline, BpsrRemoteFactorLearner,
-    BpsrRemoteFactorTimeline, BpsrStateDamageContributionProjector,
+    BpsrRemoteFactorTimeline, BpsrStatResonanceTransitionLearner,
+    BpsrStatResonanceTransitionTimeline, BpsrStateDamageContributionProjector,
     HarmonyGraceFamilyRoundingDiagnostic, HarmonyGraceFormulaTrace,
     InspirationCombinedFormulaTrace, InspirationCombinedPipelineAudit, RemoteRdpsEvidencePolicy,
-    proven_state_damage_contribution_effect_ids, remote_rdps_evidence_policy,
-    state_damage_contribution_deployment_id, state_damage_contribution_formula_identity,
-    state_damage_contribution_formula_target_matches, state_damage_contribution_game_build,
-    state_damage_contribution_protocol_pack_digest, state_damage_contribution_target_matches,
-    target_vulnerability_candidate_effect_ids,
+    is_stat_resonance_status, proven_state_damage_contribution_effect_ids,
+    remote_rdps_evidence_policy, state_damage_contribution_deployment_id,
+    state_damage_contribution_formula_identity, state_damage_contribution_formula_target_matches,
+    state_damage_contribution_game_build, state_damage_contribution_protocol_pack_digest,
+    state_damage_contribution_target_matches, target_vulnerability_candidate_effect_ids,
 };
 pub use stream::{
     JsonlJournalError, JsonlJournalReader, JsonlJournalRecordStream, JsonlJournalSummary,

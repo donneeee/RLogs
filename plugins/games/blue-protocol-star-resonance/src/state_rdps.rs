@@ -1088,6 +1088,283 @@ pub struct BpsrLifeWaveTriggerLearner {
     triggers: Vec<BpsrLifeWaveTriggerEvidence>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BpsrStatResonanceTimelineChangeKind {
+    Install {
+        window: EffectWindowKey,
+        witness: StatResonanceAttackWitness,
+    },
+    InvalidateTarget {
+        target_actor_id: u64,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BpsrStatResonanceTimelineChange {
+    observed_micros: u64,
+    kind: BpsrStatResonanceTimelineChangeKind,
+}
+
+/// Exact Stat Resonance attack marginals recovered from a second verified
+/// local-player vantage of the same server run. The timeline contains only
+/// projector evidence; its status and attribute rows are never replayed into
+/// the canonical combat spine.
+#[derive(Debug, Clone, Default)]
+pub struct BpsrStatResonanceTransitionTimeline {
+    changes: Vec<BpsrStatResonanceTimelineChange>,
+}
+
+/// Learns one Stat Resonance marginal only when an uncontaminated, same-wire
+/// lifecycle transition changes exactly one complete Attack family. The
+/// submissions service supplies only artifact-verified local state rows and
+/// remaps both participants to the canonical run before observation.
+#[derive(Debug)]
+pub struct BpsrStatResonanceTransitionLearner {
+    runtime: &'static RdpsRuntimeConfig,
+    current_wire: Option<WireKey>,
+    current_wire_observed_micros: u64,
+    states: HashMap<u64, ActorHpState>,
+    staged_states: HashMap<u64, ActorHpState>,
+    windows: HashSet<EffectWindowKey>,
+    pending: HashMap<u64, Option<StatResonanceTransition>>,
+    changes: Vec<BpsrStatResonanceTimelineChange>,
+}
+
+impl BpsrStatResonanceTransitionLearner {
+    pub fn new() -> Result<Self, String> {
+        Ok(Self {
+            runtime: rdps_runtime_config()?,
+            current_wire: None,
+            current_wire_observed_micros: 0,
+            states: HashMap::new(),
+            staged_states: HashMap::new(),
+            windows: HashSet::new(),
+            pending: HashMap::new(),
+            changes: Vec::new(),
+        })
+    }
+
+    /// Returns true for an exact local state row consumed by this learner.
+    /// Callers still keep attribute rows available to other evidence learners.
+    pub fn observe(&mut self, envelope: &EventEnvelope) -> bool {
+        let Some(wire) = wire_key(envelope) else {
+            return false;
+        };
+        if self.current_wire.is_some_and(|current| current != wire) {
+            self.reconcile_current_wire();
+        }
+        self.current_wire = Some(wire);
+        self.current_wire_observed_micros = self
+            .current_wire_observed_micros
+            .max(envelope.time.observed_micros);
+        let CanonicalEvent::Timeline(timeline) = &envelope.event else {
+            return false;
+        };
+        match &timeline.kind {
+            TimelineEventKind::EntityAttributes(attributes) => {
+                self.observe_attributes(
+                    attributes.actor.actor_id.0,
+                    attributes.update_kind,
+                    &attributes.attributes,
+                );
+                true
+            }
+            TimelineEventKind::Status(status)
+                if stat_resonance_status_matches(self.runtime, status) =>
+            {
+                self.observe_status(status);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn observe_attributes(
+        &mut self,
+        actor_id: u64,
+        update_kind: EntityAttributeUpdateKind,
+        attributes: &[EntityAttribute],
+    ) {
+        let previous = self
+            .staged_states
+            .get(&actor_id)
+            .cloned()
+            .or_else(|| self.states.get(&actor_id).cloned())
+            .unwrap_or_default();
+        let mut next = if update_kind == EntityAttributeUpdateKind::Snapshot {
+            ActorHpState::default()
+        } else {
+            previous
+        };
+        for attribute in attributes {
+            let Some(value) = integer_attribute(attribute) else {
+                continue;
+            };
+            update_attack_family_attribute(
+                &mut next.physical_attack,
+                self.runtime.attack_families.physical,
+                attribute.attribute_id,
+                value,
+            );
+            update_attack_family_attribute(
+                &mut next.magical_attack,
+                self.runtime.attack_families.magical,
+                attribute.attribute_id,
+                value,
+            );
+        }
+        self.staged_states.insert(actor_id, next);
+    }
+
+    fn invalidate_target(&mut self, target_actor_id: u64) {
+        self.windows
+            .retain(|window| window.target_actor_id != target_actor_id);
+        self.pending.insert(target_actor_id, None);
+    }
+
+    fn observe_status(&mut self, status: &rlogs_events::StatusEvent) {
+        let target_actor_id = status.target.actor_id.0;
+        let Some(provider_actor_id) = status.source.map(|source| source.actor_id.0) else {
+            self.invalidate_target(target_actor_id);
+            return;
+        };
+        if provider_actor_id == target_actor_id || status.instance_id.is_none() {
+            self.invalidate_target(target_actor_id);
+            return;
+        }
+        let window = EffectWindowKey {
+            target_actor_id,
+            provider_actor_id,
+            instance_id: status.instance_id.map(|instance| instance.0),
+        };
+        let transition = match status.state {
+            StatusState::Applied => {
+                if !self.windows.insert(window) {
+                    self.invalidate_target(target_actor_id);
+                    return;
+                }
+                StatResonanceTransition {
+                    window,
+                    applied: true,
+                }
+            }
+            StatusState::Removed => {
+                if !self.windows.remove(&window) {
+                    self.invalidate_target(target_actor_id);
+                    return;
+                }
+                StatResonanceTransition {
+                    window,
+                    applied: false,
+                }
+            }
+            StatusState::Refreshed | StatusState::Stacked | StatusState::Consumed => {
+                self.invalidate_target(target_actor_id);
+                return;
+            }
+        };
+        if self
+            .pending
+            .insert(target_actor_id, Some(transition))
+            .is_some()
+        {
+            self.invalidate_target(target_actor_id);
+        }
+    }
+
+    fn push_invalidation(&mut self, target_actor_id: u64) {
+        self.changes.push(BpsrStatResonanceTimelineChange {
+            observed_micros: self.current_wire_observed_micros,
+            kind: BpsrStatResonanceTimelineChangeKind::InvalidateTarget { target_actor_id },
+        });
+    }
+
+    fn reconcile_current_wire(&mut self) {
+        let pending = std::mem::take(&mut self.pending);
+        let mut transitioned_targets = HashSet::new();
+        for (target_actor_id, transition) in pending {
+            transitioned_targets.insert(target_actor_id);
+            let Some(transition) = transition else {
+                self.push_invalidation(target_actor_id);
+                continue;
+            };
+            let expected_windows = usize::from(transition.applied);
+            let actual_windows = self
+                .windows
+                .iter()
+                .filter(|window| window.target_actor_id == target_actor_id)
+                .count();
+            let Some(previous) = self.states.get(&target_actor_id) else {
+                self.push_invalidation(target_actor_id);
+                continue;
+            };
+            let Some(current) = self.staged_states.get(&target_actor_id) else {
+                self.push_invalidation(target_actor_id);
+                continue;
+            };
+            let Some((lane, inactive_family, active_family)) =
+                exact_single_attack_family_transition(previous, current, transition.applied)
+            else {
+                self.push_invalidation(target_actor_id);
+                continue;
+            };
+            let Some(final_attack_marginal) = active_family
+                .final_value
+                .checked_sub(inactive_family.final_value)
+                .filter(|marginal| *marginal > 0)
+            else {
+                self.push_invalidation(target_actor_id);
+                continue;
+            };
+            if actual_windows != expected_windows {
+                self.push_invalidation(target_actor_id);
+                continue;
+            }
+            if transition.applied {
+                self.changes.push(BpsrStatResonanceTimelineChange {
+                    observed_micros: self.current_wire_observed_micros,
+                    kind: BpsrStatResonanceTimelineChangeKind::Install {
+                        window: transition.window,
+                        witness: StatResonanceAttackWitness {
+                            lane,
+                            active_family,
+                            final_attack_marginal,
+                        },
+                    },
+                });
+            } else {
+                self.push_invalidation(target_actor_id);
+            }
+        }
+        for (actor_id, current) in &self.staged_states {
+            if transitioned_targets.contains(actor_id) {
+                continue;
+            }
+            if self.states.get(actor_id).is_some_and(|previous| {
+                previous.physical_attack != current.physical_attack
+                    || previous.magical_attack != current.magical_attack
+            }) {
+                self.changes.push(BpsrStatResonanceTimelineChange {
+                    observed_micros: self.current_wire_observed_micros,
+                    kind: BpsrStatResonanceTimelineChangeKind::InvalidateTarget {
+                        target_actor_id: *actor_id,
+                    },
+                });
+            }
+        }
+        self.states.extend(self.staged_states.drain());
+    }
+
+    pub fn finish(mut self) -> BpsrStatResonanceTransitionTimeline {
+        self.reconcile_current_wire();
+        self.changes.sort_by_key(|change| change.observed_micros);
+        self.changes.dedup();
+        BpsrStatResonanceTransitionTimeline {
+            changes: self.changes,
+        }
+    }
+}
+
 impl BpsrLifeWaveTriggerLearner {
     /// Returns true only for an exact Life Wave evidence row consumed by this
     /// learner. Callers use this to keep those rows out of ordinary meters.
@@ -2392,6 +2669,10 @@ pub struct BpsrStateDamageContributionProjector {
     remote_factor_timeline: Option<BpsrRemoteFactorTimeline>,
     cross_vantage_life_wave_timeline: Option<BpsrLifeWaveTriggerTimeline>,
     next_cross_vantage_life_wave_trigger: usize,
+    cross_vantage_stat_resonance_timeline: Option<BpsrStatResonanceTransitionTimeline>,
+    next_cross_vantage_stat_resonance_change: usize,
+    cross_vantage_stat_resonance_attack_witnesses:
+        HashMap<EffectWindowKey, StatResonanceAttackWitness>,
     live_remote_factor_learner: Option<BpsrRemoteFactorLearner>,
     deferred_team_luck_critical_damage: VecDeque<DeferredTeamLuckCriticalDamage>,
     deferred_remote_harmony_damage: VecDeque<DeferredRemoteHarmonyDamage>,
@@ -2602,6 +2883,9 @@ impl Default for BpsrStateDamageContributionProjector {
             remote_factor_timeline: None,
             cross_vantage_life_wave_timeline: None,
             next_cross_vantage_life_wave_trigger: 0,
+            cross_vantage_stat_resonance_timeline: None,
+            next_cross_vantage_stat_resonance_change: 0,
+            cross_vantage_stat_resonance_attack_witnesses: HashMap::new(),
             live_remote_factor_learner: None,
             deferred_team_luck_critical_damage: VecDeque::new(),
             deferred_remote_harmony_damage: VecDeque::new(),
@@ -2719,6 +3003,19 @@ impl BpsrStateDamageContributionProjector {
     ) -> Result<Self, String> {
         let mut projector = Self::new_with_remote_factor_timeline(remote_factor_timeline)?;
         projector.cross_vantage_life_wave_timeline = Some(life_wave_timeline);
+        Ok(projector)
+    }
+
+    pub fn new_with_cross_vantage_timelines(
+        remote_factor_timeline: BpsrRemoteFactorTimeline,
+        life_wave_timeline: BpsrLifeWaveTriggerTimeline,
+        stat_resonance_timeline: BpsrStatResonanceTransitionTimeline,
+    ) -> Result<Self, String> {
+        let mut projector = Self::new_with_remote_factor_and_life_wave_timelines(
+            remote_factor_timeline,
+            life_wave_timeline,
+        )?;
+        projector.cross_vantage_stat_resonance_timeline = Some(stat_resonance_timeline);
         Ok(projector)
     }
 
@@ -3285,6 +3582,7 @@ impl BpsrStateDamageContributionProjector {
         self.expire_coordinated_strike_windows(envelope.time.observed_micros);
         self.expire_life_wave_windows(envelope.time.observed_micros);
         self.apply_cross_vantage_life_wave_triggers(envelope.time.observed_micros);
+        self.apply_cross_vantage_stat_resonance_changes(envelope.time.observed_micros);
         let CanonicalEvent::Timeline(timeline) = &envelope.event else {
             return;
         };
@@ -4741,6 +5039,34 @@ impl BpsrStateDamageContributionProjector {
         }
     }
 
+    fn apply_cross_vantage_stat_resonance_changes(&mut self, observed_micros: u64) {
+        while let Some(change) = self
+            .cross_vantage_stat_resonance_timeline
+            .as_ref()
+            .and_then(|timeline| {
+                timeline
+                    .changes
+                    .get(self.next_cross_vantage_stat_resonance_change)
+            })
+            .filter(|change| change.observed_micros <= observed_micros)
+            .copied()
+        {
+            self.next_cross_vantage_stat_resonance_change = self
+                .next_cross_vantage_stat_resonance_change
+                .saturating_add(1);
+            match change.kind {
+                BpsrStatResonanceTimelineChangeKind::Install { window, witness } => {
+                    self.cross_vantage_stat_resonance_attack_witnesses
+                        .insert(window, witness);
+                }
+                BpsrStatResonanceTimelineChangeKind::InvalidateTarget { target_actor_id } => {
+                    self.cross_vantage_stat_resonance_attack_witnesses
+                        .retain(|window, _| window.target_actor_id != target_actor_id);
+                }
+            }
+        }
+    }
+
     fn observe_life_wave_status(
         &mut self,
         status: &rlogs_events::StatusEvent,
@@ -5417,6 +5743,7 @@ impl BpsrStateDamageContributionProjector {
         self.stat_resonance_transition_wires.clear();
         self.stat_resonance_pending_transitions.clear();
         self.stat_resonance_attack_witnesses.clear();
+        self.cross_vantage_stat_resonance_attack_witnesses.clear();
     }
 
     fn clear_fiery_battle_will_after_gap(&mut self) {
@@ -7615,6 +7942,8 @@ impl BpsrStateDamageContributionProjector {
                     self.invalidate_stat_resonance_target(target_actor_id);
                     return;
                 }
+                self.cross_vantage_stat_resonance_attack_witnesses
+                    .remove(&window);
                 StatResonanceTransition {
                     window,
                     applied: false,
@@ -7643,6 +7972,8 @@ impl BpsrStateDamageContributionProjector {
         self.stat_resonance_windows
             .retain(|key| key.target_actor_id != target_actor_id);
         self.stat_resonance_attack_witnesses
+            .retain(|key, _| key.target_actor_id != target_actor_id);
+        self.cross_vantage_stat_resonance_attack_witnesses
             .retain(|key, _| key.target_actor_id != target_actor_id);
         self.stat_resonance_pending_transitions
             .insert(target_actor_id, None);
@@ -11350,9 +11681,12 @@ impl BpsrStateDamageContributionProjector {
         if !self.active_players.contains(&window.provider_actor_id) {
             return Err("provider_inactive");
         }
-        let witness = self
-            .stat_resonance_attack_witnesses
-            .get(window)
+        let local_witness = self.stat_resonance_attack_witnesses.get(window);
+        let cross_vantage_witness = self
+            .cross_vantage_stat_resonance_attack_witnesses
+            .get(window);
+        let witness = local_witness
+            .or(cross_vantage_witness)
             .ok_or("transition_witness_missing")?;
         if witness.final_attack_marginal <= 0 {
             return Err("provider_marginal_invalid");
@@ -11365,21 +11699,46 @@ impl BpsrStateDamageContributionProjector {
             damage.packet.owner_level,
         )
         .ok_or("damage_stage_missing")?;
-        let actor_state = self
-            .states
-            .get(&recipient_actor_id)
-            .ok_or("recipient_state_missing")?;
-        let family = match (witness.lane, selected.offensive_stat) {
-            (ObservedAttackLane::Physical, OffensiveStatKind::PhysicalAttack) => {
-                &actor_state.physical_attack
+        if !matches!(
+            (witness.lane, selected.offensive_stat),
+            (
+                ObservedAttackLane::Physical,
+                OffensiveStatKind::PhysicalAttack
+            ) | (
+                ObservedAttackLane::Magical,
+                OffensiveStatKind::MagicalAttack
+            )
+        ) {
+            return Err("attack_lane_mismatch");
+        }
+        let active_family = if local_witness.is_some() {
+            let actor_state = self
+                .states
+                .get(&recipient_actor_id)
+                .ok_or("recipient_state_missing")?;
+            let family = match witness.lane {
+                ObservedAttackLane::Physical => &actor_state.physical_attack,
+                ObservedAttackLane::Magical => &actor_state.magical_attack,
+            };
+            exact_attack_family_snapshot(family).ok_or("attack_family_incomplete")?
+        } else {
+            // A verified secondary local vantage supplies the complete active
+            // family that the canonical remote-player capture omits. If the
+            // canonical spine unexpectedly has a complete family too, it must
+            // agree exactly or the cross-vantage witness fails closed.
+            if let Some(actor_state) = self.states.get(&recipient_actor_id) {
+                let family = match witness.lane {
+                    ObservedAttackLane::Physical => &actor_state.physical_attack,
+                    ObservedAttackLane::Magical => &actor_state.magical_attack,
+                };
+                if let Some(canonical) = exact_attack_family_snapshot(family)
+                    && canonical != witness.active_family
+                {
+                    return Err("cross_vantage_attack_state_changed");
+                }
             }
-            (ObservedAttackLane::Magical, OffensiveStatKind::MagicalAttack) => {
-                &actor_state.magical_attack
-            }
-            _ => return Err("attack_lane_mismatch"),
+            witness.active_family
         };
-        let active_family =
-            exact_attack_family_snapshot(family).ok_or("attack_family_incomplete")?;
         if active_family != witness.active_family {
             return Err("attack_family_state_changed");
         }
@@ -16131,6 +16490,8 @@ impl BpsrStateDamageContributionProjector {
         self.stat_resonance_pending_transitions.remove(&actor_id);
         self.stat_resonance_attack_witnesses
             .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
+        self.cross_vantage_stat_resonance_attack_witnesses
+            .retain(|key, _| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.fiery_battle_will_windows
             .retain(|key| key.target_actor_id != actor_id && key.provider_actor_id != actor_id);
         self.fiery_battle_will_transition_wires.remove(&actor_id);
@@ -16265,6 +16626,7 @@ impl BpsrStateDamageContributionProjector {
         self.stat_resonance_transition_wires.clear();
         self.stat_resonance_pending_transitions.clear();
         self.stat_resonance_attack_witnesses.clear();
+        self.cross_vantage_stat_resonance_attack_witnesses.clear();
         self.fiery_battle_will_windows.clear();
         self.fiery_battle_will_transition_wires.clear();
         self.fiery_battle_will_pending_transitions.clear();
@@ -17070,6 +17432,27 @@ fn wire_key(envelope: &EventEnvelope) -> Option<WireKey> {
         }),
         _ => None,
     }
+}
+
+fn stat_resonance_status_matches(
+    runtime: &RdpsRuntimeConfig,
+    status: &rlogs_events::StatusEvent,
+) -> bool {
+    runtime.stat_resonance.runtime_transfer_enabled
+        && status.effect.0 == runtime.stat_resonance.effect_id
+        && status
+            .origin
+            .map(|origin| (origin.source_type_id, origin.source_config_id))
+            == Some((
+                runtime.stat_resonance.source_type_id,
+                runtime.stat_resonance.source_config_id,
+            ))
+}
+
+/// Build-locked Stat Resonance lifecycle selector used by the submissions
+/// service when committing cross-vantage local evidence.
+pub fn is_stat_resonance_status(status: &rlogs_events::StatusEvent) -> bool {
+    rdps_runtime_config().is_ok_and(|runtime| stat_resonance_status_matches(runtime, status))
 }
 
 fn update_attack_family_attribute(
@@ -28168,6 +28551,81 @@ mod tests {
         assert!(
             projector.incomplete_rdps_actor_ids.is_empty(),
             "ordinary damage outside a Stat Resonance window must remain complete"
+        );
+    }
+
+    #[test]
+    fn cross_vantage_stat_resonance_supplies_remote_attack_family_without_duplicate_state() {
+        let inactive_family = stat_resonance_test_family(10_000);
+        let active_family = stat_resonance_test_family(10_500);
+        let window = EffectWindowKey {
+            target_actor_id: 4,
+            provider_actor_id: 2,
+            instance_id: Some(77),
+        };
+        let mut learner = BpsrStatResonanceTransitionLearner::new().unwrap();
+        learner.current_wire = Some(WireKey {
+            connection_id: 99,
+            stream_id: 2,
+            capture_sequence: 3,
+        });
+        learner.current_wire_observed_micros = 100;
+        learner.states.insert(
+            4,
+            ActorHpState {
+                physical_attack: inactive_family,
+                ..ActorHpState::default()
+            },
+        );
+        learner.staged_states.insert(
+            4,
+            ActorHpState {
+                physical_attack: active_family.clone(),
+                ..ActorHpState::default()
+            },
+        );
+        learner.windows.insert(window);
+        learner.pending.insert(
+            4,
+            Some(StatResonanceTransition {
+                window,
+                applied: true,
+            }),
+        );
+        let timeline = learner.finish();
+        assert_eq!(timeline.changes.len(), 1);
+
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            stat_resonance_windows: HashSet::from([window]),
+            cross_vantage_stat_resonance_timeline: Some(timeline),
+            current_wire: Some(WireKey {
+                connection_id: 1,
+                stream_id: 2,
+                capture_sequence: 4,
+            }),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        projector.apply_cross_vantage_stat_resonance_changes(100);
+        let damage = stat_resonance_test_damage();
+        let contribution = projector
+            .stat_resonance_decision(101, &damage)
+            .expect("verified secondary local state should fill the remote attack-family gap");
+        assert!(contribution.numerator > 0);
+        assert_eq!(contribution.provider_actor_id, 2);
+        assert_eq!(contribution.recipient_actor_id, 4);
+        assert!(!projector.states.contains_key(&4));
+        assert_eq!(
+            projector.cross_vantage_stat_resonance_attack_witnesses[&window].active_family,
+            exact_attack_family_snapshot(&active_family).unwrap()
+        );
+
+        projector.observe_stat_resonance_status(&stat_resonance_test_status(StatusState::Removed));
+        assert!(
+            !projector
+                .cross_vantage_stat_resonance_attack_witnesses
+                .contains_key(&window),
+            "the canonical terminal must close imported projector evidence"
         );
     }
 

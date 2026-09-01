@@ -711,6 +711,27 @@ mod tests {
 
     #[test]
     fn incompatible_sibling_packet_dll_returns_error_instead_of_a_system_dialog() {
+        const CHILD_ENV: &str = "RLOGS_INCOMPATIBLE_PACKET_TEST_CHILD";
+        if std::env::var_os(CHILD_ENV).is_some() {
+            run_incompatible_sibling_packet_child();
+            return;
+        }
+        let status = std::process::Command::new(std::env::current_exe().expect("current test exe"))
+            .args([
+                "--exact",
+                "npcap::tests::incompatible_sibling_packet_dll_returns_error_instead_of_a_system_dialog",
+                "--nocapture",
+            ])
+            .env(CHILD_ENV, "1")
+            .status()
+            .expect("run isolated incompatible Packet.dll test");
+        assert!(
+            status.success(),
+            "isolated incompatible Packet.dll test failed"
+        );
+    }
+
+    fn run_incompatible_sibling_packet_child() {
         let Some(source_wpcap) = installed_wpcap_paths().into_iter().next() else {
             return;
         };
