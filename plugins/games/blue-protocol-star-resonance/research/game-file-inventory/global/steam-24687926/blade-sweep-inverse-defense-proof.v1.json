@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "generated_by": "tools/bpsr-blade-sweep-inverse-defense-proof.mjs",
   "game_build": "24687926",
   "effect_id": 2110092,
@@ -8,6 +8,7 @@
     "exact_counterfactual_pairs_required": true,
     "every_divergent_group_must_be_embedded": true,
     "hidden_defense_search_is_exhaustive_under_each_enumerated_candidate_model": true,
+    "every_exact_client_raw_physical_defense_curve_candidate_must_be_enumerated": true,
     "candidate_compatibility_is_not_causal_formula_proof": true,
     "structurally_unobservable_remote_player_packets_are_not_required": true,
     "formula_authority": false,
@@ -25,22 +26,7 @@
     "source_schema_version": 22,
     "source_generator": "rlogs-bpsr-status-effect-counterfactual-proof"
   },
-  "candidate_model": {
-    "absent_damage": "floor(nonnegative integer base * 22000 / (22000 + raw target physical defense))",
-    "present_damage": "floor(nonnegative integer base * 22000 / (22000 + rounded(raw defense * 9350 / 10000)))",
-    "armor_penetration_basis_points": 650,
-    "retained_defense_basis_points": 9350,
-    "defense_curve_constant": 22000,
-    "effective_defense_roundings": [
-      "floor",
-      "ceil",
-      "round-half-up"
-    ],
-    "base_is_solved_independently_for_each_exact_packet_identity": true,
-    "search_completeness": "For each pair, real present/absent damage is below (present+1)/absent. The model ratio is at least (K+D)/(K+(9350*D/10000)+1), a strictly increasing lower bound. Once that bound exceeds the observed upper ratio, no larger nonnegative defense can be compatible under floor, ceil, or round-half-up effective-defense rounding."
-  },
   "exact_pair_count": 2,
-  "target_count": 1,
   "exact_pairs": [
     {
       "target_key": "monitor-1786784310365-steam-24687926.protocol.rlog|monitor-1786784310365|0|4915264|5288",
@@ -65,7 +51,10 @@
       "present_sequences": [
         83518
       ],
-      "search_cutoff_exclusive": 13126,
+      "search_cutoff_exclusive_by_curve": {
+        "6500": 3896,
+        "22000": 13126
+      },
       "exact_recorded_input_pair": true
     },
     {
@@ -91,168 +80,328 @@
       "present_sequences": [
         12813
       ],
-      "search_cutoff_exclusive": 13123,
+      "search_cutoff_exclusive_by_curve": {
+        "6500": 3895,
+        "22000": 13123
+      },
       "exact_recorded_input_pair": true
     }
   ],
-  "targets": [
+  "target_count": 1,
+  "candidate_models": [
     {
-      "target_key": "monitor-1786784310365-steam-24687926.protocol.rlog|monitor-1786784310365|0|4915264|5288",
-      "rlog": "monitor-1786784310365-steam-24687926.protocol.rlog",
-      "session_id": "monitor-1786784310365",
-      "run_ordinal": 0,
-      "target_entity_uuid": 4915264,
-      "target_attribute_state_id": 5288,
-      "exact_pair_count": 2,
-      "search_minimum_defense": 0,
-      "search_cutoff_exclusive": 13123,
-      "search_bound_proven_complete_for_every_larger_nonnegative_defense": true,
-      "variants": [
+      "model_id": "runtime-simple-6500",
+      "provenance": "exact current-build Global.AttackSimplyDefParam definition; direct combat consumer is unproven",
+      "combat_authority": false,
+      "absent_damage": "floor(nonnegative integer base * 6500 / (6500 + raw target physical defense))",
+      "present_damage": "floor(nonnegative integer base * 6500 / (6500 + rounded(raw defense * 9350 / 10000)))",
+      "armor_penetration_basis_points": 650,
+      "retained_defense_basis_points": 9350,
+      "defense_curve_constant": 6500,
+      "effective_defense_roundings": [
+        "floor",
+        "ceil",
+        "round-half-up"
+      ],
+      "base_is_solved_independently_for_each_exact_packet_identity": true,
+      "search_completeness": "For each pair, real present/absent damage is below (present+1)/absent. The model ratio is at least (K+D)/(K+(9350*D/10000)+1), a strictly increasing lower bound. Once that bound exceeds the observed upper ratio, no larger nonnegative defense can be compatible under floor, ceil, or round-half-up effective-defense rounding.",
+      "targets": [
         {
-          "rounding": "floor",
-          "candidate_count": 7,
-          "minimum_candidate_defense": 13062,
-          "maximum_candidate_defense": 13092,
-          "candidate_defense_ranges": [
+          "target_key": "monitor-1786784310365-steam-24687926.protocol.rlog|monitor-1786784310365|0|4915264|5288",
+          "rlog": "monitor-1786784310365-steam-24687926.protocol.rlog",
+          "session_id": "monitor-1786784310365",
+          "run_ordinal": 0,
+          "target_entity_uuid": 4915264,
+          "target_attribute_state_id": 5288,
+          "exact_pair_count": 2,
+          "search_minimum_defense": 0,
+          "search_cutoff_exclusive": 3895,
+          "search_bound_proven_complete_for_every_larger_nonnegative_defense": true,
+          "variants": [
             {
-              "minimum": 13062,
-              "maximum": 13062
+              "rounding": "floor",
+              "candidate_count": 5,
+              "minimum_candidate_defense": 3850,
+              "maximum_candidate_defense": 3854,
+              "candidate_defense_ranges": [
+                {
+                  "minimum": 3850,
+                  "maximum": 3854
+                }
+              ],
+              "candidate_defense_values": [
+                3850,
+                3851,
+                3852,
+                3853,
+                3854
+              ],
+              "every_exact_pair_compatible": true
             },
             {
-              "minimum": 13064,
-              "maximum": 13064
+              "rounding": "ceil",
+              "candidate_count": 2,
+              "minimum_candidate_defense": 3891,
+              "maximum_candidate_defense": 3892,
+              "candidate_defense_ranges": [
+                {
+                  "minimum": 3891,
+                  "maximum": 3892
+                }
+              ],
+              "candidate_defense_values": [
+                3891,
+                3892
+              ],
+              "every_exact_pair_compatible": true
             },
             {
-              "minimum": 13066,
-              "maximum": 13066
-            },
-            {
-              "minimum": 13087,
-              "maximum": 13087
-            },
-            {
-              "minimum": 13089,
-              "maximum": 13089
-            },
-            {
-              "minimum": 13091,
-              "maximum": 13092
+              "rounding": "round-half-up",
+              "candidate_count": 1,
+              "minimum_candidate_defense": 3854,
+              "maximum_candidate_defense": 3854,
+              "candidate_defense_ranges": [
+                {
+                  "minimum": 3854,
+                  "maximum": 3854
+                }
+              ],
+              "candidate_defense_values": [
+                3854
+              ],
+              "every_exact_pair_compatible": true
             }
           ],
-          "candidate_defense_values": [
-            13062,
-            13064,
-            13066,
-            13087,
-            13089,
-            13091,
-            13092
-          ],
-          "every_exact_pair_compatible": true
+          "candidate_selected": false,
+          "exact_target_physical_defense_proven": false,
+          "exact_integer_rounding_proven": false,
+          "formula_authority": false,
+          "provider_rdps_credit_allowed": false
+        }
+      ],
+      "variant_summary": [
+        {
+          "rounding": "floor",
+          "compatible_targets": 1,
+          "rejected_targets": 0,
+          "total_candidate_defense_values": 5
         },
         {
           "rounding": "ceil",
-          "candidate_count": 14,
-          "minimum_candidate_defense": 13093,
-          "maximum_candidate_defense": 13107,
-          "candidate_defense_ranges": [
-            {
-              "minimum": 13093,
-              "maximum": 13105
-            },
-            {
-              "minimum": 13107,
-              "maximum": 13107
-            }
-          ],
-          "candidate_defense_values": [
-            13093,
-            13094,
-            13095,
-            13096,
-            13097,
-            13098,
-            13099,
-            13100,
-            13101,
-            13102,
-            13103,
-            13104,
-            13105,
-            13107
-          ],
-          "every_exact_pair_compatible": true
+          "compatible_targets": 1,
+          "rejected_targets": 0,
+          "total_candidate_defense_values": 2
         },
         {
           "rounding": "round-half-up",
-          "candidate_count": 12,
-          "minimum_candidate_defense": 13087,
-          "maximum_candidate_defense": 13100,
-          "candidate_defense_ranges": [
-            {
-              "minimum": 13087,
-              "maximum": 13087
-            },
-            {
-              "minimum": 13089,
-              "maximum": 13089
-            },
-            {
-              "minimum": 13091,
-              "maximum": 13100
-            }
-          ],
-          "candidate_defense_values": [
-            13087,
-            13089,
-            13091,
-            13092,
-            13093,
-            13094,
-            13095,
-            13096,
-            13097,
-            13098,
-            13099,
-            13100
-          ],
-          "every_exact_pair_compatible": true
+          "compatible_targets": 1,
+          "rejected_targets": 0,
+          "total_candidate_defense_values": 1
         }
       ],
-      "candidate_selected": false,
-      "exact_target_physical_defense_proven": false,
-      "exact_integer_rounding_proven": false,
-      "formula_authority": false,
-      "provider_rdps_credit_allowed": false
-    }
-  ],
-  "variant_summary": [
-    {
-      "rounding": "floor",
-      "compatible_targets": 1,
-      "rejected_targets": 0,
-      "total_candidate_defense_values": 7
+      "summary": {
+        "exact_targets": 1,
+        "targets_with_at_least_one_compatible_variant": 1,
+        "all_rounding_variants_remain_compatible": true,
+        "minimum_hidden_defense_candidate": 3850,
+        "maximum_hidden_defense_candidate": 3892,
+        "curve_constant_selected": false,
+        "combat_authority": false,
+        "provider_rdps_credit_allowed": false
+      }
     },
     {
-      "rounding": "ceil",
-      "compatible_targets": 1,
-      "rejected_targets": 0,
-      "total_candidate_defense_values": 14
-    },
-    {
-      "rounding": "round-half-up",
-      "compatible_targets": 1,
-      "rejected_targets": 0,
-      "total_candidate_defense_values": 12
+      "model_id": "current-season-transformed-22000",
+      "provenance": "exact current-season FightAttrTranTable[3].DefPara and character-sheet evaluator; combat-stage binding is unproven",
+      "combat_authority": false,
+      "absent_damage": "floor(nonnegative integer base * 22000 / (22000 + raw target physical defense))",
+      "present_damage": "floor(nonnegative integer base * 22000 / (22000 + rounded(raw defense * 9350 / 10000)))",
+      "armor_penetration_basis_points": 650,
+      "retained_defense_basis_points": 9350,
+      "defense_curve_constant": 22000,
+      "effective_defense_roundings": [
+        "floor",
+        "ceil",
+        "round-half-up"
+      ],
+      "base_is_solved_independently_for_each_exact_packet_identity": true,
+      "search_completeness": "For each pair, real present/absent damage is below (present+1)/absent. The model ratio is at least (K+D)/(K+(9350*D/10000)+1), a strictly increasing lower bound. Once that bound exceeds the observed upper ratio, no larger nonnegative defense can be compatible under floor, ceil, or round-half-up effective-defense rounding.",
+      "targets": [
+        {
+          "target_key": "monitor-1786784310365-steam-24687926.protocol.rlog|monitor-1786784310365|0|4915264|5288",
+          "rlog": "monitor-1786784310365-steam-24687926.protocol.rlog",
+          "session_id": "monitor-1786784310365",
+          "run_ordinal": 0,
+          "target_entity_uuid": 4915264,
+          "target_attribute_state_id": 5288,
+          "exact_pair_count": 2,
+          "search_minimum_defense": 0,
+          "search_cutoff_exclusive": 13123,
+          "search_bound_proven_complete_for_every_larger_nonnegative_defense": true,
+          "variants": [
+            {
+              "rounding": "floor",
+              "candidate_count": 7,
+              "minimum_candidate_defense": 13062,
+              "maximum_candidate_defense": 13092,
+              "candidate_defense_ranges": [
+                {
+                  "minimum": 13062,
+                  "maximum": 13062
+                },
+                {
+                  "minimum": 13064,
+                  "maximum": 13064
+                },
+                {
+                  "minimum": 13066,
+                  "maximum": 13066
+                },
+                {
+                  "minimum": 13087,
+                  "maximum": 13087
+                },
+                {
+                  "minimum": 13089,
+                  "maximum": 13089
+                },
+                {
+                  "minimum": 13091,
+                  "maximum": 13092
+                }
+              ],
+              "candidate_defense_values": [
+                13062,
+                13064,
+                13066,
+                13087,
+                13089,
+                13091,
+                13092
+              ],
+              "every_exact_pair_compatible": true
+            },
+            {
+              "rounding": "ceil",
+              "candidate_count": 14,
+              "minimum_candidate_defense": 13093,
+              "maximum_candidate_defense": 13107,
+              "candidate_defense_ranges": [
+                {
+                  "minimum": 13093,
+                  "maximum": 13105
+                },
+                {
+                  "minimum": 13107,
+                  "maximum": 13107
+                }
+              ],
+              "candidate_defense_values": [
+                13093,
+                13094,
+                13095,
+                13096,
+                13097,
+                13098,
+                13099,
+                13100,
+                13101,
+                13102,
+                13103,
+                13104,
+                13105,
+                13107
+              ],
+              "every_exact_pair_compatible": true
+            },
+            {
+              "rounding": "round-half-up",
+              "candidate_count": 12,
+              "minimum_candidate_defense": 13087,
+              "maximum_candidate_defense": 13100,
+              "candidate_defense_ranges": [
+                {
+                  "minimum": 13087,
+                  "maximum": 13087
+                },
+                {
+                  "minimum": 13089,
+                  "maximum": 13089
+                },
+                {
+                  "minimum": 13091,
+                  "maximum": 13100
+                }
+              ],
+              "candidate_defense_values": [
+                13087,
+                13089,
+                13091,
+                13092,
+                13093,
+                13094,
+                13095,
+                13096,
+                13097,
+                13098,
+                13099,
+                13100
+              ],
+              "every_exact_pair_compatible": true
+            }
+          ],
+          "candidate_selected": false,
+          "exact_target_physical_defense_proven": false,
+          "exact_integer_rounding_proven": false,
+          "formula_authority": false,
+          "provider_rdps_credit_allowed": false
+        }
+      ],
+      "variant_summary": [
+        {
+          "rounding": "floor",
+          "compatible_targets": 1,
+          "rejected_targets": 0,
+          "total_candidate_defense_values": 7
+        },
+        {
+          "rounding": "ceil",
+          "compatible_targets": 1,
+          "rejected_targets": 0,
+          "total_candidate_defense_values": 14
+        },
+        {
+          "rounding": "round-half-up",
+          "compatible_targets": 1,
+          "rejected_targets": 0,
+          "total_candidate_defense_values": 12
+        }
+      ],
+      "summary": {
+        "exact_targets": 1,
+        "targets_with_at_least_one_compatible_variant": 1,
+        "all_rounding_variants_remain_compatible": true,
+        "minimum_hidden_defense_candidate": 13062,
+        "maximum_hidden_defense_candidate": 13107,
+        "curve_constant_selected": false,
+        "combat_authority": false,
+        "provider_rdps_credit_allowed": false
+      }
     }
   ],
   "summary": {
     "exact_controlled_divergent_pairs": 2,
     "exact_targets": 1,
-    "targets_with_at_least_one_compatible_model": 1,
-    "all_rounding_variants_remain_compatible": true,
-    "minimum_hidden_defense_candidate": 13062,
+    "enumerated_curve_models": 2,
+    "enumerated_curve_constants": [
+      6500,
+      22000
+    ],
+    "models_with_at_least_one_compatible_target": 2,
+    "all_curve_and_rounding_variants_remain_compatible": true,
+    "minimum_hidden_defense_candidate": 3850,
     "maximum_hidden_defense_candidate": 13107,
+    "curve_constant_selected": false,
     "exact_damage_projection_proven": false,
     "exact_operation_order_proven": false,
     "exact_integer_rounding_proven": false,
@@ -264,10 +413,11 @@
   },
   "blockers": [
     "physical-defense attribute 11350 was not observed on this target",
-    "floor, ceil, and round-half-up effective-defense variants retain compatible hidden-defense candidates",
+    "the exact client 6500 simple and 22000 current-season transformed curves both retain compatible hidden-defense candidates",
+    "floor, ceil, and round-half-up effective-defense variants remain compatible within both curve models",
     "the exact controls cover one target and one lucky-damage ability family",
     "combat-stage binding, source penetration overlap, stacking arbitration, and event-level conservation remain unproven",
     "remote providers without an observed primary loadout still lack exact equipped-tier evidence"
   ],
-  "content_sha256": "sha256:296947ccd5d5a0e9564a389709531e9b73a0106f38bc271160f4368b90aad5e9"
+  "content_sha256": "sha256:14572554bef088bac116f4f23206d0ace764ab495a26e6785776883e6f86a982"
 }

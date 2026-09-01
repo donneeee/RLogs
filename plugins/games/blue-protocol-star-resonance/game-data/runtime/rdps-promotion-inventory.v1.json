@@ -73,7 +73,7 @@
       "effect_id": 2110092,
       "full_name": "Stunt! Blade Sweep / Arcane! Goblin March — Target Armor Reduction",
       "disposition": "candidate-fail-closed",
-      "remaining_proof_obligation": "Packet-owned provider selection is proven across 314 current-build lifecycle events; equipped tier is proven for 8 events from one reviewed provider. Two exact present/absent controls exhaustively constrain one target's hidden physical defense to 13062-13107 under the candidate 22000 curve and 6.5% scalar, but floor, ceil, and round-half-up remain compatible. Prove event-time target defense and penetration overlap, combat-stage placement, stacking arbitration, exact rounding, equipped tier for every provider, and conserved marginal for the 1.3/2.6/3.9/5.2/6.5% Armor reduction."
+      "remaining_proof_obligation": "Packet-owned provider selection is proven across 314 current-build lifecycle events; equipped tier is proven for 8 events from one reviewed provider. Two exact present/absent controls leave hidden physical-defense candidate envelopes 3850-3892 under the exact client 6500 simple curve and 13062-13107 under the exact current-season 22000 transformed curve; the proof artifact retains the exact sparse sets, and neither curve nor floor/ceil/round-half-up is selected. Prove event-time target defense and penetration overlap, combat-stage placement, stacking arbitration, exact rounding, equipped tier for every provider, and conserved marginal for the 1.3/2.6/3.9/5.2/6.5% Armor reduction."
     }
   ]
 }

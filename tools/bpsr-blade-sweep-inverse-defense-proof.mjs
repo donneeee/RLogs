@@ -4,14 +4,29 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const GENERATOR = "tools/bpsr-blade-sweep-inverse-defense-proof.mjs";
 const SOURCE_GENERATOR = "rlogs-bpsr-status-effect-counterfactual-proof";
 const SOURCE_SCHEMA_VERSION = 22;
 const GAME_BUILD = "24687926";
 const EFFECT_ID = 2110092;
 const LOCUS = "target";
-const CURVE_CONSTANT = 22_000n;
+const CURVE_MODELS = [
+  {
+    model_id: "runtime-simple-6500",
+    curve_constant: 6_500n,
+    provenance:
+      "exact current-build Global.AttackSimplyDefParam definition; direct combat consumer is unproven",
+    combat_authority: false,
+  },
+  {
+    model_id: "current-season-transformed-22000",
+    curve_constant: 22_000n,
+    provenance:
+      "exact current-season FightAttrTranTable[3].DefPara and character-sheet evaluator; combat-stage binding is unproven",
+    combat_authority: false,
+  },
+];
 const BASIS_POINT_SCALE = 10_000n;
 const ARMOR_PENETRATION_BASIS_POINTS = 650n;
 const RETAINED_DEFENSE_NUMERATOR =
@@ -48,23 +63,9 @@ function analyze(parsed) {
 
   const pairs = examples.map((example, index) => controlledPair(example, index));
   const targetGroups = groupBy(pairs, (pair) => pair.target_key);
-  const targets = [...targetGroups.entries()]
-    .map(([targetKey, rows]) => inverseTarget(targetKey, rows))
-    .sort((left, right) => left.target_key.localeCompare(right.target_key));
-  const variantSummary = ROUNDINGS.map((rounding) => ({
-    rounding,
-    compatible_targets: targets.filter(
-      (target) => target.variants.find((value) => value.rounding === rounding).candidate_count > 0,
-    ).length,
-    rejected_targets: targets.filter(
-      (target) => target.variants.find((value) => value.rounding === rounding).candidate_count === 0,
-    ).length,
-    total_candidate_defense_values: targets.reduce(
-      (total, target) =>
-        total + target.variants.find((value) => value.rounding === rounding).candidate_count,
-      0,
-    ),
-  }));
+  const candidateModels = CURVE_MODELS.map((curveModel) =>
+    inverseCandidateModel(curveModel, targetGroups),
+  );
   const report = {
     schema_version: SCHEMA_VERSION,
     generated_by: GENERATOR,
@@ -75,6 +76,7 @@ function analyze(parsed) {
       exact_counterfactual_pairs_required: true,
       every_divergent_group_must_be_embedded: true,
       hidden_defense_search_is_exhaustive_under_each_enumerated_candidate_model: true,
+      every_exact_client_raw_physical_defense_curve_candidate_must_be_enumerated: true,
       candidate_compatibility_is_not_causal_formula_proof: true,
       structurally_unobservable_remote_player_packets_are_not_required: true,
       formula_authority: false,
@@ -92,35 +94,24 @@ function analyze(parsed) {
       source_schema_version: Number(source.schema_version),
       source_generator: String(source.generated_by),
     },
-    candidate_model: {
-      absent_damage:
-        "floor(nonnegative integer base * 22000 / (22000 + raw target physical defense))",
-      present_damage:
-        "floor(nonnegative integer base * 22000 / (22000 + rounded(raw defense * 9350 / 10000)))",
-      armor_penetration_basis_points: Number(ARMOR_PENETRATION_BASIS_POINTS),
-      retained_defense_basis_points: Number(RETAINED_DEFENSE_NUMERATOR),
-      defense_curve_constant: Number(CURVE_CONSTANT),
-      effective_defense_roundings: ROUNDINGS,
-      base_is_solved_independently_for_each_exact_packet_identity: true,
-      search_completeness:
-        "For each pair, real present/absent damage is below (present+1)/absent. The model ratio is at least (K+D)/(K+(9350*D/10000)+1), a strictly increasing lower bound. Once that bound exceeds the observed upper ratio, no larger nonnegative defense can be compatible under floor, ceil, or round-half-up effective-defense rounding.",
-    },
     exact_pair_count: pairs.length,
-    target_count: targets.length,
     exact_pairs: pairs.map(publicPair),
-    targets,
-    variant_summary: variantSummary,
+    target_count: targetGroups.size,
+    candidate_models: candidateModels,
     summary: {
       exact_controlled_divergent_pairs: pairs.length,
-      exact_targets: targets.length,
-      targets_with_at_least_one_compatible_model: targets.filter((target) =>
-        target.variants.some((variant) => variant.candidate_count > 0),
+      exact_targets: targetGroups.size,
+      enumerated_curve_models: candidateModels.length,
+      enumerated_curve_constants: candidateModels.map((model) => model.defense_curve_constant),
+      models_with_at_least_one_compatible_target: candidateModels.filter(
+        (model) => model.summary.targets_with_at_least_one_compatible_variant > 0,
       ).length,
-      all_rounding_variants_remain_compatible: variantSummary.every(
-        (variant) => variant.rejected_targets === 0,
+      all_curve_and_rounding_variants_remain_compatible: candidateModels.every(
+        (model) => model.summary.all_rounding_variants_remain_compatible,
       ),
-      minimum_hidden_defense_candidate: minimumCandidate(targets),
-      maximum_hidden_defense_candidate: maximumCandidate(targets),
+      minimum_hidden_defense_candidate: minimumModelCandidate(candidateModels),
+      maximum_hidden_defense_candidate: maximumModelCandidate(candidateModels),
+      curve_constant_selected: false,
       exact_damage_projection_proven: false,
       exact_operation_order_proven: false,
       exact_integer_rounding_proven: false,
@@ -132,7 +123,8 @@ function analyze(parsed) {
     },
     blockers: [
       "physical-defense attribute 11350 was not observed on this target",
-      "floor, ceil, and round-half-up effective-defense variants retain compatible hidden-defense candidates",
+      "the exact client 6500 simple and 22000 current-season transformed curves both retain compatible hidden-defense candidates",
+      "floor, ceil, and round-half-up effective-defense variants remain compatible within both curve models",
       "the exact controls cover one target and one lucky-damage ability family",
       "combat-stage binding, source penetration overlap, stacking arbitration, and event-level conservation remain unproven",
       "remote providers without an observed primary loadout still lack exact equipped-tier evidence",
@@ -146,12 +138,16 @@ function analyze(parsed) {
   console.log(JSON.stringify({
     status: report.status,
     exact_pair_count: report.exact_pair_count,
-    targets: report.targets.map((target) => ({
-      target_key: target.target_key,
-      variants: target.variants.map((variant) => ({
-        rounding: variant.rounding,
-        candidate_count: variant.candidate_count,
-        ranges: variant.candidate_defense_ranges,
+    candidate_models: report.candidate_models.map((model) => ({
+      model_id: model.model_id,
+      defense_curve_constant: model.defense_curve_constant,
+      targets: model.targets.map((target) => ({
+        target_key: target.target_key,
+        variants: target.variants.map((variant) => ({
+          rounding: variant.rounding,
+          candidate_count: variant.candidate_count,
+          ranges: variant.candidate_defense_ranges,
+        })),
       })),
     })),
   }, null, 2));
@@ -217,19 +213,81 @@ function controlledPair(example, index) {
     present_damage: presentDamage,
     absent_sequences: integerArray(example.absent_sequences, "absent sequences"),
     present_sequences: integerArray(example.present_sequences, "present sequences"),
-    search_cutoff_exclusive: inverseSearchCutoff(absentDamage, presentDamage),
+    search_cutoff_exclusive_by_curve: Object.fromEntries(
+      CURVE_MODELS.map((model) => [
+        String(model.curve_constant),
+        inverseSearchCutoff(absentDamage, presentDamage, model.curve_constant),
+      ]),
+    ),
   };
 }
 
-function inverseTarget(targetKey, pairs) {
-  const searchCutoffExclusive = Math.min(...pairs.map((pair) => pair.search_cutoff_exclusive));
+function inverseCandidateModel(curveModel, targetGroups) {
+  const targets = [...targetGroups.entries()]
+    .map(([targetKey, rows]) => inverseTarget(targetKey, rows, curveModel))
+    .sort((left, right) => left.target_key.localeCompare(right.target_key));
+  const variantSummary = ROUNDINGS.map((rounding) => ({
+    rounding,
+    compatible_targets: targets.filter(
+      (target) => target.variants.find((value) => value.rounding === rounding).candidate_count > 0,
+    ).length,
+    rejected_targets: targets.filter(
+      (target) => target.variants.find((value) => value.rounding === rounding).candidate_count === 0,
+    ).length,
+    total_candidate_defense_values: targets.reduce(
+      (total, target) =>
+        total + target.variants.find((value) => value.rounding === rounding).candidate_count,
+      0,
+    ),
+  }));
+  const curve = Number(curveModel.curve_constant);
+  return {
+    model_id: curveModel.model_id,
+    provenance: curveModel.provenance,
+    combat_authority: curveModel.combat_authority,
+    absent_damage:
+      `floor(nonnegative integer base * ${curve} / (${curve} + raw target physical defense))`,
+    present_damage:
+      `floor(nonnegative integer base * ${curve} / (${curve} + rounded(raw defense * 9350 / 10000)))`,
+    armor_penetration_basis_points: Number(ARMOR_PENETRATION_BASIS_POINTS),
+    retained_defense_basis_points: Number(RETAINED_DEFENSE_NUMERATOR),
+    defense_curve_constant: curve,
+    effective_defense_roundings: ROUNDINGS,
+    base_is_solved_independently_for_each_exact_packet_identity: true,
+    search_completeness:
+      "For each pair, real present/absent damage is below (present+1)/absent. The model ratio is at least (K+D)/(K+(9350*D/10000)+1), a strictly increasing lower bound. Once that bound exceeds the observed upper ratio, no larger nonnegative defense can be compatible under floor, ceil, or round-half-up effective-defense rounding.",
+    targets,
+    variant_summary: variantSummary,
+    summary: {
+      exact_targets: targets.length,
+      targets_with_at_least_one_compatible_variant: targets.filter((target) =>
+        target.variants.some((variant) => variant.candidate_count > 0),
+      ).length,
+      all_rounding_variants_remain_compatible: variantSummary.every(
+        (variant) => variant.rejected_targets === 0,
+      ),
+      minimum_hidden_defense_candidate: minimumCandidate(targets),
+      maximum_hidden_defense_candidate: maximumCandidate(targets),
+      curve_constant_selected: false,
+      combat_authority: false,
+      provider_rdps_credit_allowed: false,
+    },
+  };
+}
+
+function inverseTarget(targetKey, pairs, curveModel) {
+  const curveKey = String(curveModel.curve_constant);
+  const searchCutoffExclusive = Math.min(
+    ...pairs.map((pair) => pair.search_cutoff_exclusive_by_curve[curveKey]),
+  );
   if (!Number.isSafeInteger(searchCutoffExclusive) || searchCutoffExclusive <= 0) {
     throw new Error(`invalid inverse search cutoff for ${targetKey}`);
   }
   const variants = ROUNDINGS.map((rounding) => {
     const candidates = [];
     for (let defense = 0; defense < searchCutoffExclusive; defense += 1) {
-      if (pairs.every((pair) => compatiblePair(pair, defense, rounding))) {
+      if (pairs.every((pair) =>
+        compatiblePair(pair, defense, rounding, curveModel.curve_constant))) {
         candidates.push(defense);
       }
     }
@@ -263,21 +321,21 @@ function inverseTarget(targetKey, pairs) {
   };
 }
 
-function compatiblePair(pair, defenseNumber, rounding) {
+function compatiblePair(pair, defenseNumber, rounding, curveConstant) {
   const defense = BigInt(defenseNumber);
   const effectiveDefense = roundedEffectiveDefense(defense, rounding);
-  const absentInterval = basePreimage(pair.absent_damage, defense);
-  const presentInterval = basePreimage(pair.present_damage, effectiveDefense);
+  const absentInterval = basePreimage(pair.absent_damage, defense, curveConstant);
+  const presentInterval = basePreimage(pair.present_damage, effectiveDefense, curveConstant);
   return maxBigInt(absentInterval.minimum, presentInterval.minimum) <=
     minBigInt(absentInterval.maximum, presentInterval.maximum);
 }
 
-function basePreimage(damageNumber, defense) {
+function basePreimage(damageNumber, defense, curveConstant) {
   const damage = BigInt(damageNumber);
-  const denominator = CURVE_CONSTANT + defense;
+  const denominator = curveConstant + defense;
   return {
-    minimum: ceilDiv(damage * denominator, CURVE_CONSTANT),
-    maximum: ceilDiv((damage + 1n) * denominator, CURVE_CONSTANT) - 1n,
+    minimum: ceilDiv(damage * denominator, curveConstant),
+    maximum: ceilDiv((damage + 1n) * denominator, curveConstant) - 1n,
   };
 }
 
@@ -291,7 +349,7 @@ function roundedEffectiveDefense(defense, rounding) {
   throw new Error(`unknown rounding ${rounding}`);
 }
 
-function inverseSearchCutoff(absentNumber, presentNumber) {
+function inverseSearchCutoff(absentNumber, presentNumber, curveConstant) {
   const absent = BigInt(absentNumber);
   const presentUpper = BigInt(presentNumber) + 1n;
   // Prove that the continuous lower bound
@@ -302,8 +360,8 @@ function inverseSearchCutoff(absentNumber, presentNumber) {
     throw new Error("observed ratio does not yield a finite inverse-defense search bound");
   }
   const constant =
-    absent * BASIS_POINT_SCALE * CURVE_CONSTANT -
-    presentUpper * (BASIS_POINT_SCALE * CURVE_CONSTANT + BASIS_POINT_SCALE);
+    absent * BASIS_POINT_SCALE * curveConstant -
+    presentUpper * (BASIS_POINT_SCALE * curveConstant + BASIS_POINT_SCALE);
   const cutoff = constant >= 0n ? 0n : (-constant) / slope + 1n;
   const numeric = Number(cutoff);
   if (!Number.isSafeInteger(numeric)) throw new Error("inverse search cutoff exceeds safe range");
@@ -347,7 +405,7 @@ function publicPair(pair) {
       Math.floor(pair.present_damage * 10_000 / pair.absent_damage),
     absent_sequences: pair.absent_sequences,
     present_sequences: pair.present_sequences,
-    search_cutoff_exclusive: pair.search_cutoff_exclusive,
+    search_cutoff_exclusive_by_curve: pair.search_cutoff_exclusive_by_curve,
     exact_recorded_input_pair: true,
   };
 }
@@ -379,9 +437,12 @@ function verifyReport(report) {
       report?.status !== "exact-control-pairs-inversely-constrain-hidden-defense-rounding-unresolved" ||
       report?.content_sha256 !== contentHash(report) ||
       report?.policy?.hidden_defense_search_is_exhaustive_under_each_enumerated_candidate_model !== true ||
+      report?.policy
+        ?.every_exact_client_raw_physical_defense_curve_candidate_must_be_enumerated !== true ||
       report?.policy?.formula_authority !== false ||
       report?.summary?.exact_controlled_divergent_pairs < 1 ||
-      report?.summary?.targets_with_at_least_one_compatible_model < 1 ||
+      report?.summary?.models_with_at_least_one_compatible_target < 1 ||
+      report?.summary?.curve_constant_selected !== false ||
       report?.summary?.exact_damage_projection_proven !== false ||
       report?.summary?.exact_operation_order_proven !== false ||
       report?.summary?.exact_integer_rounding_proven !== false ||
@@ -390,21 +451,31 @@ function verifyReport(report) {
       report?.summary?.runtime_authority !== false ||
       report?.summary?.ui_display_authority !== false ||
       report?.summary?.provider_rdps_credit_allowed !== false ||
-      !Array.isArray(report?.targets) || report.targets.length < 1 ||
-      report.targets.some((target) =>
-        target?.search_bound_proven_complete_for_every_larger_nonnegative_defense !== true ||
-        target?.candidate_selected !== false ||
-        target?.exact_target_physical_defense_proven !== false ||
-        target?.exact_integer_rounding_proven !== false ||
-        target?.formula_authority !== false ||
-        target?.provider_rdps_credit_allowed !== false ||
-        !Array.isArray(target?.variants) || target.variants.length !== ROUNDINGS.length ||
-        target.variants.some((variant, index) =>
-          variant?.rounding !== ROUNDINGS[index] ||
-          !Number.isSafeInteger(variant?.candidate_count) ||
-          variant.candidate_count < 0 ||
-          variant?.every_exact_pair_compatible !== (variant.candidate_count > 0),
-        )
+      !Array.isArray(report?.candidate_models) ||
+      report.candidate_models.length !== CURVE_MODELS.length ||
+      report.candidate_models.some((model, index) =>
+        model?.model_id !== CURVE_MODELS[index].model_id ||
+        Number(model?.defense_curve_constant) !== Number(CURVE_MODELS[index].curve_constant) ||
+        model?.combat_authority !== false ||
+        model?.summary?.curve_constant_selected !== false ||
+        model?.summary?.combat_authority !== false ||
+        model?.summary?.provider_rdps_credit_allowed !== false ||
+        !Array.isArray(model?.targets) || model.targets.length < 1 ||
+        model.targets.some((target) =>
+          target?.search_bound_proven_complete_for_every_larger_nonnegative_defense !== true ||
+          target?.candidate_selected !== false ||
+          target?.exact_target_physical_defense_proven !== false ||
+          target?.exact_integer_rounding_proven !== false ||
+          target?.formula_authority !== false ||
+          target?.provider_rdps_credit_allowed !== false ||
+          !Array.isArray(target?.variants) || target.variants.length !== ROUNDINGS.length ||
+          target.variants.some((variant, variantIndex) =>
+            variant?.rounding !== ROUNDINGS[variantIndex] ||
+            !Number.isSafeInteger(variant?.candidate_count) ||
+            variant.candidate_count < 0 ||
+            variant?.every_exact_pair_compatible !== (variant.candidate_count > 0),
+          )
+        ),
       )) {
     throw new Error("inverse-defense report failed its fail-closed verification contract");
   }
@@ -415,12 +486,18 @@ function verifyReport(report) {
   const pairs = report.exact_pairs.map((pair, index) => {
     const absentDamage = positiveInteger(pair?.absent_damage, "verified absent damage");
     const presentDamage = positiveInteger(pair?.present_damage, "verified present damage");
-    const searchCutoffExclusive = inverseSearchCutoff(absentDamage, presentDamage);
+    const searchCutoffExclusiveByCurve = Object.fromEntries(
+      CURVE_MODELS.map((model) => [
+        String(model.curve_constant),
+        inverseSearchCutoff(absentDamage, presentDamage, model.curve_constant),
+      ]),
+    );
     if (presentDamage <= absentDamage ||
         Number(pair?.damage_difference) !== presentDamage - absentDamage ||
         Number(pair?.present_to_absent_ratio_basis_points_floor) !==
           Math.floor(presentDamage * 10_000 / absentDamage) ||
-        Number(pair?.search_cutoff_exclusive) !== searchCutoffExclusive ||
+        stableJson(pair?.search_cutoff_exclusive_by_curve) !==
+          stableJson(searchCutoffExclusiveByCurve) ||
         pair?.exact_recorded_input_pair !== true) {
       throw new Error(`inverse-defense exact pair ${index} failed recomputation`);
     }
@@ -428,41 +505,32 @@ function verifyReport(report) {
       ...pair,
       absent_damage: absentDamage,
       present_damage: presentDamage,
-      search_cutoff_exclusive: searchCutoffExclusive,
+      search_cutoff_exclusive_by_curve: searchCutoffExclusiveByCurve,
     };
   });
-  const recomputedTargets = [...groupBy(pairs, (pair) => pair.target_key).entries()]
-    .map(([targetKey, rows]) => inverseTarget(targetKey, rows))
-    .sort((left, right) => left.target_key.localeCompare(right.target_key));
-  if (stableJson(recomputedTargets) !== stableJson(report.targets)) {
-    throw new Error("inverse-defense targets or candidate sets failed exact recomputation");
+  const targetGroups = groupBy(pairs, (pair) => pair.target_key);
+  const recomputedModels = CURVE_MODELS.map((model) =>
+    inverseCandidateModel(model, targetGroups),
+  );
+  if (stableJson(recomputedModels) !== stableJson(report.candidate_models)) {
+    throw new Error("inverse-defense models, targets, or candidate sets failed exact recomputation");
   }
-  const recomputedVariantSummary = ROUNDINGS.map((rounding) => ({
-    rounding,
-    compatible_targets: recomputedTargets.filter(
-      (target) => target.variants.find((value) => value.rounding === rounding).candidate_count > 0,
-    ).length,
-    rejected_targets: recomputedTargets.filter(
-      (target) => target.variants.find((value) => value.rounding === rounding).candidate_count === 0,
-    ).length,
-    total_candidate_defense_values: recomputedTargets.reduce(
-      (total, target) =>
-        total + target.variants.find((value) => value.rounding === rounding).candidate_count,
-      0,
-    ),
-  }));
-  if (stableJson(recomputedVariantSummary) !== stableJson(report.variant_summary) ||
-      Number(report.summary.minimum_hidden_defense_candidate) !==
-        minimumCandidate(recomputedTargets) ||
-      Number(report.summary.maximum_hidden_defense_candidate) !==
-        maximumCandidate(recomputedTargets) ||
-      Number(report.summary.exact_targets) !== recomputedTargets.length ||
-      Number(report.summary.targets_with_at_least_one_compatible_model) !==
-        recomputedTargets.filter((target) =>
-          target.variants.some((variant) => variant.candidate_count > 0),
+  if (Number(report.target_count) !== targetGroups.size ||
+      Number(report.summary.exact_targets) !== targetGroups.size ||
+      Number(report.summary.enumerated_curve_models) !== recomputedModels.length ||
+      stableJson(report.summary.enumerated_curve_constants) !==
+        stableJson(recomputedModels.map((model) => model.defense_curve_constant)) ||
+      Number(report.summary.models_with_at_least_one_compatible_target) !==
+        recomputedModels.filter(
+          (model) => model.summary.targets_with_at_least_one_compatible_variant > 0,
         ).length ||
-      report.summary.all_rounding_variants_remain_compatible !==
-        recomputedVariantSummary.every((variant) => variant.rejected_targets === 0)) {
+      report.summary.all_curve_and_rounding_variants_remain_compatible !==
+        recomputedModels.every((model) =>
+          model.summary.all_rounding_variants_remain_compatible) ||
+      Number(report.summary.minimum_hidden_defense_candidate) !==
+        minimumModelCandidate(recomputedModels) ||
+      Number(report.summary.maximum_hidden_defense_candidate) !==
+        maximumModelCandidate(recomputedModels)) {
     throw new Error("inverse-defense summary failed exact recomputation");
   }
 }
@@ -473,26 +541,42 @@ function selfTest() {
     { absent_damage: 96_580, present_damage: 98_980 },
   ].map((pair) => ({
     ...pair,
-    search_cutoff_exclusive: inverseSearchCutoff(pair.absent_damage, pair.present_damage),
+    search_cutoff_exclusive_by_curve: Object.fromEntries(
+      CURVE_MODELS.map((model) => [
+        String(model.curve_constant),
+        inverseSearchCutoff(pair.absent_damage, pair.present_damage, model.curve_constant),
+      ]),
+    ),
   }));
-  const target = inverseTarget("fixture", pairs.map((pair) => ({
+  const rows = pairs.map((pair) => ({
     ...pair,
     rlog: "fixture.rlog",
     session_id: "fixture",
     run_ordinal: 0,
     target_entity_uuid: 1,
     target_attribute_state_id: 2,
-  })));
+  }));
   const expected = {
-    floor: [13_062, 13_064, 13_066, 13_087, 13_089, 13_091, 13_092],
-    ceil: [13_093, 13_094, 13_095, 13_096, 13_097, 13_098, 13_099, 13_100,
-      13_101, 13_102, 13_103, 13_104, 13_105, 13_107],
-    "round-half-up": [13_087, 13_089, 13_091, 13_092, 13_093, 13_094,
-      13_095, 13_096, 13_097, 13_098, 13_099, 13_100],
+    "runtime-simple-6500": {
+      floor: [3_850, 3_851, 3_852, 3_853, 3_854],
+      ceil: [3_891, 3_892],
+      "round-half-up": [3_854],
+    },
+    "current-season-transformed-22000": {
+      floor: [13_062, 13_064, 13_066, 13_087, 13_089, 13_091, 13_092],
+      ceil: [13_093, 13_094, 13_095, 13_096, 13_097, 13_098, 13_099, 13_100,
+        13_101, 13_102, 13_103, 13_104, 13_105, 13_107],
+      "round-half-up": [13_087, 13_089, 13_091, 13_092, 13_093, 13_094,
+        13_095, 13_096, 13_097, 13_098, 13_099, 13_100],
+    },
   };
-  for (const variant of target.variants) {
-    if (stableJson(variant.candidate_defense_values) !== stableJson(expected[variant.rounding])) {
-      throw new Error(`inverse fixture changed for ${variant.rounding}`);
+  for (const model of CURVE_MODELS) {
+    const target = inverseTarget("fixture", rows, model);
+    for (const variant of target.variants) {
+      if (stableJson(variant.candidate_defense_values) !==
+          stableJson(expected[model.model_id][variant.rounding])) {
+        throw new Error(`inverse fixture changed for ${model.model_id}/${variant.rounding}`);
+      }
     }
   }
   console.log("Blade Sweep inverse-defense proof self-test passed");
@@ -527,6 +611,22 @@ function maximumCandidate(targets) {
     target.variants.flatMap((variant) =>
       variant.maximum_candidate_defense == null ? [] : [variant.maximum_candidate_defense]),
   );
+  return values.length ? Math.max(...values) : null;
+}
+
+function minimumModelCandidate(models) {
+  const values = models.flatMap((model) => {
+    const value = model?.summary?.minimum_hidden_defense_candidate;
+    return value == null ? [] : [Number(value)];
+  });
+  return values.length ? Math.min(...values) : null;
+}
+
+function maximumModelCandidate(models) {
+  const values = models.flatMap((model) => {
+    const value = model?.summary?.maximum_hidden_defense_candidate;
+    return value == null ? [] : [Number(value)];
+  });
   return values.length ? Math.max(...values) : null;
 }
 
