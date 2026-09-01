@@ -7,6 +7,7 @@ mod core_settings;
 mod hotkey_settings;
 mod layout_settings;
 mod native_plugin_processes;
+mod photo_cache;
 mod profile_packages;
 mod submission_connection;
 mod submission_policy;
@@ -5374,6 +5375,7 @@ impl RuntimeController {
                         let mut live_snapshot_error = None;
                         let mut live_event_lines = Vec::new();
                         let mut local_photo_assets = Vec::new();
+                        let mut local_photo_wall_identities = Vec::new();
                         let sealed = recorder
                             .process_frame_with_local_observations(frame, |event| {
                                 if matches!(
@@ -5430,6 +5432,11 @@ impl RuntimeController {
                                                             &mut packages,
                                                         )?;
                                                     }
+                                                    local_photo_wall_identities.extend(
+                                                        packages.iter().filter_map(
+                                                            photo_cache::package_photo_wall_identity,
+                                                        ),
+                                                    );
                                                     let package_count = packages.len();
                                                     let mut store = profile_packages
                                                         .lock()
@@ -5675,17 +5682,41 @@ impl RuntimeController {
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
                         if let Some(sender) = &photo_publication_sender {
+                            for (character_id, photo_ids) in local_photo_wall_identities {
+                                let observation = PhotoPublicationObservation::ProfileIdentity {
+                                    character_id,
+                                    photo_ids,
+                                };
+                                if let Err(error) = sender.try_send(observation) {
+                                    let observation = match error {
+                                        TrySendError::Full(observation)
+                                        | TrySendError::Disconnected(observation) => observation,
+                                    };
+                                    let (character_id, photo_id) =
+                                        photo_publication_observation_identity(&observation);
+                                    eprintln!(
+                                        "Photo Wall cache mapping queue is unavailable; photo {} for UID {} remains local and retryable",
+                                        photo_id.map_or_else(|| "unknown".into(), |value| value.to_string()),
+                                        character_id
+                                    );
+                                }
+                            }
                             for photo in local_photo_assets {
-                                match sender.try_send(photo) {
+                                match sender.try_send(PhotoPublicationObservation::Captured(photo)) {
                                     Ok(()) => {}
-                                    Err(TrySendError::Full(photo)) => eprintln!(
-                                        "Photo Wall publication queue is full; photo {} for UID {} remains local and retryable",
-                                        photo.photo_id, photo.character_id
-                                    ),
-                                    Err(TrySendError::Disconnected(photo)) => eprintln!(
-                                        "Photo Wall publication worker stopped; photo {} for UID {} remains local and retryable",
-                                        photo.photo_id, photo.character_id
-                                    ),
+                                    Err(error) => {
+                                        let observation = match error {
+                                            TrySendError::Full(observation)
+                                            | TrySendError::Disconnected(observation) => observation,
+                                        };
+                                        let (character_id, photo_id) =
+                                            photo_publication_observation_identity(&observation);
+                                        eprintln!(
+                                            "Photo Wall publication queue is unavailable; photo {} for UID {} remains local and retryable",
+                                            photo_id.map_or_else(|| "unknown".into(), |value| value.to_string()),
+                                            character_id
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -6677,17 +6708,40 @@ fn apply_profile_sync_policy(
     }
 }
 
+#[derive(Debug)]
+enum PhotoPublicationObservation {
+    Captured(LocalPhotoAssetReference),
+    ProfileIdentity {
+        character_id: i64,
+        photo_ids: Vec<u32>,
+    },
+}
+
+fn photo_publication_observation_identity(
+    observation: &PhotoPublicationObservation,
+) -> (i64, Option<u32>) {
+    match observation {
+        PhotoPublicationObservation::Captured(reference) => {
+            (reference.character_id, Some(reference.photo_id))
+        }
+        PhotoPublicationObservation::ProfileIdentity {
+            character_id,
+            photo_ids,
+        } => (*character_id, photo_ids.first().copied()),
+    }
+}
+
 fn spawn_photo_wall_publication_worker(
     enabled: bool,
     transport: Option<SubmissionTransport>,
     publications: Arc<Mutex<ProfilePublicationLedger>>,
-) -> Option<(SyncSender<LocalPhotoAssetReference>, JoinHandle<()>)> {
+) -> Option<(SyncSender<PhotoPublicationObservation>, JoinHandle<()>)> {
     if !enabled {
         return None;
     }
     let transport = transport?;
     let (sender, receiver) =
-        sync_channel::<LocalPhotoAssetReference>(PHOTO_WALL_PUBLICATION_QUEUE_CAPACITY);
+        sync_channel::<PhotoPublicationObservation>(PHOTO_WALL_PUBLICATION_QUEUE_CAPACITY);
     let worker = thread::Builder::new()
         .name("rlogs-photo-wall-publisher".into())
         .spawn(move || {
@@ -6697,7 +6751,17 @@ fn spawn_photo_wall_publication_worker(
             let mut disconnected = false;
             while !disconnected {
                 match receiver.recv_timeout(Duration::from_secs(1)) {
-                    Ok(reference) => {
+                    Ok(observation) => {
+                        let reference = match observation {
+                            PhotoPublicationObservation::Captured(reference) => Some(reference),
+                            PhotoPublicationObservation::ProfileIdentity {
+                                character_id,
+                                photo_ids,
+                            } => photo_cache::reviewed_cached_photo_asset(character_id, &photo_ids),
+                        };
+                        let Some(reference) = reference else {
+                            continue;
+                        };
                         let key = (reference.character_id, reference.photo_id);
                         if published.contains(&(
                             reference.character_id,

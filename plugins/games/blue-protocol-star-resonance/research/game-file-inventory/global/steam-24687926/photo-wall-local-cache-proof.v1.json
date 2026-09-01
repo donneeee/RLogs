@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "artifact": "photo-wall-local-cache-proof",
+  "game_build": "24687926",
+  "deployment": "global",
+  "channel": "steam",
+  "decision": "authorize a consent-gated one-photo local cache fallback only when the exact character row and wall/cache cardinalities form a bijection",
+  "evidence": {
+    "sqlite_table": "cache_photo_info",
+    "sqlite_key_semantic": "Z.EntityMgr.PlayerUuid",
+    "sqlite_value_schema": "zproto.httpCachePhotoInfo",
+    "reviewed_player_uuid": 216009015936,
+    "character_id_derivation": {
+      "operation": "reviewed_player_uuid >> 16",
+      "result": 3296036,
+      "expected_character_id": 3296036,
+      "low_16_bits": 640,
+      "exact_match": true
+    },
+    "matching_character_rows": 1,
+    "reviewed_cache_entries": 1,
+    "synced_distinct_photo_ids": 1,
+    "local_media_bytes": 2964809,
+    "local_media_sha256": "498ba7211be5f9fb3c0555378e6603ee62559c0e84bc19a4c7682598f6db0656",
+    "cdn_revalidation": {
+      "status": 200,
+      "content_type": "image/png",
+      "content_length": 2964809,
+      "matches_local_media_length": true
+    }
+  },
+  "sources": [
+    {
+      "kind": "installed-current-build-steam-manifest",
+      "reference": "Steam app 3681810 appmanifest buildid 24687926",
+      "proves": [
+        "the reviewed local installation is the exact current Global Steam build"
+      ]
+    },
+    {
+      "kind": "installed-unity-app-identity",
+      "reference": "BPSR_STEAM_Data/app.info",
+      "proves": [
+        "Unity company is bokura",
+        "Unity product is BPSR_STEAM",
+        "the reviewed persistent-data root is deterministic"
+      ]
+    },
+    {
+      "kind": "reviewed-game-lua",
+      "reference": "tmp-rdps-audit/external/StarResonanceData/lua/ui/view_model/album_main_vm.lua",
+      "sha256": "0f3e38e0b991374b4bf0a81e752571c3ae341ef6e40b4d918b786ada4c8f3fc4",
+      "proves": [
+        "cache_photo_info is keyed by Z.EntityMgr.PlayerUuid",
+        "zproto.httpCachePhotoInfo maps reviewed HTTP URLs to local cache paths"
+      ]
+    },
+    {
+      "kind": "installed-read-only-sqlite-cache",
+      "reference": "private local evidence; URL and filesystem path deliberately omitted",
+      "sha256": "395aaa869d14506c1d8a7bfb68d80eaebc1426e50d8e89372fee81c4f6cf4858",
+      "proves": [
+        "the exact character row contains one URL-to-local-image mapping",
+        "the row key derives the public character ID exactly"
+      ]
+    },
+    {
+      "kind": "existing-reviewed-network-route-proof",
+      "reference": "photo-wall-route-proof.v1.json",
+      "proves": [
+        "approved source origin is https://photo.playbpsr.com/xinghen-prod/",
+        "Photo Wall images require separate explicit publication consent",
+        "public profiles receive only server-owned relative image paths"
+      ]
+    }
+  ],
+  "proof_gates": {
+    "separate_photo_wall_consent_required": true,
+    "exact_character_row_required": true,
+    "single_distinct_synced_photo_id_required": true,
+    "single_reviewed_cache_entry_required": true,
+    "cache_path_must_resolve_inside_bpsr_persistent_root": true,
+    "local_file_must_be_a_bounded_png_jpeg_or_webp": true,
+    "source_url_must_pass_the_existing_exact_origin_gate": true,
+    "multiple_photos_or_ambiguous_cache_entries": "do not guess; require the live Photograph route",
+    "raw_url_or_local_path_publication": false
+  }
+}

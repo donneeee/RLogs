@@ -20,6 +20,8 @@ rlogs-plugin-runtime = { path = "../../engine/plugin-runtime" }
 rlogs-profiles = { path = "../../engine/profiles" }
 rlogs-submission = { path = "../../engine/submission" }
 reqwest.workspace = true
+prost.workspace = true
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
