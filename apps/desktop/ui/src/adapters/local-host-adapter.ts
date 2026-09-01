@@ -2609,7 +2609,7 @@ function mountSubmissionPolicyOptionsSurface(
     ? null
     : checkboxOption(
         "Publish my Photo Wall images",
-        "Separately permits rLogs to copy the photos displayed on your in-game Photo Wall to your public profile. This stays off unless you explicitly enable it; ordinary profile synchronization does not publish the image files.",
+        "Separately permits rLogs to publish an image only after the running parser observes the game's exact UID and Photo ID response. Keep rLogs parsing while you open your Photo Wall in game to refresh it. This stays off unless you explicitly enable it; ordinary profile synchronization does not publish image files.",
       );
   if (photoWallImages !== null) {
     form.append(photoWallImages.label);
