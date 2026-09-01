@@ -259,7 +259,7 @@ impl ProfileRegistry {
             module_inventory_count: profile.module_inventory_count,
             equipped_module_count: profile.equipped_module_count,
             profile_url: format!(
-                "{}/profile-lab/?profile={}",
+                "{}/account/?profile={}",
                 self.public_site_url, profile.profile_id
             ),
         }
@@ -524,7 +524,7 @@ mod tests {
             .unwrap();
         assert!(receipt.claimed);
         assert_eq!(receipt.module_inventory_count, 3);
-        assert!(receipt.profile_url.contains("/profile-lab/?profile=prf_"));
+        assert!(receipt.profile_url.contains("/account/?profile=prf_"));
         let published = registry.get(&receipt.profile_id).unwrap();
         assert_eq!(published.character_id, "1000001");
         assert_eq!(

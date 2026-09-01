@@ -959,7 +959,10 @@ impl SubmissionService {
     }
 
     fn share_url(&self, report_id: &str) -> String {
-        format!("{}/?parse={report_id}#parse", self.inner.public_site_url)
+        format!(
+            "{}/parses/?parse={report_id}#parse",
+            self.inner.public_site_url
+        )
     }
 
     fn require_upload_owner(
