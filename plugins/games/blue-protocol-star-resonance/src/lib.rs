@@ -195,16 +195,16 @@ pub use privacy::{
 };
 pub use profile::{
     AchievementProgress, AchievementProgressProfile, ActivityProgress, BattleImagineSkill,
-    CharacterAppearance, CharacterProfilePatch, CharacterProgression, CollectionSummary,
-    CombatPowerBreakdown, CombatPowerComponent, CombatPowerSubcomponent, CombatProfessionProfile,
-    CosmeticOwnership, CultivationAreaProfile, CultivationLineProfile, DungeonProgress,
-    DungeonTargetProgress, EquipmentAttributeProfile, EquipmentEnchantmentProfile, EquipmentItem,
-    EquipmentSuitEntryProfile, EquippedActionSlot, HandbookProgress, ImagineOwnership,
-    LifeProfessionProfile, MasterModeDungeonProgress, ModuleItemProfile, ModulePartProfile,
-    ModuleProfile, ModuleUpgradeRecord, ProfileEventError, ReputationProgress, RgbColor,
-    SeasonAchievementProgress, SeasonCultivationProfile, SeasonMedalHole, SeasonMedalNode,
-    SeasonMedalProfile, SeasonProfile, SkillLevel, SocialDisplay, TalentLevel,
-    TalentProgressProfile, WeeklyTowerProgress,
+    CharacterAppearance, CharacterProfilePatch, CharacterProgression,
+    CollectionObservationSections, CollectionSummary, CombatPowerBreakdown, CombatPowerComponent,
+    CombatPowerSubcomponent, CombatProfessionProfile, CosmeticOwnership, CultivationAreaProfile,
+    CultivationLineProfile, DungeonProgress, DungeonTargetProgress, EquipmentAttributeProfile,
+    EquipmentEnchantmentProfile, EquipmentItem, EquipmentSuitEntryProfile, EquippedActionSlot,
+    HandbookProgress, ImagineOwnership, LifeProfessionProfile, MasterModeDungeonProgress,
+    ModuleItemProfile, ModulePartProfile, ModuleProfile, ModuleUpgradeRecord, ProfileEventError,
+    ReputationProgress, RgbColor, SeasonAchievementProgress, SeasonCultivationProfile,
+    SeasonMedalHole, SeasonMedalNode, SeasonMedalProfile, SeasonProfile, SkillLevel, SocialDisplay,
+    TalentLevel, TalentProgressProfile, WeeklyTowerProgress,
 };
 pub use profile_projection::{
     BpsrProfileProjectionError, LiveProfileProjection, MAXIMUM_LOCAL_PROFILE_CHARACTERS,

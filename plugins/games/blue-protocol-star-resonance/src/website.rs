@@ -32,7 +32,15 @@ pub fn website_profile_request(
         routing.insert("world".into(), world.clone());
     }
 
-    let body = serde_json::to_value(profile)?;
+    let mut body = serde_json::to_value(profile)?;
+    // Collection subsection provenance is required for correct local merging,
+    // but is an implementation detail rather than public profile content.
+    if let Some(collection) = body
+        .get_mut("collection_summary")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        collection.remove("observed_sections");
+    }
     let payload = WebsitePayloadEnvelope::new(
         BPSR_GAME_PLUGIN_ID,
         "character-profile",

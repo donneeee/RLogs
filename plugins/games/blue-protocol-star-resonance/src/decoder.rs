@@ -31,10 +31,10 @@ use crate::specialization_detection::{
 use crate::{
     AchievementProgress, AchievementProgressProfile, ActivityProgress, AllowedDataDomain,
     BattleImagineSkill, CaptureGapKind, CaptureRecord, CaptureRecordKind, CharacterAppearance,
-    CharacterProfilePatch, CharacterProgression, CollectionSummary, CombatPowerBreakdown,
-    CombatPowerComponent, CombatPowerSubcomponent, CombatProfessionProfile, CultivationAreaProfile,
-    CultivationLineProfile, DecodeDisposition, DungeonProgress, DungeonTargetProgress,
-    EquipmentAttributeProfile, EquipmentEnchantmentProfile, EquipmentItem,
+    CharacterProfilePatch, CharacterProgression, CollectionObservationSections, CollectionSummary,
+    CombatPowerBreakdown, CombatPowerComponent, CombatPowerSubcomponent, CombatProfessionProfile,
+    CultivationAreaProfile, CultivationLineProfile, DecodeDisposition, DungeonProgress,
+    DungeonTargetProgress, EquipmentAttributeProfile, EquipmentEnchantmentProfile, EquipmentItem,
     EquipmentSuitEntryProfile, EquippedActionSlot, GameBuild, HandbookProgress,
     LifeProfessionProfile, MasterModeDungeonProgress, ModuleItemProfile, ModulePartProfile,
     ModuleProfile, ModuleUpgradeRecord, ObjectiveCatalogResolver, ProhibitedDataClass,
@@ -3181,6 +3181,17 @@ fn container_collection(
     photo_ids.dedup();
 
     Some(CollectionSummary {
+        observed_sections: CollectionObservationSections {
+            fashion: fashion.is_some(),
+            collection_book: collection_book.is_some(),
+            personal_zone: personal_zone.is_some(),
+            rides: rides.is_some(),
+            emojis: emojis.is_some(),
+            handbook: handbook.is_some(),
+            vanity_pets: vanity_pets.is_some(),
+            fantasy_atlas: fantasy_atlas.is_some(),
+            achievements: achievements.is_some(),
+        },
         fashion_points: fashion
             .and_then(|fashion| fashion.fashion_points)
             .or_else(|| personal_zone.and_then(|zone| zone.fashion_collection_points))

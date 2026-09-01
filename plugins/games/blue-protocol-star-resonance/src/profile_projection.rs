@@ -7,8 +7,10 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    BpsrWebsiteProfileError, CharacterProfilePatch, CharacterProgression, ProfileEventError,
-    SeasonProfile, SocialDisplay, website_profile_request,
+    AchievementProgress, AchievementProgressProfile, BpsrWebsiteProfileError,
+    CharacterProfilePatch, CharacterProgression, CollectionSummary, HandbookProgress,
+    ProfileEventError, SeasonAchievementProgress, SeasonProfile, SocialDisplay,
+    website_profile_request,
 };
 
 pub const MAXIMUM_LOCAL_PROFILE_CHARACTERS: usize = 8;
@@ -261,7 +263,7 @@ impl CharacterProfilePatch {
         replace_if_some(&mut self.combat_professions, newer.combat_professions);
         replace_if_some(&mut self.life_professions, newer.life_professions);
         replace_if_some(&mut self.cosmetics, newer.cosmetics);
-        replace_if_some(&mut self.collection_summary, newer.collection_summary);
+        merge_collection_summary(&mut self.collection_summary, newer.collection_summary);
         replace_if_some(&mut self.activity_progress, newer.activity_progress);
         replace_if_some(&mut self.season_medals, newer.season_medals);
         replace_if_some(&mut self.season_cultivation, newer.season_cultivation);
@@ -329,6 +331,186 @@ fn merge_social_display(target: &mut Option<SocialDisplay>, newer: Option<Social
     target.medal_ids.dedup();
     target.medal_slots.extend(newer.medal_slots);
     replace_if_some(&mut target.profile_theme_id, newer.profile_theme_id);
+}
+
+fn merge_collection_summary(
+    target: &mut Option<CollectionSummary>,
+    newer: Option<CollectionSummary>,
+) {
+    let Some(newer) = newer else {
+        return;
+    };
+    let Some(target) = target.as_mut() else {
+        *target = Some(newer);
+        return;
+    };
+
+    let CollectionSummary {
+        observed_sections,
+        fashion_points,
+        mount_points,
+        weapon_skin_points,
+        equipped_fashion_ids,
+        owned_fashion_ids,
+        owned_mount_ids,
+        owned_weapon_skin_ids,
+        owned_dye_ids,
+        unlocked_module_ids,
+        ride_ids,
+        ride_skin_ids,
+        unlocked_emoji_ids,
+        vanity_pet_ids,
+        summoned_vanity_pet_id,
+        fantasy_atlas_stages,
+        handbook,
+        photo_ids,
+        photo_wall,
+        achievements,
+    } = newer;
+
+    // Older schema-compatible events have no subsection marker. Merge those
+    // conservatively so a partial legacy observation can enrich a profile but
+    // cannot erase independent collection state.
+    if observed_sections.is_empty() {
+        replace_if_some(&mut target.fashion_points, fashion_points);
+        replace_if_some(&mut target.mount_points, mount_points);
+        replace_if_some(&mut target.weapon_skin_points, weapon_skin_points);
+        target.equipped_fashion_ids.extend(equipped_fashion_ids);
+        merge_unique(&mut target.owned_fashion_ids, owned_fashion_ids);
+        merge_unique(&mut target.owned_mount_ids, owned_mount_ids);
+        merge_unique(&mut target.owned_weapon_skin_ids, owned_weapon_skin_ids);
+        merge_unique(&mut target.owned_dye_ids, owned_dye_ids);
+        merge_unique(&mut target.unlocked_module_ids, unlocked_module_ids);
+        merge_unique(&mut target.ride_ids, ride_ids);
+        merge_unique(&mut target.ride_skin_ids, ride_skin_ids);
+        merge_unique(&mut target.unlocked_emoji_ids, unlocked_emoji_ids);
+        merge_unique(&mut target.vanity_pet_ids, vanity_pet_ids);
+        replace_if_some(&mut target.summoned_vanity_pet_id, summoned_vanity_pet_id);
+        target.fantasy_atlas_stages.extend(fantasy_atlas_stages);
+        merge_handbook(&mut target.handbook, handbook);
+        merge_unique(&mut target.photo_ids, photo_ids);
+        target.photo_wall.extend(photo_wall);
+        merge_achievements(&mut target.achievements, achievements);
+        return;
+    }
+
+    if observed_sections.fashion {
+        replace_if_some(&mut target.fashion_points, fashion_points);
+        replace_if_some(&mut target.mount_points, mount_points);
+        replace_if_some(&mut target.weapon_skin_points, weapon_skin_points);
+        target.equipped_fashion_ids = equipped_fashion_ids;
+        target.owned_fashion_ids = owned_fashion_ids;
+        target.owned_mount_ids = owned_mount_ids;
+        target.owned_weapon_skin_ids = owned_weapon_skin_ids;
+        target.owned_dye_ids = owned_dye_ids;
+    }
+    if observed_sections.collection_book {
+        target.unlocked_module_ids = unlocked_module_ids;
+    }
+    if observed_sections.personal_zone {
+        replace_if_some(&mut target.fashion_points, fashion_points);
+        replace_if_some(&mut target.mount_points, mount_points);
+        replace_if_some(&mut target.weapon_skin_points, weapon_skin_points);
+        target.photo_ids = photo_ids;
+        target.photo_wall = photo_wall;
+    }
+    if observed_sections.rides {
+        target.ride_ids = ride_ids;
+        target.ride_skin_ids = ride_skin_ids;
+    }
+    if observed_sections.emojis {
+        target.unlocked_emoji_ids = unlocked_emoji_ids;
+    }
+    if observed_sections.handbook {
+        target.handbook = handbook;
+    }
+    if observed_sections.vanity_pets {
+        target.vanity_pet_ids = vanity_pet_ids;
+        target.summoned_vanity_pet_id = summoned_vanity_pet_id;
+    }
+    if observed_sections.fantasy_atlas {
+        target.fantasy_atlas_stages = fantasy_atlas_stages;
+    }
+    if observed_sections.achievements {
+        target.achievements = achievements;
+    }
+    target.observed_sections.merge(observed_sections);
+}
+
+fn merge_unique<T: Ord>(target: &mut Vec<T>, newer: Vec<T>) {
+    target.extend(newer);
+    target.sort_unstable();
+    target.dedup();
+}
+
+fn merge_handbook(target: &mut Option<HandbookProgress>, newer: Option<HandbookProgress>) {
+    let Some(newer) = newer else {
+        return;
+    };
+    let Some(target) = target.as_mut() else {
+        *target = Some(newer);
+        return;
+    };
+    merge_unique(&mut target.important_people_ids, newer.important_people_ids);
+    merge_unique(&mut target.reading_book_ids, newer.reading_book_ids);
+    merge_unique(&mut target.dictionary_entry_ids, newer.dictionary_entry_ids);
+    merge_unique(&mut target.postcard_ids, newer.postcard_ids);
+    merge_unique(&mut target.monthly_card_ids, newer.monthly_card_ids);
+}
+
+fn merge_achievements(
+    target: &mut Option<AchievementProgressProfile>,
+    newer: Option<AchievementProgressProfile>,
+) {
+    let Some(newer) = newer else {
+        return;
+    };
+    let Some(target) = target.as_mut() else {
+        *target = Some(newer);
+        return;
+    };
+    merge_achievement_entries(&mut target.general, newer.general);
+    for newer_season in newer.seasons {
+        if let Some(target_season) = target
+            .seasons
+            .iter_mut()
+            .find(|season| season.season_id == newer_season.season_id)
+        {
+            merge_achievement_entries(&mut target_season.achievements, newer_season.achievements);
+        } else {
+            target.seasons.push(SeasonAchievementProgress {
+                season_id: newer_season.season_id,
+                achievements: newer_season.achievements,
+            });
+        }
+    }
+    target
+        .seasons
+        .sort_unstable_by_key(|season| season.season_id);
+    merge_unique(
+        &mut target.initialized_season_ids,
+        newer.initialized_season_ids,
+    );
+    replace_if_some(&mut target.version, newer.version);
+}
+
+fn merge_achievement_entries(
+    target: &mut Vec<AchievementProgress>,
+    newer: Vec<AchievementProgress>,
+) {
+    for newer in newer {
+        if let Some(target) = target
+            .iter_mut()
+            .find(|entry| entry.achievement_id == newer.achievement_id)
+        {
+            replace_if_some(&mut target.finish_count, newer.finish_count);
+            replace_if_some(&mut target.reward_claimed, newer.reward_claimed);
+            replace_if_some(&mut target.begin_progress, newer.begin_progress);
+        } else {
+            target.push(newer);
+        }
+    }
+    target.sort_unstable_by_key(|entry| entry.achievement_id);
 }
 
 fn merge_progression(
@@ -512,6 +694,93 @@ mod tests {
                 profile: Box::new(profile.into_game_event().unwrap()),
             },
         }
+    }
+
+    fn collection(
+        observed_sections: crate::CollectionObservationSections,
+    ) -> crate::CollectionSummary {
+        crate::CollectionSummary {
+            observed_sections,
+            fashion_points: None,
+            mount_points: None,
+            weapon_skin_points: None,
+            equipped_fashion_ids: BTreeMap::new(),
+            owned_fashion_ids: Vec::new(),
+            owned_mount_ids: Vec::new(),
+            owned_weapon_skin_ids: Vec::new(),
+            owned_dye_ids: Vec::new(),
+            unlocked_module_ids: Vec::new(),
+            ride_ids: Vec::new(),
+            ride_skin_ids: Vec::new(),
+            unlocked_emoji_ids: Vec::new(),
+            vanity_pet_ids: Vec::new(),
+            summoned_vanity_pet_id: None,
+            fantasy_atlas_stages: BTreeMap::new(),
+            handbook: None,
+            photo_ids: Vec::new(),
+            photo_wall: BTreeMap::new(),
+            achievements: None,
+        }
+    }
+
+    #[test]
+    fn independent_collection_packets_preserve_other_sections_and_allow_exact_clears() {
+        let mut accumulated = profile();
+        let mut photos = collection(crate::CollectionObservationSections {
+            personal_zone: true,
+            ..Default::default()
+        });
+        photos.photo_ids = vec![41, 42];
+        photos.photo_wall = BTreeMap::from([(0, 42)]);
+        accumulated.collection_summary = Some(photos);
+
+        let mut achievement_patch = profile();
+        let mut achievements = collection(crate::CollectionObservationSections {
+            achievements: true,
+            ..Default::default()
+        });
+        achievements.achievements = Some(crate::AchievementProgressProfile {
+            general: vec![crate::AchievementProgress {
+                achievement_id: 9,
+                finish_count: Some(1),
+                reward_claimed: Some(true),
+                begin_progress: None,
+            }],
+            seasons: Vec::new(),
+            initialized_season_ids: vec![3],
+            version: Some(7),
+        });
+        achievement_patch.collection_summary = Some(achievements);
+        accumulated.merge_from(achievement_patch).unwrap();
+
+        let merged = accumulated.collection_summary.as_ref().unwrap();
+        assert_eq!(merged.photo_ids, vec![41, 42]);
+        assert_eq!(merged.photo_wall, BTreeMap::from([(0, 42)]));
+        assert_eq!(
+            merged.achievements.as_ref().unwrap().general[0].achievement_id,
+            9
+        );
+
+        let mut clear_photos = profile();
+        clear_photos.collection_summary = Some(collection(crate::CollectionObservationSections {
+            personal_zone: true,
+            ..Default::default()
+        }));
+        accumulated.merge_from(clear_photos).unwrap();
+        let cleared = accumulated.collection_summary.as_ref().unwrap();
+        assert!(cleared.photo_ids.is_empty());
+        assert!(cleared.photo_wall.is_empty());
+        assert_eq!(
+            cleared.achievements.as_ref().unwrap().general[0].achievement_id,
+            9
+        );
+
+        let request = website_profile_request(&accumulated).unwrap();
+        assert!(
+            request.payload.body["collection_summary"]
+                .get("observed_sections")
+                .is_none()
+        );
     }
 
     #[test]

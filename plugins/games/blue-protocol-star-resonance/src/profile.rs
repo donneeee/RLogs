@@ -366,6 +366,15 @@ pub struct LifeProfessionProfile {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionSummary {
+    /// Identifies which independent container managers were actually present
+    /// in this observation. The profile projector uses this to apply an
+    /// authoritative clear only to the corresponding subsection instead of
+    /// erasing unrelated collection data carried by earlier packets.
+    #[serde(
+        default,
+        skip_serializing_if = "CollectionObservationSections::is_empty"
+    )]
+    pub observed_sections: CollectionObservationSections,
     pub fashion_points: Option<i64>,
     pub mount_points: Option<i64>,
     pub weapon_skin_points: Option<i64>,
@@ -398,6 +407,54 @@ pub struct CollectionSummary {
     pub photo_wall: BTreeMap<i32, i64>,
     #[serde(default)]
     pub achievements: Option<AchievementProgressProfile>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectionObservationSections {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fashion: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub collection_book: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub personal_zone: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rides: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub emojis: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub handbook: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vanity_pets: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub fantasy_atlas: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub achievements: bool,
+}
+
+impl CollectionObservationSections {
+    pub const fn is_empty(&self) -> bool {
+        !self.fashion
+            && !self.collection_book
+            && !self.personal_zone
+            && !self.rides
+            && !self.emojis
+            && !self.handbook
+            && !self.vanity_pets
+            && !self.fantasy_atlas
+            && !self.achievements
+    }
+
+    pub fn merge(&mut self, newer: Self) {
+        self.fashion |= newer.fashion;
+        self.collection_book |= newer.collection_book;
+        self.personal_zone |= newer.personal_zone;
+        self.rides |= newer.rides;
+        self.emojis |= newer.emojis;
+        self.handbook |= newer.handbook;
+        self.vanity_pets |= newer.vanity_pets;
+        self.fantasy_atlas |= newer.fantasy_atlas;
+        self.achievements |= newer.achievements;
+    }
 }
 
 /// Achievement state from the character container. The game carries permanent
