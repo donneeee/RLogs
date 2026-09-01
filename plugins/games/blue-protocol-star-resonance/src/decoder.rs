@@ -101,6 +101,9 @@ const AUXILIARY_LOADOUT_SLOTS: std::ops::RangeInclusive<i32> = 21..=24;
 
 const ENTITY_PLAYER: i32 = 10;
 const MODULE_PACKAGE_ID: i32 = 5;
+const PERSONAL_ZONE_PACKAGE_ID: i32 = 9;
+const TITLE_ITEM_ID_START: i32 = 9_060_000;
+const TITLE_ITEM_ID_END_EXCLUSIVE: i32 = 9_070_000;
 const DAMAGE_FLAG_CRITICAL: i32 = 0b0001;
 const DAMAGE_FLAG_BLOCKED: i32 = 0b0010;
 const DAMAGE_FLAG_CAUSES_LUCKY: i32 = 0b0100;
@@ -137,6 +140,7 @@ pub enum DecoderKind {
     SyncContainerDirtyDataV1,
     NotifySocialDataV1,
     NotifyUnionInfoV1,
+    ReqUnionInfoV1,
     NotifyTeamMemberInfoV1,
     NotifyJoinTeamV1,
     NotifyLeaveTeamV1,
@@ -166,6 +170,7 @@ impl DecoderKind {
             | Self::SyncContainerDirtyDataV1
             | Self::NotifySocialDataV1
             | Self::NotifyUnionInfoV1
+            | Self::ReqUnionInfoV1
             | Self::NotifyTeamMemberInfoV1
             | Self::NotifyJoinTeamV1
             | Self::NotifyLeaveTeamV1
@@ -1011,6 +1016,7 @@ fn decode_message(
         }
         DecoderKind::NotifySocialDataV1 => decode_notify_social_data(payload, metadata, profile),
         DecoderKind::NotifyUnionInfoV1 => decode_notify_union_info(payload, metadata, profile),
+        DecoderKind::ReqUnionInfoV1 => decode_req_union_info(payload, metadata, profile),
         DecoderKind::NotifyTeamMemberInfoV1 => {
             decode_notify_team_member_info(payload, metadata, entities, profile)
         }
@@ -1492,6 +1498,30 @@ fn decode_notify_union_info(
     else {
         return Ok(Vec::new());
     };
+    decode_union_base(base, metadata, tracker)
+}
+
+fn decode_req_union_info(
+    payload: &[u8],
+    metadata: &DecodeMetadata,
+    tracker: &mut ProfileTracker,
+) -> Result<Vec<CanonicalEventDraft>, ProtocolMessageError> {
+    let message = schema::ReqUnionInfoReturn::decode(payload)?;
+    let Some(base) = message
+        .ret
+        .and_then(|reply| reply.info)
+        .and_then(|info| info.base_info)
+    else {
+        return Ok(Vec::new());
+    };
+    decode_union_base(base, metadata, tracker)
+}
+
+fn decode_union_base(
+    base: schema::UnionBaseData,
+    metadata: &DecodeMetadata,
+    tracker: &mut ProfileTracker,
+) -> Result<Vec<CanonicalEventDraft>, ProtocolMessageError> {
     let guild_id = base.id.filter(|id| *id > 0);
     let guild_name = clean_text(base.name.as_deref());
     if guild_id.is_none() && guild_name.is_none() {
@@ -2341,22 +2371,20 @@ fn decode_sync_container(
             container_battle_imagine_skills(professions, character.slots.as_ref());
         let equipped_action_slots = container_action_slots(character.slots.as_ref());
         let mut social_display = container_personal_zone(character.personal_zone.as_ref());
+        let owned_title_ids = container_owned_title_ids(character.item_package.as_ref());
+        if !owned_title_ids.is_empty() {
+            let social = social_display.get_or_insert_with(empty_social_display);
+            social.title_ids.extend(owned_title_ids);
+            social.title_ids.sort_unstable();
+            social.title_ids.dedup();
+        }
         if let Some(guild_id) = base
             .and_then(|base| base.union_info.as_ref())
             .and_then(|union| union.union_id)
             .filter(|guild_id| *guild_id > 0)
         {
             social_display
-                .get_or_insert_with(|| SocialDisplay {
-                    guild_id: None,
-                    guild_name: None,
-                    equipped_title_id: None,
-                    equipped_title_level: None,
-                    title_ids: Vec::new(),
-                    medal_ids: Vec::new(),
-                    medal_slots: BTreeMap::new(),
-                    profile_theme_id: None,
-                })
+                .get_or_insert_with(empty_social_display)
                 .guild_id = Some(guild_id);
         }
         let profile = CharacterProfilePatch {
@@ -3751,6 +3779,34 @@ fn container_personal_zone(zone: Option<&schema::PersonalZone>) -> Option<Social
             profile_theme_id,
         },
     )
+}
+
+fn empty_social_display() -> SocialDisplay {
+    SocialDisplay {
+        guild_id: None,
+        guild_name: None,
+        equipped_title_id: None,
+        equipped_title_level: None,
+        title_ids: Vec::new(),
+        medal_ids: Vec::new(),
+        medal_slots: BTreeMap::new(),
+        profile_theme_id: None,
+    }
+}
+
+fn container_owned_title_ids(package: Option<&schema::ItemPackage>) -> Vec<i64> {
+    let mut title_ids = package
+        .and_then(|package| package.packages.get(&PERSONAL_ZONE_PACKAGE_ID))
+        .into_iter()
+        .flat_map(|section| section.items.values())
+        .filter(|item| item.count.is_none_or(|count| count > 0))
+        .filter_map(|item| positive_i32(item.item_id))
+        .filter(|item_id| (TITLE_ITEM_ID_START..TITLE_ITEM_ID_END_EXCLUSIVE).contains(item_id))
+        .map(i64::from)
+        .collect::<Vec<_>>();
+    title_ids.sort_unstable();
+    title_ids.dedup();
+    title_ids
 }
 
 fn social_title_collection(
@@ -5886,9 +5942,81 @@ mod tests {
 
     const WORLD_SERVICE: u64 = 0x6333_5342;
     const WORLD_LOGIN_SERVICE: u64 = 78_136_601;
+    const WORLD_PROXY_SERVICE: u64 = 103_198_054;
     const SOCIAL_SERVICE: u64 = 625_772_963;
     const UNION_SERVICE: u64 = 504_281_929;
     const TEAM_SERVICE: u64 = 966_773_353;
+
+    #[test]
+    fn owned_titles_come_only_from_positive_personal_zone_inventory_rows() {
+        let package = schema::ItemPackage {
+            packages: [
+                (
+                    PERSONAL_ZONE_PACKAGE_ID,
+                    schema::ItemPackageSection {
+                        items: [
+                            (
+                                1,
+                                schema::ItemRecord {
+                                    item_id: Some(9_060_001),
+                                    count: Some(1),
+                                    ..schema::ItemRecord::default()
+                                },
+                            ),
+                            (
+                                2,
+                                schema::ItemRecord {
+                                    item_id: Some(9_061_163),
+                                    count: None,
+                                    ..schema::ItemRecord::default()
+                                },
+                            ),
+                            (
+                                3,
+                                schema::ItemRecord {
+                                    item_id: Some(9_062_074),
+                                    count: Some(0),
+                                    ..schema::ItemRecord::default()
+                                },
+                            ),
+                            (
+                                4,
+                                schema::ItemRecord {
+                                    item_id: Some(9_050_001),
+                                    count: Some(1),
+                                    ..schema::ItemRecord::default()
+                                },
+                            ),
+                        ]
+                        .into_iter()
+                        .collect(),
+                    },
+                ),
+                (
+                    MODULE_PACKAGE_ID,
+                    schema::ItemPackageSection {
+                        items: [(
+                            5,
+                            schema::ItemRecord {
+                                item_id: Some(9_060_002),
+                                count: Some(1),
+                                ..schema::ItemRecord::default()
+                            },
+                        )]
+                        .into_iter()
+                        .collect(),
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        };
+
+        assert_eq!(
+            container_owned_title_ids(Some(&package)),
+            vec![9_060_001, 9_061_163]
+        );
+    }
 
     #[test]
     fn master_score_sums_each_of_six_dungeons_best_master_difficulty() {
@@ -6168,6 +6296,24 @@ mod tests {
                 route_for(WORLD_LOGIN_SERVICE, 3, DecoderKind::NotifyEnterWorldV1),
                 route_for(SOCIAL_SERVICE, 1, DecoderKind::NotifySocialDataV1),
                 route_for(UNION_SERVICE, 1, DecoderKind::NotifyUnionInfoV1),
+                ProtocolPackRoute {
+                    route: RouteKey::new(
+                        PacketDirection::ServerToClient,
+                        FragmentKind::Return,
+                        WORLD_PROXY_SERVICE,
+                        122_986,
+                    ),
+                    service_name: "World".into(),
+                    method_name: "ReqUnionInfo".into(),
+                    message_name: Some("ReqUnionInfo_Ret".into()),
+                    confidence: MappingConfidence::Verified,
+                    provenance: Vec::new(),
+                    features: Vec::new(),
+                    disposition: ProtocolPackRouteDisposition::Allowed {
+                        domain: DecoderKind::ReqUnionInfoV1.domain(),
+                        decoder: DecoderKind::ReqUnionInfoV1,
+                    },
+                },
                 route_for(TEAM_SERVICE, 2, DecoderKind::NotifyTeamMemberInfoV1),
                 route_for(TEAM_SERVICE, 3, DecoderKind::NotifyJoinTeamV1),
                 route_for(TEAM_SERVICE, 4, DecoderKind::NotifyLeaveTeamV1),
@@ -8498,6 +8644,31 @@ mod tests {
                                 .collect(),
                             },
                         ),
+                        (
+                            PERSONAL_ZONE_PACKAGE_ID,
+                            schema::ItemPackageSection {
+                                items: [
+                                    (
+                                        901,
+                                        schema::ItemRecord {
+                                            item_id: Some(9_060_001),
+                                            count: Some(1),
+                                            ..schema::ItemRecord::default()
+                                        },
+                                    ),
+                                    (
+                                        902,
+                                        schema::ItemRecord {
+                                            item_id: Some(9_061_163),
+                                            count: Some(1),
+                                            ..schema::ItemRecord::default()
+                                        },
+                                    ),
+                                ]
+                                .into_iter()
+                                .collect(),
+                            },
+                        ),
                     ]
                     .into_iter()
                     .collect(),
@@ -8976,7 +9147,7 @@ mod tests {
         assert_eq!(social.guild_id, Some(8_765));
         assert_eq!(social.equipped_title_id, Some(3));
         assert_eq!(social.equipped_title_level, Some(4));
-        assert_eq!(social.title_ids, vec![3, 9]);
+        assert_eq!(social.title_ids, vec![3, 9, 9_060_001, 9_061_163]);
 
         let union = runtime
             .process(&record_for(
@@ -9009,6 +9180,51 @@ mod tests {
                 .as_ref()
                 .and_then(|social| social.guild_name.as_deref()),
             Some("Exact Guild Name")
+        );
+
+        let explicit_union = runtime
+            .process(&record_for_route(
+                3,
+                RouteKey::new(
+                    PacketDirection::ServerToClient,
+                    FragmentKind::Return,
+                    WORLD_PROXY_SERVICE,
+                    122_986,
+                ),
+                encode(schema::ReqUnionInfoReturn {
+                    ret: Some(schema::ReqUnionInfoReply {
+                        info: Some(schema::UnionInfo {
+                            base_info: Some(schema::UnionBaseData {
+                                id: Some(8_765),
+                                name: Some("Explicit Guild Reply".into()),
+                            }),
+                        }),
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(
+            explicit_union.status,
+            ProtocolDecodeStatus::Decoded,
+            "{explicit_union:?}"
+        );
+        let explicit_profile = explicit_union
+            .events
+            .iter()
+            .find_map(|event| match &event.event {
+                rlogs_events::CanonicalEvent::CharacterProfileObserved { profile } => Some(profile),
+                _ => None,
+            });
+        let explicit_profile = CharacterProfilePatch::from_game_event(
+            explicit_profile.expect("explicit guild profile"),
+        )
+        .expect("valid explicit guild profile patch");
+        assert_eq!(
+            explicit_profile
+                .social_display
+                .as_ref()
+                .and_then(|social| social.guild_name.as_deref()),
+            Some("Explicit Guild Reply")
         );
     }
 

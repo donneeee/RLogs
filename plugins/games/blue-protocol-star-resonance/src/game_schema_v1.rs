@@ -128,6 +128,20 @@ pub(crate) struct NotifyUnionInfoRequest {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub(crate) struct ReqUnionInfoReturn {
+    #[prost(message, optional, tag = "1")]
+    pub ret: Option<ReqUnionInfoReply>,
+}
+
+/// Privacy-reviewed subset of the explicit guild-information reply. Recruitment,
+/// member, activity, resource, and authority fields are deliberately undeclared.
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct ReqUnionInfoReply {
+    #[prost(message, optional, tag = "1")]
+    pub info: Option<UnionInfo>,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub(crate) struct UnionInfo {
     #[prost(message, optional, tag = "1")]
     pub base_info: Option<UnionBaseData>,

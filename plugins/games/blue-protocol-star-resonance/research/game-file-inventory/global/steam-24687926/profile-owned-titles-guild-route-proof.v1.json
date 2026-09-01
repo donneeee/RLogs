@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "build_id": "24687926",
+  "purpose": "Exact-build proof for local owned-title extraction and the explicit guild-information response route.",
+  "owned_titles": {
+    "container_path": "SyncContainerData.character.item_package.packages[PackagePersonalZone].items",
+    "package_id": 9,
+    "package_enum": "PackagePersonalZone",
+    "item_filter": {
+      "type": 906,
+      "minimum_item_id": 9060001,
+      "maximum_item_id": 9062074,
+      "exclusive_decoder_range": [
+        9060000,
+        9070000
+      ],
+      "catalog_title_rows": 620,
+      "catalog_rows_in_decoder_range": 620,
+      "non_title_rows_in_decoder_range": 0,
+      "inventory_count_rule": "missing_or_positive"
+    },
+    "evidence": [
+      {
+        "path": "Excels/ItemTable.json",
+        "sha256": "a5807d7b028ab5fa90e76fb519aea77493c79637576471b2e458efddf1846f99"
+      },
+      {
+        "path": "proto/zproto/stru_item_package.proto",
+        "sha256": "1368e7fa3c681bcecb34d742130e9aadbf6f7cf26bf09d27d368e4c20b74c461"
+      },
+      {
+        "path": "proto/zproto/stru_package.proto",
+        "sha256": "3a083b7c12edffdecfb3671da0aba8249c2607c185f7ba355a5f4214fe17a015"
+      },
+      {
+        "path": "proto/zproto/enum_e_item_package_type.proto",
+        "sha256": "5546f1014a183689499c7464efe9dc024babe5b6f2ee0df0969f6725e5185370"
+      }
+    ]
+  },
+  "guild_information": {
+    "route": {
+      "direction": "server_to_client",
+      "fragment": "return",
+      "service_id": 103198054,
+      "service_name": "World",
+      "method_id": 122986,
+      "method_name": "ReqUnionInfo",
+      "message_name": "ReqUnionInfo_Ret"
+    },
+    "allowed_path": "ReqUnionInfo_Ret.ret.info.base_info.{id,name}",
+    "privacy_exclusions": [
+      "recruitment",
+      "president profile",
+      "members",
+      "officials",
+      "activities",
+      "buildings",
+      "resources",
+      "permissions",
+      "account data"
+    ],
+    "evidence": [
+      {
+        "path": "proto/zproto/stru_req_union_info_reply.proto",
+        "sha256": "450c2b2f0c73d3580f70c2499e36c30a9fc730b7d5a2823848733e136a497fac"
+      },
+      {
+        "path": "proto/zproto/stru_union_info.proto",
+        "sha256": "76e11914c157a51b1b562025f774e74b842d594b0d76f498db8f7de5d274f4be"
+      },
+      {
+        "source": "BPSR-ZDPS",
+        "repository_commit": "5e28141345c1ddf70c0e0719f663698a6acefeda",
+        "path": "BPSR-ZDPSLib/ServiceMethods/WorldProxy.cs",
+        "sha256": "950d0bddffc2cd9ebcb6e143563197936ba54fd2d56fc9da8977d11037dca6df",
+        "proves": "ReqUnionInfo method 0x1E06A / 122986"
+      },
+      {
+        "source": "BPSR-ZDPS",
+        "repository_commit": "5e28141345c1ddf70c0e0719f663698a6acefeda",
+        "path": "BPSR-ZDPSLib/ProxyServiceIds.cs",
+        "sha256": "8242050744068811ecac1789a51a66b9776cbec92cd505f37591c7b71627baa4",
+        "proves": "World service 103198054"
+      }
+    ]
+  }
+}

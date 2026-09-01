@@ -2519,6 +2519,7 @@ impl RdpsRuntimeConfig {
                     "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
                     "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                     "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
+                    "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
                 ]
             && team_luck
                 .critical_damage_authorized_protocol_pack_digests
@@ -2542,6 +2543,7 @@ impl RdpsRuntimeConfig {
                     "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
                     "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                     "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
+                    "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
                 ]
             && team_luck
                 .lucky_damage_authorized_protocol_pack_digests
@@ -2910,6 +2912,7 @@ impl RdpsRuntimeConfig {
                     "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
                     "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                     "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
+                    "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
                 ]
             && inspiration
                 .authorized_protocol_pack_digests
@@ -4306,6 +4309,7 @@ mod tests {
                 "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
                 "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                 "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
+                "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
             ]
         );
         assert!(
@@ -4337,6 +4341,7 @@ mod tests {
                 "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
                 "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                 "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
+                "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
             ]
         );
         assert!(!current.team_luck.server_integer_counterfactual_authority);

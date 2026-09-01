@@ -897,7 +897,7 @@ mod tests {
         );
         assert_eq!(
             current.digest(),
-            "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c"
+            "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1"
         );
 
         let unchanged_route_prefix = &current.definition().routes[..48];
@@ -907,7 +907,7 @@ mod tests {
             "61da48adb6ec45a940f4d85d520750eb0d62baee20f0e9dfb5f5dc0e37953ae2",
             "profile-route carry-forward must not modify any pre-existing route"
         );
-        assert_eq!(current.definition().routes.len(), 55);
+        assert_eq!(current.definition().routes.len(), 56);
         let profile_route_prefix = &current.definition().routes[..53];
         assert_eq!(
             format!(
@@ -916,6 +916,15 @@ mod tests {
             ),
             "ddef4d6ad1b32f81f9c2117f689d27b3f4e845a1f0a4b83793d96265166efa7f",
             "Photo Wall support must append routes without changing the reviewed v4 route set"
+        );
+        let photo_wall_route_prefix = &current.definition().routes[..55];
+        assert_eq!(
+            format!(
+                "{:x}",
+                Sha256::digest(serde_json::to_vec(photo_wall_route_prefix).unwrap())
+            ),
+            "143a25cd34538b37379c8b450b13a677551c60f0857ebf0e0f9f67559258bd0e",
+            "guild support must append its route without changing the reviewed v5 route set"
         );
         assert!(current.definition().routes[48..].iter().all(|route| {
             matches!(
@@ -939,6 +948,7 @@ mod tests {
                 (966_773_353, 3),
                 (904_190_988, 4),
                 (904_190_988, 12),
+                (103_198_054, 122_986),
             ]
         );
     }

@@ -22436,6 +22436,25 @@ mod tests {
             photo_wall_pack_runtime.protocol_pack_digest,
             photo_wall_pack_digest
         );
+        let owned_titles_guild_pack_digest =
+            "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1";
+        assert!(
+            state_damage_contribution_target_matches(
+                "global",
+                "24687926",
+                owned_titles_guild_pack_digest,
+            )
+            .unwrap(),
+            "the profile-only owned-title and guild route append must retain exact combat formula authority"
+        );
+        let owned_titles_guild_pack_runtime =
+            rdps_runtime_config_for_identity("global", "24687926", owned_titles_guild_pack_digest)
+                .unwrap()
+                .expect("the owned-title and guild route identity should be replayable");
+        assert_eq!(
+            owned_titles_guild_pack_runtime.protocol_pack_digest,
+            owned_titles_guild_pack_digest
+        );
         assert!(
             !state_damage_contribution_formula_target_matches(
                 "global",

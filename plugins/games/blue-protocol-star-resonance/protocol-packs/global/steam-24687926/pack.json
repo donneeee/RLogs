@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "pack_id": "global-steam-24687926-static-candidate-v5",
+  "pack_id": "global-steam-24687926-static-candidate-v6",
   "target": {
     "deployment_id": "global",
     "region_id": null,
@@ -1873,6 +1873,33 @@
       "disposition": "allowed",
       "domain": "character_profile",
       "decoder": "get_photo_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "return"
+        },
+        "service_id": 103198054,
+        "method_id": 122986
+      },
+      "service_name": "World",
+      "method_name": "ReqUnionInfo",
+      "message_name": "ReqUnionInfo_Ret",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-owned-title-and-guild-route-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/profile-owned-titles-guild-route-proof.v1.json"
+        }
+      ],
+      "features": [
+        "social",
+        "character_profile"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "req_union_info_v1"
     }
   ]
 }
