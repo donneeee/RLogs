@@ -51,7 +51,7 @@ Reference pins:
 | dungeon, master-mode, and weekly-tower progression | `activity_progress` | 133 master-mode rows and weekly-tower state verified; normal challenge arrays were empty | opt-in public |
 | seasonal medals and cultivation | `season_medals`, `season_cultivation` | 7 holes, 8 nodes, 2 season records, 4 lines, and 16 areas verified; season 3 explicitly selected 2 active areas, 12 middle-node factor item IDs, and 5 big-node Fantasy IDs | opt-in public |
 | reputation and current profession project | `reputations`, `current_profession_project_id` | one reputation row and a current project ID verified | opt-in public |
-| guild, titles, and medal map | `social_display` | guild identity/name and title verified; medal IDs are retained locally while owned-vs-displayed semantics remain pending | public guild identity/display; opt-in titles and medals |
+| guild, titles, and medal map | `social_display` | guild identity/name and title verified; medal IDs are retained locally while owned-vs-displayed semantics remain pending; 178 current-build 256px medal textures cover 179 catalog rows and every medal observed on the current MarieRose profile | public guild identity/display; opt-in titles and medals |
 | combat-power component breakdown | `combat_power_breakdown` | total plus 6 function components and 4 nested subcomponents verified | public per build |
 | panel combat stats | future typed stat snapshot | many Global attribute IDs observed; current formula/unit verification required | public per log/build |
 | current position | timeline `Position` event | decoder implemented for entity attributes | never part of public profile by default |
@@ -172,6 +172,13 @@ current-build runtime source carries them. The exact status map is
 the schema
 inventory and unresolved worklist are under
 `plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24252055/schemas/`.
+
+The installed Steam build `24687926` medal pass extracted 178 unique 256x256
+textures for 179 catalog definitions (one texture is intentionally shared).
+All 62 medal IDs in the current MarieRose profile resolve to those reviewed
+assets. Three hidden definitions do not declare an icon name, and the locked
+Spring Dawn definition references an icon absent from this build; none of
+those four rows is presented as a missing owned badge.
 
 ## Additional profile surfaces worth investigating
 

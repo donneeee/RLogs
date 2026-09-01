@@ -16,6 +16,11 @@ def main() -> None:
     parser.add_argument("--container", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--name", action="append", required=True)
+    parser.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help="extract every uniquely indexed name and report names absent from this exact client build",
+    )
     args = parser.parse_args()
 
     wanted = {name.casefold(): name for name in args.name}
@@ -24,11 +29,15 @@ def main() -> None:
     address_catalog = (args.container / "m0.pkg").read_bytes()
     entries = read_meta_entries((args.container / "meta.pkg").read_bytes())
     bundle_hashes: dict[int, list[str]] = {}
+    missing_addresses: list[str] = []
     for requested_name in args.name:
         pattern = re.compile(
             rb"address:" + re.escape(requested_name.encode()) + rb" ->>>> hash:\d+ ->>>> bundleHash:(\d+)"
         )
         matches = {int(match) for match in pattern.findall(address_catalog)}
+        if len(matches) == 0 and args.allow_missing:
+            missing_addresses.append(requested_name)
+            continue
         if len(matches) != 1:
             raise SystemExit(f"expected one address row for {requested_name}, observed {len(matches)}")
         bundle_hashes.setdefault(matches.pop(), []).append(requested_name)
@@ -64,7 +73,11 @@ def main() -> None:
 
     missing = sorted(wanted[key] for key in wanted.keys() - found)
     if missing:
-        raise SystemExit(f"missing requested icons: {', '.join(missing)}")
+        if not args.allow_missing:
+            raise SystemExit(f"missing requested icons: {', '.join(missing)}")
+        print(f"missing {len(missing)} requested icons from this client build: {', '.join(missing)}")
+    if missing_addresses:
+        print(f"{len(missing_addresses)} names had no exact address row")
 
 
 def read_meta_entries(data: bytes) -> list[tuple[int, int, int, int]]:
