@@ -6588,8 +6588,76 @@ fn capture_time_plugin_report(
 }
 
 const CONTINUOUS_RUN_POSTPROCESS_QUEUE_CAPACITY: usize = 64;
+const CONTINUOUS_OPTIONAL_TASK_MAX_WORKERS: usize = 8;
 type ContinuousRunPostprocessItem = (SealedDungeonRunLog, CapturedRunProjection);
 type ContinuousRunPostprocessHandle = (SyncSender<ContinuousRunPostprocessItem>, JoinHandle<()>);
+type ContinuousOptionalTask = Box<dyn FnOnce() + Send + 'static>;
+
+struct ContinuousOptionalTaskPool {
+    sender: Option<SyncSender<ContinuousOptionalTask>>,
+    workers: Vec<JoinHandle<()>>,
+}
+
+impl ContinuousOptionalTaskPool {
+    fn spawn() -> Result<Self, String> {
+        let logical_threads = thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(4);
+        let worker_count = continuous_optional_worker_count(logical_threads);
+        let (sender, receiver) =
+            sync_channel::<ContinuousOptionalTask>(worker_count.saturating_mul(2));
+        let receiver = Arc::new(Mutex::new(receiver));
+        let mut workers = Vec::with_capacity(worker_count);
+        for index in 0..worker_count {
+            let receiver = Arc::clone(&receiver);
+            let worker = thread::Builder::new()
+                .name(format!("rlogs-optional-{index}"))
+                .spawn(move || {
+                    loop {
+                        let task = receiver
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .recv();
+                        let Ok(task) = task else {
+                            return;
+                        };
+                        task();
+                    }
+                })
+                .map_err(|error| {
+                    format!("could not start completed-run optional worker {index}: {error}")
+                })?;
+            workers.push(worker);
+        }
+        Ok(Self {
+            sender: Some(sender),
+            workers,
+        })
+    }
+
+    fn submit(&self, task: ContinuousOptionalTask) -> Result<(), String> {
+        self.sender
+            .as_ref()
+            .ok_or_else(|| "completed-run optional worker pool is closed".to_owned())?
+            .send(task)
+            .map_err(|_| "completed-run optional worker pool stopped unexpectedly".to_owned())
+    }
+
+    fn finish(mut self) {
+        drop(self.sender.take());
+        for worker in self.workers {
+            if worker.join().is_err() {
+                eprintln!("completed-run optional worker stopped unexpectedly");
+            }
+        }
+    }
+}
+
+fn continuous_optional_worker_count(logical_threads: usize) -> usize {
+    logical_threads
+        .div_ceil(2)
+        .clamp(1, CONTINUOUS_OPTIONAL_TASK_MAX_WORKERS)
+}
 
 #[allow(clippy::too_many_arguments)]
 fn spawn_continuous_run_postprocessor(
@@ -6612,6 +6680,7 @@ fn spawn_continuous_run_postprocessor(
     // FIFO consumer. The capacity covers all sixty Stimen Vault floors while
     // keeping memory use explicitly bounded.
     let (sender, receiver) = sync_channel(CONTINUOUS_RUN_POSTPROCESS_QUEUE_CAPACITY);
+    let optional_tasks = ContinuousOptionalTaskPool::spawn()?;
     let worker = thread::Builder::new()
         .name("rlogs-run-postprocessor".into())
         .spawn(move || {
@@ -6631,8 +6700,10 @@ fn spawn_continuous_run_postprocessor(
                     default_visibility,
                     profile_sync.clone(),
                     submission_transport.clone(),
+                    &optional_tasks,
                 );
             }
+            optional_tasks.finish();
         })
         .map_err(|error| format!("could not start completed-run postprocessor: {error}"))?;
     Ok((sender, worker))
@@ -6654,6 +6725,7 @@ fn postprocess_continuous_run(
     default_visibility: ReportVisibility,
     profile_sync: submission_policy::ProfileSyncPolicy,
     submission_transport: Option<SubmissionTransport>,
+    optional_tasks: &ContinuousOptionalTaskPool,
 ) {
     let completed = log.is_completed();
     let session_id = log.session_id.clone();
@@ -6728,69 +6800,64 @@ fn postprocess_continuous_run(
 
     let worker_state = Arc::clone(&state);
     let worker_session_id = session_id.clone();
-    let worker = thread::Builder::new()
-        .name(format!("rlogs-optional-{session_id}"))
-        .spawn(move || {
-            let queue_warning = if build_submission {
-                match build_upload_artifact(&log.path) {
-                    Ok(artifact)
-                        if artifact.rlog.content_sha256
-                            == result.combat_plugin.rlog.content_sha256
-                            && artifact.rlog.event_count == result.canonical_event_count =>
-                    {
-                        result.upload_artifact = Some(UploadArtifactView::from(&artifact));
-                        result.verified_artifact = Some(artifact);
-                        queue_completed_session(&submission_queue, &mut result, default_visibility)
-                            .err()
-                    }
-                    Ok(_) => {
-                        Some("submission validation did not match the capture-time seal".into())
-                    }
-                    Err(error) => Some(error),
+    let task = Box::new(move || {
+        let queue_warning = if build_submission {
+            match build_upload_artifact(&log.path) {
+                Ok(artifact)
+                    if artifact.rlog.content_sha256 == result.combat_plugin.rlog.content_sha256
+                        && artifact.rlog.event_count == result.canonical_event_count =>
+                {
+                    result.upload_artifact = Some(UploadArtifactView::from(&artifact));
+                    result.verified_artifact = Some(artifact);
+                    queue_completed_session(&submission_queue, &mut result, default_visibility)
+                        .err()
                 }
-            } else {
-                None
-            };
-            let profile_warning = if build_profile {
-                apply_profile_sync_policy(
-                    &profile_packages,
-                    &profile_publications,
-                    &profile_publication,
-                    &mut result,
-                    true,
-                    true,
-                    submission_transport.as_ref(),
-                )
-            } else {
-                None
-            };
-            let mut snapshot = worker_state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if snapshot
-                .last_result
-                .as_ref()
-                .is_some_and(|current| current.session_id == worker_session_id)
-            {
-                snapshot.detail = completed_session_detail(
-                    if completed {
-                        "Monitoring; optional validation finished for"
-                    } else {
-                        "Monitoring; optional profile projection finished for"
-                    },
-                    &result,
-                    queue_warning,
-                    profile_warning,
-                );
-                snapshot.last_result = Some(result);
+                Ok(_) => Some("submission validation did not match the capture-time seal".into()),
+                Err(error) => Some(error),
             }
-        });
-    if let Err(error) = worker {
+        } else {
+            None
+        };
+        let profile_warning = if build_profile {
+            apply_profile_sync_policy(
+                &profile_packages,
+                &profile_publications,
+                &profile_publication,
+                &mut result,
+                true,
+                true,
+                submission_transport.as_ref(),
+            )
+        } else {
+            None
+        };
+        let mut snapshot = worker_state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if snapshot
+            .last_result
+            .as_ref()
+            .is_some_and(|current| current.session_id == worker_session_id)
+        {
+            snapshot.detail = completed_session_detail(
+                if completed {
+                    "Monitoring; optional validation finished for"
+                } else {
+                    "Monitoring; optional profile projection finished for"
+                },
+                &result,
+                queue_warning,
+                profile_warning,
+            );
+            snapshot.last_result = Some(result);
+        }
+    });
+    if let Err(error) = optional_tasks.submit(task) {
         let mut snapshot = state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         snapshot.detail =
-            format!("Monitoring continues; could not start run finalizer {session_id}: {error}");
+            format!("Monitoring continues; could not queue run finalizer {session_id}: {error}");
     }
 }
 
@@ -10237,6 +10304,16 @@ mod tests {
             version: Some(7),
             source_url: "https://game.example.test/photo-1".into(),
         }
+    }
+
+    #[test]
+    fn completed_run_workers_scale_for_typical_and_large_desktops() {
+        assert_eq!(continuous_optional_worker_count(1), 1);
+        assert_eq!(continuous_optional_worker_count(4), 2);
+        assert_eq!(continuous_optional_worker_count(8), 4);
+        assert_eq!(continuous_optional_worker_count(16), 8);
+        assert_eq!(continuous_optional_worker_count(32), 8);
+        assert_eq!(continuous_optional_worker_count(128), 8);
     }
 
     #[test]
