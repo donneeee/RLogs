@@ -7,6 +7,8 @@ const PUBLIC_ROUTES = [
   ["GET", /^\/v1\/auth\/me$/],
   ["GET", /^\/v1\/auth\/device$/],
   ["GET", /^\/v1\/auth\/profiles$/],
+  ["GET", /^\/v1\/auth\/parses$/],
+  ["GET", /^\/v1\/auth\/parses\/[A-Za-z0-9_-]+$/],
   ["GET", /^\/v1\/parses$/],
   ["GET", /^\/v1\/parses\/[A-Za-z0-9_-]+$/],
   ["GET", /^\/v1\/run-groups\/[A-Za-z0-9_-]+\/reconciliation$/],

@@ -11,6 +11,8 @@ test("only the submission API surface is routable", () => {
   assert.equal(routeAllowed("POST", "/v1/auth/discord/complete"), true);
   assert.equal(routeAllowed("GET", "/v1/auth/device"), true);
   assert.equal(routeAllowed("GET", "/v1/auth/profiles"), true);
+  assert.equal(routeAllowed("GET", "/v1/auth/parses"), true);
+  assert.equal(routeAllowed("GET", "/v1/auth/parses/rpt_0123456789abcdef0123456789abcdef"), true);
   assert.equal(routeAllowed("POST", "/v1/auth/session/exchange"), true);
   assert.equal(routeAllowed("POST", "/v1/auth/app-tokens"), true);
   assert.equal(routeAllowed("POST", "/v1/uploads"), true);
@@ -47,6 +49,8 @@ test("only the submission API surface is routable", () => {
     false,
   );
   assert.equal(routeAllowed("GET", "/v1/uploads"), false);
+  assert.equal(routeAllowed("POST", "/v1/auth/parses"), false);
+  assert.equal(routeAllowed("GET", "/v1/auth/parses/../../secret"), false);
   assert.equal(routeAllowed("GET", "/artifacts/private.rlog"), false);
   assert.equal(routeAllowed("GET", "/v1/parses/../../secret"), false);
 });
