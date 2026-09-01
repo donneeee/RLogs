@@ -53,6 +53,7 @@ mod state_formula;
 mod state_rdps;
 mod stream;
 mod swift_vortex_audit;
+mod talent_presentation;
 mod use_skill_attr;
 mod weapon_presentation;
 mod website;

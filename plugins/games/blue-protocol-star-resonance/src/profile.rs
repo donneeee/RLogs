@@ -326,6 +326,10 @@ pub struct EquippedActionSlot {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TalentLevel {
     pub talent_id: i64,
+    /// Original talent-tree node ID carried by the character container.
+    /// This is distinct from the localized talent definition ID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node_id: Option<i64>,
     pub level: Option<u32>,
 }
 
@@ -531,6 +535,10 @@ pub struct SocialDisplay {
     pub guild_id: Option<i64>,
     #[serde(default)]
     pub guild_name: Option<String>,
+    #[serde(default)]
+    pub equipped_title_id: Option<i64>,
+    #[serde(default)]
+    pub equipped_title_level: Option<u32>,
     pub title_ids: Vec<i64>,
     pub medal_ids: Vec<i64>,
     #[serde(default)]

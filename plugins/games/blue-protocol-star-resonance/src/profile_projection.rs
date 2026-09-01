@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::{
     BpsrWebsiteProfileError, CharacterProfilePatch, CharacterProgression, ProfileEventError,
-    SeasonProfile, website_profile_request,
+    SeasonProfile, SocialDisplay, website_profile_request,
 };
 
 pub const MAXIMUM_LOCAL_PROFILE_CHARACTERS: usize = 8;
@@ -270,7 +270,7 @@ impl CharacterProfilePatch {
             &mut self.current_profession_project_id,
             newer.current_profession_project_id,
         );
-        replace_if_some(&mut self.social_display, newer.social_display);
+        merge_social_display(&mut self.social_display, newer.social_display);
         Ok(())
     }
 
@@ -298,7 +298,7 @@ impl CharacterProfilePatch {
         if self.combat_professions.is_none() {
             self.combat_professions = newer.combat_professions;
         }
-        replace_if_some(&mut self.social_display, newer.social_display);
+        merge_social_display(&mut self.social_display, newer.social_display);
         Ok(())
     }
 }
@@ -307,6 +307,28 @@ fn replace_if_some<T>(target: &mut Option<T>, newer: Option<T>) {
     if newer.is_some() {
         *target = newer;
     }
+}
+
+fn merge_social_display(target: &mut Option<SocialDisplay>, newer: Option<SocialDisplay>) {
+    let Some(newer) = newer else {
+        return;
+    };
+    let Some(target) = target.as_mut() else {
+        *target = Some(newer);
+        return;
+    };
+    replace_if_some(&mut target.guild_id, newer.guild_id);
+    replace_if_some(&mut target.guild_name, newer.guild_name);
+    replace_if_some(&mut target.equipped_title_id, newer.equipped_title_id);
+    replace_if_some(&mut target.equipped_title_level, newer.equipped_title_level);
+    target.title_ids.extend(newer.title_ids);
+    target.title_ids.sort_unstable();
+    target.title_ids.dedup();
+    target.medal_ids.extend(newer.medal_ids);
+    target.medal_ids.sort_unstable();
+    target.medal_ids.dedup();
+    target.medal_slots.extend(newer.medal_slots);
+    replace_if_some(&mut target.profile_theme_id, newer.profile_theme_id);
 }
 
 fn merge_progression(

@@ -577,6 +577,7 @@ mod tests {
                             .contains(&route.route.method_id))
                         || (route.route.service_id == 78_136_601 && route.route.method_id == 3)
                         || (route.route.service_id == 625_772_963 && route.route.method_id == 1)
+                        || (route.route.service_id == 504_281_929 && route.route.method_id == 1)
                         || (route.route.service_id == 966_773_353
                             && [2, 3].contains(&route.route.method_id)))
                 })

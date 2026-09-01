@@ -136,6 +136,7 @@ pub enum DecoderKind {
     SyncContainerDataV1,
     SyncContainerDirtyDataV1,
     NotifySocialDataV1,
+    NotifyUnionInfoV1,
     NotifyTeamMemberInfoV1,
     NotifyJoinTeamV1,
     NotifyLeaveTeamV1,
@@ -162,6 +163,7 @@ impl DecoderKind {
             Self::SyncContainerDataV1
             | Self::SyncContainerDirtyDataV1
             | Self::NotifySocialDataV1
+            | Self::NotifyUnionInfoV1
             | Self::NotifyTeamMemberInfoV1
             | Self::NotifyJoinTeamV1
             | Self::NotifyLeaveTeamV1
@@ -984,6 +986,7 @@ fn decode_message(
             decode_sync_container_dirty(payload, metadata, entities, profile)
         }
         DecoderKind::NotifySocialDataV1 => decode_notify_social_data(payload, metadata, profile),
+        DecoderKind::NotifyUnionInfoV1 => decode_notify_union_info(payload, metadata, profile),
         DecoderKind::NotifyTeamMemberInfoV1 => {
             decode_notify_team_member_info(payload, metadata, entities, profile)
         }
@@ -1200,9 +1203,8 @@ fn decode_notify_social_data(
             .guild
             .as_ref()
             .and_then(|guild| clean_text(guild.guild_name.as_deref()));
-        let title_ids = personal_zone
-            .and_then(|zone| positive_i32(zone.title_id))
-            .map(|title_id| vec![i64::from(title_id)])
+        let (equipped_title_id, equipped_title_level, title_ids) = personal_zone
+            .map(social_title_collection)
             .unwrap_or_default();
         let mut medal_ids = personal_zone
             .into_iter()
@@ -1228,6 +1230,8 @@ fn decode_notify_social_data(
             Some(SocialDisplay {
                 guild_id,
                 guild_name,
+                equipped_title_id,
+                equipped_title_level,
                 title_ids,
                 medal_ids,
                 medal_slots,
@@ -1368,6 +1372,56 @@ fn decode_notify_social_data(
         ));
     }
     Ok(drafts)
+}
+
+fn decode_notify_union_info(
+    payload: &[u8],
+    metadata: &DecodeMetadata,
+    tracker: &mut ProfileTracker,
+) -> Result<Vec<CanonicalEventDraft>, ProtocolMessageError> {
+    let message = schema::NotifyUnionInfo::decode(payload)?;
+    let Some(base) = message
+        .request
+        .and_then(|request| request.info)
+        .and_then(|info| info.base_info)
+    else {
+        return Ok(Vec::new());
+    };
+    let guild_id = base.id.filter(|id| *id > 0);
+    let guild_name = clean_text(base.name.as_deref());
+    if guild_id.is_none() && guild_name.is_none() {
+        return Ok(Vec::new());
+    }
+    let Some(mut profile) = tracker.local_profile.clone() else {
+        return Ok(Vec::new());
+    };
+    let social = profile.social_display.get_or_insert_with(|| SocialDisplay {
+        guild_id: None,
+        guild_name: None,
+        equipped_title_id: None,
+        equipped_title_level: None,
+        title_ids: Vec::new(),
+        medal_ids: Vec::new(),
+        medal_slots: BTreeMap::new(),
+        profile_theme_id: None,
+    });
+    if guild_id.is_some() {
+        social.guild_id = guild_id;
+    }
+    if guild_name.is_some() {
+        social.guild_name = guild_name;
+    }
+    if tracker.local_profile.as_ref() == Some(&profile) {
+        return Ok(Vec::new());
+    }
+    tracker.local_profile = Some(profile.clone());
+    Ok(vec![draft(
+        metadata,
+        EventSensitivity::PublicGameplay,
+        CanonicalEventDraftKind::CharacterProfileObserved {
+            profile: Box::new(profile.into_game_event()?),
+        },
+    )])
 }
 
 fn decode_notify_team_member_info(
@@ -2181,6 +2235,25 @@ fn decode_sync_container(
         let battle_imagine_skills =
             container_battle_imagine_skills(professions, character.slots.as_ref());
         let equipped_action_slots = container_action_slots(character.slots.as_ref());
+        let mut social_display = container_personal_zone(character.personal_zone.as_ref());
+        if let Some(guild_id) = base
+            .and_then(|base| base.union_info.as_ref())
+            .and_then(|union| union.union_id)
+            .filter(|guild_id| *guild_id > 0)
+        {
+            social_display
+                .get_or_insert_with(|| SocialDisplay {
+                    guild_id: None,
+                    guild_name: None,
+                    equipped_title_id: None,
+                    equipped_title_level: None,
+                    title_ids: Vec::new(),
+                    medal_ids: Vec::new(),
+                    medal_slots: BTreeMap::new(),
+                    profile_theme_id: None,
+                })
+                .guild_id = Some(guild_id);
+        }
         let profile = CharacterProfilePatch {
             character: identity,
             display_name: base.and_then(|base| base.display_name.clone()),
@@ -2253,7 +2326,7 @@ fn decode_sync_container(
                 .current_profession_project
                 .as_ref()
                 .and_then(|project| positive_i32(project.project_id)),
-            social_display: container_personal_zone(character.personal_zone.as_ref()),
+            social_display,
         };
         let (primary_loadout, auxiliary_loadout) = project_actor_loadouts(&profile);
         if let Some(entity_uuid) = character_entity_uuid(character_id) {
@@ -2700,10 +2773,15 @@ fn container_equipment_attributes(
         .iter()
         .filter_map(|(key, value)| Some((i32::try_from(*key).ok()?, i64::from(*value))))
         .collect::<BTreeMap<_, _>>();
-    let basic = profile_attribute_map(&attributes.basic);
-    let advanced = profile_attribute_map(&attributes.advanced);
-    let recast = profile_attribute_map(&attributes.recast);
-    let rare_quality = profile_attribute_map(&attributes.rare_quality);
+    let nested = attributes.attribute_set.as_ref();
+    let basic = merged_profile_attribute_map(&attributes.basic, nested.map(|set| &set.basic));
+    let advanced =
+        merged_profile_attribute_map(&attributes.advanced, nested.map(|set| &set.advanced));
+    let recast = merged_profile_attribute_map(&attributes.recast, nested.map(|set| &set.recast));
+    let rare_quality = merged_profile_attribute_map(
+        &attributes.rare_quality,
+        nested.map(|set| &set.rare_quality),
+    );
     let has_fields = !base.is_empty()
         || !basic.is_empty()
         || !advanced.is_empty()
@@ -2735,6 +2813,17 @@ fn profile_attribute_map(values: &std::collections::HashMap<i32, i32>) -> BTreeM
         .iter()
         .map(|(key, value)| (*key, i64::from(*value)))
         .collect()
+}
+
+fn merged_profile_attribute_map(
+    legacy: &std::collections::HashMap<i32, i32>,
+    current: Option<&std::collections::HashMap<i32, i32>>,
+) -> BTreeMap<i32, i64> {
+    let mut values = profile_attribute_map(legacy);
+    if let Some(current) = current {
+        values.extend(profile_attribute_map(current));
+    }
+    values
 }
 
 fn container_talent_progress(
@@ -2847,9 +2936,15 @@ fn container_professions(
         profession
             .talent_node_ids
             .iter()
-            .map(|talent_id| TalentLevel {
-                talent_id: *talent_id,
-                level: None,
+            .map(|node_id| {
+                let presentation = crate::talent_presentation::talent_node_presentation(*node_id);
+                TalentLevel {
+                    talent_id: presentation
+                        .map(|presentation| presentation.talent_id)
+                        .unwrap_or(*node_id),
+                    node_id: Some(*node_id),
+                    level: presentation.and_then(|presentation| presentation.talent_level),
+                }
             })
             .collect()
     });
@@ -3296,8 +3391,8 @@ fn container_activity_progress(
 }
 
 /// Mirrors the Global client `GetPlayerSeasonMasterDungeonScore` calculation:
-/// keep the best score observed for each dungeon across every difficulty in the
-/// displayed season, then sum those per-dungeon bests.
+/// keep the best score observed for each of the season's six dungeon tracks
+/// across its 20 Master difficulties, then sum those six per-dungeon bests.
 fn container_master_score(master_mode: Option<&schema::MasterModeDungeonInfo>) -> Option<i64> {
     let master_mode = master_mode?;
     let season_id = master_mode
@@ -3306,14 +3401,17 @@ fn container_master_score(master_mode: Option<&schema::MasterModeDungeonInfo>) -
         .or_else(|| master_mode.seasons.keys().copied().max())?;
     let season = master_mode.seasons.get(&season_id)?;
     let mut best_by_dungeon = HashMap::<i32, i32>::new();
-    for difficulty in season.difficulties.values() {
-        for (map_id, dungeon) in &difficulty.dungeons {
-            let Some(dungeon_id) =
-                positive_i32(dungeon.dungeon_id).or_else(|| positive_i32(Some(*map_id)))
-            else {
+    let mut dungeon_tracks = season.difficulties.iter().collect::<Vec<_>>();
+    dungeon_tracks.sort_unstable_by_key(|(dungeon_id, _)| **dungeon_id);
+    for (dungeon_id, difficulties) in dungeon_tracks.into_iter().take(6) {
+        let Some(dungeon_id) = positive_i32(Some(*dungeon_id)) else {
+            continue;
+        };
+        for (master_difficulty, difficulty) in &difficulties.dungeons {
+            if !(1..=20).contains(master_difficulty) {
                 continue;
-            };
-            let score = dungeon.score.unwrap_or_default().max(0);
+            }
+            let score = difficulty.score.unwrap_or_default().max(0);
             best_by_dungeon
                 .entry(dungeon_id)
                 .and_modify(|best| *best = (*best).max(score))
@@ -3505,20 +3603,63 @@ fn container_personal_zone(zone: Option<&schema::PersonalZone>) -> Option<Social
     let mut medal_ids = medal_slots.values().copied().collect::<Vec<_>>();
     medal_ids.sort_unstable();
     medal_ids.dedup();
-    let title_ids = positive_i32(zone.title_id)
-        .map(|title_id| vec![i64::from(title_id)])
-        .unwrap_or_default();
+    let equipped_title_id = zone
+        .title_data
+        .as_ref()
+        .and_then(|title| positive_i32(title.title_id))
+        .or_else(|| positive_i32(zone.title_id))
+        .map(i64::from);
+    let equipped_title_level = zone
+        .title_data
+        .as_ref()
+        .and_then(|title| positive_i32(title.title_level))
+        .and_then(|level| u32::try_from(level).ok());
+    let mut title_ids = zone
+        .title_history
+        .iter()
+        .filter_map(|history| positive_i32(history.title_id).map(i64::from))
+        .collect::<Vec<_>>();
+    title_ids.extend(equipped_title_id);
+    title_ids.sort_unstable();
+    title_ids.dedup();
     let profile_theme_id = positive_i32(zone.theme_id).map(i64::from);
     (!title_ids.is_empty() || !medal_ids.is_empty() || profile_theme_id.is_some()).then_some(
         SocialDisplay {
             guild_id: None,
             guild_name: None,
+            equipped_title_id,
+            equipped_title_level,
             title_ids,
             medal_ids,
             medal_slots,
             profile_theme_id,
         },
     )
+}
+
+fn social_title_collection(
+    zone: &schema::SocialPersonalZone,
+) -> (Option<i64>, Option<u32>, Vec<i64>) {
+    let equipped_title_id = zone
+        .title_data
+        .as_ref()
+        .and_then(|title| positive_i32(title.title_id))
+        .or_else(|| positive_i32(zone.title_id))
+        .map(i64::from);
+    let equipped_title_level = zone
+        .title_data
+        .as_ref()
+        .and_then(|title| positive_i32(title.title_level))
+        .and_then(|level| u32::try_from(level).ok());
+    let mut title_ids = zone
+        .title_history
+        .iter()
+        .filter_map(|history| positive_i32(history.title_id).map(i64::from))
+        .collect::<Vec<_>>();
+    title_ids.extend(equipped_title_id);
+    title_ids.sort_unstable();
+    title_ids.dedup();
+    (equipped_title_id, equipped_title_level, title_ids)
 }
 
 fn enabled_ids(values: &std::collections::HashMap<i32, bool>) -> Vec<i64> {
@@ -5630,12 +5771,13 @@ mod tests {
     const WORLD_SERVICE: u64 = 0x6333_5342;
     const WORLD_LOGIN_SERVICE: u64 = 78_136_601;
     const SOCIAL_SERVICE: u64 = 625_772_963;
+    const UNION_SERVICE: u64 = 504_281_929;
     const TEAM_SERVICE: u64 = 966_773_353;
 
     #[test]
-    fn master_score_sums_each_dungeons_best_difficulty_in_displayed_season() {
-        let dungeon = |dungeon_id, score, pass_time| schema::DungeonProgress {
-            dungeon_id: Some(dungeon_id),
+    fn master_score_sums_each_of_six_dungeons_best_master_difficulty() {
+        let difficulty = |difficulty_id, score, pass_time| schema::DungeonProgress {
+            dungeon_id: Some(difficulty_id),
             completion_count: Some(1),
             award_state: None,
             score: Some(score),
@@ -5644,17 +5786,17 @@ mod tests {
         let season = schema::MasterModeSeason {
             difficulties: [
                 (
-                    1,
+                    1_033,
                     schema::MasterModeDifficulty {
-                        dungeons: [(101, dungeon(101, 400, 90)), (202, dungeon(202, 250, 120))]
+                        dungeons: [(1, difficulty(1, 400, 90)), (2, difficulty(2, 625, 150))]
                             .into_iter()
                             .collect(),
                     },
                 ),
                 (
-                    2,
+                    1_123,
                     schema::MasterModeDifficulty {
-                        dungeons: [(101, dungeon(101, 625, 150)), (202, dungeon(202, 200, 80))]
+                        dungeons: [(1, difficulty(1, 250, 120)), (2, difficulty(2, 200, 80))]
                             .into_iter()
                             .collect(),
                     },
@@ -5876,6 +6018,7 @@ mod tests {
             service_name: match service_id {
                 WORLD_LOGIN_SERVICE => "WorldLoginNtf",
                 SOCIAL_SERVICE => "SocialNtf",
+                UNION_SERVICE => "UnionNtf",
                 TEAM_SERVICE => "GrpcTeamNtf",
                 _ => "WorldNtf",
             }
@@ -5908,6 +6051,7 @@ mod tests {
             routes: vec![
                 route_for(WORLD_LOGIN_SERVICE, 3, DecoderKind::NotifyEnterWorldV1),
                 route_for(SOCIAL_SERVICE, 1, DecoderKind::NotifySocialDataV1),
+                route_for(UNION_SERVICE, 1, DecoderKind::NotifyUnionInfoV1),
                 route_for(TEAM_SERVICE, 2, DecoderKind::NotifyTeamMemberInfoV1),
                 route_for(TEAM_SERVICE, 3, DecoderKind::NotifyJoinTeamV1),
                 route_for(TEAM_SERVICE, 4, DecoderKind::NotifyLeaveTeamV1),
@@ -8152,6 +8296,9 @@ mod tests {
                         body_size_id: Some(1),
                         voice_id: Some(70),
                     }),
+                    union_info: Some(schema::UserUnion {
+                        union_id: Some(8_765),
+                    }),
                     avatar: Some(schema::CharacterAvatarInfo {
                         avatar_id: Some(41),
                         profile: Some(schema::PictureInfo {
@@ -8178,6 +8325,12 @@ mod tests {
                                         count: None,
                                         quality: Some(4),
                                         equipment_attributes: Some(schema::EquipmentAttributes {
+                                            attribute_set: Some(schema::EquipmentAttributeSet {
+                                                basic: [(6, 600)].into_iter().collect(),
+                                                advanced: [(3, 333)].into_iter().collect(),
+                                                recast: Default::default(),
+                                                rare_quality: Default::default(),
+                                            }),
                                             base: [(1, 100)].into_iter().collect(),
                                             basic: [(2, 200)].into_iter().collect(),
                                             advanced: [(3, 300)].into_iter().collect(),
@@ -8343,6 +8496,20 @@ mod tests {
                     version: Some(9),
                 }),
                 personal_zone: Some(schema::PersonalZone {
+                    title_data: Some(schema::PersonalZoneTitleData {
+                        title_id: Some(3),
+                        title_level: Some(4),
+                    }),
+                    title_history: vec![
+                        schema::PersonalZoneTitleHistory {
+                            title_id: Some(3),
+                            new_level: Some(4),
+                        },
+                        schema::PersonalZoneTitleHistory {
+                            title_id: Some(9),
+                            new_level: Some(1),
+                        },
+                    ],
                     medals: [(1, 501)].into_iter().collect(),
                     theme_id: Some(2),
                     business_card_style_id: Some(42),
@@ -8574,7 +8741,14 @@ mod tests {
                 .attributes
                 .as_ref()
                 .and_then(|attributes| attributes.advanced.get(&3)),
-            Some(&300)
+            Some(&333)
+        );
+        assert_eq!(
+            equipment[0]
+                .attributes
+                .as_ref()
+                .and_then(|attributes| attributes.basic.get(&6)),
+            Some(&600)
         );
         assert_eq!(equipment[0].enchantment_ids, vec![20_001]);
         assert_eq!(equipment[0].enchantments[0].level, Some(3));
@@ -8682,6 +8856,44 @@ mod tests {
         );
         assert_eq!(achievements.initialized_season_ids, vec![0, 3]);
         assert_eq!(achievements.version, Some(9));
+        let social = profile.social_display.as_ref().expect("social display");
+        assert_eq!(social.guild_id, Some(8_765));
+        assert_eq!(social.equipped_title_id, Some(3));
+        assert_eq!(social.equipped_title_level, Some(4));
+        assert_eq!(social.title_ids, vec![3, 9]);
+
+        let union = runtime
+            .process(&record_for(
+                UNION_SERVICE,
+                2,
+                1,
+                encode(schema::NotifyUnionInfo {
+                    request: Some(schema::NotifyUnionInfoRequest {
+                        info: Some(schema::UnionInfo {
+                            base_info: Some(schema::UnionBaseData {
+                                id: Some(8_765),
+                                name: Some("Exact Guild Name".into()),
+                            }),
+                        }),
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(union.status, ProtocolDecodeStatus::Decoded, "{union:?}");
+        let union_profile = union.events.iter().find_map(|event| match &event.event {
+            rlogs_events::CanonicalEvent::CharacterProfileObserved { profile } => Some(profile),
+            _ => None,
+        });
+        let union_profile =
+            CharacterProfilePatch::from_game_event(union_profile.expect("union profile"))
+                .expect("valid union profile patch");
+        assert_eq!(
+            union_profile
+                .social_display
+                .as_ref()
+                .and_then(|social| social.guild_name.as_deref()),
+            Some("Exact Guild Name")
+        );
     }
 
     #[test]
@@ -9079,6 +9291,8 @@ mod tests {
                     }),
                     account_data: Some("private-account-data-subtree".into()),
                     personal_zone: Some(schema::SocialPersonalZone {
+                        title_data: None,
+                        title_history: Vec::new(),
                         medals: [(0, 101), (1, 101), (2, 202)].into_iter().collect(),
                         business_card_style_id: None,
                         avatar_frame_id: None,

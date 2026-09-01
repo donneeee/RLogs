@@ -5996,6 +5996,7 @@ const fn decoder_event_mask(decoder: DecoderKind) -> u16 {
         | DecoderKind::EnterSceneV1
         | DecoderKind::NotifyLoadSceneEndV1
         | DecoderKind::NotifySocialDataV1
+        | DecoderKind::NotifyUnionInfoV1
         | DecoderKind::NotifyTeamMemberInfoV1
         | DecoderKind::NotifyJoinTeamV1
         | DecoderKind::NotifyLeaveTeamV1

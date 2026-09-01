@@ -62,6 +62,32 @@ pub(crate) struct NotifySocialDataRequest {
 }
 
 #[derive(Clone, PartialEq, Message)]
+pub(crate) struct NotifyUnionInfo {
+    #[prost(message, optional, tag = "1")]
+    pub request: Option<NotifyUnionInfoRequest>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct NotifyUnionInfoRequest {
+    #[prost(message, optional, tag = "2")]
+    pub info: Option<UnionInfo>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct UnionInfo {
+    #[prost(message, optional, tag = "1")]
+    pub base_info: Option<UnionBaseData>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct UnionBaseData {
+    #[prost(int64, optional, tag = "1")]
+    pub id: Option<i64>,
+    #[prost(string, optional, tag = "3")]
+    pub name: Option<String>,
+}
+
+#[derive(Clone, PartialEq, Message)]
 pub(crate) struct NoticeUpdateTeamMemberInfo {
     #[prost(message, optional, tag = "1")]
     pub request: Option<NoticeUpdateTeamMemberInfoRequest>,
@@ -362,6 +388,10 @@ pub(crate) struct SocialPersonalZone {
     pub avatar_frame_id: Option<i32>,
     #[prost(int32, optional, tag = "11")]
     pub title_id: Option<i32>,
+    #[prost(message, optional, tag = "22")]
+    pub title_data: Option<PersonalZoneTitleData>,
+    #[prost(message, repeated, tag = "23")]
+    pub title_history: Vec<PersonalZoneTitleHistory>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -818,6 +848,8 @@ pub(crate) struct CharacterBase {
     pub face: Option<FaceData>,
     #[prost(int32, optional, tag = "22")]
     pub body_size_id: Option<i32>,
+    #[prost(message, optional, tag = "23")]
+    pub union_info: Option<UserUnion>,
     #[prost(message, optional, tag = "25")]
     pub avatar: Option<CharacterAvatarInfo>,
     #[prost(int32, optional, tag = "31")]
@@ -825,6 +857,12 @@ pub(crate) struct CharacterBase {
     #[prost(int32, optional, tag = "35")]
     pub combat_power: Option<i32>,
     // Tags containing account/open/login state are intentionally not declared.
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct UserUnion {
+    #[prost(int64, optional, tag = "1")]
+    pub union_id: Option<i64>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -1046,8 +1084,22 @@ pub(crate) struct EquipmentAttributes {
     pub rare_quality: std::collections::HashMap<i32, i32>,
     #[prost(int32, optional, tag = "15")]
     pub max_perfection_value: Option<i32>,
+    #[prost(message, optional, tag = "17")]
+    pub attribute_set: Option<EquipmentAttributeSet>,
     #[prost(int32, optional, tag = "18")]
     pub breakthrough_level: Option<i32>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct EquipmentAttributeSet {
+    #[prost(map = "int32, int32", tag = "1")]
+    pub basic: std::collections::HashMap<i32, i32>,
+    #[prost(map = "int32, int32", tag = "2")]
+    pub advanced: std::collections::HashMap<i32, i32>,
+    #[prost(map = "int32, int32", tag = "3")]
+    pub recast: std::collections::HashMap<i32, i32>,
+    #[prost(map = "int32, int32", tag = "4")]
+    pub rare_quality: std::collections::HashMap<i32, i32>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -1241,6 +1293,26 @@ pub(crate) struct PersonalZone {
     pub weapon_skin_collection_points: Option<i32>,
     #[prost(map = "int32, int32", tag = "21")]
     pub photos_wall: std::collections::HashMap<i32, i32>,
+    #[prost(message, optional, tag = "22")]
+    pub title_data: Option<PersonalZoneTitleData>,
+    #[prost(message, repeated, tag = "23")]
+    pub title_history: Vec<PersonalZoneTitleHistory>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct PersonalZoneTitleData {
+    #[prost(int32, optional, tag = "1")]
+    pub title_id: Option<i32>,
+    #[prost(int32, optional, tag = "2")]
+    pub title_level: Option<i32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct PersonalZoneTitleHistory {
+    #[prost(int32, optional, tag = "1")]
+    pub title_id: Option<i32>,
+    #[prost(int32, optional, tag = "3")]
+    pub new_level: Option<i32>,
 }
 
 #[derive(Clone, Copy, PartialEq, Message)]

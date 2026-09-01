@@ -454,6 +454,28 @@
         "direction": "server_to_client",
         "fragment": { "kind": "notify" },
         "service_id": 504281929,
+        "method_id": 1
+      },
+      "service_name": "UnionNtf",
+      "method_name": "NotifyUnionInfo",
+      "message_name": "NotifyUnionInfo",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "installed-client-native-schema",
+          "reference": "steam-24687926 UnionNtf.NotifyUnionInfo and exact protobuf field tags"
+        }
+      ],
+      "features": ["social", "character_profile"],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "notify_union_info_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": { "kind": "notify" },
+        "service_id": 504281929,
         "method_id": 10
       },
       "service_name": "UnionNtf",
