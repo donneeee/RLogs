@@ -10,7 +10,7 @@ use std::{
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-const SCHEMA_VERSION: u16 = 1;
+const SCHEMA_VERSION: u16 = 2;
 const ENTITY_ATTRIBUTE_ROW_SIZE: usize = 29;
 
 #[derive(Debug)]
@@ -39,6 +39,7 @@ struct ProofPolicy {
     localized_names_are_formula_authority: bool,
     unresolved_fields_are_hidden: bool,
     row_identity_authority: &'static str,
+    field_layout_authority: &'static str,
     array_semantics: &'static str,
 }
 
@@ -74,13 +75,13 @@ struct PoolReport {
 struct EntityAttributeRow {
     row_index: usize,
     id: u32,
-    name_zh_cn: Option<String>,
-    field_8: PoolReference,
-    field_12: PoolReference,
-    field_16: PoolReference,
-    field_20: PoolReference,
-    field_24_raw: u32,
-    field_28_raw: u8,
+    comment_zh_cn: Option<String>,
+    level: PoolReference,
+    season: PoolReference,
+    season_level: PoolReference,
+    season_rank: PoolReference,
+    fight_value_coefficient: u32,
+    is_load_rank: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -181,13 +182,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         rows.push(EntityAttributeRow {
             row_index,
             id,
-            name_zh_cn: strings.get(&name_ref).cloned(),
-            field_8: pool_reference(read_u32(&bytes, row_offset + 8)?, int_arrays),
-            field_12: pool_reference(read_u32(&bytes, row_offset + 12)?, int_arrays),
-            field_16: pool_reference(read_u32(&bytes, row_offset + 16)?, int_arrays),
-            field_20: pool_reference(read_u32(&bytes, row_offset + 20)?, int_arrays),
-            field_24_raw: read_u32(&bytes, row_offset + 24)?,
-            field_28_raw: bytes[row_offset + 28],
+            comment_zh_cn: strings.get(&name_ref).cloned(),
+            level: pool_reference(read_u32(&bytes, row_offset + 8)?, int_arrays),
+            season: pool_reference(read_u32(&bytes, row_offset + 12)?, int_arrays),
+            season_level: pool_reference(read_u32(&bytes, row_offset + 16)?, int_arrays),
+            season_rank: pool_reference(read_u32(&bytes, row_offset + 20)?, int_arrays),
+            fight_value_coefficient: read_u32(&bytes, row_offset + 24)?,
+            is_load_rank: bytes[row_offset + 28] != 0,
         });
     }
 
@@ -199,7 +200,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             localized_names_are_formula_authority: false,
             unresolved_fields_are_hidden: false,
             row_identity_authority: "exact-build CTB primary-key index and fixed row bytes",
-            array_semantics: "raw current-build integer arrays are preserved; field meaning remains unresolved until cross-table and packet evidence agree",
+            field_layout_authority: "matching-table decoded schema names plus the exact 29-byte CTB row layout",
+            array_semantics: "current-build Level, Season, SeasonLv, and SeasonRank integer-array values are preserved exactly; none is treated as a defense or mitigation scalar",
         },
         source: SourceReport {
             package: arguments.package.display().to_string(),

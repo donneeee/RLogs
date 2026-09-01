@@ -29,18 +29,20 @@ const monsters = readJson(monsterPath);
 const entityAttributes = readJson(entityAttributePath);
 const bullets = readJson(bulletPath);
 validateInputs(group, identity);
+const entityAttributeIndex = entityAttributeRows(entityAttributes);
 
 const identities = new Map(identity.observations.map((row) => [key(row), row]));
 if (identities.size !== identity.observations.length) {
   throw new Error("target identity proof contains duplicate action keys");
 }
 const distinctStaticTargets = new Map();
-const rows = group.observations.map((row) => {
+const selectedRows = observations(group);
+const rows = selectedRows.map((row) => {
   const target = identities.get(key(row));
   if (!target || Number(target.target_entity_uuid) !== Number(row.target_entity_uuid)) {
     throw new Error(`missing or mismatched target identity for ${key(row)}`);
   }
-  const context = staticContext(target, monsters, entityAttributes, bullets);
+  const context = staticContext(target, monsters, entityAttributeIndex, bullets);
   distinctStaticTargets.set(context.identity_key, context.catalog_entry);
   return { ...row, target_identity: target, target_static_context: context.observation };
 });
@@ -48,32 +50,42 @@ if (rows.length !== identity.observations.length) {
   throw new Error("group and target identity observation counts differ");
 }
 
-const conflicts = rows.filter((row) => row.baseline_context_conflicting);
-const baseline = summarizeContexts(rows, completeRetainedContextParts);
-const withTargetIdentity = summarizeContexts(rows, (row) => [
-  ...completeRetainedContextParts(row),
-  row.target_identity.actor_kind,
-  row.target_identity.numeric_monster_id,
-  row.target_identity.level,
-  row.target_static_context.static_signature,
-]);
-const conflictWithTargetIdentity = summarizeContexts(conflicts, (row) => [
-  ...completeRetainedContextParts(row),
-  row.target_identity.actor_kind,
-  row.target_identity.numeric_monster_id,
-  row.target_identity.level,
-  row.target_static_context.static_signature,
-]);
+const hasContextDiagnostics = rows.every((row) =>
+  Object.hasOwn(row, "base") && Object.hasOwn(row, "output"));
+const conflicts = hasContextDiagnostics
+  ? rows.filter((row) => row.baseline_context_conflicting)
+  : [];
+const baseline = hasContextDiagnostics
+  ? summarizeContexts(rows, completeRetainedContextParts)
+  : null;
+const withTargetIdentity = hasContextDiagnostics
+  ? summarizeContexts(rows, (row) => [
+      ...completeRetainedContextParts(row),
+      row.target_identity.actor_kind,
+      row.target_identity.numeric_monster_id,
+      row.target_identity.level,
+      row.target_static_context.static_signature,
+    ])
+  : null;
+const conflictWithTargetIdentity = hasContextDiagnostics
+  ? summarizeContexts(conflicts, (row) => [
+      ...completeRetainedContextParts(row),
+      row.target_identity.actor_kind,
+      row.target_identity.numeric_monster_id,
+      row.target_identity.level,
+      row.target_static_context.static_signature,
+    ])
+  : null;
 const catalog = [...distinctStaticTargets.values()].sort((left, right) =>
   Number(left.numeric_id) - Number(right.numeric_id));
 
 const report = {
-  schema_version: 1,
+  schema_version: 2,
   generated_by: "rlogs-bpsr-selected-hit-target-static-context-diagnostic",
-  game_build: "24687926",
+  game_build: group.game_build,
   selection: group.selection,
   inputs: {
-    group_relative_diagnostic: receipt(groupPath),
+    selection_proof: receipt(groupPath),
     target_identity_proof: receipt(identityPath),
     monster_table: receipt(monsterPath),
     entity_attribute_table: receipt(entityAttributePath),
@@ -108,8 +120,9 @@ const report = {
     distinct_static_targets: catalog.length,
     distinct_monster_targets: catalog.filter((row) => row.actor_kind === "monster").length,
     distinct_projectile_targets: catalog.filter((row) => row.actor_kind === "projectile").length,
-    baseline_conflicting_contexts: baseline.conflicting_repeated_context_count,
-    baseline_conflicting_observations: baseline.conflicting_repeated_observation_count,
+    context_diagnostics_available: hasContextDiagnostics,
+    baseline_conflicting_contexts: baseline?.conflicting_repeated_context_count ?? null,
+    baseline_conflicting_observations: baseline?.conflicting_repeated_observation_count ?? null,
   },
   target_catalog: catalog,
   diagnostics: {
@@ -125,11 +138,13 @@ const report = {
       row.target_static_context.route_complete),
     static_tables_supply_damage_mitigation_scalar: rows.some((row) =>
       row.target_static_context.static_mitigation_scalar_present),
-    target_static_context_eliminates_all_original_conflicts:
-      conflictWithTargetIdentity.conflicting_repeated_context_count === 0,
-    target_static_context_reduces_original_conflicts:
-      conflictWithTargetIdentity.conflicting_repeated_context_count <
-        baseline.conflicting_repeated_context_count,
+    target_static_context_eliminates_all_original_conflicts: hasContextDiagnostics
+      ? conflictWithTargetIdentity.conflicting_repeated_context_count === 0
+      : null,
+    target_static_context_reduces_original_conflicts: hasContextDiagnostics
+      ? conflictWithTargetIdentity.conflicting_repeated_context_count <
+        baseline.conflicting_repeated_context_count
+      : null,
     exact_target_mitigation_formula_proven: false,
     exact_damage_formula_proven: false,
     provider_rdps_credit_allowed: false,
@@ -142,22 +157,16 @@ fs.writeFileSync(partialPath, `${JSON.stringify(report, null, 2)}\n`);
 fs.renameSync(partialPath, outputPath);
 console.log(JSON.stringify({ output: outputPath, summary: report.summary, conclusion: report.conclusion }, null, 2));
 
-function staticContext(target, monsters, entityAttributes, bullets) {
+function staticContext(target, monsters, entityAttributeIndex, bullets) {
   const id = String(target.numeric_monster_id);
   if (target.actor_kind === "monster") {
     const monster = monsters[id] ?? null;
     const attributeId = integer(monster?.AttributeId);
-    const attributes = attributeId === null ? null : entityAttributes[String(attributeId)] ?? null;
+    const attributes = attributeId === null
+      ? null
+      : entityAttributeIndex.get(String(attributeId)) ?? null;
     const routeComplete = Boolean(monster && attributes);
-    const retained = attributes ? {
-      Id: integer(attributes.Id),
-      Level: arrayOrNull(attributes.Level),
-      Season: arrayOrNull(attributes.Season),
-      SeasonLv: arrayOrNull(attributes.SeasonLv),
-      SeasonRank: arrayOrNull(attributes.SeasonRank),
-      IsLoadRank: attributes.IsLoadRank ?? null,
-      FightValueCoe: integer(attributes.FightValueCoe),
-    } : null;
+    const retained = attributes ? normalizedEntityAttributeRow(attributes) : null;
     const signature = JSON.stringify(["monster", id, attributeId, retained]);
     return {
       identity_key: `monster:${id}`,
@@ -283,20 +292,72 @@ function summarizeContexts(rows, keyOf) {
 }
 
 function validateInputs(group, identity) {
-  if (group?.schema_version !== 1 || group.game_build !== "24687926" ||
-      Number(group.selection?.action_id) !== 2203521) {
-    throw new Error("expected exact-build action-2203521 group diagnostic");
+  if (!Number.isSafeInteger(Number(group?.schema_version)) ||
+      typeof group.game_build !== "string" || observations(group).length === 0) {
+    throw new Error("expected an exact-build selection with observations");
   }
-  if (group.policy?.damage_target_is_allegiance_neutral !== true) {
-    throw new Error("group diagnostic does not preserve allegiance-neutral damage targets");
+  if (group.policy?.damage_target_is_allegiance_neutral === false) {
+    throw new Error("selection explicitly rejects allegiance-neutral damage targets");
   }
-  if (identity?.schema_version !== 1 ||
+  if (![1, 2].includes(identity?.schema_version) ||
       identity.generated_by !== "rlogs-bpsr-selected-action-target-identity-proof" ||
-      identity.game_build !== "24687926" ||
+      identity.game_build !== group.game_build ||
       identity.policy?.target_allegiance_assumed !== false ||
       !Array.isArray(identity.observations)) {
-    throw new Error("expected fail-closed build-24687926 target identity proof");
+    throw new Error(`expected fail-closed build-${group.game_build} target identity proof`);
   }
+}
+
+function observations(value) {
+  if (Array.isArray(value?.observations)) return value.observations;
+  if (Array.isArray(value?.formula_surface?.groups)) {
+    const byKey = new Map();
+    for (const group of value.formula_surface.groups) {
+      for (const row of group.examples ?? []) byKey.set(key(row), row);
+    }
+    return [...byKey.values()];
+  }
+  return [];
+}
+
+function entityAttributeRows(value) {
+  if (Array.isArray(value?.rows)) {
+    if (value.schema_version !== 2 ||
+        value.generated_by !== "rlogs-bpsr-entity-attribute-table-proof" ||
+        value.source?.expected_hash_matches !== true ||
+        value.table?.primary_key_index_matches_rows !== true) {
+      throw new Error("raw entity attribute proof is not exact-build schema-2 evidence");
+    }
+    return new Map(value.rows.map((row) => [String(row.id), row]));
+  }
+  return new Map(Object.entries(value ?? {}));
+}
+
+function normalizedEntityAttributeRow(row) {
+  if (Object.hasOwn(row, "fight_value_coefficient")) {
+    return {
+      Id: integer(row.id),
+      Level: poolArray(row.level),
+      Season: poolArray(row.season),
+      SeasonLv: poolArray(row.season_level),
+      SeasonRank: poolArray(row.season_rank),
+      IsLoadRank: row.is_load_rank ?? null,
+      FightValueCoe: integer(row.fight_value_coefficient),
+    };
+  }
+  return {
+    Id: integer(row.Id),
+    Level: arrayOrNull(row.Level),
+    Season: arrayOrNull(row.Season),
+    SeasonLv: arrayOrNull(row.SeasonLv),
+    SeasonRank: arrayOrNull(row.SeasonRank),
+    IsLoadRank: row.IsLoadRank ?? null,
+    FightValueCoe: integer(row.FightValueCoe),
+  };
+}
+
+function poolArray(value) {
+  return arrayOrNull(value?.int_array);
 }
 
 function integer(value) {
