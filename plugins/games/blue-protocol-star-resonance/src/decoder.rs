@@ -642,6 +642,11 @@ struct ProfileTracker {
     /// Title IDs independently observed in Personal Zone display/history.
     /// These remain present when an overlapping inventory instance changes.
     display_title_ids: BTreeSet<i64>,
+    /// Latest reviewed guild identity. Guild notifications and explicit guild
+    /// replies can precede the owner container during login, so retain them
+    /// until the local character is known instead of dropping valid evidence.
+    pending_guild_id: Option<i64>,
+    pending_guild_name: Option<String>,
     last_dirty_profile: Option<CharacterProfilePatch>,
     last_dirty_world: Option<WorldContext>,
     last_social_profile: Option<CharacterProfilePatch>,
@@ -1553,25 +1558,11 @@ fn decode_union_base(
     if guild_id.is_none() && guild_name.is_none() {
         return Ok(Vec::new());
     }
+    remember_guild_display(tracker, guild_id, guild_name);
     let Some(mut profile) = tracker.local_profile.clone() else {
         return Ok(Vec::new());
     };
-    let social = profile.social_display.get_or_insert_with(|| SocialDisplay {
-        guild_id: None,
-        guild_name: None,
-        equipped_title_id: None,
-        equipped_title_level: None,
-        title_ids: Vec::new(),
-        medal_ids: Vec::new(),
-        medal_slots: BTreeMap::new(),
-        profile_theme_id: None,
-    });
-    if guild_id.is_some() {
-        social.guild_id = guild_id;
-    }
-    if guild_name.is_some() {
-        social.guild_name = guild_name;
-    }
+    apply_tracked_guild_display(&mut profile.social_display, tracker);
     if tracker.local_profile.as_ref() == Some(&profile) {
         return Ok(Vec::new());
     }
@@ -1583,6 +1574,40 @@ fn decode_union_base(
             profile: Box::new(profile.into_game_event()?),
         },
     )])
+}
+
+fn remember_guild_display(
+    tracker: &mut ProfileTracker,
+    guild_id: Option<i64>,
+    guild_name: Option<String>,
+) {
+    if let Some(guild_id) = guild_id {
+        if tracker.pending_guild_id != Some(guild_id) {
+            tracker.pending_guild_name = None;
+        }
+        tracker.pending_guild_id = Some(guild_id);
+    }
+    if let Some(guild_name) = guild_name {
+        tracker.pending_guild_name = Some(guild_name);
+    }
+}
+
+fn apply_tracked_guild_display(
+    social_display: &mut Option<SocialDisplay>,
+    tracker: &ProfileTracker,
+) {
+    if tracker.pending_guild_id.is_none() && tracker.pending_guild_name.is_none() {
+        return;
+    }
+    let social = social_display.get_or_insert_with(empty_social_display);
+    if tracker.pending_guild_id.is_some() {
+        social.guild_id = tracker.pending_guild_id;
+    }
+    if tracker.pending_guild_name.is_some()
+        && (tracker.pending_guild_id.is_none() || social.guild_id == tracker.pending_guild_id)
+    {
+        social.guild_name.clone_from(&tracker.pending_guild_name);
+    }
 }
 
 fn decode_notify_team_member_info(
@@ -2410,15 +2435,14 @@ fn decode_sync_container(
             social.title_ids.sort_unstable();
             social.title_ids.dedup();
         }
-        if let Some(guild_id) = base
+        let container_guild_id = base
             .and_then(|base| base.union_info.as_ref())
             .and_then(|union| union.union_id)
-            .filter(|guild_id| *guild_id > 0)
-        {
-            social_display
-                .get_or_insert_with(empty_social_display)
-                .guild_id = Some(guild_id);
+            .filter(|guild_id| *guild_id > 0);
+        if let Some(guild_id) = container_guild_id {
+            remember_guild_display(tracker, Some(guild_id), None);
         }
+        apply_tracked_guild_display(&mut social_display, tracker);
         let profile = CharacterProfilePatch {
             character: identity,
             display_name: base.and_then(|base| base.display_name.clone()),
@@ -4313,6 +4337,15 @@ fn decode_sync_container_dirty(
     if patches_complete_profile && patches_local_identity {
         if let Some(owned_titles) = update.owned_titles.as_ref() {
             apply_dirty_owned_titles(&mut tracker.owned_title_items, owned_titles);
+        }
+        if let Some(guild_id) = update.guild_id {
+            match guild_id {
+                Some(guild_id) => remember_guild_display(tracker, Some(guild_id), None),
+                None => {
+                    tracker.pending_guild_id = None;
+                    tracker.pending_guild_name = None;
+                }
+            }
         }
         let owned_title_items = &tracker.owned_title_items;
         let display_title_ids = &tracker.display_title_ids;
@@ -9344,6 +9377,138 @@ mod tests {
                 .as_ref()
                 .and_then(|social| social.guild_name.as_deref()),
             Some("Explicit Guild Reply")
+        );
+    }
+
+    #[test]
+    fn guild_info_observed_before_owner_profile_is_retained_and_cleared() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+        let early_union = runtime
+            .process(&record_for(
+                UNION_SERVICE,
+                1,
+                1,
+                encode(schema::NotifyUnionInfo {
+                    request: Some(schema::NotifyUnionInfoRequest {
+                        info: Some(schema::UnionInfo {
+                            base_info: Some(schema::UnionBaseData {
+                                id: Some(8_765),
+                                name: Some("Early Guild Name".into()),
+                            }),
+                        }),
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(early_union.status, ProtocolDecodeStatus::Decoded);
+        assert!(early_union.events.iter().all(|event| !matches!(
+            event.event,
+            rlogs_events::CanonicalEvent::CharacterProfileObserved { .. }
+        )));
+
+        let owner = runtime
+            .process(&record(
+                2,
+                0x15,
+                encode(schema::SyncContainerData {
+                    character: Some(schema::CharacterSerialize {
+                        character_id: Some(987_654),
+                        base: Some(schema::CharacterBase {
+                            character_id: Some(987_654),
+                            display_name: Some("Profile Name".into()),
+                            ..schema::CharacterBase::default()
+                        }),
+                        ..schema::CharacterSerialize::default()
+                    }),
+                }),
+            ))
+            .unwrap();
+        let owner_profile = owner.events.iter().find_map(|event| match &event.event {
+            rlogs_events::CanonicalEvent::CharacterProfileObserved { profile } => Some(profile),
+            _ => None,
+        });
+        let owner_profile = CharacterProfilePatch::from_game_event(
+            owner_profile.expect("owner profile enriched by early guild evidence"),
+        )
+        .expect("valid owner profile");
+        let social = owner_profile.social_display.expect("guild social display");
+        assert_eq!(social.guild_id, Some(8_765));
+        assert_eq!(social.guild_name.as_deref(), Some("Early Guild Name"));
+
+        let dirty_leave = runtime
+            .process(&record(
+                3,
+                0x16,
+                encode(schema::SyncContainerDirtyData {
+                    data: Some(schema::BufferStream {
+                        buffer: Some(blob_object(vec![(
+                            2,
+                            blob_object(vec![(23, blob_object(vec![(1, blob_i64(0))]))]),
+                        )])),
+                        stream_type: Some(1),
+                    }),
+                }),
+            ))
+            .unwrap();
+        let leave_profile = dirty_leave
+            .events
+            .iter()
+            .find_map(|event| match &event.event {
+                rlogs_events::CanonicalEvent::CharacterProfileObserved { profile } => Some(profile),
+                _ => None,
+            });
+        let leave_profile = CharacterProfilePatch::from_game_event(
+            leave_profile.expect("guild leave profile update"),
+        )
+        .expect("valid guild leave profile");
+        let social = leave_profile
+            .social_display
+            .expect("retained social collection");
+        assert_eq!(social.guild_id, None);
+        assert_eq!(social.guild_name, None);
+
+        let refreshed = runtime
+            .process(&record(
+                4,
+                0x15,
+                encode(schema::SyncContainerData {
+                    character: Some(schema::CharacterSerialize {
+                        character_id: Some(987_654),
+                        base: Some(schema::CharacterBase {
+                            character_id: Some(987_654),
+                            display_name: Some("Profile Name".into()),
+                            ..schema::CharacterBase::default()
+                        }),
+                        ..schema::CharacterSerialize::default()
+                    }),
+                }),
+            ))
+            .unwrap();
+        let refreshed_profile = refreshed
+            .events
+            .iter()
+            .find_map(|event| match &event.event {
+                rlogs_events::CanonicalEvent::CharacterProfileObserved { profile } => Some(profile),
+                _ => None,
+            });
+        let refreshed_profile = CharacterProfilePatch::from_game_event(
+            refreshed_profile.expect("refreshed owner profile"),
+        )
+        .expect("valid refreshed owner profile");
+        assert_eq!(
+            refreshed_profile
+                .social_display
+                .as_ref()
+                .and_then(|social| social.guild_id),
+            None
+        );
+        assert_eq!(
+            refreshed_profile
+                .social_display
+                .as_ref()
+                .and_then(|social| social.guild_name.as_deref()),
+            None
         );
     }
 
