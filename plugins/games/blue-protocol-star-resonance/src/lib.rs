@@ -208,7 +208,7 @@ pub use profile::{
 };
 pub use profile_projection::{
     BpsrProfileProjectionError, LiveProfileProjection, MAXIMUM_LOCAL_PROFILE_CHARACTERS,
-    project_local_profile_packages,
+    merge_profile_patches, project_local_profile_packages,
 };
 pub use rdps::{
     RdpsContributionKind, RdpsEffectLookup, RdpsEffectRule, RdpsReviewState, RdpsSourceScope,

@@ -16,6 +16,19 @@ use crate::{
 pub const MAXIMUM_LOCAL_PROFILE_CHARACTERS: usize = 8;
 const MAXIMUM_PENDING_PUBLIC_PROFILE_CHARACTERS: usize = 64;
 
+/// Applies a newer privacy-reviewed profile patch to an accumulated profile.
+///
+/// This is also used by the submission registry when a verified live package
+/// follows an earlier verified package for the same character. Keeping that
+/// boundary on the plug-in's canonical merge rules prevents sparse sessions
+/// from erasing fields that their packets did not carry.
+pub fn merge_profile_patches(
+    accumulated: &mut CharacterProfilePatch,
+    newer: CharacterProfilePatch,
+) -> Result<(), BpsrProfileProjectionError> {
+    accumulated.merge_from(newer)
+}
+
 /// Incrementally accumulates the local player's privacy-reviewed profile while
 /// continuous capture is running. A character identity must first be observed
 /// in a `PersonalGameplay` event. Later public social snapshots may enrich only

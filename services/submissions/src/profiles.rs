@@ -6,7 +6,8 @@ use std::{
 
 use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BPSR_PROFILE_ENDPOINT, BPSR_PROFILE_SCHEMA_ID,
-    BPSR_PROFILE_SCHEMA_VERSION, CharacterProfilePatch,
+    BPSR_PROFILE_SCHEMA_VERSION, CharacterProfilePatch, merge_profile_patches,
+    website_profile_request,
 };
 use rlogs_profiles::LocalProfilePackage;
 use rlogs_submission::WebsitePayloadEnvelope;
@@ -181,7 +182,7 @@ impl ProfileRegistry {
                 "UID claims require device-bound proof from a live process-owned capture".into(),
             ));
         }
-        let profile = validate_bpsr_package(&package)?;
+        let mut profile = validate_bpsr_package(&package)?;
         let profile_id = profile_id(&package.request.payload);
         let directory = self.root.join(&profile_id);
         std::fs::create_dir_all(&directory)?;
@@ -219,6 +220,17 @@ impl ProfileRegistry {
             }
         }
 
+        if let Some(existing) = &existing_profile {
+            let mut accumulated: CharacterProfilePatch =
+                serde_json::from_value(existing.envelope.body.clone())?;
+            merge_profile_patches(&mut accumulated, profile).map_err(|error| {
+                ProfileRegistryError::InvalidPackage(format!(
+                    "could not merge the newer verified profile patch: {error}"
+                ))
+            })?;
+            profile = accumulated;
+        }
+
         let claim = existing_claim.unwrap_or(ProfileClaim {
             schema_version: PROFILE_CLAIM_SCHEMA_VERSION,
             profile_id: profile_id.clone(),
@@ -228,6 +240,11 @@ impl ProfileRegistry {
         });
         let modules = profile.modules.as_ref();
         let mut envelope = package.request.payload.clone();
+        envelope.body = website_profile_request(&profile)
+            .map_err(|error| ProfileRegistryError::InvalidPackage(error.to_string()))?
+            .payload
+            .body;
+        prefer_observed_photo_wall_identity(&package.request.payload.body, &mut envelope.body);
         preserve_current_photo_assets(existing_profile.as_ref(), &mut envelope);
         let published = PublicProfile {
             schema_version: PUBLIC_PROFILE_SCHEMA_VERSION,
@@ -531,6 +548,47 @@ fn preserve_current_photo_assets(
         .and_then(serde_json::Value::as_object_mut)
     {
         collection.insert("photo_assets".into(), serde_json::Value::Array(retained));
+    }
+}
+
+fn prefer_observed_photo_wall_identity(
+    observed: &serde_json::Value,
+    accumulated: &mut serde_json::Value,
+) {
+    let Some(observed_collection) = observed
+        .get("collection_summary")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return;
+    };
+    let has_observed_photo = observed_collection
+        .get("photo_ids")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|values| {
+            values
+                .iter()
+                .any(|value| value.as_u64().is_some_and(|id| id > 0))
+        })
+        || observed_collection
+            .get("photo_wall")
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|wall| {
+                wall.values()
+                    .any(|value| value.as_u64().is_some_and(|id| id > 0))
+            });
+    if !has_observed_photo {
+        return;
+    }
+    let Some(accumulated_collection) = accumulated
+        .get_mut("collection_summary")
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return;
+    };
+    for key in ["photo_ids", "photo_wall"] {
+        if let Some(value) = observed_collection.get(key) {
+            accumulated_collection.insert(key.into(), value.clone());
+        }
     }
 }
 
@@ -875,6 +933,24 @@ mod tests {
         package
     }
 
+    fn mutate_package(
+        package: LocalProfilePackage,
+        update: impl FnOnce(&mut CharacterProfilePatch),
+    ) -> LocalProfilePackage {
+        let created_unix_millis = package.created_unix_millis;
+        let mut source = package.source;
+        source.live_capture = None;
+        let mut profile: CharacterProfilePatch =
+            serde_json::from_value(package.request.payload.body).unwrap();
+        update(&mut profile);
+        let request = website_profile_request(&profile).unwrap();
+        let mut rebuilt = LocalProfilePackage::new(created_unix_millis, source, request).unwrap();
+        rebuilt
+            .bind_live_capture(TEST_DEVICE_ID, TEST_DEVICE_TOKEN)
+            .unwrap();
+        rebuilt
+    }
+
     fn one_pixel_png() -> Vec<u8> {
         vec![
             0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
@@ -910,6 +986,77 @@ mod tests {
                 .unwrap()
                 .len(),
             3
+        );
+    }
+
+    #[test]
+    fn newer_sparse_live_package_preserves_prior_verified_profile_fields() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let first = mutate_package(package(10, "1000001", 3), |profile| {
+            profile.social_display = Some(rlogs_game_bpsr::SocialDisplay {
+                guild_id: Some(77_088),
+                guild_name: Some("Sheep".into()),
+                equipped_title_id: None,
+                equipped_title_level: None,
+                title_ids: vec![9_060_001],
+                medal_ids: Vec::new(),
+                medal_slots: BTreeMap::new(),
+                profile_theme_id: None,
+            });
+        });
+        let first = registry
+            .publish(
+                first,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+
+        let second = mutate_package(package(30, "1000001", 0), |profile| {
+            profile.display_name = None;
+            profile.modules = None;
+            profile.social_display = Some(rlogs_game_bpsr::SocialDisplay {
+                guild_id: None,
+                guild_name: None,
+                equipped_title_id: Some(9_061_163),
+                equipped_title_level: Some(4),
+                title_ids: vec![9_061_163],
+                medal_ids: Vec::new(),
+                medal_slots: BTreeMap::new(),
+                profile_theme_id: None,
+            });
+        });
+        let second = registry
+            .publish(
+                second,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                40,
+            )
+            .unwrap();
+
+        assert_eq!(first.profile_id, second.profile_id);
+        assert!(!second.duplicate);
+        assert_eq!(second.module_inventory_count, 3);
+        let public = registry.get(&second.profile_id).unwrap();
+        assert_eq!(public.display_name.as_deref(), Some("Example"));
+        assert_eq!(public.envelope.body["social_display"]["guild_id"], 77_088);
+        assert_eq!(
+            public.envelope.body["social_display"]["guild_name"],
+            "Sheep"
+        );
+        assert_eq!(
+            public.envelope.body["social_display"]["title_ids"],
+            serde_json::json!([9_060_001, 9_061_163])
+        );
+        assert_eq!(
+            public.envelope.body["social_display"]["equipped_title_id"],
+            9_061_163
         );
     }
 
