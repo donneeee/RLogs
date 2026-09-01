@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use prost::Message;
@@ -2204,7 +2204,7 @@ fn decode_sync_container(
                 .map(i64::from),
             combat_power_breakdown: container_fight_power(character.fight_power.as_ref()),
             season_strength: None,
-            master_score: None,
+            master_score: container_master_score(character.master_mode_dungeons.as_ref()),
             season: container_season(
                 character.season_center.as_ref(),
                 character.season_role_levels.as_ref(),
@@ -3292,6 +3292,39 @@ fn container_activity_progress(
         challenge_targets,
         master_mode_dungeons,
         weekly_tower,
+    })
+}
+
+/// Mirrors the Global client `GetPlayerSeasonMasterDungeonScore` calculation:
+/// keep the best score observed for each dungeon across every difficulty in the
+/// displayed season, then sum those per-dungeon bests.
+fn container_master_score(master_mode: Option<&schema::MasterModeDungeonInfo>) -> Option<i64> {
+    let master_mode = master_mode?;
+    let season_id = master_mode
+        .current_display_season_id
+        .filter(|season_id| master_mode.seasons.contains_key(season_id))
+        .or_else(|| master_mode.seasons.keys().copied().max())?;
+    let season = master_mode.seasons.get(&season_id)?;
+    let mut best_by_dungeon = HashMap::<i32, i32>::new();
+    for difficulty in season.difficulties.values() {
+        for (map_id, dungeon) in &difficulty.dungeons {
+            let Some(dungeon_id) =
+                positive_i32(dungeon.dungeon_id).or_else(|| positive_i32(Some(*map_id)))
+            else {
+                continue;
+            };
+            let score = dungeon.score.unwrap_or_default().max(0);
+            best_by_dungeon
+                .entry(dungeon_id)
+                .and_modify(|best| *best = (*best).max(score))
+                .or_insert(score);
+        }
+    }
+    (!best_by_dungeon.is_empty()).then(|| {
+        best_by_dungeon
+            .values()
+            .map(|score| i64::from(*score))
+            .sum()
     })
 }
 
@@ -5598,6 +5631,48 @@ mod tests {
     const WORLD_LOGIN_SERVICE: u64 = 78_136_601;
     const SOCIAL_SERVICE: u64 = 625_772_963;
     const TEAM_SERVICE: u64 = 966_773_353;
+
+    #[test]
+    fn master_score_sums_each_dungeons_best_difficulty_in_displayed_season() {
+        let dungeon = |dungeon_id, score, pass_time| schema::DungeonProgress {
+            dungeon_id: Some(dungeon_id),
+            completion_count: Some(1),
+            award_state: None,
+            score: Some(score),
+            pass_time: Some(pass_time),
+        };
+        let season = schema::MasterModeSeason {
+            difficulties: [
+                (
+                    1,
+                    schema::MasterModeDifficulty {
+                        dungeons: [(101, dungeon(101, 400, 90)), (202, dungeon(202, 250, 120))]
+                            .into_iter()
+                            .collect(),
+                    },
+                ),
+                (
+                    2,
+                    schema::MasterModeDifficulty {
+                        dungeons: [(101, dungeon(101, 625, 150)), (202, dungeon(202, 200, 80))]
+                            .into_iter()
+                            .collect(),
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        };
+        let master_mode = schema::MasterModeDungeonInfo {
+            seasons: [(1, schema::MasterModeSeason::default()), (2, season)]
+                .into_iter()
+                .collect(),
+            visible: Some(true),
+            current_display_season_id: Some(2),
+        };
+
+        assert_eq!(container_master_score(Some(&master_mode)), Some(875));
+    }
 
     #[test]
     fn exact_target_position_attribute_uses_the_position_wire_shape() {
