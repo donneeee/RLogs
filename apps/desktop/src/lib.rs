@@ -133,10 +133,7 @@ const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 const MAX_OVERLAY_BACKGROUND_BYTES: usize = 8 * 1024 * 1024;
 const PROVISIONAL_RESEARCH_SERVICE_NAMES: [&str; 3] = ["World", "WorldNtf", "GrpcTeamNtf"];
 
-fn submission_service_url(
-    developer_tools_enabled: bool,
-    developer_override: Option<&str>,
-) -> &str {
+fn submission_service_url(developer_tools_enabled: bool, developer_override: Option<&str>) -> &str {
     if developer_tools_enabled {
         developer_override.unwrap_or(PUBLIC_SUBMISSION_SERVICE_URL)
     } else {
@@ -4372,8 +4369,10 @@ impl RuntimeController {
         &self,
         request: SubmissionConnectionUpdateRequest,
     ) -> Result<SubmissionConnectionView, String> {
-        let endpoint_url =
-            submission_service_url(self.developer_tools_enabled, request.endpoint_url.as_deref());
+        let endpoint_url = submission_service_url(
+            self.developer_tools_enabled,
+            request.endpoint_url.as_deref(),
+        );
         let transport =
             SubmissionTransport::new(endpoint_url, Some(request.device_token.as_str()))?;
         transport.validate_device_authentication()?;
