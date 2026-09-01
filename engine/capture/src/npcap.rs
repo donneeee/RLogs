@@ -18,8 +18,8 @@ use windows_sys::Win32::{
             GetThreadErrorMode, SEM_FAILCRITICALERRORS, SEM_NOOPENFILEERRORBOX, SetThreadErrorMode,
         },
         LibraryLoader::{
-            GetProcAddress, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
-            LoadLibraryExW,
+            DONT_RESOLVE_DLL_REFERENCES, GetProcAddress, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
+            LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW,
         },
     },
 };
@@ -104,6 +104,7 @@ impl NpcapApi {
     }
 
     fn load_from_path(path: &Path) -> Result<Self, CaptureError> {
+        verify_packet_monitor_mode_export(path)?;
         let wide_path = path
             .as_os_str()
             .encode_wide()
@@ -157,6 +158,59 @@ impl NpcapApi {
         }
         loaded
     }
+}
+
+fn verify_packet_monitor_mode_export(wpcap_path: &Path) -> Result<(), CaptureError> {
+    let Some(directory) = wpcap_path.parent() else {
+        return Err(adapter_error(format!(
+            "Npcap path has no parent directory: {}",
+            wpcap_path.display()
+        )));
+    };
+    let packet_path = directory.join("Packet.dll");
+    if !packet_path.is_file() {
+        return Err(adapter_error(format!(
+            "Npcap's sibling Packet.dll was not found beside {}",
+            wpcap_path.display()
+        )));
+    }
+    let wide_path = packet_path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let _error_mode = DllLoadErrorModeGuard::suppress_system_dialogs();
+    // Map Packet.dll without resolving imports or running its entry point. The
+    // export check happens before wpcap.dll is loaded, so Windows never reaches
+    // the blocking "Entry Point Not Found" path for this known mixed-version
+    // Npcap failure.
+    let module = unsafe {
+        LoadLibraryExW(
+            wide_path.as_ptr(),
+            ptr::null_mut(),
+            DONT_RESOLVE_DLL_REFERENCES
+                | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR
+                | LOAD_LIBRARY_SEARCH_SYSTEM32,
+        )
+    };
+    if module.is_null() {
+        return Err(adapter_error(format!(
+            "could not inspect {}: {}",
+            packet_path.display(),
+            std::io::Error::last_os_error()
+        )));
+    }
+    let has_monitor_mode =
+        unsafe { GetProcAddress(module, c"PacketGetMonitorMode".as_ptr().cast()) }.is_some();
+    unsafe { FreeLibrary(module) };
+    if !has_monitor_mode {
+        return Err(adapter_error(format!(
+            "{} does not export PacketGetMonitorMode, so it is incompatible with {}; repair or update Npcap",
+            packet_path.display(),
+            wpcap_path.display()
+        )));
+    }
+    Ok(())
 }
 
 struct DllLoadErrorModeGuard {
@@ -602,7 +656,10 @@ mod tests {
             Ok(_) => panic!("wpcap unexpectedly loaded against an incompatible Packet.dll"),
             Err(error) => error.to_string(),
         };
-        assert!(error.contains("Windows error 127"), "{error}");
+        assert!(
+            error.contains("does not export PacketGetMonitorMode"),
+            "{error}"
+        );
 
         std::fs::remove_dir_all(fixture).expect("remove Npcap fixture");
     }

@@ -49,7 +49,7 @@ use rlogs_capture::{CaptureSource, OfflineCapture};
 use rlogs_capture::{
     DumpcapLiveConfig, OwnedProcessCaptureConfig, WindowsCaptureAdapter,
     WindowsCaptureAdapterRecommendationSource, WindowsLiveCaptureStopHandle,
-    WindowsOwnedLiveCapture, npcap_available, npcap_device_name, npcap_diagnostic,
+    WindowsOwnedLiveCapture, npcap_device_name, npcap_diagnostic,
     recommend_windows_capture_adapter, windows_capture_adapters,
 };
 use rlogs_core::{GameConnection, ResearchConnectionFile};
@@ -7678,26 +7678,29 @@ fn runtime_environment() -> RuntimeEnvironment {
 
 fn discover_runtime_capture_interfaces(dumpcap: Option<&Path>) -> Vec<CaptureInterfaceView> {
     #[cfg(windows)]
-    if npcap_available()
-        && let Ok(adapters) = windows_capture_adapters()
-    {
+    if let Ok(adapters) = windows_capture_adapters() {
         return adapters
             .into_iter()
-            .map(|adapter| CaptureInterfaceView {
-                value: npcap_device_name(&adapter.adapter_name),
-                label: adapter_display_name(&adapter).into(),
-                friendly_name: nonempty(adapter.friendly_name.as_str()),
-                description: nonempty(adapter.description.as_str()),
-                mac_address: format_physical_address(&adapter.physical_address),
-                is_up: Some(adapter.operational),
-                is_virtual: Some(is_likely_virtual_adapter(&adapter)),
-                recommendation: None,
-            })
+            .map(capture_interface_from_windows_adapter)
             .collect();
     }
     dumpcap
         .and_then(|path| discover_capture_interfaces(path).ok())
         .unwrap_or_default()
+}
+
+#[cfg(windows)]
+fn capture_interface_from_windows_adapter(adapter: WindowsCaptureAdapter) -> CaptureInterfaceView {
+    CaptureInterfaceView {
+        value: npcap_device_name(&adapter.adapter_name),
+        label: adapter_display_name(&adapter).into(),
+        friendly_name: nonempty(adapter.friendly_name.as_str()),
+        description: nonempty(adapter.description.as_str()),
+        mac_address: format_physical_address(&adapter.physical_address),
+        is_up: Some(adapter.operational),
+        is_virtual: Some(is_likely_virtual_adapter(&adapter)),
+        recommendation: None,
+    }
 }
 
 fn select_runtime_capture_interface(
@@ -9955,10 +9958,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn installed_npcap_discovers_native_interfaces_without_dumpcap() {
-        if !npcap_available() {
-            return;
-        }
+    fn windows_adapter_details_do_not_depend_on_npcap_health() {
         let interfaces = discover_runtime_capture_interfaces(None);
         assert!(!interfaces.is_empty());
         assert!(interfaces.iter().all(|interface| {
@@ -9967,6 +9967,32 @@ mod tests {
                 .to_ascii_lowercase()
                 .contains(r"\device\npf_")
         }));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_adapter_mapping_preserves_mac_and_descriptive_details() {
+        let interface = capture_interface_from_windows_adapter(WindowsCaptureAdapter {
+            adapter_name: "{01234567-89AB-CDEF-0123-456789ABCDEF}".into(),
+            friendly_name: "Ethernet".into(),
+            description: "Intel fixture adapter".into(),
+            interface_index: 8,
+            interface_type: 6,
+            physical_address: vec![0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
+            operational: true,
+            has_gateway: true,
+            ipv4_metric: 25,
+            unicast_addresses: vec!["192.0.2.10".parse().unwrap()],
+        });
+
+        assert_eq!(interface.friendly_name.as_deref(), Some("Ethernet"));
+        assert_eq!(
+            interface.description.as_deref(),
+            Some("Intel fixture adapter")
+        );
+        assert_eq!(interface.mac_address.as_deref(), Some("00:11:22:33:44:55"));
+        assert_eq!(interface.is_up, Some(true));
+        assert_eq!(interface.is_virtual, Some(false));
     }
 
     use super::*;

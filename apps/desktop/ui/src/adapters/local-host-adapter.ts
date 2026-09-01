@@ -1572,9 +1572,7 @@ function mountNetworkSettingsSurface(container: HTMLElement): MountedSurface {
       dumpcap.input.value =
         core.dumpcapPath ?? environment.dumpcap_path ?? "";
       save.disabled = false;
-      const npcapRepair =
-        environment.capture_interfaces.length === 0 &&
-        environment.npcap_error?.trim()
+      const npcapRepair = environment.npcap_error?.trim()
           ? `rLogs opened safely, but Npcap needs repair: ${environment.npcap_error} Download and reinstall the current Npcap package from npcap.com, then refresh devices. dumpcap.exe is not required.`
           : null;
       message.textContent =
