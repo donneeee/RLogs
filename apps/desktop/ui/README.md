@@ -32,10 +32,11 @@ cd ..\..\..
 cargo run -p rlogs-desktop-host
 ```
 
-Open `http://127.0.0.1:7419`. The Session Recorder workspace appears only when
-the Rust API is present. It can run the safe replay, process an existing
-private capture, or start/stop Windows process-owned live capture. The same
-adapter publishes separate Log Uploader and BPSR Profile Sync workspaces.
+Open `http://127.0.0.1:7419`. Debug builds expose the Session Recorder workspace
+for safe replay, private-capture processing, and manual capture controls. Vite
+removes that workspace from production UI assets, and the release host also
+removes its plug-in and routes. The same adapter publishes separate Log
+Uploader and BPSR Profile Sync workspaces.
 Profile Sync can build bounded local packages from the last sealed log,
 summarize current packages, and lazily inspect exact JSON without external
 network activity.

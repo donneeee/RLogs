@@ -126,10 +126,23 @@ use windows_sys::Win32::{
 };
 
 const DEFAULT_BIND: &str = "127.0.0.1:7419";
+const PUBLIC_SUBMISSION_SERVICE_URL: &str = "https://rlogs-submissions.pages.dev";
+const SESSION_RECORDER_PLUGIN_ID: &str = "app.rlogs.session-recorder";
 const MAX_REQUEST_HEADER_BYTES: usize = 64 * 1024;
 const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 const MAX_OVERLAY_BACKGROUND_BYTES: usize = 8 * 1024 * 1024;
 const PROVISIONAL_RESEARCH_SERVICE_NAMES: [&str; 3] = ["World", "WorldNtf", "GrpcTeamNtf"];
+
+fn submission_service_url(
+    developer_tools_enabled: bool,
+    developer_override: Option<&str>,
+) -> &str {
+    if developer_tools_enabled {
+        developer_override.unwrap_or(PUBLIC_SUBMISSION_SERVICE_URL)
+    } else {
+        PUBLIC_SUBMISSION_SERVICE_URL
+    }
+}
 
 fn provisional_research_routes(pack: &ProtocolPack) -> BTreeSet<RouteKey> {
     pack.definition()
@@ -2424,7 +2437,8 @@ struct SubmissionUploadRequest {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SubmissionConnectionUpdateRequest {
-    endpoint_url: String,
+    #[serde(default)]
+    endpoint_url: Option<String>,
     device_token: String,
 }
 
@@ -2594,6 +2608,7 @@ struct DesktopPluginManager {
     enabled_plugin_ids: BTreeSet<String>,
     disabled_bundled_plugin_ids: BTreeSet<String>,
     state_issue: Option<String>,
+    developer_tools_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -2605,7 +2620,10 @@ struct ActivePluginResolution {
 }
 
 impl DesktopPluginManager {
-    fn new(install_root: &Path) -> Result<Self, String> {
+    fn new_with_developer_tools(
+        install_root: &Path,
+        developer_tools_enabled: bool,
+    ) -> Result<Self, String> {
         let installed_root = install_root.join("plugins/installed");
         let bundled_root = bundled_desktop_plugins_root(install_root);
         std::fs::create_dir_all(&installed_root).map_err(|error| {
@@ -2631,7 +2649,12 @@ impl DesktopPluginManager {
                 .difference(&disabled_bundled_plugin_ids)
                 .cloned(),
         );
-        let report = merge_plugin_reports(bundled, installed);
+        let mut report = merge_plugin_reports(bundled, installed);
+        filter_public_plugin_catalog(
+            &mut report,
+            &mut enabled_plugin_ids,
+            developer_tools_enabled,
+        );
         Ok(Self {
             installed_root,
             bundled_root,
@@ -2641,6 +2664,7 @@ impl DesktopPluginManager {
             enabled_plugin_ids,
             disabled_bundled_plugin_ids,
             state_issue,
+            developer_tools_enabled,
         })
     }
 
@@ -2665,6 +2689,11 @@ impl DesktopPluginManager {
                 .cloned(),
         );
         self.report = merge_plugin_reports(bundled, installed);
+        filter_public_plugin_catalog(
+            &mut self.report,
+            &mut self.enabled_plugin_ids,
+            self.developer_tools_enabled,
+        );
         Ok(())
     }
 
@@ -3010,6 +3039,20 @@ fn merge_plugin_reports(
     bundled
 }
 
+fn filter_public_plugin_catalog(
+    report: &mut PluginDiscoveryReport,
+    enabled_plugin_ids: &mut BTreeSet<String>,
+    developer_tools_enabled: bool,
+) {
+    if developer_tools_enabled {
+        return;
+    }
+    report
+        .packages
+        .retain(|package| package.manifest().id != SESSION_RECORDER_PLUGIN_ID);
+    enabled_plugin_ids.remove(SESSION_RECORDER_PLUGIN_ID);
+}
+
 fn resolve_active_plugins(
     packages: &[PluginPackage],
     enabled_plugin_ids: &BTreeSet<String>,
@@ -3238,6 +3281,7 @@ struct RuntimeController {
     live_event_feed: Arc<LiveEventFeed>,
     combat_history_feed: Arc<CombatHistoryRevisionFeed>,
     history_rdps_backfill: Arc<HistoryRdpsBackfillQueue>,
+    developer_tools_enabled: bool,
     #[cfg(windows)]
     live_stop: Arc<Mutex<Option<WindowsLiveCaptureStopHandle>>>,
     #[cfg(windows)]
@@ -3246,7 +3290,15 @@ struct RuntimeController {
 
 impl RuntimeController {
     fn new(install_root: PathBuf) -> Result<Self, String> {
-        let plugins = DesktopPluginManager::new(&install_root)?;
+        Self::new_with_developer_tools(install_root, cfg!(debug_assertions))
+    }
+
+    fn new_with_developer_tools(
+        install_root: PathBuf,
+        developer_tools_enabled: bool,
+    ) -> Result<Self, String> {
+        let plugins =
+            DesktopPluginManager::new_with_developer_tools(&install_root, developer_tools_enabled)?;
         let mut native_plugin_processes = NativePluginProcesses::default();
         native_plugin_processes.sync(plugins.active_native_launches()?)?;
         let submission_queue =
@@ -3278,12 +3330,20 @@ impl RuntimeController {
         let submission_connection = SubmissionConnectionStore::open(
             install_root.join("runtime-data/settings/submission-connection.v1.json"),
         )?;
-        let submission_transport = match SubmissionTransport::from_environment()? {
+        let environment_transport = if developer_tools_enabled {
+            SubmissionTransport::from_environment()?
+        } else {
+            None
+        };
+        let submission_transport = match environment_transport {
             Some(transport) => Some(transport),
-            None => match submission_connection.endpoint_url() {
-                Some(endpoint) => Some(SubmissionTransport::new(
-                    endpoint,
-                    submission_connection.device_token()?.as_deref(),
+            None => match submission_connection.device_token()? {
+                Some(token) => Some(SubmissionTransport::new(
+                    submission_service_url(
+                        developer_tools_enabled,
+                        submission_connection.endpoint_url(),
+                    ),
+                    Some(token.as_str()),
                 )?),
                 None => None,
             },
@@ -3330,6 +3390,7 @@ impl RuntimeController {
             live_event_feed: Arc::new(LiveEventFeed::default()),
             combat_history_feed: Arc::new(CombatHistoryRevisionFeed::default()),
             history_rdps_backfill: Arc::new(history_rdps_backfill),
+            developer_tools_enabled,
             #[cfg(windows)]
             live_stop: Arc::new(Mutex::new(None)),
             #[cfg(windows)]
@@ -4311,14 +4372,16 @@ impl RuntimeController {
         &self,
         request: SubmissionConnectionUpdateRequest,
     ) -> Result<SubmissionConnectionView, String> {
+        let endpoint_url =
+            submission_service_url(self.developer_tools_enabled, request.endpoint_url.as_deref());
         let transport =
-            SubmissionTransport::new(&request.endpoint_url, Some(request.device_token.as_str()))?;
+            SubmissionTransport::new(endpoint_url, Some(request.device_token.as_str()))?;
         transport.validate_device_authentication()?;
         let view = self
             .submission_connection
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .update(request.endpoint_url, request.device_token)?;
+            .update(endpoint_url.to_owned(), request.device_token)?;
         *self
             .submission_transport
             .lock()
@@ -8852,6 +8915,12 @@ fn handle_connection(
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
     let request = read_request(&mut stream)?;
+    if !controller.developer_tools_enabled
+        && is_developer_only_route(request.method.as_str(), request.route.as_str())
+    {
+        write_api_error(&mut stream, 404, "route not found".into())?;
+        return Ok(());
+    }
     match (request.method.as_str(), request.route.as_str()) {
         ("GET", "/api/runtime/status") => {
             write_json(&mut stream, 200, &controller.snapshot())?;
@@ -9313,6 +9382,23 @@ fn handle_connection(
         _ => write_api_error(&mut stream, 404, "route not found".into())?,
     }
     Ok(())
+}
+
+fn is_developer_only_route(method: &str, route: &str) -> bool {
+    matches!(
+        (method, route),
+        ("POST", "/api/runtime/live/events/wait")
+            | ("POST", "/api/runtime/events/page")
+            | ("GET", "/api/runtime/run-report")
+            | ("POST", "/api/runtime/reference-replay")
+            | ("POST", "/api/runtime/offline")
+            | ("POST", "/api/runtime/live/start")
+            | ("POST", "/api/runtime/live/stop")
+            | ("POST", "/api/submissions/mock/run")
+            | ("POST", "/api/submissions/queue/import")
+            | ("POST", "/api/submissions/queue/verify")
+            | ("POST", "/api/profiles/packages/inspect")
+    )
 }
 
 fn is_safe_plugin_route_identifier(value: &str) -> bool {
@@ -12340,6 +12426,74 @@ kind = "content"
         assert_eq!(json["entityUuid"], i64::MIN.to_string());
         assert!(json["actorId"].is_string());
         assert!(json["entityUuid"].is_string());
+    }
+
+    #[test]
+    fn public_plugin_catalog_excludes_session_recorder() {
+        let root = temporary_root();
+        let manager = DesktopPluginManager::new_with_developer_tools(&root, false).unwrap();
+        let catalog = manager.snapshot();
+
+        assert!(
+            catalog
+                .packages
+                .iter()
+                .all(|package| package.id != SESSION_RECORDER_PLUGIN_ID)
+        );
+        assert!(
+            catalog
+                .workspaces
+                .iter()
+                .all(|workspace| workspace.id != SESSION_RECORDER_PLUGIN_ID)
+        );
+        assert!(
+            catalog
+                .settings_tabs
+                .iter()
+                .all(|tab| tab.contributor_plugin_id != SESSION_RECORDER_PLUGIN_ID)
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn public_runtime_routes_exclude_developer_controls() {
+        for (method, route) in [
+            ("POST", "/api/runtime/live/events/wait"),
+            ("POST", "/api/runtime/events/page"),
+            ("GET", "/api/runtime/run-report"),
+            ("POST", "/api/runtime/reference-replay"),
+            ("POST", "/api/runtime/offline"),
+            ("POST", "/api/runtime/live/start"),
+            ("POST", "/api/runtime/live/stop"),
+            ("POST", "/api/submissions/mock/run"),
+            ("POST", "/api/submissions/queue/import"),
+            ("POST", "/api/submissions/queue/verify"),
+            ("POST", "/api/profiles/packages/inspect"),
+        ] {
+            assert!(is_developer_only_route(method, route), "{method} {route}");
+        }
+        assert!(!is_developer_only_route("GET", "/api/runtime/status"));
+        assert!(!is_developer_only_route(
+            "POST",
+            "/api/submissions/queue/upload"
+        ));
+        assert!(!is_developer_only_route(
+            "POST",
+            "/api/profiles/packages/publish"
+        ));
+    }
+
+    #[test]
+    fn public_account_connection_ignores_endpoint_overrides() {
+        assert_eq!(
+            submission_service_url(false, Some("https://untrusted.example")),
+            PUBLIC_SUBMISSION_SERVICE_URL
+        );
+        assert_eq!(
+            submission_service_url(true, Some("http://127.0.0.1:8787")),
+            "http://127.0.0.1:8787"
+        );
     }
 
     #[test]

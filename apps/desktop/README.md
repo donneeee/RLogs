@@ -25,7 +25,8 @@ cargo run -p rlogs-desktop-host
 ```
 
 Open `http://127.0.0.1:7419`. The host refuses non-loopback bind addresses.
-Its Session Recorder workspace provides:
+Debug builds include a developer-only Session Recorder workspace that is not
+bundled, cataloged, or routable in the public installer. It provides:
 
 - a sanitized `.rlog` replay through the real bounded Combat Meter plug-in;
 - deterministic whole-run, segment, attempt, pause, and quality projections
@@ -118,13 +119,15 @@ device token, and atomically stores a current review package under
 Reference replay, offline processing, imported `.rlog` files, copied history,
 and packages bound to another device cannot claim a UID.
 The UI shows bounded summaries and loads exact JSON only when requested.
-Remote transport remains opt-in. When a submission endpoint is configured,
-the uploader can keep a device bearer token in process memory and send it only
-to that validated endpoint.
+Remote transport remains opt-in. The public app connects only to the fixed
+rLogs service and never displays its infrastructure hostname. The uploader
+keeps a device bearer token in process memory and sends it only to that
+validated service.
 
-Contributor builds may configure that endpoint through
-`GET/POST /api/submissions/connection`. The native host persists only the
-validated endpoint URL in `runtime-data/settings/submission-connection.v1.json`;
+Debug contributor builds may override the service through
+`GET/POST /api/submissions/connection` or `RLOGS_SUBMISSION_API_URL`. The public
+build ignores endpoint overrides. The native host persists only the validated
+endpoint URL in `runtime-data/settings/submission-connection.v1.json`;
 on Windows, the bearer token is stored under the
 `rLogs/submission-device-token/v1` target in Windows Credential Manager. API
 responses expose only whether a credential exists and never return its value.

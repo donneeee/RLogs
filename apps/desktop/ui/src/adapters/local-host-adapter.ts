@@ -95,6 +95,7 @@ import type {
 } from "../shell/types";
 
 const SESSION_RECORDER_PLUGIN_ID = "app.rlogs.session-recorder";
+const DEVELOPER_TOOLS_ENABLED = import.meta.env.DEV;
 const COMBAT_METER_PLUGIN_ID = "app.rlogs.combat-meter";
 const COMBAT_OVERLAY_PLUGIN_ID = "app.rlogs.combat-overlay";
 const LOG_UPLOADER_PLUGIN_ID = "app.rlogs.log-uploader";
@@ -391,17 +392,21 @@ function createLocalHostAdapter(): DesktopHostAdapter {
 
     async mountSurface(workspace, tab, container) {
       container.replaceChildren();
+      if (DEVELOPER_TOOLS_ENABLED) {
+        switch (tab.entrypoint) {
+          case `builtin://${SESSION_RECORDER_PLUGIN_ID}/control`:
+            return mountControlSurface(container);
+          case `builtin://${SESSION_RECORDER_PLUGIN_ID}/sessions`:
+            return mountLastSessionSurface(container);
+          case `builtin://${SESSION_RECORDER_PLUGIN_ID}/events`:
+            return mountEventViewerSurface(container);
+          case `builtin://${SESSION_RECORDER_PLUGIN_ID}/runs`:
+            return mountRunReportSurface(container, async () =>
+              parseRunReport(await apiJson<unknown>("/api/runtime/run-report")),
+            );
+        }
+      }
       switch (tab.entrypoint) {
-        case `builtin://${SESSION_RECORDER_PLUGIN_ID}/control`:
-          return mountControlSurface(container);
-        case `builtin://${SESSION_RECORDER_PLUGIN_ID}/sessions`:
-          return mountLastSessionSurface(container);
-        case `builtin://${SESSION_RECORDER_PLUGIN_ID}/events`:
-          return mountEventViewerSurface(container);
-        case `builtin://${SESSION_RECORDER_PLUGIN_ID}/runs`:
-          return mountRunReportSurface(container, async () =>
-            parseRunReport(await apiJson<unknown>("/api/runtime/run-report")),
-          );
         case `builtin://${COMBAT_METER_PLUGIN_ID}/history`:
           return mountCombatHistorySurface(
             container,
@@ -1107,12 +1112,6 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
   heading.append(accountActions);
   const form = document.createElement("form");
   form.className = "content-card submission-policy-form";
-  const endpoint = field(
-    "Receiver HTTPS URL",
-    "url",
-    "https://rlogs-submissions.pages.dev",
-    "https://rlogs-submissions.pages.dev",
-  );
   const token = field("App token from My Profile", "password", "", "Paste the token once");
   token.input.autocomplete = "new-password";
   const actions = document.createElement("div");
@@ -1121,9 +1120,9 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
   connect.type = "submit";
   const disconnect = button("Disconnect", "quiet-button");
   disconnect.disabled = true;
-  const message = text("span", "Loading receiver connection…", "runtime-action-message");
+  const message = text("span", "Loading rLogs connection…", "runtime-action-message");
   actions.append(connect, disconnect, message);
-  form.append(endpoint.label, token.label, actions);
+  form.append(token.label, actions);
   const details = document.createElement("section");
   details.className = "content-card runtime-file-list submission-policy-details";
   root.append(heading, form, details);
@@ -1131,10 +1130,9 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
 
   const applyView = (view: SubmissionConnectionView) => {
     current = view;
-    endpoint.input.value = view.endpointUrl ?? endpoint.input.value;
     token.input.value = "";
     details.replaceChildren(
-      fileRow("Receiver", view.endpointUrl ?? "Not connected"),
+      fileRow("rLogs service", view.endpointUrl ? "Connected" : "Not connected"),
       fileRow("Credential", view.credentialPresent ? "Stored" : "Not stored"),
       fileRow("Credential store", view.credentialStore),
     );
@@ -1163,14 +1161,13 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
     connect.disabled = true;
     disconnect.disabled = true;
     message.classList.remove("error");
-    message.textContent = "Validating and storing the receiver connection…";
+    message.textContent = "Validating and storing the rLogs connection…";
     try {
       const view = parseSubmissionConnection(
         await apiJson<unknown>("/api/submissions/connection", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            endpointUrl: endpoint.input.value,
             deviceToken: token.input.value,
           }),
         }),
@@ -1193,7 +1190,7 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
     disconnect.disabled = true;
     connect.disabled = true;
     message.classList.remove("error");
-    message.textContent = "Removing the saved receiver credential…";
+    message.textContent = "Removing the saved rLogs credential…";
     try {
       const view = parseSubmissionConnection(
         await apiJson<unknown>("/api/submissions/connection/disconnect", {
@@ -1201,7 +1198,6 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
         }),
       );
       if (alive) {
-        endpoint.input.value = "";
         applyView(view);
         window.dispatchEvent(new Event("rlogs:submission-connection-changed"));
       }
@@ -2597,16 +2593,16 @@ function mountSubmissionPolicyOptionsSurface(
   const enable = checkboxOption(
     isUploader ? "Enable Log Uploader" : "Enable BPSR Profile Sync",
     isUploader
-      ? "Permits local dry runs and verified uploads to the connected receiver."
-      : "Permits sealed local profile projection and authenticated UID publication to the connected receiver.",
+      ? "Permits verified uploads through the connected rLogs account."
+      : "Permits sealed local profile projection and authenticated UID publication through the connected rLogs account.",
   );
   const automatic = checkboxOption(
     isUploader
       ? "Automatically submit completed combat logs"
       : "Automatically sync character profiles",
     isUploader
-      ? "Uploads completed sealed logs when a receiver is connected. Local drafts are still created either way."
-      : "Builds and publishes current per-character packages when an authenticated receiver is connected. If unavailable, the sealed package remains local and retryable.",
+      ? "Uploads completed sealed logs when your rLogs account is connected. Local drafts are still created either way."
+      : "Builds and publishes current per-character packages when your rLogs account is connected. If unavailable, the sealed package remains local and retryable.",
   );
   form.append(enable.label, automatic.label);
 
@@ -2672,25 +2668,30 @@ function mountSubmissionPolicyOptionsSurface(
       automatic.input.checked =
         view.bpsr_profile_sync.automatic_profiles;
     }
-    details.replaceChildren(
-      fileRow("Settings file", view.settings_path),
-      fileRow("External transport", formatIdentifier(view.transport_mode)),
-      fileRow("Submission endpoint", view.endpoint_url ?? "Not configured"),
+    const detailRows = [
       fileRow(
-        "Stored settings",
+        "rLogs service",
+        view.transport_mode === "http" ? "Connected" : "Not connected",
+      ),
+      fileRow(
+        "Stored options",
         view.issue === null ? "Valid" : `Fail-closed: ${view.issue}`,
       ),
-    );
+    ];
+    if (DEVELOPER_TOOLS_ENABLED) {
+      detailRows.push(fileRow("Settings file", view.settings_path));
+    }
+    details.replaceChildren(...detailRows);
     message.classList.toggle("error", view.issue !== null);
     message.textContent =
       view.issue ??
       (isUploader
         ? view.transport_mode === "http"
-          ? `Verified uploads will use ${view.endpoint_url}.`
-          : "Set RLOGS_SUBMISSION_API_URL and restart rLogs to connect a receiver."
+          ? "Verified uploads will use your authenticated rLogs account connection."
+          : "Connect this PC to your rLogs account before submitting parses."
         : view.transport_mode === "http"
-          ? `Authenticated profile publication will use ${view.endpoint_url}.`
-          : "Connect the authenticated rLogs receiver before publishing profiles.");
+          ? "Authenticated profile publication is ready."
+          : "Connect this PC to your rLogs account before publishing profiles.");
     save.disabled = false;
   };
 
@@ -2807,7 +2808,11 @@ function mountProfileSyncStatusSurface(
     "Current boundary",
     "A claimable package is HMAC-bound to this PC's authenticated app token and the exact live session seal. The first valid personal package claims that region-scoped UID, and only the same account can publish newer state. Modules remain attached to that character ID.",
   );
-  root.append(heading, status, content, inspection, boundary);
+  root.append(heading, status, content);
+  if (DEVELOPER_TOOLS_ENABLED) {
+    root.append(inspection);
+  }
+  root.append(boundary);
   container.append(root);
 
   const render = (
@@ -2816,7 +2821,7 @@ function mountProfileSyncStatusSurface(
   ) => {
     currentPolicy = policy;
     buildButton.disabled = !policy.bpsr_profile_sync.enabled;
-    status.replaceChildren(
+    const statusRows = [
       fileRow(
         "Profile Sync",
         policy.bpsr_profile_sync.enabled ? "Enabled" : "Disabled",
@@ -2828,9 +2833,15 @@ function mountProfileSyncStatusSurface(
           ? "Enabled after completed real sessions"
           : "Inactive",
       ),
-      fileRow("External transport", formatIdentifier(policy.transport_mode)),
-      fileRow("Package folder", packages.package_root),
-    );
+      fileRow(
+        "rLogs service",
+        policy.transport_mode === "http" ? "Connected" : "Not connected",
+      ),
+    ];
+    if (DEVELOPER_TOOLS_ENABLED) {
+      statusRows.push(fileRow("Package folder", packages.package_root));
+    }
+    status.replaceChildren(...statusRows);
 
     const metrics = document.createElement("div");
     metrics.className = "runtime-result-grid profile-package-metrics";
@@ -2851,7 +2862,7 @@ function mountProfileSyncStatusSurface(
         text("h2", "Package diagnostics"),
         text(
           "p",
-          "Invalid or tampered files remain excluded from review and future transport.",
+          "Invalid or tampered files remain excluded from review and publication.",
         ),
       );
       const list = document.createElement("div");
@@ -2903,7 +2914,6 @@ function mountProfileSyncStatusSurface(
         const details = document.createElement("div");
         details.className = "submission-queue-entry-details";
         details.append(
-          fileRow("Package SHA-256", profile.package_id),
           fileRow(
             "Class / specialization",
             `${profile.class_id ?? "—"} / ${profile.specialization_id ?? "—"}`,
@@ -2918,13 +2928,17 @@ function mountProfileSyncStatusSurface(
             `${profile.source_observation_count.toLocaleString()} observations through event ${profile.source_last_event_sequence.toLocaleString()}`,
           ),
           fileRow("Client build", profile.source_client_build),
-          fileRow("Source session", profile.source_session_id),
-          fileRow("Local package", profile.local_package_path),
         );
+        if (DEVELOPER_TOOLS_ENABLED) {
+          details.append(
+            fileRow("Package SHA-256", profile.package_id),
+            fileRow("Source session", profile.source_session_id),
+            fileRow("Local package", profile.local_package_path),
+          );
+        }
         const actions = document.createElement("div");
         actions.className =
           "runtime-card-actions submission-verification-actions";
-        const inspectButton = button("Inspect exact JSON", "quiet-button");
         const publishButton = button("Claim UID and publish", "primary-button");
         publishButton.disabled = policy.transport_mode !== "http";
         const inspectMessage = text(
@@ -2932,32 +2946,36 @@ function mountProfileSyncStatusSurface(
           `${formatBytes(profile.package_byte_length)} · local review only`,
           "runtime-action-message",
         );
-        inspectButton.addEventListener("click", async () => {
-          inspectButton.disabled = true;
-          inspectMessage.classList.remove("error");
-          inspectMessage.textContent = "Re-reading and validating package…";
-          try {
-            const result = parseProfilePackageInspection(
-              await apiJson<unknown>("/api/profiles/packages/inspect", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ packageId: profile.package_id }),
-              }),
-            );
-            if (alive) {
-              renderProfilePackageInspection(inspection, result.package);
-              inspectMessage.textContent =
-                "Stored contract revalidated before display.";
+        if (DEVELOPER_TOOLS_ENABLED) {
+          const inspectButton = button("Inspect exact JSON", "quiet-button");
+          inspectButton.addEventListener("click", async () => {
+            inspectButton.disabled = true;
+            inspectMessage.classList.remove("error");
+            inspectMessage.textContent = "Re-reading and validating package…";
+            try {
+              const result = parseProfilePackageInspection(
+                await apiJson<unknown>("/api/profiles/packages/inspect", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ packageId: profile.package_id }),
+                }),
+              );
+              if (alive) {
+                renderProfilePackageInspection(inspection, result.package);
+                inspectMessage.textContent =
+                  "Stored contract revalidated before display.";
+              }
+            } catch (error) {
+              if (alive) {
+                inspectMessage.textContent = errorMessage(error);
+                inspectMessage.classList.add("error");
+              }
+            } finally {
+              inspectButton.disabled = false;
             }
-          } catch (error) {
-            if (alive) {
-              inspectMessage.textContent = errorMessage(error);
-              inspectMessage.classList.add("error");
-            }
-          } finally {
-            inspectButton.disabled = false;
-          }
-        });
+          });
+          actions.append(inspectButton);
+        }
         publishButton.addEventListener("click", async () => {
           publishButton.disabled = true;
           inspectMessage.classList.remove("error");
@@ -2989,7 +3007,8 @@ function mountProfileSyncStatusSurface(
             if (alive) publishButton.disabled = policy.transport_mode !== "http";
           }
         });
-        actions.append(publishButton, inspectButton, inspectMessage);
+        actions.prepend(publishButton);
+        actions.append(inspectMessage);
         card.append(header, details, actions);
         list.append(card);
       }
@@ -2999,7 +3018,7 @@ function mountProfileSyncStatusSurface(
     message.classList.toggle("error", policy.issue !== null);
     message.textContent =
       policy.issue ??
-      `${packages.entry_count.toLocaleString()} reviewable package${packages.entry_count === 1 ? "" : "s"} · no network activity`;
+      `${packages.entry_count.toLocaleString()} reviewable package${packages.entry_count === 1 ? "" : "s"} · ${policy.transport_mode === "http" ? "ready to publish" : "connect your rLogs account to publish"}`;
   };
 
   const load = async (rescan: boolean) => {
@@ -3147,7 +3166,7 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
   root.className = "plugin-surface submission-queue-surface";
   const heading = actionCard(
     "Local submission drafts",
-    "Every real completed session creates one crash-safe local draft after the sealed .rlog passes integrity verification. The dry run below exercises resumable submission locally; no authentication or external network transport exists yet.",
+    "Every completed live session creates one crash-safe local draft after its sealed log passes integrity verification. When you submit, the authenticated rLogs service re-verifies and replays it before publication.",
   );
   const headingActions = document.createElement("div");
   headingActions.className = "runtime-card-actions";
@@ -3187,7 +3206,11 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
 
   const content = document.createElement("div");
   content.className = "submission-queue-content";
-  root.append(heading, recovery, content);
+  root.append(heading);
+  if (DEVELOPER_TOOLS_ENABLED) {
+    root.append(recovery);
+  }
+  root.append(content);
   container.append(root);
 
   async function verifyArtifact(
@@ -3341,25 +3364,28 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
 
     const location = document.createElement("section");
     location.className = "content-card runtime-file-list";
-    location.append(
-      fileRow("Queue folder", queue.queue_directory),
+    const locationRows = [
       fileRow(
-        "Transmission",
+        "Submissions",
         policy.log_uploader.enabled
           ? policy.transport_mode === "http"
-            ? "Opted in - verified receiver uploads available"
-            : "Opted in - receiver not configured"
-          : "Disabled - local queue inspection only",
+            ? "Enabled - rLogs service connected"
+            : "Enabled - connect your rLogs account"
+          : "Disabled - drafts remain on this PC",
       ),
       fileRow(
         "Default visibility",
         formatIdentifier(policy.log_uploader.default_visibility),
       ),
       fileRow(
-        "Transport",
-        policy.endpoint_url ?? "Disconnected - 0 external network requests",
+        "rLogs service",
+        policy.transport_mode === "http" ? "Connected" : "Not connected",
       ),
-    );
+    ];
+    if (DEVELOPER_TOOLS_ENABLED) {
+      locationRows.unshift(fileRow("Queue folder", queue.queue_directory));
+    }
+    location.append(...locationRows);
 
     const children: HTMLElement[] = [metrics, location];
     if (queue.issues.length > 0) {
@@ -3425,8 +3451,6 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
         const details = document.createElement("div");
         details.className = "submission-queue-entry-details";
         details.append(
-          fileRow("Queue ID / file SHA-256", entry.queue_id),
-          fileRow("Canonical SHA-256", entry.canonical_content_sha256),
           fileRow(
             "Artifact",
             `${formatBytes(entry.file_byte_length)} in ${entry.chunk_count.toLocaleString()} chunk${entry.chunk_count === 1 ? "" : "s"}`,
@@ -3436,11 +3460,14 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
             `${entry.game_plugin_id} / ${entry.game_region}`,
           ),
           fileRow("Client build", entry.client_build),
-          fileRow(
-            "Local-only path",
-            entry.local_artifact_path,
-          ),
         );
+        if (DEVELOPER_TOOLS_ENABLED) {
+          details.append(
+            fileRow("Queue ID / file SHA-256", entry.queue_id),
+            fileRow("Canonical SHA-256", entry.canonical_content_sha256),
+            fileRow("Local-only path", entry.local_artifact_path),
+          );
+        }
         const verificationActions = document.createElement("div");
         verificationActions.className =
           "runtime-card-actions submission-verification-actions";
@@ -3489,8 +3516,8 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
           !policy.log_uploader.enabled
             ? "Enable Log Uploader in Options before submitting."
             : policy.transport_mode !== "http"
-              ? "A submission receiver has not been configured."
-              : `Uploads the sealed artifact to ${policy.endpoint_url}; the receiver replays it before publication.`,
+              ? "This PC is not connected to your rLogs account."
+              : "Uploads the sealed artifact to the rLogs service, which replays it before publication.",
           "runtime-action-message",
         );
         uploadButton.addEventListener("click", () => {
@@ -3499,13 +3526,10 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
         uploadActions.append(uploadButton, uploadMessage);
         dryRunActions.append(dryRunButton, dryRunMessage);
         verificationActions.append(verifyButton, verifyMessage);
-        card.append(
-          header,
-          details,
-          verificationActions,
-          uploadActions,
-          dryRunActions,
-        );
+        card.append(header, details, uploadActions);
+        if (DEVELOPER_TOOLS_ENABLED) {
+          card.append(verificationActions, dryRunActions);
+        }
         entries.append(card);
       }
       children.push(entries);
@@ -3513,7 +3537,7 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
     content.replaceChildren(...children);
     refreshMessage.classList.remove("error");
     refreshMessage.textContent =
-      `${queue.entry_count.toLocaleString()} local draft${queue.entry_count === 1 ? "" : "s"} - ${policy.log_uploader.enabled ? "uploader enabled" : "uploader disabled"} - ${policy.transport_mode === "http" ? "receiver connected" : "no receiver"}`;
+      `${queue.entry_count.toLocaleString()} local draft${queue.entry_count === 1 ? "" : "s"} - ${policy.log_uploader.enabled ? "uploader enabled" : "uploader disabled"} - ${policy.transport_mode === "http" ? "rLogs connected" : "rLogs not connected"}`;
   };
 
   importForm.addEventListener("submit", async (event) => {

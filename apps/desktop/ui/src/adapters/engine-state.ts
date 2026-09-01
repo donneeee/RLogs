@@ -40,7 +40,7 @@ export function engineStateFromRuntime(
     return {
       phase: "failed",
       label: "Something went wrong",
-      detail: "Open Session Recorder for details.",
+      detail: "Open Settings to review the app and network status.",
       technicalDetail: snapshot.detail,
     };
   }
