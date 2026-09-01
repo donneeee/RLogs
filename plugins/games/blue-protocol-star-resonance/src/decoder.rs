@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use prost::Message;
@@ -635,11 +635,24 @@ struct ProfileTracker {
     /// snapshot so every live consumer receives the same loadout projection as
     /// history without reparsing or consulting a stale identity cache.
     local_profile: Option<CharacterProfilePatch>,
+    /// Exact inventory instances currently proving title ownership. Keeping
+    /// the instance map allows dirty removals and count-to-zero updates to
+    /// retract ownership without guessing from an item ID alone.
+    owned_title_items: BTreeMap<i64, OwnedTitleItemState>,
+    /// Title IDs independently observed in Personal Zone display/history.
+    /// These remain present when an overlapping inventory instance changes.
+    display_title_ids: BTreeSet<i64>,
     last_dirty_profile: Option<CharacterProfilePatch>,
     last_dirty_world: Option<WorldContext>,
     last_social_profile: Option<CharacterProfilePatch>,
     last_social_world: Option<WorldContext>,
     last_team_profiles: BTreeMap<i64, CharacterProfilePatch>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OwnedTitleItemState {
+    item_id: i32,
+    count: Option<i64>,
 }
 
 /// Removes only exact, unchanged state echoes before envelope sequence numbers
@@ -2371,7 +2384,13 @@ fn decode_sync_container(
             container_battle_imagine_skills(professions, character.slots.as_ref());
         let equipped_action_slots = container_action_slots(character.slots.as_ref());
         let mut social_display = container_personal_zone(character.personal_zone.as_ref());
-        let owned_title_ids = container_owned_title_ids(character.item_package.as_ref());
+        tracker.display_title_ids = social_display
+            .as_ref()
+            .into_iter()
+            .flat_map(|social| social.title_ids.iter().copied())
+            .collect();
+        tracker.owned_title_items = container_owned_title_items(character.item_package.as_ref());
+        let owned_title_ids = owned_title_ids(&tracker.owned_title_items);
         if !owned_title_ids.is_empty() {
             let social = social_display.get_or_insert_with(empty_social_display);
             social.title_ids.extend(owned_title_ids);
@@ -3794,19 +3813,82 @@ fn empty_social_display() -> SocialDisplay {
     }
 }
 
+#[cfg(test)]
 fn container_owned_title_ids(package: Option<&schema::ItemPackage>) -> Vec<i64> {
-    let mut title_ids = package
+    owned_title_ids(&container_owned_title_items(package))
+}
+
+fn container_owned_title_items(
+    package: Option<&schema::ItemPackage>,
+) -> BTreeMap<i64, OwnedTitleItemState> {
+    package
         .and_then(|package| package.packages.get(&PERSONAL_ZONE_PACKAGE_ID))
         .into_iter()
-        .flat_map(|section| section.items.values())
+        .flat_map(|section| section.items.iter())
+        .filter_map(|(map_key, item)| {
+            let item_id = positive_i32(item.item_id)?;
+            ((TITLE_ITEM_ID_START..TITLE_ITEM_ID_END_EXCLUSIVE).contains(&item_id)
+                && item.count.is_none_or(|count| count > 0))
+            .then_some((
+                *map_key,
+                OwnedTitleItemState {
+                    item_id,
+                    count: item.count,
+                },
+            ))
+        })
+        .collect()
+}
+
+fn owned_title_ids(items: &BTreeMap<i64, OwnedTitleItemState>) -> Vec<i64> {
+    let mut title_ids = items
+        .values()
         .filter(|item| item.count.is_none_or(|count| count > 0))
-        .filter_map(|item| positive_i32(item.item_id))
-        .filter(|item_id| (TITLE_ITEM_ID_START..TITLE_ITEM_ID_END_EXCLUSIVE).contains(item_id))
-        .map(i64::from)
+        .map(|item| i64::from(item.item_id))
         .collect::<Vec<_>>();
     title_ids.sort_unstable();
     title_ids.dedup();
     title_ids
+}
+
+fn apply_dirty_owned_titles(
+    items: &mut BTreeMap<i64, OwnedTitleItemState>,
+    update: &dirty_blob_v1::DirtyOwnedTitleUpdate,
+) {
+    if update.replace {
+        items.clear();
+    }
+    for map_key in &update.removals {
+        items.remove(map_key);
+    }
+    for entry in &update.upserts {
+        let previous = items.remove(&entry.map_key);
+        let Some(item_id) = entry
+            .item_id
+            .or_else(|| previous.map(|item| item.item_id))
+            .filter(|item_id| (TITLE_ITEM_ID_START..TITLE_ITEM_ID_END_EXCLUSIVE).contains(item_id))
+        else {
+            continue;
+        };
+        let count = entry.count.or_else(|| previous.and_then(|item| item.count));
+        if count.is_none_or(|count| count > 0) {
+            items.insert(entry.map_key, OwnedTitleItemState { item_id, count });
+        }
+    }
+}
+
+fn reproject_owned_titles(
+    profile: &mut CharacterProfilePatch,
+    display_title_ids: &BTreeSet<i64>,
+    owned_title_items: &BTreeMap<i64, OwnedTitleItemState>,
+) {
+    let social = profile
+        .social_display
+        .get_or_insert_with(empty_social_display);
+    let mut title_ids = display_title_ids.clone();
+    title_ids.extend(owned_title_ids(owned_title_items));
+    title_ids.extend(social.equipped_title_id);
+    social.title_ids = title_ids.into_iter().collect();
 }
 
 fn social_title_collection(
@@ -4207,17 +4289,41 @@ fn decode_sync_container_dirty(
             ));
         }
     }
-    if update.has_loadout_fields()
-        && let Some(cached_profile) = tracker.local_profile.as_mut()
-        && identity
+    let patches_complete_profile =
+        update.has_loadout_fields() || update.has_social_profile_fields();
+    let patches_local_identity = identity.as_ref().is_some_and(|identity| {
+        tracker
+            .local_profile
             .as_ref()
-            .is_some_and(|identity| identity == &cached_profile.character)
-    {
+            .is_some_and(|profile| identity == &profile.character)
+    });
+    if patches_complete_profile && patches_local_identity {
+        if let Some(owned_titles) = update.owned_titles.as_ref() {
+            apply_dirty_owned_titles(&mut tracker.owned_title_items, owned_titles);
+        }
+        let owned_title_items = &tracker.owned_title_items;
+        let display_title_ids = &tracker.display_title_ids;
+        let cached_profile = tracker
+            .local_profile
+            .as_mut()
+            .expect("local identity was checked against the cached profile");
         if let Some(action_slots) = update.action_slots.as_ref() {
             apply_dirty_action_slots(cached_profile, action_slots);
         }
         if let Some(battle_imagine_skills) = update.battle_imagine_skills.as_ref() {
             apply_dirty_battle_imagine_skills(cached_profile, battle_imagine_skills);
+        }
+        if let Some(guild_id) = update.guild_id {
+            let social = cached_profile
+                .social_display
+                .get_or_insert_with(empty_social_display);
+            social.guild_id = guild_id;
+            if guild_id.is_none() {
+                social.guild_name = None;
+            }
+        }
+        if update.owned_titles.is_some() {
+            reproject_owned_titles(cached_profile, display_title_ids, owned_title_items);
         }
         reproject_battle_imagine_slots(cached_profile);
         let complete_profile = cached_profile.clone();
@@ -9531,6 +9637,101 @@ mod tests {
         assert_eq!(lucy.skin_id, Some(71));
         assert_eq!(lucy.replacement_skill_ids, vec![4_001]);
         assert_eq!(lucy.unlocked_skin_ids, vec![71]);
+    }
+
+    #[test]
+    fn dirty_title_inventory_and_guild_updates_reproject_the_complete_local_profile() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+        let title_item = |uuid, item_id| schema::ItemRecord {
+            uuid: Some(uuid),
+            item_id: Some(item_id),
+            count: Some(1),
+            ..schema::ItemRecord::default()
+        };
+        let initial = encode(schema::SyncContainerData {
+            character: Some(schema::CharacterSerialize {
+                character_id: Some(987_654),
+                base: Some(schema::CharacterBase {
+                    character_id: Some(987_654),
+                    display_name: Some("Profile Name".into()),
+                    union_info: Some(schema::UserUnion {
+                        union_id: Some(7_654),
+                    }),
+                    ..schema::CharacterBase::default()
+                }),
+                item_package: Some(schema::ItemPackage {
+                    packages: [(
+                        PERSONAL_ZONE_PACKAGE_ID,
+                        schema::ItemPackageSection {
+                            items: [
+                                (101, title_item(101, 9_060_001)),
+                                (202, title_item(202, 9_061_163)),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        },
+                    )]
+                    .into_iter()
+                    .collect(),
+                }),
+                ..schema::CharacterSerialize::default()
+            }),
+        });
+        runtime.process(&record(1, 0x15, initial)).unwrap();
+
+        let added = blob_object(vec![
+            (1, blob_i64(303)),
+            (2, blob_i32(9_062_074)),
+            (3, blob_i64(1)),
+        ]);
+        let zero_count = blob_object(vec![(3, blob_i64(0))]);
+        let mut items = blob_i32(1); // additions
+        items.extend(blob_i32(1)); // removals
+        items.extend(blob_i32(1)); // updates
+        items.extend(blob_i64(303));
+        items.extend(added);
+        items.extend(blob_i64(101));
+        items.extend(blob_i64(202));
+        items.extend(zero_count);
+        let package = blob_object(vec![(4, items)]);
+        let mut packages = blob_i32(0); // additions
+        packages.extend(blob_i32(0)); // removals
+        packages.extend(blob_i32(1)); // updates
+        packages.extend(blob_i32(PERSONAL_ZONE_PACKAGE_ID));
+        packages.extend(package);
+        let guild = blob_object(vec![(1, blob_i64(0))]);
+        let dirty_payload = encode(schema::SyncContainerDirtyData {
+            data: Some(schema::BufferStream {
+                buffer: Some(blob_object(vec![
+                    (2, blob_object(vec![(23, guild)])),
+                    (7, blob_object(vec![(1, packages)])),
+                ])),
+                stream_type: Some(1),
+            }),
+        });
+
+        let batch = runtime.process(&record(2, 0x16, dirty_payload)).unwrap();
+        let event = batch
+            .events
+            .iter()
+            .find(|event| {
+                matches!(
+                    event.event,
+                    rlogs_events::CanonicalEvent::CharacterProfileObserved { .. }
+                )
+            })
+            .expect("complete profile after dirty social update");
+        assert_eq!(event.sensitivity, EventSensitivity::PersonalGameplay);
+        let rlogs_events::CanonicalEvent::CharacterProfileObserved { profile } = &event.event
+        else {
+            unreachable!();
+        };
+        let profile =
+            CharacterProfilePatch::from_game_event(profile).expect("valid updated BPSR profile");
+        let social = profile.social_display.expect("social display");
+        assert_eq!(social.guild_id, None);
+        assert_eq!(social.title_ids, vec![9_062_074]);
     }
 
     #[test]

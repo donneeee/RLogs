@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "build_id": "24687926",
-  "purpose": "Exact-build proof for local owned-title extraction and the explicit guild-information response route.",
+  "purpose": "Exact-build proof for local owned-title extraction, exact dirty ownership changes, local guild membership, and the explicit guild-information response route.",
   "owned_titles": {
     "container_path": "SyncContainerData.character.item_package.packages[PackagePersonalZone].items",
     "package_id": 9,
@@ -18,6 +18,32 @@
       "catalog_rows_in_decoder_range": 620,
       "non_title_rows_in_decoder_range": 0,
       "inventory_count_rule": "missing_or_positive"
+    },
+    "dirty_update": {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": "notify",
+        "service_id": 1664308034,
+        "service_name": "WorldNtf",
+        "method_id": 22,
+        "method_name": "SyncContainerDirtyData",
+        "message_name": "SyncContainerDirtyData"
+      },
+      "dirty_path": "CharSerialize.item_package(field 7).packages(field 1)[PackagePersonalZone].items(field 4)",
+      "map_semantics": [
+        "replace",
+        "add",
+        "remove",
+        "update"
+      ],
+      "item_fields": {
+        "map_key": "int64 item instance UUID",
+        "item_id": "Item.field 2",
+        "count": "Item.field 3"
+      },
+      "projection_rule": "retain only title-range item IDs with missing or positive count; preserve instance-keyed state so remove and zero-count updates retract ownership",
+      "privacy_rule": "consume unrelated package and item fields without retaining or publishing them",
+      "observed_route_evidence": "protocol-decode-recordings-v3/monitor-1786812580727-steam-24687926.protocol.offline-recording-report.json"
     },
     "evidence": [
       {
@@ -49,6 +75,19 @@
       "message_name": "ReqUnionInfo_Ret"
     },
     "allowed_path": "ReqUnionInfo_Ret.ret.info.base_info.{id,name}",
+    "dirty_local_membership": {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": "notify",
+        "service_id": 1664308034,
+        "service_name": "WorldNtf",
+        "method_id": 22,
+        "method_name": "SyncContainerDirtyData"
+      },
+      "dirty_path": "CharSerialize.char_base(field 2).union_info(field 23).union_id(field 1)",
+      "semantics": "positive int64 sets local guild ID; explicit zero clears local guild ID and any stale guild name",
+      "name_source": "Guild name remains gated to ReqUnionInfo_Ret.ret.info.base_info.name or another explicitly reviewed public social route"
+    },
     "privacy_exclusions": [
       "recruitment",
       "president profile",

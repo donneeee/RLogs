@@ -30,6 +30,13 @@ pub(crate) struct DirtyCharacterUpdate {
     pub avatar_id: Option<i32>,
     pub business_card_style_id: Option<i32>,
     pub avatar_frame_id: Option<i32>,
+    /// Tri-state dirty guild membership. The outer option proves that
+    /// `CharacterBase.union_info.union_id` was present in this update; the
+    /// inner option is the positive guild ID or `None` for an explicit zero.
+    pub guild_id: Option<Option<i64>>,
+    /// Exact changes to title-item ownership in
+    /// `ItemPackage.packages[PackagePersonalZone].items`.
+    pub owned_titles: Option<DirtyOwnedTitleUpdate>,
     pub lucky_value_mgr: Option<DirtyLuckyValueUpdate>,
     /// Exact IEEE-754 payload of `UserFightAttr.origin_energy`.
     pub origin_energy_raw_bits: Option<u32>,
@@ -95,6 +102,22 @@ pub(crate) struct DirtyEnabledIdUpdate {
     pub removals: Vec<i32>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct DirtyOwnedTitleUpdate {
+    /// Clear the previously known Personal Zone title-item map before applying
+    /// the remaining mutations.
+    pub replace: bool,
+    pub upserts: Vec<DirtyOwnedTitleEntry>,
+    pub removals: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct DirtyOwnedTitleEntry {
+    pub map_key: i64,
+    pub item_id: Option<i32>,
+    pub count: Option<i64>,
+}
+
 /// Exact gameplay-only fields from `UserFightAttr.CdInfo` in a dirty
 /// character-container update. Reduction and acceleration values deliberately
 /// remain raw until packet-observed transitions prove their units.
@@ -151,6 +174,10 @@ impl DirtyCharacterUpdate {
 
     pub(crate) fn has_loadout_fields(&self) -> bool {
         self.action_slots.is_some() || self.battle_imagine_skills.is_some()
+    }
+
+    pub(crate) fn has_social_profile_fields(&self) -> bool {
+        self.guild_id.is_some() || self.owned_titles.is_some()
     }
 }
 
@@ -222,6 +249,7 @@ pub(crate) fn decode_character_update(
             1 => update.character_id = Some(i64::from(reader.read_i32()?)),
             2 => parse_character_base(&mut reader, &mut update)?,
             3 => parse_scene(&mut reader, &mut update.world)?,
+            7 => update.owned_titles = parse_item_package_titles(&mut reader)?,
             8 | 49 | 102 | 116 => reader.skip_object()?,
             16 => parse_user_fight_attr(&mut reader, &mut update)?,
             22 => parse_role_level(&mut reader, &mut update)?,
@@ -243,6 +271,134 @@ pub(crate) fn decode_character_update(
         return Err(DirtyBlobError::TrailingBytes);
     }
     Ok(update)
+}
+
+fn parse_item_package_titles(
+    reader: &mut BlobReader<'_>,
+) -> Result<Option<DirtyOwnedTitleUpdate>, DirtyBlobError> {
+    const PERSONAL_ZONE_PACKAGE_ID: i32 = 9;
+
+    let end = reader.begin_object()?;
+    let mut title_update = None;
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            1 => {
+                let counts = reader.read_map_counts()?;
+                if counts.replace {
+                    title_update
+                        .get_or_insert_with(DirtyOwnedTitleUpdate::default)
+                        .replace = true;
+                }
+
+                for _ in 0..counts.add {
+                    let package_id = reader.read_i32()?;
+                    if package_id == PERSONAL_ZONE_PACKAGE_ID {
+                        let update =
+                            title_update.get_or_insert_with(DirtyOwnedTitleUpdate::default);
+                        // Adding the package establishes a new complete package
+                        // value even when its item map is empty.
+                        update.replace = true;
+                        parse_personal_zone_package(reader, update)?;
+                    } else {
+                        reader.skip_object()?;
+                    }
+                }
+                for _ in 0..counts.remove {
+                    if reader.read_i32()? == PERSONAL_ZONE_PACKAGE_ID {
+                        title_update
+                            .get_or_insert_with(DirtyOwnedTitleUpdate::default)
+                            .replace = true;
+                    }
+                }
+                for _ in 0..counts.update {
+                    let package_id = reader.read_i32()?;
+                    if package_id == PERSONAL_ZONE_PACKAGE_ID {
+                        let update =
+                            title_update.get_or_insert_with(DirtyOwnedTitleUpdate::default);
+                        parse_personal_zone_package(reader, update)?;
+                    } else {
+                        reader.skip_object()?;
+                    }
+                }
+            }
+            // Unrelated package metadata is intentionally consumed without
+            // being retained.
+            2 => reader.skip_i32_i32_map()?,
+            5 => reader.skip_i32_i64_map()?,
+            3 | 4 => {
+                reader.read_i32()?;
+            }
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)?;
+    if let Some(update) = title_update.as_mut() {
+        update.upserts.sort_unstable_by_key(|entry| entry.map_key);
+        update.removals.sort_unstable();
+        update.removals.dedup();
+    }
+    Ok(title_update)
+}
+
+fn parse_personal_zone_package(
+    reader: &mut BlobReader<'_>,
+    update: &mut DirtyOwnedTitleUpdate,
+) -> Result<(), DirtyBlobError> {
+    let end = reader.begin_object()?;
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            1 | 2 | 6 => {
+                reader.read_i32()?;
+            }
+            3 => reader.skip_i32_i64_map()?,
+            4 => {
+                let counts = reader.read_map_counts()?;
+                update.replace |= counts.replace;
+                for _ in 0..counts.add {
+                    let map_key = reader.read_i64()?;
+                    update.upserts.push(parse_title_item(reader, map_key)?);
+                }
+                for _ in 0..counts.remove {
+                    update.removals.push(reader.read_i64()?);
+                }
+                for _ in 0..counts.update {
+                    let map_key = reader.read_i64()?;
+                    update.upserts.push(parse_title_item(reader, map_key)?);
+                }
+            }
+            5 => {
+                reader.read_i64()?;
+            }
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)
+}
+
+fn parse_title_item(
+    reader: &mut BlobReader<'_>,
+    map_key: i64,
+) -> Result<DirtyOwnedTitleEntry, DirtyBlobError> {
+    let end = reader.begin_object()?;
+    let mut entry = DirtyOwnedTitleEntry {
+        map_key,
+        ..DirtyOwnedTitleEntry::default()
+    };
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            // UUID is redundant with the authoritative map key.
+            1 => {
+                reader.read_i64()?;
+            }
+            2 => entry.item_id = Some(reader.read_i32()?),
+            3 => entry.count = Some(reader.read_i64()?),
+            // All later fields are unrelated inventory/equipment state. The
+            // privacy-reviewed title projection never materializes them.
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)?;
+    Ok(entry)
 }
 
 fn parse_action_slots(
@@ -441,7 +597,7 @@ fn parse_character_base(
                 reader.read_u64()?;
             }
             22 => update.body_size_id = Some(reader.read_i32()?),
-            23 => reader.skip_object()?,
+            23 => parse_user_union(reader, update)?,
             24 => reader.skip_i32_list()?,
             25 => parse_avatar(reader, update)?,
             // Total online time is private behavioral data.
@@ -475,6 +631,23 @@ fn parse_character_base(
             }
             40 | 42 => {
                 reader.read_i64()?;
+            }
+            _ => reader.skip_object_body(end),
+        }
+    }
+    reader.finish_object(end)
+}
+
+fn parse_user_union(
+    reader: &mut BlobReader<'_>,
+    update: &mut DirtyCharacterUpdate,
+) -> Result<(), DirtyBlobError> {
+    let end = reader.begin_object()?;
+    while let Some(field) = reader.next_field(end)? {
+        match field {
+            1 => {
+                let guild_id = reader.read_i64()?;
+                update.guild_id = Some((guild_id > 0).then_some(guild_id));
             }
             _ => reader.skip_object_body(end),
         }
@@ -854,6 +1027,22 @@ impl<'a> BlobReader<'a> {
         self.read_i32_bool_map().map(drop)
     }
 
+    fn skip_i32_i32_map(&mut self) -> Result<(), DirtyBlobError> {
+        let counts = self.read_map_counts()?;
+        for _ in 0..counts.add {
+            self.read_i32()?;
+            self.read_i32()?;
+        }
+        for _ in 0..counts.remove {
+            self.read_i32()?;
+        }
+        for _ in 0..counts.update {
+            self.read_i32()?;
+            self.read_i32()?;
+        }
+        Ok(())
+    }
+
     fn read_i32_bool_map(&mut self) -> Result<DirtyEnabledIdUpdate, DirtyBlobError> {
         let counts = self.read_map_counts()?;
         let mut update = DirtyEnabledIdUpdate {
@@ -1197,6 +1386,112 @@ mod tests {
                 removals: vec![3_969],
             })
         );
+    }
+
+    #[test]
+    fn personal_zone_title_package_replace_preserves_exact_item_identity_and_count() {
+        let first = object(vec![
+            (1, i64_value(101)),
+            (2, i32_value(9_060_001)),
+            (3, i64_value(1)),
+        ]);
+        let second = object(vec![(2, i32_value(9_061_163))]);
+        let mut items = i32_value(REPLACE_COLLECTION);
+        items.extend(i32_value(2));
+        items.extend(i64_value(101));
+        items.extend(first);
+        items.extend(i64_value(202));
+        items.extend(second);
+        let package = object(vec![(1, i32_value(9)), (4, items)]);
+        let mut packages = i32_value(REPLACE_COLLECTION);
+        packages.extend(i32_value(1));
+        packages.extend(i32_value(9));
+        packages.extend(package);
+
+        let update =
+            decode_character_update(&object(vec![(7, object(vec![(1, packages)]))]), 1).unwrap();
+
+        assert!(update.has_social_profile_fields());
+        assert_eq!(
+            update.owned_titles,
+            Some(DirtyOwnedTitleUpdate {
+                replace: true,
+                upserts: vec![
+                    DirtyOwnedTitleEntry {
+                        map_key: 101,
+                        item_id: Some(9_060_001),
+                        count: Some(1),
+                    },
+                    DirtyOwnedTitleEntry {
+                        map_key: 202,
+                        item_id: Some(9_061_163),
+                        count: None,
+                    },
+                ],
+                removals: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn personal_zone_title_delta_and_guild_membership_preserve_clear_semantics() {
+        let changed = object(vec![(3, i64_value(0))]);
+        let mut items = i32_value(0); // additions
+        items.extend(i32_value(1)); // removals
+        items.extend(i32_value(1)); // updates
+        items.extend(i64_value(101));
+        items.extend(i64_value(202));
+        items.extend(changed);
+        let package = object(vec![(4, items)]);
+        let mut packages = i32_value(0); // additions
+        packages.extend(i32_value(0)); // removals
+        packages.extend(i32_value(1)); // updates
+        packages.extend(i32_value(9));
+        packages.extend(package);
+        let union = object(vec![(1, i64_value(0))]);
+        let base = object(vec![(23, union)]);
+
+        let update = decode_character_update(
+            &object(vec![(2, base), (7, object(vec![(1, packages)]))]),
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(update.guild_id, Some(None));
+        assert_eq!(
+            update.owned_titles,
+            Some(DirtyOwnedTitleUpdate {
+                replace: false,
+                upserts: vec![DirtyOwnedTitleEntry {
+                    map_key: 202,
+                    item_id: None,
+                    count: Some(0),
+                }],
+                removals: vec![101],
+            })
+        );
+    }
+
+    #[test]
+    fn unrelated_item_package_delta_does_not_claim_a_title_update() {
+        let module = object(vec![(2, i32_value(5_500_101))]);
+        let mut items = i32_value(1); // additions
+        items.extend(i32_value(0)); // removals
+        items.extend(i32_value(0)); // updates
+        items.extend(i64_value(303));
+        items.extend(module);
+        let module_package = object(vec![(4, items)]);
+        let mut packages = i32_value(1); // additions
+        packages.extend(i32_value(0)); // removals
+        packages.extend(i32_value(0)); // updates
+        packages.extend(i32_value(5));
+        packages.extend(module_package);
+
+        let update =
+            decode_character_update(&object(vec![(7, object(vec![(1, packages)]))]), 1).unwrap();
+
+        assert_eq!(update.owned_titles, None);
+        assert!(!update.has_social_profile_fields());
     }
 
     #[test]
