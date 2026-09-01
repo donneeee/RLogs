@@ -4,7 +4,7 @@
   "game_build": "24687926",
   "deployment": "global",
   "channel": "steam",
-  "decision": "append two local-only reviewed photograph return decoders as candidate routes",
+  "decision": "append two local-only reviewed photograph return decoders and publish the exact server-bound full render or wall-card thumbnail as candidate routes",
   "protocol_pack_migration": {
     "prior_pack_id": "global-steam-24687926-static-candidate-v4",
     "prior_protocol_pack_digest": "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
@@ -69,7 +69,8 @@
       "proves": [
         "the in-game full Photo Wall viewer calls Photograph.GetPhoto with the exact character ID and photo ID",
         "the viewer selects only ECameraRender from the returned images",
-        "the viewer does not fall back to ECameraOriginal, ENormalPicture, or ECameraThumbnail"
+        "the in-game Photo Wall card also calls Photograph.GetPhoto with the exact character ID and photo ID and selects ECameraThumbnail",
+        "ECameraOriginal is not the rendered wall image and must never be substituted"
       ]
     }
   ],
@@ -118,7 +119,8 @@
     "combat_route_contract_changed": false,
     "historical_protocol_pack_identities_retained": true,
     "candidate_routes_require_runtime_observation_to_promote_confidence_to_verified": true,
-    "published_picture_type": "ECameraRender (2) only; absence fails closed without an original or thumbnail fallback",
+    "published_picture_type": "prefer ECameraRender (2); fall back only to ECameraThumbnail (3) carried by the same exact character/photo response; never substitute ECameraOriginal (1) or ENormalPicture (0)",
+    "thumbnail_fallback_identity": "the Photograph.GetPhoto response is keyed by exact character ID and photo ID, and the in-game Photo Wall card displays its ECameraThumbnail value",
     "maximum_pending_return_correlations": 4096,
     "return_correlation_ttl_micros": 120000000,
     "return_correlation_scope": "exact process-attributed connection and return UID"

@@ -1109,20 +1109,37 @@ fn reviewed_photo_assets(
         .into_iter()
         .filter_map(|graph| {
             let photo_id = graph.photo_id.filter(|value| *value > 0)?;
-            // Match the game's Photo Wall viewer exactly: it displays only
-            // ECameraRender (2). The original can omit render effects and the
-            // thumbnail is not the displayed full-size wall photo, so neither
-            // is a safe publication fallback.
-            let image = graph
-                .images
-                .into_iter()
-                .filter(|image| {
-                    image.picture_type == Some(2)
-                        && image.cos_url.as_deref().is_some_and(|url| {
-                            !url.is_empty() && url.len() <= 2_048 && url.is_ascii()
-                        })
-                })
-                .max_by_key(|image| image.version.unwrap_or_default())?;
+            // Prefer the full ECameraRender (2) used by the game's Photo Wall
+            // viewer. The wall card itself calls GetPhoto for this exact
+            // character/photo pair and displays ECameraThumbnail (3), so that
+            // server-bound thumbnail is a safe lower-resolution fallback when
+            // the reply omits a render. ECameraOriginal is never substituted:
+            // it can predate the saved render effects.
+            let mut images = graph.images.into_iter().filter(|image| {
+                matches!(image.picture_type, Some(2 | 3))
+                    && image
+                        .cos_url
+                        .as_deref()
+                        .is_some_and(|url| !url.is_empty() && url.len() <= 2_048 && url.is_ascii())
+            });
+            let mut render = None;
+            let mut thumbnail = None;
+            for image in images.by_ref() {
+                let selected = if image.picture_type == Some(2) {
+                    &mut render
+                } else {
+                    &mut thumbnail
+                };
+                if selected
+                    .as_ref()
+                    .is_none_or(|current: &schema::PhotoImageInfo| {
+                        image.version.unwrap_or_default() >= current.version.unwrap_or_default()
+                    })
+                {
+                    *selected = Some(image);
+                }
+            }
+            let image = render.or(thumbnail)?;
             Some(LocalPhotoAssetReference {
                 character_id,
                 photo_id,
@@ -10535,7 +10552,7 @@ mod tests {
     }
 
     #[test]
-    fn photograph_replies_expose_only_the_latest_rendered_wall_asset() {
+    fn photograph_replies_prefer_the_latest_rendered_wall_asset() {
         let payload = schema::GetAlbumPhotosReturn {
             ret: Some(schema::GetAlbumPhotosReply {
                 character_id: Some(3_296_036),
@@ -10585,7 +10602,7 @@ mod tests {
     }
 
     #[test]
-    fn photograph_reply_never_falls_back_to_original_or_thumbnail() {
+    fn photograph_reply_uses_exact_wall_thumbnail_when_render_is_absent() {
         let payload = schema::GetAlbumPhotosReturn {
             ret: Some(schema::GetAlbumPhotosReply {
                 character_id: Some(3_296_036),
@@ -10609,6 +10626,37 @@ mod tests {
                             ),
                         },
                     ],
+                }],
+            }),
+        }
+        .encode_to_vec();
+        let decoded = decode_album_photos(&payload).unwrap();
+        assert_eq!(decoded.local_photo_assets.len(), 1);
+        assert_eq!(decoded.local_photo_assets[0].character_id, 3_296_036);
+        assert_eq!(decoded.local_photo_assets[0].photo_id, 42);
+        assert_eq!(decoded.local_photo_assets[0].picture_type, 3);
+        assert!(
+            decoded.local_photo_assets[0]
+                .source_url
+                .ends_with("/thumbnail.png")
+        );
+    }
+
+    #[test]
+    fn photograph_reply_never_substitutes_an_original_image() {
+        let payload = schema::GetAlbumPhotosReturn {
+            ret: Some(schema::GetAlbumPhotosReply {
+                character_id: Some(3_296_036),
+                photo_graphs: vec![schema::PhotoGraphShow {
+                    photo_id: Some(42),
+                    images: vec![schema::PhotoImageInfo {
+                        picture_type: Some(1),
+                        size: Some(900),
+                        version: Some(2),
+                        cos_url: Some(
+                            "https://photo.playbpsr.com/xinghen-prod/original.png".into(),
+                        ),
+                    }],
                 }],
             }),
         }
