@@ -595,12 +595,13 @@ mod tests {
             (2_204_471, "Critical Cold"),
             (2_207_252, "Stat Resonance"),
             (2_302_121, "Team Luck & Crit"),
+            (2_302_421, "Life Wave"),
             (2_404_261, "Spring Breeze — Season 2 healer 2-piece"),
             (2_404_271, "Full Bloom"),
             (3_003_052, "Harmony Grace"),
             (3_003_411, "Endless Mind"),
         ];
-        assert_eq!(cases.len(), 28);
+        assert_eq!(cases.len(), 29);
 
         for (effect_id, expected_name) in cases {
             let presentation = rdps_attribution_effect_presentation(effect_id, "en-US")
