@@ -2517,6 +2517,7 @@ impl RdpsRuntimeConfig {
                 == [
                     "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
                     "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+                    "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                 ]
             && team_luck
                 .critical_damage_authorized_protocol_pack_digests
@@ -2538,6 +2539,7 @@ impl RdpsRuntimeConfig {
                 == [
                     "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
                     "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+                    "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                 ]
             && team_luck
                 .lucky_damage_authorized_protocol_pack_digests
@@ -2904,6 +2906,7 @@ impl RdpsRuntimeConfig {
                 == [
                     "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
                     "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+                    "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                 ]
             && inspiration
                 .authorized_protocol_pack_digests
@@ -4298,6 +4301,7 @@ mod tests {
             [
                 "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
                 "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+                "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
             ]
         );
         assert!(
@@ -4327,6 +4331,7 @@ mod tests {
             [
                 "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
                 "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+                "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
             ]
         );
         assert!(!current.team_luck.server_integer_counterfactual_authority);

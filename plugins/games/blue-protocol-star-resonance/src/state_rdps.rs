@@ -22398,6 +22398,29 @@ mod tests {
             prior_pack_runtime
                 .effect_runtime_transfer_enabled(prior_pack_runtime.team_luck.effect_id)
         );
+        let repaired_profile_pack_digest =
+            "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e";
+        assert!(
+            state_damage_contribution_target_matches(
+                "global",
+                "24687926",
+                repaired_profile_pack_digest,
+            )
+            .unwrap(),
+            "the profile-route-only pack repair must retain exact combat formula authority"
+        );
+        let repaired_profile_pack_runtime =
+            rdps_runtime_config_for_identity("global", "24687926", repaired_profile_pack_digest)
+                .unwrap()
+                .expect("the profile-route-only repaired identity should be replayable");
+        assert_eq!(
+            repaired_profile_pack_runtime.protocol_pack_digest,
+            repaired_profile_pack_digest
+        );
+        assert!(
+            repaired_profile_pack_runtime
+                .effect_runtime_transfer_enabled(repaired_profile_pack_runtime.team_luck.effect_id)
+        );
         assert!(
             !state_damage_contribution_formula_target_matches(
                 "global",

@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "artifact": "profile-route-carry-forward-proof",
+  "game_build": "24687926",
+  "deployment": "global",
+  "channel": "steam",
+  "decision": "retain strictly decoded stable profile routes in the exact-build pack",
+  "protocol_pack_migration": {
+    "prior_pack_id": "global-steam-24687926-static-candidate-v3",
+    "prior_protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
+    "repaired_pack_id": "global-steam-24687926-static-candidate-v4",
+    "repaired_protocol_pack_digest": "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
+    "prior_route_count": 48,
+    "repaired_route_count": 53,
+    "unchanged_route_prefix_count": 48,
+    "unchanged_route_prefix_serde_json_sha256": "61da48adb6ec45a940f4d85d520750eb0d62baee20f0e9dfb5f5dc0e37953ae2",
+    "added_route_count": 5,
+    "modified_existing_route_count": 0,
+    "removed_route_count": 0,
+    "added_combat_route_count": 0,
+    "modified_combat_route_count": 0,
+    "removed_combat_route_count": 0,
+    "formula_compatibility_decision": "authorized: the repaired identity changes only the pack ID and appends five bounded world/profile routes; every pre-existing route, including all combat routes and decoders, is byte-equivalent after typed serialization",
+    "enforced_by": "pack::tests::frame_up_acquisition_layout_is_exact_pack_versioned_with_opaque_compatibility"
+  },
+  "sources": [
+    {
+      "kind": "exact-current-build-native-service-surface",
+      "reference": "rpc-message-surface.v2.json",
+      "proves": [
+        "WorldLoginNtf service ID 78136601",
+        "NotifyEnterWorld remains a current interface method"
+      ]
+    },
+    {
+      "kind": "exact-current-build-native-protobuf-wire-proof",
+      "reference": "protobuf-native-wire-proof.v1.json",
+      "proves": [
+        "NotifyEnterWorldRequest exact fields",
+        "WorldLoginNtf.NotifyEnterWorld exact envelope",
+        "SocialData exact fields used by the selective profile decoder"
+      ]
+    },
+    {
+      "kind": "wire-compatible-observed-baseline",
+      "reference": "plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/pack.json",
+      "proves": [
+        "stable route tuple and decoder contract for WorldLoginNtf.NotifyEnterWorld",
+        "stable route tuple and decoder contract for SocialNtf.NotifySocialData",
+        "stable route tuple and decoder contract for UnionNtf.NotifyUnionInfo",
+        "stable route tuples and decoder contracts for GrpcTeamNtf profile notifications"
+      ]
+    },
+    {
+      "kind": "independent-generated-protocol-reference",
+      "reference": "plugins/games/blue-protocol-star-resonance/protocol-references/manifests/zdps-0.1.7.3.json",
+      "proves": [
+        "service IDs and protobuf message families independently match the baseline routes"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "service_name": "WorldLoginNtf",
+      "service_id": 78136601,
+      "method_name": "NotifyEnterWorld",
+      "method_id": 3,
+      "decoder": "notify_enter_world_v1",
+      "runtime_confidence": "verified-from-current-native-surface-and-baseline-wire-contract"
+    },
+    {
+      "service_name": "SocialNtf",
+      "service_id": 625772963,
+      "method_name": "NotifySocialData",
+      "method_id": 1,
+      "decoder": "notify_social_data_v1",
+      "runtime_confidence": "verified-from-current-native-fields-and-baseline-wire-contract"
+    },
+    {
+      "service_name": "UnionNtf",
+      "service_id": 504281929,
+      "method_name": "NotifyUnionInfo",
+      "method_id": 1,
+      "decoder": "notify_union_info_v1",
+      "runtime_confidence": "candidate-until-next-observation"
+    },
+    {
+      "service_name": "GrpcTeamNtf",
+      "service_id": 966773353,
+      "method_name": "NoticeUpdateTeamMemberInfo",
+      "method_id": 2,
+      "decoder": "notify_team_member_info_v1",
+      "runtime_confidence": "verified-from-independent-descriptor-and-baseline-wire-contract"
+    },
+    {
+      "service_name": "GrpcTeamNtf",
+      "service_id": 966773353,
+      "method_name": "NotifyJoinTeam",
+      "method_id": 3,
+      "decoder": "notify_join_team_v1",
+      "runtime_confidence": "candidate-until-next-observation"
+    }
+  ],
+  "safety": {
+    "raw_payload_publication": false,
+    "credential_fields_declared": false,
+    "unknown_fields_materialized": false,
+    "decoders": "selective and bounded",
+    "combat_route_contract_changed": false,
+    "historical_protocol_pack_identities_retained": true,
+    "candidate_routes_require_runtime_observation_to_promote_confidence_to_verified": true
+  }
+}

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "pack_id": "global-steam-24687926-static-candidate-v3",
+  "pack_id": "global-steam-24687926-static-candidate-v4",
   "target": {
     "deployment_id": "global",
     "region_id": null,
@@ -1686,6 +1686,141 @@
         "world_state"
       ],
       "disposition": "opaque"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 78136601,
+        "method_id": 3
+      },
+      "service_name": "WorldLoginNtf",
+      "method_name": "NotifyEnterWorld",
+      "message_name": "NotifyEnterWorld",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "exact-current-build-profile-route-carry-forward-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/profile-route-carry-forward-proof.v1.json"
+        }
+      ],
+      "features": [
+        "world_state"
+      ],
+      "disposition": "allowed",
+      "domain": "world_state",
+      "decoder": "notify_enter_world_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 625772963,
+        "method_id": 1
+      },
+      "service_name": "SocialNtf",
+      "method_name": "NotifySocialData",
+      "message_name": "NotifySocialData",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "exact-current-build-profile-route-carry-forward-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/profile-route-carry-forward-proof.v1.json"
+        }
+      ],
+      "features": [
+        "social",
+        "character_profile"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "notify_social_data_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 504281929,
+        "method_id": 1
+      },
+      "service_name": "UnionNtf",
+      "method_name": "NotifyUnionInfo",
+      "message_name": "NotifyUnionInfo",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-profile-route-carry-forward-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/profile-route-carry-forward-proof.v1.json"
+        }
+      ],
+      "features": [
+        "social",
+        "character_profile"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "notify_union_info_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 966773353,
+        "method_id": 2
+      },
+      "service_name": "GrpcTeamNtf",
+      "method_name": "NoticeUpdateTeamMemberInfo",
+      "message_name": "NoticeUpdateTeamMemberInfo",
+      "confidence": "verified",
+      "provenance": [
+        {
+          "source": "exact-current-build-profile-route-carry-forward-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/profile-route-carry-forward-proof.v1.json"
+        }
+      ],
+      "features": [
+        "party",
+        "character_profile"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "notify_team_member_info_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "notify"
+        },
+        "service_id": 966773353,
+        "method_id": 3
+      },
+      "service_name": "GrpcTeamNtf",
+      "method_name": "NotifyJoinTeam",
+      "message_name": "NotifyJoinTeam",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-profile-route-carry-forward-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/profile-route-carry-forward-proof.v1.json"
+        }
+      ],
+      "features": [
+        "party",
+        "character_profile",
+        "equipment"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "notify_join_team_v1"
     }
   ]
 }

@@ -897,7 +897,38 @@ mod tests {
         );
         assert_eq!(
             current.digest(),
-            "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395"
+            "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e"
+        );
+
+        let unchanged_route_prefix = &current.definition().routes[..48];
+        let unchanged_route_prefix_bytes = serde_json::to_vec(unchanged_route_prefix).unwrap();
+        assert_eq!(
+            format!("{:x}", Sha256::digest(unchanged_route_prefix_bytes)),
+            "61da48adb6ec45a940f4d85d520750eb0d62baee20f0e9dfb5f5dc0e37953ae2",
+            "profile-route carry-forward must not modify any pre-existing route"
+        );
+        assert_eq!(current.definition().routes.len(), 53);
+        assert!(current.definition().routes[48..].iter().all(|route| {
+            matches!(
+                route.disposition,
+                ProtocolPackRouteDisposition::Allowed {
+                    domain: AllowedDataDomain::CharacterProfile | AllowedDataDomain::WorldState,
+                    ..
+                }
+            )
+        }));
+        assert_eq!(
+            current.definition().routes[48..]
+                .iter()
+                .map(|route| (route.route.service_id, route.route.method_id))
+                .collect::<Vec<_>>(),
+            vec![
+                (78_136_601, 3),
+                (625_772_963, 1),
+                (504_281_929, 1),
+                (966_773_353, 2),
+                (966_773_353, 3),
+            ]
         );
     }
 
