@@ -1445,6 +1445,100 @@ struct SessionResult {
     verified_artifact: Option<LocalLogArtifact>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PhotoWallPublicationStatusView {
+    schema_version: u16,
+    state: String,
+    observed_count: u64,
+    queued_count: u64,
+    published_count: u64,
+    retryable_failure_count: u64,
+    last_activity_unix_millis: Option<u64>,
+    last_character_id: Option<String>,
+    last_photo_id: Option<u32>,
+    last_picture_type: Option<i32>,
+    last_version: Option<u32>,
+    last_error: Option<String>,
+}
+
+impl Default for PhotoWallPublicationStatusView {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            state: "waiting_for_live_parse".into(),
+            observed_count: 0,
+            queued_count: 0,
+            published_count: 0,
+            retryable_failure_count: 0,
+            last_activity_unix_millis: None,
+            last_character_id: None,
+            last_photo_id: None,
+            last_picture_type: None,
+            last_version: None,
+            last_error: None,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct PhotoWallPublicationStatus {
+    view: PhotoWallPublicationStatusView,
+}
+
+impl PhotoWallPublicationStatus {
+    fn configure(&mut self, enabled: bool, connection_ready: bool) {
+        self.view.state = if !enabled {
+            "disabled"
+        } else if !connection_ready {
+            "waiting_for_account_connection"
+        } else {
+            "waiting_for_photo_wall"
+        }
+        .into();
+        self.view.last_error = None;
+    }
+
+    fn observed(&mut self, photo: &LocalPhotoAssetReference) {
+        self.view.observed_count = self.view.observed_count.saturating_add(1);
+        self.view.state = "observed_exact_game_image".into();
+        self.remember(photo);
+    }
+
+    fn queued(&mut self, photo: &LocalPhotoAssetReference) {
+        self.view.queued_count = self.view.queued_count.saturating_add(1);
+        self.view.state = "publication_queued".into();
+        self.view.last_error = None;
+        self.remember(photo);
+    }
+
+    fn published(&mut self, photo: &LocalPhotoAssetReference) {
+        self.view.published_count = self.view.published_count.saturating_add(1);
+        self.view.state = "published".into();
+        self.view.last_error = None;
+        self.remember(photo);
+    }
+
+    fn retryable_failure(&mut self, photo: &LocalPhotoAssetReference, error: impl Into<String>) {
+        self.view.retryable_failure_count = self.view.retryable_failure_count.saturating_add(1);
+        self.view.state = "retryable_failure".into();
+        self.view.last_error = Some(error.into());
+        self.remember(photo);
+    }
+
+    fn remember(&mut self, photo: &LocalPhotoAssetReference) {
+        self.view.last_activity_unix_millis = Some(unix_millis());
+        self.view.last_character_id = Some(photo.character_id.to_string());
+        self.view.last_photo_id = Some(photo.photo_id);
+        self.view.last_picture_type = Some(photo.picture_type);
+        self.view.last_version = photo.version;
+    }
+
+    fn snapshot(&self) -> PhotoWallPublicationStatusView {
+        self.view.clone()
+    }
+}
+
 #[derive(Debug, Clone)]
 struct CapturedRunProjection {
     combat: CombatTimelineSnapshot,
@@ -3267,6 +3361,7 @@ struct RuntimeController {
     profile_packages: Arc<Mutex<LocalProfilePackageStore>>,
     profile_publications: Arc<Mutex<ProfilePublicationLedger>>,
     profile_publication: Arc<Mutex<()>>,
+    photo_wall_publication_status: Arc<Mutex<PhotoWallPublicationStatus>>,
     submission_policy: Mutex<SubmissionPolicyStore>,
     submission_connection: Mutex<SubmissionConnectionStore>,
     submission_transport: Mutex<Option<SubmissionTransport>>,
@@ -3376,6 +3471,9 @@ impl RuntimeController {
             profile_packages: Arc::new(Mutex::new(profile_packages)),
             profile_publications: Arc::new(Mutex::new(profile_publications)),
             profile_publication: Arc::new(Mutex::new(())),
+            photo_wall_publication_status: Arc::new(Mutex::new(
+                PhotoWallPublicationStatus::default(),
+            )),
             submission_policy: Mutex::new(submission_policy),
             submission_connection: Mutex::new(submission_connection),
             submission_transport: Mutex::new(submission_transport),
@@ -4385,6 +4483,13 @@ impl RuntimeController {
             .view()
     }
 
+    fn photo_wall_publication_status(&self) -> PhotoWallPublicationStatusView {
+        self.photo_wall_publication_status
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .snapshot()
+    }
+
     fn update_submission_connection(
         &self,
         request: SubmissionConnectionUpdateRequest,
@@ -5195,6 +5300,7 @@ impl RuntimeController {
         let profile_packages = Arc::clone(&self.profile_packages);
         let profile_publications = Arc::clone(&self.profile_publications);
         let profile_publication = Arc::clone(&self.profile_publication);
+        let photo_wall_publication_status = Arc::clone(&self.photo_wall_publication_status);
         let policy = self
             .submission_policy
             .lock()
@@ -5334,11 +5440,21 @@ impl RuntimeController {
                     // dirty bit would leave profile/loadout enrichment stale
                     // until an unrelated later combat or terminal event.
                     let mut live_dirty = false;
+                    let photo_wall_publication_enabled =
+                        profile_sync.enabled && profile_sync.publish_photo_wall_images;
+                    photo_wall_publication_status
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .configure(
+                            photo_wall_publication_enabled,
+                            submission_transport.is_some(),
+                        );
                     let (photo_publication_sender, photo_publication_worker) =
                         spawn_photo_wall_publication_worker(
-                            profile_sync.enabled && profile_sync.publish_photo_wall_images,
+                            photo_wall_publication_enabled,
                             submission_transport.clone(),
                             Arc::clone(&profile_publications),
+                            Arc::clone(&photo_wall_publication_status),
                         )
                         .map_or((None, None), |(sender, worker)| {
                             (Some(sender), Some(worker))
@@ -5674,17 +5790,43 @@ impl RuntimeController {
                                 local_photo_assets.push(photo.clone());
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
-                        if let Some(sender) = &photo_publication_sender {
+                        if photo_wall_publication_enabled {
                             for photo in local_photo_assets {
-                                match sender.try_send(photo) {
-                                    Ok(()) => {}
+                                photo_wall_publication_status
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                    .observed(&photo);
+                                let Some(sender) = &photo_publication_sender else {
+                                    photo_wall_publication_status
+                                        .lock()
+                                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                        .retryable_failure(
+                                            &photo,
+                                            "connect this PC to your rLogs account, then open the Photo Wall again to publish",
+                                        );
+                                    continue;
+                                };
+                                match sender.try_send(photo.clone()) {
+                                    Ok(()) => {
+                                        photo_wall_publication_status
+                                            .lock()
+                                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                            .queued(&photo);
+                                    }
                                     Err(error) => {
                                         let photo = match error {
                                             TrySendError::Full(photo)
                                             | TrySendError::Disconnected(photo) => photo,
                                         };
+                                        photo_wall_publication_status
+                                            .lock()
+                                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                            .retryable_failure(
+                                                &photo,
+                                                "the in-memory publication queue was unavailable; open the Photo Wall again to retry",
+                                            );
                                         eprintln!(
-                                            "Photo Wall publication queue is unavailable; photo {} for UID {} remains local and retryable",
+                                            "Photo Wall publication queue is unavailable; open the Photo Wall again to retry photo {} for UID {}",
                                             photo.photo_id, photo.character_id
                                         );
                                     }
@@ -6683,6 +6825,7 @@ fn spawn_photo_wall_publication_worker(
     enabled: bool,
     transport: Option<SubmissionTransport>,
     publications: Arc<Mutex<ProfilePublicationLedger>>,
+    status: Arc<Mutex<PhotoWallPublicationStatus>>,
 ) -> Option<(SyncSender<LocalPhotoAssetReference>, JoinHandle<()>)> {
     if !enabled {
         return None;
@@ -6761,6 +6904,10 @@ fn spawn_photo_wall_publication_worker(
                         reference.declared_size,
                     ) {
                         Ok(_) => {
+                            status
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .published(reference);
                             published.insert((
                                 reference.character_id,
                                 reference.photo_id,
@@ -6771,6 +6918,10 @@ fn spawn_photo_wall_publication_worker(
                             false
                         }
                         Err(error) => {
+                            status
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .retryable_failure(reference, error.clone());
                             eprintln!(
                                 "Photo Wall image {} for UID {} remains retryable: {error}",
                                 reference.photo_id, reference.character_id
@@ -9427,6 +9578,13 @@ fn handle_connection(
         ("GET", "/api/profiles/packages") => {
             write_json(&mut stream, 200, &controller.profile_packages())?;
         }
+        ("GET", "/api/profiles/photo-wall/status") => {
+            write_json(
+                &mut stream,
+                200,
+                &controller.photo_wall_publication_status(),
+            )?;
+        }
         ("POST", "/api/profiles/packages/refresh") => match controller.refresh_profile_packages() {
             Ok(packages) => write_json(&mut stream, 200, &packages)?,
             Err(error) => write_api_error(&mut stream, 409, error)?,
@@ -9883,6 +10041,58 @@ mod tests {
     };
     use rlogs_log_format::{RlogSeal, RlogWriter};
     use rlogs_network::IpEndpoint;
+
+    fn test_photo_wall_reference() -> LocalPhotoAssetReference {
+        LocalPhotoAssetReference {
+            character_id: 3_296_036,
+            photo_id: 1,
+            picture_type: 2,
+            declared_size: Some(1_024),
+            version: Some(7),
+            source_url: "https://game.example.test/photo-1".into(),
+        }
+    }
+
+    #[test]
+    fn photo_wall_publication_status_reports_each_live_pipeline_stage() {
+        let photo = test_photo_wall_reference();
+        let mut status = PhotoWallPublicationStatus::default();
+        assert_eq!(status.snapshot().state, "waiting_for_live_parse");
+
+        status.configure(true, false);
+        assert_eq!(status.snapshot().state, "waiting_for_account_connection");
+        status.configure(true, true);
+        assert_eq!(status.snapshot().state, "waiting_for_photo_wall");
+
+        status.observed(&photo);
+        let observed = status.snapshot();
+        assert_eq!(observed.state, "observed_exact_game_image");
+        assert_eq!(observed.observed_count, 1);
+        assert_eq!(observed.last_character_id.as_deref(), Some("3296036"));
+        assert_eq!(observed.last_photo_id, Some(1));
+        assert_eq!(observed.last_picture_type, Some(2));
+        assert_eq!(observed.last_version, Some(7));
+        assert!(observed.last_activity_unix_millis.is_some());
+
+        status.queued(&photo);
+        assert_eq!(status.snapshot().state, "publication_queued");
+        assert_eq!(status.snapshot().queued_count, 1);
+
+        status.retryable_failure(&photo, "temporary publication failure");
+        let failed = status.snapshot();
+        assert_eq!(failed.state, "retryable_failure");
+        assert_eq!(failed.retryable_failure_count, 1);
+        assert_eq!(
+            failed.last_error.as_deref(),
+            Some("temporary publication failure")
+        );
+
+        status.published(&photo);
+        let published = status.snapshot();
+        assert_eq!(published.state, "published");
+        assert_eq!(published.published_count, 1);
+        assert_eq!(published.last_error, None);
+    }
 
     #[test]
     fn provisional_research_journal_retains_exact_non_prohibited_gameplay_routes() {
@@ -12731,6 +12941,10 @@ kind = "content"
         assert!(!is_developer_only_route(
             "POST",
             "/api/profiles/packages/publish"
+        ));
+        assert!(!is_developer_only_route(
+            "GET",
+            "/api/profiles/photo-wall/status"
         ));
     }
 

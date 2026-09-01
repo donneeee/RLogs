@@ -55,6 +55,12 @@ import {
   parseProfilePublishResult,
   parseProfileProjectionResult,
 } from "./profile-packages";
+import {
+  type PhotoWallPublicationStatus,
+  parsePhotoWallPublicationStatus,
+  photoWallLastCaptureSummary,
+  photoWallPublicationSummary,
+} from "./photo-wall-publication-status";
 import { projectedRunCount } from "./run-projection";
 import { parseRunReport } from "./run-report";
 import { mountRunReportSurface } from "./run-report-surface";
@@ -2835,9 +2841,17 @@ function mountProfileSyncStatusSurface(
   const render = (
     policy: SubmissionPolicyView,
     packages: ProfilePackageStoreView,
+    photoWallStatus: PhotoWallPublicationStatus,
   ) => {
     currentPolicy = policy;
     buildButton.disabled = !policy.bpsr_profile_sync.enabled;
+    const photoWallSummary =
+      !policy.bpsr_profile_sync.enabled ||
+      !policy.bpsr_profile_sync.publish_photo_wall_images
+        ? "Disabled"
+        : policy.transport_mode !== "http"
+          ? "Waiting for this PC to be connected to your rLogs account"
+          : photoWallPublicationSummary(photoWallStatus);
     const statusRows = [
       fileRow(
         "Profile Sync",
@@ -2853,6 +2867,15 @@ function mountProfileSyncStatusSurface(
       fileRow(
         "rLogs service",
         policy.transport_mode === "http" ? "Connected" : "Not connected",
+      ),
+      fileRow("Photo Wall images", photoWallSummary),
+      fileRow(
+        "Photo Wall pipeline",
+        `${photoWallStatus.observedCount.toLocaleString()} observed · ${photoWallStatus.queuedCount.toLocaleString()} queued · ${photoWallStatus.publishedCount.toLocaleString()} published · ${photoWallStatus.retryableFailureCount.toLocaleString()} retry attempts`,
+      ),
+      fileRow(
+        "Last Photo Wall capture",
+        photoWallLastCaptureSummary(photoWallStatus),
       ),
     ];
     if (DEVELOPER_TOOLS_ENABLED) {
@@ -3048,7 +3071,7 @@ function mountProfileSyncStatusSurface(
     message.classList.remove("error");
     message.textContent = "Reading bounded local package metadata…";
     try {
-      const [policy, packages] = await Promise.all([
+      const [policy, packages, photoWallStatus] = await Promise.all([
         apiJson<unknown>("/api/submissions/policy").then(
           parseSubmissionPolicy,
         ),
@@ -3058,9 +3081,12 @@ function mountProfileSyncStatusSurface(
             : "/api/profiles/packages",
           rescan ? { method: "POST" } : undefined,
         ).then(parseProfilePackageStore),
+        apiJson<unknown>("/api/profiles/photo-wall/status").then(
+          parsePhotoWallPublicationStatus,
+        ),
       ]);
       if (alive) {
-        render(policy, packages);
+        render(policy, packages, photoWallStatus);
       }
     } catch (error) {
       if (alive) {
@@ -3094,16 +3120,19 @@ function mountProfileSyncStatusSurface(
           method: "POST",
         }),
       );
-      const [policy, packages] = await Promise.all([
+      const [policy, packages, photoWallStatus] = await Promise.all([
         apiJson<unknown>("/api/submissions/policy").then(
           parseSubmissionPolicy,
         ),
         apiJson<unknown>("/api/profiles/packages").then(
           parseProfilePackageStore,
         ),
+        apiJson<unknown>("/api/profiles/photo-wall/status").then(
+          parsePhotoWallPublicationStatus,
+        ),
       ]);
       if (alive) {
-        render(policy, packages);
+        render(policy, packages, photoWallStatus);
         message.classList.remove("error");
         message.textContent =
           result.projected_package_count === 0
