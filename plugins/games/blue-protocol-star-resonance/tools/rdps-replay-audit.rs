@@ -303,6 +303,8 @@ struct ReplayAuditReport {
     team_luck_candidate_projection_by_source_actor: BTreeMap<u64, i64>,
     functional_amp_audit_gates: BTreeMap<String, u64>,
     functional_amp_audit_examples: BTreeMap<String, Vec<String>>,
+    stat_resonance_audit_gates: BTreeMap<String, u64>,
+    stat_resonance_audit_examples: BTreeMap<String, Vec<String>>,
     fiery_battle_will_audit_gates: BTreeMap<String, u64>,
     fiery_battle_will_audit_examples: BTreeMap<String, Vec<String>>,
     mechanical_power_audit_gates: BTreeMap<String, u64>,
@@ -1459,6 +1461,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let mut team_luck_candidate_reducer = DamageContributionReducer::default();
         let mut functional_amp_audit_gates = BTreeMap::<String, u64>::new();
         let mut functional_amp_audit_examples = BTreeMap::<String, Vec<String>>::new();
+        let mut stat_resonance_audit_gates = BTreeMap::<String, u64>::new();
+        let mut stat_resonance_audit_examples = BTreeMap::<String, Vec<String>>::new();
         let mut fiery_battle_will_audit_gates = BTreeMap::<String, u64>::new();
         let mut fiery_battle_will_audit_examples = BTreeMap::<String, Vec<String>>::new();
         let mut mechanical_power_audit_gates = BTreeMap::<String, u64>::new();
@@ -1692,6 +1696,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     capture_sequence(&envelope.provenance.source),
                     envelope.time.observed_micros,
                 );
+                let stat_resonance_gate = state_projector.stat_resonance_audit_gate(damage);
+                let stat_resonance_example_count = stat_resonance_audit_examples
+                    .get(stat_resonance_gate)
+                    .map_or(0, Vec::len);
+                record_audit_gate(
+                    &mut stat_resonance_audit_gates,
+                    &mut stat_resonance_audit_examples,
+                    stat_resonance_gate,
+                    damage,
+                    envelope.sequence,
+                    capture_sequence(&envelope.provenance.source),
+                    envelope.time.observed_micros,
+                );
+                if let Some(examples) = stat_resonance_audit_examples.get_mut(stat_resonance_gate)
+                    && examples.len() > stat_resonance_example_count
+                    && let Some(example) = examples.last_mut()
+                {
+                    example.push_str(" ");
+                    example.push_str(&state_projector.stat_resonance_audit_detail(damage));
+                }
                 record_audit_gate(
                     &mut fiery_battle_will_audit_gates,
                     &mut fiery_battle_will_audit_examples,
@@ -1978,6 +2002,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             team_luck_candidate_projection_by_source_actor,
             functional_amp_audit_gates,
             functional_amp_audit_examples,
+            stat_resonance_audit_gates,
+            stat_resonance_audit_examples,
             fiery_battle_will_audit_gates,
             fiery_battle_will_audit_examples,
             mechanical_power_audit_gates,

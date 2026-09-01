@@ -60,7 +60,7 @@ const STATE_RDPS_SCHEMA_VERSION: u16 = 1;
 const TARGET_VULNERABILITY_RDPS_SCHEMA_VERSION: u16 = 4;
 /// Bump whenever the projector's operation order, window semantics, stacking,
 /// or integer/rational calculation changes independently of the bundled data.
-const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v48";
+const STATE_RDPS_PROJECTOR_ALGORITHM_REVISION: &str = "bpsr-state-rdps-projector.v49";
 // Current-build Life Wave static identity. The child is a refreshable
 // five-second recipient status produced by module family 2404. Exact selected-
 // secondary-lane marginals require the authoritative local module profile and
@@ -7682,21 +7682,32 @@ impl BpsrStateDamageContributionProjector {
                     .active_players
                     .contains(&transition.window.provider_actor_id)
             {
-                self.invalidate_stat_resonance_target(target_actor_id);
+                self.stat_resonance_attack_witnesses
+                    .remove(&transition.window);
+                if exact_window_count != expected_window_count
+                    || !self
+                        .active_players
+                        .contains(&transition.window.provider_actor_id)
+                {
+                    self.invalidate_stat_resonance_target(target_actor_id);
+                }
                 continue;
             }
             let Some(previous) = self.states.get(&target_actor_id) else {
-                self.invalidate_stat_resonance_target(target_actor_id);
+                self.stat_resonance_attack_witnesses
+                    .remove(&transition.window);
                 continue;
             };
             let Some(current) = self.staged_states.get(&target_actor_id) else {
-                self.invalidate_stat_resonance_target(target_actor_id);
+                self.stat_resonance_attack_witnesses
+                    .remove(&transition.window);
                 continue;
             };
             let Some((lane, inactive_family, active_family)) =
                 exact_single_attack_family_transition(previous, current, transition.applied)
             else {
-                self.invalidate_stat_resonance_target(target_actor_id);
+                self.stat_resonance_attack_witnesses
+                    .remove(&transition.window);
                 continue;
             };
             let Some(final_attack_marginal) = active_family
@@ -7704,7 +7715,8 @@ impl BpsrStateDamageContributionProjector {
                 .checked_sub(inactive_family.final_value)
                 .filter(|value| *value > 0)
             else {
-                self.invalidate_stat_resonance_target(target_actor_id);
+                self.stat_resonance_attack_witnesses
+                    .remove(&transition.window);
                 continue;
             };
             let witness = StatResonanceAttackWitness {
@@ -7716,13 +7728,8 @@ impl BpsrStateDamageContributionProjector {
                 self.stat_resonance_attack_witnesses
                     .insert(transition.window, witness);
             } else {
-                let removal_matches =
-                    self.stat_resonance_attack_witnesses.get(&transition.window) == Some(&witness);
                 self.stat_resonance_attack_witnesses
                     .remove(&transition.window);
-                if !removal_matches {
-                    self.invalidate_stat_resonance_target(target_actor_id);
-                }
             }
         }
     }
@@ -11232,11 +11239,74 @@ impl BpsrStateDamageContributionProjector {
     }
 
     fn stat_resonance_contribution(
-        &self,
+        &mut self,
         observed_micros: u64,
         damage: &rlogs_events::DamageEvent,
     ) -> Option<ExactRationalDamageContributionEvent> {
-        self.stat_resonance_decision(observed_micros, damage).ok()
+        match self.stat_resonance_decision(observed_micros, damage) {
+            Ok(contribution) => Some(contribution),
+            Err(_) => {
+                self.mark_stat_resonance_incomplete(damage);
+                None
+            }
+        }
+    }
+
+    fn mark_stat_resonance_incomplete(&mut self, damage: &rlogs_events::DamageEvent) {
+        let recipient_actor_id = damage.source.actor_id.0;
+        if !self.active_players.contains(&recipient_actor_id) {
+            return;
+        }
+        let providers = self
+            .stat_resonance_windows
+            .iter()
+            .filter(|window| window.target_actor_id == recipient_actor_id)
+            .filter(|window| {
+                window.provider_actor_id != recipient_actor_id
+                    && self.active_players.contains(&window.provider_actor_id)
+            })
+            .map(|window| window.provider_actor_id)
+            .collect::<HashSet<_>>();
+        if providers.is_empty() {
+            return;
+        }
+        self.incomplete_rdps_actor_ids.insert(recipient_actor_id);
+        self.incomplete_rdps_actor_ids.extend(providers);
+    }
+
+    /// Audit-only explanation for why a damage row did or did not receive a
+    /// Stat Resonance transfer. Live projection does not call this method; the
+    /// sealed replay auditor uses it to make remote-recipient proof gaps
+    /// measurable instead of collapsing them into an unexplained undercount.
+    pub fn stat_resonance_audit_gate(&self, damage: &rlogs_events::DamageEvent) -> &'static str {
+        match self.stat_resonance_decision(self.latest_observed_micros, damage) {
+            Ok(_) => "emitted",
+            Err(gate) => gate,
+        }
+    }
+
+    pub fn stat_resonance_audit_detail(&self, damage: &rlogs_events::DamageEvent) -> String {
+        let actor_id = damage.source.actor_id.0;
+        let state = self.states.get(&actor_id);
+        let relevant_attributes = self
+            .formula_attributes_by_actor
+            .get(&actor_id)
+            .map(|attributes| {
+                attributes
+                    .iter()
+                    .filter(|(attribute_id, _)| {
+                        matches!(**attribute_id, 11_010..=11_034 | 11_330..=11_344)
+                    })
+                    .map(|(attribute_id, value)| (*attribute_id, *value))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        format!(
+            "class={:?} physical={:?} magical={:?} relevant_attributes={relevant_attributes:?}",
+            self.class_id_by_actor.get(&actor_id),
+            state.map(|state| &state.physical_attack),
+            state.map(|state| &state.magical_attack),
+        )
     }
 
     fn stat_resonance_decision(
@@ -28056,6 +28126,48 @@ mod tests {
         assert_eq!(
             projector.stat_resonance_decision(106, &damage),
             Err("provider_window_missing")
+        );
+    }
+
+    #[test]
+    fn stat_resonance_marks_remote_provider_and_recipient_incomplete_without_exact_witness() {
+        let first_wire = WireKey {
+            connection_id: 1,
+            stream_id: 2,
+            capture_sequence: 3,
+        };
+        let mut projector = BpsrStateDamageContributionProjector {
+            active_players: HashSet::from([2, 4]),
+            current_wire: Some(first_wire),
+            ..BpsrStateDamageContributionProjector::default()
+        };
+        let damage = stat_resonance_test_damage();
+        projector.observe_stat_resonance_status(&stat_resonance_test_status(StatusState::Applied));
+        projector.advance_wire(WireKey {
+            capture_sequence: 4,
+            ..first_wire
+        });
+        assert!(
+            projector
+                .stat_resonance_windows
+                .iter()
+                .any(|window| { window.target_actor_id == 4 && window.provider_actor_id == 2 }),
+            "remote lifecycle authority must survive a missing local attack snapshot"
+        );
+
+        assert_eq!(projector.stat_resonance_contribution(101, &damage), None);
+        assert_eq!(
+            projector.incomplete_rdps_actor_ids,
+            HashSet::from([2, 4]),
+            "a remote Stat Resonance window without an attack-family witness is partial for both sides of the transfer"
+        );
+
+        projector.incomplete_rdps_actor_ids.clear();
+        projector.stat_resonance_windows.clear();
+        assert_eq!(projector.stat_resonance_contribution(102, &damage), None);
+        assert!(
+            projector.incomplete_rdps_actor_ids.is_empty(),
+            "ordinary damage outside a Stat Resonance window must remain complete"
         );
     }
 
