@@ -11785,6 +11785,7 @@ mod tests {
             &submission_policy::ProfileSyncPolicy {
                 enabled: false,
                 automatic_profiles: true,
+                publish_photo_wall_images: false,
             },
         )
         .unwrap();

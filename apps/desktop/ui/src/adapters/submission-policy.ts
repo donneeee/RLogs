@@ -17,6 +17,7 @@ export interface SubmissionPolicy {
   bpsr_profile_sync: {
     enabled: boolean;
     automatic_profiles: boolean;
+    publish_photo_wall_images: boolean;
   };
 }
 
@@ -159,7 +160,8 @@ function isProfileSyncPolicy(value: unknown): boolean {
   return (
     isRecord(value) &&
     typeof value.enabled === "boolean" &&
-    typeof value.automatic_profiles === "boolean"
+    typeof value.automatic_profiles === "boolean" &&
+    typeof value.publish_photo_wall_images === "boolean"
   );
 }
 

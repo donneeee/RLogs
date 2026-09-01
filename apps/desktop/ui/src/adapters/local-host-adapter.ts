@@ -2605,6 +2605,15 @@ function mountSubmissionPolicyOptionsSurface(
       : "Builds and publishes current per-character packages when your rLogs account is connected. If unavailable, the sealed package remains local and retryable.",
   );
   form.append(enable.label, automatic.label);
+  const photoWallImages = isUploader
+    ? null
+    : checkboxOption(
+        "Publish my Photo Wall images",
+        "Separately permits rLogs to copy the photos displayed on your in-game Photo Wall to your public profile. This stays off unless you explicitly enable it; ordinary profile synchronization does not publish the image files.",
+      );
+  if (photoWallImages !== null) {
+    form.append(photoWallImages.label);
+  }
 
   let visibility: HTMLSelectElement | null = null;
   let retention: HTMLSelectElement | null = null;
@@ -2667,6 +2676,10 @@ function mountSubmissionPolicyOptionsSurface(
       enable.input.checked = view.bpsr_profile_sync.enabled;
       automatic.input.checked =
         view.bpsr_profile_sync.automatic_profiles;
+      if (photoWallImages !== null) {
+        photoWallImages.input.checked =
+          view.bpsr_profile_sync.publish_photo_wall_images;
+      }
     }
     const detailRows = [
       fileRow(
@@ -2716,6 +2729,10 @@ function mountSubmissionPolicyOptionsSurface(
       updated.bpsr_profile_sync.enabled = enable.input.checked;
       updated.bpsr_profile_sync.automatic_profiles =
         automatic.input.checked;
+      if (photoWallImages !== null) {
+        updated.bpsr_profile_sync.publish_photo_wall_images =
+          photoWallImages.input.checked;
+      }
     }
     try {
       const view = parseSubmissionPolicy(

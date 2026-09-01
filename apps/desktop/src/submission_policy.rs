@@ -63,6 +63,10 @@ impl Default for LogUploaderPolicy {
 pub struct ProfileSyncPolicy {
     pub enabled: bool,
     pub automatic_profiles: bool,
+    /// Photo Wall images are substantially more personal than ordinary game
+    /// progression and therefore require a second, explicit opt-in.
+    #[serde(default)]
+    pub publish_photo_wall_images: bool,
 }
 
 impl Default for ProfileSyncPolicy {
@@ -70,6 +74,7 @@ impl Default for ProfileSyncPolicy {
         Self {
             enabled: false,
             automatic_profiles: true,
+            publish_photo_wall_images: false,
         }
     }
 }
@@ -289,11 +294,13 @@ mod tests {
         let mut store = SubmissionPolicyStore::open(path.clone()).unwrap();
         assert!(!store.policy().log_uploader.enabled);
         assert!(!store.policy().bpsr_profile_sync.enabled);
+        assert!(!store.policy().bpsr_profile_sync.publish_photo_wall_images);
         assert_eq!(store.snapshot().transport_mode, "disconnected");
 
         let mut policy = store.policy().clone();
         policy.log_uploader.enabled = true;
         policy.bpsr_profile_sync.enabled = true;
+        policy.bpsr_profile_sync.publish_photo_wall_images = true;
         store.update(policy.clone()).unwrap();
         let restored = SubmissionPolicyStore::open(path.clone()).unwrap();
         assert_eq!(restored.policy(), &policy);

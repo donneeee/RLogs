@@ -22,6 +22,7 @@ function policy() {
     bpsr_profile_sync: {
       enabled: false,
       automatic_profiles: true,
+      publish_photo_wall_images: false,
     },
     issue: null,
   };
@@ -32,6 +33,7 @@ describe("submission policy", () => {
     const parsed = parseSubmissionPolicy(policy());
     expect(parsed.log_uploader.enabled).toBe(false);
     expect(parsed.bpsr_profile_sync.enabled).toBe(false);
+    expect(parsed.bpsr_profile_sync.publish_photo_wall_images).toBe(false);
     expect(editableSubmissionPolicy(parsed)).not.toHaveProperty("settings_path");
   });
 
