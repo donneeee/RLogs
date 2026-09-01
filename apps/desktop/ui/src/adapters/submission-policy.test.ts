@@ -5,6 +5,7 @@ import {
   parseMockSubmissionResult,
   parseSubmissionPolicy,
   parseSubmissionTransportResult,
+  submissionVisibilityExplanation,
 } from "./submission-policy";
 
 function policy() {
@@ -29,6 +30,12 @@ function policy() {
 }
 
 describe("submission policy", () => {
+  it("explains exactly where each report visibility appears", () => {
+    expect(submissionVisibilityExplanation("private")).toContain("not publicly accessible");
+    expect(submissionVisibilityExplanation("unlisted")).toContain("not listed on Home or Parses");
+    expect(submissionVisibilityExplanation("public")).toContain("listed on Home and Parses");
+  });
+
   it("accepts disabled-by-default independent plug-in policies", () => {
     const parsed = parseSubmissionPolicy(policy());
     expect(parsed.log_uploader.enabled).toBe(false);

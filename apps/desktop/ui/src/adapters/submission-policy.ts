@@ -6,6 +6,19 @@ export type SuccessfulArtifactRetention =
 
 export type SubmissionVisibility = "private" | "unlisted" | "public";
 
+export function submissionVisibilityExplanation(
+  visibility: SubmissionVisibility,
+): string {
+  switch (visibility) {
+    case "private":
+      return "Private — not publicly accessible or listed.";
+    case "unlisted":
+      return "Unlisted — available by its verified share link, but not listed on Home or Parses.";
+    case "public":
+      return "Public — listed on Home and Parses after server verification.";
+  }
+}
+
 export interface SubmissionPolicy {
   schema_version: 1;
   log_uploader: {

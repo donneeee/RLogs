@@ -81,6 +81,7 @@ import {
   parseMockSubmissionResult,
   parseSubmissionPolicy,
   parseSubmissionTransportResult,
+  submissionVisibilityExplanation,
 } from "./submission-policy";
 import {
   applyThemeSettings,
@@ -2626,11 +2627,11 @@ function mountSubmissionPolicyOptionsSurface(
   if (isUploader) {
     const visibilityField = selectOption(
       "Default report visibility",
-      "Used when a new local draft is created.",
+      "Used when a new local draft is created. Only Public reports appear on the website Home and Parses pages.",
       [
-        ["private", "Private"],
-        ["unlisted", "Unlisted"],
-        ["public", "Public"],
+        ["private", "Private — local/account only"],
+        ["unlisted", "Unlisted — share link only"],
+        ["public", "Public — Home and Parses"],
       ],
     );
     visibility = visibilityField.select;
@@ -2706,7 +2707,7 @@ function mountSubmissionPolicyOptionsSurface(
       view.issue ??
       (isUploader
         ? view.transport_mode === "http"
-          ? "Verified uploads will use your authenticated rLogs account connection."
+          ? `Verified uploads will use your authenticated rLogs account connection. ${submissionVisibilityExplanation(view.log_uploader.default_visibility)}`
           : "Connect this PC to your rLogs account before submitting parses."
         : view.transport_mode === "http"
           ? "Authenticated profile publication is ready."
@@ -3343,6 +3344,7 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
 
   async function uploadSubmission(
     queueId: string,
+    visibility: SubmissionPolicy["log_uploader"]["default_visibility"],
     uploadButton: HTMLButtonElement,
     uploadMessage: HTMLElement,
   ) {
@@ -3374,6 +3376,7 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
           `${result.duplicate ? "Existing" : "New"} replayed report ${result.report_id}; `,
           link,
           `. ${result.uploaded_chunk_count.toLocaleString()} chunk${result.uploaded_chunk_count === 1 ? "" : "s"} sent (${formatBytes(result.uploaded_bytes)}).`,
+          ` ${submissionVisibilityExplanation(visibility)}`,
         );
       }
     } catch (error) {
@@ -3421,7 +3424,7 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
       ),
       fileRow(
         "Default visibility",
-        formatIdentifier(policy.log_uploader.default_visibility),
+        submissionVisibilityExplanation(policy.log_uploader.default_visibility),
       ),
       fileRow(
         "rLogs service",
@@ -3476,7 +3479,7 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
           text("strong", entry.capture_session_id),
           text(
             "small",
-            `${formatIdentifier(entry.state)} · ${formatIdentifier(entry.visibility)} · ${new Date(entry.created_unix_millis).toLocaleString()}`,
+            `${formatIdentifier(entry.state)} · ${submissionVisibilityExplanation(entry.visibility)} · ${new Date(entry.created_unix_millis).toLocaleString()}`,
           ),
         );
         const integrity = text(
@@ -3567,7 +3570,7 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
           "runtime-action-message",
         );
         uploadButton.addEventListener("click", () => {
-          void uploadSubmission(entry.queue_id, uploadButton, uploadMessage);
+          void uploadSubmission(entry.queue_id, entry.visibility, uploadButton, uploadMessage);
         });
         uploadActions.append(uploadButton, uploadMessage);
         dryRunActions.append(dryRunButton, dryRunMessage);
