@@ -20,9 +20,9 @@ use thiserror::Error;
 use crate::{
     BpsrFramerSetConfig, BpsrFramerSetConfigError, CaptureAdapter, CaptureRecord,
     CaptureRecordDraft, CaptureRecordKind, CaptureSession, GameBuild, JsonlJournalError,
-    JsonlJournalWriter, ProtocolPack, ProtocolRuntime, ProtocolRuntimeConfig, ProtocolRuntimeError,
-    ResearchPipeline, RouteKey, SealedDungeonRunLog, SegmentedDungeonLogWriter,
-    SegmentedRecordingError,
+    JsonlJournalWriter, LocalPhotoAssetReference, ProtocolPack, ProtocolRuntime,
+    ProtocolRuntimeConfig, ProtocolRuntimeError, ResearchPipeline, RouteKey, SealedDungeonRunLog,
+    SegmentedDungeonLogWriter, SegmentedRecordingError,
 };
 
 #[derive(Debug, Clone)]
@@ -188,7 +188,16 @@ impl<'a> ContinuousBpsrRecorder<'a> {
     pub fn process_frame_with_events(
         &mut self,
         frame: CapturedFrame,
+        observe: impl FnMut(&rlogs_events::EventEnvelope),
+    ) -> Result<Vec<SealedDungeonRunLog>, ContinuousRecordingError> {
+        self.process_frame_with_local_observations(frame, observe, |_| {})
+    }
+
+    pub fn process_frame_with_local_observations(
+        &mut self,
+        frame: CapturedFrame,
         mut observe: impl FnMut(&rlogs_events::EventEnvelope),
+        mut observe_photo: impl FnMut(&LocalPhotoAssetReference),
     ) -> Result<Vec<SealedDungeonRunLog>, ContinuousRecordingError> {
         self.metrics.frame_count = self.metrics.frame_count.saturating_add(1);
         let pipeline = self
@@ -197,7 +206,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
             .ok_or(ContinuousRecordingError::NoAttributedConnection)?;
         let mut drafts = Vec::new();
         pipeline.process_frame(&frame, |draft| drafts.push(draft));
-        self.process_drafts(drafts, &mut observe)
+        self.process_drafts(drafts, &mut observe, &mut observe_photo)
     }
 
     /// Drains transport/framing state and seals an active run as incomplete.
@@ -207,7 +216,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         if let Some(pipeline) = &mut self.pipeline {
             let mut drafts = Vec::new();
             pipeline.finish(|draft| drafts.push(draft));
-            sealed.extend(self.process_drafts(drafts, &mut |_| {})?);
+            sealed.extend(self.process_drafts(drafts, &mut |_| {}, &mut |_| {})?);
         }
         if let Some(segments) = &mut self.segments {
             let final_segment = segments.finish()?;
@@ -224,6 +233,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         &mut self,
         drafts: Vec<CaptureRecordDraft>,
         observe: &mut impl FnMut(&rlogs_events::EventEnvelope),
+        observe_photo: &mut impl FnMut(&LocalPhotoAssetReference),
     ) -> Result<Vec<SealedDungeonRunLog>, ContinuousRecordingError> {
         let mut sealed = Vec::new();
         for draft in drafts {
@@ -261,6 +271,9 @@ impl<'a> ContinuousBpsrRecorder<'a> {
                 .saturating_add(batch.events.len() as u64);
             for event in &batch.events {
                 observe(event);
+            }
+            for photo in &batch.local_photo_assets {
+                observe_photo(photo);
             }
             let newly_sealed = match &mut self.segments {
                 Some(segments) => segments.consume_batch(batch.events)?,
@@ -759,6 +772,127 @@ mod tests {
             }),
         };
         assert!(retains_research_record(&gap, &retained_routes));
+    }
+
+    #[test]
+    fn correlated_photograph_return_reaches_only_the_local_photo_observer() {
+        const PHOTOGRAPH: u64 = 904_190_988;
+        const GET_ALBUM_PHOTOS: u32 = 4;
+        let return_route = RouteKey::new(
+            crate::PacketDirection::ServerToClient,
+            crate::FragmentKind::Return,
+            PHOTOGRAPH,
+            GET_ALBUM_PHOTOS,
+        );
+        let pack = ProtocolPack::build(crate::ProtocolPackDefinition {
+            schema_version: crate::PROTOCOL_PACK_SCHEMA_VERSION,
+            pack_id: "photo-return-correlation-fixture".into(),
+            target: crate::ProtocolPackTarget {
+                deployment_id: "global".into(),
+                region_id: None,
+                channel: "steam".into(),
+                build_id: "photo-fixture".into(),
+                executable_version: None,
+            },
+            acquisition: crate::ProtocolPackAcquisition {
+                frame_up_layout: crate::BpsrFrameUpLayout::NestedAfterFourBytes,
+            },
+            provenance: Vec::new(),
+            routes: vec![route(
+                return_route,
+                "Photograph",
+                "GetAlbumPhotos",
+                crate::ProtocolPackRouteDisposition::Allowed {
+                    domain: crate::DecoderKind::GetAlbumPhotosV1.domain(),
+                    decoder: crate::DecoderKind::GetAlbumPhotosV1,
+                },
+            )],
+        })
+        .unwrap();
+        let directory = std::env::temp_dir().join(format!(
+            "rlogs-photo-return-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let build = GameBuild {
+            deployment_id: "global".into(),
+            region_id: None,
+            channel: "steam".into(),
+            build_id: "photo-fixture".into(),
+            executable_version: None,
+        };
+        let mut recorder = ContinuousBpsrRecorder::new(
+            &pack,
+            ContinuousRecordingConfig {
+                base_session_id: "photo-return".into(),
+                producer: "test".into(),
+                build,
+                region: RegionIdentity {
+                    deployment_id: "global".into(),
+                    region_id: "global".into(),
+                    realm_id: None,
+                    world_id: None,
+                },
+                region_evidence: Vec::new(),
+                decoder: ProtocolRuntimeConfig::default(),
+                output_directory: directory.clone(),
+                persist_dungeon_logs: false,
+                research_journal: None,
+            },
+        )
+        .unwrap();
+        let client = endpoint(1, 31_000);
+        let server = endpoint(2, 32_000);
+        recorder
+            .add_connections([GameConnection { client, server }])
+            .unwrap();
+
+        let call_id = 19;
+        let call_wire = nested_frame_up(PHOTOGRAPH, GET_ALBUM_PHOTOS, call_id, &[]);
+        recorder
+            .process_frame(captured_frame(1, 100, client, server, 100, &call_wire))
+            .unwrap();
+        let body = schema::GetAlbumPhotosReturn {
+            ret: Some(schema::GetAlbumPhotosReply {
+                character_id: Some(3_296_036),
+                photo_graphs: vec![schema::PhotoGraphShow {
+                    photo_id: Some(42),
+                    images: vec![schema::PhotoImageInfo {
+                        picture_type: Some(2),
+                        size: Some(900),
+                        version: Some(3),
+                        cos_url: Some("https://photo.playbpsr.com/xinghen-prod/render.webp".into()),
+                    }],
+                }],
+            }),
+        }
+        .encode_to_vec();
+        let mut return_payload = Vec::new();
+        return_payload.extend_from_slice(&1_u32.to_be_bytes());
+        return_payload.extend_from_slice(&call_id.to_be_bytes());
+        return_payload.extend_from_slice(&0_u32.to_be_bytes());
+        return_payload.extend_from_slice(&body);
+        let return_wire = bpsr_frame(3, &return_payload);
+        let mut events = Vec::new();
+        let mut photos = Vec::new();
+        recorder
+            .process_frame_with_local_observations(
+                captured_frame(2, 200, server, client, 200, &return_wire),
+                |event| events.push(event.clone()),
+                |photo| photos.push(photo.clone()),
+            )
+            .unwrap();
+
+        assert!(events.is_empty());
+        assert_eq!(photos.len(), 1);
+        assert_eq!(photos[0].character_id, 3_296_036);
+        assert_eq!(photos[0].photo_id, 42);
+        assert_eq!(photos[0].version, Some(3));
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

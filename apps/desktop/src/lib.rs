@@ -62,8 +62,8 @@ use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline, BpsrSceneRunIdentity,
     BpsrStateDamageContributionProjector, ContinuousBpsrRecorder, ContinuousRecordingConfig,
     ContinuousResearchJournalConfig, GameBuild, LiveProfileProjection, LiveProtocolPackKind,
-    NetworkEndpoint, OfflineRecordingConfig, OfflineRecordingLimits, OfflineRecordingReport,
-    ProtocolPack, ProtocolPackRouteDisposition, ProtocolRuntimeConfig,
+    LocalPhotoAssetReference, NetworkEndpoint, OfflineRecordingConfig, OfflineRecordingLimits,
+    OfflineRecordingReport, ProtocolPack, ProtocolPackRouteDisposition, ProtocolRuntimeConfig,
     RDPS_VALIDATION_REPORT_SCHEMA_VERSION, RdpsValidationAnalyzer, RdpsValidationProgress,
     RdpsValidationReport, RegionResolverError, ResolvedRegion, RouteKey, SealedDungeonRunLog,
     ServerRealmCatalog, auxiliary_action_presentation, battle_imagine_presentation,
@@ -132,6 +132,9 @@ const SESSION_RECORDER_PLUGIN_ID: &str = "app.rlogs.session-recorder";
 const MAX_REQUEST_HEADER_BYTES: usize = 64 * 1024;
 const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 const MAX_OVERLAY_BACKGROUND_BYTES: usize = 8 * 1024 * 1024;
+const PHOTO_WALL_PUBLICATION_QUEUE_CAPACITY: usize = 64;
+const PHOTO_WALL_PENDING_ASSET_CAPACITY: usize = 256;
+const PHOTO_WALL_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 const PROVISIONAL_RESEARCH_SERVICE_NAMES: [&str; 3] = ["World", "WorldNtf", "GrpcTeamNtf"];
 
 fn submission_service_url(developer_tools_enabled: bool, developer_override: Option<&str>) -> &str {
@@ -5331,6 +5334,15 @@ impl RuntimeController {
                     // dirty bit would leave profile/loadout enrichment stale
                     // until an unrelated later combat or terminal event.
                     let mut live_dirty = false;
+                    let (photo_publication_sender, photo_publication_worker) =
+                        spawn_photo_wall_publication_worker(
+                            profile_sync.enabled && profile_sync.publish_photo_wall_images,
+                            submission_transport.clone(),
+                            Arc::clone(&profile_publications),
+                        )
+                        .map_or((None, None), |(sender, worker)| {
+                            (Some(sender), Some(worker))
+                        });
                     loop {
                         let Some(frame) = capture
                             .next_frame()
@@ -5361,8 +5373,9 @@ impl RuntimeController {
                         let mut frozen_capture_time_identities = None;
                         let mut live_snapshot_error = None;
                         let mut live_event_lines = Vec::new();
+                        let mut local_photo_assets = Vec::new();
                         let sealed = recorder
-                            .process_frame_with_events(frame, |event| {
+                            .process_frame_with_local_observations(frame, |event| {
                                 if matches!(
                                     &event.event,
                                     CanonicalEvent::Timeline(timeline)
@@ -5657,8 +5670,25 @@ impl RuntimeController {
                                 // this typed event. Only then do we format the
                                 // compact, pre-localization Event Viewer line.
                                 live_event_lines.push(LiveEventLine::from_envelope(event));
+                            }, |photo| {
+                                local_photo_assets.push(photo.clone());
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
+                        if let Some(sender) = &photo_publication_sender {
+                            for photo in local_photo_assets {
+                                match sender.try_send(photo) {
+                                    Ok(()) => {}
+                                    Err(TrySendError::Full(photo)) => eprintln!(
+                                        "Photo Wall publication queue is full; photo {} for UID {} remains local and retryable",
+                                        photo.photo_id, photo.character_id
+                                    ),
+                                    Err(TrySendError::Disconnected(photo)) => eprintln!(
+                                        "Photo Wall publication worker stopped; photo {} for UID {} remains local and retryable",
+                                        photo.photo_id, photo.character_id
+                                    ),
+                                }
+                            }
+                        }
                         if let Some(error) = live_snapshot_error {
                             return Err(error);
                         }
@@ -5839,6 +5869,12 @@ impl RuntimeController {
                             profile_sync.clone(),
                             submission_transport.clone(),
                         );
+                    }
+                    drop(photo_publication_sender);
+                    if let Some(worker) = photo_publication_worker {
+                        worker.join().map_err(|_| {
+                            "Photo Wall publication worker stopped unexpectedly".to_owned()
+                        })?;
                     }
                     let _ = checkpoint_writer.finish();
                     let session_validation_report = rdps_validation.report();
@@ -6639,6 +6675,115 @@ fn apply_profile_sync_policy(
             Some(error)
         }
     }
+}
+
+fn spawn_photo_wall_publication_worker(
+    enabled: bool,
+    transport: Option<SubmissionTransport>,
+    publications: Arc<Mutex<ProfilePublicationLedger>>,
+) -> Option<(SyncSender<LocalPhotoAssetReference>, JoinHandle<()>)> {
+    if !enabled {
+        return None;
+    }
+    let transport = transport?;
+    let (sender, receiver) =
+        sync_channel::<LocalPhotoAssetReference>(PHOTO_WALL_PUBLICATION_QUEUE_CAPACITY);
+    let worker = thread::Builder::new()
+        .name("rlogs-photo-wall-publisher".into())
+        .spawn(move || {
+            let mut pending = BTreeMap::<(i64, u32), LocalPhotoAssetReference>::new();
+            let mut attempted_at = BTreeMap::<(i64, u32), Instant>::new();
+            let mut published = BTreeSet::<(i64, u32, Option<u32>)>::new();
+            let mut disconnected = false;
+            while !disconnected {
+                match receiver.recv_timeout(Duration::from_secs(1)) {
+                    Ok(reference) => {
+                        let key = (reference.character_id, reference.photo_id);
+                        if published.contains(&(
+                            reference.character_id,
+                            reference.photo_id,
+                            reference.version,
+                        )) {
+                            continue;
+                        }
+                        let replace = pending.get(&key).is_none_or(|current| {
+                            reference.version.unwrap_or_default()
+                                >= current.version.unwrap_or_default()
+                        });
+                        if replace {
+                            if pending.len() >= PHOTO_WALL_PENDING_ASSET_CAPACITY
+                                && !pending.contains_key(&key)
+                            {
+                                if let Some(oldest) = attempted_at
+                                    .iter()
+                                    .min_by_key(|(_, attempted)| **attempted)
+                                    .map(|(key, _)| *key)
+                                    .or_else(|| pending.keys().next().copied())
+                                {
+                                    pending.remove(&oldest);
+                                    attempted_at.remove(&oldest);
+                                }
+                            }
+                            pending.insert(key, reference);
+                            attempted_at.remove(&key);
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        disconnected = true;
+                    }
+                }
+                pending.retain(|key, reference| {
+                    if !disconnected
+                        && attempted_at.get(key).is_some_and(|attempted| {
+                            attempted.elapsed() < PHOTO_WALL_RETRY_INTERVAL
+                        })
+                    {
+                        return true;
+                    }
+                    attempted_at.insert(*key, Instant::now());
+                    let character_id = reference.character_id.to_string();
+                    let profile_id = publications
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .latest_for_character(&character_id)
+                        .map(|record| record.profile_id.clone());
+                    let Some(profile_id) = profile_id else {
+                        return !disconnected;
+                    };
+                    match transport.publish_profile_photo_from_source(
+                        &profile_id,
+                        reference.photo_id,
+                        &reference.source_url,
+                        reference.declared_size,
+                    ) {
+                        Ok(_) => {
+                            published.insert((
+                                reference.character_id,
+                                reference.photo_id,
+                                reference.version,
+                            ));
+                            attempted_at.remove(key);
+                            false
+                        }
+                        Err(error) => {
+                            eprintln!(
+                                "Photo Wall image {} for UID {} remains retryable: {error}",
+                                reference.photo_id, reference.character_id
+                            );
+                            if disconnected {
+                                attempted_at.remove(key);
+                                false
+                            } else {
+                                true
+                            }
+                        }
+                    }
+                });
+            }
+        })
+        .ok()?;
+    Some((sender, worker))
 }
 
 fn publish_profile_package_ids(

@@ -9,6 +9,7 @@ use std::{
 use reqwest::{
     Url,
     blocking::{Client, RequestBuilder},
+    redirect::Policy,
 };
 use rlogs_profiles::LocalProfilePackage;
 use rlogs_submission::{
@@ -20,6 +21,7 @@ use serde::{Deserialize, Serialize};
 const ENDPOINT_ENVIRONMENT_VARIABLE: &str = "RLOGS_SUBMISSION_API_URL";
 const TOKEN_ENVIRONMENT_VARIABLE: &str = "RLOGS_SUBMISSION_DEVICE_TOKEN";
 const MAXIMUM_UPLOAD_CHUNK_BYTES: usize = 16 * 1024 * 1024;
+const MAXIMUM_PHOTO_WALL_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct SubmissionTransport {
@@ -55,6 +57,17 @@ pub struct ProfilePublishResult {
     pub module_inventory_count: usize,
     pub equipped_module_count: usize,
     pub profile_url: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct PhotoAssetPublishResult {
+    pub schema_version: u16,
+    pub profile_id: String,
+    pub photo_id: u32,
+    pub byte_length: usize,
+    pub sha256: String,
+    pub media_type: String,
+    pub image_path: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -369,6 +382,80 @@ impl SubmissionTransport {
         Ok(response)
     }
 
+    pub fn publish_profile_photo_from_source(
+        &self,
+        profile_id: &str,
+        photo_id: u32,
+        source_url: &str,
+        declared_size: Option<u32>,
+    ) -> Result<PhotoAssetPublishResult, String> {
+        validate_profile_id(profile_id)?;
+        if photo_id == 0 {
+            return Err("Photo Wall photo ID must be positive".into());
+        }
+        if declared_size.is_some_and(|size| size as usize > MAXIMUM_PHOTO_WALL_IMAGE_BYTES) {
+            return Err("Photo Wall image exceeds the publication size limit".into());
+        }
+        let source_url = reviewed_photo_source_url(source_url)?;
+        // Never reuse the authenticated receiver request for the game CDN: the
+        // app token must be sent only to the configured rLogs origin.
+        let source_client = Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(30))
+            .redirect(Policy::none())
+            .user_agent(concat!("rLogs/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .map_err(|error| format!("could not create Photo Wall fetch client: {error}"))?;
+        let source = source_client
+            .get(source_url)
+            .send()
+            .map_err(|error| format!("could not fetch the reviewed Photo Wall image: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("the reviewed Photo Wall image was unavailable: {error}"))?;
+        if source
+            .content_length()
+            .is_some_and(|length| length > MAXIMUM_PHOTO_WALL_IMAGE_BYTES as u64)
+        {
+            return Err("Photo Wall image exceeds the publication size limit".into());
+        }
+        let mut bytes = Vec::new();
+        source
+            .take(MAXIMUM_PHOTO_WALL_IMAGE_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("could not read the reviewed Photo Wall image: {error}"))?;
+        if bytes.is_empty() || bytes.len() > MAXIMUM_PHOTO_WALL_IMAGE_BYTES {
+            return Err("Photo Wall image was empty or exceeded the publication size limit".into());
+        }
+        let endpoint = format!(
+            "v1/games/blue-protocol-star-resonance/profiles/{profile_id}/photo-wall/{photo_id}"
+        );
+        let response: PhotoAssetPublishResult = self
+            .authorized(
+                self.client
+                    .put(self.url(&endpoint)?)
+                    .timeout(Duration::from_secs(60))
+                    .body(bytes),
+            )
+            .send()
+            .map_err(|error| format!("profile receiver could not publish the photo: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("profile receiver rejected the photo: {error}"))?
+            .json()
+            .map_err(|error| {
+                format!("profile receiver returned an invalid photo receipt: {error}")
+            })?;
+        if response.schema_version != 1
+            || response.profile_id != profile_id
+            || response.photo_id != photo_id
+            || response.byte_length == 0
+            || response.sha256.len() != 64
+            || response.image_path != format!("/v1/profiles/{profile_id}/photo-wall/{photo_id}")
+        {
+            return Err("Photo Wall publication receipt did not match the requested asset".into());
+        }
+        Ok(response)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn result(
         &self,
@@ -409,6 +496,34 @@ impl SubmissionTransport {
             None => request,
         }
     }
+}
+
+fn validate_profile_id(profile_id: &str) -> Result<(), String> {
+    if profile_id.len() == 36
+        && profile_id.starts_with("prf_")
+        && profile_id[4..]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        Ok(())
+    } else {
+        Err("published profile ID is invalid".into())
+    }
+}
+
+fn reviewed_photo_source_url(value: &str) -> Result<Url, String> {
+    let url = Url::parse(value).map_err(|_| "reviewed Photo Wall URL is invalid".to_owned())?;
+    if url.scheme() != "https"
+        || url.host_str() != Some("photo.playbpsr.com")
+        || url.port().is_some()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || !url.path().starts_with("/xinghen-prod/")
+        || url.fragment().is_some()
+    {
+        return Err("reviewed Photo Wall URL is outside the approved BPSR image origin".into());
+    }
+    Ok(url)
 }
 
 #[derive(Debug, Deserialize)]
@@ -517,6 +632,19 @@ mod tests {
         assert!(
             SubmissionTransport::new("https://token@receiver.example.com", Some("token")).is_err()
         );
+    }
+
+    #[test]
+    fn photo_sources_are_limited_to_the_reviewed_bpsr_image_origin() {
+        assert!(
+            reviewed_photo_source_url(
+                "https://photo.playbpsr.com/xinghen-prod/1/3296036/photo.png"
+            )
+            .is_ok()
+        );
+        assert!(reviewed_photo_source_url("http://photo.playbpsr.com/xinghen-prod/a.png").is_err());
+        assert!(reviewed_photo_source_url("https://example.com/xinghen-prod/a.png").is_err());
+        assert!(reviewed_photo_source_url("https://photo.playbpsr.com/private/a.png").is_err());
     }
 
     #[test]

@@ -897,7 +897,7 @@ mod tests {
         );
         assert_eq!(
             current.digest(),
-            "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e"
+            "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c"
         );
 
         let unchanged_route_prefix = &current.definition().routes[..48];
@@ -907,7 +907,16 @@ mod tests {
             "61da48adb6ec45a940f4d85d520750eb0d62baee20f0e9dfb5f5dc0e37953ae2",
             "profile-route carry-forward must not modify any pre-existing route"
         );
-        assert_eq!(current.definition().routes.len(), 53);
+        assert_eq!(current.definition().routes.len(), 55);
+        let profile_route_prefix = &current.definition().routes[..53];
+        assert_eq!(
+            format!(
+                "{:x}",
+                Sha256::digest(serde_json::to_vec(profile_route_prefix).unwrap())
+            ),
+            "ddef4d6ad1b32f81f9c2117f689d27b3f4e845a1f0a4b83793d96265166efa7f",
+            "Photo Wall support must append routes without changing the reviewed v4 route set"
+        );
         assert!(current.definition().routes[48..].iter().all(|route| {
             matches!(
                 route.disposition,
@@ -928,6 +937,8 @@ mod tests {
                 (504_281_929, 1),
                 (966_773_353, 2),
                 (966_773_353, 3),
+                (904_190_988, 4),
+                (904_190_988, 12),
             ]
         );
     }

@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "artifact": "photo-wall-route-proof",
+  "game_build": "24687926",
+  "deployment": "global",
+  "channel": "steam",
+  "decision": "append two local-only reviewed photograph return decoders as candidate routes",
+  "protocol_pack_migration": {
+    "prior_pack_id": "global-steam-24687926-static-candidate-v4",
+    "prior_protocol_pack_digest": "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
+    "photo_pack_id": "global-steam-24687926-static-candidate-v5",
+    "photo_protocol_pack_digest": "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
+    "prior_route_count": 53,
+    "photo_route_count": 55,
+    "unchanged_route_prefix_count": 53,
+    "unchanged_route_prefix_serde_json_sha256": "ddef4d6ad1b32f81f9c2117f689d27b3f4e845a1f0a4b83793d96265166efa7f",
+    "added_route_count": 2,
+    "modified_existing_route_count": 0,
+    "removed_route_count": 0,
+    "added_combat_route_count": 0,
+    "modified_combat_route_count": 0,
+    "removed_combat_route_count": 0,
+    "formula_compatibility_decision": "authorized: the v5 identity changes only the pack ID and appends two character-profile return routes whose decoded values are local-only; all 53 prior routes and every combat decoder are unchanged"
+  },
+  "sources": [
+    {
+      "kind": "independent-generated-protocol-service-id",
+      "reference": "tmp-rdps-audit/external/BPSR-ZDPS/BPSR-ZDPSLib/ProxyServiceIds.cs",
+      "sha256": "8242050744068811ecac1789a51a66b9776cbec92cd505f37591c7b71627baa4",
+      "proves": [
+        "Photograph service ID 904190988"
+      ]
+    },
+    {
+      "kind": "independent-protocol-call-return-framing",
+      "reference": "tmp-rdps-audit/external/BPSR-ZDPS/BPSR-ZDPSLib/NetCap.cs",
+      "sha256": "ed03d3a3b0b5db664676c94a470758da35902301d6c91dab2917e0c0b81233a2",
+      "proves": [
+        "Call headers contain service ID, return UID, and method ID",
+        "Return headers contain the matching return UID at byte offset 4 but do not repeat service or method",
+        "return routing therefore requires bounded Call-to-Return correlation"
+      ]
+    },
+    {
+      "kind": "reviewed-generated-photograph-interface",
+      "reference": "proto/zproto/serv_photograph.proto",
+      "sha256": "54a8f600672ba9c6b6f1e2195ea413b3c4ca8f67b6db64b88f1ed68456cef7f4",
+      "proves": [
+        "GetAlbumPhotos is method 4 in the ordered Photograph interface",
+        "GetPhoto is method 12 in the ordered Photograph interface",
+        "both return envelopes contain a field-1 reply"
+      ]
+    },
+    {
+      "kind": "exact-current-build-native-message-surface",
+      "reference": "rpc-message-surface.v2.json",
+      "sha256": "0bcb235e0d04914a77df31140496bdd4fc005bd86452c8a1c0f97628a2c31ce9",
+      "proves": [
+        "GetAlbumPhotosReply contains repeated PhotoGraphShow values",
+        "GetPhotoReply contains one PhotoGraphShow value",
+        "PhotoGraphShow contains repeated ImageInfo values",
+        "ImageInfo contains picture type, size, version, and COS URL fields"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "direction": "server_to_client",
+      "fragment": "return",
+      "service_name": "Photograph",
+      "service_id": 904190988,
+      "method_name": "GetAlbumPhotos",
+      "method_id": 4,
+      "decoder": "get_album_photos_v1",
+      "runtime_confidence": "candidate-until-next-live-gallery-observation"
+    },
+    {
+      "direction": "server_to_client",
+      "fragment": "return",
+      "service_name": "Photograph",
+      "service_id": 904190988,
+      "method_name": "GetPhoto",
+      "method_id": 12,
+      "decoder": "get_photo_v1",
+      "runtime_confidence": "candidate-until-next-live-gallery-observation"
+    }
+  ],
+  "privacy": {
+    "ordinary_profile_sync_includes_urls": false,
+    "canonical_events_include_urls": false,
+    "rlog_output_includes_urls": false,
+    "publication_requires_separate_photo_wall_consent": true,
+    "approved_fetch_origin": "https://photo.playbpsr.com/xinghen-prod/",
+    "public_profile_receives_only_server_owned_relative_asset_path": true,
+    "source_redirects_allowed": false,
+    "maximum_image_bytes": 8388608,
+    "accepted_public_media_types": [
+      "image/jpeg",
+      "image/png",
+      "image/webp"
+    ]
+  },
+  "safety": {
+    "raw_payload_publication": false,
+    "credential_fields_declared": false,
+    "unknown_fields_materialized": false,
+    "decoders": "selective and bounded",
+    "combat_route_contract_changed": false,
+    "historical_protocol_pack_identities_retained": true,
+    "candidate_routes_require_runtime_observation_to_promote_confidence_to_verified": true,
+    "maximum_pending_return_correlations": 4096,
+    "return_correlation_ttl_micros": 120000000,
+    "return_correlation_scope": "exact process-attributed connection and return UID"
+  }
+}

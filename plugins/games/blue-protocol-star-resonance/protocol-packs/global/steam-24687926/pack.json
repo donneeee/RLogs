@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "pack_id": "global-steam-24687926-static-candidate-v4",
+  "pack_id": "global-steam-24687926-static-candidate-v5",
   "target": {
     "deployment_id": "global",
     "region_id": null,
@@ -1821,6 +1821,58 @@
       "disposition": "allowed",
       "domain": "character_profile",
       "decoder": "notify_join_team_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "return"
+        },
+        "service_id": 904190988,
+        "method_id": 4
+      },
+      "service_name": "Photograph",
+      "method_name": "GetAlbumPhotos",
+      "message_name": "GetAlbumPhotos_Ret",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-photo-wall-route-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/photo-wall-route-proof.v1.json"
+        }
+      ],
+      "features": [
+        "character_profile"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "get_album_photos_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "return"
+        },
+        "service_id": 904190988,
+        "method_id": 12
+      },
+      "service_name": "Photograph",
+      "method_name": "GetPhoto",
+      "message_name": "GetPhoto_Ret",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-photo-wall-route-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/photo-wall-route-proof.v1.json"
+        }
+      ],
+      "features": [
+        "character_profile"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "get_photo_v1"
     }
   ]
 }

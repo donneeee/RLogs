@@ -149,6 +149,8 @@ pub enum DecoderKind {
     /// protocol pack may register it only after matching-build packet replay
     /// confirms the statically proven service and method route on the wire.
     WorldUseSlotV1,
+    GetAlbumPhotosV1,
+    GetPhotoV1,
 }
 
 impl DecoderKind {
@@ -169,6 +171,7 @@ impl DecoderKind {
             | Self::NotifyLeaveTeamV1
             | Self::NoticeTeamDissolveV1
             | Self::SyncSeasonV1 => AllowedDataDomain::CharacterProfile,
+            Self::GetAlbumPhotosV1 | Self::GetPhotoV1 => AllowedDataDomain::CharacterProfile,
             Self::SyncNearDeltaV1
             | Self::SyncToMeDeltaV1
             | Self::NotifyReviveV1
@@ -214,6 +217,20 @@ pub struct ProtocolDecodeBatch {
     /// website-bound `.rlog` output.
     pub announced_server: Option<AnnouncedServerEndpoint>,
     pub server_clock: Option<ServerClockObservation>,
+    /// Reviewed photograph references consumed only by the live desktop under
+    /// explicit Photo Wall publication consent. These are never canonical
+    /// events and are never written into ordinary `.rlog` output.
+    pub local_photo_assets: Vec<LocalPhotoAssetReference>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalPhotoAssetReference {
+    pub character_id: i64,
+    pub photo_id: u32,
+    pub picture_type: i32,
+    pub declared_size: Option<u32>,
+    pub version: Option<u32>,
+    pub source_url: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -362,6 +379,7 @@ impl<'a> ProtocolRuntime<'a> {
                         events: Vec::new(),
                         announced_server: None,
                         server_clock: None,
+                        local_photo_assets: Vec::new(),
                     });
                 };
 
@@ -373,6 +391,7 @@ impl<'a> ProtocolRuntime<'a> {
                             events: Vec::new(),
                             announced_server: None,
                             server_clock: None,
+                            local_photo_assets: Vec::new(),
                         });
                     }
                     DecodeDisposition::Prohibited(class) => {
@@ -382,6 +401,7 @@ impl<'a> ProtocolRuntime<'a> {
                             events: Vec::new(),
                             announced_server: None,
                             server_clock: None,
+                            local_photo_assets: Vec::new(),
                         });
                     }
                     DecodeDisposition::Allowed(_) => {}
@@ -394,6 +414,7 @@ impl<'a> ProtocolRuntime<'a> {
                         events: Vec::new(),
                         announced_server: None,
                         server_clock: None,
+                        local_photo_assets: Vec::new(),
                     });
                 };
                 let Some(payload) = packet.payload.decode_input() else {
@@ -486,6 +507,7 @@ impl<'a> ProtocolRuntime<'a> {
             events,
             announced_server: decoded.announced_server,
             server_clock: decoded.server_clock,
+            local_photo_assets: decoded.local_photo_assets,
         })
     }
 
@@ -564,6 +586,7 @@ struct DecodedMessage {
     drafts: Vec<CanonicalEventDraft>,
     announced_server: Option<AnnouncedServerEndpoint>,
     server_clock: Option<ServerClockObservation>,
+    local_photo_assets: Vec<LocalPhotoAssetReference>,
 }
 
 impl DecodedMessage {
@@ -572,6 +595,7 @@ impl DecodedMessage {
             drafts,
             announced_server: None,
             server_clock: None,
+            local_photo_assets: Vec::new(),
         }
     }
 }
@@ -1013,8 +1037,87 @@ fn decode_message(
             client_build,
             skill_action_scratch,
         ),
+        DecoderKind::GetAlbumPhotosV1 => return decode_album_photos(payload),
+        DecoderKind::GetPhotoV1 => return decode_photo(payload),
     }?;
     Ok(DecodedMessage::events(drafts))
+}
+
+fn decode_album_photos(payload: &[u8]) -> Result<DecodedMessage, ProtocolMessageError> {
+    let message = schema::GetAlbumPhotosReturn::decode(payload)?;
+    let Some(reply) = message.ret else {
+        return Ok(DecodedMessage::events(Vec::new()));
+    };
+    Ok(DecodedMessage {
+        drafts: Vec::new(),
+        announced_server: None,
+        server_clock: None,
+        local_photo_assets: reviewed_photo_assets(reply.character_id, reply.photo_graphs),
+    })
+}
+
+fn decode_photo(payload: &[u8]) -> Result<DecodedMessage, ProtocolMessageError> {
+    let message = schema::GetPhotoReturn::decode(payload)?;
+    let Some(reply) = message.ret else {
+        return Ok(DecodedMessage::events(Vec::new()));
+    };
+    let graphs = reply
+        .photo_graph
+        .into_iter()
+        .map(|mut graph| {
+            if graph.photo_id.is_none() {
+                graph.photo_id = reply.photo_id;
+            }
+            graph
+        })
+        .collect();
+    Ok(DecodedMessage {
+        drafts: Vec::new(),
+        announced_server: None,
+        server_clock: None,
+        local_photo_assets: reviewed_photo_assets(reply.character_id, graphs),
+    })
+}
+
+fn reviewed_photo_assets(
+    character_id: Option<i64>,
+    graphs: Vec<schema::PhotoGraphShow>,
+) -> Vec<LocalPhotoAssetReference> {
+    let Some(character_id) = character_id.filter(|value| *value > 0) else {
+        return Vec::new();
+    };
+    graphs
+        .into_iter()
+        .filter_map(|graph| {
+            let photo_id = graph.photo_id.filter(|value| *value > 0)?;
+            // Prefer the reviewed/rendered image (2), then original (1),
+            // normal (0), and finally a thumbnail (3).
+            let image = graph
+                .images
+                .into_iter()
+                .filter(|image| {
+                    image
+                        .cos_url
+                        .as_deref()
+                        .is_some_and(|url| !url.is_empty() && url.len() <= 2_048 && url.is_ascii())
+                })
+                .min_by_key(|image| match image.picture_type.unwrap_or(i32::MAX) {
+                    2 => 0,
+                    1 => 1,
+                    0 => 2,
+                    3 => 3,
+                    _ => 4,
+                })?;
+            Some(LocalPhotoAssetReference {
+                character_id,
+                photo_id,
+                picture_type: image.picture_type.unwrap_or_default(),
+                declared_size: image.size,
+                version: image.version,
+                source_url: image.cos_url?,
+            })
+        })
+        .collect()
 }
 
 fn decode_notify_enter_world(payload: &[u8]) -> Result<DecodedMessage, ProtocolMessageError> {
@@ -1034,6 +1137,7 @@ fn decode_notify_enter_world(payload: &[u8]) -> Result<DecodedMessage, ProtocolM
         drafts: Vec::new(),
         announced_server,
         server_clock: None,
+        local_photo_assets: Vec::new(),
     })
 }
 
@@ -1051,6 +1155,7 @@ fn decode_server_time(payload: &[u8]) -> Result<DecodedMessage, ProtocolMessageE
         drafts: Vec::new(),
         announced_server: None,
         server_clock,
+        local_photo_assets: Vec::new(),
     })
 }
 
@@ -10014,5 +10119,71 @@ mod tests {
         let json = serde_json::to_string(&batch.events).unwrap();
         assert!(json.contains("decode_failure"));
         assert!(!json.contains("255"));
+    }
+
+    #[test]
+    fn photograph_replies_expose_only_the_preferred_local_reviewed_asset() {
+        let payload = schema::GetAlbumPhotosReturn {
+            ret: Some(schema::GetAlbumPhotosReply {
+                character_id: Some(3_296_036),
+                photo_graphs: vec![schema::PhotoGraphShow {
+                    photo_id: Some(42),
+                    images: vec![
+                        schema::PhotoImageInfo {
+                            picture_type: Some(3),
+                            size: Some(100),
+                            version: Some(1),
+                            cos_url: Some(
+                                "https://photo.playbpsr.com/xinghen-prod/thumbnail.png".into(),
+                            ),
+                        },
+                        schema::PhotoImageInfo {
+                            picture_type: Some(2),
+                            size: Some(900),
+                            version: Some(2),
+                            cos_url: Some(
+                                "https://photo.playbpsr.com/xinghen-prod/render.png".into(),
+                            ),
+                        },
+                    ],
+                }],
+            }),
+        }
+        .encode_to_vec();
+        let decoded = decode_album_photos(&payload).unwrap();
+        assert!(decoded.drafts.is_empty());
+        assert_eq!(decoded.local_photo_assets.len(), 1);
+        assert_eq!(decoded.local_photo_assets[0].character_id, 3_296_036);
+        assert_eq!(decoded.local_photo_assets[0].photo_id, 42);
+        assert_eq!(decoded.local_photo_assets[0].picture_type, 2);
+        assert!(
+            decoded.local_photo_assets[0]
+                .source_url
+                .ends_with("/render.png")
+        );
+    }
+
+    #[test]
+    fn single_photo_reply_uses_the_reply_photo_id_when_graph_omits_it() {
+        let payload = schema::GetPhotoReturn {
+            ret: Some(schema::GetPhotoReply {
+                character_id: Some(3_296_036),
+                photo_id: Some(77),
+                photo_graph: Some(schema::PhotoGraphShow {
+                    photo_id: None,
+                    images: vec![schema::PhotoImageInfo {
+                        picture_type: Some(1),
+                        size: None,
+                        version: None,
+                        cos_url: Some(
+                            "https://photo.playbpsr.com/xinghen-prod/original.webp".into(),
+                        ),
+                    }],
+                }),
+            }),
+        }
+        .encode_to_vec();
+        let decoded = decode_photo(&payload).unwrap();
+        assert_eq!(decoded.local_photo_assets[0].photo_id, 77);
     }
 }

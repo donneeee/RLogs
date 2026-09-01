@@ -108,9 +108,9 @@ pub use coverage::{
 };
 pub use damage_protocol::{BpsrDamageProperty, BpsrDamageSourceKind, BpsrDamageType};
 pub use decoder::{
-    AnnouncedServerEndpoint, DecoderKind, ProtocolDecodeBatch, ProtocolDecodeStatus,
-    ProtocolRuntime, ProtocolRuntimeConfig, ProtocolRuntimeError, ServerClockObservation,
-    decode_known_entity_attribute_value,
+    AnnouncedServerEndpoint, DecoderKind, LocalPhotoAssetReference, ProtocolDecodeBatch,
+    ProtocolDecodeStatus, ProtocolRuntime, ProtocolRuntimeConfig, ProtocolRuntimeError,
+    ServerClockObservation, decode_known_entity_attribute_value,
 };
 pub use dirty_blob_v1::{DirtyLuckyValueEntry, DirtyLuckyValueUpdate, decode_lucky_value_update};
 pub use dreamscope_build_inference::{

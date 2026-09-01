@@ -6000,7 +6000,9 @@ const fn decoder_event_mask(decoder: DecoderKind) -> u16 {
         | DecoderKind::NotifyTeamMemberInfoV1
         | DecoderKind::NotifyJoinTeamV1
         | DecoderKind::NotifyLeaveTeamV1
-        | DecoderKind::NoticeTeamDissolveV1 => 0,
+        | DecoderKind::NoticeTeamDissolveV1
+        | DecoderKind::GetAlbumPhotosV1
+        | DecoderKind::GetPhotoV1 => 0,
         DecoderKind::SyncContainerDataV1 => ACTOR | PROFILE_SELECTION | RESOURCE | COOLDOWN,
         DecoderKind::SyncContainerDirtyDataV1 => PROFILE_SELECTION | RESOURCE | COOLDOWN,
     }

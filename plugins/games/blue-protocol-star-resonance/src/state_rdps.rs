@@ -22421,6 +22421,21 @@ mod tests {
             repaired_profile_pack_runtime
                 .effect_runtime_transfer_enabled(repaired_profile_pack_runtime.team_luck.effect_id)
         );
+        let photo_wall_pack_digest =
+            "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c";
+        assert!(
+            state_damage_contribution_target_matches("global", "24687926", photo_wall_pack_digest,)
+                .unwrap(),
+            "the local-only Photo Wall route append must retain exact combat formula authority"
+        );
+        let photo_wall_pack_runtime =
+            rdps_runtime_config_for_identity("global", "24687926", photo_wall_pack_digest)
+                .unwrap()
+                .expect("the Photo Wall route identity should be replayable");
+        assert_eq!(
+            photo_wall_pack_runtime.protocol_pack_digest,
+            photo_wall_pack_digest
+        );
         assert!(
             !state_damage_contribution_formula_target_matches(
                 "global",

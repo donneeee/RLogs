@@ -104,6 +104,10 @@ pub struct BpsrFrame {
     pub compressed_on_wire: bool,
     pub compression: CompressionState,
     pub route: Option<RoutedMessage>,
+    /// Correlation identity carried by a Return header. Return frames do not
+    /// repeat their service or method, so the pipeline resolves this ID
+    /// against a previously observed client Call before protocol decoding.
+    pub return_call_id: Option<u32>,
     /// Complete length-prefixed frame. Contiguous TCP frames remain shared
     /// slices; only frames crossing chunks are coalesced.
     pub wire_bytes: Bytes,
@@ -419,6 +423,7 @@ impl BpsrStreamFramer {
         let fragment = FragmentKind::from_wire_id(raw_fragment & !COMPRESSION_FLAG);
         let payload = complete.bytes.slice(FRAME_HEADER_BYTES..);
         let mut route = None;
+        let mut return_call_id = None;
         let mut compression = if compressed {
             CompressionState::Unknown
         } else {
@@ -507,6 +512,9 @@ impl BpsrStreamFramer {
                     if payload.len() < header_bytes {
                         issue = Some(BpsrFramingIssueReason::MalformedRouteHeader);
                     } else {
+                        if self.config.return_layout == BpsrReturnLayout::TwelveByteHeader {
+                            return_call_id = Some(read_u32(&payload, 4));
+                        }
                         match self.decode_body(
                             payload.slice(header_bytes..),
                             compressed,
@@ -602,6 +610,7 @@ impl BpsrStreamFramer {
             compressed_on_wire: compressed,
             compression,
             route,
+            return_call_id,
             wire_bytes: complete.bytes.clone(),
             application_bytes: application_bytes.clone(),
         }));
@@ -1077,6 +1086,30 @@ mod tests {
                 Some(b"call-body".as_slice())
             );
         }
+    }
+
+    #[test]
+    fn twelve_byte_return_header_exposes_only_its_call_identity() {
+        let mut payload = BytesMut::new();
+        payload.extend_from_slice(&8_u32.to_be_bytes());
+        payload.extend_from_slice(&10_u32.to_be_bytes());
+        payload.extend_from_slice(&0_u32.to_be_bytes());
+        payload.extend_from_slice(b"return-body");
+        let wire = frame(3, &payload);
+        let mut events = Vec::new();
+        BpsrStreamFramer::new(PacketDirection::ServerToClient)
+            .process(chunk(0, 1, wire), |event| events.push(event));
+
+        let [BpsrFramingEvent::Frame(frame)] = events.as_slice() else {
+            panic!("expected one Return frame, got {events:?}");
+        };
+        assert_eq!(frame.fragment, FragmentKind::Return);
+        assert_eq!(frame.return_call_id, Some(10));
+        assert_eq!(frame.route, None);
+        assert_eq!(
+            frame.application_bytes.as_deref(),
+            Some(b"return-body".as_slice())
+        );
     }
 
     #[test]

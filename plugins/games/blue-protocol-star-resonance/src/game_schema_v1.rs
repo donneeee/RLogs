@@ -49,6 +49,60 @@ pub(crate) struct SyncSeason {
     pub season_id: Option<i32>,
 }
 
+/// Local-only response for the character's reviewed in-game photo album.
+/// URLs decoded here are never emitted as canonical events or serialized into
+/// `.rlog` files; the desktop may consume them only under the separate Photo
+/// Wall publication consent.
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct GetAlbumPhotosReturn {
+    #[prost(message, optional, tag = "1")]
+    pub ret: Option<GetAlbumPhotosReply>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct GetAlbumPhotosReply {
+    #[prost(int64, optional, tag = "3")]
+    pub character_id: Option<i64>,
+    #[prost(message, repeated, tag = "5")]
+    pub photo_graphs: Vec<PhotoGraphShow>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct GetPhotoReturn {
+    #[prost(message, optional, tag = "1")]
+    pub ret: Option<GetPhotoReply>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct GetPhotoReply {
+    #[prost(int64, optional, tag = "3")]
+    pub character_id: Option<i64>,
+    #[prost(uint32, optional, tag = "4")]
+    pub photo_id: Option<u32>,
+    #[prost(message, optional, tag = "5")]
+    pub photo_graph: Option<PhotoGraphShow>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct PhotoGraphShow {
+    #[prost(uint32, optional, tag = "1")]
+    pub photo_id: Option<u32>,
+    #[prost(message, repeated, tag = "2")]
+    pub images: Vec<PhotoImageInfo>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct PhotoImageInfo {
+    #[prost(int32, optional, tag = "1")]
+    pub picture_type: Option<i32>,
+    #[prost(uint32, optional, tag = "2")]
+    pub size: Option<u32>,
+    #[prost(uint32, optional, tag = "3")]
+    pub version: Option<u32>,
+    #[prost(string, optional, tag = "4")]
+    pub cos_url: Option<String>,
+}
+
 #[derive(Clone, PartialEq, Message)]
 pub(crate) struct NotifySocialData {
     #[prost(message, optional, tag = "1")]

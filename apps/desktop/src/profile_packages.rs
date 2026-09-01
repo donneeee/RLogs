@@ -161,6 +161,13 @@ impl ProfilePublicationLedger {
             .is_some_and(|record| record.published_unix_millis >= created_unix_millis)
     }
 
+    pub fn latest_for_character(&self, character_id: &str) -> Option<&ProfilePublicationRecord> {
+        self.records
+            .values()
+            .filter(|record| record.character_id == character_id)
+            .max_by_key(|record| record.published_unix_millis)
+    }
+
     pub fn reconcile(&mut self, active_package_ids: &BTreeSet<String>) -> Result<(), String> {
         let mut candidate = self.records.clone();
         candidate.retain(|package_id, _| active_package_ids.contains(package_id));
