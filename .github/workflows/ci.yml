@@ -19,6 +19,8 @@ jobs:
           cache-dependency-path: |
             apps/desktop/ui/package-lock.json
             services/submissions/cloudflare-gateway/package-lock.json
+      - name: Verify BPSR promotion frontier
+        run: node tools/bpsr-promotion-frontier-audit.mjs verify
       - name: Build desktop UI
         working-directory: apps/desktop/ui
         run: |

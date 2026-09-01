@@ -1238,10 +1238,28 @@ function assertCount(actual, expected, label) {
 
 function fileIdentity(file) {
   const bytes = fs.readFileSync(file);
+  let identityBytes = bytes;
+  let identityNormalization = null;
+  if (path.resolve(file) === path.resolve(runtimeSourcePaths[1])) {
+    const source = bytes.toString("utf8");
+    const digestLiteral = /(coverage\.exhaustive_ledger_content_sha256\s*\n\s*==\s*")[0-9a-f]{64}("\s*)/g;
+    const matches = [...source.matchAll(digestLiteral)];
+    if (matches.length !== 1) {
+      throw new Error(
+        `expected exactly one exhaustive-ledger digest literal in ${file}; found ${matches.length}`,
+      );
+    }
+    identityBytes = Buffer.from(source.replace(
+      digestLiteral,
+      `$1${"0".repeat(64)}$2`,
+    ));
+    identityNormalization = "embedded-exhaustive-ledger-digest-zeroed-to-break-hash-cycle";
+  }
   return {
     path: path.relative(ROOT, file).replaceAll("\\", "/"),
     bytes: bytes.length,
-    sha256: crypto.createHash("sha256").update(bytes).digest("hex"),
+    sha256: crypto.createHash("sha256").update(identityBytes).digest("hex"),
+    ...(identityNormalization === null ? {} : { identity_normalization: identityNormalization }),
   };
 }
 

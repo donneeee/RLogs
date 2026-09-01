@@ -3882,7 +3882,7 @@ fn validate_rdps_promotion_inventory(runtime: &RdpsRuntimeConfig) -> Result<(), 
         && coverage.zero_effect_rows_without_disposition
         && coverage.zero_exact_id_route_rows_without_disposition
         && coverage.exhaustive_ledger_content_sha256
-            == "74d3ff4dd3baa3c99d9a946bed876edd901454b05fe0a24133b35d77c88935cb"
+            == "5451c9b8d274f4e65db98e8afa0c2b1367522b810c92144a4051479f7664ae67"
         && coverage.ledger_production_effect_ids == 29
         && coverage.post_ledger_production_effect_ids.is_empty()
         && coverage.ledger_production_effect_ids + coverage.post_ledger_production_effect_ids.len()

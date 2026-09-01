@@ -29,13 +29,13 @@
     },
     {
       "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/rdps-effect-classification.v1.json",
-      "bytes": 77985,
-      "sha256": "95b777069c9a7ccd0b030d5c89914b7b20ecdc302617924412cd27f41780c8a7"
+      "bytes": 79168,
+      "sha256": "15e2f8b5d5251f2c7aacf0838bc8258deb4e89a258bc7158e05ce5c02f5b2c11"
     },
     {
       "path": "plugins/games/blue-protocol-star-resonance/game-data/runtime/rdps-formula-runtime.v1.json",
-      "bytes": 56776,
-      "sha256": "4e2cfba83d5c59749b5398587fa4ba5c9e2a531cbbe96737d101e66f62370679"
+      "bytes": 57791,
+      "sha256": "3c10de257c0b941ce95ccf414ef0fd74bf5b6ff7b23ec261724a67a806fa94e2"
     },
     {
       "path": "Excels/BuffTable.json",
@@ -44,23 +44,24 @@
     },
     {
       "path": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-      "bytes": 1100449,
-      "sha256": "051ae75d3a7dac2cb10da4fc8acea863b5d5346165eef88698632667b54c95f3"
+      "bytes": 1182972,
+      "sha256": "315ae3ca6c6126d7a29203c2ec63c07ae310bcfa8a6ce7dadb63737f58b087a5"
     },
     {
       "path": "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
-      "bytes": 247031,
-      "sha256": "abe592e15ffbbb7425747bc8bb0a72c90adb9dc298592050572cf9c89074466f"
+      "bytes": 258870,
+      "sha256": "01c11560b558279226aaaae87c8095b825beea29f01c3cab980703cfefc9d4bc",
+      "identity_normalization": "embedded-exhaustive-ledger-digest-zeroed-to-break-hash-cycle"
     },
     {
       "path": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
-      "bytes": 67991,
-      "sha256": "c0d631c7e12d103ce9eecc55967b64b446ff0e8331bf2b28b82845ffb6ea2e63"
+      "bytes": 68637,
+      "sha256": "a9e22a1acceb12a6525ad7fa9ee3159bd1ab60be869a6129bcd4bc60819ade3f"
     },
     {
       "path": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
-      "bytes": 29589,
-      "sha256": "055cf85a1a34496edfe4751f70d485e19ced2f795e6eb9e2a9081dbbc40dfe7b"
+      "bytes": 31930,
+      "sha256": "161b7c48173574fe8cda8f41c550722af8293433516c935554ff2075a830c8ff"
     }
   ],
   "reconciliation": {
@@ -82,11 +83,13 @@
     "party_buff_candidates": 101,
     "rogue_party_entry_candidates": 22,
     "observed_external_effects": 124,
-    "runtime_classification_effects": 262,
-    "consolidated_unique_effect_ids": 510,
-    "exact_id_route_rows": 1578,
-    "exact_id_route_unique_ids": 657,
-    "production_effect_ids": 28,
+    "runtime_classification_effects": 266,
+    "consolidated_unique_effect_ids": 513,
+    "exact_id_route_rows": 1586,
+    "exact_id_route_unique_ids": 660,
+    "production_effect_ids": 29,
+    "production_effect_ids_missing_runtime_source_tests_or_config": [],
+    "zero_production_effect_ids_missing_runtime_source_tests_or_config": true,
     "production_aoyi_parents": 8,
     "open_offensive_aoyi_parents": 3,
     "open_offensive_aoyi_parent_skill_ids": [
@@ -6848,7 +6851,16 @@
         }
       ],
       "exact_owner_edge_present": false,
-      "runtime_classification": null,
+      "runtime_classification": {
+        "effect_id": 2110077,
+        "review_state": "non_contributing",
+        "contribution_kind": "self_only",
+        "source_scope": "owner",
+        "target_scope": "self_only",
+        "magnitude_basis_points": null,
+        "stacking_rule": "stack_scaled",
+        "attribution_enabled": false
+      },
       "observed_external_frontier": null,
       "installed_build_buff": {
         "id": 2110077,
@@ -8705,7 +8717,16 @@
         }
       ],
       "exact_owner_edge_present": false,
-      "runtime_classification": null,
+      "runtime_classification": {
+        "effect_id": 2110126,
+        "review_state": "non_contributing",
+        "contribution_kind": "self_only",
+        "source_scope": "owner",
+        "target_scope": "self_only",
+        "magnitude_basis_points": null,
+        "stacking_rule": "fixed",
+        "attribution_enabled": false
+      },
       "observed_external_frontier": null,
       "installed_build_buff": {
         "id": 2110126,
@@ -45027,7 +45048,7 @@
       },
       "production_enabled": false,
       "reviewed_disposition": "runtime-candidate",
-      "remaining_obligation": "prove the exact skill-to-status runtime edge and numeric Haste magnitude, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation"
+      "remaining_obligation": "resolve the numeric Haste magnitude absent from all installed tables and decoded skill logic, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation"
     },
     {
       "effect_id": 2110061,
@@ -45290,6 +45311,57 @@
       "remaining_obligation": null
     },
     {
+      "effect_id": 2110075,
+      "installed_build_buff": {
+        "id": 2110075,
+        "level": 75,
+        "design_name": "增加精通",
+        "localized_name": "Breaking Out of the Cocoon",
+        "localized_description": "Significant Mastery boost throughout the duration",
+        "duration_rules": [
+          [
+            0,
+            20
+          ]
+        ],
+        "stacking_rule": [
+          0,
+          1
+        ],
+        "tags": [
+          14,
+          74
+        ],
+        "special_attributes": []
+      },
+      "present_in": {
+        "production_frontier": false,
+        "aoyi_descendants": false,
+        "party_buff_closure": false,
+        "observed_external_frontier": false,
+        "runtime_classification": true,
+        "rogue_party_graph": false
+      },
+      "routes": {
+        "aoyi_parent_links": [],
+        "party_skill_ids": [],
+        "rogue_entry_ids": []
+      },
+      "runtime_classification": {
+        "effect_id": 2110075,
+        "review_state": "non_contributing",
+        "contribution_kind": "self_only",
+        "source_scope": "owner",
+        "target_scope": "self_only",
+        "magnitude_basis_points": null,
+        "stacking_rule": "fixed",
+        "attribution_enabled": false
+      },
+      "production_enabled": false,
+      "reviewed_disposition": "runtime-non_contributing",
+      "remaining_obligation": null
+    },
+    {
       "effect_id": 2110077,
       "installed_build_buff": {
         "id": 2110077,
@@ -45317,7 +45389,7 @@
         "aoyi_descendants": true,
         "party_buff_closure": false,
         "observed_external_frontier": false,
-        "runtime_classification": false,
+        "runtime_classification": true,
         "rogue_party_graph": false
       },
       "routes": {
@@ -45331,9 +45403,18 @@
         "party_skill_ids": [],
         "rogue_entry_ids": []
       },
-      "runtime_classification": null,
+      "runtime_classification": {
+        "effect_id": 2110077,
+        "review_state": "non_contributing",
+        "contribution_kind": "self_only",
+        "source_scope": "owner",
+        "target_scope": "self_only",
+        "magnitude_basis_points": null,
+        "stacking_rule": "stack_scaled",
+        "attribution_enabled": false
+      },
       "production_enabled": false,
-      "reviewed_disposition": "discovery-only-no-exact-aoyi-owner-edge-current-build",
+      "reviewed_disposition": "runtime-non_contributing",
       "remaining_obligation": null
     },
     {
@@ -46868,7 +46949,7 @@
         "aoyi_descendants": true,
         "party_buff_closure": false,
         "observed_external_frontier": false,
-        "runtime_classification": false,
+        "runtime_classification": true,
         "rogue_party_graph": false
       },
       "routes": {
@@ -46882,9 +46963,18 @@
         "party_skill_ids": [],
         "rogue_entry_ids": []
       },
-      "runtime_classification": null,
+      "runtime_classification": {
+        "effect_id": 2110126,
+        "review_state": "non_contributing",
+        "contribution_kind": "self_only",
+        "source_scope": "owner",
+        "target_scope": "self_only",
+        "magnitude_basis_points": null,
+        "stacking_rule": "fixed",
+        "attribution_enabled": false
+      },
       "production_enabled": false,
-      "reviewed_disposition": "discovery-only-no-exact-aoyi-owner-edge-current-build",
+      "reviewed_disposition": "runtime-non_contributing",
       "remaining_obligation": null
     },
     {
@@ -46925,6 +47015,56 @@
       "runtime_classification": null,
       "production_enabled": false,
       "reviewed_disposition": "discovery-only-no-exact-aoyi-owner-edge-current-build",
+      "remaining_obligation": null
+    },
+    {
+      "effect_id": 2110128,
+      "installed_build_buff": {
+        "id": 2110128,
+        "level": 28,
+        "design_name": "S2地狐-主动",
+        "localized_name": "Mastery Specialization",
+        "localized_description": "Greatly increases Mastery during the duration",
+        "duration_rules": [
+          [
+            0,
+            20
+          ]
+        ],
+        "stacking_rule": [
+          0,
+          1
+        ],
+        "tags": [
+          14
+        ],
+        "special_attributes": []
+      },
+      "present_in": {
+        "production_frontier": false,
+        "aoyi_descendants": false,
+        "party_buff_closure": false,
+        "observed_external_frontier": false,
+        "runtime_classification": true,
+        "rogue_party_graph": false
+      },
+      "routes": {
+        "aoyi_parent_links": [],
+        "party_skill_ids": [],
+        "rogue_entry_ids": []
+      },
+      "runtime_classification": {
+        "effect_id": 2110128,
+        "review_state": "non_contributing",
+        "contribution_kind": "self_only",
+        "source_scope": "owner",
+        "target_scope": "self_only",
+        "magnitude_basis_points": null,
+        "stacking_rule": "fixed",
+        "attribution_enabled": false
+      },
+      "production_enabled": false,
+      "reviewed_disposition": "runtime-non_contributing",
       "remaining_obligation": null
     },
     {
@@ -51490,6 +51630,45 @@
       "runtime_classification": null,
       "production_enabled": false,
       "reviewed_disposition": "non-contributing-static-scope-review",
+      "remaining_obligation": null
+    },
+    {
+      "effect_id": 2302421,
+      "installed_build_buff": {
+        "id": 2302421,
+        "level": 21,
+        "design_name": "————效果buff",
+        "localized_name": "气刃突刺计数",
+        "localized_description": "气刃突刺计数",
+        "duration_rules": [
+          [
+            0,
+            5
+          ]
+        ],
+        "stacking_rule": [
+          2,
+          1
+        ],
+        "tags": [],
+        "special_attributes": []
+      },
+      "present_in": {
+        "production_frontier": true,
+        "aoyi_descendants": false,
+        "party_buff_closure": false,
+        "observed_external_frontier": false,
+        "runtime_classification": false,
+        "rogue_party_graph": false
+      },
+      "routes": {
+        "aoyi_parent_links": [],
+        "party_skill_ids": [],
+        "rogue_entry_ids": []
+      },
+      "runtime_classification": null,
+      "production_enabled": true,
+      "reviewed_disposition": "production-enabled",
       "remaining_obligation": null
     },
     {
@@ -87593,6 +87772,7 @@
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
         "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
         ],
         "runtime_config_locations": [],
@@ -87682,6 +87862,7 @@
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
         "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
         ],
         "runtime_config_locations": [],
@@ -87771,6 +87952,7 @@
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
         "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
         ],
         "runtime_config_locations": [],
@@ -87857,6 +88039,7 @@
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
         "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
         ],
         "runtime_config_locations": [],
@@ -109746,7 +109929,8 @@
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/blessing"
@@ -109775,6 +109959,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
             "function": "blessing_retains_exact_thirty_percent_party_damage_without_approximate_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -109852,7 +110040,8 @@
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/blessing"
@@ -109881,6 +110070,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
             "function": "blessing_retains_exact_thirty_percent_party_damage_without_approximate_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -109958,7 +110151,8 @@
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/blessing"
@@ -109987,6 +110181,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
             "function": "blessing_retains_exact_thirty_percent_party_damage_without_approximate_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -114088,7 +114286,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/arcane_time_decree"
@@ -114109,6 +114308,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -114293,7 +114496,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/arcane_time_decree"
@@ -114314,6 +114518,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -114498,7 +114706,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/arcane_time_decree"
@@ -114519,6 +114728,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -114708,7 +114921,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/arcane_time_decree"
@@ -114729,6 +114943,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -114957,7 +115175,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/arcane_time_decree"
@@ -114978,6 +115197,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -115160,7 +115383,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/arcane_time_decree"
@@ -115181,6 +115405,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -115363,7 +115591,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/arcane_time_decree"
@@ -115384,6 +115613,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -117576,12 +117809,13 @@
         "component_ids": []
       },
       "reviewed_disposition": "runtime-candidate",
-      "remaining_obligation": "prove the exact skill-to-status runtime edge and numeric Haste magnitude, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation",
+      "remaining_obligation": "resolve the numeric Haste magnitude absent from all installed tables and decoded skill logic, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation",
       "runtime": {
         "production_enabled": false,
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
         "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
         ],
         "runtime_config_locations": [],
@@ -117665,12 +117899,13 @@
         "component_ids": []
       },
       "reviewed_disposition": "runtime-candidate",
-      "remaining_obligation": "prove the exact skill-to-status runtime edge and numeric Haste magnitude, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation",
+      "remaining_obligation": "resolve the numeric Haste magnitude absent from all installed tables and decoded skill logic, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation",
       "runtime": {
         "production_enabled": false,
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
         "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
         ],
         "runtime_config_locations": [],
@@ -117754,12 +117989,13 @@
         "component_ids": []
       },
       "reviewed_disposition": "candidate-route-retained-for-exact-effect-review",
-      "remaining_obligation": "prove the exact skill-to-status runtime edge and numeric Haste magnitude, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation",
+      "remaining_obligation": "resolve the numeric Haste magnitude absent from all installed tables and decoded skill logic, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation",
       "runtime": {
         "production_enabled": false,
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
         "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
         ],
         "runtime_config_locations": [],
@@ -117840,12 +118076,13 @@
         "component_ids": []
       },
       "reviewed_disposition": "runtime-candidate",
-      "remaining_obligation": "prove the exact skill-to-status runtime edge and numeric Haste magnitude, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation",
+      "remaining_obligation": "resolve the numeric Haste magnitude absent from all installed tables and decoded skill logic, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation",
       "runtime": {
         "production_enabled": false,
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
         "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
         ],
         "runtime_config_locations": [],
@@ -119640,6 +119877,181 @@
       "source_row_sha256": "bcfa025227977e35ec862173aa1aa42b071a0cdafba96a2ecf6773900bbcef01"
     },
     {
+      "exact_id": 2110075,
+      "id_kind": "effect-or-status-id",
+      "effect_id": 2110075,
+      "route_key": "2110075:effect:2110075",
+      "route_kind": "canonical-effect",
+      "origin": {
+        "source": "reconciled-union",
+        "present_in": {
+          "production_frontier": false,
+          "aoyi_descendants": false,
+          "party_buff_closure": false,
+          "observed_external_frontier": false,
+          "runtime_classification": true,
+          "rogue_party_graph": false
+        }
+      },
+      "localization": {
+        "design_name": "增加精通",
+        "localized_name": "Breaking Out of the Cocoon",
+        "localized_description": "Significant Mastery boost throughout the duration",
+        "contextual_parent_names": [],
+        "placeholder_localization_retained": false
+      },
+      "provider_scope": "owner",
+      "recipient_scope": "self_only",
+      "magnitude": {
+        "classification_basis_points": null,
+        "active_parameter_ladders": [],
+        "runtime_config_locations": [],
+        "exact_numeric_magnitude_resolved": false
+      },
+      "stacking": {
+        "installed_repeat_add_rule": [
+          0,
+          1
+        ],
+        "reviewed_runtime_rule": "fixed"
+      },
+      "lifecycle": {
+        "installed_destroy_rules": [
+          [
+            0,
+            20
+          ]
+        ],
+        "exact_status_level": 75,
+        "lifecycle_identity_present": true
+      },
+      "operation_order": {
+        "lane": "owner-only-damage-context-never-transferred",
+        "authority": false,
+        "note": "No transfer is emitted until operation placement is exact."
+      },
+      "aliases": {
+        "aoyi_parent_links": [],
+        "party_skill_ids": [],
+        "rogue_entry_ids": [],
+        "component_ids": []
+      },
+      "reviewed_disposition": "runtime-non_contributing",
+      "remaining_obligation": null,
+      "runtime": {
+        "production_enabled": false,
+        "generic_classification_attribution_enabled": false,
+        "specialized_runtime_owned": false,
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+        ],
+        "runtime_config_locations": [],
+        "runtime_reference_locations": [
+          "$/harmony_grace"
+        ],
+        "unsupported_or_ambiguous_fails_closed": true
+      },
+      "tests": {
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+            "function": "current_build_descriptions_disposition_environment_and_owner_only_effects"
+          }
+        ],
+        "production_contract": [
+          "unsupported route emits zero transferred damage",
+          "exact identity remains visible in canonical state and presentation"
+        ],
+        "focused_source": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+        "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
+      },
+      "source_row_sha256": "52bf4be1d6386ade992a521113b564aef68f5b8dc90146e78443291f315c8205"
+    },
+    {
+      "exact_id": 2110075,
+      "id_kind": "effect-or-status-id",
+      "effect_id": 2110075,
+      "route_key": "2110075:runtime-classification:2110075",
+      "route_kind": "runtime-classification",
+      "origin": {
+        "source": "rdps-effect-classification.v1.json",
+        "review_state": "non_contributing"
+      },
+      "localization": {
+        "design_name": "增加精通",
+        "localized_name": "Breaking Out of the Cocoon",
+        "localized_description": "Significant Mastery boost throughout the duration",
+        "contextual_parent_names": [],
+        "placeholder_localization_retained": false
+      },
+      "provider_scope": "owner",
+      "recipient_scope": "self_only",
+      "magnitude": {
+        "classification_basis_points": null,
+        "active_parameter_ladders": [],
+        "runtime_config_locations": [],
+        "exact_numeric_magnitude_resolved": false
+      },
+      "stacking": {
+        "installed_repeat_add_rule": [
+          0,
+          1
+        ],
+        "reviewed_runtime_rule": "fixed"
+      },
+      "lifecycle": {
+        "installed_destroy_rules": [
+          [
+            0,
+            20
+          ]
+        ],
+        "exact_status_level": 75,
+        "lifecycle_identity_present": true
+      },
+      "operation_order": {
+        "lane": "owner-only-damage-context-never-transferred",
+        "authority": false,
+        "note": "No transfer is emitted until operation placement is exact."
+      },
+      "aliases": {
+        "aoyi_parent_links": [],
+        "party_skill_ids": [],
+        "rogue_entry_ids": [],
+        "component_ids": []
+      },
+      "reviewed_disposition": "runtime-non_contributing",
+      "remaining_obligation": null,
+      "runtime": {
+        "production_enabled": false,
+        "generic_classification_attribution_enabled": false,
+        "specialized_runtime_owned": false,
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+        ],
+        "runtime_config_locations": [],
+        "runtime_reference_locations": [
+          "$/harmony_grace"
+        ],
+        "unsupported_or_ambiguous_fails_closed": true
+      },
+      "tests": {
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+            "function": "current_build_descriptions_disposition_environment_and_owner_only_effects"
+          }
+        ],
+        "production_contract": [
+          "unsupported route emits zero transferred damage",
+          "exact identity remains visible in canonical state and presentation"
+        ],
+        "focused_source": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+        "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
+      },
+      "source_row_sha256": "54006f26bb4745c78df617dd7369926c7c7ecfeb91ce4703cf04cd9e3fe10a88"
+    },
+    {
       "exact_id": 2110077,
       "id_kind": "effect-or-status-id",
       "effect_id": 2110077,
@@ -119660,8 +120072,8 @@
         ],
         "placeholder_localization_retained": false
       },
-      "provider_scope": "unresolved; provider credit fails closed",
-      "recipient_scope": [],
+      "provider_scope": "owner",
+      "recipient_scope": "self_only",
       "magnitude": {
         "classification_basis_points": null,
         "active_parameter_ladders": [],
@@ -119673,7 +120085,7 @@
           2,
           10
         ],
-        "reviewed_runtime_rule": null
+        "reviewed_runtime_rule": "stack_scaled"
       },
       "lifecycle": {
         "installed_destroy_rules": [
@@ -119686,7 +120098,7 @@
         "lifecycle_identity_present": true
       },
       "operation_order": {
-        "lane": "unresolved-fail-closed",
+        "lane": "owner-only-damage-context-never-transferred",
         "authority": false,
         "note": "No transfer is emitted until operation placement is exact."
       },
@@ -119708,7 +120120,9 @@
         "production_enabled": false,
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
-        "source_files_containing_exact_id": [],
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+        ],
         "runtime_config_locations": [],
         "runtime_reference_locations": [
           "$/harmony_grace"
@@ -119716,7 +120130,12 @@
         "unsupported_or_ambiguous_fails_closed": true
       },
       "tests": {
-        "exact_id_test_functions": [],
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+            "function": "current_build_descriptions_disposition_environment_and_owner_only_effects"
+          }
+        ],
         "production_contract": [
           "unsupported route emits zero transferred damage",
           "exact identity remains visible in canonical state and presentation"
@@ -119739,7 +120158,7 @@
           "aoyi_descendants": true,
           "party_buff_closure": false,
           "observed_external_frontier": false,
-          "runtime_classification": false,
+          "runtime_classification": true,
           "rogue_party_graph": false
         }
       },
@@ -119752,8 +120171,8 @@
         ],
         "placeholder_localization_retained": false
       },
-      "provider_scope": "unresolved; provider credit fails closed",
-      "recipient_scope": [],
+      "provider_scope": "owner",
+      "recipient_scope": "self_only",
       "magnitude": {
         "classification_basis_points": null,
         "active_parameter_ladders": [],
@@ -119765,7 +120184,7 @@
           2,
           10
         ],
-        "reviewed_runtime_rule": null
+        "reviewed_runtime_rule": "stack_scaled"
       },
       "lifecycle": {
         "installed_destroy_rules": [
@@ -119778,7 +120197,7 @@
         "lifecycle_identity_present": true
       },
       "operation_order": {
-        "lane": "unresolved-fail-closed",
+        "lane": "owner-only-damage-context-never-transferred",
         "authority": false,
         "note": "No transfer is emitted until operation placement is exact."
       },
@@ -119794,13 +120213,15 @@
         "rogue_entry_ids": [],
         "component_ids": []
       },
-      "reviewed_disposition": "discovery-only-no-exact-aoyi-owner-edge-current-build",
+      "reviewed_disposition": "runtime-non_contributing",
       "remaining_obligation": null,
       "runtime": {
         "production_enabled": false,
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
-        "source_files_containing_exact_id": [],
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+        ],
         "runtime_config_locations": [],
         "runtime_reference_locations": [
           "$/harmony_grace"
@@ -119808,7 +120229,12 @@
         "unsupported_or_ambiguous_fails_closed": true
       },
       "tests": {
-        "exact_id_test_functions": [],
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+            "function": "current_build_descriptions_disposition_environment_and_owner_only_effects"
+          }
+        ],
         "production_contract": [
           "unsupported route emits zero transferred damage",
           "exact identity remains visible in canonical state and presentation"
@@ -119816,7 +120242,99 @@
         "focused_source": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
         "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
       },
-      "source_row_sha256": "bc12e9a1fc702bbf373356dee2c42d9761a8b8320dc126ae52a3c37048c7a802"
+      "source_row_sha256": "1c08991cfb16ce8d85a7dc3067500ab15e903fccaf913f01578958b7ec88fbbe"
+    },
+    {
+      "exact_id": 2110077,
+      "id_kind": "effect-or-status-id",
+      "effect_id": 2110077,
+      "route_key": "2110077:runtime-classification:2110077",
+      "route_kind": "runtime-classification",
+      "origin": {
+        "source": "rdps-effect-classification.v1.json",
+        "review_state": "non_contributing"
+      },
+      "localization": {
+        "design_name": "叠层buff",
+        "localized_name": "Intimidation",
+        "localized_description": "Gain ATK for each enemy killed throughout the duration, up to 10 stacks",
+        "contextual_parent_names": [
+          "Stunt! Predator Slash"
+        ],
+        "placeholder_localization_retained": false
+      },
+      "provider_scope": "owner",
+      "recipient_scope": "self_only",
+      "magnitude": {
+        "classification_basis_points": null,
+        "active_parameter_ladders": [],
+        "runtime_config_locations": [],
+        "exact_numeric_magnitude_resolved": false
+      },
+      "stacking": {
+        "installed_repeat_add_rule": [
+          2,
+          10
+        ],
+        "reviewed_runtime_rule": "stack_scaled"
+      },
+      "lifecycle": {
+        "installed_destroy_rules": [
+          [
+            0,
+            10
+          ]
+        ],
+        "exact_status_level": 77,
+        "lifecycle_identity_present": true
+      },
+      "operation_order": {
+        "lane": "owner-only-damage-context-never-transferred",
+        "authority": false,
+        "note": "No transfer is emitted until operation placement is exact."
+      },
+      "aliases": {
+        "aoyi_parent_links": [
+          {
+            "parent_skill_id": 3928,
+            "source": "semantic-owner-candidate",
+            "exact": false
+          }
+        ],
+        "party_skill_ids": [],
+        "rogue_entry_ids": [],
+        "component_ids": []
+      },
+      "reviewed_disposition": "runtime-non_contributing",
+      "remaining_obligation": null,
+      "runtime": {
+        "production_enabled": false,
+        "generic_classification_attribution_enabled": false,
+        "specialized_runtime_owned": false,
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+        ],
+        "runtime_config_locations": [],
+        "runtime_reference_locations": [
+          "$/harmony_grace"
+        ],
+        "unsupported_or_ambiguous_fails_closed": true
+      },
+      "tests": {
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+            "function": "current_build_descriptions_disposition_environment_and_owner_only_effects"
+          }
+        ],
+        "production_contract": [
+          "unsupported route emits zero transferred damage",
+          "exact identity remains visible in canonical state and presentation"
+        ],
+        "focused_source": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+        "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
+      },
+      "source_row_sha256": "be061da98b6f2178a73ecc90f4243760c7fe252a642933cc0a8034344a02bad4"
     },
     {
       "exact_id": 2110078,
@@ -123215,7 +123733,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/thunder_roar"
@@ -123236,6 +123755,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -123421,7 +123944,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/thunder_roar"
@@ -123442,6 +123966,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -123625,7 +124153,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/thunder_roar"
@@ -123646,6 +124175,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -123834,7 +124367,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/thunder_roar"
@@ -123855,6 +124389,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -124036,7 +124574,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/thunder_roar"
@@ -124057,6 +124596,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -132147,8 +132690,8 @@
         ],
         "placeholder_localization_retained": false
       },
-      "provider_scope": "unresolved; provider credit fails closed",
-      "recipient_scope": [],
+      "provider_scope": "owner",
+      "recipient_scope": "self_only",
       "magnitude": {
         "classification_basis_points": null,
         "active_parameter_ladders": [
@@ -132251,7 +132794,7 @@
           0,
           1
         ],
-        "reviewed_runtime_rule": null
+        "reviewed_runtime_rule": "fixed"
       },
       "lifecycle": {
         "installed_destroy_rules": [
@@ -132264,7 +132807,7 @@
         "lifecycle_identity_present": true
       },
       "operation_order": {
-        "lane": "unresolved-fail-closed",
+        "lane": "owner-only-damage-context-never-transferred",
         "authority": false,
         "note": "No transfer is emitted until operation placement is exact."
       },
@@ -132286,7 +132829,9 @@
         "production_enabled": false,
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
-        "source_files_containing_exact_id": [],
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+        ],
         "runtime_config_locations": [],
         "runtime_reference_locations": [
           "$/harmony_grace"
@@ -132294,7 +132839,12 @@
         "unsupported_or_ambiguous_fails_closed": true
       },
       "tests": {
-        "exact_id_test_functions": [],
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+            "function": "current_build_descriptions_disposition_environment_and_owner_only_effects"
+          }
+        ],
         "production_contract": [
           "unsupported route emits zero transferred damage",
           "exact identity remains visible in canonical state and presentation"
@@ -132317,7 +132867,7 @@
           "aoyi_descendants": true,
           "party_buff_closure": false,
           "observed_external_frontier": false,
-          "runtime_classification": false,
+          "runtime_classification": true,
           "rogue_party_graph": false
         }
       },
@@ -132330,8 +132880,8 @@
         ],
         "placeholder_localization_retained": false
       },
-      "provider_scope": "unresolved; provider credit fails closed",
-      "recipient_scope": [],
+      "provider_scope": "owner",
+      "recipient_scope": "self_only",
       "magnitude": {
         "classification_basis_points": null,
         "active_parameter_ladders": [
@@ -132434,7 +132984,7 @@
           0,
           1
         ],
-        "reviewed_runtime_rule": null
+        "reviewed_runtime_rule": "fixed"
       },
       "lifecycle": {
         "installed_destroy_rules": [
@@ -132447,7 +132997,7 @@
         "lifecycle_identity_present": true
       },
       "operation_order": {
-        "lane": "unresolved-fail-closed",
+        "lane": "owner-only-damage-context-never-transferred",
         "authority": false,
         "note": "No transfer is emitted until operation placement is exact."
       },
@@ -132463,13 +133013,15 @@
         "rogue_entry_ids": [],
         "component_ids": []
       },
-      "reviewed_disposition": "discovery-only-no-exact-aoyi-owner-edge-current-build",
+      "reviewed_disposition": "runtime-non_contributing",
       "remaining_obligation": null,
       "runtime": {
         "production_enabled": false,
         "generic_classification_attribution_enabled": false,
         "specialized_runtime_owned": false,
-        "source_files_containing_exact_id": [],
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+        ],
         "runtime_config_locations": [],
         "runtime_reference_locations": [
           "$/harmony_grace"
@@ -132477,7 +133029,12 @@
         "unsupported_or_ambiguous_fails_closed": true
       },
       "tests": {
-        "exact_id_test_functions": [],
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+            "function": "current_build_descriptions_disposition_environment_and_owner_only_effects"
+          }
+        ],
         "production_contract": [
           "unsupported route emits zero transferred damage",
           "exact identity remains visible in canonical state and presentation"
@@ -132485,7 +133042,190 @@
         "focused_source": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
         "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
       },
-      "source_row_sha256": "d87551beb4f7dafc3340eb62762d3926b3f781895fb72d52c002857011068f2b"
+      "source_row_sha256": "181783aa4f8d91cfe6a161fe0ddf00f22eb8355046687e49687fbcc72efe2cf7"
+    },
+    {
+      "exact_id": 2110126,
+      "id_kind": "effect-or-status-id",
+      "effect_id": 2110126,
+      "route_key": "2110126:runtime-classification:2110126",
+      "route_kind": "runtime-classification",
+      "origin": {
+        "source": "rdps-effect-classification.v1.json",
+        "review_state": "non_contributing"
+      },
+      "localization": {
+        "design_name": "高原蓝蜥蜴-主动",
+        "localized_name": "Versatility Specialization",
+        "localized_description": "Greatly increases Versatility during the duration",
+        "contextual_parent_names": [
+          "Stunt! Frost Breath"
+        ],
+        "placeholder_localization_retained": false
+      },
+      "provider_scope": "owner",
+      "recipient_scope": "self_only",
+      "magnitude": {
+        "classification_basis_points": null,
+        "active_parameter_ladders": [
+          {
+            "parent_skill_id": 3958,
+            "parent_skill_name": "Stunt! Frost Breath",
+            "skill_effect_id": 395801,
+            "semantic_labels": [
+              "Versatility Boost"
+            ],
+            "parameter_encoding": "signed-fixed-point-percent",
+            "raw_units_per_percent": 100,
+            "raw_units_per_decimal": 10000,
+            "duration_seconds": 20,
+            "tiers": [
+              {
+                "tier": 1,
+                "fields": [
+                  {
+                    "key": "attrPer",
+                    "semantic_role": "Versatility Boost",
+                    "contribution_role": "active-stat-modifier",
+                    "alias_of": null,
+                    "raw_value": 130,
+                    "percent_value": 1.3,
+                    "decimal_value": 0.013,
+                    "mapping_proof": "current SkillEffectTable ordered semantic labels joined to exact SkillAoyiStarTable field grammar"
+                  }
+                ]
+              },
+              {
+                "tier": 2,
+                "fields": [
+                  {
+                    "key": "attrPer",
+                    "semantic_role": "Versatility Boost",
+                    "contribution_role": "active-stat-modifier",
+                    "alias_of": null,
+                    "raw_value": 260,
+                    "percent_value": 2.6,
+                    "decimal_value": 0.026,
+                    "mapping_proof": "current SkillEffectTable ordered semantic labels joined to exact SkillAoyiStarTable field grammar"
+                  }
+                ]
+              },
+              {
+                "tier": 3,
+                "fields": [
+                  {
+                    "key": "attrPer",
+                    "semantic_role": "Versatility Boost",
+                    "contribution_role": "active-stat-modifier",
+                    "alias_of": null,
+                    "raw_value": 390,
+                    "percent_value": 3.9,
+                    "decimal_value": 0.039,
+                    "mapping_proof": "current SkillEffectTable ordered semantic labels joined to exact SkillAoyiStarTable field grammar"
+                  }
+                ]
+              },
+              {
+                "tier": 4,
+                "fields": [
+                  {
+                    "key": "attrPer",
+                    "semantic_role": "Versatility Boost",
+                    "contribution_role": "active-stat-modifier",
+                    "alias_of": null,
+                    "raw_value": 520,
+                    "percent_value": 5.2,
+                    "decimal_value": 0.052,
+                    "mapping_proof": "current SkillEffectTable ordered semantic labels joined to exact SkillAoyiStarTable field grammar"
+                  }
+                ]
+              },
+              {
+                "tier": 5,
+                "fields": [
+                  {
+                    "key": "attrPer",
+                    "semantic_role": "Versatility Boost",
+                    "contribution_role": "active-stat-modifier",
+                    "alias_of": null,
+                    "raw_value": 650,
+                    "percent_value": 6.5,
+                    "decimal_value": 0.065,
+                    "mapping_proof": "current SkillEffectTable ordered semantic labels joined to exact SkillAoyiStarTable field grammar"
+                  }
+                ]
+              }
+            ],
+            "proof_state": "current-build-skill-effect-label-order-and-tier-key-family-exact"
+          }
+        ],
+        "runtime_config_locations": [],
+        "exact_numeric_magnitude_resolved": true
+      },
+      "stacking": {
+        "installed_repeat_add_rule": [
+          0,
+          1
+        ],
+        "reviewed_runtime_rule": "fixed"
+      },
+      "lifecycle": {
+        "installed_destroy_rules": [
+          [
+            0,
+            20
+          ]
+        ],
+        "exact_status_level": 26,
+        "lifecycle_identity_present": true
+      },
+      "operation_order": {
+        "lane": "owner-only-damage-context-never-transferred",
+        "authority": false,
+        "note": "No transfer is emitted until operation placement is exact."
+      },
+      "aliases": {
+        "aoyi_parent_links": [
+          {
+            "parent_skill_id": 3958,
+            "source": "semantic-owner-candidate",
+            "exact": false
+          }
+        ],
+        "party_skill_ids": [],
+        "rogue_entry_ids": [],
+        "component_ids": []
+      },
+      "reviewed_disposition": "runtime-non_contributing",
+      "remaining_obligation": null,
+      "runtime": {
+        "production_enabled": false,
+        "generic_classification_attribution_enabled": false,
+        "specialized_runtime_owned": false,
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+        ],
+        "runtime_config_locations": [],
+        "runtime_reference_locations": [
+          "$/harmony_grace"
+        ],
+        "unsupported_or_ambiguous_fails_closed": true
+      },
+      "tests": {
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+            "function": "current_build_descriptions_disposition_environment_and_owner_only_effects"
+          }
+        ],
+        "production_contract": [
+          "unsupported route emits zero transferred damage",
+          "exact identity remains visible in canonical state and presentation"
+        ],
+        "focused_source": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+        "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
+      },
+      "source_row_sha256": "b9e475fc60fcdfb014fae6d68b3b3026d705f4fb9bf7607124c5fe30303b4c00"
     },
     {
       "exact_id": 2110127,
@@ -132651,6 +133391,181 @@
         "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
       },
       "source_row_sha256": "1b960bf9c16efda7c323f6de1ad36da8b75d3407ab4b74d14a662bd5d4f46a60"
+    },
+    {
+      "exact_id": 2110128,
+      "id_kind": "effect-or-status-id",
+      "effect_id": 2110128,
+      "route_key": "2110128:effect:2110128",
+      "route_kind": "canonical-effect",
+      "origin": {
+        "source": "reconciled-union",
+        "present_in": {
+          "production_frontier": false,
+          "aoyi_descendants": false,
+          "party_buff_closure": false,
+          "observed_external_frontier": false,
+          "runtime_classification": true,
+          "rogue_party_graph": false
+        }
+      },
+      "localization": {
+        "design_name": "S2地狐-主动",
+        "localized_name": "Mastery Specialization",
+        "localized_description": "Greatly increases Mastery during the duration",
+        "contextual_parent_names": [],
+        "placeholder_localization_retained": false
+      },
+      "provider_scope": "owner",
+      "recipient_scope": "self_only",
+      "magnitude": {
+        "classification_basis_points": null,
+        "active_parameter_ladders": [],
+        "runtime_config_locations": [],
+        "exact_numeric_magnitude_resolved": false
+      },
+      "stacking": {
+        "installed_repeat_add_rule": [
+          0,
+          1
+        ],
+        "reviewed_runtime_rule": "fixed"
+      },
+      "lifecycle": {
+        "installed_destroy_rules": [
+          [
+            0,
+            20
+          ]
+        ],
+        "exact_status_level": 28,
+        "lifecycle_identity_present": true
+      },
+      "operation_order": {
+        "lane": "owner-only-damage-context-never-transferred",
+        "authority": false,
+        "note": "No transfer is emitted until operation placement is exact."
+      },
+      "aliases": {
+        "aoyi_parent_links": [],
+        "party_skill_ids": [],
+        "rogue_entry_ids": [],
+        "component_ids": []
+      },
+      "reviewed_disposition": "runtime-non_contributing",
+      "remaining_obligation": null,
+      "runtime": {
+        "production_enabled": false,
+        "generic_classification_attribution_enabled": false,
+        "specialized_runtime_owned": false,
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+        ],
+        "runtime_config_locations": [],
+        "runtime_reference_locations": [
+          "$/harmony_grace"
+        ],
+        "unsupported_or_ambiguous_fails_closed": true
+      },
+      "tests": {
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+            "function": "current_build_descriptions_disposition_environment_and_owner_only_effects"
+          }
+        ],
+        "production_contract": [
+          "unsupported route emits zero transferred damage",
+          "exact identity remains visible in canonical state and presentation"
+        ],
+        "focused_source": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+        "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
+      },
+      "source_row_sha256": "57738a854543467f08eb1cd9196eeb8bc342dbe9ec8fb13988a51b125ff7e095"
+    },
+    {
+      "exact_id": 2110128,
+      "id_kind": "effect-or-status-id",
+      "effect_id": 2110128,
+      "route_key": "2110128:runtime-classification:2110128",
+      "route_kind": "runtime-classification",
+      "origin": {
+        "source": "rdps-effect-classification.v1.json",
+        "review_state": "non_contributing"
+      },
+      "localization": {
+        "design_name": "S2地狐-主动",
+        "localized_name": "Mastery Specialization",
+        "localized_description": "Greatly increases Mastery during the duration",
+        "contextual_parent_names": [],
+        "placeholder_localization_retained": false
+      },
+      "provider_scope": "owner",
+      "recipient_scope": "self_only",
+      "magnitude": {
+        "classification_basis_points": null,
+        "active_parameter_ladders": [],
+        "runtime_config_locations": [],
+        "exact_numeric_magnitude_resolved": false
+      },
+      "stacking": {
+        "installed_repeat_add_rule": [
+          0,
+          1
+        ],
+        "reviewed_runtime_rule": "fixed"
+      },
+      "lifecycle": {
+        "installed_destroy_rules": [
+          [
+            0,
+            20
+          ]
+        ],
+        "exact_status_level": 28,
+        "lifecycle_identity_present": true
+      },
+      "operation_order": {
+        "lane": "owner-only-damage-context-never-transferred",
+        "authority": false,
+        "note": "No transfer is emitted until operation placement is exact."
+      },
+      "aliases": {
+        "aoyi_parent_links": [],
+        "party_skill_ids": [],
+        "rogue_entry_ids": [],
+        "component_ids": []
+      },
+      "reviewed_disposition": "runtime-non_contributing",
+      "remaining_obligation": null,
+      "runtime": {
+        "production_enabled": false,
+        "generic_classification_attribution_enabled": false,
+        "specialized_runtime_owned": false,
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/rdps.rs"
+        ],
+        "runtime_config_locations": [],
+        "runtime_reference_locations": [
+          "$/harmony_grace"
+        ],
+        "unsupported_or_ambiguous_fails_closed": true
+      },
+      "tests": {
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
+            "function": "current_build_descriptions_disposition_environment_and_owner_only_effects"
+          }
+        ],
+        "production_contract": [
+          "unsupported route emits zero transferred damage",
+          "exact identity remains visible in canonical state and presentation"
+        ],
+        "focused_source": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+        "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
+      },
+      "source_row_sha256": "639bbc4913a899da6823bad1d487e5e9570640e5d5915ee30abe283a7b3c8afd"
     },
     {
       "exact_id": 2110129,
@@ -173196,6 +174111,207 @@
       "source_row_sha256": "adc3b138e455c6b5e8ded2db41448a4083ae4fe174bca88ad3e8534f3fb6cf3a"
     },
     {
+      "exact_id": 2302421,
+      "id_kind": "effect-or-status-id",
+      "effect_id": 2302421,
+      "route_key": "2302421:effect:2302421",
+      "route_kind": "canonical-effect",
+      "origin": {
+        "source": "reconciled-union",
+        "present_in": {
+          "production_frontier": true,
+          "aoyi_descendants": false,
+          "party_buff_closure": false,
+          "observed_external_frontier": false,
+          "runtime_classification": false,
+          "rogue_party_graph": false
+        }
+      },
+      "localization": {
+        "design_name": "————效果buff",
+        "localized_name": "气刃突刺计数",
+        "localized_description": "气刃突刺计数",
+        "contextual_parent_names": [],
+        "placeholder_localization_retained": true
+      },
+      "provider_scope": "unresolved; provider credit fails closed",
+      "recipient_scope": [],
+      "magnitude": {
+        "classification_basis_points": null,
+        "active_parameter_ladders": [],
+        "runtime_config_locations": [
+          "$/life_wave"
+        ],
+        "exact_numeric_magnitude_resolved": true
+      },
+      "stacking": {
+        "installed_repeat_add_rule": [
+          2,
+          1
+        ],
+        "reviewed_runtime_rule": null
+      },
+      "lifecycle": {
+        "installed_destroy_rules": [
+          [
+            0,
+            5
+          ]
+        ],
+        "exact_status_level": 21,
+        "lifecycle_identity_present": true
+      },
+      "operation_order": {
+        "lane": "unresolved-fail-closed",
+        "authority": true,
+        "note": "Operation lane is owned by the specialized current-build runtime and its conservation gates."
+      },
+      "aliases": {
+        "aoyi_parent_links": [],
+        "party_skill_ids": [],
+        "rogue_entry_ids": [],
+        "component_ids": []
+      },
+      "reviewed_disposition": "production-enabled",
+      "remaining_obligation": null,
+      "runtime": {
+        "production_enabled": true,
+        "generic_classification_attribution_enabled": false,
+        "specialized_runtime_owned": true,
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+        ],
+        "runtime_config_locations": [
+          "$/life_wave"
+        ],
+        "runtime_reference_locations": [],
+        "unsupported_or_ambiguous_fails_closed": false
+      },
+      "tests": {
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+            "function": "catalog_is_current_build_and_formula_exact"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+            "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+            "function": "life_wave_is_exact_current_build_selected_lane_authority_only"
+          }
+        ],
+        "production_contract": [
+          "ordinary Damage and DPS remain unchanged",
+          "exact rDMG conserves by provider/effect/recipient",
+          "shared live and history projector paths agree",
+          "malformed, ambiguous, expired, gap-crossing, or stale state fails closed"
+        ],
+        "focused_source": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+        "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
+      },
+      "source_row_sha256": "9df3b58d6940b7964f9fbe65537790d4c3a2ec36d547880b3276391ab08b1698"
+    },
+    {
+      "exact_id": 2302421,
+      "id_kind": "effect-or-status-id",
+      "effect_id": 2302421,
+      "route_key": "2302421:production-runtime:2302421",
+      "route_kind": "production-runtime",
+      "origin": {
+        "source": "specialized build-24687926 state projector",
+        "production_frontier": true
+      },
+      "localization": {
+        "design_name": "————效果buff",
+        "localized_name": "气刃突刺计数",
+        "localized_description": "气刃突刺计数",
+        "contextual_parent_names": [],
+        "placeholder_localization_retained": true
+      },
+      "provider_scope": "unresolved; provider credit fails closed",
+      "recipient_scope": [],
+      "magnitude": {
+        "classification_basis_points": null,
+        "active_parameter_ladders": [],
+        "runtime_config_locations": [
+          "$/life_wave"
+        ],
+        "exact_numeric_magnitude_resolved": true
+      },
+      "stacking": {
+        "installed_repeat_add_rule": [
+          2,
+          1
+        ],
+        "reviewed_runtime_rule": null
+      },
+      "lifecycle": {
+        "installed_destroy_rules": [
+          [
+            0,
+            5
+          ]
+        ],
+        "exact_status_level": 21,
+        "lifecycle_identity_present": true
+      },
+      "operation_order": {
+        "lane": "unresolved-fail-closed",
+        "authority": true,
+        "note": "Operation lane is owned by the specialized current-build runtime and its conservation gates."
+      },
+      "aliases": {
+        "aoyi_parent_links": [],
+        "party_skill_ids": [],
+        "rogue_entry_ids": [],
+        "component_ids": []
+      },
+      "reviewed_disposition": "production-enabled",
+      "remaining_obligation": null,
+      "runtime": {
+        "production_enabled": true,
+        "generic_classification_attribution_enabled": false,
+        "specialized_runtime_owned": true,
+        "source_files_containing_exact_id": [
+          "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+        ],
+        "runtime_config_locations": [
+          "$/life_wave"
+        ],
+        "runtime_reference_locations": [],
+        "unsupported_or_ambiguous_fails_closed": false
+      },
+      "tests": {
+        "exact_id_test_functions": [
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+            "function": "catalog_is_current_build_and_formula_exact"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+            "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+            "function": "life_wave_is_exact_current_build_selected_lane_authority_only"
+          }
+        ],
+        "production_contract": [
+          "ordinary Damage and DPS remain unchanged",
+          "exact rDMG conserves by provider/effect/recipient",
+          "shared live and history projector paths agree",
+          "malformed, ambiguous, expired, gap-crossing, or stale state fails closed"
+        ],
+        "focused_source": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+        "full_suite_command": "cargo test -p rlogs-game-bpsr --lib"
+      },
+      "source_row_sha256": "0be7ca053ffc3ccf000e314945e1386c3f59e4dd0d6d2e1c4bc0c9c11ea8ab30"
+    },
+    {
       "exact_id": 2401260,
       "id_kind": "effect-or-status-id",
       "effect_id": 2401260,
@@ -173995,6 +175111,7 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
           "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
@@ -174134,6 +175251,7 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
           "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
@@ -174232,6 +175350,7 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
           "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
@@ -174330,6 +175449,7 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
           "plugins/games/blue-protocol-star-resonance/src/rdps.rs",
           "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
@@ -179084,7 +180204,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/endless_mind"
@@ -179105,6 +180226,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -179232,7 +180357,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/endless_mind"
@@ -179253,6 +180379,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -179329,7 +180459,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/endless_mind"
@@ -179350,6 +180481,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -179426,7 +180561,8 @@
         "specialized_runtime_owned": true,
         "source_files_containing_exact_id": [
           "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
-          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs"
+          "plugins/games/blue-protocol-star-resonance/src/rdps_runtime.rs",
+          "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs"
         ],
         "runtime_config_locations": [
           "$/endless_mind"
@@ -179447,6 +180583,10 @@
           {
             "file": "plugins/games/blue-protocol-star-resonance/src/state_rdps.rs",
             "function": "exact_current_build_retains_formula_identity_and_only_proven_partial_credit"
+          },
+          {
+            "file": "plugins/games/blue-protocol-star-resonance/src/combat_presentation.rs",
+            "function": "all_promoted_rdps_effects_have_exact_id_english_presentation"
           }
         ],
         "production_contract": [
@@ -212092,5 +213232,5 @@
       "source_row_sha256": "087577e314737bfc4a76eff0c221915b778227a0eac0d31547bc031bbe2aa4e5"
     }
   ],
-  "content_sha256": "1154a322e1b73fb77776b6f2d48b1e471287512d58d555932cb05e6f08360614"
+  "content_sha256": "5451c9b8d274f4e65db98e8afa0c2b1367522b810c92144a4051479f7664ae67"
 }

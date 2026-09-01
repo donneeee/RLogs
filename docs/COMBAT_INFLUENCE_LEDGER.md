@@ -142,6 +142,7 @@ second set of relationships.
 
 ## Current-build exhaustive party-route census
 
+<!-- BEGIN GENERATED RDPS PROMOTION FRONTIER -->
 The build `24687926` party-route ledger is an exhaustive joined census, not a
 shortlist of effects seen in one run. Its checked cardinalities are:
 
@@ -149,43 +150,64 @@ shortlist of effects seen in one run. Its checked cardinalities are:
 - 56 party-skill rows and 101 party-buff rows;
 - 22 rogue/team-entry rows;
 - 124 packet-observed external effects;
-- 512 consolidated effect identities; and
-- 1,584 exact ID/route rows covering 659 unique exact IDs.
+- 513 consolidated effect identities; and
+- 1,586 exact ID/route rows covering 660 unique exact IDs.
 
 Every route row carries origin, localization evidence, provider and recipient
 scope, magnitude evidence, stacking, lifecycle, operation order, aliases,
 runtime bindings, focused tests, reviewed disposition, and any remaining proof
 obligation. The generator asserts those fields and cardinalities, including
-zero missing runtime/config/test bindings for all 28 production-enabled effect
+zero missing runtime/config/test bindings for all 29 production-enabled effect
 IDs. This is the coverage gate used to answer whether every promotion candidate
 was actually reviewed.
 
-Four offensive candidates remain deliberately fail-closed:
+The production allowlist is:
 
-- `997520`, Energy Synergy Field resource gain: resource cap, overcap, spend,
-  extra-action selection, provider overlap, and conserved scheduling remain
-  unresolved;
-- `2110060`, Swift Vortex: static data proves party scope, the 10-second field
-  and 10-second linger, refresh-only nonstacking behavior, and the skill
-  ownership route. Reconciliation schema 6 now seals exact paired
-  Haste/action-speed application and symmetric-removal receipts behind a
-  current-build identity and confounder gate. No qualifying receipt has yet
-  supplied the missing magnitude, and the exact skill-to-status edge,
-  lingering field arbitration, and action-opportunity conservation remain
-  unresolved;
-- `2110078`, Shock Defense Break: equipped tier selection and the exact
-  defense/penetration/rounding counterfactual remain unresolved; and
-- `2110092`, the shared Blade Sweep/Goblin March defense reduction: provider
-  selection for the shared projectile plus the same defense-stage integer
-  counterfactual remain unresolved.
+- `31602` — Inspire
+- `55228` — Luminary Bolt Vulnerability
+- `55333` — Encore
+- `997511` — Coordinated Strike
+- `997513` — Element Sharing
+- `997515` — Attribute Transfer
+- `997518` — Enhanced Synergy
+- `997534` — Synergy Luck Field
+- `997538` — Synergy Crit Field
+- `997570` — Tactical Blessing
+- `998542` — All-Class Aura
+- `2100154` — Blessing
+- `2110034` — Arcane! Time Decree — Lower CD
+- `2110065` — Fiery Battle Will
+- `2110096` — Arcane! Thunder Roar — Electro Shield (Thunderstrike)
+- `2110099` — Arcane! Poison Explosion — Vulnerability
+- `2110125` — Highland Blood
+- `2110140` — Mechanical Power
+- `2110143` — Functional Amp
+- `2110167` — Morale Reduction — Vulnerability
+- `2202041` — Inspiration
+- `2204471` — Critical Cold
+- `2207252` — Stat Resonance
+- `2302121` — Team Luck & Crit
+- `2302421` — Life Wave
+- `2404261` — Spring Breeze — Season 2 healer 2-piece
+- `2404271` — Full Bloom
+- `3003052` — Harmony Grace
+- `3003411` — Endless Mind
 
-Life Wave is tracked separately because it is a module-trigger relationship,
-not a party-skill row. Build-locked game data proves its level-5/6 magnitudes
-and five-second refreshable lifecycle. Runtime can identify self, unique
-external, ambiguous, and unknown trigger ownership and marks affected totals
-incomplete, but emits no guessed transfer until the selected highest-stat lane
-and provider-removed damage marginal are exact. Same-run cross-vantage profile
-and attribute witnesses are the evidence path for closing that gap.
+Exactly 4 offensive candidates remain deliberately fail-closed:
+
+- `997520` — Energy Synergy Domain — Combat Resource Acquisition Efficiency: Reconstruct event-time gain, cap and overcap, spend, downstream extra-action selection, provider overlap, and a conserved provider-removed schedule for the 15-second +100% Combat Resource Acquisition Efficiency opportunity lane.
+- `2110060` — Arcane! Swift Vortex — Ally Haste: Resolve the numeric Haste magnitude absent from all installed tables and decoded skill logic, then model the 10-second field, 10-second linger, nonstacking provider arbitration, downstream action opportunities, and conservation.
+- `2110078` — Stunt! Blink Ambush — Shock Defense Break: Reconstruct the defense-affected ATK or MATK subtotal, event-time target defense and source penetration overlap, combat-stage placement, integer rounding, and conserved marginal for the equipped-tier 2/4/6/8/10% Armor reduction.
+- `2110092` — Stunt! Blade Sweep / Arcane! Goblin March — Target Armor Reduction: Select the packet-owned provider for the shared projectile and reconstruct the defense-affected ATK or MATK subtotal, event-time target defense and penetration overlap, combat-stage placement, stacking arbitration, integer rounding, and conserved marginal for the equipped-tier 1.3/2.6/3.9/5.2/6.5% Armor reduction.
+
+Life Wave (`2302421`) is included in the production allowlist. For current-build
+joint replay, rLogs requires the exact HP/max-HP trigger owner, a verified module
+profile, the recipient's adjacent attribute transition that selects the affected
+secondary-stat lane, a reviewed damage-action route, and packet-final
+counterfactual conservation. Ambiguous ownership, overlap, missing cross-vantage
+witnesses, and unsupported actions still grant zero provider credit while
+ordinary damage remains unchanged.
+<!-- END GENERATED RDPS PROMOTION FRONTIER -->
 
 ## Exact-build research-journal audit
 
