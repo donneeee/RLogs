@@ -34,6 +34,14 @@ directory and opens the selected `\\Device\\NPF_{GUID}` adapter without
 requiring Wireshark or `dumpcap.exe`. A configured dumpcap path remains a
 compatibility fallback. A portable Linux libpcap adapter remains a later slice.
 
+Npcap installs `wpcap.dll` and its lower-level `Packet.dll` as a matched pair.
+If an interrupted or partial update leaves incompatible versions, Windows can
+otherwise display a blocking "Entry Point Not Found" dialog while an app probes
+capture support. rLogs suppresses that system dialog only around its trusted
+system-DLL probe, tries both trusted installation locations, and reports an
+actionable repair/update diagnostic in Settings. It never loads a capture DLL
+from the application or working directory.
+
 ## Stored formats
 
 Pcapng is preferred for opt-in protocol research because it can preserve
@@ -78,4 +86,6 @@ frame sources, not alternate decoders. The canonical pipeline remains singular.
 Npcap redistribution and installer terms must be reviewed before RLogs bundles
 the driver itself. The rLogs installer does not redistribute Npcap; it uses an
 existing Npcap installation directly and reports a clear capture error when the
-driver is absent.
+driver is absent or its DLL pair is incompatible. Users can repair the pair with
+the current installer from [Npcap's official download page](https://npcap.com/);
+`dumpcap.exe` is not required.

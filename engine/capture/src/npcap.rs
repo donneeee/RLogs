@@ -13,9 +13,14 @@ use std::{
 use bytes::Bytes;
 use windows_sys::Win32::{
     Foundation::{FreeLibrary, HMODULE},
-    System::LibraryLoader::{
-        GetProcAddress, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
-        LoadLibraryExW,
+    System::{
+        Diagnostics::Debug::{
+            GetThreadErrorMode, SEM_FAILCRITICALERRORS, SEM_NOOPENFILEERRORBOX, SetThreadErrorMode,
+        },
+        LibraryLoader::{
+            GetProcAddress, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
+            LoadLibraryExW,
+        },
     },
 };
 
@@ -79,19 +84,35 @@ unsafe impl Send for NpcapApi {}
 
 impl NpcapApi {
     fn load() -> Result<Self, CaptureError> {
-        let path = installed_wpcap_path().ok_or_else(|| {
-            adapter_error(
+        let paths = installed_wpcap_paths();
+        if paths.is_empty() {
+            return Err(adapter_error(
                 "Npcap's wpcap.dll was not found under the trusted Windows system directory",
-            )
-        })?;
+            ));
+        }
+        let mut failures = Vec::with_capacity(paths.len());
+        for path in paths {
+            match Self::load_from_path(&path) {
+                Ok(api) => return Ok(api),
+                Err(error) => failures.push(format!("{}: {error}", path.display())),
+            }
+        }
+        Err(adapter_error(format!(
+            "Npcap is installed but no compatible wpcap.dll/Packet.dll pair could be loaded. {}. Repair or update Npcap, then refresh capture devices; rLogs does not require dumpcap.exe",
+            failures.join("; ")
+        )))
+    }
+
+    fn load_from_path(path: &Path) -> Result<Self, CaptureError> {
         let wide_path = path
             .as_os_str()
             .encode_wide()
             .chain(std::iter::once(0))
             .collect::<Vec<_>>();
+        let _error_mode = DllLoadErrorModeGuard::suppress_system_dialogs();
         // SAFETY: the path is NUL-terminated and points to an existing DLL in
         // the trusted Windows system tree. The flags resolve Packet.dll from
-        // the same Npcap directory without searching the working directory.
+        // the same candidate directory without searching the working directory.
         let module = unsafe {
             LoadLibraryExW(
                 wide_path.as_ptr(),
@@ -100,10 +121,17 @@ impl NpcapApi {
             )
         };
         if module.is_null() {
+            let error = std::io::Error::last_os_error();
+            let detail = if error.raw_os_error() == Some(127) {
+                format!(
+                    "Windows error 127: wpcap.dll imports an entry point that its sibling Packet.dll does not export ({error})"
+                )
+            } else {
+                error.to_string()
+            };
             return Err(adapter_error(format!(
-                "could not load {}: {}",
+                "could not load {}: {detail}",
                 path.display(),
-                std::io::Error::last_os_error()
             )));
         }
 
@@ -128,6 +156,40 @@ impl NpcapApi {
             unsafe { FreeLibrary(module) };
         }
         loaded
+    }
+}
+
+struct DllLoadErrorModeGuard {
+    previous: u32,
+    changed: bool,
+}
+
+impl DllLoadErrorModeGuard {
+    fn suppress_system_dialogs() -> Self {
+        // A broken Npcap installation can contain a wpcap.dll and Packet.dll
+        // from different releases. Windows normally presents a blocking
+        // "Entry Point Not Found" dialog while resolving that dependency. The
+        // capture probe owns the error and must return it to the UI instead.
+        let current = unsafe { GetThreadErrorMode() };
+        let mut previous = current;
+        let changed = unsafe {
+            SetThreadErrorMode(
+                current | SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX,
+                &mut previous,
+            ) != 0
+        };
+        Self { previous, changed }
+    }
+}
+
+impl Drop for DllLoadErrorModeGuard {
+    fn drop(&mut self) {
+        if self.changed {
+            // SAFETY: this restores only the calling thread's prior error mode.
+            unsafe {
+                SetThreadErrorMode(self.previous, ptr::null_mut());
+            }
+        }
     }
 }
 
@@ -426,7 +488,11 @@ impl Drop for NpcapLiveCapture {
 }
 
 pub fn npcap_available() -> bool {
-    NpcapApi::load().is_ok()
+    npcap_diagnostic().is_ok()
+}
+
+pub fn npcap_diagnostic() -> Result<(), CaptureError> {
+    NpcapApi::load().map(drop)
 }
 
 pub fn npcap_device_name(adapter_name: &str) -> String {
@@ -438,14 +504,17 @@ pub fn npcap_device_name(adapter_name: &str) -> String {
     }
 }
 
-fn installed_wpcap_path() -> Option<PathBuf> {
-    let system_root = PathBuf::from(std::env::var_os("SystemRoot")?);
+fn installed_wpcap_paths() -> Vec<PathBuf> {
+    let Some(system_root) = std::env::var_os("SystemRoot").map(PathBuf::from) else {
+        return Vec::new();
+    };
     [
         system_root.join("System32/Npcap/wpcap.dll"),
         system_root.join("System32/wpcap.dll"),
     ]
     .into_iter()
-    .find(|path| Path::new(path).is_file())
+    .filter(|path| Path::new(path).is_file())
+    .collect()
 }
 
 fn error_buffer_text(buffer: &[c_char; PCAP_ERROR_BUFFER_SIZE]) -> String {
@@ -487,9 +556,55 @@ mod tests {
 
     #[test]
     fn installed_npcap_exports_the_required_capture_api() {
-        if installed_wpcap_path().is_some() {
+        if !installed_wpcap_paths().is_empty() {
             NpcapApi::load().expect("installed Npcap must expose the libpcap ABI");
         }
+    }
+
+    #[test]
+    fn npcap_probe_restores_the_calling_threads_error_mode() {
+        let before = unsafe { GetThreadErrorMode() };
+        let _ = npcap_diagnostic();
+        let after = unsafe { GetThreadErrorMode() };
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    fn incompatible_sibling_packet_dll_returns_error_instead_of_a_system_dialog() {
+        let Some(source_wpcap) = installed_wpcap_paths().into_iter().next() else {
+            return;
+        };
+        let Some(system_root) = std::env::var_os("SystemRoot").map(PathBuf::from) else {
+            return;
+        };
+        let unrelated_dll = system_root.join("System32/version.dll");
+        if !unrelated_dll.is_file() {
+            return;
+        }
+        let fixture = std::env::temp_dir().join(format!(
+            "rlogs-incompatible-npcap-fixture-{}",
+            std::process::id()
+        ));
+        if fixture.is_dir() {
+            std::fs::remove_dir_all(&fixture).expect("remove stale Npcap fixture");
+        }
+        std::fs::create_dir(&fixture).expect("create Npcap fixture");
+        let fixture_wpcap = fixture.join("wpcap.dll");
+        std::fs::copy(source_wpcap, &fixture_wpcap).expect("copy wpcap fixture");
+        std::fs::copy(unrelated_dll, fixture.join("Packet.dll"))
+            .expect("copy incompatible Packet fixture");
+
+        let before = unsafe { GetThreadErrorMode() };
+        let result = NpcapApi::load_from_path(&fixture_wpcap);
+        let after = unsafe { GetThreadErrorMode() };
+        assert_eq!(after, before);
+        let error = match result {
+            Ok(_) => panic!("wpcap unexpectedly loaded against an incompatible Packet.dll"),
+            Err(error) => error.to_string(),
+        };
+        assert!(error.contains("Windows error 127"), "{error}");
+
+        std::fs::remove_dir_all(fixture).expect("remove Npcap fixture");
     }
 
     #[test]

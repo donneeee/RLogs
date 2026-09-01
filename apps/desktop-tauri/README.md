@@ -24,4 +24,7 @@ the installed resources under the user's local application-data tree.
 On Windows the desktop opens installed Npcap directly and discovers the
 process-matched `\\Device\\NPF_{GUID}` interface on first run. Wireshark and
 `dumpcap.exe` are not required; a saved dumpcap path is only a compatibility
-fallback. The installer does not redistribute the Npcap driver itself.
+fallback. The installer does not redistribute the Npcap driver itself. A
+mismatched installed `wpcap.dll`/`Packet.dll` pair cannot block application
+startup: rLogs reports the Npcap repair requirement in Settings and keeps the
+rest of the application available.

@@ -49,8 +49,8 @@ use rlogs_capture::{CaptureSource, OfflineCapture};
 use rlogs_capture::{
     DumpcapLiveConfig, OwnedProcessCaptureConfig, WindowsCaptureAdapter,
     WindowsCaptureAdapterRecommendationSource, WindowsLiveCaptureStopHandle,
-    WindowsOwnedLiveCapture, npcap_available, npcap_device_name, recommend_windows_capture_adapter,
-    windows_capture_adapters,
+    WindowsOwnedLiveCapture, npcap_available, npcap_device_name, npcap_diagnostic,
+    recommend_windows_capture_adapter, windows_capture_adapters,
 };
 use rlogs_core::{GameConnection, ResearchConnectionFile};
 use rlogs_events::{
@@ -2469,6 +2469,8 @@ struct RuntimeEnvironment {
     platform: &'static str,
     game_processes: Vec<GameProcessView>,
     dumpcap_path: Option<String>,
+    npcap_available: bool,
+    npcap_error: Option<String>,
     capture_interfaces: Vec<CaptureInterfaceView>,
     recommended_capture_interface: Option<String>,
     recommended_capture_source: Option<&'static str>,
@@ -7651,6 +7653,10 @@ fn display_path(path: &Path) -> String {
 fn runtime_environment() -> RuntimeEnvironment {
     let dumpcap = default_dumpcap_path().filter(|path| path.is_file());
     let game_processes = discover_game_processes().unwrap_or_default();
+    #[cfg(windows)]
+    let npcap_error = npcap_diagnostic().err().map(|error| error.to_string());
+    #[cfg(not(windows))]
+    let npcap_error: Option<String> = None;
     let mut capture_interfaces = discover_runtime_capture_interfaces(dumpcap.as_deref());
     #[cfg(windows)]
     let recommendation =
@@ -7661,6 +7667,8 @@ fn runtime_environment() -> RuntimeEnvironment {
         platform: std::env::consts::OS,
         game_processes,
         dumpcap_path: dumpcap.as_deref().map(display_path),
+        npcap_available: npcap_error.is_none() && cfg!(windows),
+        npcap_error,
         capture_interfaces,
         recommended_capture_interface: recommendation.as_ref().map(|(value, _, _)| value.clone()),
         recommended_capture_source: recommendation.as_ref().map(|(_, source, _)| *source),

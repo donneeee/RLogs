@@ -19,7 +19,9 @@ use thiserror::Error;
 #[cfg(windows)]
 pub use dumpcap::{DumpcapLiveConfig, LiveCaptureStopHandle};
 #[cfg(windows)]
-pub use npcap::{NpcapLiveConfig, NpcapLiveStopHandle, npcap_available, npcap_device_name};
+pub use npcap::{
+    NpcapLiveConfig, NpcapLiveStopHandle, npcap_available, npcap_device_name, npcap_diagnostic,
+};
 pub use offline::OfflineCapture;
 pub use pcap_writer::{PcapWriteError, PcapWriter};
 pub use process_filter::{

@@ -168,6 +168,8 @@ interface RuntimeEnvironment extends CaptureEnvironment {
     executable_name: string;
   }>;
   dumpcap_path: string | null;
+  npcap_available?: boolean;
+  npcap_error?: string | null;
 }
 
 export async function createLocalHostAdapterIfAvailable(): Promise<DesktopHostAdapter | null> {
@@ -1570,9 +1572,17 @@ function mountNetworkSettingsSurface(container: HTMLElement): MountedSurface {
       dumpcap.input.value =
         core.dumpcapPath ?? environment.dumpcap_path ?? "";
       save.disabled = false;
-      message.textContent = selection.replacedSavedDevice
-        ? "The unusable saved device was replaced in this form. Save to keep the corrected selection."
-        : `${environment.capture_interfaces.length} interface${environment.capture_interfaces.length === 1 ? "" : "s"} detected.`;
+      const npcapRepair =
+        environment.capture_interfaces.length === 0 &&
+        environment.npcap_error?.trim()
+          ? `rLogs opened safely, but Npcap needs repair: ${environment.npcap_error} Download and reinstall the current Npcap package from npcap.com, then refresh devices. dumpcap.exe is not required.`
+          : null;
+      message.textContent =
+        npcapRepair ??
+        (selection.replacedSavedDevice
+          ? "The unusable saved device was replaced in this form. Save to keep the corrected selection."
+          : `${environment.capture_interfaces.length} interface${environment.capture_interfaces.length === 1 ? "" : "s"} detected.`);
+      message.classList.toggle("error", npcapRepair !== null);
     } catch (error) {
       if (!alive) return;
       message.textContent = errorMessage(error);
