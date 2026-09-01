@@ -12,6 +12,7 @@ const PUBLIC_ROUTES = [
   ["GET", /^\/v1\/run-groups\/[A-Za-z0-9_-]+\/reconciliation$/],
   ["GET", /^\/v1\/profiles$/],
   ["GET", /^\/v1\/profiles\/prf_[a-z0-9_]+$/],
+  ["GET", /^\/v1\/profiles\/prf_[a-z0-9_]+\/photo-wall\/[1-9][0-9]*$/],
 ];
 
 const INGEST_ROUTES = [
@@ -21,6 +22,10 @@ const INGEST_ROUTES = [
   ["PUT", /^\/v1\/uploads\/[A-Za-z0-9_-]+\/chunks\/[0-9]+$/],
   ["POST", /^\/v1\/uploads\/[A-Za-z0-9_-]+\/finalize$/],
   ["POST", /^\/v1\/games\/blue-protocol-star-resonance\/profiles$/],
+  [
+    "PUT",
+    /^\/v1\/games\/blue-protocol-star-resonance\/profiles\/prf_[a-z0-9_]+\/photo-wall\/[1-9][0-9]*$/,
+  ],
 ];
 
 function corsHeaders(origin, allowedOrigin) {
@@ -109,7 +114,10 @@ export default {
       headers.set(name, value);
     }
     headers.delete("Set-Cookie");
-    headers.set("Cache-Control", "no-store");
+    const publicPhoto =
+      request.method === "GET" &&
+      /^\/v1\/profiles\/prf_[a-z0-9_]+\/photo-wall\/[1-9][0-9]*$/.test(requestUrl.pathname);
+    headers.set("Cache-Control", publicPhoto ? "public, max-age=300" : "no-store");
     headers.set("X-Content-Type-Options", "nosniff");
     return new Response(upstreamResponse.body, {
       status: upstreamResponse.status,

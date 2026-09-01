@@ -18,6 +18,38 @@ pub const PUBLIC_PROFILE_SCHEMA_VERSION: u16 = 1;
 pub const PUBLIC_PROFILE_CATALOG_SCHEMA_VERSION: u16 = 1;
 const PROFILE_CLAIM_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_PROFILE_COUNT: usize = 100_000;
+pub const MAXIMUM_PHOTO_WALL_IMAGE_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PhotoAssetReceipt {
+    pub schema_version: u16,
+    pub profile_id: String,
+    pub photo_id: u32,
+    pub byte_length: usize,
+    pub sha256: String,
+    pub media_type: String,
+    pub image_path: String,
+}
+
+#[derive(Debug)]
+pub struct PhotoAssetContent {
+    pub bytes: Vec<u8>,
+    pub media_type: String,
+    pub sha256: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredPhotoAsset {
+    schema_version: u16,
+    profile_id: String,
+    photo_id: u32,
+    byte_length: usize,
+    sha256: String,
+    media_type: String,
+    file_name: String,
+    image_path: String,
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -104,6 +136,10 @@ pub enum ProfileRegistryError {
     CatalogTooLarge,
     #[error("profile was not found")]
     NotFound,
+    #[error("Photo Wall image is invalid: {0}")]
+    InvalidPhotoAsset(String),
+    #[error("photo {photo_id} was not observed on this claimed profile")]
+    PhotoNotObserved { photo_id: u32 },
     #[error("could not encode or decode profile JSON: {0}")]
     Json(#[from] serde_json::Error),
     #[error("profile storage failed: {0}")]
@@ -191,6 +227,8 @@ impl ProfileRegistry {
             claimed_unix_millis: accepted_unix_millis,
         });
         let modules = profile.modules.as_ref();
+        let mut envelope = package.request.payload.clone();
+        preserve_current_photo_assets(existing_profile.as_ref(), &mut envelope);
         let published = PublicProfile {
             schema_version: PUBLIC_PROFILE_SCHEMA_VERSION,
             profile_id,
@@ -209,7 +247,7 @@ impl ProfileRegistry {
             display_name: profile.display_name.clone(),
             module_inventory_count: modules.map_or(0, |value| value.inventory.len()),
             equipped_module_count: modules.map_or(0, |value| value.equipped_slots.len()),
-            envelope: package.request.payload.clone(),
+            envelope,
         };
 
         // The claim is written first and never replaced by a later submission.
@@ -227,6 +265,129 @@ impl ProfileRegistry {
     pub fn get(&self, profile_id: &str) -> Result<PublicProfile, ProfileRegistryError> {
         validate_profile_id(profile_id)?;
         read_json(&self.root.join(profile_id).join("public.json"))
+    }
+
+    pub fn publish_photo_asset(
+        &self,
+        profile_id: &str,
+        photo_id: u32,
+        bytes: &[u8],
+        submitter_id: Option<&str>,
+        accepted_unix_millis: u64,
+    ) -> Result<PhotoAssetReceipt, ProfileRegistryError> {
+        validate_profile_id(profile_id)?;
+        let submitter_id = submitter_id.ok_or(ProfileRegistryError::AuthenticationRequired)?;
+        if photo_id == 0 {
+            return Err(ProfileRegistryError::InvalidPhotoAsset(
+                "photo ID must be positive".into(),
+            ));
+        }
+        if bytes.is_empty() || bytes.len() > MAXIMUM_PHOTO_WALL_IMAGE_BYTES {
+            return Err(ProfileRegistryError::InvalidPhotoAsset(format!(
+                "image must contain 1 to {MAXIMUM_PHOTO_WALL_IMAGE_BYTES} bytes"
+            )));
+        }
+        let (media_type, extension) = reviewed_image_format(bytes).ok_or_else(|| {
+            ProfileRegistryError::InvalidPhotoAsset(
+                "only JPEG, PNG, and WebP raster images are accepted".into(),
+            )
+        })?;
+        let directory = self.root.join(profile_id);
+        let claim: ProfileClaim = read_json(&directory.join("claim.json"))?;
+        if claim.submitter_id != submitter_id {
+            return Err(ProfileRegistryError::ClaimConflict {
+                character_id: claim.character_id,
+            });
+        }
+        let current_path = directory.join("public.json");
+        let mut profile: PublicProfile = read_json(&current_path)?;
+        if !profile_contains_photo_id(&profile, photo_id) {
+            return Err(ProfileRegistryError::PhotoNotObserved { photo_id });
+        }
+
+        let sha256 = format!("{:x}", Sha256::digest(bytes));
+        let assets = directory.join("photo-wall");
+        std::fs::create_dir_all(&assets)?;
+        let metadata_path = assets.join(format!("photo-{photo_id}.json"));
+        let previous: Option<StoredPhotoAsset> = read_optional_json(&metadata_path)?;
+        let file_name = format!("photo-{photo_id}-{sha256}.{extension}");
+        let file_path = assets.join(&file_name);
+        if !file_path.exists() {
+            write_bytes_new(&file_path, bytes)?;
+        }
+        let image_path = format!("/v1/profiles/{profile_id}/photo-wall/{photo_id}");
+        let stored = StoredPhotoAsset {
+            schema_version: 1,
+            profile_id: profile_id.to_owned(),
+            photo_id,
+            byte_length: bytes.len(),
+            sha256: sha256.clone(),
+            media_type: media_type.into(),
+            file_name,
+            image_path: image_path.clone(),
+        };
+        write_json_atomic(&metadata_path, &stored)?;
+        upsert_public_photo_asset(&mut profile, &stored)?;
+        profile.updated_unix_millis = accepted_unix_millis;
+        write_json_atomic(&current_path, &profile)?;
+        self.rebuild_catalog()?;
+        if let Some(previous) = previous.filter(|previous| previous.file_name != stored.file_name)
+            && stored_photo_file_name_is_safe(&previous)
+        {
+            match std::fs::remove_file(assets.join(previous.file_name)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(PhotoAssetReceipt {
+            schema_version: 1,
+            profile_id: profile_id.to_owned(),
+            photo_id,
+            byte_length: bytes.len(),
+            sha256,
+            media_type: media_type.into(),
+            image_path,
+        })
+    }
+
+    pub fn photo_asset(
+        &self,
+        profile_id: &str,
+        photo_id: u32,
+    ) -> Result<PhotoAssetContent, ProfileRegistryError> {
+        validate_profile_id(profile_id)?;
+        if photo_id == 0 {
+            return Err(ProfileRegistryError::NotFound);
+        }
+        let directory = self.root.join(profile_id).join("photo-wall");
+        let stored: StoredPhotoAsset =
+            read_json(&directory.join(format!("photo-{photo_id}.json")))?;
+        if stored.profile_id != profile_id || stored.photo_id != photo_id {
+            return Err(ProfileRegistryError::NotFound);
+        }
+        if !stored_photo_file_name_is_safe(&stored)
+            || stored.image_path != format!("/v1/profiles/{profile_id}/photo-wall/{photo_id}")
+        {
+            return Err(ProfileRegistryError::InvalidPhotoAsset(
+                "stored image metadata failed integrity verification".into(),
+            ));
+        }
+        let bytes = std::fs::read(directory.join(&stored.file_name))?;
+        if bytes.len() != stored.byte_length
+            || format!("{:x}", Sha256::digest(&bytes)) != stored.sha256
+            || reviewed_image_format(&bytes).map(|value| value.0)
+                != Some(stored.media_type.as_str())
+        {
+            return Err(ProfileRegistryError::InvalidPhotoAsset(
+                "stored image failed integrity verification".into(),
+            ));
+        }
+        Ok(PhotoAssetContent {
+            bytes,
+            media_type: stored.media_type,
+            sha256: stored.sha256,
+        })
     }
 
     pub fn catalog(
@@ -339,6 +500,153 @@ fn validate_bpsr_package(
     Ok(profile)
 }
 
+fn preserve_current_photo_assets(
+    existing: Option<&PublicProfile>,
+    newer: &mut WebsitePayloadEnvelope,
+) {
+    let Some(assets) = existing
+        .and_then(|profile| profile.envelope.body.get("collection_summary"))
+        .and_then(|collection| collection.get("photo_assets"))
+        .and_then(serde_json::Value::as_array)
+    else {
+        return;
+    };
+    let retained = assets
+        .iter()
+        .filter(|asset| {
+            asset
+                .get("photo_id")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| u32::try_from(value).ok())
+                .is_some_and(|photo_id| profile_body_contains_photo_id(&newer.body, photo_id))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if retained.is_empty() {
+        return;
+    }
+    if let Some(collection) = newer
+        .body
+        .get_mut("collection_summary")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        collection.insert("photo_assets".into(), serde_json::Value::Array(retained));
+    }
+}
+
+fn profile_contains_photo_id(profile: &PublicProfile, photo_id: u32) -> bool {
+    profile_body_contains_photo_id(&profile.envelope.body, photo_id)
+}
+
+fn profile_body_contains_photo_id(body: &serde_json::Value, photo_id: u32) -> bool {
+    let Some(collection) = body.get("collection_summary") else {
+        return false;
+    };
+    collection
+        .get("photo_ids")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|photos| {
+            photos
+                .iter()
+                .any(|value| value.as_u64() == Some(u64::from(photo_id)))
+        })
+        || collection
+            .get("photo_wall")
+            .and_then(serde_json::Value::as_object)
+            .is_some_and(|wall| {
+                wall.values()
+                    .any(|value| value.as_u64() == Some(u64::from(photo_id)))
+            })
+}
+
+fn upsert_public_photo_asset(
+    profile: &mut PublicProfile,
+    stored: &StoredPhotoAsset,
+) -> Result<(), ProfileRegistryError> {
+    let collection = profile
+        .envelope
+        .body
+        .get_mut("collection_summary")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or(ProfileRegistryError::PhotoNotObserved {
+            photo_id: stored.photo_id,
+        })?;
+    let assets = collection
+        .entry("photo_assets")
+        .or_insert_with(|| serde_json::Value::Array(Vec::new()))
+        .as_array_mut()
+        .ok_or_else(|| {
+            ProfileRegistryError::InvalidPhotoAsset(
+                "published Photo Wall asset collection is malformed".into(),
+            )
+        })?;
+    assets.retain(|asset| {
+        asset.get("photo_id").and_then(serde_json::Value::as_u64)
+            != Some(u64::from(stored.photo_id))
+    });
+    assets.push(serde_json::json!({
+        "photo_id": stored.photo_id,
+        "image_path": stored.image_path,
+        "sha256": stored.sha256,
+        "media_type": stored.media_type,
+        "byte_length": stored.byte_length,
+    }));
+    assets.sort_by_key(|asset| {
+        asset
+            .get("photo_id")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(u64::MAX)
+    });
+    Ok(())
+}
+
+fn reviewed_image_format(bytes: &[u8]) -> Option<(&'static str, &'static str)> {
+    if bytes.len() >= 45
+        && bytes[..8] == [137, 80, 78, 71, 13, 10, 26, 10]
+        && bytes[8..12] == [0, 0, 0, 13]
+        && &bytes[12..16] == b"IHDR"
+        && bytes.ends_with(&[0, 0, 0, 0, b'I', b'E', b'N', b'D', 0xae, 0x42, 0x60, 0x82])
+    {
+        let width = u32::from_be_bytes(bytes[16..20].try_into().ok()?);
+        let height = u32::from_be_bytes(bytes[20..24].try_into().ok()?);
+        if (1..=16_384).contains(&width) && (1..=16_384).contains(&height) {
+            return Some(("image/png", "png"));
+        }
+    }
+    if bytes.len() >= 16
+        && bytes.starts_with(&[0xff, 0xd8, 0xff])
+        && bytes.ends_with(&[0xff, 0xd9])
+        && bytes.windows(2).any(|marker| {
+            marker[0] == 0xff
+                && matches!(marker[1], 0xc0..=0xc3 | 0xc5..=0xc7 | 0xc9..=0xcb | 0xcd..=0xcf)
+        })
+    {
+        return Some(("image/jpeg", "jpg"));
+    }
+    if bytes.len() >= 20 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        let declared = u32::from_le_bytes(bytes[4..8].try_into().ok()?) as usize + 8;
+        if declared == bytes.len() && matches!(&bytes[12..16], b"VP8 " | b"VP8L" | b"VP8X") {
+            return Some(("image/webp", "webp"));
+        }
+    }
+    None
+}
+
+fn stored_photo_file_name_is_safe(stored: &StoredPhotoAsset) -> bool {
+    let extension = match stored.media_type.as_str() {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/webp" => "webp",
+        _ => return false,
+    };
+    stored.sha256.len() == 64
+        && stored
+            .sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        && stored.file_name == format!("photo-{}-{}.{}", stored.photo_id, stored.sha256, extension)
+}
+
 fn profile_id(envelope: &WebsitePayloadEnvelope) -> String {
     let mut hasher = Sha256::new();
     hasher.update(b"rlogs-profile-identity-v1\0");
@@ -409,6 +717,13 @@ fn write_json_new(path: &Path, value: &impl Serialize) -> Result<(), ProfileRegi
     Ok(())
 }
 
+fn write_bytes_new(path: &Path, bytes: &[u8]) -> Result<(), ProfileRegistryError> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    Ok(())
+}
+
 fn write_json_atomic(path: &Path, value: &impl Serialize) -> Result<(), ProfileRegistryError> {
     let bytes = serde_json::to_vec_pretty(value)?;
     let partial = path.with_extension(format!("partial-{}", Uuid::new_v4().simple()));
@@ -441,6 +756,15 @@ mod tests {
     const TEST_DEVICE_TOKEN: &str = "rld_test-secret";
 
     fn package(created: u64, character_id: &str, modules: usize) -> LocalProfilePackage {
+        package_with_photos(created, character_id, modules, &[])
+    }
+
+    fn package_with_photos(
+        created: u64,
+        character_id: &str,
+        modules: usize,
+        photo_ids: &[i64],
+    ) -> LocalProfilePackage {
         let profile = CharacterProfilePatch {
             character: CharacterIdentity {
                 region: RegionIdentity {
@@ -492,7 +816,37 @@ mod tests {
             combat_professions: None,
             life_professions: None,
             cosmetics: None,
-            collection_summary: None,
+            collection_summary: (!photo_ids.is_empty()).then(|| {
+                rlogs_game_bpsr::CollectionSummary {
+                    observed_sections: rlogs_game_bpsr::CollectionObservationSections {
+                        personal_zone: true,
+                        ..Default::default()
+                    },
+                    fashion_points: None,
+                    mount_points: None,
+                    weapon_skin_points: None,
+                    equipped_fashion_ids: BTreeMap::new(),
+                    owned_fashion_ids: Vec::new(),
+                    owned_mount_ids: Vec::new(),
+                    owned_weapon_skin_ids: Vec::new(),
+                    owned_dye_ids: Vec::new(),
+                    unlocked_module_ids: Vec::new(),
+                    ride_ids: Vec::new(),
+                    ride_skin_ids: Vec::new(),
+                    unlocked_emoji_ids: Vec::new(),
+                    vanity_pet_ids: Vec::new(),
+                    summoned_vanity_pet_id: None,
+                    fantasy_atlas_stages: BTreeMap::new(),
+                    handbook: None,
+                    photo_ids: photo_ids.to_vec(),
+                    photo_wall: photo_ids
+                        .iter()
+                        .enumerate()
+                        .map(|(index, photo_id)| (i32::try_from(index).unwrap(), *photo_id))
+                        .collect(),
+                    achievements: None,
+                }
+            }),
             activity_progress: None,
             season_medals: None,
             season_cultivation: None,
@@ -519,6 +873,16 @@ mod tests {
             .bind_live_capture(TEST_DEVICE_ID, TEST_DEVICE_TOKEN)
             .unwrap();
         package
+    }
+
+    fn one_pixel_png() -> Vec<u8> {
+        vec![
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00,
+            0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x08,
+            0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0xf0, 0x1f, 0x00, 0x05, 0x00, 0x01, 0xff, 0x89, 0x99,
+            0x3d, 0x1d, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ]
     }
 
     #[test]
@@ -724,5 +1088,129 @@ mod tests {
         .unwrap();
         let error = validate_bpsr_package(&package).unwrap_err();
         assert!(matches!(error, ProfileRegistryError::InvalidPackage(_)));
+    }
+
+    #[test]
+    fn claimed_owner_can_publish_and_read_an_observed_photo() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let published = registry
+            .publish(
+                package_with_photos(10, "1000001", 1, &[42]),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+        let png = one_pixel_png();
+        let receipt = registry
+            .publish_photo_asset(&published.profile_id, 42, &png, Some("user-one"), 30)
+            .unwrap();
+        assert_eq!(receipt.media_type, "image/png");
+        assert_eq!(
+            receipt.image_path,
+            format!("/v1/profiles/{}/photo-wall/42", published.profile_id)
+        );
+        let public = registry.get(&published.profile_id).unwrap();
+        let asset = &public.envelope.body["collection_summary"]["photo_assets"][0];
+        assert_eq!(asset["photo_id"], 42);
+        assert_eq!(asset["image_path"], receipt.image_path);
+        assert!(asset.get("source_url").is_none());
+        let loaded = registry.photo_asset(&published.profile_id, 42).unwrap();
+        assert_eq!(loaded.bytes, png);
+        assert_eq!(loaded.sha256, receipt.sha256);
+    }
+
+    #[test]
+    fn photo_publication_rejects_other_owners_unobserved_ids_and_non_rasters() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let published = registry
+            .publish(
+                package_with_photos(10, "1000001", 1, &[42]),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+        let png = one_pixel_png();
+        assert!(matches!(
+            registry.publish_photo_asset(&published.profile_id, 42, &png, Some("user-two"), 30),
+            Err(ProfileRegistryError::ClaimConflict { .. })
+        ));
+        assert!(matches!(
+            registry.publish_photo_asset(&published.profile_id, 99, &png, Some("user-one"), 30),
+            Err(ProfileRegistryError::PhotoNotObserved { photo_id: 99 })
+        ));
+        assert!(matches!(
+            registry.publish_photo_asset(
+                &published.profile_id,
+                42,
+                b"<svg xmlns='http://www.w3.org/2000/svg'/>",
+                Some("user-one"),
+                30,
+            ),
+            Err(ProfileRegistryError::InvalidPhotoAsset(_))
+        ));
+    }
+
+    #[test]
+    fn later_profile_sync_preserves_only_still_observed_photo_assets() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let first = registry
+            .publish(
+                package_with_photos(10, "1000001", 1, &[42]),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+        registry
+            .publish_photo_asset(
+                &first.profile_id,
+                42,
+                &one_pixel_png(),
+                Some("user-one"),
+                30,
+            )
+            .unwrap();
+        registry
+            .publish(
+                package_with_photos(40, "1000001", 2, &[42]),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                50,
+            )
+            .unwrap();
+        assert_eq!(
+            registry.get(&first.profile_id).unwrap().envelope.body["collection_summary"]
+                ["photo_assets"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        registry
+            .publish(
+                package_with_photos(60, "1000001", 2, &[43]),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                70,
+            )
+            .unwrap();
+        assert!(
+            registry.get(&first.profile_id).unwrap().envelope.body["collection_summary"]
+                .get("photo_assets")
+                .is_none()
+        );
     }
 }

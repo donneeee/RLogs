@@ -22,8 +22,29 @@ test("only the submission API surface is routable", () => {
   assert.equal(routeAllowed("GET", "/v1/profiles"), true);
   assert.equal(routeAllowed("GET", "/v1/profiles/prf_0123456789abcdef0123456789abcdef"), true);
   assert.equal(
+    routeAllowed(
+      "GET",
+      "/v1/profiles/prf_0123456789abcdef0123456789abcdef/photo-wall/42",
+    ),
+    true,
+  );
+  assert.equal(
     routeAllowed("POST", "/v1/games/blue-protocol-star-resonance/profiles"),
     true,
+  );
+  assert.equal(
+    routeAllowed(
+      "PUT",
+      "/v1/games/blue-protocol-star-resonance/profiles/prf_0123456789abcdef/photo-wall/42",
+    ),
+    true,
+  );
+  assert.equal(
+    routeAllowed(
+      "PUT",
+      "/v1/games/blue-protocol-star-resonance/profiles/prf_0123456789abcdef/photo-wall/0",
+    ),
+    false,
   );
   assert.equal(routeAllowed("GET", "/v1/uploads"), false);
   assert.equal(routeAllowed("GET", "/artifacts/private.rlog"), false);
@@ -88,4 +109,28 @@ test("unknown paths never reach the upstream", async () => {
     { ALLOWED_ORIGIN: "https://donneeee.github.io", ORIGIN_BASE_URL: "https://origin.example" },
   );
   assert.equal(response.status, 404);
+});
+
+test("public Photo Wall responses retain bounded shared caching", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(new Uint8Array([1, 2, 3]), {
+      headers: { "Cache-Control": "public, max-age=300", "Content-Type": "image/png" },
+    });
+  try {
+    const response = await gateway.fetch(
+      new Request(
+        "https://gateway.example/v1/profiles/prf_0123456789abcdef/photo-wall/42",
+      ),
+      {
+        ALLOWED_ORIGIN: "https://donneeee.github.io",
+        ORIGIN_BASE_URL: "https://origin.example",
+      },
+    );
+    assert.equal(response.headers.get("Cache-Control"), "public, max-age=300");
+    assert.equal(response.headers.get("Content-Type"), "image/png");
+    assert.equal(response.headers.get("X-Content-Type-Options"), "nosniff");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

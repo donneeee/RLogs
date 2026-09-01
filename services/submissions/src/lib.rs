@@ -11,9 +11,12 @@ use std::{
 
 use axum::{
     Json, Router,
-    body::Bytes,
+    body::{Body, Bytes},
     extract::{DefaultBodyLimit, Path as AxumPath, Query, State},
-    http::{HeaderMap, StatusCode, header::AUTHORIZATION},
+    http::{
+        HeaderMap, StatusCode,
+        header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, ETAG},
+    },
     response::{IntoResponse, Redirect, Response},
     routing::{get, post, put},
 };
@@ -54,8 +57,8 @@ use accounts::{
 };
 use github_archive::{ArchiveJob, GithubArchive};
 use profiles::{
-    ProfilePublishReceipt, ProfileRegistry, ProfileRegistryError, PublicProfile,
-    PublicProfileCatalog,
+    PhotoAssetContent, PhotoAssetReceipt, ProfilePublishReceipt, ProfileRegistry,
+    ProfileRegistryError, PublicProfile, PublicProfileCatalog,
 };
 use rlogs_profiles::LocalProfilePackage;
 
@@ -561,6 +564,31 @@ impl SubmissionService {
 
     fn profile(&self, profile_id: &str) -> Result<PublicProfile, ServiceError> {
         Ok(self.inner.profiles.get(profile_id)?)
+    }
+
+    fn publish_profile_photo(
+        &self,
+        profile_id: &str,
+        photo_id: u32,
+        bytes: &[u8],
+        owner: &UploadOwner,
+    ) -> Result<PhotoAssetReceipt, ServiceError> {
+        let _write = self.write_guard();
+        Ok(self.inner.profiles.publish_photo_asset(
+            profile_id,
+            photo_id,
+            bytes,
+            owner.submitter_id.as_deref(),
+            unix_millis()?,
+        )?)
+    }
+
+    fn profile_photo(
+        &self,
+        profile_id: &str,
+        photo_id: u32,
+    ) -> Result<PhotoAssetContent, ServiceError> {
+        Ok(self.inner.profiles.photo_asset(profile_id, photo_id)?)
     }
 
     fn profile_catalog(
@@ -1356,8 +1384,16 @@ pub fn router(service: SubmissionService) -> Router {
             "/v1/games/blue-protocol-star-resonance/profiles",
             post(publish_bpsr_profile),
         )
+        .route(
+            "/v1/games/blue-protocol-star-resonance/profiles/{profile_id}/photo-wall/{photo_id}",
+            put(publish_bpsr_profile_photo),
+        )
         .route("/v1/profiles", get(list_profiles))
         .route("/v1/profiles/{profile_id}", get(get_profile))
+        .route(
+            "/v1/profiles/{profile_id}/photo-wall/{photo_id}",
+            get(get_profile_photo),
+        )
         .route(
             "/v1/run-groups/{run_group_id}/reconciliation",
             get(get_run_reconciliation),
@@ -1552,6 +1588,24 @@ async fn publish_bpsr_profile(
     )?))
 }
 
+async fn publish_bpsr_profile_photo(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+    AxumPath((profile_id, photo_id)): AxumPath<(String, u32)>,
+    bytes: Bytes,
+) -> Result<Json<PhotoAssetReceipt>, ApiError> {
+    let owner = authorize(&service, &headers).await?;
+    if owner.submitter_id.is_none() || owner.device_id.is_none() {
+        return Err(ApiError::Unauthorized);
+    }
+    Ok(Json(service.publish_profile_photo(
+        &profile_id,
+        photo_id,
+        &bytes,
+        &owner,
+    )?))
+}
+
 async fn list_profiles(
     State(service): State<SubmissionService>,
     Query(query): Query<ProfileCatalogQuery>,
@@ -1564,6 +1618,24 @@ async fn get_profile(
     AxumPath(profile_id): AxumPath<String>,
 ) -> Result<Json<PublicProfile>, ApiError> {
     Ok(Json(service.profile(&profile_id)?))
+}
+
+async fn get_profile_photo(
+    State(service): State<SubmissionService>,
+    AxumPath((profile_id, photo_id)): AxumPath<(String, u32)>,
+) -> Result<Response, ApiError> {
+    let asset = service.profile_photo(&profile_id, photo_id)?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, asset.media_type)
+        .header(CACHE_CONTROL, "public, max-age=300")
+        .header(ETAG, format!("\"{}\"", asset.sha256))
+        .body(Body::from(asset.bytes))
+        .map_err(|_| {
+            ApiError::Service(ServiceError::InvalidConfiguration(
+                "could not build Photo Wall response".into(),
+            ))
+        })
 }
 
 async fn get_run_reconciliation(
@@ -4012,6 +4084,15 @@ impl IntoResponse for ApiError {
                 StatusCode::CONFLICT,
                 "a newer profile is already published".into(),
             ),
+            Self::Service(ServiceError::Profile(ProfileRegistryError::PhotoNotObserved {
+                photo_id,
+            })) => (
+                StatusCode::CONFLICT,
+                format!("photo {photo_id} has not been observed on this profile"),
+            ),
+            Self::Service(ServiceError::Profile(ProfileRegistryError::InvalidPhotoAsset(
+                message,
+            ))) => (StatusCode::UNPROCESSABLE_ENTITY, message),
             Self::Service(error) => (StatusCode::BAD_REQUEST, error.to_string()),
         };
         (status, Json(serde_json::json!({"error": message}))).into_response()
