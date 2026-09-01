@@ -2773,11 +2773,11 @@ function mountProfileSyncStatusSurface(
   root.className = "plugin-surface profile-sync-status-surface";
   const heading = actionCard(
     "Reviewable character-profile packages",
-    "Profile Sync merges only personal-gameplay BPSR character observations from a fully sealed log. Public lookups for other characters are excluded. Packages contain no website host, credentials, passwords, login tokens, account containers, or transport state.",
+    "Profile Sync merges only personal-gameplay BPSR character observations captured live from the running game process. Replays, offline captures, imports, and shared logs cannot create claimable packages. Packages contain no website host, credentials, passwords, login tokens, account containers, or transport state.",
   );
   const headingActions = document.createElement("div");
   headingActions.className = "runtime-card-actions";
-  const buildButton = button("Build from last sealed log", "primary-button");
+  const buildButton = button("Build from last live parse", "primary-button");
   buildButton.disabled = true;
   const refreshButton = button("Refresh packages", "quiet-button");
   const message = text(
@@ -2797,7 +2797,7 @@ function mountProfileSyncStatusSurface(
   inspection.hidden = true;
   const boundary = actionCard(
     "Current boundary",
-    "Local projection makes zero external requests. Publishing is a separate authenticated action: the first valid personal package claims that region-scoped UID, and only the same account can publish newer state. Modules remain attached to that character ID.",
+    "A claimable package is HMAC-bound to this PC's authenticated app token and the exact live session seal. The first valid personal package claims that region-scoped UID, and only the same account can publish newer state. Modules remain attached to that character ID.",
   );
   root.append(heading, status, content, inspection, boundary);
   container.append(root);
@@ -2862,7 +2862,7 @@ function mountProfileSyncStatusSurface(
         text(
           "p",
           policy.bpsr_profile_sync.enabled
-            ? "No local profile package exists yet. Complete a world-load capture with Profile Sync active, or build from the last sealed log."
+            ? "No claimable profile package exists yet. Complete a live parse with Profile Sync active; replayed, imported, offline, and shared logs are intentionally ineligible."
             : "Profile Sync is disabled. Existing packages would remain reviewable, but no new package will be generated.",
           "runtime-empty-result",
         ),
@@ -3043,7 +3043,7 @@ function mountProfileSyncStatusSurface(
     refreshButton.disabled = true;
     message.classList.remove("error");
     message.textContent =
-      "Verifying the last sealed log and merging personal profile observations…";
+      "Verifying the last live process-owned parse and binding it to this authenticated PC…";
     try {
       const result = parseProfileProjectionResult(
         await apiJson<unknown>("/api/profiles/project-last", {

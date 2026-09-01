@@ -99,7 +99,7 @@ use rlogs_plugin_runtime::{
     PluginOutput, PluginRunLimits, PluginRunMetrics, PluginRunReport, ReplayPlugin,
     replay_rlog_pair,
 };
-use rlogs_profiles::LocalProfilePackage;
+use rlogs_profiles::{LIVE_PROFILE_CAPTURE_KIND, LocalProfilePackage};
 use rlogs_submission::{
     ArtifactBuildLimits, LocalLogArtifact, LogArtifactTrackingReader,
     MAXIMUM_LOCAL_ARTIFACT_PATH_BYTES, MAXIMUM_UPLOAD_CHUNK_BYTES, MockSubmissionReceiver,
@@ -4237,10 +4237,25 @@ impl RuntimeController {
             .snapshot()
             .last_result
             .ok_or_else(|| "no completed canonical log is available".to_owned())?;
+        if result.source_kind != LIVE_PROFILE_CAPTURE_KIND {
+            return Err(
+                "UID claims require a completed live process-owned capture; replayed, imported, offline, and shared logs cannot create claimable profiles"
+                    .into(),
+            );
+        }
+        let transport = self
+            .submission_transport
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or_else(|| "connect an authenticated submission receiver first".to_owned())?;
         let (views, status) = project_completed_profile_session(
             &self.profile_packages,
             &result.output_rlog,
+            &result.session_id,
+            &result.combat_plugin.rlog.content_sha256,
             unix_millis(),
+            &transport,
         )?;
         {
             let mut state = self
@@ -4261,7 +4276,7 @@ impl RuntimeController {
             source_session_id: result.session_id,
             projected_package_count: views.len(),
             stored_packages: views,
-            external_network_requests: 0,
+            external_network_requests: 1,
         })
     }
 
@@ -6382,7 +6397,22 @@ fn apply_profile_sync_policy(
         result.profile_sync_status = "manual_only".into();
         return None;
     }
-    match project_completed_profile_session(store, &result.output_rlog, unix_millis()) {
+    if result.source_kind != LIVE_PROFILE_CAPTURE_KIND {
+        result.profile_sync_status = "live_capture_required".into();
+        return None;
+    }
+    let Some(transport) = transport else {
+        result.profile_sync_status = "live_capture_waiting_for_authenticated_receiver".into();
+        return None;
+    };
+    match project_completed_profile_session(
+        store,
+        &result.output_rlog,
+        &result.session_id,
+        &result.combat_plugin.rlog.content_sha256,
+        unix_millis(),
+        transport,
+    ) {
         Ok((packages, status)) if packages.is_empty() => {
             result.profile_package_count = packages.len();
             result.profile_sync_status = status;
@@ -6390,10 +6420,6 @@ fn apply_profile_sync_policy(
         }
         Ok((packages, _)) => {
             result.profile_package_count = packages.len();
-            let Some(transport) = transport else {
-                result.profile_sync_status = "packaged_waiting_for_authenticated_receiver".into();
-                return None;
-            };
             let _publication = match publication.try_lock() {
                 Ok(publication) => publication,
                 Err(std::sync::TryLockError::Poisoned(error)) => error.into_inner(),
@@ -6485,17 +6511,29 @@ fn publish_profile_package_ids(
 fn project_completed_profile_session(
     store: &Arc<Mutex<LocalProfilePackageStore>>,
     rlog_path: &str,
+    expected_session_id: &str,
+    expected_content_sha256: &str,
     created_unix_millis: u64,
+    transport: &SubmissionTransport,
 ) -> Result<(Vec<ProfilePackageView>, String), String> {
     let path = existing_file(rlog_path, "sealed profile source log")?;
     let file = File::open(&path)
         .map_err(|error| format!("could not open sealed profile source log: {error}"))?;
-    let packages = project_local_profile_packages(
+    let mut packages = project_local_profile_packages(
         BufReader::new(file),
         RlogLimits::default(),
         created_unix_millis,
     )
     .map_err(|error| format!("BPSR profile projection failed: {error}"))?;
+    if packages.iter().any(|package| {
+        package.source.session_id != expected_session_id
+            || package.source.canonical_content_sha256 != expected_content_sha256
+    }) {
+        return Err(
+            "sealed live profile source no longer matches the capture-time session seal".into(),
+        );
+    }
+    transport.bind_live_profile_packages(&mut packages)?;
     let mut stored = Vec::with_capacity(packages.len());
     let mut store = store
         .lock()
@@ -12605,7 +12643,7 @@ kind = "content"
         let mut profile_result = result.clone();
         profile_result.session_id = "profile-package-session".into();
         profile_result.output_rlog = profile_path.display().to_string();
-        controller.state.lock().unwrap().last_result = Some(profile_result);
+        controller.state.lock().unwrap().last_result = Some(profile_result.clone());
         assert!(
             controller
                 .project_last_profile_packages()
@@ -12616,9 +12654,40 @@ kind = "content"
         policy.log_uploader.enabled = true;
         policy.bpsr_profile_sync.enabled = true;
         controller.update_submission_policy(policy).unwrap();
+        assert!(
+            controller
+                .project_last_profile_packages()
+                .unwrap_err()
+                .contains("live process-owned capture")
+        );
+
+        let artifact = build_upload_artifact(&profile_path).unwrap();
+        profile_result.source_kind = LIVE_PROFILE_CAPTURE_KIND.into();
+        profile_result.combat_plugin.rlog.content_sha256 = artifact.rlog.content_sha256;
+        controller.state.lock().unwrap().last_result = Some(profile_result);
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let authentication = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let _ = stream.read(&mut request).unwrap();
+            let body = r#"{"schema_version":1,"submitter_id":"usr_test","device_id":"dev_test","authentication":"device_token"}"#;
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .unwrap();
+        });
+        *controller.submission_transport.lock().unwrap() = Some(
+            SubmissionTransport::new(&format!("http://{address}"), Some("rld_test-secret"))
+                .unwrap(),
+        );
         let projection = controller.project_last_profile_packages().unwrap();
+        authentication.join().unwrap();
         assert_eq!(projection.projected_package_count, 1);
-        assert_eq!(projection.external_network_requests, 0);
+        assert_eq!(projection.external_network_requests, 1);
         assert_eq!(projection.stored_packages[0].character_id, "123456789");
         assert_eq!(
             projection.stored_packages[0].display_name.as_deref(),

@@ -547,12 +547,16 @@ impl SubmissionService {
         &self,
         package: LocalProfilePackage,
         owner: &UploadOwner,
+        device_token: &str,
     ) -> Result<ProfilePublishReceipt, ServiceError> {
         let _write = self.write_guard();
-        Ok(self
-            .inner
-            .profiles
-            .publish(package, owner.submitter_id.as_deref(), unix_millis()?)?)
+        Ok(self.inner.profiles.publish(
+            package,
+            owner.submitter_id.as_deref(),
+            owner.device_id.as_deref(),
+            device_token,
+            unix_millis()?,
+        )?)
     }
 
     fn profile(&self, profile_id: &str) -> Result<PublicProfile, ServiceError> {
@@ -1530,11 +1534,19 @@ async fn publish_bpsr_profile(
     headers: HeaderMap,
     Json(package): Json<LocalProfilePackage>,
 ) -> Result<Json<ProfilePublishReceipt>, ApiError> {
+    let device_token = bearer_token(&headers)
+        .filter(|token| token.starts_with("rld_"))
+        .ok_or(ApiError::Unauthorized)?
+        .to_owned();
     let owner = authorize(&service, &headers).await?;
-    if owner.submitter_id.is_none() {
+    if owner.submitter_id.is_none() || owner.device_id.is_none() {
         return Err(ApiError::Unauthorized);
     }
-    Ok(Json(service.publish_profile(package, &owner)?))
+    Ok(Json(service.publish_profile(
+        package,
+        &owner,
+        &device_token,
+    )?))
 }
 
 async fn list_profiles(

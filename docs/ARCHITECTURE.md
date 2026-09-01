@@ -59,17 +59,21 @@ receiver are serialized and restored mid-upload, chunk acknowledgements and
 the final receipt are validated, and no external request or artifact deletion
 can occur.
 
-Profile Sync replays the same fully sealed canonical format but consumes only
-personal-gameplay character observations from the trusted game integration.
+Profile Sync consumes only personal-gameplay character observations produced
+during a live process-owned capture. Reference replay, offline PCAP processing,
+imported `.rlog` files, and copied history remain ineligible for UID claims.
 The BPSR projector merges partial local-character patches, excludes public
 social lookups for other characters, and passes the result through Core's
-credential/account-field rejection. Core wraps the game-owned relative request
-with sealed-log source evidence and a deterministic digest. The host atomically
-stores one current package per game/deployment/region/server/character UID and
-revalidates it before exact JSON inspection.
+credential/account-field rejection. Core binds the exact live session seal and
+request digest to the authenticated device token with HMAC-SHA256. The receiver
+recomputes that proof for the publishing device before any UID can be claimed.
+The host atomically stores one current package per
+game/deployment/region/server/character UID and revalidates it before exact JSON
+inspection.
 
-Existing sealed logs use the same one-pass verifier as newly recorded logs, so
-recovery does not create a weaker artifact class. Re-verification is
+For combat-log submission, existing sealed logs use the same one-pass verifier
+as newly recorded logs, so recovery does not create a weaker artifact class.
+That recovery path does not grant profile-claim authority. Re-verification is
 intentionally ephemeral: the future transport must repeat it immediately
 before reading upload chunks rather than trusting a saved checkbox or
 timestamp.

@@ -137,6 +137,27 @@ impl SubmissionTransport {
     }
 
     pub fn validate_device_authentication(&self) -> Result<(), String> {
+        self.device_authentication().map(|_| ())
+    }
+
+    pub fn bind_live_profile_packages(
+        &self,
+        packages: &mut [LocalProfilePackage],
+    ) -> Result<(), String> {
+        let device_token = self
+            .device_token
+            .as_deref()
+            .ok_or_else(|| "an rLogs app token is required".to_owned())?;
+        let identity = self.device_authentication()?;
+        for package in packages {
+            package
+                .bind_live_capture(&identity.device_id, device_token)
+                .map_err(|error| format!("could not bind live profile evidence: {error}"))?;
+        }
+        Ok(())
+    }
+
+    fn device_authentication(&self) -> Result<DeviceAuthenticationResponse, String> {
         if self.device_token.is_none() {
             return Err("an rLogs app token is required".into());
         }
@@ -159,7 +180,7 @@ impl SubmissionTransport {
         {
             return Err("submission receiver returned an invalid app-token receipt".into());
         }
-        Ok(())
+        Ok(response)
     }
 
     pub fn upload(
@@ -315,6 +336,16 @@ impl SubmissionTransport {
         let expected_endpoint = "/v1/games/blue-protocol-star-resonance/profiles";
         if package.request.relative_endpoint != expected_endpoint {
             return Err("profile package targets an unsupported endpoint".into());
+        }
+        let device_token = self
+            .device_token
+            .as_deref()
+            .ok_or_else(|| "an rLogs app token is required".to_owned())?;
+        let identity = self.device_authentication()?;
+        if !package.verifies_live_capture(&identity.device_id, device_token) {
+            return Err(
+                "profile package is not bound to this device's live process-owned capture".into(),
+            );
         }
         let response: ProfilePublishResult = self
             .authorized(

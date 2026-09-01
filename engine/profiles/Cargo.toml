@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+hmac.workspace = true
 rlogs-submission = { path = "../submission" }
 serde.workspace = true
 serde_json.workspace = true

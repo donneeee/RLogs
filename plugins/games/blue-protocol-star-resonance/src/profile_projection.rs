@@ -42,6 +42,7 @@ pub fn project_local_profile_packages<R: BufRead>(
                 canonical_content_sha256: summary.content_sha256.clone(),
                 observation_count: accumulator.observation_count,
                 last_event_sequence: accumulator.last_event_sequence,
+                live_capture: None,
             },
             request,
         )?);

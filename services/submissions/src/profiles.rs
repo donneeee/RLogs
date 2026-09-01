@@ -131,12 +131,20 @@ impl ProfileRegistry {
         &self,
         package: LocalProfilePackage,
         submitter_id: Option<&str>,
+        device_id: Option<&str>,
+        device_token: &str,
         accepted_unix_millis: u64,
     ) -> Result<ProfilePublishReceipt, ProfileRegistryError> {
         let submitter_id = submitter_id.ok_or(ProfileRegistryError::AuthenticationRequired)?;
+        let device_id = device_id.ok_or(ProfileRegistryError::AuthenticationRequired)?;
         package
             .validate()
             .map_err(|error| ProfileRegistryError::InvalidPackage(error.to_string()))?;
+        if !package.verifies_live_capture(device_id, device_token) {
+            return Err(ProfileRegistryError::InvalidPackage(
+                "UID claims require device-bound proof from a live process-owned capture".into(),
+            ));
+        }
         let profile = validate_bpsr_package(&package)?;
         let profile_id = profile_id(&package.request.payload);
         let directory = self.root.join(&profile_id);
@@ -417,6 +425,9 @@ mod tests {
 
     use super::*;
 
+    const TEST_DEVICE_ID: &str = "dev_test";
+    const TEST_DEVICE_TOKEN: &str = "rld_test-secret";
+
     fn package(created: u64, character_id: &str, modules: usize) -> LocalProfilePackage {
         let profile = CharacterProfilePatch {
             character: CharacterIdentity {
@@ -477,7 +488,7 @@ mod tests {
             social_display: None,
         };
         let request = rlogs_game_bpsr::website_profile_request(&profile).unwrap();
-        LocalProfilePackage::new(
+        let mut package = LocalProfilePackage::new(
             created,
             ProfilePackageSource {
                 session_id: "session-1".into(),
@@ -486,10 +497,15 @@ mod tests {
                 canonical_content_sha256: format!("sha256:{}", "a".repeat(64)),
                 observation_count: 2,
                 last_event_sequence: 9,
+                live_capture: None,
             },
             request,
         )
-        .unwrap()
+        .unwrap();
+        package
+            .bind_live_capture(TEST_DEVICE_ID, TEST_DEVICE_TOKEN)
+            .unwrap();
+        package
     }
 
     #[test]
@@ -498,7 +514,13 @@ mod tests {
         let registry =
             ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
         let receipt = registry
-            .publish(package(10, "1000001", 3), Some("user-one"), 20)
+            .publish(
+                package(10, "1000001", 3),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
             .unwrap();
         assert!(receipt.claimed);
         assert_eq!(receipt.module_inventory_count, 3);
@@ -520,10 +542,22 @@ mod tests {
         let registry =
             ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
         registry
-            .publish(package(10, "1000001", 1), Some("user-one"), 20)
+            .publish(
+                package(10, "1000001", 1),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
             .unwrap();
         let error = registry
-            .publish(package(11, "1000001", 2), Some("user-two"), 30)
+            .publish(
+                package(11, "1000001", 2),
+                Some("user-two"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                30,
+            )
             .unwrap_err();
         assert!(matches!(error, ProfileRegistryError::ClaimConflict { .. }));
     }
@@ -534,10 +568,22 @@ mod tests {
         let registry =
             ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
         registry
-            .publish(package(10, "1000001", 1), Some("user-one"), 20)
+            .publish(
+                package(10, "1000001", 1),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
             .unwrap();
         registry
-            .publish(package(11, "2000002", 2), Some("user-two"), 30)
+            .publish(
+                package(11, "2000002", 2),
+                Some("user-two"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                30,
+            )
             .unwrap();
 
         let owned = registry.owned_catalog("user-one").unwrap();
@@ -551,10 +597,22 @@ mod tests {
         let registry =
             ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
         let first = registry
-            .publish(package(10, "1000001", 1), Some("user-one"), 20)
+            .publish(
+                package(10, "1000001", 1),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
             .unwrap();
         let second = registry
-            .publish(package(11, "1000001", 4), Some("user-one"), 30)
+            .publish(
+                package(11, "1000001", 4),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                30,
+            )
             .unwrap();
         assert_eq!(first.profile_id, second.profile_id);
         assert_eq!(
@@ -565,9 +623,46 @@ mod tests {
             4
         );
         assert!(matches!(
-            registry.publish(package(9, "1000001", 2), Some("user-one"), 40),
+            registry.publish(
+                package(9, "1000001", 2),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                40,
+            ),
             Err(ProfileRegistryError::StalePackage)
         ));
+    }
+
+    #[test]
+    fn copied_or_unbound_packages_cannot_claim_a_uid() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+
+        let copied = registry
+            .publish(
+                package(10, "1000001", 1),
+                Some("user-two"),
+                Some("dev_other"),
+                "rld_other-secret",
+                20,
+            )
+            .unwrap_err();
+        assert!(matches!(copied, ProfileRegistryError::InvalidPackage(_)));
+
+        let mut unbound = package(11, "1000001", 1);
+        unbound.source.live_capture = None;
+        let unbound = registry
+            .publish(
+                unbound,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                30,
+            )
+            .unwrap_err();
+        assert!(matches!(unbound, ProfileRegistryError::InvalidPackage(_)));
     }
 
     #[test]

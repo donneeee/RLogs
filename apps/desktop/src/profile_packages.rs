@@ -648,6 +648,7 @@ mod tests {
                 canonical_content_sha256: format!("sha256:{}", "a".repeat(64)),
                 observation_count: 2,
                 last_event_sequence: 10,
+                live_capture: None,
             },
             request,
         )

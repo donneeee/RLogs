@@ -111,9 +111,12 @@ opt-in policies and both default off. Log Uploader's local dry run invokes the
 real upload state machine, forces and restores a mid-upload restart, validates
 chunk acknowledgements and the final receipt, reports zero external requests,
 and leaves the real queue and artifact unchanged. BPSR Profile Sync projects
-only personal character observations from a fully verified sealed log, merges
-partial updates, and atomically stores a current review package under
+only personal character observations from a live process-owned parse, merges
+partial updates, binds the exact session seal and package to the authenticated
+device token, and atomically stores a current review package under
 `runtime-data/profile-sync/packages/<game>/<deployment>/<region>/<server>/<UID>/`.
+Reference replay, offline processing, imported `.rlog` files, copied history,
+and packages bound to another device cannot claim a UID.
 The UI shows bounded summaries and loads exact JSON only when requested.
 Remote transport remains opt-in. When a submission endpoint is configured,
 the uploader can keep a device bearer token in process memory and send it only

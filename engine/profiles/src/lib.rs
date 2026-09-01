@@ -1,15 +1,27 @@
 //! Game-neutral local character-profile packages.
 
+use hmac::{Hmac, Mac};
 use rlogs_submission::{WebsitePayloadError, WebsitePayloadRequest};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-pub const LOCAL_PROFILE_PACKAGE_SCHEMA_VERSION: u16 = 1;
+pub const LOCAL_PROFILE_PACKAGE_SCHEMA_VERSION: u16 = 2;
 pub const MAXIMUM_PROFILE_SOURCE_ID_BYTES: usize = 256;
+pub const LIVE_PROFILE_CAPTURE_KIND: &str = "continuous_process_owned_capture";
 
-/// Exact sealed-log evidence from which a trusted game plug-in projected a
-/// character profile.
+type HmacSha256 = Hmac<Sha256>;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProfileLiveCaptureProof {
+    pub capture_kind: String,
+    pub device_id: String,
+    pub proof: String,
+}
+
+/// Exact live-process capture evidence from which a trusted game plug-in
+/// projected a character profile.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProfilePackageSource {
@@ -19,6 +31,8 @@ pub struct ProfilePackageSource {
     pub canonical_content_sha256: String,
     pub observation_count: u64,
     pub last_event_sequence: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live_capture: Option<ProfileLiveCaptureProof>,
 }
 
 /// A local, reviewable website payload. This contains no host, credentials, or
@@ -80,6 +94,15 @@ impl LocalProfilePackage {
         if self.source.observation_count == 0 || self.source.last_event_sequence == 0 {
             return Err(ProfilePackageError::MissingObservationEvidence);
         }
+        if let Some(capture) = &self.source.live_capture {
+            if capture.capture_kind != LIVE_PROFILE_CAPTURE_KIND {
+                return Err(ProfilePackageError::InvalidLiveCaptureKind);
+            }
+            validate_source_identifier("capture device_id", &capture.device_id)?;
+            if decode_prefixed_hex_32(&capture.proof, "hmac-sha256:").is_none() {
+                return Err(ProfilePackageError::InvalidLiveCaptureProof);
+            }
+        }
         let expected = request_digest(&self.request)?;
         if self.package_id != expected {
             return Err(ProfilePackageError::PackageDigestMismatch {
@@ -89,6 +112,46 @@ impl LocalProfilePackage {
         }
         Ok(())
     }
+
+    pub fn bind_live_capture(
+        &mut self,
+        device_id: &str,
+        device_token: &str,
+    ) -> Result<(), ProfilePackageError> {
+        validate_source_identifier("capture device_id", device_id)?;
+        let digest = live_capture_mac(self, device_id, device_token)?
+            .finalize()
+            .into_bytes();
+        self.source.live_capture = Some(ProfileLiveCaptureProof {
+            capture_kind: LIVE_PROFILE_CAPTURE_KIND.into(),
+            device_id: device_id.into(),
+            proof: format!(
+                "hmac-sha256:{}",
+                digest
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>()
+            ),
+        });
+        self.validate()
+    }
+
+    pub fn verifies_live_capture(&self, device_id: &str, device_token: &str) -> bool {
+        let Some(capture) = self.source.live_capture.as_ref() else {
+            return false;
+        };
+        let Some(proof) = decode_prefixed_hex_32(&capture.proof, "hmac-sha256:") else {
+            return false;
+        };
+        if self.validate().is_err()
+            || capture.capture_kind != LIVE_PROFILE_CAPTURE_KIND
+            || capture.device_id != device_id
+        {
+            return false;
+        }
+        live_capture_mac(self, device_id, device_token)
+            .is_ok_and(|mac| mac.verify_slice(&proof).is_ok())
+    }
 }
 
 fn validate_source_text(field: &'static str, value: &str) -> Result<(), ProfilePackageError> {
@@ -96,6 +159,49 @@ fn validate_source_text(field: &'static str, value: &str) -> Result<(), ProfileP
         return Err(ProfilePackageError::InvalidSourceField { field });
     }
     Ok(())
+}
+
+fn validate_source_identifier(field: &'static str, value: &str) -> Result<(), ProfilePackageError> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        return Err(ProfilePackageError::InvalidSourceField { field });
+    }
+    Ok(())
+}
+
+fn update_mac_field(mac: &mut HmacSha256, value: &str) {
+    mac.update(&(value.len() as u64).to_le_bytes());
+    mac.update(value.as_bytes());
+}
+
+fn live_capture_mac(
+    package: &LocalProfilePackage,
+    device_id: &str,
+    device_token: &str,
+) -> Result<HmacSha256, ProfilePackageError> {
+    if device_token.is_empty() {
+        return Err(ProfilePackageError::MissingDeviceToken);
+    }
+    let mut mac = HmacSha256::new_from_slice(device_token.as_bytes())
+        .map_err(|_| ProfilePackageError::MissingDeviceToken)?;
+    mac.update(b"rlogs-live-profile-capture-v1\0");
+    for value in [
+        device_id,
+        package.package_id.as_str(),
+        package.source.session_id.as_str(),
+        package.source.client_build.as_str(),
+        package.source.protocol_pack_digest.as_str(),
+        package.source.canonical_content_sha256.as_str(),
+    ] {
+        update_mac_field(&mut mac, value);
+    }
+    mac.update(&package.source.observation_count.to_le_bytes());
+    mac.update(&package.source.last_event_sequence.to_le_bytes());
+    Ok(mac)
 }
 
 fn request_digest(request: &WebsitePayloadRequest) -> Result<String, ProfilePackageError> {
@@ -116,6 +222,24 @@ fn is_prefixed_sha256(value: &str) -> bool {
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     })
+}
+
+fn decode_prefixed_hex_32(value: &str, prefix: &str) -> Option<[u8; 32]> {
+    let digest = value.strip_prefix(prefix)?;
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return None;
+    }
+    let mut bytes = [0_u8; 32];
+    for (index, chunk) in digest.as_bytes().chunks_exact(2).enumerate() {
+        let high = (chunk[0] as char).to_digit(16)?;
+        let low = (chunk[1] as char).to_digit(16)?;
+        bytes[index] = ((high << 4) | low) as u8;
+    }
+    Some(bytes)
 }
 
 #[derive(Debug, Error)]
@@ -140,6 +264,15 @@ pub enum ProfilePackageError {
 
     #[error("profile package has no observation evidence")]
     MissingObservationEvidence,
+
+    #[error("profile package live-capture kind is invalid")]
+    InvalidLiveCaptureKind,
+
+    #[error("profile package live-capture proof is invalid")]
+    InvalidLiveCaptureProof,
+
+    #[error("profile package live-capture proof requires a device token")]
+    MissingDeviceToken,
 
     #[error("profile package ID does not match the request: expected {expected}, got {actual}")]
     PackageDigestMismatch { expected: String, actual: String },
@@ -183,6 +316,7 @@ mod tests {
                 canonical_content_sha256: format!("sha256:{}", "a".repeat(64)),
                 observation_count: 2,
                 last_event_sequence: 9,
+                live_capture: None,
             },
             WebsitePayloadRequest::new("/v1/games/example/profiles", payload).unwrap(),
         )
@@ -213,6 +347,20 @@ mod tests {
             source_tampered.validate().unwrap_err(),
             ProfilePackageError::InvalidCanonicalDigest
         ));
+    }
+
+    #[test]
+    fn live_capture_proof_is_bound_to_package_source_and_device_token() {
+        let mut package = package();
+        package
+            .bind_live_capture("dev_one", "rld_secret-one")
+            .unwrap();
+        assert!(package.verifies_live_capture("dev_one", "rld_secret-one"));
+        assert!(!package.verifies_live_capture("dev_two", "rld_secret-one"));
+        assert!(!package.verifies_live_capture("dev_one", "rld_secret-two"));
+
+        package.source.session_id = "shared-log".into();
+        assert!(!package.verifies_live_capture("dev_one", "rld_secret-one"));
     }
 
     #[test]

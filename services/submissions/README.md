@@ -83,11 +83,14 @@ records. Browser sessions expire after 30 days. App tokens are independent per
 device and never appear in a public profile.
 
 The first authenticated `current.profile.json` for an exact
-deployment/region/realm-or-world/character-ID tuple claims that UID. A
-different account receives HTTP 409 and cannot replace it. The same owner can
-publish only a newer sealed package. The public profile retains the complete
-privacy-reviewed BPSR envelope, including module inventory and equipped-slot
-state under that character ID.
+deployment/region/realm-or-world/character-ID tuple claims that UID only when
+its HMAC-SHA256 proof matches the publishing device token and exact live
+process-owned capture seal. Replays, offline processing, imports, shared logs,
+unbound packages, and packages copied from another device are rejected. A
+different account receives HTTP 409 and cannot replace an existing claim. The
+same owner can publish only a newer live-proven package. The public profile
+retains the complete privacy-reviewed BPSR envelope, including module inventory
+and equipped-slot state under that character ID.
 
 ## Private GitHub research archive
 
