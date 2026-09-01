@@ -45,7 +45,7 @@ use profile_packages::{
     ProfilePackageView, ProfilePublicationBaselineStore, ProfilePublicationLedger,
     ProfilePublicationRecord, profile_publication_delta,
 };
-use rlogs_capture::{CaptureSource, OfflineCapture};
+use rlogs_capture::{BoundedCaptureIngress, OfflineCapture};
 #[cfg(windows)]
 use rlogs_capture::{
     DumpcapLiveConfig, OwnedProcessCaptureConfig, WindowsCaptureAdapter,
@@ -135,6 +135,11 @@ const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 const MAX_OVERLAY_BACKGROUND_BYTES: usize = 8 * 1024 * 1024;
 const PHOTO_WALL_PUBLICATION_QUEUE_CAPACITY: usize = 64;
 const PHOTO_WALL_PENDING_ASSET_CAPACITY: usize = 256;
+/// Frames are drained from Npcap/dumpcap independently while the ordered
+/// decoder expands a preceding frame. With the 256 KiB adapter snap length,
+/// this is a hard worst-case frame-payload bound of 128 MiB; normal Ethernet
+/// traffic occupies a small fraction of that amount.
+const LIVE_CAPTURE_INGRESS_QUEUE_CAPACITY: usize = 512;
 const PHOTO_WALL_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 /// Coalesce the burst of partial profile observations emitted after a scene
 /// refresh into one current package before the automatic publisher spends a
@@ -960,27 +965,40 @@ impl LiveCombatFeed {
     /// Full snapshots intentionally remain on their bounded publication path;
     /// visibility must not wait for projection, identity enrichment, or JSON
     /// presentation work that does not affect whether combat just occurred.
-    fn signal_damage(&self, observed_micros: u64, reviewed_dungeon: bool) {
+    /// Apply every damage activity transition decoded from one capture frame
+    /// under one lock and wake. BPSR can deliver thousands of damage numbers
+    /// with the same timestamp; notifying the overlay once per number adds
+    /// contention without making a newer snapshot available.
+    fn signal_damage_batch(&self, observations: &[(u64, bool)]) {
+        if observations.is_empty() {
+            return;
+        }
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.activity_revision = state.activity_revision.saturating_add(1);
+        let observation_count = u64::try_from(observations.len()).unwrap_or(u64::MAX);
+        state.activity_revision = state.activity_revision.saturating_add(observation_count);
         state.combat_active = true;
-        state.last_hostile_micros = Some(observed_micros);
-        state.damage_event_count = state.damage_event_count.saturating_add(1);
-        if reviewed_dungeon {
-            state.ambient_active_micros = 0;
-            state.ambient_last_damage_micros = None;
-        } else {
-            if let Some(previous) = state.ambient_last_damage_micros {
-                let delta = observed_micros.saturating_sub(previous);
-                if delta <= 3_000_000 {
-                    state.ambient_active_micros = state.ambient_active_micros.saturating_add(delta);
+        state.damage_event_count = state.damage_event_count.saturating_add(observation_count);
+        for &(observed_micros, reviewed_dungeon) in observations {
+            if reviewed_dungeon {
+                state.ambient_active_micros = 0;
+                state.ambient_last_damage_micros = None;
+            } else {
+                if let Some(previous) = state.ambient_last_damage_micros {
+                    let delta = observed_micros.saturating_sub(previous);
+                    if delta <= 3_000_000 {
+                        state.ambient_active_micros =
+                            state.ambient_active_micros.saturating_add(delta);
+                    }
                 }
+                state.ambient_last_damage_micros = Some(observed_micros);
             }
-            state.ambient_last_damage_micros = Some(observed_micros);
         }
+        state.last_hostile_micros = observations
+            .last()
+            .map(|(observed_micros, _)| *observed_micros);
         self.changed.notify_all();
     }
 
@@ -1579,6 +1597,32 @@ struct CapturedRunProjection {
     combat: CombatTimelineSnapshot,
     run: RunProjectionSnapshot,
     history: CombatHistorySnapshot,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct LiveCaptureBurstMetrics {
+    peak_decoded_events_per_frame: u64,
+    peak_ordered_reduction_micros: u64,
+    peak_projection_micros: u64,
+}
+
+impl LiveCaptureBurstMetrics {
+    fn observe_reduction(&mut self, decoded_events: u64, elapsed: Duration) {
+        self.peak_decoded_events_per_frame = self.peak_decoded_events_per_frame.max(decoded_events);
+        self.peak_ordered_reduction_micros = self
+            .peak_ordered_reduction_micros
+            .max(duration_micros_saturating(elapsed));
+    }
+
+    fn observe_projection(&mut self, elapsed: Duration) {
+        self.peak_projection_micros = self
+            .peak_projection_micros
+            .max(duration_micros_saturating(elapsed));
+    }
+}
+
+fn duration_micros_saturating(duration: Duration) -> u64 {
+    u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -5306,7 +5350,9 @@ impl RuntimeController {
                 request.session_id
             ));
         }
-        let rdps_validation_baseline = if validation_build_mismatch {
+        let live_rdps_validation_enabled = self.developer_tools_enabled;
+        let rdps_validation_baseline = if !live_rdps_validation_enabled || validation_build_mismatch
+        {
             None
         } else {
             let validation_directory = rdps_validation_report_path
@@ -5415,6 +5461,7 @@ impl RuntimeController {
             .clone();
         let live_stop = Arc::clone(&self.live_stop);
         let live_process_id = Arc::clone(&self.live_process_id);
+        let live_event_stream_enabled = self.developer_tools_enabled;
         let session_id = request.session_id.clone();
         let validation_game_build = target.build_id.clone();
         let validation_manifest_build = validation_manifest_game_build;
@@ -5427,8 +5474,22 @@ impl RuntimeController {
         let worker = thread::Builder::new()
             .name(format!("rlogs-live-{session_id}"))
             .spawn(move || {
-                let mut capture = capture;
                 let capture_result = (|| -> Result<_, String> {
+                    let mut last_confirmed_connections = Vec::new();
+                    let mut capture = BoundedCaptureIngress::spawn(
+                        capture,
+                        LIVE_CAPTURE_INGRESS_QUEUE_CAPACITY,
+                        move |source: &WindowsOwnedLiveCapture| {
+                            let current = source.confirmed_connections();
+                            if current == last_confirmed_connections {
+                                None
+                            } else {
+                                last_confirmed_connections = current.clone();
+                                Some(current)
+                            }
+                        },
+                    )
+                    .map_err(|error| format!("could not buffer live capture: {error}"))?;
                     let producer = format!("rlogs-desktop-host/{}", env!("CARGO_PKG_VERSION"));
                     let region_evidence = vec![RegionEvidence {
                         kind: RegionEvidenceKind::ReplayManifest,
@@ -5540,6 +5601,7 @@ impl RuntimeController {
                     let mut last_validation_checkpoint = Instant::now();
                     let mut checkpointed_validation_event_count = 0;
                     let mut validation_checkpoint_failed = false;
+                    let mut burst_metrics = LiveCaptureBurstMetrics::default();
                     // Keep pending changes across capture frames. A frame can
                     // arrive inside the configured presentation interval;
                     // dropping its dirty bit would leave profile/loadout
@@ -5580,7 +5642,7 @@ impl RuntimeController {
                             submission_transport.clone(),
                         )?;
                     loop {
-                        let Some(frame) = capture
+                        let Some((frame, confirmed_connections)) = capture
                             .next_frame()
                             .map_err(|error| format!("live capture failed: {error}"))?
                         else {
@@ -5593,9 +5655,10 @@ impl RuntimeController {
                                 .snapshot()
                                 .refresh_interval_millis,
                         ));
-                        recorder
-                            .add_connections(
-                                capture.confirmed_connections().into_iter().map(
+                        if let Some(confirmed_connections) = confirmed_connections {
+                            recorder
+                                .add_connections(
+                                    confirmed_connections.into_iter().map(
                                     |connection| GameConnection {
                                         client: rlogs_network::IpEndpoint::new(
                                             connection.client.address,
@@ -5606,17 +5669,21 @@ impl RuntimeController {
                                             connection.server.port,
                                         ),
                                     },
-                                ),
-                            )
-                            .map_err(|error| {
-                                format!("could not extend live BPSR connections: {error}")
-                            })?;
+                                    ),
+                                )
+                                .map_err(|error| {
+                                    format!("could not extend live BPSR connections: {error}")
+                                })?;
+                        }
                         let mut live_boundary_changed = false;
                         let mut freeze_history = false;
                         let mut frozen_capture_time_identities = None;
                         let mut live_snapshot_error = None;
                         let mut live_event_lines = Vec::new();
+                        let mut live_damage_activity = Vec::new();
                         let mut local_photo_assets = Vec::new();
+                        let decoded_events_before = recorder.metrics().decoded_event_count;
+                        let ordered_reduction_started = Instant::now();
                         let sealed = recorder
                             .process_frame_with_local_observations(frame, |event| {
                                 if matches!(
@@ -5624,12 +5691,14 @@ impl RuntimeController {
                                     CanonicalEvent::Timeline(timeline)
                                         if matches!(&timeline.kind, TimelineEventKind::Damage(_))
                                 ) {
-                                    live_combat_feed.signal_damage(
+                                    live_damage_activity.push((
                                         event.time.observed_micros,
                                         live_dungeon_active,
-                                    );
+                                    ));
                                 }
-                                rdps_validation.observe(event);
+                                if live_rdps_validation_enabled {
+                                    rdps_validation.observe(event);
+                                }
                                 if matches!(
                                     event.event.topic(),
                                     EventTopic::CharacterProfile | EventTopic::Actor
@@ -5735,7 +5804,9 @@ impl RuntimeController {
                                 );
                                 if opening && !live_dungeon_active {
                                     completed_run_identities = None;
-                                    rdps_validation.clear_transient_context();
+                                    if live_rdps_validation_enabled {
+                                        rdps_validation.clear_transient_context();
+                                    }
                                     begin_live_combat_preserving_world(
                                         &mut live_meter,
                                         &live_header,
@@ -5766,10 +5837,11 @@ impl RuntimeController {
                                         | EventTopic::DataQuality
                                 ) {
                                     live_meter.observe_live(event);
-                                    if !live_meter.latest_exact_contributions().is_empty()
+                                    if live_rdps_validation_enabled
+                                        && (!live_meter.latest_exact_contributions().is_empty()
                                         || !live_meter
                                             .latest_exact_rational_contributions()
-                                            .is_empty()
+                                            .is_empty())
                                     {
                                         let projection_status =
                                             live_meter.damage_contribution_status();
@@ -5811,117 +5883,132 @@ impl RuntimeController {
                                     live_dungeon_active = false;
                                     live_dungeon_scene_id = None;
                                     live_boundary_changed = true;
-                                    rdps_validation.clear_transient_context();
-                                }
-                                if live_boundary_changed
-                                    || (live_dirty
-                                        && last_live_publish.elapsed()
-                                            >= live_refresh_interval)
-                                {
-                                    let reviewed_dungeon = live_dungeon_active || freeze_history;
-                                    if reviewed_dungeon
-                                        && (live_boundary_changed
-                                            || last_live_projection_refresh.elapsed()
-                                                >= Duration::from_millis(250))
-                                    {
-                                        match live_encounter.live_snapshot().and_then(|run| {
-                                            live_meter.history_snapshot(&run.runs)
-                                        }) {
-                                            Ok(mut history) => {
-                                                let identities = frozen_capture_time_identities
-                                                    .as_ref()
-                                                    .unwrap_or(&capture_time_identities);
-                                                if let Err(error) = freeze_bpsr_history_character_state(
-                                                    &mut history,
-                                                    identities,
-                                                ) {
-                                                    live_snapshot_error = Some(error);
-                                                } else if let Err(error) = history
-                                                    .runs
-                                                    .iter_mut()
-                                                    .try_for_each(|run| {
-                                                        enrich_bpsr_run_rdps_effect_presentations(
-                                                            run,
-                                                            "en-US",
-                                                        )
-                                                    })
-                                                {
-                                                    live_snapshot_error = Some(error);
-                                                } else {
-                                                    live_run_projection = history.runs.last().cloned();
-                                                    last_live_projection_refresh = Instant::now();
-                                                }
-                                            }
-                                            Err(error) => {
-                                                live_snapshot_error = Some(format!(
-                                                    "live reviewed projection failed: {error}"
-                                                ));
-                                            }
-                                        }
-                                    } else if !reviewed_dungeon {
-                                        live_run_projection = None;
-                                    }
-                                    match live_meter.live_overlay_snapshot() {
-                                        Ok(mut snapshot) => {
-                                            // Keep the completed run's immutable identity ledger
-                                            // for every post-terminal refresh, not only for the
-                                            // frame that closed it. The current ledger may already
-                                            // contain ambient observations for a future run; those
-                                            // must not rename the completed overlay.
-                                            let live_identities = live_overlay_identity_ledger(
-                                                live_dungeon_active,
-                                                &capture_time_identities,
-                                                frozen_capture_time_identities.as_ref(),
-                                                completed_run_identities.as_ref(),
-                                            );
-                                            enrich_bpsr_live_character_state(
-                                                &mut snapshot,
-                                                live_identities,
-                                                LiveCharacterIdentityAuthority::CaptureTime,
-                                            );
-                                            enrich_bpsr_live_character_state(
-                                                &mut snapshot,
-                                                &*character_identities.lock().unwrap_or_else(
-                                                    std::sync::PoisonError::into_inner,
-                                                ),
-                                                LiveCharacterIdentityAuthority::PersistentFallback,
-                                            );
-                                            if let Err(error) =
-                                                enrich_bpsr_live_rdps_effect_presentations(
-                                                    &mut snapshot,
-                                                    "en-US",
-                                                )
-                                            {
-                                                live_snapshot_error = Some(error);
-                                            }
-                                            apply_live_run_projection_clocks(
-                                                &mut snapshot,
-                                                live_run_projection.as_ref(),
-                                            );
-                                            live_combat_feed.publish_with_projection(
-                                                Some(snapshot),
-                                                live_run_projection.clone(),
-                                                reviewed_dungeon,
-                                            );
-                                            last_live_publish = Instant::now();
-                                            live_boundary_changed = false;
-                                            live_dirty = false;
-                                        }
-                                        Err(error) => {
-                                            live_snapshot_error = Some(format!(
-                                                "live Combat Meter snapshot failed: {error}"
-                                            ));
-                                        }
+                                    if live_rdps_validation_enabled {
+                                        rdps_validation.clear_transient_context();
                                     }
                                 }
-                                // The overlay has already consumed and published
-                                // this typed event. Only then do we format the
+                                // Ordered reducers have consumed this typed
+                                // event. Developer builds may also retain the
                                 // compact, pre-localization Event Viewer line.
-                                live_event_lines.push(LiveEventLine::from_envelope(event));
+                                if live_event_stream_enabled {
+                                    live_event_lines.push(LiveEventLine::from_envelope(event));
+                                }
                             }, |photo| {
                                 local_photo_assets.push(photo.clone());
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
+                        burst_metrics.observe_reduction(
+                            recorder
+                                .metrics()
+                                .decoded_event_count
+                                .saturating_sub(decoded_events_before),
+                            ordered_reduction_started.elapsed(),
+                        );
+                        // Projection is presentation work, not event reduction.
+                        // Perform it only after the whole capture frame has been
+                        // reduced so a large decoded burst can cause at most one
+                        // history clone and one overlay publication.
+                        if live_boundary_changed
+                            || (live_dirty && last_live_publish.elapsed() >= live_refresh_interval)
+                        {
+                            let projection_started = Instant::now();
+                            let reviewed_dungeon = live_dungeon_active || freeze_history;
+                            if reviewed_dungeon
+                                && (live_boundary_changed
+                                    || last_live_projection_refresh.elapsed()
+                                        >= Duration::from_millis(250))
+                            {
+                                match live_encounter
+                                    .live_snapshot()
+                                    .and_then(|run| live_meter.history_snapshot(&run.runs))
+                                {
+                                    Ok(mut history) => {
+                                        let identities = frozen_capture_time_identities
+                                            .as_ref()
+                                            .unwrap_or(&capture_time_identities);
+                                        if let Err(error) = freeze_bpsr_history_character_state(
+                                            &mut history,
+                                            identities,
+                                        ) {
+                                            live_snapshot_error = Some(error);
+                                        } else if let Err(error) = history
+                                            .runs
+                                            .iter_mut()
+                                            .try_for_each(|run| {
+                                                enrich_bpsr_run_rdps_effect_presentations(
+                                                    run, "en-US",
+                                                )
+                                            })
+                                        {
+                                            live_snapshot_error = Some(error);
+                                        } else {
+                                            live_run_projection = history.runs.last().cloned();
+                                            last_live_projection_refresh = Instant::now();
+                                        }
+                                    }
+                                    Err(error) => {
+                                        live_snapshot_error = Some(format!(
+                                            "live reviewed projection failed: {error}"
+                                        ));
+                                    }
+                                }
+                            } else if !reviewed_dungeon {
+                                live_run_projection = None;
+                            }
+                            match live_meter.live_overlay_snapshot() {
+                                Ok(mut snapshot) => {
+                                    // Keep the completed run's immutable identity ledger
+                                    // for every post-terminal refresh, not only for the
+                                    // frame that closed it. The current ledger may already
+                                    // contain ambient observations for a future run; those
+                                    // must not rename the completed overlay.
+                                    let live_identities = live_overlay_identity_ledger(
+                                        live_dungeon_active,
+                                        &capture_time_identities,
+                                        frozen_capture_time_identities.as_ref(),
+                                        completed_run_identities.as_ref(),
+                                    );
+                                    enrich_bpsr_live_character_state(
+                                        &mut snapshot,
+                                        live_identities,
+                                        LiveCharacterIdentityAuthority::CaptureTime,
+                                    );
+                                    enrich_bpsr_live_character_state(
+                                        &mut snapshot,
+                                        &*character_identities
+                                            .lock()
+                                            .unwrap_or_else(std::sync::PoisonError::into_inner),
+                                        LiveCharacterIdentityAuthority::PersistentFallback,
+                                    );
+                                    if let Err(error) =
+                                        enrich_bpsr_live_rdps_effect_presentations(
+                                            &mut snapshot,
+                                            "en-US",
+                                        )
+                                    {
+                                        live_snapshot_error = Some(error);
+                                    }
+                                    apply_live_run_projection_clocks(
+                                        &mut snapshot,
+                                        live_run_projection.as_ref(),
+                                    );
+                                    live_combat_feed.publish_with_projection(
+                                        Some(snapshot),
+                                        live_run_projection.clone(),
+                                        reviewed_dungeon,
+                                    );
+                                    last_live_publish = Instant::now();
+                                    live_dirty = false;
+                                }
+                                Err(error) => {
+                                    live_snapshot_error = Some(format!(
+                                        "live Combat Meter snapshot failed: {error}"
+                                    ));
+                                }
+                            }
+                            burst_metrics.observe_projection(projection_started.elapsed());
+                        }
+                        live_combat_feed.signal_damage_batch(&live_damage_activity);
                         let current_photo_wall_publication_enabled =
                             live_photo_wall_publication_enabled(&live_submission_policy);
                         if current_photo_wall_publication_enabled
@@ -5983,10 +6070,13 @@ impl RuntimeController {
                         if let Some(error) = live_snapshot_error {
                             return Err(error);
                         }
-                        live_event_feed.publish_batch(live_event_lines);
-                        if !validation_checkpoint_failed
+                        if live_event_stream_enabled {
+                            live_event_feed.publish_batch(live_event_lines);
+                        }
+                        if live_rdps_validation_enabled
+                            && !validation_checkpoint_failed
                             && last_validation_checkpoint.elapsed()
-                            >= RDPS_VALIDATION_CHECKPOINT_INTERVAL
+                                >= RDPS_VALIDATION_CHECKPOINT_INTERVAL
                         {
                             let checkpoint = rdps_validation.report();
                             if checkpoint.total_events != checkpointed_validation_event_count {
@@ -6038,21 +6128,34 @@ impl RuntimeController {
                             saving_run = now_saving;
                             last_status_update = Instant::now();
                             let metrics = recorder.metrics();
-                            let validation_progress = if let Some(baseline) =
-                                rdps_validation_baseline.as_ref()
-                            {
-                                rdps_validation
-                                    .progress_with_baseline(baseline)
-                                    .map_err(|error| {
-                                        format!(
-                                            "could not combine current and cumulative rDPS validation progress: {error}"
-                                        )
-                                    })?
+                            let capture_ingress_metrics = capture.metrics();
+                            let validation_detail = if live_rdps_validation_enabled {
+                                let validation_progress = if let Some(baseline) =
+                                    rdps_validation_baseline.as_ref()
+                                {
+                                    rdps_validation
+                                        .progress_with_baseline(baseline)
+                                        .map_err(|error| {
+                                            format!(
+                                                "could not combine current and cumulative rDPS validation progress: {error}"
+                                            )
+                                        })?
+                                } else {
+                                    rdps_validation.progress()
+                                };
+                                let validation_domains =
+                                    format_rdps_validation_remaining_domains(&validation_progress);
+                                format!(
+                                    "rDPS candidate coverage: {} complete, {} partial, {} untouched. Remaining by domain: {}.",
+                                    validation_progress.candidate_event_coverage_complete,
+                                    validation_progress.partial_candidate_event_coverage,
+                                    validation_progress.no_candidate_evidence,
+                                    validation_domains,
+                                )
                             } else {
-                                rdps_validation.progress()
+                                "Exact rDPS attribution is active; developer proof auditing is off in this public build."
+                                    .to_owned()
                             };
-                            let validation_domains =
-                                format_rdps_validation_remaining_domains(&validation_progress);
                             let mut snapshot = state
                                 .lock()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -6068,25 +6171,27 @@ impl RuntimeController {
                                 .unwrap_or_default();
                             snapshot.detail = if saving_run {
                                 format!(
-                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; saving the active dungeon segment. {} frames and {} canonical events inspected. Profile sync: {}. rDPS candidate coverage: {} complete, {} partial, {} untouched. Remaining by domain: {}.",
+                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; saving the active dungeon segment. {} frames and {} canonical events inspected. Burst peak: {} events/frame, {:.1} ms ordered reduction, {:.1} ms projection; ingress queue saturated {} time(s). Profile sync: {}. {}",
                                     metrics.frame_count,
                                     metrics.decoded_event_count,
+                                    burst_metrics.peak_decoded_events_per_frame,
+                                    burst_metrics.peak_ordered_reduction_micros as f64 / 1_000.0,
+                                    burst_metrics.peak_projection_micros as f64 / 1_000.0,
+                                    capture_ingress_metrics.queue_saturations,
                                     live_profile_sync_status,
-                                    validation_progress.candidate_event_coverage_complete,
-                                    validation_progress.partial_candidate_event_coverage,
-                                    validation_progress.no_candidate_evidence,
-                                    validation_domains,
+                                    validation_detail,
                                 )
                             } else {
                                 format!(
-                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; dungeon entry is only required to save history. {} frames and {} canonical events inspected. Profile sync: {}. rDPS candidate coverage: {} complete, {} partial, {} untouched. Remaining by domain: {}.",
+                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; dungeon entry is only required to save history. {} frames and {} canonical events inspected. Burst peak: {} events/frame, {:.1} ms ordered reduction, {:.1} ms projection; ingress queue saturated {} time(s). Profile sync: {}. {}",
                                     metrics.frame_count,
                                     metrics.decoded_event_count,
+                                    burst_metrics.peak_decoded_events_per_frame,
+                                    burst_metrics.peak_ordered_reduction_micros as f64 / 1_000.0,
+                                    burst_metrics.peak_projection_micros as f64 / 1_000.0,
+                                    capture_ingress_metrics.queue_saturations,
                                     live_profile_sync_status,
-                                    validation_progress.candidate_event_coverage_complete,
-                                    validation_progress.partial_candidate_event_coverage,
-                                    validation_progress.no_candidate_evidence,
-                                    validation_domains,
+                                    validation_detail,
                                 )
                             };
                         }
@@ -6156,37 +6261,45 @@ impl RuntimeController {
                         })?;
                     }
                     let _ = checkpoint_writer.finish();
-                    let session_validation_report = rdps_validation.report();
-                    write_rdps_validation_session_report_once(
-                        &rdps_validation_report_path,
-                        &session_validation_report,
-                    )?;
-
-                    let validation_summary = if session_validation_report
-                        .provisional_build_mismatch
-                    {
-                        // Retain and report hotfix evidence, but do not allow it
-                        // to advance an exact manifest-build proof counter.
-                        session_validation_report.summary.clone()
-                    } else {
-                        // Treat immutable exact-build per-session reports as the
-                        // source of truth. Scanning for session IDs absent from
-                        // the cumulative index recovers the report left behind
-                        // if the process stops between these durable writes.
-                        let cumulative_bundle =
-                            update_rdps_validation_cumulative_from_sessions(
-                                rdps_validation_report_path.parent().ok_or_else(|| {
-                                    "live rDPS validation report has no parent directory"
-                                        .to_string()
-                                })?,
-                                &validation_game_build,
-                                &rdps_validation_cumulative_path,
-                            )?;
-                        write_rdps_validation_cumulative_report_atomic(
-                            &rdps_validation_cumulative_path,
-                            &cumulative_bundle,
+                    let validation_result = if live_rdps_validation_enabled {
+                        let session_validation_report = rdps_validation.report();
+                        write_rdps_validation_session_report_once(
+                            &rdps_validation_report_path,
+                            &session_validation_report,
                         )?;
-                        cumulative_bundle.report.summary
+
+                        let validation_summary = if session_validation_report
+                            .provisional_build_mismatch
+                        {
+                            // Retain and report hotfix evidence, but do not allow it
+                            // to advance an exact manifest-build proof counter.
+                            session_validation_report.summary.clone()
+                        } else {
+                            // Treat immutable exact-build per-session reports as the
+                            // source of truth. Scanning for session IDs absent from
+                            // the cumulative index recovers the report left behind
+                            // if the process stops between these durable writes.
+                            let cumulative_bundle =
+                                update_rdps_validation_cumulative_from_sessions(
+                                    rdps_validation_report_path.parent().ok_or_else(|| {
+                                        "live rDPS validation report has no parent directory"
+                                            .to_string()
+                                    })?,
+                                    &validation_game_build,
+                                    &rdps_validation_cumulative_path,
+                                )?;
+                            write_rdps_validation_cumulative_report_atomic(
+                                &rdps_validation_cumulative_path,
+                                &cumulative_bundle,
+                            )?;
+                            cumulative_bundle.report.summary
+                        };
+                        Some((
+                            validation_summary,
+                            session_validation_report.provisional_build_mismatch,
+                        ))
+                    } else {
+                        None
                     };
                     match std::fs::remove_file(&rdps_validation_checkpoint_path) {
                         Ok(()) => {}
@@ -6196,10 +6309,12 @@ impl RuntimeController {
                             // prefers the immutable final report for this session.
                         }
                     }
+                    let capture_ingress_metrics = capture.metrics();
                     Ok((
                         recorder.metrics().clone(),
-                        validation_summary,
-                        session_validation_report.provisional_build_mismatch,
+                        validation_result,
+                        capture_ingress_metrics,
+                        burst_metrics,
                     ))
                 })();
                 {
@@ -6222,7 +6337,12 @@ impl RuntimeController {
                 state.completed_unix_millis = Some(unix_millis());
                 state.live_capture_can_stop = false;
                 match capture_result {
-                    Ok((metrics, validation_summary, validation_is_provisional)) => {
+                    Ok((
+                        metrics,
+                        validation_result,
+                        capture_ingress_metrics,
+                        burst_metrics,
+                    )) => {
                         state.phase = RuntimePhase::Complete;
                         state.monitored_frame_count = metrics.frame_count;
                         state.decoded_event_count = metrics.decoded_event_count;
@@ -6230,15 +6350,30 @@ impl RuntimeController {
                         state.sealed_run_count = metrics
                             .completed_run_count
                             .saturating_add(metrics.incomplete_run_count);
-                        let validation_report_display = if validation_is_provisional {
-                            rdps_validation_report_display.as_str()
+                        let validation_detail = if let Some((
+                            validation_summary,
+                            validation_is_provisional,
+                        )) = validation_result
+                        {
+                            let validation_report_display = if validation_is_provisional {
+                                rdps_validation_report_display.as_str()
+                            } else {
+                                rdps_validation_cumulative_display.as_str()
+                            };
+                            let validation_label = if validation_is_provisional {
+                                "provisional build-mismatch evidence"
+                            } else {
+                                "exact-build evidence"
+                            };
+                            format!(
+                                "rDPS {validation_label}: {} complete, {} partial, {} remaining; report: {validation_report_display}.",
+                                validation_summary.candidate_event_coverage_complete,
+                                validation_summary.partial_candidate_event_coverage,
+                                validation_summary.no_candidate_evidence,
+                            )
                         } else {
-                            rdps_validation_cumulative_display.as_str()
-                        };
-                        let validation_label = if validation_is_provisional {
-                            "provisional build-mismatch evidence"
-                        } else {
-                            "exact-build evidence"
+                            "Exact rDPS attribution remained active; developer proof auditing was disabled in this public build."
+                                .to_owned()
                         };
                         let provisional_prefix = worker_pack_warning
                             .as_deref()
@@ -6249,16 +6384,16 @@ impl RuntimeController {
                             .map(|journal| format!(" Provisional protocol journal: {journal}."))
                             .unwrap_or_default();
                         state.detail = format!(
-                            "{provisional_prefix}Monitoring stopped after {} owned frames and {} decoded events; {} completed and {} incomplete dungeon segments were sealed. rDPS {}: {} complete, {} partial, {} remaining; report: {}.{journal_suffix}",
+                            "{provisional_prefix}Monitoring stopped after {} owned frames and {} decoded events; burst peak was {} events/frame, {:.1} ms ordered reduction, and {:.1} ms projection; capture ingress delivered {} frames with {} bounded-queue saturation(s); {} completed and {} incomplete dungeon segments were sealed. {validation_detail}{journal_suffix}",
                             metrics.frame_count,
                             metrics.decoded_event_count,
+                            burst_metrics.peak_decoded_events_per_frame,
+                            burst_metrics.peak_ordered_reduction_micros as f64 / 1_000.0,
+                            burst_metrics.peak_projection_micros as f64 / 1_000.0,
+                            capture_ingress_metrics.delivered_frames,
+                            capture_ingress_metrics.queue_saturations,
                             metrics.completed_run_count,
                             metrics.incomplete_run_count,
-                            validation_label,
-                            validation_summary.candidate_event_coverage_complete,
-                            validation_summary.partial_candidate_event_coverage,
-                            validation_summary.no_candidate_evidence,
-                            validation_report_display,
                         );
                     }
                     Err(error) => {
@@ -10317,6 +10452,19 @@ mod tests {
     }
 
     #[test]
+    fn live_burst_metrics_retain_independent_pipeline_peaks() {
+        let mut metrics = LiveCaptureBurstMetrics::default();
+        metrics.observe_reduction(6_086, Duration::from_micros(275_000));
+        metrics.observe_reduction(29, Duration::from_micros(400_000));
+        metrics.observe_projection(Duration::from_micros(90_000));
+        metrics.observe_projection(Duration::from_micros(12_000));
+
+        assert_eq!(metrics.peak_decoded_events_per_frame, 6_086);
+        assert_eq!(metrics.peak_ordered_reduction_micros, 400_000);
+        assert_eq!(metrics.peak_projection_micros, 90_000);
+    }
+
+    #[test]
     fn photo_wall_publication_status_reports_each_live_pipeline_stage() {
         let photo = test_photo_wall_reference();
         let mut status = PhotoWallPublicationStatus::default();
@@ -12157,20 +12305,20 @@ mod tests {
     }
 
     #[test]
-    fn live_combat_activity_wakes_directly_on_decoded_damage() {
+    fn live_combat_activity_coalesces_decoded_damage_without_losing_counts() {
         let feed = Arc::new(LiveCombatFeed::default());
         let publisher = Arc::clone(&feed);
         let worker = thread::spawn(move || {
             thread::sleep(Duration::from_millis(10));
-            publisher.signal_damage(42_000, false);
+            publisher.signal_damage_batch(&[(42_000, false), (43_000, false), (44_000, false)]);
         });
 
         let update = feed.wait_activity_after(0, Duration::from_secs(1));
         worker.join().unwrap();
-        assert_eq!(update.revision, 1);
+        assert_eq!(update.revision, 3);
         assert!(update.combat_active);
-        assert_eq!(update.last_hostile_micros, Some(42_000));
-        assert_eq!(update.damage_event_count, 1);
+        assert_eq!(update.last_hostile_micros, Some(44_000));
+        assert_eq!(update.damage_event_count, 3);
         assert!(feed.current().snapshot.is_none());
     }
 
@@ -12219,9 +12367,10 @@ mod tests {
         // Real capture order is damage visibility first, then bounded reducer
         // publication. Repeated damage must not make browser consumers believe
         // they already received revisions that still contain the old snapshot.
-        for observed_micros in 1..=64 {
-            feed.signal_damage(observed_micros, false);
-        }
+        let observations = (1..=64)
+            .map(|observed_micros| (observed_micros, false))
+            .collect::<Vec<_>>();
+        feed.signal_damage_batch(&observations);
         assert_eq!(feed.current().revision, first_snapshot_revision);
         assert_eq!(feed.current_activity().revision, 65);
 
@@ -12237,9 +12386,7 @@ mod tests {
     fn ambient_live_clock_counts_only_nearby_damage_windows() {
         let feed = LiveCombatFeed::default();
 
-        feed.signal_damage(1_000_000, false);
-        feed.signal_damage(2_000_000, false);
-        feed.signal_damage(8_000_000, false);
+        feed.signal_damage_batch(&[(1_000_000, false), (2_000_000, false), (8_000_000, false)]);
 
         let state = feed
             .state
@@ -13311,7 +13458,7 @@ kind = "content"
         let root = temporary_root();
         write_workspace_plugin(&root, "timeline-tools", "dev.rlogs.timeline-tools", None);
 
-        let controller = RuntimeController::new(root.clone()).unwrap();
+        let controller = RuntimeController::new_with_developer_tools(root.clone(), true).unwrap();
         let catalog = controller.plugin_catalog();
         let package = catalog
             .packages
@@ -13354,7 +13501,7 @@ kind = "content"
         );
         drop(controller);
 
-        let restarted = RuntimeController::new(root.clone()).unwrap();
+        let restarted = RuntimeController::new_with_developer_tools(root.clone(), true).unwrap();
         let catalog = restarted.plugin_catalog();
         let package = catalog
             .packages

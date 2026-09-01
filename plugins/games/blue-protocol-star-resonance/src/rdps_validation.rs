@@ -2284,8 +2284,16 @@ impl RdpsValidationAnalyzer {
     }
 
     pub fn observe(&mut self, envelope: &EventEnvelope) {
-        self.observed_builds
-            .insert(envelope.region.client_build.clone());
+        // A live session normally carries one build string on every event.
+        // Avoid allocating and immediately discarding that same String tens of
+        // thousands of times during a decoded combat burst.
+        if !self
+            .observed_builds
+            .contains(envelope.region.client_build.as_str())
+        {
+            self.observed_builds
+                .insert(envelope.region.client_build.clone());
+        }
         self.total_events = self.total_events.saturating_add(1);
         match &envelope.event {
             CanonicalEvent::Timeline(timeline) => {

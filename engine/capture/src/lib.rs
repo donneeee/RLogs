@@ -1,5 +1,6 @@
 //! Platform-neutral packet capture and replay contracts.
 
+mod buffered;
 #[cfg(windows)]
 mod dumpcap;
 #[cfg(windows)]
@@ -16,6 +17,7 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub use buffered::{BoundedCaptureIngress, BoundedCaptureIngressMetrics};
 #[cfg(windows)]
 pub use dumpcap::{DumpcapLiveConfig, LiveCaptureStopHandle};
 #[cfg(windows)]
