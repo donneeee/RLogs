@@ -1109,24 +1109,20 @@ fn reviewed_photo_assets(
         .into_iter()
         .filter_map(|graph| {
             let photo_id = graph.photo_id.filter(|value| *value > 0)?;
-            // Prefer the reviewed/rendered image (2), then original (1),
-            // normal (0), and finally a thumbnail (3).
+            // Match the game's Photo Wall viewer exactly: it displays only
+            // ECameraRender (2). The original can omit render effects and the
+            // thumbnail is not the displayed full-size wall photo, so neither
+            // is a safe publication fallback.
             let image = graph
                 .images
                 .into_iter()
                 .filter(|image| {
-                    image
-                        .cos_url
-                        .as_deref()
-                        .is_some_and(|url| !url.is_empty() && url.len() <= 2_048 && url.is_ascii())
+                    image.picture_type == Some(2)
+                        && image.cos_url.as_deref().is_some_and(|url| {
+                            !url.is_empty() && url.len() <= 2_048 && url.is_ascii()
+                        })
                 })
-                .min_by_key(|image| match image.picture_type.unwrap_or(i32::MAX) {
-                    2 => 0,
-                    1 => 1,
-                    0 => 2,
-                    3 => 3,
-                    _ => 4,
-                })?;
+                .max_by_key(|image| image.version.unwrap_or_default())?;
             Some(LocalPhotoAssetReference {
                 character_id,
                 photo_id,
@@ -10539,7 +10535,7 @@ mod tests {
     }
 
     #[test]
-    fn photograph_replies_expose_only_the_preferred_local_reviewed_asset() {
+    fn photograph_replies_expose_only_the_latest_rendered_wall_asset() {
         let payload = schema::GetAlbumPhotosReturn {
             ret: Some(schema::GetAlbumPhotosReply {
                 character_id: Some(3_296_036),
@@ -10552,6 +10548,14 @@ mod tests {
                             version: Some(1),
                             cos_url: Some(
                                 "https://photo.playbpsr.com/xinghen-prod/thumbnail.png".into(),
+                            ),
+                        },
+                        schema::PhotoImageInfo {
+                            picture_type: Some(2),
+                            size: Some(800),
+                            version: Some(1),
+                            cos_url: Some(
+                                "https://photo.playbpsr.com/xinghen-prod/old-render.png".into(),
                             ),
                         },
                         schema::PhotoImageInfo {
@@ -10581,7 +10585,40 @@ mod tests {
     }
 
     #[test]
-    fn single_photo_reply_uses_the_reply_photo_id_when_graph_omits_it() {
+    fn photograph_reply_never_falls_back_to_original_or_thumbnail() {
+        let payload = schema::GetAlbumPhotosReturn {
+            ret: Some(schema::GetAlbumPhotosReply {
+                character_id: Some(3_296_036),
+                photo_graphs: vec![schema::PhotoGraphShow {
+                    photo_id: Some(42),
+                    images: vec![
+                        schema::PhotoImageInfo {
+                            picture_type: Some(1),
+                            size: Some(900),
+                            version: Some(2),
+                            cos_url: Some(
+                                "https://photo.playbpsr.com/xinghen-prod/original.png".into(),
+                            ),
+                        },
+                        schema::PhotoImageInfo {
+                            picture_type: Some(3),
+                            size: Some(100),
+                            version: Some(2),
+                            cos_url: Some(
+                                "https://photo.playbpsr.com/xinghen-prod/thumbnail.png".into(),
+                            ),
+                        },
+                    ],
+                }],
+            }),
+        }
+        .encode_to_vec();
+        let decoded = decode_album_photos(&payload).unwrap();
+        assert!(decoded.local_photo_assets.is_empty());
+    }
+
+    #[test]
+    fn rendered_single_photo_uses_the_reply_photo_id_when_graph_omits_it() {
         let payload = schema::GetPhotoReturn {
             ret: Some(schema::GetPhotoReply {
                 character_id: Some(3_296_036),
@@ -10589,12 +10626,10 @@ mod tests {
                 photo_graph: Some(schema::PhotoGraphShow {
                     photo_id: None,
                     images: vec![schema::PhotoImageInfo {
-                        picture_type: Some(1),
+                        picture_type: Some(2),
                         size: None,
                         version: None,
-                        cos_url: Some(
-                            "https://photo.playbpsr.com/xinghen-prod/original.webp".into(),
-                        ),
+                        cos_url: Some("https://photo.playbpsr.com/xinghen-prod/render.webp".into()),
                     }],
                 }),
             }),

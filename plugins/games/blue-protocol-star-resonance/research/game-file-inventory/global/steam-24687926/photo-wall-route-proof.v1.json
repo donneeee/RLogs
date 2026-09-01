@@ -61,6 +61,16 @@
         "PhotoGraphShow contains repeated ImageInfo values",
         "ImageInfo contains picture type, size, version, and COS URL fields"
       ]
+    },
+    {
+      "kind": "reviewed-game-photo-wall-viewer",
+      "reference": "tmp-rdps-audit/external/StarResonanceData/lua/ui/view/personalzone_photo_show_window_view.lua",
+      "sha256": "6cc8221d0bb6f1d3800686e2639b793010b475cccafd19ad2b91c358569708ae",
+      "proves": [
+        "the in-game full Photo Wall viewer calls Photograph.GetPhoto with the exact character ID and photo ID",
+        "the viewer selects only ECameraRender from the returned images",
+        "the viewer does not fall back to ECameraOriginal, ENormalPicture, or ECameraThumbnail"
+      ]
     }
   ],
   "routes": [
@@ -108,6 +118,7 @@
     "combat_route_contract_changed": false,
     "historical_protocol_pack_identities_retained": true,
     "candidate_routes_require_runtime_observation_to_promote_confidence_to_verified": true,
+    "published_picture_type": "ECameraRender (2) only; absence fails closed without an original or thumbnail fallback",
     "maximum_pending_return_correlations": 4096,
     "return_correlation_ttl_micros": 120000000,
     "return_correlation_scope": "exact process-attributed connection and return UID"
