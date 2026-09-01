@@ -1555,6 +1555,14 @@ impl PhotoWallPublicationStatus {
     }
 }
 
+fn live_photo_wall_publication_enabled(policy_store: &Arc<Mutex<SubmissionPolicyStore>>) -> bool {
+    let policy_store = policy_store
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let policy = policy_store.policy();
+    policy.bpsr_profile_sync.enabled && policy.bpsr_profile_sync.publish_photo_wall_images
+}
+
 #[derive(Debug, Clone)]
 struct CapturedRunProjection {
     combat: CombatTimelineSnapshot,
@@ -3379,7 +3387,7 @@ struct RuntimeController {
     profile_publication_baselines: Arc<Mutex<ProfilePublicationBaselineStore>>,
     profile_publication: Arc<Mutex<()>>,
     photo_wall_publication_status: Arc<Mutex<PhotoWallPublicationStatus>>,
-    submission_policy: Mutex<SubmissionPolicyStore>,
+    submission_policy: Arc<Mutex<SubmissionPolicyStore>>,
     submission_connection: Mutex<SubmissionConnectionStore>,
     submission_transport: Mutex<Option<SubmissionTransport>>,
     core_settings: Mutex<CoreSettingsStore>,
@@ -3495,7 +3503,7 @@ impl RuntimeController {
             photo_wall_publication_status: Arc::new(Mutex::new(
                 PhotoWallPublicationStatus::default(),
             )),
-            submission_policy: Mutex::new(submission_policy),
+            submission_policy: Arc::new(Mutex::new(submission_policy)),
             submission_connection: Mutex::new(submission_connection),
             submission_transport: Mutex::new(submission_transport),
             core_settings: Mutex::new(core_settings),
@@ -5377,6 +5385,7 @@ impl RuntimeController {
         let profile_publications = Arc::clone(&self.profile_publications);
         let profile_publication = Arc::clone(&self.profile_publication);
         let photo_wall_publication_status = Arc::clone(&self.photo_wall_publication_status);
+        let live_submission_policy = Arc::clone(&self.submission_policy);
         let policy = self
             .submission_policy
             .lock()
@@ -5516,8 +5525,8 @@ impl RuntimeController {
                     // dirty bit would leave profile/loadout enrichment stale
                     // until an unrelated later combat or terminal event.
                     let mut live_dirty = false;
-                    let photo_wall_publication_enabled =
-                        profile_sync.enabled && profile_sync.publish_photo_wall_images;
+                    let mut photo_wall_publication_enabled =
+                        live_photo_wall_publication_enabled(&live_submission_policy);
                     photo_wall_publication_status
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -5527,7 +5536,7 @@ impl RuntimeController {
                         );
                     let (photo_publication_sender, photo_publication_worker) =
                         spawn_photo_wall_publication_worker(
-                            photo_wall_publication_enabled,
+                            submission_transport.is_some(),
                             submission_transport.clone(),
                             Arc::clone(&profile_publications),
                             Arc::clone(&photo_wall_publication_status),
@@ -5866,6 +5875,21 @@ impl RuntimeController {
                                 local_photo_assets.push(photo.clone());
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
+                        let current_photo_wall_publication_enabled =
+                            live_photo_wall_publication_enabled(&live_submission_policy);
+                        if current_photo_wall_publication_enabled
+                            != photo_wall_publication_enabled
+                        {
+                            photo_wall_publication_enabled =
+                                current_photo_wall_publication_enabled;
+                            photo_wall_publication_status
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .configure(
+                                    photo_wall_publication_enabled,
+                                    submission_transport.is_some(),
+                                );
+                        }
                         if photo_wall_publication_enabled {
                             for photo in local_photo_assets {
                                 photo_wall_publication_status
@@ -10168,6 +10192,30 @@ mod tests {
         assert_eq!(published.state, "published");
         assert_eq!(published.published_count, 1);
         assert_eq!(published.last_error, None);
+    }
+
+    #[test]
+    fn photo_wall_consent_changes_apply_to_an_active_capture() {
+        let root = temporary_root();
+        let policy_path = root.join("submission-policy.v1.json");
+        let policy_store = Arc::new(Mutex::new(
+            SubmissionPolicyStore::open(policy_path).unwrap(),
+        ));
+
+        assert!(!live_photo_wall_publication_enabled(&policy_store));
+
+        let mut enabled = policy_store.lock().unwrap().policy().clone();
+        enabled.bpsr_profile_sync.enabled = true;
+        enabled.bpsr_profile_sync.publish_photo_wall_images = true;
+        policy_store.lock().unwrap().update(enabled).unwrap();
+        assert!(live_photo_wall_publication_enabled(&policy_store));
+
+        let mut disabled = policy_store.lock().unwrap().policy().clone();
+        disabled.bpsr_profile_sync.publish_photo_wall_images = false;
+        policy_store.lock().unwrap().update(disabled).unwrap();
+        assert!(!live_photo_wall_publication_enabled(&policy_store));
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
