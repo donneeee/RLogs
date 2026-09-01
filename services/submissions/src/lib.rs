@@ -23,15 +23,16 @@ use axum::{
 use reqwest::Url;
 use rlogs_combat::{RunAnalysis, RunSegmentKind, RunSubmissionDisposition};
 use rlogs_events::{
-    CanonicalEvent, EntityAttributeUpdateKind, EntityRef, EventEnvelope, EventProvenance,
-    EventSensitivity, EvidenceSource, GameProfileEvent, RunState, StatusState, TimelineEventKind,
+    ActorKind, CanonicalEvent, EntityAttributeUpdateKind, EntityRef, EventEnvelope,
+    EventProvenance, EventSensitivity, EvidenceSource, GameProfileEvent, RunState, StatusState,
+    TimelineEventKind,
 };
 use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
     BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
     SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport, bundled_run_reducer_config,
-    confirmed_damage_contribution_rules, is_stat_resonance_status, localized_class_name,
-    localized_scene_name, localized_specialization_name,
+    character_id_from_entity_uuid, confirmed_damage_contribution_rules, is_stat_resonance_status,
+    localized_class_name, localized_scene_name, localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use rlogs_plugin_combat_meter::{CombatHistorySnapshot, CombatTimelinePlugin, HistoryActorSummary};
@@ -71,6 +72,8 @@ const MAXIMUM_QUERY_LIMIT: usize = 250;
 const MAXIMUM_UPLOAD_CHUNKS: usize = 16_384;
 const UPLOAD_OWNER_SCHEMA_VERSION: u16 = 1;
 const AUTH_INTROSPECTION_SCHEMA_VERSION: u16 = 1;
+const PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION: u16 = 1;
+const MY_PARSE_CATALOG_SCHEMA_VERSION: u16 = 1;
 const LIFE_WAVE_SOURCE_TYPE_ID: i32 = 1;
 const LIFE_WAVE_SOURCE_CONFIG_ID: i64 = 2_302_420;
 const LIFE_WAVE_EFFECT_ID: i64 = 2_302_421;
@@ -225,6 +228,24 @@ struct SelectedArtifactWitnesses {
     states: Vec<(String, PublicLocalStateWitness)>,
 }
 
+/// Private server-side participant membership derived from the sealed replay.
+/// Character UIDs in this file are never added to the public parse catalog.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrivateParseMembership {
+    schema_version: u16,
+    report_id: String,
+    artifact_sha256: String,
+    runs: Vec<PrivateRunMembership>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PrivateRunMembership {
+    run_index: u32,
+    character_ids: Vec<String>,
+}
+
 struct CrossVantageReplayResult {
     participants: Vec<PublicReconciledParticipant>,
     conservation: PublicAttributionConservation,
@@ -349,6 +370,7 @@ impl SubmissionService {
             "uploads",
             "artifacts/sha256",
             "projections",
+            "memberships",
             "reconciliations",
             "archive-outbox",
             "archive-receipts",
@@ -372,6 +394,7 @@ impl SubmissionService {
             }),
         };
         service.ensure_catalog()?;
+        service.ensure_membership_indexes()?;
         service.reconcile_github_archive_outbox()?;
         Ok(service)
     }
@@ -530,6 +553,8 @@ impl SubmissionService {
         } else {
             std::fs::remove_file(&assembled)?;
         }
+        let membership = build_private_parse_membership(&artifact_path, &report)?;
+        write_json_atomic(&self.membership_path(&report_id)?, &membership)?;
         write_json_atomic(&self.projection_path(&report_id)?, &report)?;
         self.enqueue_github_archive_locked(&report)?;
         self.rebuild_catalog_locked()?;
@@ -544,6 +569,119 @@ impl SubmissionService {
             return Err(ServiceError::NotFound);
         }
         Ok(report)
+    }
+
+    fn account_report(
+        &self,
+        report_id: &str,
+        submitter_id: &str,
+    ) -> Result<PublicParseReport, ServiceError> {
+        validate_identifier(report_id, "report ID")?;
+        let report: PublicParseReport = read_json(&self.projection_path(report_id)?)?;
+        let submitted_by_account =
+            report.submission_provenance.submitter_id.as_deref() == Some(submitter_id);
+        if submitted_by_account {
+            return Ok(report);
+        }
+        if report.visibility == ReportVisibility::Private {
+            return Err(ServiceError::NotFound);
+        }
+        let claimed_character_ids = self
+            .owned_profile_catalog(submitter_id)?
+            .profiles
+            .into_iter()
+            .map(|profile| profile.character_id)
+            .collect::<BTreeSet<_>>();
+        let membership = self.read_membership(&report)?;
+        if membership.runs.iter().any(|run| {
+            run.character_ids
+                .iter()
+                .any(|character_id| claimed_character_ids.contains(character_id))
+        }) {
+            Ok(report)
+        } else {
+            Err(ServiceError::NotFound)
+        }
+    }
+
+    fn my_parse_catalog(
+        &self,
+        submitter_id: &str,
+        query: &MyParsesQuery,
+    ) -> Result<MyParseCatalog, ServiceError> {
+        let claimed_character_ids = self
+            .owned_profile_catalog(submitter_id)?
+            .profiles
+            .into_iter()
+            .map(|profile| profile.character_id)
+            .collect::<BTreeSet<_>>();
+        self.my_parse_catalog_for_character_ids(submitter_id, &claimed_character_ids, query)
+    }
+
+    fn my_parse_catalog_for_character_ids(
+        &self,
+        submitter_id: &str,
+        claimed_character_ids: &BTreeSet<String>,
+        query: &MyParsesQuery,
+    ) -> Result<MyParseCatalog, ServiceError> {
+        let mut entries = Vec::new();
+        for file in std::fs::read_dir(self.inner.root.join("projections"))? {
+            let file = file?;
+            if file.path().extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            let report: PublicParseReport = read_json(&file.path())?;
+            let submitted_by_you =
+                report.submission_provenance.submitter_id.as_deref() == Some(submitter_id);
+            if report.visibility == ReportVisibility::Private && !submitted_by_you {
+                continue;
+            }
+            let membership = self.read_membership(&report)?;
+            for run in &report.runs {
+                let matched_character_ids = membership
+                    .runs
+                    .iter()
+                    .find(|membership| membership.run_index == run.run_index)
+                    .into_iter()
+                    .flat_map(|membership| &membership.character_ids)
+                    .filter(|character_id| claimed_character_ids.contains(*character_id))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                if !submitted_by_you && matched_character_ids.is_empty() {
+                    continue;
+                }
+                entries.push(MyParseCatalogEntry {
+                    parse: PublicParseCatalogEntry::from_report(&report, run),
+                    visibility: report.visibility,
+                    submitted_by_you,
+                    matched_character_ids,
+                });
+                if entries.len() > MAXIMUM_CATALOG_ENTRIES {
+                    return Err(ServiceError::CatalogTooLarge);
+                }
+            }
+        }
+        entries.sort_by(|left, right| {
+            right
+                .parse
+                .created_unix_millis
+                .cmp(&left.parse.created_unix_millis)
+                .then_with(|| left.parse.report_id.cmp(&right.parse.report_id))
+                .then_with(|| left.parse.run_index.cmp(&right.parse.run_index))
+        });
+        let total_entries = entries.len();
+        let offset = query.offset.unwrap_or(0).min(total_entries);
+        let limit = query.limit.unwrap_or(100).clamp(1, MAXIMUM_QUERY_LIMIT);
+        let end = offset.saturating_add(limit).min(total_entries);
+        let next_offset = (end < total_entries).then_some(end);
+        Ok(MyParseCatalog {
+            schema_version: MY_PARSE_CATALOG_SCHEMA_VERSION,
+            total_entries,
+            offset,
+            next_offset,
+            claimed_character_ids: claimed_character_ids.iter().cloned().collect(),
+            entries: entries[offset..end].to_vec(),
+        })
     }
 
     fn publish_profile(
@@ -1029,6 +1167,56 @@ impl SubmissionService {
         Ok(())
     }
 
+    fn ensure_membership_indexes(&self) -> Result<(), ServiceError> {
+        let _write = self.write_guard();
+        for file in std::fs::read_dir(self.inner.root.join("projections"))? {
+            let file = file?;
+            if file.path().extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            let report: PublicParseReport = read_json(&file.path())?;
+            let path = self.membership_path(&report.report_id)?;
+            let current = path
+                .is_file()
+                .then(|| read_json::<PrivateParseMembership>(&path).ok())
+                .flatten();
+            let valid = current.as_ref().is_some_and(|membership| {
+                membership.schema_version == PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION
+                    && membership.report_id == report.report_id
+                    && membership.artifact_sha256 == report.verification.artifact_sha256
+            });
+            if valid {
+                continue;
+            }
+            let digest = Sha256Digest::parse(report.verification.artifact_sha256.clone())?;
+            let artifact_path = self.artifact_path(&digest)?;
+            if !artifact_path.is_file() {
+                // A submitted-by-me report remains discoverable from its
+                // provenance, but participant access fails closed when the
+                // sealed evidence needed to rebuild membership is absent.
+                continue;
+            }
+            let membership = build_private_parse_membership(&artifact_path, &report)?;
+            write_json_atomic(&path, &membership)?;
+        }
+        Ok(())
+    }
+
+    fn read_membership(
+        &self,
+        report: &PublicParseReport,
+    ) -> Result<PrivateParseMembership, ServiceError> {
+        let membership: PrivateParseMembership =
+            read_json(&self.membership_path(&report.report_id)?)?;
+        if membership.schema_version != PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION
+            || membership.report_id != report.report_id
+            || membership.artifact_sha256 != report.verification.artifact_sha256
+        {
+            return Err(ServiceError::InvalidMembershipIndex);
+        }
+        Ok(membership)
+    }
+
     fn rebuild_catalog_locked(&self) -> Result<(), ServiceError> {
         let mut grouped = BTreeMap::<String, CatalogRunGroup>::new();
         for file in std::fs::read_dir(self.inner.root.join("projections"))? {
@@ -1324,6 +1512,15 @@ impl SubmissionService {
             .join(format!("{report_id}.json")))
     }
 
+    fn membership_path(&self, report_id: &str) -> Result<PathBuf, ServiceError> {
+        validate_identifier(report_id, "report ID")?;
+        Ok(self
+            .inner
+            .root
+            .join("memberships")
+            .join(format!("{report_id}.json")))
+    }
+
     fn artifact_path(&self, digest: &Sha256Digest) -> Result<PathBuf, ServiceError> {
         let value = digest.as_str();
         Ok(self
@@ -1378,6 +1575,8 @@ pub fn router(service: SubmissionService) -> Router {
         .route("/v1/auth/me", get(get_account))
         .route("/v1/auth/device", get(get_device_account))
         .route("/v1/auth/profiles", get(get_account_profiles))
+        .route("/v1/auth/parses", get(get_account_parses))
+        .route("/v1/auth/parses/{report_id}", get(get_account_parse))
         .route("/v1/auth/app-tokens", post(issue_app_token))
         .route("/v1/uploads", post(begin_upload))
         .route(
@@ -1529,6 +1728,36 @@ async fn get_account_profiles(
         .accounts
         .authenticate_web(token, unix_millis()?)?;
     Ok(Json(service.owned_profile_catalog(&account.submitter_id)?))
+}
+
+async fn get_account_parses(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+    Query(query): Query<MyParsesQuery>,
+) -> Result<Json<MyParseCatalog>, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    let account = service
+        .inner
+        .accounts
+        .authenticate_web(token, unix_millis()?)?;
+    Ok(Json(
+        service.my_parse_catalog(&account.submitter_id, &query)?,
+    ))
+}
+
+async fn get_account_parse(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+    AxumPath(report_id): AxumPath<String>,
+) -> Result<Json<PublicParseReport>, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    let account = service
+        .inner
+        .accounts
+        .authenticate_web(token, unix_millis()?)?;
+    Ok(Json(
+        service.account_report(&report_id, &account.submitter_id)?,
+    ))
 }
 
 async fn begin_upload(
@@ -2017,6 +2246,31 @@ pub struct CatalogQuery {
     pub terminal: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct MyParsesQuery {
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MyParseCatalog {
+    pub schema_version: u16,
+    pub total_entries: usize,
+    pub offset: usize,
+    pub next_offset: Option<usize>,
+    pub claimed_character_ids: Vec<String>,
+    pub entries: Vec<MyParseCatalogEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MyParseCatalogEntry {
+    #[serde(flatten)]
+    pub parse: PublicParseCatalogEntry,
+    pub visibility: ReportVisibility,
+    pub submitted_by_you: bool,
+    pub matched_character_ids: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -3842,6 +4096,89 @@ fn is_public_participant(actor: &HistoryActorSummary) -> bool {
         .is_some_and(|kind| kind == "player")
 }
 
+fn build_private_parse_membership(
+    artifact_path: &Path,
+    report: &PublicParseReport,
+) -> Result<PrivateParseMembership, ServiceError> {
+    let file = File::open(artifact_path)?;
+    let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
+    let mut character_by_actor = BTreeMap::<String, String>::new();
+    reader.replay(|event| {
+        let CanonicalEvent::Timeline(timeline) = &event.event else {
+            return Ok(());
+        };
+        let TimelineEventKind::Actor(actor) = &timeline.kind else {
+            return Ok(());
+        };
+        if actor.kind != ActorKind::Player {
+            return Ok(());
+        }
+        let explicit = actor.character_id.as_deref().filter(|value| !value.is_empty());
+        let derived = character_id_from_entity_uuid(actor.actor.entity_uuid.0);
+        let character_id = match (explicit, derived.as_deref()) {
+            (Some(explicit), Some(derived)) if explicit != derived => {
+                return Err(format!(
+                    "player actor {} character UID {explicit} disagrees with entity UUID UID {derived}",
+                    actor.actor.actor_id.0
+                ));
+            }
+            (Some(explicit), _) => explicit.to_owned(),
+            (None, Some(derived)) => derived.to_owned(),
+            (None, None) => return Ok(()),
+        };
+        let actor_id = actor.actor.actor_id.0.to_string();
+        match character_by_actor.entry(actor_id) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(character_id);
+            }
+            std::collections::btree_map::Entry::Occupied(entry)
+                if entry.get() != &character_id =>
+            {
+                return Err(format!(
+                    "runtime actor {} changed stable character UID from {} to {character_id}",
+                    entry.key(),
+                    entry.get()
+                ));
+            }
+            std::collections::btree_map::Entry::Occupied(_) => {}
+        }
+        Ok(())
+    })?;
+
+    let runs = report
+        .runs
+        .iter()
+        .map(|run| {
+            let mut character_ids = BTreeSet::new();
+            for participant in &run.participants {
+                let indexed = character_by_actor.get(&participant.actor_id);
+                if let (Some(explicit), Some(indexed)) =
+                    (participant.character_id.as_deref(), indexed)
+                    && explicit != indexed
+                {
+                    return Err(ServiceError::Replay(format!(
+                        "report participant {} character UID {explicit} disagrees with sealed actor UID {indexed}",
+                        participant.actor_id
+                    )));
+                }
+                if let Some(character_id) = participant.character_id.as_ref().or(indexed) {
+                    character_ids.insert(character_id.clone());
+                }
+            }
+            Ok(PrivateRunMembership {
+                run_index: run.run_index,
+                character_ids: character_ids.into_iter().collect(),
+            })
+        })
+        .collect::<Result<Vec<_>, ServiceError>>()?;
+    Ok(PrivateParseMembership {
+        schema_version: PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION,
+        report_id: report.report_id.clone(),
+        artifact_sha256: report.verification.artifact_sha256.clone(),
+        runs,
+    })
+}
+
 fn public_participant(actor: &HistoryActorSummary) -> PublicParticipant {
     PublicParticipant {
         actor_id: actor.actor_id.clone(),
@@ -4098,6 +4435,8 @@ pub enum ServiceError {
     InvalidIdentifier(&'static str, String),
     #[error("catalog exceeded its safety limit")]
     CatalogTooLarge,
+    #[error("private parse membership index failed integrity validation")]
+    InvalidMembershipIndex,
     #[error("private GitHub research archive failed: {0}")]
     GithubArchive(String),
     #[error(transparent)]
@@ -5555,6 +5894,93 @@ mod tests {
         );
         assert!(!provider.rdps_incomplete);
         assert!(!recipient.rdps_incomplete);
+    }
+
+    #[test]
+    fn my_parses_include_unlisted_participation_and_account_owned_private_reports() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let mut unlisted =
+            fixture_public_report("rpt_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "3296036", 0);
+        unlisted.visibility = ReportVisibility::Unlisted;
+        unlisted.submission_provenance.submitter_id = Some("someone-else".into());
+        let mut private_other =
+            fixture_public_report("rpt_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "3296036", 0);
+        private_other.visibility = ReportVisibility::Private;
+        private_other.submission_provenance.submitter_id = Some("someone-else".into());
+        let mut private_owned =
+            fixture_public_report("rpt_cccccccccccccccccccccccccccccccc", "other-character", 0);
+        private_owned.visibility = ReportVisibility::Private;
+        private_owned.submission_provenance.submitter_id = Some("account-one".into());
+
+        for report in [&unlisted, &private_other, &private_owned] {
+            write_json_atomic(&service.projection_path(&report.report_id).unwrap(), report)
+                .unwrap();
+            let character_ids = report.runs[0]
+                .participants
+                .iter()
+                .filter_map(|participant| participant.character_id.clone())
+                .collect();
+            write_json_atomic(
+                &service.membership_path(&report.report_id).unwrap(),
+                &PrivateParseMembership {
+                    schema_version: PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION,
+                    report_id: report.report_id.clone(),
+                    artifact_sha256: report.verification.artifact_sha256.clone(),
+                    runs: vec![PrivateRunMembership {
+                        run_index: 0,
+                        character_ids,
+                    }],
+                },
+            )
+            .unwrap();
+        }
+
+        let catalog = service
+            .my_parse_catalog_for_character_ids(
+                "account-one",
+                &["character-a".to_owned()].into_iter().collect(),
+                &MyParsesQuery::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            catalog
+                .entries
+                .iter()
+                .map(|entry| entry.parse.report_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                unlisted.report_id.as_str(),
+                private_owned.report_id.as_str()
+            ]
+        );
+        assert!(catalog.entries.iter().any(|entry| {
+            entry.parse.report_id == unlisted.report_id
+                && !entry.submitted_by_you
+                && entry.matched_character_ids == ["character-a"]
+        }));
+        assert!(catalog.entries.iter().any(|entry| {
+            entry.parse.report_id == private_owned.report_id && entry.submitted_by_you
+        }));
+        assert!(
+            catalog
+                .entries
+                .iter()
+                .all(|entry| entry.parse.report_id != private_other.report_id)
+        );
+        assert!(matches!(
+            service.account_report(&private_other.report_id, "account-one"),
+            Err(ServiceError::NotFound)
+        ));
+        assert_eq!(
+            service
+                .account_report(&private_owned.report_id, "account-one")
+                .unwrap()
+                .report_id,
+            private_owned.report_id
+        );
     }
 
     fn fixture_public_report(

@@ -77,7 +77,8 @@ import {
 import {
   type SubmissionPolicy,
   type SubmissionPolicyView,
-  editableSubmissionPolicy,
+  mergeLogUploaderPolicy,
+  mergeProfileSyncPolicy,
   parseMockSubmissionResult,
   parseSubmissionPolicy,
   parseSubmissionTransportResult,
@@ -2723,25 +2724,32 @@ function mountSubmissionPolicyOptionsSurface(
     save.disabled = true;
     message.classList.remove("error");
     message.textContent = "Writing options atomically…";
-    const updated: SubmissionPolicy = editableSubmissionPolicy(current);
-    if (isUploader && visibility !== null && retention !== null) {
-      updated.log_uploader.enabled = enable.input.checked;
-      updated.log_uploader.automatic_combat_logs =
-        automatic.input.checked;
-      updated.log_uploader.default_visibility =
-        visibility.value as SubmissionPolicy["log_uploader"]["default_visibility"];
-      updated.log_uploader.successful_artifact_retention =
-        retention.value as SubmissionPolicy["log_uploader"]["successful_artifact_retention"];
-    } else {
-      updated.bpsr_profile_sync.enabled = enable.input.checked;
-      updated.bpsr_profile_sync.automatic_profiles =
-        automatic.input.checked;
-      if (photoWallImages !== null) {
-        updated.bpsr_profile_sync.publish_photo_wall_images =
-          photoWallImages.input.checked;
-      }
-    }
+    const selectedUploader: SubmissionPolicy["log_uploader"] = {
+      ...current.log_uploader,
+      enabled: enable.input.checked,
+      automatic_combat_logs: automatic.input.checked,
+      default_visibility:
+        (visibility?.value ?? current.log_uploader.default_visibility) as SubmissionPolicy["log_uploader"]["default_visibility"],
+      successful_artifact_retention:
+        (retention?.value ?? current.log_uploader.successful_artifact_retention) as SubmissionPolicy["log_uploader"]["successful_artifact_retention"],
+    };
+    const selectedProfileSync: SubmissionPolicy["bpsr_profile_sync"] = {
+      ...current.bpsr_profile_sync,
+      enabled: enable.input.checked,
+      automatic_profiles: automatic.input.checked,
+      publish_photo_wall_images:
+        photoWallImages?.input.checked ?? current.bpsr_profile_sync.publish_photo_wall_images,
+    };
     try {
+      // The two plug-in option surfaces can remain open simultaneously. Read
+      // the latest full policy before saving, then replace only this surface's
+      // section so a stale Profile Sync form cannot undo a visibility change.
+      const latest = parseSubmissionPolicy(
+        await apiJson<unknown>("/api/submissions/policy"),
+      );
+      const updated = isUploader
+        ? mergeLogUploaderPolicy(latest, selectedUploader)
+        : mergeProfileSyncPolicy(latest, selectedProfileSync);
       const view = parseSubmissionPolicy(
         await apiJson<unknown>("/api/submissions/policy", {
           method: "POST",
@@ -2749,6 +2757,12 @@ function mountSubmissionPolicyOptionsSurface(
           body: JSON.stringify(updated),
         }),
       );
+      if (
+        isUploader &&
+        view.log_uploader.default_visibility !== selectedUploader.default_visibility
+      ) {
+        throw new Error("The host did not retain the selected report visibility.");
+      }
       if (alive) {
         applyView(view);
         message.classList.remove("error");

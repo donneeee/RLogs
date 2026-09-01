@@ -155,6 +155,24 @@ export function editableSubmissionPolicy(
   };
 }
 
+export function mergeLogUploaderPolicy(
+  latest: SubmissionPolicyView,
+  logUploader: SubmissionPolicy["log_uploader"],
+): SubmissionPolicy {
+  const policy = editableSubmissionPolicy(latest);
+  policy.log_uploader = { ...logUploader };
+  return policy;
+}
+
+export function mergeProfileSyncPolicy(
+  latest: SubmissionPolicyView,
+  profileSync: SubmissionPolicy["bpsr_profile_sync"],
+): SubmissionPolicy {
+  const policy = editableSubmissionPolicy(latest);
+  policy.bpsr_profile_sync = { ...profileSync };
+  return policy;
+}
+
 function isLogUploaderPolicy(value: unknown): boolean {
   return (
     isRecord(value) &&

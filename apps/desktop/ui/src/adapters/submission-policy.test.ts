@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   editableSubmissionPolicy,
+  mergeLogUploaderPolicy,
+  mergeProfileSyncPolicy,
   parseMockSubmissionResult,
   parseSubmissionPolicy,
   parseSubmissionTransportResult,
@@ -42,6 +44,44 @@ describe("submission policy", () => {
     expect(parsed.bpsr_profile_sync.enabled).toBe(false);
     expect(parsed.bpsr_profile_sync.publish_photo_wall_images).toBe(false);
     expect(editableSubmissionPolicy(parsed)).not.toHaveProperty("settings_path");
+  });
+
+  it("merges each plug-in section without overwriting the other surface", () => {
+    const latest = parseSubmissionPolicy({
+      ...policy(),
+      bpsr_profile_sync: {
+        enabled: true,
+        automatic_profiles: false,
+        publish_photo_wall_images: true,
+      },
+    });
+    const uploader = mergeLogUploaderPolicy(latest, {
+      enabled: true,
+      automatic_combat_logs: true,
+      default_visibility: "public",
+      successful_artifact_retention: "keep",
+    });
+    expect(uploader.log_uploader.default_visibility).toBe("public");
+    expect(uploader.bpsr_profile_sync).toEqual(latest.bpsr_profile_sync);
+
+    const profileSync = mergeProfileSyncPolicy(
+      parseSubmissionPolicy({
+        ...policy(),
+        log_uploader: {
+          enabled: true,
+          automatic_combat_logs: false,
+          default_visibility: "private",
+          successful_artifact_retention: "remove_after_verified_receipt",
+        },
+      }),
+      {
+        enabled: true,
+        automatic_profiles: true,
+        publish_photo_wall_images: true,
+      },
+    );
+    expect(profileSync.log_uploader.default_visibility).toBe("private");
+    expect(profileSync.bpsr_profile_sync.publish_photo_wall_images).toBe(true);
   });
 
   it("rejects connected or malformed policy claims", () => {

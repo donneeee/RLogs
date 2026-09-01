@@ -301,10 +301,21 @@ mod tests {
         policy.log_uploader.enabled = true;
         policy.bpsr_profile_sync.enabled = true;
         policy.bpsr_profile_sync.publish_photo_wall_images = true;
-        store.update(policy.clone()).unwrap();
-        let restored = SubmissionPolicyStore::open(path.clone()).unwrap();
-        assert_eq!(restored.policy(), &policy);
-        assert!(restored.snapshot().issue.is_none());
+        for visibility in [
+            ReportVisibility::Private,
+            ReportVisibility::Unlisted,
+            ReportVisibility::Public,
+        ] {
+            policy.log_uploader.default_visibility = visibility;
+            store.update(policy.clone()).unwrap();
+            let restored = SubmissionPolicyStore::open(path.clone()).unwrap();
+            assert_eq!(restored.policy(), &policy);
+            assert_eq!(
+                restored.policy().log_uploader.default_visibility,
+                visibility
+            );
+            assert!(restored.snapshot().issue.is_none());
+        }
 
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
