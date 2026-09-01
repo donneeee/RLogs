@@ -29,19 +29,20 @@ use crate::specialization_detection::{
     specialization_identity_from_passive_selectors,
 };
 use crate::{
-    ActivityProgress, AllowedDataDomain, BattleImagineSkill, CaptureGapKind, CaptureRecord,
-    CaptureRecordKind, CharacterAppearance, CharacterProfilePatch, CharacterProgression,
-    CollectionSummary, CombatPowerBreakdown, CombatPowerComponent, CombatPowerSubcomponent,
-    CombatProfessionProfile, CultivationAreaProfile, CultivationLineProfile, DecodeDisposition,
-    DungeonProgress, DungeonTargetProgress, EquipmentAttributeProfile, EquipmentEnchantmentProfile,
-    EquipmentItem, EquipmentSuitEntryProfile, EquippedActionSlot, GameBuild, HandbookProgress,
+    AchievementProgress, AchievementProgressProfile, ActivityProgress, AllowedDataDomain,
+    BattleImagineSkill, CaptureGapKind, CaptureRecord, CaptureRecordKind, CharacterAppearance,
+    CharacterProfilePatch, CharacterProgression, CollectionSummary, CombatPowerBreakdown,
+    CombatPowerComponent, CombatPowerSubcomponent, CombatProfessionProfile, CultivationAreaProfile,
+    CultivationLineProfile, DecodeDisposition, DungeonProgress, DungeonTargetProgress,
+    EquipmentAttributeProfile, EquipmentEnchantmentProfile, EquipmentItem,
+    EquipmentSuitEntryProfile, EquippedActionSlot, GameBuild, HandbookProgress,
     LifeProfessionProfile, MasterModeDungeonProgress, ModuleItemProfile, ModulePartProfile,
     ModuleProfile, ModuleUpgradeRecord, ObjectiveCatalogResolver, ProhibitedDataClass,
-    ProtocolPack, ReputationProgress, RgbColor, SeasonCultivationProfile, SeasonMedalHole,
-    SeasonMedalNode, SeasonMedalProfile, SeasonProfile, SkillLevel, SocialDisplay, TalentLevel,
-    TalentProgressProfile, WeeklyTowerProgress, auxiliary_action_presentation,
-    battle_imagine_presentation, character_id_from_entity_uuid, normalize_auxiliary_imagine_tier,
-    project_actor_loadouts,
+    ProtocolPack, ReputationProgress, RgbColor, SeasonAchievementProgress,
+    SeasonCultivationProfile, SeasonMedalHole, SeasonMedalNode, SeasonMedalProfile, SeasonProfile,
+    SkillLevel, SocialDisplay, TalentLevel, TalentProgressProfile, WeeklyTowerProgress,
+    auxiliary_action_presentation, battle_imagine_presentation, character_id_from_entity_uuid,
+    normalize_auxiliary_imagine_tier, project_actor_loadouts,
 };
 
 const ATTR_NAME: i32 = 0x01;
@@ -1079,6 +1080,7 @@ fn decode_sync_season(
                     combat_power: None,
                     combat_power_breakdown: None,
                     season_strength: None,
+                    master_score: None,
                     season: Some(SeasonProfile {
                         season_id: Some(i64::from(season_id)),
                         level: None,
@@ -1132,6 +1134,12 @@ fn decode_notify_social_data(
         .or_else(|| basic.and_then(|basic| basic.character_id));
     let profile = character_id.map(|character_id| {
         let avatar_id = avatar.and_then(|avatar| positive_i32(avatar.avatar_id));
+        let profile_image_url = avatar
+            .and_then(|avatar| avatar.profile.as_ref())
+            .and_then(|picture| reviewed_picture_url(picture.url.as_deref()));
+        let half_body_image_url = avatar
+            .and_then(|avatar| avatar.half_body.as_ref())
+            .and_then(|picture| reviewed_picture_url(picture.url.as_deref()));
         let business_card_style_id = avatar
             .and_then(|avatar| positive_i32(avatar.business_card_style_id))
             .or_else(|| personal_zone.and_then(|zone| positive_i32(zone.business_card_style_id)));
@@ -1141,6 +1149,8 @@ fn decode_notify_social_data(
         let appearance = if basic.and_then(|basic| basic.gender_id).is_some()
             || basic.and_then(|basic| basic.body_size_id).is_some()
             || avatar_id.is_some()
+            || profile_image_url.is_some()
+            || half_body_image_url.is_some()
             || business_card_style_id.is_some()
             || avatar_frame_id.is_some()
         {
@@ -1152,6 +1162,8 @@ fn decode_notify_social_data(
                 face_options: BTreeMap::new(),
                 color_options: BTreeMap::new(),
                 avatar_id,
+                profile_image_url,
+                half_body_image_url,
                 business_card_style_id,
                 avatar_frame_id,
                 unlocked_profile_image_ids: Vec::new(),
@@ -1268,6 +1280,11 @@ fn decode_notify_social_data(
                 .filter(|combat_power| *combat_power > 0),
             combat_power_breakdown: None,
             season_strength,
+            master_score: social
+                .master_mode_dungeon
+                .as_ref()
+                .and_then(|master| positive_i32(master.season_score))
+                .map(i64::from),
             season,
             appearance,
             equipment,
@@ -1555,6 +1572,7 @@ fn decode_team_members(
                 .filter(|combat_power| *combat_power > 0),
             combat_power_breakdown: None,
             season_strength,
+            master_score: None,
             season,
             appearance: None,
             equipment,
@@ -1720,6 +1738,15 @@ fn positive_i32(value: Option<i32>) -> Option<i32> {
 fn clean_text(value: Option<&str>) -> Option<String> {
     let value = value?.trim();
     (!value.is_empty()).then(|| value.to_owned())
+}
+
+fn reviewed_picture_url(value: Option<&str>) -> Option<String> {
+    let value = value?.trim();
+    (value.len() <= 2_048
+        && value.starts_with("https://")
+        && !value.chars().any(char::is_control)
+        && !value.chars().any(char::is_whitespace))
+    .then(|| value.to_owned())
 }
 
 fn decode_sync_dungeon(
@@ -2177,6 +2204,7 @@ fn decode_sync_container(
                 .map(i64::from),
             combat_power_breakdown: container_fight_power(character.fight_power.as_ref()),
             season_strength: None,
+            master_score: None,
             season: container_season(
                 character.season_center.as_ref(),
                 character.season_role_levels.as_ref(),
@@ -2211,6 +2239,7 @@ fn decode_sync_container(
                 character.handbook.as_ref(),
                 character.vanity_pets.as_ref(),
                 character.fantasy_atlas.as_ref(),
+                character.season_achievements.as_ref(),
             ),
             activity_progress: container_activity_progress(
                 character.challenge_dungeons.as_ref(),
@@ -2372,6 +2401,12 @@ fn container_appearance(
         .or_else(|| face.and_then(|face| face.body_size_id));
     let voice_id = face.and_then(|face| positive_i32(face.voice_id));
     let avatar_id = avatar.and_then(|avatar| positive_i32(avatar.avatar_id));
+    let profile_image_url = avatar
+        .and_then(|avatar| avatar.profile.as_ref())
+        .and_then(|picture| reviewed_picture_url(picture.url.as_deref()));
+    let half_body_image_url = avatar
+        .and_then(|avatar| avatar.half_body.as_ref())
+        .and_then(|picture| reviewed_picture_url(picture.url.as_deref()));
     let business_card_style_id = avatar
         .and_then(|avatar| positive_i32(avatar.business_card_style_id))
         .or_else(|| personal_zone.and_then(|zone| positive_i32(zone.business_card_style_id)));
@@ -2401,6 +2436,8 @@ fn container_appearance(
         || !face_options.is_empty()
         || !color_options.is_empty()
         || avatar_id.is_some()
+        || profile_image_url.is_some()
+        || half_body_image_url.is_some()
         || business_card_style_id.is_some()
         || avatar_frame_id.is_some()
         || !unlocked_profile_image_ids.is_empty()
@@ -2414,6 +2451,8 @@ fn container_appearance(
         face_options,
         color_options,
         avatar_id,
+        profile_image_url,
+        half_body_image_url,
         business_card_style_id,
         avatar_frame_id,
         unlocked_profile_image_ids,
@@ -2954,6 +2993,7 @@ fn container_collection(
     handbook: Option<&schema::HandbookData>,
     vanity_pets: Option<&schema::VanityPetManager>,
     fantasy_atlas: Option<&schema::FantasyAtlasData>,
+    achievements: Option<&schema::SeasonAchievementList>,
 ) -> Option<CollectionSummary> {
     if fashion.is_none()
         && collection_book.is_none()
@@ -2963,6 +3003,7 @@ fn container_collection(
         && handbook.is_none()
         && vanity_pets.is_none()
         && fantasy_atlas.is_none()
+        && achievements.is_none()
     {
         return None;
     }
@@ -3034,6 +3075,16 @@ fn container_collection(
         })
         .collect();
 
+    let mut photo_ids = personal_zone
+        .into_iter()
+        .flat_map(|zone| zone.photos.iter())
+        .copied()
+        .filter(|photo_id| *photo_id > 0)
+        .map(i64::from)
+        .collect::<Vec<_>>();
+    photo_ids.sort_unstable();
+    photo_ids.dedup();
+
     Some(CollectionSummary {
         fashion_points: fashion
             .and_then(|fashion| fashion.fashion_points)
@@ -3072,7 +3123,62 @@ fn container_collection(
         summoned_vanity_pet_id,
         fantasy_atlas_stages,
         handbook: handbook.map(container_handbook),
+        photo_ids,
+        photo_wall: personal_zone
+            .into_iter()
+            .flat_map(|zone| zone.photos_wall.iter())
+            .filter_map(|(slot, photo_id)| {
+                (*slot >= 0 && *photo_id > 0).then_some((*slot, i64::from(*photo_id)))
+            })
+            .collect(),
+        achievements: achievements.map(container_achievements),
     })
+}
+
+fn container_achievements(source: &schema::SeasonAchievementList) -> AchievementProgressProfile {
+    let convert = |entries: &std::collections::HashMap<u32, schema::Achievement>| {
+        let mut achievements = entries
+            .iter()
+            .filter_map(|(map_id, value)| {
+                (*map_id > 0).then_some(AchievementProgress {
+                    achievement_id: *map_id,
+                    finish_count: value.finish_count,
+                    reward_claimed: value.reward_claimed,
+                    begin_progress: value.begin_progress,
+                })
+            })
+            .collect::<Vec<_>>();
+        achievements.sort_unstable_by_key(|entry| entry.achievement_id);
+        achievements
+    };
+    let general = source
+        .seasons
+        .get(&0)
+        .map(|season| convert(&season.achievements))
+        .unwrap_or_default();
+    let mut seasons = source
+        .seasons
+        .iter()
+        .filter(|(season_id, _)| **season_id > 0)
+        .map(|(season_id, season)| SeasonAchievementProgress {
+            season_id: *season_id,
+            achievements: convert(&season.achievements),
+        })
+        .collect::<Vec<_>>();
+    seasons.sort_unstable_by_key(|season| season.season_id);
+    let mut initialized_season_ids = source
+        .initialized_seasons
+        .iter()
+        .filter_map(|(season_id, initialized)| (*initialized).then_some(*season_id))
+        .collect::<Vec<_>>();
+    initialized_season_ids.sort_unstable();
+    initialized_season_ids.dedup();
+    AchievementProgressProfile {
+        general,
+        seasons,
+        initialized_season_ids,
+        version: source.version,
+    }
 }
 
 fn container_handbook(handbook: &schema::HandbookData) -> HandbookProgress {
@@ -3627,6 +3733,8 @@ fn decode_sync_container_dirty(
                     face_options: BTreeMap::new(),
                     color_options: BTreeMap::new(),
                     avatar_id: positive_i32(update.avatar_id),
+                    profile_image_url: None,
+                    half_body_image_url: None,
                     business_card_style_id: positive_i32(update.business_card_style_id),
                     avatar_frame_id: positive_i32(update.avatar_frame_id),
                     unlocked_profile_image_ids: Vec::new(),
@@ -3664,6 +3772,7 @@ fn decode_sync_container_dirty(
                 combat_power: update.combat_power.filter(|combat_power| *combat_power > 0),
                 combat_power_breakdown: None,
                 season_strength: None,
+                master_score: None,
                 season: None,
                 appearance,
                 equipment: None,
@@ -5586,7 +5695,7 @@ mod tests {
         #[prost(message, optional, tag = "3")]
         basic: Option<schema::SocialBasicData>,
         #[prost(message, optional, tag = "4")]
-        avatar: Option<FullSocialAvatarInfo>,
+        avatar: Option<schema::SocialAvatarInfo>,
         #[prost(message, optional, tag = "6")]
         profession: Option<schema::SocialProfessionData>,
         #[prost(message, optional, tag = "7")]
@@ -5601,20 +5710,8 @@ mod tests {
         account_data: Option<String>,
         #[prost(message, optional, tag = "16")]
         personal_zone: Option<schema::SocialPersonalZone>,
-    }
-
-    #[derive(Clone, PartialEq, Message)]
-    struct FullSocialAvatarInfo {
-        #[prost(int32, optional, tag = "1")]
-        avatar_id: Option<i32>,
-        #[prost(string, optional, tag = "2")]
-        profile_image_url: Option<String>,
-        #[prost(string, optional, tag = "3")]
-        half_body_image_url: Option<String>,
-        #[prost(int32, optional, tag = "4")]
-        business_card_style_id: Option<i32>,
-        #[prost(int32, optional, tag = "5")]
-        avatar_frame_id: Option<i32>,
+        #[prost(message, optional, tag = "22")]
+        master_mode_dungeon: Option<schema::MasterModeDungeonData>,
     }
 
     #[derive(Debug)]
@@ -7982,6 +8079,12 @@ mod tests {
                     }),
                     avatar: Some(schema::CharacterAvatarInfo {
                         avatar_id: Some(41),
+                        profile: Some(schema::PictureInfo {
+                            url: Some("https://images.example/local-profile.webp".into()),
+                        }),
+                        half_body: Some(schema::PictureInfo {
+                            url: Some("https://images.example/local-half-body.webp".into()),
+                        }),
                         business_card_style_id: Some(42),
                         avatar_frame_id: Some(43),
                     }),
@@ -8126,6 +8229,56 @@ mod tests {
                     unlocked_voice_ids: vec![70, 71],
                 }),
                 season_center: Some(schema::SeasonCenter { season_id: Some(3) }),
+                season_achievements: Some(schema::SeasonAchievementList {
+                    seasons: [
+                        (
+                            0,
+                            schema::SeasonAchievement {
+                                achievements: [(
+                                    10_001,
+                                    schema::Achievement {
+                                        finish_count: Some(1),
+                                        reward_claimed: Some(true),
+                                        begin_progress: Some(100),
+                                    },
+                                )]
+                                .into_iter()
+                                .collect(),
+                            },
+                        ),
+                        (
+                            3,
+                            schema::SeasonAchievement {
+                                achievements: [(
+                                    30_001,
+                                    schema::Achievement {
+                                        finish_count: Some(7),
+                                        reward_claimed: Some(false),
+                                        begin_progress: Some(200),
+                                    },
+                                )]
+                                .into_iter()
+                                .collect(),
+                            },
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                    initialized_seasons: [(0, true), (3, true)].into_iter().collect(),
+                    version: Some(9),
+                }),
+                personal_zone: Some(schema::PersonalZone {
+                    medals: [(1, 501)].into_iter().collect(),
+                    theme_id: Some(2),
+                    business_card_style_id: Some(42),
+                    avatar_frame_id: Some(43),
+                    title_id: Some(3),
+                    fashion_collection_points: Some(11),
+                    photos: vec![701, 702],
+                    ride_collection_points: Some(12),
+                    weapon_skin_collection_points: Some(13),
+                    photos_wall: [(1, 702)].into_iter().collect(),
+                }),
                 professions: Some(schema::ProfessionList {
                     current_profession_id: Some(5),
                     professions: [(
@@ -8324,6 +8477,14 @@ mod tests {
             })
         );
         assert_eq!(appearance.avatar_id, Some(41));
+        assert_eq!(
+            appearance.profile_image_url.as_deref(),
+            Some("https://images.example/local-profile.webp")
+        );
+        assert_eq!(
+            appearance.half_body_image_url.as_deref(),
+            Some("https://images.example/local-half-body.webp")
+        );
         assert_eq!(appearance.voice_id, Some(70));
         assert_eq!(appearance.unlocked_profile_image_ids, vec![70_001]);
         assert_eq!(appearance.unlocked_face_item_ids, vec![80_001]);
@@ -8434,6 +8595,18 @@ mod tests {
         assert_eq!(collection.owned_mount_ids, vec![40_001]);
         assert_eq!(collection.owned_weapon_skin_ids, vec![50_001]);
         assert_eq!(collection.owned_dye_ids, vec![60_001]);
+        assert_eq!(collection.photo_ids, vec![701, 702]);
+        assert_eq!(collection.photo_wall.get(&1), Some(&702));
+        let achievements = collection.achievements.as_ref().expect("achievements");
+        assert_eq!(achievements.general[0].achievement_id, 10_001);
+        assert_eq!(achievements.general[0].reward_claimed, Some(true));
+        assert_eq!(achievements.seasons[0].season_id, 3);
+        assert_eq!(
+            achievements.seasons[0].achievements[0].achievement_id,
+            30_001
+        );
+        assert_eq!(achievements.initialized_season_ids, vec![0, 3]);
+        assert_eq!(achievements.version, Some(9));
     }
 
     #[test]
@@ -8784,10 +8957,14 @@ mod tests {
                         scene_instance_id: Some("social-scene-instance".into()),
                         season_level: Some(7),
                     }),
-                    avatar: Some(FullSocialAvatarInfo {
+                    avatar: Some(schema::SocialAvatarInfo {
                         avatar_id: Some(42),
-                        profile_image_url: Some("https://private.invalid/profile.png".into()),
-                        half_body_image_url: Some("https://private.invalid/half-body.png".into()),
+                        profile: Some(schema::PictureInfo {
+                            url: Some("https://images.example/profile.png".into()),
+                        }),
+                        half_body: Some(schema::PictureInfo {
+                            url: Some("https://images.example/half-body.png".into()),
+                        }),
                         business_card_style_id: Some(8),
                         avatar_frame_id: Some(9),
                     }),
@@ -8816,6 +8993,10 @@ mod tests {
                     user_attributes: Some(schema::SocialUserAttributes {
                         combat_power: Some(42_000),
                         season_strength: Some(321),
+                    }),
+                    master_mode_dungeon: Some(schema::MasterModeDungeonData {
+                        season_score: Some(765_432),
+                        visible: Some(true),
                     }),
                     guild: Some(schema::SocialGuildData {
                         guild_id: Some(7654),
@@ -8850,6 +9031,7 @@ mod tests {
         assert_eq!(profile.class_id, Some(5));
         assert_eq!(profile.combat_power, Some(42_000));
         assert_eq!(profile.season_strength, Some(321));
+        assert_eq!(profile.master_score, Some(765_432));
         assert_eq!(
             profile
                 .appearance
@@ -8889,9 +9071,10 @@ mod tests {
         assert!(!json.contains("account_data"));
         assert!(!json.contains("private-social-account"));
         assert!(!json.contains("private-account-data-subtree"));
-        assert!(!json.contains("private.invalid"));
-        assert!(!json.contains("profile_image_url"));
-        assert!(!json.contains("half_body_image_url"));
+        assert!(json.contains("https://images.example/profile.png"));
+        assert!(json.contains("https://images.example/half-body.png"));
+        assert!(json.contains("profile_image_url"));
+        assert!(json.contains("half_body_image_url"));
 
         let duplicate = runtime
             .process(&record_for(SOCIAL_SERVICE, 2, 1, payload))

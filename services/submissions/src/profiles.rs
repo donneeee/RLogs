@@ -164,7 +164,19 @@ impl ProfileRegistry {
         let existing_profile = read_optional_json::<PublicProfile>(&current_path)?;
         if let Some(existing) = &existing_profile {
             if existing.package_id == package.package_id {
-                return Ok(self.receipt(existing, true));
+                if package.created_unix_millis <= existing.created_unix_millis {
+                    return Ok(self.receipt(existing, true));
+                }
+                let mut refreshed = existing.clone();
+                refreshed.created_unix_millis = package.created_unix_millis;
+                refreshed.updated_unix_millis = accepted_unix_millis;
+                refreshed.source_client_build = package.source.client_build.clone();
+                refreshed.source_observation_count = package.source.observation_count;
+                refreshed.source_last_event_sequence = package.source.last_event_sequence;
+                write_json_atomic(&package_path, &package)?;
+                write_json_atomic(&current_path, &refreshed)?;
+                self.rebuild_catalog()?;
+                return Ok(self.receipt(&refreshed, true));
             }
             if package.created_unix_millis <= existing.created_unix_millis {
                 return Err(ProfileRegistryError::StalePackage);
@@ -259,7 +271,7 @@ impl ProfileRegistry {
             module_inventory_count: profile.module_inventory_count,
             equipped_module_count: profile.equipped_module_count,
             profile_url: format!(
-                "{}/account/?profile={}",
+                "{}/profiles/?profile={}",
                 self.public_site_url, profile.profile_id
             ),
         }
@@ -449,6 +461,7 @@ mod tests {
             combat_power: None,
             combat_power_breakdown: None,
             season_strength: None,
+            master_score: None,
             season: None,
             appearance: None,
             equipment: None,
@@ -524,7 +537,7 @@ mod tests {
             .unwrap();
         assert!(receipt.claimed);
         assert_eq!(receipt.module_inventory_count, 3);
-        assert!(receipt.profile_url.contains("/account/?profile=prf_"));
+        assert!(receipt.profile_url.contains("/profiles/?profile=prf_"));
         let published = registry.get(&receipt.profile_id).unwrap();
         assert_eq!(published.character_id, "1000001");
         assert_eq!(
@@ -534,6 +547,36 @@ mod tests {
                 .len(),
             3
         );
+    }
+
+    #[test]
+    fn an_identical_profile_from_a_later_live_session_refreshes_last_seen() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let first = registry
+            .publish(
+                package(10, "1000001", 3),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+        let refreshed = registry
+            .publish(
+                package(30, "1000001", 3),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                40,
+            )
+            .unwrap();
+        assert_eq!(first.package_id, refreshed.package_id);
+        assert!(refreshed.duplicate);
+        let public = registry.get(&refreshed.profile_id).unwrap();
+        assert_eq!(public.created_unix_millis, 30);
+        assert_eq!(public.updated_unix_millis, 40);
     }
 
     #[test]

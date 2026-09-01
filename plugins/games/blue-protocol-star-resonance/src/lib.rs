@@ -193,19 +193,21 @@ pub use privacy::{
     ProtocolPrivacyPolicy,
 };
 pub use profile::{
-    ActivityProgress, BattleImagineSkill, CharacterAppearance, CharacterProfilePatch,
-    CharacterProgression, CollectionSummary, CombatPowerBreakdown, CombatPowerComponent,
-    CombatPowerSubcomponent, CombatProfessionProfile, CosmeticOwnership, CultivationAreaProfile,
-    CultivationLineProfile, DungeonProgress, DungeonTargetProgress, EquipmentAttributeProfile,
-    EquipmentEnchantmentProfile, EquipmentItem, EquipmentSuitEntryProfile, EquippedActionSlot,
-    HandbookProgress, ImagineOwnership, LifeProfessionProfile, MasterModeDungeonProgress,
-    ModuleItemProfile, ModulePartProfile, ModuleProfile, ModuleUpgradeRecord, ProfileEventError,
-    ReputationProgress, RgbColor, SeasonCultivationProfile, SeasonMedalHole, SeasonMedalNode,
+    AchievementProgress, AchievementProgressProfile, ActivityProgress, BattleImagineSkill,
+    CharacterAppearance, CharacterProfilePatch, CharacterProgression, CollectionSummary,
+    CombatPowerBreakdown, CombatPowerComponent, CombatPowerSubcomponent, CombatProfessionProfile,
+    CosmeticOwnership, CultivationAreaProfile, CultivationLineProfile, DungeonProgress,
+    DungeonTargetProgress, EquipmentAttributeProfile, EquipmentEnchantmentProfile, EquipmentItem,
+    EquipmentSuitEntryProfile, EquippedActionSlot, HandbookProgress, ImagineOwnership,
+    LifeProfessionProfile, MasterModeDungeonProgress, ModuleItemProfile, ModulePartProfile,
+    ModuleProfile, ModuleUpgradeRecord, ProfileEventError, ReputationProgress, RgbColor,
+    SeasonAchievementProgress, SeasonCultivationProfile, SeasonMedalHole, SeasonMedalNode,
     SeasonMedalProfile, SeasonProfile, SkillLevel, SocialDisplay, TalentLevel,
     TalentProgressProfile, WeeklyTowerProgress,
 };
 pub use profile_projection::{
-    BpsrProfileProjectionError, MAXIMUM_LOCAL_PROFILE_CHARACTERS, project_local_profile_packages,
+    BpsrProfileProjectionError, LiveProfileProjection, MAXIMUM_LOCAL_PROFILE_CHARACTERS,
+    project_local_profile_packages,
 };
 pub use rdps::{
     RdpsContributionKind, RdpsEffectLookup, RdpsEffectRule, RdpsReviewState, RdpsSourceScope,

@@ -167,8 +167,9 @@ pub(crate) struct TeamMemberSocialData {
 
 /// Privacy-reviewed public subset of the owner/social character snapshot.
 ///
-/// Account ID (tag 2), account data (tag 14), user-supplied image data, and
-/// all unrelated social/account subtrees are deliberately undeclared.
+/// Account ID (tag 2), account data (tag 14), and unrelated social/account
+/// subtrees are deliberately undeclared. Game-reviewed character pictures are
+/// retained separately from account identity.
 #[derive(Clone, PartialEq, Message)]
 pub(crate) struct SocialData {
     #[prost(int64, optional, tag = "1")]
@@ -189,6 +190,8 @@ pub(crate) struct SocialData {
     pub guild: Option<SocialGuildData>,
     #[prost(message, optional, tag = "16")]
     pub personal_zone: Option<SocialPersonalZone>,
+    #[prost(message, optional, tag = "22")]
+    pub master_mode_dungeon: Option<MasterModeDungeonData>,
 }
 
 #[derive(Clone, PartialEq, Message)]
@@ -213,16 +216,26 @@ pub(crate) struct SocialBasicData {
     pub season_level: Option<i32>,
 }
 
-#[derive(Clone, Copy, PartialEq, Message)]
+#[derive(Clone, PartialEq, Message)]
 pub(crate) struct SocialAvatarInfo {
     #[prost(int32, optional, tag = "1")]
     pub avatar_id: Option<i32>,
-    // Profile and half-body image messages (tags 2 and 3) are deliberately
-    // undeclared because they can contain user-supplied URLs.
+    #[prost(message, optional, tag = "2")]
+    pub profile: Option<PictureInfo>,
+    #[prost(message, optional, tag = "3")]
+    pub half_body: Option<PictureInfo>,
     #[prost(int32, optional, tag = "4")]
     pub business_card_style_id: Option<i32>,
     #[prost(int32, optional, tag = "5")]
     pub avatar_frame_id: Option<i32>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct PictureInfo {
+    #[prost(string, optional, tag = "1")]
+    pub url: Option<String>,
+    // Picture verification metadata is deliberately excluded; the public
+    // profile needs only the reviewed delivery URL.
 }
 
 #[derive(Clone, Copy, PartialEq, Message)]
@@ -699,6 +712,8 @@ pub(crate) struct CharacterSerialize {
     pub collection_book: Option<CollectionBook>,
     #[prost(message, optional, tag = "46")]
     pub challenge_dungeons: Option<ChallengeDungeonInfo>,
+    #[prost(message, optional, tag = "48")]
+    pub season_achievements: Option<SeasonAchievementList>,
     #[prost(message, optional, tag = "50")]
     pub season_center: Option<SeasonCenter>,
     #[prost(message, optional, tag = "51")]
@@ -836,14 +851,15 @@ pub(crate) struct IntVec3 {
     pub z: Option<i32>,
 }
 
-/// Character-facing avatar IDs only.
-///
-/// Profile and half-body picture messages are deliberately undeclared because
-/// they contain user-supplied URLs and verification metadata.
-#[derive(Clone, Copy, PartialEq, Message)]
+/// Character-facing avatar IDs and reviewed picture delivery URLs.
+#[derive(Clone, PartialEq, Message)]
 pub(crate) struct CharacterAvatarInfo {
     #[prost(int32, optional, tag = "1")]
     pub avatar_id: Option<i32>,
+    #[prost(message, optional, tag = "2")]
+    pub profile: Option<PictureInfo>,
+    #[prost(message, optional, tag = "3")]
+    pub half_body: Option<PictureInfo>,
     #[prost(int32, optional, tag = "4")]
     pub business_card_style_id: Option<i32>,
     #[prost(int32, optional, tag = "5")]
@@ -1200,8 +1216,9 @@ pub(crate) struct DungeonTargetProgress {
 
 /// Privacy-reviewed public display fields from the character's personal zone.
 ///
-/// Online periods, editor state, actions, photos, photo-wall data, and other
-/// user-generated content are deliberately undeclared.
+/// Online periods, editor state, and actions are deliberately undeclared.
+/// Photo IDs and wall placement are character-facing collection data; raw
+/// uploaded image bodies are never carried by this message.
 #[derive(Clone, PartialEq, Message)]
 pub(crate) struct PersonalZone {
     #[prost(map = "int32, int32", tag = "5")]
@@ -1216,10 +1233,48 @@ pub(crate) struct PersonalZone {
     pub title_id: Option<i32>,
     #[prost(int32, optional, tag = "13")]
     pub fashion_collection_points: Option<i32>,
+    #[prost(int32, repeated, tag = "15")]
+    pub photos: Vec<i32>,
     #[prost(int32, optional, tag = "18")]
     pub ride_collection_points: Option<i32>,
     #[prost(int32, optional, tag = "20")]
     pub weapon_skin_collection_points: Option<i32>,
+    #[prost(map = "int32, int32", tag = "21")]
+    pub photos_wall: std::collections::HashMap<i32, i32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct Achievement {
+    #[prost(uint32, optional, tag = "1")]
+    pub finish_count: Option<u32>,
+    #[prost(bool, optional, tag = "2")]
+    pub reward_claimed: Option<bool>,
+    #[prost(uint64, optional, tag = "3")]
+    pub begin_progress: Option<u64>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct SeasonAchievement {
+    #[prost(map = "uint32, message", tag = "1")]
+    pub achievements: std::collections::HashMap<u32, Achievement>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct SeasonAchievementList {
+    #[prost(map = "uint32, message", tag = "1")]
+    pub seasons: std::collections::HashMap<u32, SeasonAchievement>,
+    #[prost(map = "uint32, bool", tag = "2")]
+    pub initialized_seasons: std::collections::HashMap<u32, bool>,
+    #[prost(uint64, optional, tag = "3")]
+    pub version: Option<u64>,
+}
+
+#[derive(Clone, Copy, PartialEq, Message)]
+pub(crate) struct MasterModeDungeonData {
+    #[prost(int32, optional, tag = "1")]
+    pub season_score: Option<i32>,
+    #[prost(bool, optional, tag = "2")]
+    pub visible: Option<bool>,
 }
 
 #[derive(Clone, PartialEq, Message)]

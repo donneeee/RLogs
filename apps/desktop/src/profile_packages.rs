@@ -146,8 +146,19 @@ impl ProfilePublicationLedger {
         Ok(Self { path, records })
     }
 
+    #[cfg(test)]
     pub fn is_published(&self, package_id: &str) -> bool {
         self.records.contains_key(package_id)
+    }
+
+    /// Returns true only when the recorded publication happened after the
+    /// current local observation package was created. A stable profile body
+    /// intentionally keeps the same package ID, but a later live session must
+    /// still be allowed to refresh the website's "last seen" timestamp.
+    pub fn covers_observation(&self, package_id: &str, created_unix_millis: u64) -> bool {
+        self.records
+            .get(package_id)
+            .is_some_and(|record| record.published_unix_millis >= created_unix_millis)
     }
 
     pub fn reconcile(&mut self, active_package_ids: &BTreeSet<String>) -> Result<(), String> {
@@ -719,6 +730,8 @@ mod tests {
             )
             .unwrap();
         assert!(ledger.is_published(&first));
+        assert!(ledger.covers_observation(&first, 1));
+        assert!(!ledger.covers_observation(&first, 2));
         assert!(!ledger.is_published(&second));
 
         let mut restored = ProfilePublicationLedger::open(ledger_path).unwrap();

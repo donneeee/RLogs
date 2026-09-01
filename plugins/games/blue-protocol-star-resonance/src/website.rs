@@ -81,6 +81,7 @@ mod tests {
             combat_power: None,
             combat_power_breakdown: None,
             season_strength: None,
+            master_score: None,
             season: None,
             appearance: None,
             equipment: None,

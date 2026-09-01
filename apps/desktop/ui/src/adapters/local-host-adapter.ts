@@ -2806,7 +2806,7 @@ function mountProfileSyncStatusSurface(
   inspection.hidden = true;
   const boundary = actionCard(
     "Current boundary",
-    "A claimable package is HMAC-bound to this PC's authenticated app token and the exact live session seal. The first valid personal package claims that region-scoped UID, and only the same account can publish newer state. Modules remain attached to that character ID.",
+    "A claimable package is HMAC-bound to this PC's authenticated app token and its live process-owned capture. The first valid personal package claims that region-scoped UID, and only the same account can publish newer state. Modules remain attached to that character ID.",
   );
   root.append(heading, status, content);
   if (DEVELOPER_TOOLS_ENABLED) {
@@ -2881,7 +2881,7 @@ function mountProfileSyncStatusSurface(
         text(
           "p",
           policy.bpsr_profile_sync.enabled
-            ? "No claimable profile package exists yet. Complete a live parse with Profile Sync active; replayed, imported, offline, and shared logs are intentionally ineligible."
+            ? "No claimable profile package exists yet. Keep rLogs capturing while the game is open; Profile Sync packages your personal character data as soon as the parser observes it. Replayed, imported, offline, and shared logs remain ineligible."
             : "Profile Sync is disabled. Existing packages would remain reviewable, but no new package will be generated.",
           "runtime-empty-result",
         ),

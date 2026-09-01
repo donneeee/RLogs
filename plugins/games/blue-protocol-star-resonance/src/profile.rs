@@ -24,6 +24,8 @@ pub struct CharacterProfilePatch {
     #[serde(default)]
     pub combat_power_breakdown: Option<CombatPowerBreakdown>,
     pub season_strength: Option<i64>,
+    #[serde(default)]
+    pub master_score: Option<i64>,
     pub season: Option<SeasonProfile>,
     pub appearance: Option<CharacterAppearance>,
     pub equipment: Option<Vec<EquipmentItem>>,
@@ -117,10 +119,10 @@ pub struct CharacterProgression {
     pub previous_season_max_level: Option<u32>,
 }
 
-/// Character-facing appearance IDs only.
+/// Character-facing appearance and game-reviewed profile images.
 ///
-/// User-supplied image URLs and account platform metadata are deliberately not
-/// part of this contract.
+/// Account platform metadata and picture-verification internals are not part
+/// of this contract. The decoder accepts only bounded HTTPS image URLs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CharacterAppearance {
     pub gender_id: Option<i32>,
@@ -131,6 +133,10 @@ pub struct CharacterAppearance {
     pub face_options: BTreeMap<i32, i32>,
     pub color_options: BTreeMap<i32, RgbColor>,
     pub avatar_id: Option<i32>,
+    #[serde(default)]
+    pub profile_image_url: Option<String>,
+    #[serde(default)]
+    pub half_body_image_url: Option<String>,
     pub business_card_style_id: Option<i32>,
     pub avatar_frame_id: Option<i32>,
     #[serde(default)]
@@ -382,6 +388,38 @@ pub struct CollectionSummary {
     pub fantasy_atlas_stages: BTreeMap<i64, u32>,
     #[serde(default)]
     pub handbook: Option<HandbookProgress>,
+    #[serde(default)]
+    pub photo_ids: Vec<i64>,
+    #[serde(default)]
+    pub photo_wall: BTreeMap<i32, i64>,
+    #[serde(default)]
+    pub achievements: Option<AchievementProgressProfile>,
+}
+
+/// Achievement state from the character container. The game carries permanent
+/// achievements under season ID zero and time-limited achievements under their
+/// actual season IDs; keeping both collections explicit prevents accidental
+/// aggregation across the two systems.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AchievementProgressProfile {
+    pub general: Vec<AchievementProgress>,
+    pub seasons: Vec<SeasonAchievementProgress>,
+    pub initialized_season_ids: Vec<u32>,
+    pub version: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AchievementProgress {
+    pub achievement_id: u32,
+    pub finish_count: Option<u32>,
+    pub reward_claimed: Option<bool>,
+    pub begin_progress: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeasonAchievementProgress {
+    pub season_id: u32,
+    pub achievements: Vec<AchievementProgress>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -529,6 +567,7 @@ mod tests {
             combat_power: None,
             combat_power_breakdown: None,
             season_strength: None,
+            master_score: None,
             season: None,
             appearance: None,
             equipment: None,

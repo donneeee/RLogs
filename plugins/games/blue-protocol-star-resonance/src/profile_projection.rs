@@ -3,6 +3,7 @@ use std::io::BufRead;
 use rlogs_events::{CanonicalEvent, EventEnvelope, EventSensitivity};
 use rlogs_log_format::{RlogError, RlogLimits, RlogReader};
 use rlogs_profiles::{LocalProfilePackage, ProfilePackageError, ProfilePackageSource};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
@@ -11,6 +12,134 @@ use crate::{
 };
 
 pub const MAXIMUM_LOCAL_PROFILE_CHARACTERS: usize = 8;
+const MAXIMUM_PENDING_PUBLIC_PROFILE_CHARACTERS: usize = 64;
+
+/// Incrementally accumulates the local player's privacy-reviewed profile while
+/// continuous capture is running. A character identity must first be observed
+/// in a `PersonalGameplay` event. Later public social snapshots may enrich only
+/// that already-proven identity; profiles belonging solely to teammates or
+/// social lookups can never become claimable packages.
+#[derive(Debug, Default)]
+pub struct LiveProfileProjection {
+    accumulators: Vec<ProfileAccumulator>,
+    pending_public: Vec<CharacterProfilePatch>,
+}
+
+impl LiveProfileProjection {
+    /// Merges one canonical observation and reports whether a claimable local
+    /// profile changed.
+    pub fn observe(
+        &mut self,
+        envelope: &EventEnvelope,
+    ) -> Result<bool, BpsrProfileProjectionError> {
+        let CanonicalEvent::CharacterProfileObserved { profile } = &envelope.event else {
+            return Ok(false);
+        };
+        let patch = CharacterProfilePatch::from_game_event(profile)?;
+        if envelope.sensitivity == EventSensitivity::PersonalGameplay {
+            if let Some(existing) = self
+                .accumulators
+                .iter_mut()
+                .find(|existing| existing.profile.character == patch.character)
+            {
+                let before = existing.profile.clone();
+                existing.profile.merge_from(patch)?;
+                existing.observation_count = existing
+                    .observation_count
+                    .checked_add(1)
+                    .ok_or(BpsrProfileProjectionError::ObservationOverflow)?;
+                existing.last_event_sequence = envelope.sequence;
+                return Ok(existing.profile != before);
+            }
+            if self.accumulators.len() >= MAXIMUM_LOCAL_PROFILE_CHARACTERS {
+                return Err(BpsrProfileProjectionError::TooManyLocalCharacters {
+                    maximum: MAXIMUM_LOCAL_PROFILE_CHARACTERS,
+                });
+            }
+            let mut patch = patch;
+            if let Some(index) = self
+                .pending_public
+                .iter()
+                .position(|pending| pending.character == patch.character)
+            {
+                patch.merge_public_from(self.pending_public.swap_remove(index))?;
+            }
+            self.accumulators.push(ProfileAccumulator {
+                profile: patch,
+                observation_count: 1,
+                last_event_sequence: envelope.sequence,
+            });
+            return Ok(true);
+        }
+
+        if envelope.sensitivity == EventSensitivity::PublicGameplay
+            && let Some(existing) = self
+                .accumulators
+                .iter_mut()
+                .find(|existing| existing.profile.character == patch.character)
+        {
+            let before = existing.profile.clone();
+            existing.profile.merge_public_from(patch)?;
+            existing.observation_count = existing
+                .observation_count
+                .checked_add(1)
+                .ok_or(BpsrProfileProjectionError::ObservationOverflow)?;
+            existing.last_event_sequence = envelope.sequence;
+            return Ok(existing.profile != before);
+        }
+        if envelope.sensitivity == EventSensitivity::PublicGameplay {
+            if let Some(existing) = self
+                .pending_public
+                .iter_mut()
+                .find(|existing| existing.character == patch.character)
+            {
+                existing.merge_public_from(patch)?;
+            } else {
+                if self.pending_public.len() >= MAXIMUM_PENDING_PUBLIC_PROFILE_CHARACTERS {
+                    self.pending_public.remove(0);
+                }
+                self.pending_public.push(patch);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Builds reviewable packages from the current live state without waiting
+    /// for a dungeon log to seal. The digest covers the canonical merged BPSR
+    /// profile body and its observation ledger; transport binding still adds
+    /// the device-token HMAC before publication.
+    pub fn packages(
+        &self,
+        session_id: &str,
+        client_build: &str,
+        protocol_pack_digest: &str,
+        created_unix_millis: u64,
+    ) -> Result<Vec<LocalProfilePackage>, BpsrProfileProjectionError> {
+        let mut packages = Vec::with_capacity(self.accumulators.len());
+        for accumulator in &self.accumulators {
+            let request = website_profile_request(&accumulator.profile)?;
+            let digest_input = serde_json::to_vec(&(
+                &accumulator.profile,
+                accumulator.observation_count,
+                accumulator.last_event_sequence,
+            ))?;
+            packages.push(LocalProfilePackage::new(
+                created_unix_millis,
+                ProfilePackageSource {
+                    session_id: session_id.to_owned(),
+                    client_build: client_build.to_owned(),
+                    protocol_pack_digest: protocol_pack_digest.to_owned(),
+                    canonical_content_sha256: format!("sha256:{:x}", Sha256::digest(digest_input)),
+                    observation_count: accumulator.observation_count,
+                    last_event_sequence: accumulator.last_event_sequence,
+                    live_capture: None,
+                },
+                request,
+            )?);
+        }
+        Ok(packages)
+    }
+}
 
 /// Replays one sealed canonical log and projects only personal-gameplay BPSR
 /// character observations. Public social lookups for other characters are
@@ -86,6 +215,7 @@ fn observe_profile(
     Ok(())
 }
 
+#[derive(Debug)]
 struct ProfileAccumulator {
     profile: CharacterProfilePatch,
     observation_count: u64,
@@ -113,6 +243,7 @@ impl CharacterProfilePatch {
             newer.combat_power_breakdown,
         );
         replace_if_some(&mut self.season_strength, newer.season_strength);
+        replace_if_some(&mut self.master_score, newer.master_score);
         merge_season(&mut self.season, newer.season);
         replace_if_some(&mut self.appearance, newer.appearance);
         replace_if_some(&mut self.equipment, newer.equipment);
@@ -139,6 +270,34 @@ impl CharacterProfilePatch {
             &mut self.current_profession_project_id,
             newer.current_profession_project_id,
         );
+        replace_if_some(&mut self.social_display, newer.social_display);
+        Ok(())
+    }
+
+    fn merge_public_from(
+        &mut self,
+        newer: CharacterProfilePatch,
+    ) -> Result<(), BpsrProfileProjectionError> {
+        if self.character != newer.character {
+            return Err(BpsrProfileProjectionError::CharacterMismatch);
+        }
+        replace_if_some(&mut self.display_name, newer.display_name);
+        replace_if_some(&mut self.display_id, newer.display_id);
+        replace_if_some(&mut self.server_id, newer.server_id);
+        replace_if_some(&mut self.class_id, newer.class_id);
+        replace_if_some(&mut self.specialization_id, newer.specialization_id);
+        replace_if_some(&mut self.level, newer.level);
+        replace_if_some(&mut self.combat_power, newer.combat_power);
+        replace_if_some(&mut self.season_strength, newer.season_strength);
+        replace_if_some(&mut self.master_score, newer.master_score);
+        merge_season(&mut self.season, newer.season);
+        merge_public_appearance(&mut self.appearance, newer.appearance);
+        if self.equipment.is_none() {
+            self.equipment = newer.equipment;
+        }
+        if self.combat_professions.is_none() {
+            self.combat_professions = newer.combat_professions;
+        }
         replace_if_some(&mut self.social_display, newer.social_display);
         Ok(())
     }
@@ -183,6 +342,31 @@ fn merge_season(target: &mut Option<SeasonProfile>, newer: Option<SeasonProfile>
     }
 }
 
+fn merge_public_appearance(
+    target: &mut Option<crate::CharacterAppearance>,
+    newer: Option<crate::CharacterAppearance>,
+) {
+    let Some(newer) = newer else {
+        return;
+    };
+    let Some(target) = target else {
+        *target = Some(newer);
+        return;
+    };
+    replace_if_some(&mut target.gender_id, newer.gender_id);
+    replace_if_some(&mut target.body_size_id, newer.body_size_id);
+    replace_if_some(&mut target.height, newer.height);
+    replace_if_some(&mut target.voice_id, newer.voice_id);
+    replace_if_some(&mut target.avatar_id, newer.avatar_id);
+    replace_if_some(&mut target.profile_image_url, newer.profile_image_url);
+    replace_if_some(&mut target.half_body_image_url, newer.half_body_image_url);
+    replace_if_some(
+        &mut target.business_card_style_id,
+        newer.business_card_style_id,
+    );
+    replace_if_some(&mut target.avatar_frame_id, newer.avatar_frame_id);
+}
+
 #[derive(Debug, Error)]
 pub enum BpsrProfileProjectionError {
     #[error("sealed log could not be replayed for profile projection: {0}")]
@@ -200,6 +384,9 @@ pub enum BpsrProfileProjectionError {
     #[error("local profile package is invalid: {0}")]
     Package(#[from] ProfilePackageError),
 
+    #[error("live profile projection could not encode canonical content: {0}")]
+    Serialization(#[from] serde_json::Error),
+
     #[error("one profile accumulator received two character identities")]
     CharacterMismatch,
 
@@ -212,7 +399,10 @@ pub enum BpsrProfileProjectionError {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{BufReader, Cursor};
+    use std::{
+        collections::BTreeMap,
+        io::{BufReader, Cursor},
+    };
 
     use rlogs_events::{
         CharacterIdentity, EVENT_SCHEMA_VERSION, EventEnvelope, EventProvenance, EventSensitivity,
@@ -255,6 +445,7 @@ mod tests {
             combat_power: None,
             combat_power_breakdown: None,
             season_strength: None,
+            master_score: None,
             season: None,
             appearance: None,
             equipment: None,
@@ -373,5 +564,134 @@ mod tests {
         )
         .unwrap();
         assert!(packages.is_empty());
+    }
+
+    #[test]
+    fn live_projection_requires_personal_identity_then_safely_enriches_it() {
+        let mut live = LiveProfileProjection::default();
+
+        let mut unrelated = profile();
+        unrelated.character.character_id = "999999".into();
+        unrelated.display_name = Some("SomeoneElse".into());
+        assert!(
+            !live
+                .observe(&envelope(1, EventSensitivity::PublicGameplay, unrelated,))
+                .unwrap()
+        );
+        assert!(
+            live.packages("live-session", "steam-24252055", "sha256:pack", 10)
+                .unwrap()
+                .is_empty()
+        );
+
+        let mut early_public_self = profile();
+        early_public_self.display_name = Some("MarieRose".into());
+        early_public_self.appearance = Some(crate::CharacterAppearance {
+            gender_id: None,
+            body_size_id: None,
+            height: None,
+            voice_id: None,
+            face_options: BTreeMap::new(),
+            color_options: BTreeMap::new(),
+            avatar_id: None,
+            profile_image_url: Some("https://images.example/profile.webp".into()),
+            half_body_image_url: None,
+            business_card_style_id: None,
+            avatar_frame_id: None,
+            unlocked_profile_image_ids: Vec::new(),
+            unlocked_face_item_ids: Vec::new(),
+            unlocked_voice_ids: Vec::new(),
+        });
+        assert!(
+            !live
+                .observe(&envelope(
+                    2,
+                    EventSensitivity::PublicGameplay,
+                    early_public_self,
+                ))
+                .unwrap()
+        );
+
+        let mut personal = profile();
+        personal.modules = Some(crate::ModuleProfile {
+            equipped_slots: BTreeMap::from([(1, "9007199254740993".into())]),
+            inventory: vec![crate::ModuleItemProfile {
+                instance_id: "9007199254740993".into(),
+                config_id: 314,
+                count: Some(1),
+                quality: Some(5),
+                load_flag: Some(1),
+                module_type: Some(2),
+                level: Some(12),
+                parts: Vec::new(),
+                upgrade_records: Vec::new(),
+                success_rate: None,
+            }],
+        });
+        personal.appearance = Some(crate::CharacterAppearance {
+            gender_id: Some(2),
+            body_size_id: None,
+            height: None,
+            voice_id: None,
+            face_options: BTreeMap::new(),
+            color_options: BTreeMap::new(),
+            avatar_id: Some(44),
+            profile_image_url: None,
+            half_body_image_url: None,
+            business_card_style_id: None,
+            avatar_frame_id: None,
+            unlocked_profile_image_ids: vec![44, 45],
+            unlocked_face_item_ids: Vec::new(),
+            unlocked_voice_ids: Vec::new(),
+        });
+        assert!(
+            live.observe(&envelope(3, EventSensitivity::PersonalGameplay, personal,))
+                .unwrap()
+        );
+
+        let mut public_self = profile();
+        public_self.master_score = Some(1_234_567);
+        public_self.appearance = Some(crate::CharacterAppearance {
+            gender_id: None,
+            body_size_id: None,
+            height: None,
+            voice_id: None,
+            face_options: BTreeMap::new(),
+            color_options: BTreeMap::new(),
+            avatar_id: None,
+            profile_image_url: None,
+            half_body_image_url: Some("https://images.example/half-body.webp".into()),
+            business_card_style_id: None,
+            avatar_frame_id: None,
+            unlocked_profile_image_ids: Vec::new(),
+            unlocked_face_item_ids: Vec::new(),
+            unlocked_voice_ids: Vec::new(),
+        });
+        assert!(
+            live.observe(&envelope(4, EventSensitivity::PublicGameplay, public_self,))
+                .unwrap()
+        );
+
+        let packages = live
+            .packages("live-session", "steam-24252055", "sha256:pack", 10)
+            .unwrap();
+        assert_eq!(packages.len(), 1);
+        let package = &packages[0];
+        assert_eq!(package.request.payload.body["display_name"], "MarieRose");
+        assert_eq!(package.request.payload.body["master_score"], 1_234_567);
+        assert_eq!(
+            package.request.payload.body["appearance"]["profile_image_url"],
+            "https://images.example/profile.webp"
+        );
+        assert_eq!(
+            package.request.payload.body["appearance"]["unlocked_profile_image_ids"][1],
+            45
+        );
+        assert_eq!(
+            package.request.payload.body["modules"]["inventory"][0]["config_id"],
+            314
+        );
+        assert_eq!(package.source.observation_count, 2);
+        assert_eq!(package.source.last_event_sequence, 4);
     }
 }

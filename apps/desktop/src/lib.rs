@@ -61,20 +61,21 @@ use rlogs_events::{
 use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline, BpsrSceneRunIdentity,
     BpsrStateDamageContributionProjector, ContinuousBpsrRecorder, ContinuousRecordingConfig,
-    ContinuousResearchJournalConfig, GameBuild, LiveProtocolPackKind, NetworkEndpoint,
-    OfflineRecordingConfig, OfflineRecordingLimits, OfflineRecordingReport, ProtocolPack,
-    ProtocolPackRouteDisposition, ProtocolRuntimeConfig, RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
-    RdpsValidationAnalyzer, RdpsValidationProgress, RdpsValidationReport, RegionResolverError,
-    ResolvedRegion, RouteKey, SealedDungeonRunLog, ServerRealmCatalog,
-    auxiliary_action_presentation, battle_imagine_presentation, bundled_run_reducer_config,
-    bundled_scene_run_identities, character_id_from_entity_uuid, combat_action_presentation,
-    confirmed_damage_contribution_rules, is_boss_monster, is_localized_class_name,
-    localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
-    localized_combat_action_name, localized_monster_name, localized_recount_group_name,
-    localized_scene_name, localized_specialization_identities, localized_status_effect_name,
-    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
-    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
-    resolve_actor_combat_presentation, resolve_live_steam_protocol_pack, scene_boss_monster_ids,
+    ContinuousResearchJournalConfig, GameBuild, LiveProfileProjection, LiveProtocolPackKind,
+    NetworkEndpoint, OfflineRecordingConfig, OfflineRecordingLimits, OfflineRecordingReport,
+    ProtocolPack, ProtocolPackRouteDisposition, ProtocolRuntimeConfig,
+    RDPS_VALIDATION_REPORT_SCHEMA_VERSION, RdpsValidationAnalyzer, RdpsValidationProgress,
+    RdpsValidationReport, RegionResolverError, ResolvedRegion, RouteKey, SealedDungeonRunLog,
+    ServerRealmCatalog, auxiliary_action_presentation, battle_imagine_presentation,
+    bundled_run_reducer_config, bundled_scene_run_identities, character_id_from_entity_uuid,
+    combat_action_presentation, confirmed_damage_contribution_rules, is_boss_monster,
+    is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
+    localized_class_identities, localized_combat_action_name, localized_monster_name,
+    localized_recount_group_name, localized_scene_name, localized_specialization_identities,
+    localized_status_effect_name, project_local_profile_packages,
+    proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
+    record_offline_capture, resolve_actor_combat_identity, resolve_actor_combat_presentation,
+    resolve_live_steam_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
     status_effect_presentation, weapon_level_presentation, weapon_presentation,
 };
@@ -3459,7 +3460,11 @@ impl RuntimeController {
                         ),
                     }
                 }
-                for _ in 0..120 {
+                // Keep automatic profile publication responsive after a fresh
+                // live observation or account connection. This loop performs
+                // no network work when the local queues are empty, so a short
+                // cadence does not consume submission-service quota.
+                for _ in 0..20 {
                     if shutdown
                         .as_ref()
                         .is_some_and(|shutdown| shutdown.load(Ordering::Acquire))
@@ -4188,7 +4193,7 @@ impl RuntimeController {
         if !policy.enabled {
             return Err("BPSR Profile Sync is disabled; enable it before publishing".into());
         }
-        let package = self
+        let mut package = self
             .profile_packages
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -4200,6 +4205,11 @@ impl RuntimeController {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
             .ok_or_else(|| "connect an authenticated submission receiver first".to_owned())?;
+        transport.bind_live_profile_packages(std::slice::from_mut(&mut package))?;
+        self.profile_packages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .upsert(package.clone())?;
         let receipt = transport.publish_profile(&package)?;
         self.record_profile_publication(&receipt)?;
         Ok(receipt)
@@ -4235,18 +4245,25 @@ impl RuntimeController {
             packages
                 .entries
                 .iter()
-                .find(|entry| !publications.is_published(&entry.package_id))
+                .find(|entry| {
+                    !publications.covers_observation(&entry.package_id, entry.created_unix_millis)
+                })
                 .map(|entry| entry.package_id.clone())
         };
         let Some(package_id) = next_package_id else {
             return Ok(false);
         };
-        let package = self
+        let mut package = self
             .profile_packages
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .inspect(&package_id)?
             .package;
+        transport.bind_live_profile_packages(std::slice::from_mut(&mut package))?;
+        self.profile_packages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .upsert(package.clone())?;
         let receipt = transport.publish_profile(&package)?;
         self.record_profile_publication(&receipt)?;
         Ok(true)
@@ -5243,6 +5260,17 @@ impl RuntimeController {
                     live_encounter.begin_live(&live_header);
                     let mut captured_run_projections = VecDeque::new();
                     let mut capture_time_identities = CaptureTimeCharacterIdentityStore::default();
+                    let mut live_profile_projection = LiveProfileProjection::default();
+                    let live_profile_client_build = live_header.region.client_build.clone();
+                    let live_profile_pack_digest = live_header.region.protocol_pack_digest.clone();
+                    let mut last_live_profile_created_unix_millis = 0_u64;
+                    let mut live_profile_sync_status = if !profile_sync.enabled {
+                        "disabled".to_owned()
+                    } else if submission_transport.is_some() {
+                        "waiting_for_personal_profile".to_owned()
+                    } else {
+                        "waiting_for_account_connection".to_owned()
+                    };
                     let mut live_dungeon_active = false;
                     let mut live_dungeon_scene_id = None;
                     let mut last_world_context_event: Option<EventEnvelope> = None;
@@ -5360,6 +5388,77 @@ impl RuntimeController {
                                         live_snapshot_error = Some(format!(
                                             "could not retain capture-time character identity: {error}"
                                         ));
+                                    }
+                                }
+                                if profile_sync.enabled
+                                    && event.event.topic() == EventTopic::CharacterProfile
+                                {
+                                    match live_profile_projection.observe(event) {
+                                        Ok(true) => {
+                                            let created_unix_millis = unix_millis().max(
+                                                last_live_profile_created_unix_millis
+                                                    .saturating_add(1),
+                                            );
+                                            last_live_profile_created_unix_millis =
+                                                created_unix_millis;
+                                            match live_profile_projection
+                                                .packages(
+                                                    &session_id,
+                                                    &live_profile_client_build,
+                                                    &live_profile_pack_digest,
+                                                    created_unix_millis,
+                                                )
+                                                .map_err(|error| error.to_string())
+                                                .and_then(|mut packages| {
+                                                    if let Some(transport) =
+                                                        submission_transport.as_ref()
+                                                    {
+                                                        transport.bind_live_profile_packages(
+                                                            &mut packages,
+                                                        )?;
+                                                    }
+                                                    let package_count = packages.len();
+                                                    let mut store = profile_packages
+                                                        .lock()
+                                                        .unwrap_or_else(
+                                                            std::sync::PoisonError::into_inner,
+                                                        );
+                                                    for package in packages {
+                                                        store.upsert(package)?;
+                                                    }
+                                                    Ok(package_count)
+                                                })
+                                            {
+                                                Ok(package_count) => {
+                                                    live_profile_sync_status = if submission_transport
+                                                        .is_some()
+                                                    {
+                                                        format!(
+                                                            "packaged_live:{package_count}; publication_queued"
+                                                        )
+                                                    } else {
+                                                        format!(
+                                                            "packaged_live:{package_count}; waiting_for_account_connection"
+                                                        )
+                                                    };
+                                                }
+                                                Err(error) => {
+                                                    live_profile_sync_status =
+                                                        format!("live_projection_failed: {error}");
+                                                    eprintln!(
+                                                        "live profile projection will retry on the next observation: {error}"
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        Ok(false) => {}
+                                        Err(error) => {
+                                            live_profile_sync_status =
+                                                format!("live_projection_failed: {error}");
+                                            eprintln!(
+                                                "live profile observation could not be merged: {error}"
+                                            );
+                                        }
                                     }
                                 }
                                 let next_world_scene_id = world_scene_id(&event.event);
@@ -5648,9 +5747,10 @@ impl RuntimeController {
                                 .unwrap_or_default();
                             snapshot.detail = if saving_run {
                                 format!(
-                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; saving the active dungeon segment. {} frames and {} canonical events inspected. rDPS candidate coverage: {} complete, {} partial, {} untouched. Remaining by domain: {}.",
+                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; saving the active dungeon segment. {} frames and {} canonical events inspected. Profile sync: {}. rDPS candidate coverage: {} complete, {} partial, {} untouched. Remaining by domain: {}.",
                                     metrics.frame_count,
                                     metrics.decoded_event_count,
+                                    live_profile_sync_status,
                                     validation_progress.candidate_event_coverage_complete,
                                     validation_progress.partial_candidate_event_coverage,
                                     validation_progress.no_candidate_evidence,
@@ -5658,9 +5758,10 @@ impl RuntimeController {
                                 )
                             } else {
                                 format!(
-                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; dungeon entry is only required to save history. {} frames and {} canonical events inspected. rDPS candidate coverage: {} complete, {} partial, {} untouched. Remaining by domain: {}.",
+                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; dungeon entry is only required to save history. {} frames and {} canonical events inspected. Profile sync: {}. rDPS candidate coverage: {} complete, {} partial, {} untouched. Remaining by domain: {}.",
                                     metrics.frame_count,
                                     metrics.decoded_event_count,
+                                    live_profile_sync_status,
                                     validation_progress.candidate_event_coverage_complete,
                                     validation_progress.partial_candidate_event_coverage,
                                     validation_progress.no_candidate_evidence,
@@ -12786,6 +12887,7 @@ kind = "content"
             combat_power: Some(45_000),
             combat_power_breakdown: None,
             season_strength: Some(300),
+            master_score: None,
             season: None,
             appearance: None,
             equipment: None,
