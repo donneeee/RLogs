@@ -22,6 +22,7 @@ pub enum DungeonSegmentEndReason {
     Completed,
     Failed,
     Exited,
+    SceneDeparted,
     ReplacedByEntry,
     CaptureEnded,
 }
@@ -103,7 +104,7 @@ impl DungeonRunSegmenter {
                 self.current_world_scene_id = next_world_scene_id;
             }
             let terminal = terminal_boundary(&event)
-                .or_else(|| exits_active_scene.then_some(DungeonSegmentEndReason::Exited));
+                .or_else(|| exits_active_scene.then_some(DungeonSegmentEndReason::SceneDeparted));
             let departed_world = exits_active_scene.then(|| event.clone());
             let dungeon = match &event.event {
                 CanonicalEvent::Dungeon(dungeon) => Some(dungeon),
@@ -643,7 +644,7 @@ mod tests {
     }
 
     #[test]
-    fn leaving_the_dungeon_scene_seals_an_exited_run_immediately() {
+    fn leaving_the_dungeon_scene_seals_without_claiming_an_explicit_exit() {
         let mut factory = factory();
         let mut segmenter = DungeonRunSegmenter::default();
         assert!(
@@ -663,7 +664,7 @@ mod tests {
                     ..
                 }),
                 DungeonSegmentAction::Seal {
-                    reason: DungeonSegmentEndReason::Exited,
+                    reason: DungeonSegmentEndReason::SceneDeparted,
                     ..
                 }
             ]

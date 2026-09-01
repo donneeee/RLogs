@@ -120,6 +120,8 @@ export interface CombatOverlaySettings {
   clickThrough: boolean;
   autoHideOutsideCombat: boolean;
   autoHideDelaySeconds: number;
+  /** Presentation cadence only; packet capture and persisted history remain lossless. */
+  refreshIntervalMillis: number;
   dynamicHeight: boolean;
   allowLiveResize: boolean;
   maxVisiblePlayers: number;
@@ -1757,7 +1759,23 @@ export function mountCombatOverlayOptionsSurface(container: HTMLElement): Mounte
   const autoHideDelay = inputField("Hide delay after combat (seconds)", "5", "number");
   autoHideDelay.input.min = "0";
   autoHideDelay.input.max = "300";
-  combatDetection.append(autoHideOutsideCombat.label, autoHideDelay.label);
+  const refreshInterval = inputField(
+    "Overlay refresh interval (milliseconds)",
+    "250",
+    "number",
+  );
+  refreshInterval.input.min = "50";
+  refreshInterval.input.max = "2000";
+  refreshInterval.input.step = "50";
+  combatDetection.append(
+    autoHideOutsideCombat.label,
+    autoHideDelay.label,
+    refreshInterval.label,
+    text(
+      "p",
+      "This changes only how often the overlay redraws. Capture, decoding, and saved history remain lossless.",
+    ),
+  );
   const message = text("span", "Loading settings...", "combat-overlay-status");
   const optionsGrid = el("div", "combat-overlay-options-grid");
   const interactionColumn = el("div", "combat-overlay-options-column");
@@ -1852,6 +1870,7 @@ export function mountCombatOverlayOptionsSurface(container: HTMLElement): Mounte
     autoHideOutsideCombat.input.checked = value.autoHideOutsideCombat;
     autoHideDelay.input.value = String(value.autoHideDelaySeconds);
     autoHideDelay.input.disabled = !value.autoHideOutsideCombat;
+    refreshInterval.input.value = String(value.refreshIntervalMillis);
     renderBarColorChoices();
     message.textContent = saved
       ? "Changes saved automatically."
@@ -1876,6 +1895,7 @@ export function mountCombatOverlayOptionsSurface(container: HTMLElement): Mounte
       ) as OverlayNumberFormats,
       autoHideOutsideCombat: autoHideOutsideCombat.input.checked,
       autoHideDelaySeconds: clamp(Number(autoHideDelay.input.value), 0, 300),
+      refreshIntervalMillis: clamp(Number(refreshInterval.input.value), 50, 2_000),
     };
   const flushAutoSave = async () => {
     autoSaveTimer = null;
@@ -1990,6 +2010,7 @@ export async function mountCombatOverlayRuntimeApp(
   let stopResizeListener: (() => void) | null = null;
   let stopShowRequestListener: (() => void) | null = null;
   let settingsFingerprint = JSON.stringify(settings);
+  let lastSettingsRefreshMillis = 0;
   let lastWindowWidth = Math.round(settings.canvasWidth * overlayScale(settings));
   let lastWindowHeight = Math.round(settings.canvasHeight * overlayScale(settings));
   let pendingProgrammaticSize: { width: number; height: number } | null = {
@@ -2266,7 +2287,11 @@ export async function mountCombatOverlayRuntimeApp(
           ...actor,
           presentation: presentations[actor.actor_id],
         })).filter(isOverlayRosterActor);
-        const refreshedSettings = resizeSettingsPending ? null : await loadSettings();
+        const nowMillis = Date.now();
+        const shouldRefreshSettings = !resizeSettingsPending
+          && nowMillis - lastSettingsRefreshMillis >= 1_000;
+        const refreshedSettings = shouldRefreshSettings ? await loadSettings() : null;
+        if (shouldRefreshSettings) lastSettingsRefreshMillis = nowMillis;
         const refreshedFingerprint = refreshedSettings === null
           ? settingsFingerprint
           : JSON.stringify(refreshedSettings);
@@ -4206,6 +4231,9 @@ export function parseCombatOverlaySettings(value: unknown): CombatOverlaySetting
     autoHideDelaySeconds: value.autoHideDelaySeconds === undefined
       ? 5
       : value.autoHideDelaySeconds,
+    refreshIntervalMillis: value.refreshIntervalMillis === undefined
+      ? 250
+      : value.refreshIntervalMillis,
     allowLiveResize: value.allowLiveResize === undefined
       ? true
       : value.allowLiveResize,
@@ -4247,6 +4275,9 @@ export function parseCombatOverlaySettings(value: unknown): CombatOverlaySetting
     !Number.isInteger(settings.autoHideDelaySeconds) ||
     settings.autoHideDelaySeconds < 0 ||
     settings.autoHideDelaySeconds > 300 ||
+    !Number.isInteger(settings.refreshIntervalMillis) ||
+    settings.refreshIntervalMillis < 50 ||
+    settings.refreshIntervalMillis > 2_000 ||
     typeof settings.dynamicHeight !== "boolean" ||
     typeof settings.allowLiveResize !== "boolean" ||
     !Number.isInteger(settings.maxVisiblePlayers) ||

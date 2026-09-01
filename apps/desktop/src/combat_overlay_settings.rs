@@ -204,6 +204,10 @@ pub struct CombatOverlaySettings {
     pub auto_hide_outside_combat: bool,
     #[serde(default = "default_auto_hide_delay_seconds")]
     pub auto_hide_delay_seconds: u16,
+    /// Presentation cadence only. Packet capture, decoding, canonical event
+    /// ordering, and persisted history remain lossless at every value.
+    #[serde(default = "default_refresh_interval_millis")]
+    pub refresh_interval_millis: u16,
     #[serde(default = "default_dynamic_height")]
     pub dynamic_height: bool,
     /// Whether the native overlay exposes resize handles. Resizing the live
@@ -240,6 +244,10 @@ const fn default_scale_percent() -> u16 {
 
 const fn default_auto_hide_delay_seconds() -> u16 {
     5
+}
+
+const fn default_refresh_interval_millis() -> u16 {
+    250
 }
 
 const fn default_bar_opacity_percent() -> u8 {
@@ -339,6 +347,7 @@ impl Default for CombatOverlaySettings {
             click_through: false,
             auto_hide_outside_combat: false,
             auto_hide_delay_seconds: default_auto_hide_delay_seconds(),
+            refresh_interval_millis: default_refresh_interval_millis(),
             dynamic_height: default_dynamic_height(),
             allow_live_resize: default_allow_live_resize(),
             max_visible_players: default_max_visible_players(),
@@ -528,6 +537,11 @@ fn validate(settings: &CombatOverlaySettings) -> Result<(), String> {
     }
     if settings.auto_hide_delay_seconds > 300 {
         return Err("Combat Overlay auto-hide delay must be between 0 and 300 seconds".into());
+    }
+    if !(50..=2_000).contains(&settings.refresh_interval_millis) {
+        return Err(
+            "Combat Overlay refresh interval must be between 50 and 2000 milliseconds".into(),
+        );
     }
     if !(50..=200).contains(&settings.scale_percent) {
         return Err("Combat Overlay scale must be between 50 and 200 percent".into());
@@ -746,6 +760,7 @@ mod tests {
         assert!(!settings.live_overlay_enabled);
         assert!(!settings.auto_hide_outside_combat);
         assert_eq!(settings.auto_hide_delay_seconds, 5);
+        assert_eq!(settings.refresh_interval_millis, 250);
         assert_eq!(settings.bar_opacity_percent, 25);
         assert_eq!(settings.bar_color_mode, OverlayBarColorMode::Random);
         assert!(settings.bar_color_overrides.is_empty());
@@ -843,6 +858,7 @@ mod tests {
         object.remove("liveOverlayEnabled");
         object.remove("autoHideOutsideCombat");
         object.remove("autoHideDelaySeconds");
+        object.remove("refreshIntervalMillis");
         object.remove("barOpacityPercent");
         object.remove("barColorMode");
         object.remove("barColorOverrides");
@@ -866,6 +882,7 @@ mod tests {
         assert!(!settings.live_overlay_enabled);
         assert!(!settings.auto_hide_outside_combat);
         assert_eq!(settings.auto_hide_delay_seconds, 5);
+        assert_eq!(settings.refresh_interval_millis, 250);
         assert_eq!(settings.bar_opacity_percent, 25);
         assert_eq!(settings.bar_color_mode, OverlayBarColorMode::Random);
         assert!(settings.bar_color_overrides.is_empty());

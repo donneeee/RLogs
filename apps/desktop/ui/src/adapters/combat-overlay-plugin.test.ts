@@ -517,6 +517,7 @@ describe("Combat Overlay plug-in settings", () => {
     expect(settings.layers[0]?.headerWidths.name).toBe(190);
     expect(settings.autoHideOutsideCombat).toBe(false);
     expect(settings.autoHideDelaySeconds).toBe(5);
+    expect(settings.refreshIntervalMillis).toBe(250);
     expect(settings.barOpacityPercent).toBe(18);
     expect(settings.barColorMode).toBe("random");
     expect(settings.barColorOverrides).toEqual({});

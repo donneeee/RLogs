@@ -109,10 +109,12 @@ impl RunSessionReducer {
             .zip(next_scene_id)
             .is_some_and(|(run_scene_id, next_scene_id)| run_scene_id != next_scene_id);
         if departed_active_run {
-            // Some BPSR exits have no Dungeon::Exited companion packet. The
-            // authoritative world transition still closes local history, but
-            // it is not promoted to an authoritative dungeon completion.
-            self.close_run(RunTerminalState::Exited, Some(observed_micros), false);
+            // A world transition proves only that this local run view ended.
+            // It does not prove that the player chose Exit: a completed floor,
+            // reconnect, or capture gap can all be followed by the same scene
+            // change. Reserve `Exited` for an explicit dungeon/run-boundary
+            // packet and keep this fail-closed for local history.
+            self.close_run(RunTerminalState::Ended, Some(observed_micros), false);
         }
         if self.active_scene_id != next_scene_id {
             self.rule_actors.clear();
@@ -1509,7 +1511,7 @@ mod tests {
     }
 
     #[test]
-    fn world_departure_closes_an_open_run_as_exited() {
+    fn world_departure_closes_an_open_run_without_claiming_an_exit() {
         let mut reducer = RunSessionReducer::new(RunReducerConfig::default());
         let mut events = factory();
 
@@ -1547,7 +1549,7 @@ mod tests {
         let runs = reducer.finish();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].identity.scene_id, Some(6_525));
-        assert_eq!(runs[0].terminal_state, RunTerminalState::Exited);
+        assert_eq!(runs[0].terminal_state, RunTerminalState::Ended);
         assert_eq!(runs[0].timing.ended_micros, Some(10_000_000));
         assert!(!runs[0].authoritative_completion);
         assert_ne!(

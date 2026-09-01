@@ -1563,6 +1563,17 @@ fn live_photo_wall_publication_enabled(policy_store: &Arc<Mutex<SubmissionPolicy
     policy.bpsr_profile_sync.enabled && policy.bpsr_profile_sync.publish_photo_wall_images
 }
 
+fn live_overlay_identity_ledger<'a>(
+    live_dungeon_active: bool,
+    current: &'a CaptureTimeCharacterIdentityStore,
+    terminal: Option<&'a CaptureTimeCharacterIdentityStore>,
+    completed: Option<&'a CaptureTimeCharacterIdentityStore>,
+) -> &'a CaptureTimeCharacterIdentityStore {
+    terminal
+        .or_else(|| (!live_dungeon_active).then_some(completed).flatten())
+        .unwrap_or(current)
+}
+
 #[derive(Debug, Clone)]
 struct CapturedRunProjection {
     combat: CombatTimelineSnapshot,
@@ -3395,7 +3406,7 @@ struct RuntimeController {
     layout_settings: Mutex<LayoutSettingsStore>,
     theme_settings: Mutex<ThemeSettingsStore>,
     combat_meter_settings: Mutex<CombatMeterSettingsStore>,
-    combat_overlay_settings: Mutex<CombatOverlaySettingsStore>,
+    combat_overlay_settings: Arc<Mutex<CombatOverlaySettingsStore>>,
     artifact_verification: Mutex<()>,
     profile_projection: Mutex<()>,
     live_combat_feed: Arc<LiveCombatFeed>,
@@ -3511,7 +3522,7 @@ impl RuntimeController {
             layout_settings: Mutex::new(layout_settings),
             theme_settings: Mutex::new(theme_settings),
             combat_meter_settings: Mutex::new(combat_meter_settings),
-            combat_overlay_settings: Mutex::new(combat_overlay_settings),
+            combat_overlay_settings: Arc::new(Mutex::new(combat_overlay_settings)),
             artifact_verification: Mutex::new(()),
             profile_projection: Mutex::new(()),
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
@@ -5386,6 +5397,7 @@ impl RuntimeController {
         let profile_publication = Arc::clone(&self.profile_publication);
         let photo_wall_publication_status = Arc::clone(&self.photo_wall_publication_status);
         let live_submission_policy = Arc::clone(&self.submission_policy);
+        let live_overlay_settings = Arc::clone(&self.combat_overlay_settings);
         let policy = self
             .submission_policy
             .lock()
@@ -5454,6 +5466,7 @@ impl RuntimeController {
                     live_encounter.begin_live(&live_header);
                     let mut captured_run_projections = VecDeque::new();
                     let mut capture_time_identities = CaptureTimeCharacterIdentityStore::default();
+                    let mut completed_run_identities = None;
                     let mut live_profile_projection = LiveProfileProjection::default();
                     let live_profile_client_build = live_header.region.client_build.clone();
                     let live_profile_pack_digest = live_header.region.protocol_pack_digest.clone();
@@ -5472,8 +5485,15 @@ impl RuntimeController {
                     let mut last_live_projection_refresh = Instant::now()
                         .checked_sub(Duration::from_millis(250))
                         .unwrap_or_else(Instant::now);
+                    let initial_live_refresh_interval = Duration::from_millis(u64::from(
+                        live_overlay_settings
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .snapshot()
+                            .refresh_interval_millis,
+                    ));
                     let mut last_live_publish = Instant::now()
-                        .checked_sub(Duration::from_millis(16))
+                        .checked_sub(initial_live_refresh_interval)
                         .unwrap_or_else(Instant::now);
                     let mut initial_live_snapshot =
                         live_meter.live_overlay_snapshot().map_err(|error| {
@@ -5521,9 +5541,9 @@ impl RuntimeController {
                     let mut checkpointed_validation_event_count = 0;
                     let mut validation_checkpoint_failed = false;
                     // Keep pending changes across capture frames. A frame can
-                    // arrive inside the 16 ms publish window; dropping its
-                    // dirty bit would leave profile/loadout enrichment stale
-                    // until an unrelated later combat or terminal event.
+                    // arrive inside the configured presentation interval;
+                    // dropping its dirty bit would leave profile/loadout
+                    // enrichment stale until a later event.
                     let mut live_dirty = false;
                     let mut photo_wall_publication_enabled =
                         live_photo_wall_publication_enabled(&live_submission_policy);
@@ -5551,6 +5571,13 @@ impl RuntimeController {
                         else {
                             break;
                         };
+                        let live_refresh_interval = Duration::from_millis(u64::from(
+                            live_overlay_settings
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .snapshot()
+                                .refresh_interval_millis,
+                        ));
                         recorder
                             .add_connections(
                                 capture.confirmed_connections().into_iter().map(
@@ -5692,6 +5719,7 @@ impl RuntimeController {
                                         )
                                 );
                                 if opening && !live_dungeon_active {
+                                    completed_run_identities = None;
                                     rdps_validation.clear_transient_context();
                                     begin_live_combat_preserving_world(
                                         &mut live_meter,
@@ -5762,6 +5790,8 @@ impl RuntimeController {
                                     freeze_history = true;
                                     frozen_capture_time_identities =
                                         Some(capture_time_identities.clone());
+                                    completed_run_identities =
+                                        frozen_capture_time_identities.clone();
                                     capture_time_identities.clear();
                                     live_dungeon_active = false;
                                     live_dungeon_scene_id = None;
@@ -5771,7 +5801,7 @@ impl RuntimeController {
                                 if live_boundary_changed
                                     || (live_dirty
                                         && last_live_publish.elapsed()
-                                            >= Duration::from_millis(16))
+                                            >= live_refresh_interval)
                                 {
                                     let reviewed_dungeon = live_dungeon_active || freeze_history;
                                     if reviewed_dungeon
@@ -5818,15 +5848,17 @@ impl RuntimeController {
                                     }
                                     match live_meter.live_overlay_snapshot() {
                                         Ok(mut snapshot) => {
-                                            // The terminal event moves the completed run's
-                                            // capture-time identities into the frozen ledger
-                                            // before clearing the ledger for the next run.
-                                            // Use that same frozen evidence for this final live
-                                            // publication so the overlay cannot regress from a
-                                            // public name to a UID at run completion.
-                                            let live_identities = frozen_capture_time_identities
-                                                .as_ref()
-                                                .unwrap_or(&capture_time_identities);
+                                            // Keep the completed run's immutable identity ledger
+                                            // for every post-terminal refresh, not only for the
+                                            // frame that closed it. The current ledger may already
+                                            // contain ambient observations for a future run; those
+                                            // must not rename the completed overlay.
+                                            let live_identities = live_overlay_identity_ledger(
+                                                live_dungeon_active,
+                                                &capture_time_identities,
+                                                frozen_capture_time_identities.as_ref(),
+                                                completed_run_identities.as_ref(),
+                                            );
                                             enrich_bpsr_live_character_state(
                                                 &mut snapshot,
                                                 live_identities,
@@ -10424,6 +10456,30 @@ mod tests {
         assert!(live_overlay_topic_invalidates(EventTopic::CharacterProfile));
         assert!(live_overlay_topic_invalidates(EventTopic::Combat));
         assert!(!live_overlay_topic_invalidates(EventTopic::Chat));
+    }
+
+    #[test]
+    fn live_overlay_retains_completed_identity_ledger_until_the_next_run() {
+        let current = CaptureTimeCharacterIdentityStore::default();
+        let terminal = CaptureTimeCharacterIdentityStore::default();
+        let completed = CaptureTimeCharacterIdentityStore::default();
+
+        assert!(std::ptr::eq(
+            live_overlay_identity_ledger(true, &current, None, Some(&completed)),
+            &current,
+        ));
+        assert!(std::ptr::eq(
+            live_overlay_identity_ledger(false, &current, Some(&terminal), Some(&completed)),
+            &terminal,
+        ));
+        assert!(std::ptr::eq(
+            live_overlay_identity_ledger(false, &current, None, Some(&completed)),
+            &completed,
+        ));
+        assert!(std::ptr::eq(
+            live_overlay_identity_ledger(false, &current, None, None),
+            &current,
+        ));
     }
 
     #[test]
