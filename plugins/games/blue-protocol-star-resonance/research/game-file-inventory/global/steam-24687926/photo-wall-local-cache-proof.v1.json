@@ -4,7 +4,18 @@
   "game_build": "24687926",
   "deployment": "global",
   "channel": "steam",
-  "decision": "authorize a consent-gated one-photo local cache fallback only when the exact character row and wall/cache cardinalities form a bijection",
+  "status": "rejected-after-live-profile-comparison",
+  "decision": "do not map a wall photo ID to cache_photo_info by matching cardinality; publish only an exact live Photograph reply that carries the same character ID, photo ID, and reviewed image reference",
+  "falsification": {
+    "observed_profile_wall": {
+      "slot": 1,
+      "photo_id": 1
+    },
+    "cached_source_timestamp": "2025-10-20T17:23:54",
+    "local_cache_file_timestamp": "2026-01-20T17:44:23",
+    "reported_result": "the published cached image does not match the current in-game Photo Wall",
+    "reason": "cache_photo_info maps a character to URL/path cache entries but does not prove which photo ID owns an entry; equal set cardinalities do not establish identity"
+  },
   "evidence": {
     "sqlite_table": "cache_photo_info",
     "sqlite_key_semantic": "Z.EntityMgr.PlayerUuid",
@@ -82,7 +93,9 @@
     "cache_path_must_resolve_inside_bpsr_persistent_root": true,
     "local_file_must_be_a_bounded_png_jpeg_or_webp": true,
     "source_url_must_pass_the_existing_exact_origin_gate": true,
-    "multiple_photos_or_ambiguous_cache_entries": "do not guess; require the live Photograph route",
+    "cache_fallback_runtime_authorized": false,
+    "all_cache_cardinalities": "do not guess; require the live Photograph route",
+    "exact_live_replacement_identity": "character ID + photo ID + image version/source identity",
     "raw_url_or_local_path_publication": false
   }
 }
