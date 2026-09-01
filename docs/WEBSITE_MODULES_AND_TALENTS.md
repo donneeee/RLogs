@@ -141,6 +141,12 @@ Runtime state already supplies:
 - total talent points when present;
 - talent stage configuration when present.
 
+That is the complete submission boundary. A talent selection record contains
+only its talent definition ID, original tree-node ID when the packet carries
+one, and selected level when present. Profile submissions do not contain tree
+coordinates, prerequisites, reverse dependents, names, descriptions, icons,
+branches, specialization labels, or copies of unselected nodes.
+
 The website joins that state to static talent definitions containing class,
 specialization, localized name/description keys, icon address, cost, effects,
 tree-node ID, branch, and prerequisite node IDs.
@@ -169,6 +175,14 @@ All 605 unique `TalentTable.icon_address` values were resolved and exported.
 Shared addresses use one PNG path even when several of the 648 talent records
 reference it. The normal board can therefore reproduce the game coordinates
 and visuals without a fallback graph layout.
+
+The deployed website catalog now indexes all 9 professions and all 18 current
+specializations. It owns 30 shared foundation nodes per profession and 60
+specialization nodes per specialization (1,350 nodes total), with localized
+names, icons, positions, and prerequisite relationships. The profile page
+selects one of those boards from the submitted class/specialization identity
+and highlights only the submitted node selections. No player upload is used as
+a source of static tree shape.
 
 ## Reference influence
 

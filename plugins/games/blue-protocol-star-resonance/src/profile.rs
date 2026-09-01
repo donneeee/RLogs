@@ -607,6 +607,7 @@ pub struct SocialDisplay {
 #[cfg(test)]
 mod tests {
     use rlogs_events::RegionIdentity;
+    use serde_json::json;
 
     use super::*;
 
@@ -661,5 +662,43 @@ mod tests {
             CharacterProfilePatch::from_game_event(&event).unwrap(),
             profile
         );
+    }
+
+    #[test]
+    fn talent_profile_state_serializes_selection_only_without_static_tree_data() {
+        let talent = TalentLevel {
+            talent_id: 3_061,
+            node_id: Some(30_061),
+            level: Some(1),
+        };
+
+        let value = serde_json::to_value(talent).unwrap();
+        assert_eq!(
+            value,
+            json!({
+                "talent_id": 3_061,
+                "node_id": 30_061,
+                "level": 1
+            })
+        );
+
+        let object = value.as_object().unwrap();
+        for website_owned_field in [
+            "name",
+            "description",
+            "icon",
+            "icon_address",
+            "x",
+            "y",
+            "branch",
+            "prerequisites",
+            "dependents",
+            "specialization_name",
+        ] {
+            assert!(
+                !object.contains_key(website_owned_field),
+                "profile talent state must not upload website-owned field {website_owned_field}"
+            );
+        }
     }
 }

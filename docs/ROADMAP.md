@@ -86,4 +86,5 @@
   lifecycle, and archived leaderboards;
 - profiles, reports, rankings, and public APIs.
 - exact-build module display and Web Worker/WASM optimization;
-- game-like, localized talent boards backed by selected-node profile state.
+- [done] game-like, localized all-specialization talent boards backed by
+  selected-node profile state while keeping all static tree data website-owned.
