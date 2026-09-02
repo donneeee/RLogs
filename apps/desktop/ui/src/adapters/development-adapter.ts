@@ -260,10 +260,10 @@ function mountDevelopmentModuleOptimizer(container: HTMLElement): MountedSurface
         current_setup: score,
         solutions: [
           developmentSolution(
-            DEVELOPMENT_MODULES.slice(-request.combination_size),
+            DEVELOPMENT_MODULES.slice(2, 2 + request.combination_size),
           ),
           developmentSolution(
-            DEVELOPMENT_MODULES.slice(2, 2 + request.combination_size),
+            DEVELOPMENT_MODULES.slice(-request.combination_size),
           ),
         ],
         search: {

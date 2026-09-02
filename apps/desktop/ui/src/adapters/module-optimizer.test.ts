@@ -111,4 +111,30 @@ describe("local module optimizer contracts", () => {
     expect(result.search.backend).toBe("open_cl");
     expect(result.search.accelerator_fallback).toBeNull();
   });
+
+  it("accepts the disclosed cross-vendor CPU and OpenCL hybrid", () => {
+    const result = parseOptimizeResponse({
+      scoring_revision: "reviewed",
+      catalog_revision: "catalog",
+      current_setup: null,
+      solutions: [],
+      search: {
+        requested_mode: "auto",
+        used_mode: "beam",
+        exact: false,
+        input_module_count: 922,
+        candidate_module_count: 218,
+        excluded_module_count: 704,
+        total_combinations: 89_000_000,
+        evaluated_states: 3_400_000,
+        combination_size: 4,
+        beam_width: 2_048,
+        backend: "cpu_open_cl_hybrid",
+        accelerator_name: "AMD Radeon RX 7900 XTX",
+        accelerator_fallback: null,
+      },
+    });
+    expect(result.search.backend).toBe("cpu_open_cl_hybrid");
+    expect(result.search.used_mode).toBe("beam");
+  });
 });

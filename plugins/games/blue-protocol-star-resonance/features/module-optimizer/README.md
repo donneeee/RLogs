@@ -24,16 +24,21 @@ The scoring and search behavior is a Rust port of the module optimizer in
   bounded beam mode for full inventories (512 states by default, adjustable
   through the API);
 - runs complementary attribute-cluster, special-effect, and total-link
-  candidate orderings in parallel with feasible greedy completion scoring so
-  threshold synergies survive early pruning;
+  candidate orderings with feasible greedy completion scoring so threshold
+  synergies survive early pruning;
+- parallelizes every beam frontier across the available Rayon worker pool,
+  allowing large inventories to use far more than the three ordering tasks;
 - optionally runs exact enumeration through a dynamically loaded OpenCL 1.2
   backend for NVIDIA and AMD GPUs, with an exact multi-core CPU fallback;
+- combines the full-inventory CPU beam with an exact OpenCL companion search
+  for large inventories, preserving the CPU quality floor while the GPU
+  explores a diverse bounded shortlist;
 - compiles and retains a successful OpenCL runtime only after the explicit GPU
   check, performs device-side radix top-result reduction, and keeps small exact
   searches on CPU when GPU dispatch overhead would be slower;
-- lets browser clients choose a conservative 64-512-state beam width from
-  the device's reported CPU, memory, and mobile capabilities without changing
-  the scoring rules or blocking the browser's main thread;
+- lets browser clients choose a conservative 256-2,048-state beam width from
+  the device's reported CPU concurrency without changing the scoring rules or
+  blocking the browser's main thread;
 - contains no packet capture, account, login, password, or token handling.
 
 The desktop host exposes this crate through a loopback-only JSON API and the

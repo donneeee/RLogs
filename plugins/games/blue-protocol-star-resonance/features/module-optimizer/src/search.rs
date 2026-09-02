@@ -12,6 +12,8 @@ use crate::types::{
 const MAX_EXACT_COMBINATIONS: u64 = 10_000_000;
 #[cfg(feature = "gpu-opencl")]
 const MIN_GPU_COMBINATIONS: u64 = 50_000;
+#[cfg(feature = "gpu-opencl")]
+const MAX_HYBRID_GPU_COMBINATIONS: u64 = 2_000_000;
 const MAX_BEAM_WIDTH: usize = 32_768;
 const MAX_INPUT_MODULES: usize = 4_096;
 const MAX_ATTRIBUTE_SLOTS: usize = 32;
@@ -254,14 +256,60 @@ pub fn optimize(
                 )
             }
         }
-        SearchMode::Beam => beam_search(
-            rules,
-            &candidates,
-            request,
-            &target_attributes,
-            &exclude_attributes,
-            solution_limit,
-        ),
+        SearchMode::Beam => {
+            #[cfg(feature = "gpu-opencl")]
+            if request.use_gpu {
+                match hybrid_search(
+                    rules,
+                    &candidates,
+                    request,
+                    &target_attributes,
+                    &exclude_attributes,
+                    solution_limit,
+                ) {
+                    Ok(result) => {
+                        backend = SearchBackend::CpuOpenClHybrid;
+                        accelerator_name = Some(result.device_name);
+                        (result.ranked, result.evaluated_states)
+                    }
+                    Err(error) => {
+                        accelerator_fallback = Some(error);
+                        beam_search(
+                            rules,
+                            &candidates,
+                            request,
+                            &target_attributes,
+                            &exclude_attributes,
+                            solution_limit,
+                        )
+                    }
+                }
+            } else {
+                beam_search(
+                    rules,
+                    &candidates,
+                    request,
+                    &target_attributes,
+                    &exclude_attributes,
+                    solution_limit,
+                )
+            }
+            #[cfg(not(feature = "gpu-opencl"))]
+            {
+                if request.use_gpu {
+                    accelerator_fallback =
+                        Some("this build does not include the optional OpenCL backend".into());
+                }
+                beam_search(
+                    rules,
+                    &candidates,
+                    request,
+                    &target_attributes,
+                    &exclude_attributes,
+                    solution_limit,
+                )
+            }
+        }
         SearchMode::Auto => unreachable!("auto mode is resolved before search"),
     };
     if let Some(current_indices) = current_combination {
@@ -557,6 +605,157 @@ fn exact_search(
     (finish_ranked(top), evaluated)
 }
 
+#[cfg(feature = "gpu-opencl")]
+struct HybridSearchResult {
+    ranked: Vec<RankedCombination>,
+    evaluated_states: u64,
+    device_name: String,
+}
+
+/// Run the broad, multi-order CPU beam and an exact OpenCL search over a
+/// diverse bounded shortlist at the same time. The CPU result preserves the
+/// existing full-inventory quality floor; the GPU result can only add or
+/// improve candidates, so enabling acceleration never removes a result that
+/// the reviewed CPU search would have returned.
+#[cfg(feature = "gpu-opencl")]
+fn hybrid_search(
+    rules: &ScoringRules,
+    candidates: &[DenseCandidate],
+    request: &OptimizeRequest,
+    target_attributes: &BTreeSet<i32>,
+    exclude_attributes: &BTreeSet<i32>,
+    solution_limit: usize,
+) -> Result<HybridSearchResult, String> {
+    let shortlist_indices = gpu_shortlist_indices(
+        rules,
+        candidates,
+        request,
+        target_attributes,
+        exclude_attributes,
+    );
+    if shortlist_indices.len() < request.combination_size {
+        return Err("not enough candidates remain for the GPU companion search".into());
+    }
+    let shortlist_combinations =
+        combination_count(shortlist_indices.len(), request.combination_size);
+    if shortlist_combinations < MIN_GPU_COMBINATIONS {
+        return Err(format!(
+            "multi-core CPU is faster below {MIN_GPU_COMBINATIONS} companion combinations"
+        ));
+    }
+    let shortlist = shortlist_indices
+        .iter()
+        .map(|index| candidates[*index].clone())
+        .collect::<Vec<_>>();
+
+    let (cpu, gpu) = rayon::join(
+        || {
+            beam_search(
+                rules,
+                candidates,
+                request,
+                target_attributes,
+                exclude_attributes,
+                solution_limit,
+            )
+        },
+        || {
+            crate::gpu::exact_search_opencl(
+                rules,
+                &shortlist,
+                request,
+                target_attributes,
+                exclude_attributes,
+                solution_limit,
+            )
+        },
+    );
+    let (cpu_ranked, cpu_evaluated) = cpu;
+    let gpu = gpu?;
+    let gpu_evaluated = gpu.evaluated_states;
+    let mut gpu_ranked = gpu.ranked;
+    for combination in &mut gpu_ranked {
+        for index in &mut combination.indices {
+            *index = shortlist_indices[*index];
+        }
+        combination.indices.sort_unstable();
+    }
+    Ok(HybridSearchResult {
+        ranked: merge_ranked(cpu_ranked, gpu_ranked, solution_limit),
+        evaluated_states: cpu_evaluated.saturating_add(gpu_evaluated),
+        device_name: gpu.device_name,
+    })
+}
+
+#[cfg(feature = "gpu-opencl")]
+fn gpu_shortlist_indices(
+    rules: &ScoringRules,
+    candidates: &[DenseCandidate],
+    request: &OptimizeRequest,
+    target_attributes: &BTreeSet<i32>,
+    exclude_attributes: &BTreeSet<i32>,
+) -> Vec<usize> {
+    let shortlist_limit = maximum_items_for_combinations(
+        request.combination_size,
+        request
+            .exact_combination_limit
+            .min(MAX_HYBRID_GPU_COMBINATIONS),
+        candidates.len(),
+    );
+    if shortlist_limit >= candidates.len() {
+        return (0..candidates.len()).collect();
+    }
+    let scorer = DenseScorer::new(rules, target_attributes, exclude_attributes);
+    let orderings = candidate_orderings(rules, candidates, request, &scorer);
+    let mut selected = BTreeSet::new();
+    let mut position = 0;
+    while selected.len() < shortlist_limit {
+        let before = selected.len();
+        for ordering in &orderings {
+            if let Some(index) = ordering.get(position) {
+                selected.insert(*index);
+                if selected.len() == shortlist_limit {
+                    break;
+                }
+            }
+        }
+        if selected.len() == before {
+            break;
+        }
+        position += 1;
+    }
+    selected.into_iter().collect()
+}
+
+#[cfg(feature = "gpu-opencl")]
+fn maximum_items_for_combinations(
+    pick_count: usize,
+    combination_limit: u64,
+    available: usize,
+) -> usize {
+    let mut count = pick_count.min(available);
+    while count < available && combination_count(count + 1, pick_count) <= combination_limit {
+        count += 1;
+    }
+    count
+}
+
+#[cfg(feature = "gpu-opencl")]
+fn merge_ranked(
+    first: Vec<RankedCombination>,
+    second: Vec<RankedCombination>,
+    limit: usize,
+) -> Vec<RankedCombination> {
+    let mut seen = BTreeSet::new();
+    let mut top = BinaryHeap::new();
+    for candidate in first.into_iter().chain(second) {
+        if seen.insert(candidate.indices.clone()) {
+            retain_ranked(&mut top, candidate, limit);
+        }
+    }
+    finish_ranked(top)
+}
+
 fn exact_prefix_pairs(item_count: usize, pick_count: usize) -> Vec<(usize, usize)> {
     let mut pairs = Vec::new();
     for first in 0..=item_count - pick_count {
@@ -625,69 +824,87 @@ fn beam_search_ordered(
 
     for depth in 0..request.combination_size {
         let remaining_after_pick = request.combination_size - depth - 1;
-        let mut next = BinaryHeap::<Reverse<BeamState>>::new();
-        for state in frontier {
-            let start = if state.depth == 0 {
-                0
-            } else {
-                usize::from(state.indices[usize::from(state.depth) - 1]) + 1
-            };
-            let Some(maximum_index) = candidates.len().checked_sub(remaining_after_pick + 1) else {
-                continue;
-            };
-            if start > maximum_index {
-                continue;
-            }
-            for candidate_index in start..=maximum_index {
-                evaluated += 1;
-                let candidate = &candidates[candidate_index];
-                let mut values = state.values;
-                for (value, addition) in values.iter_mut().zip(&candidate.values) {
-                    *value += *addition;
-                }
-                let total_link_points = state.total_link_points + candidate.total_link_points;
-                let next_start = candidate_index + 1;
-                if !can_meet_requirements(
-                    rules,
-                    &values[..rules.attributes.len()],
-                    next_start,
-                    remaining_after_pick,
-                    &suffix_values,
-                    &request.min_attr_requirements,
-                ) {
-                    continue;
-                }
-                let ranking_score =
-                    scorer.score(&values[..rules.attributes.len()], total_link_points);
-                let upper_bound = if remaining_after_pick == 0 {
-                    ranking_score
-                } else {
-                    greedy_completion_score(
-                        candidates,
-                        scorer,
-                        &values[..rules.attributes.len()],
-                        total_link_points,
-                        next_start,
-                        remaining_after_pick,
-                    )
-                };
-                let mut indices = state.indices;
-                indices[usize::from(state.depth)] =
-                    u16::try_from(candidate_index).expect("module input is capped below u16");
-                retain_beam(
-                    &mut next,
-                    BeamState {
-                        indices,
-                        values,
-                        depth: state.depth + 1,
-                        total_link_points,
-                        ranking_score,
-                        upper_bound,
-                    },
-                    request.beam_width,
-                );
-            }
-        }
+        let (next, depth_evaluated) = frontier
+            .into_par_iter()
+            .fold(
+                || (BinaryHeap::<Reverse<BeamState>>::new(), 0_u64),
+                |(mut next, mut local_evaluated), state| {
+                    let start = if state.depth == 0 {
+                        0
+                    } else {
+                        usize::from(state.indices[usize::from(state.depth) - 1]) + 1
+                    };
+                    let Some(maximum_index) =
+                        candidates.len().checked_sub(remaining_after_pick + 1)
+                    else {
+                        return (next, local_evaluated);
+                    };
+                    if start > maximum_index {
+                        return (next, local_evaluated);
+                    }
+                    for candidate_index in start..=maximum_index {
+                        local_evaluated += 1;
+                        let candidate = &candidates[candidate_index];
+                        let mut values = state.values;
+                        for (value, addition) in values.iter_mut().zip(&candidate.values) {
+                            *value += *addition;
+                        }
+                        let total_link_points =
+                            state.total_link_points + candidate.total_link_points;
+                        let next_start = candidate_index + 1;
+                        if !can_meet_requirements(
+                            rules,
+                            &values[..rules.attributes.len()],
+                            next_start,
+                            remaining_after_pick,
+                            &suffix_values,
+                            &request.min_attr_requirements,
+                        ) {
+                            continue;
+                        }
+                        let ranking_score =
+                            scorer.score(&values[..rules.attributes.len()], total_link_points);
+                        let upper_bound = if remaining_after_pick == 0 {
+                            ranking_score
+                        } else {
+                            greedy_completion_score(
+                                candidates,
+                                scorer,
+                                &values[..rules.attributes.len()],
+                                total_link_points,
+                                next_start,
+                                remaining_after_pick,
+                            )
+                        };
+                        let mut indices = state.indices;
+                        indices[usize::from(state.depth)] = u16::try_from(candidate_index)
+                            .expect("module input is capped below u16");
+                        retain_beam(
+                            &mut next,
+                            BeamState {
+                                indices,
+                                values,
+                                depth: state.depth + 1,
+                                total_link_points,
+                                ranking_score,
+                                upper_bound,
+                            },
+                            request.beam_width,
+                        );
+                    }
+                    (next, local_evaluated)
+                },
+            )
+            .reduce(
+                || (BinaryHeap::new(), 0_u64),
+                |(mut left, left_evaluated), (right, right_evaluated)| {
+                    for state in right.into_iter().map(|entry| entry.0) {
+                        retain_beam(&mut left, state, request.beam_width);
+                    }
+                    (left, left_evaluated.saturating_add(right_evaluated))
+                },
+            );
+        evaluated = evaluated.saturating_add(depth_evaluated);
         frontier = next.into_iter().map(|entry| entry.0).collect();
         frontier.sort_by(|left, right| right.cmp(left));
     }
@@ -1175,6 +1392,72 @@ mod tests {
         assert_eq!(gpu.search.total_combinations, cpu.search.total_combinations);
         assert_eq!(gpu.search.evaluated_states, cpu.search.evaluated_states);
         assert_eq!(gpu.solutions, cpu.solutions);
+    }
+
+    #[cfg(feature = "gpu-opencl")]
+    #[test]
+    fn opencl_hybrid_preserves_the_full_inventory_cpu_quality_floor() {
+        if !crate::gpu_support().available {
+            return;
+        }
+        let rules = ScoringRules::cn_0_2_0_fixture();
+        let modules = (0..80)
+            .map(|index| {
+                module(
+                    &format!("{index:03}"),
+                    &[
+                        (1110 + index % 5, 1 + index % 10),
+                        (1407 + index % 4, 1 + (index * 3) % 10),
+                        (2104 + index % 2, 1 + (index * 7) % 10),
+                    ],
+                )
+            })
+            .collect::<Vec<_>>();
+        let cpu = optimize(
+            &rules,
+            &OptimizeRequest {
+                modules: modules.clone(),
+                target_attributes: vec![1110, 1111],
+                exact_combination_limit: 200_000,
+                beam_width: 256,
+                require_target_match: false,
+                ..OptimizeRequest::default()
+            },
+        )
+        .unwrap();
+        let accelerated = optimize(
+            &rules,
+            &OptimizeRequest {
+                modules,
+                target_attributes: vec![1110, 1111],
+                exact_combination_limit: 200_000,
+                beam_width: 256,
+                require_target_match: false,
+                use_gpu: true,
+                ..OptimizeRequest::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(cpu.search.used_mode, SearchMode::Beam);
+        assert_eq!(accelerated.search.used_mode, SearchMode::Beam);
+        assert_eq!(accelerated.search.backend, SearchBackend::CpuOpenClHybrid);
+        assert!(accelerated.search.accelerator_name.is_some());
+        assert!(accelerated.search.evaluated_states > cpu.search.evaluated_states);
+        assert!(
+            accelerated.solutions[0].ranking_score >= cpu.solutions[0].ranking_score,
+            "GPU companion search must never lower the established CPU result"
+        );
+    }
+
+    #[cfg(feature = "gpu-opencl")]
+    #[test]
+    fn gpu_shortlist_respects_the_exact_combination_budget() {
+        for pick_count in [4, 5] {
+            let count = maximum_items_for_combinations(pick_count, 10_000_000, 4_096);
+            assert!(combination_count(count, pick_count) <= 10_000_000);
+            assert!(combination_count(count + 1, pick_count) > 10_000_000);
+        }
     }
 
     #[test]

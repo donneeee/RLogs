@@ -36,6 +36,7 @@ pub enum SearchBackend {
     #[default]
     Cpu,
     OpenCl,
+    CpuOpenClHybrid,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -59,7 +60,7 @@ pub struct OptimizeRequest {
     pub max_solutions: usize,
     #[serde(default)]
     pub search_mode: SearchMode,
-    /// Prefer the optional cross-vendor OpenCL exact-search backend.
+    /// Prefer the optional cross-vendor OpenCL exact or hybrid backend.
     ///
     /// Unsupported devices and backend failures fall back to the reviewed CPU
     /// implementation; the response records which backend actually ran.

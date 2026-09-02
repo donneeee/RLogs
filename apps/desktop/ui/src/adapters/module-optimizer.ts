@@ -105,7 +105,7 @@ export interface OptimizeResponse {
     evaluated_states: number;
     combination_size: number;
     beam_width: number | null;
-    backend: "cpu" | "open_cl";
+    backend: "cpu" | "open_cl" | "cpu_open_cl_hybrid";
     accelerator_name: string | null;
     accelerator_fallback: string | null;
   };
@@ -113,7 +113,7 @@ export interface OptimizeResponse {
 
 export interface GpuSupport {
   available: boolean;
-  backend: "cpu" | "open_cl";
+  backend: "cpu" | "open_cl" | "cpu_open_cl_hybrid";
   device_name: string | null;
   vendor: string | null;
   detail: string;
@@ -320,7 +320,7 @@ function isSearchMode(value: unknown): boolean {
 }
 
 function isSearchBackend(value: unknown): boolean {
-  return value === "cpu" || value === "open_cl";
+  return value === "cpu" || value === "open_cl" || value === "cpu_open_cl_hybrid";
 }
 
 function isIntegerArray(value: unknown): value is number[] {

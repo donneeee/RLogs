@@ -1,4 +1,4 @@
-//! Optional, dynamically loaded OpenCL exact-search backend.
+//! Optional, dynamically loaded OpenCL exact and companion-search backend.
 //!
 //! The backend is deliberately an accelerator only: candidate validation,
 //! catalog construction, tie-breaking, and final score breakdowns remain in
@@ -86,7 +86,7 @@ pub fn gpu_support() -> GpuSupport {
             device_name: Some(runtime.device_name.clone()),
             vendor: runtime.vendor.clone(),
             detail:
-                "Cross-vendor OpenCL exact search is compiled and ready. CPU remains the automatic fallback."
+                "Cross-vendor OpenCL exact and hybrid search is compiled and ready. CPU remains the automatic fallback."
                     .into(),
             }
         }
