@@ -961,7 +961,7 @@ mod tests {
             session_id: "profile-session".into(),
             sequence,
             region: region(),
-            time: time.clone(),
+            time,
             provenance: EventProvenance::wire(sequence, 1, 1),
             sensitivity: EventSensitivity::PersonalGameplay,
             event: CanonicalEvent::Timeline(TimelineEvent {
