@@ -2016,12 +2016,20 @@ impl LiveEventRecord {
                 topic: event_topic_for_protocol_domain(protocol.domain),
                 kind: "protocol_message".into(),
                 raw_ids: format!(
-                    "{}.{} · message:{} · service:{} · method:{} · connection:{} · stream:{}",
+                    "{}.{} · message:{} · direction:{} · fragment:{} · compression:{} · decode:{} · service:{} · method:{} · stub:{} · call:{} · connection:{} · stream:{}",
                     protocol.service_name,
                     protocol.method_name,
                     message,
+                    protocol.direction,
+                    protocol.fragment,
+                    protocol.compression,
+                    protocol.decode_status,
                     protocol.service_id,
                     protocol.method_id,
+                    protocol.stub_id,
+                    protocol
+                        .call_id
+                        .map_or_else(|| "none".to_owned(), |value| value.to_string()),
                     protocol.connection_id,
                     protocol.stream_id,
                 ),
@@ -14167,6 +14175,16 @@ mod tests {
         assert_eq!(batch.events[0].source_kind, "protocol");
         assert_eq!(batch.events[0].kind, "protocol_message");
         assert!(batch.events[0].raw_ids.contains("WorldNtf.Fixture"));
+        assert!(batch.events[0].raw_ids.contains("direction:ServerToClient"));
+        assert!(batch.events[0].raw_ids.contains("fragment:Notify"));
+        assert!(
+            batch.events[0]
+                .raw_ids
+                .contains("compression:NotCompressed")
+        );
+        assert!(batch.events[0].raw_ids.contains("decode:decoded"));
+        assert!(batch.events[0].raw_ids.contains("stub:300"));
+        assert!(batch.events[0].raw_ids.contains("call:none"));
 
         let detail = feed
             .detail(LiveEventDetailRequest {
