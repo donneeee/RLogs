@@ -1142,6 +1142,11 @@ pub struct CombatTimelinePlugin {
     /// consistently to pets, summons, projectiles, TPS, and rDPS.
     actor_ancestry: ActorAncestryResolver,
     contribution_rules: Vec<DamageContributionRule>,
+    /// Optional game-owned resolver for user-facing child damage identities.
+    /// The canonical raw ability remains authoritative for audit and rDPS
+    /// joins. This fallback lets a newer exact game catalog reproject older
+    /// sealed events that predate `DamagePacketDetail::breakdown_ability_id`.
+    ability_breakdown_resolver: Option<AbilityBreakdownResolver>,
     exact_contribution_projector: Option<Box<dyn ExactDamageContributionProjector>>,
     projected_contributions: Vec<ExactDamageContributionEvent>,
     projected_rational_contributions: Vec<ExactRationalDamageContributionEvent>,
@@ -1165,6 +1170,12 @@ pub struct LiveHealthAttributeMapping {
     pub current_hp: i32,
     pub max_hp: i32,
 }
+
+/// Pure, game-owned mapping from a canonical damage event to its exact
+/// user-facing child identity. Function pointers keep the generic meter free
+/// of game IDs and make replay deterministic and reset-safe.
+pub type AbilityBreakdownResolver =
+    fn(raw_ability_id: i64, hit_event_id: Option<i32>, damage_source: Option<i32>) -> Option<i64>;
 
 impl CombatTimelinePlugin {
     pub fn new() -> Self {
@@ -1196,6 +1207,11 @@ impl CombatTimelinePlugin {
         self
     }
 
+    pub fn with_ability_breakdown_resolver(mut self, resolver: AbilityBreakdownResolver) -> Self {
+        self.ability_breakdown_resolver = Some(resolver);
+        self
+    }
+
     pub fn with_continuous_encounter_scenes(
         mut self,
         scene_ids: impl IntoIterator<Item = i32>,
@@ -1208,6 +1224,7 @@ impl CombatTimelinePlugin {
     pub fn begin_live(&mut self, header: &RlogHeader) {
         let contribution_rules = self.contribution_rules.clone();
         let health_attributes = self.health_attributes;
+        let ability_breakdown_resolver = self.ability_breakdown_resolver;
         let mut exact_contribution_projector = self.exact_contribution_projector.take();
         if let Some(projector) = exact_contribution_projector.as_mut() {
             projector.reset();
@@ -1218,6 +1235,7 @@ impl CombatTimelinePlugin {
         )
         .expect("previously validated rDPS rules remain valid");
         self.health_attributes = health_attributes;
+        self.ability_breakdown_resolver = ability_breakdown_resolver;
         self.header = Some(header.clone());
     }
 
@@ -1623,6 +1641,15 @@ impl CombatTimelinePlugin {
                         .or(damage.hp_loss)
                         .unwrap_or(damage.amount),
                 );
+                let breakdown_ability_id = damage.ability.map(|ability| {
+                    damage.packet.breakdown_ability_id.unwrap_or_else(|| {
+                        self.ability_breakdown_resolver
+                            .and_then(|resolver| {
+                                resolver(ability.0, damage.hit_event_id, damage.damage_source)
+                            })
+                            .unwrap_or(ability.0)
+                    })
+                });
                 {
                     let target_actor = self.actor_mut(target.actor_id.0, target.entity_uuid.0);
                     target_actor.damage_taken = target_actor.damage_taken.saturating_add(effective);
@@ -1645,9 +1672,7 @@ impl CombatTimelinePlugin {
                 if damage.flags.critical == Some(true) {
                     accumulator.critical_hits = accumulator.critical_hits.saturating_add(1);
                 }
-                if let Some(ability_id) = damage.ability {
-                    let breakdown_ability_id =
-                        damage.packet.breakdown_ability_id.unwrap_or(ability_id.0);
+                if let Some(breakdown_ability_id) = breakdown_ability_id {
                     let ability = accumulator
                         .abilities
                         .entry(breakdown_ability_id)
@@ -1672,10 +1697,7 @@ impl CombatTimelinePlugin {
                     source_actor_id: damage.source.actor_id.0,
                     source_entity_uuid: damage.source.entity_uuid.0,
                     target: Some((damage.target.actor_id.0, damage.target.entity_uuid.0)),
-                    breakdown_ability_id: damage
-                        .packet
-                        .breakdown_ability_id
-                        .or(damage.ability.map(|ability| ability.0)),
+                    breakdown_ability_id,
                     ability_id: damage.ability.map(|ability| ability.0),
                     kind: CombatFactKind::Damage {
                         reported,
@@ -5140,6 +5162,18 @@ mod tests {
 
     #[test]
     fn exact_breakdown_identity_splits_one_raw_wire_action_without_rewriting_audit_identity() {
+        fn legacy_breakdown_resolver(
+            raw_ability_id: i64,
+            hit_event_id: Option<i32>,
+            _damage_source: Option<i32>,
+        ) -> Option<i64> {
+            match (raw_ability_id, hit_event_id) {
+                (2_203_291, Some(7)) => Some(2_220_329_107),
+                (2_203_291, Some(9)) => Some(2_220_329_109),
+                _ => None,
+            }
+        }
+
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../tests/fixtures/replay/reference-combat.rlog");
         let reader = RlogReader::new(
@@ -5149,7 +5183,8 @@ mod tests {
         .unwrap();
         let mut header = reader.header().clone();
         header.session_id = "split-breakdown-identity".into();
-        let mut plugin = CombatTimelinePlugin::new();
+        let mut plugin =
+            CombatTimelinePlugin::new().with_ability_breakdown_resolver(legacy_breakdown_resolver);
         plugin.begin_live(&header);
         let mut factory =
             EventEnvelopeFactory::new(header.session_id.clone(), header.region.clone());
@@ -5161,9 +5196,14 @@ mod tests {
             actor_id: ActorId(2),
             entity_uuid: EntityUuid(102),
         };
-        for (sequence, breakdown_ability_id, amount) in
-            [(1, 2_220_329_107, 1_500), (2, 2_220_329_109, 3_500)]
-        {
+        for (sequence, hit_event_id, breakdown_ability_id, amount) in [
+            (1, 7, Some(2_220_329_107), 1_500),
+            (2, 9, Some(2_220_329_109), 3_500),
+            // Legacy sealed events did not serialize a precomputed breakdown
+            // ID. Replay must recover it from the retained raw hit identity.
+            (3, 7, None, 500),
+            (4, 9, None, 700),
+        ] {
             let observed_micros = sequence * 1_000_000;
             let envelope = factory
                 .emit(CanonicalEventDraft {
@@ -5183,12 +5223,12 @@ mod tests {
                             actual_amount: Some(amount),
                             hp_loss: Some(amount),
                             shield_loss: None,
-                            hit_event_id: None,
+                            hit_event_id: Some(hit_event_id),
                             damage_source: None,
                             damage_type: None,
                             flags: DamageFlags::default(),
                             packet: rlogs_events::DamagePacketDetail {
-                                breakdown_ability_id: Some(breakdown_ability_id),
+                                breakdown_ability_id,
                                 ..Default::default()
                             },
                         },
@@ -5204,23 +5244,23 @@ mod tests {
             .iter()
             .find(|actor| actor.actor_id == "1")
             .unwrap();
-        assert_eq!(actor.reported_damage, 5_000);
+        assert_eq!(actor.reported_damage, 6_200);
         assert_eq!(
             actor
                 .abilities
                 .iter()
                 .map(|ability| (ability.ability_id.as_str(), ability.reported_damage))
                 .collect::<Vec<_>>(),
-            vec![("2220329107", 1_500), ("2220329109", 3_500)]
+            vec![("2220329107", 2_000), ("2220329109", 4_200)]
         );
         let history = plugin.build_history_view(&HistoryViewSpec {
             id: "all".into(),
             label: "Entire run".into(),
             kind: "all".into(),
             segment_indices: vec![0],
-            intervals: vec![(0, 3_000_000)],
-            elapsed_micros: 3_000_000,
-            active_combat_micros: 2_000_000,
+            intervals: vec![(0, 5_000_000)],
+            elapsed_micros: 5_000_000,
+            active_combat_micros: 4_000_000,
             compress_intervals: false,
         });
         let actor = history
@@ -5234,7 +5274,7 @@ mod tests {
                 .iter()
                 .map(|ability| (ability.ability_id.as_str(), ability.damage))
                 .collect::<Vec<_>>(),
-            vec![("2220329107", 1_500), ("2220329109", 3_500)]
+            vec![("2220329107", 2_000), ("2220329109", 4_200)]
         );
         assert!(plugin.history_facts.iter().all(|fact| {
             fact.ability_id == Some(2_203_291)

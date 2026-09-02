@@ -79,8 +79,9 @@ use rlogs_game_bpsr::{
     SealedDungeonRunLog, ServerRealmCatalog, auxiliary_action_presentation,
     battle_imagine_presentation, bundled_gauntlet_scene_ids, bundled_run_reducer_config,
     bundled_scene_run_identities, character_id_from_entity_uuid, combat_action_presentation,
-    confirmed_damage_contribution_rules, is_boss_monster, is_localized_class_name,
-    localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
+    combat_breakdown_ability_id, confirmed_damage_contribution_rules, is_boss_monster,
+    is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
+    localized_class_identities,
     localized_combat_action_name, localized_monster_name, localized_recount_group_name,
     localized_scene_name, localized_specialization_identities, localized_status_effect_name,
     project_local_profile_packages, proven_state_damage_contribution_effect_ids,
@@ -9166,6 +9167,7 @@ fn bpsr_combat_timeline_plugin_with_remote_factors(
         confirmed_damage_contribution_rules()?,
         Some(Box::new(projector)),
     )?
+    .with_ability_breakdown_resolver(combat_breakdown_ability_id)
     .with_live_health_attributes(LiveHealthAttributeMapping {
         current_hp: 11_310,
         max_hp: 11_320,

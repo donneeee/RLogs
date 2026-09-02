@@ -4911,7 +4911,7 @@ fn decode_aoi_delta(
             .or(damage.critical);
         let ability_id = damage.owner_id.map(i64::from);
         let breakdown_ability_id = ability_id.and_then(|ability_id| {
-            breakdown_ability_id(ability_id, damage.hit_event_id, damage.damage_source)
+            combat_breakdown_ability_id(ability_id, damage.hit_event_id, damage.damage_source)
         });
         if let Some(state) = ability_id.and_then(|ability_id| {
             entities.observe_specialization_ability(attributed_uuid, ability_id)
@@ -5093,7 +5093,7 @@ fn decode_aoi_delta(
     Ok(())
 }
 
-fn breakdown_ability_id(
+pub fn combat_breakdown_ability_id(
     raw_ability_id: i64,
     hit_event_id: Option<i32>,
     damage_source: Option<i32>,
@@ -6139,14 +6139,14 @@ mod tests {
     #[test]
     fn falcon_wire_family_uses_exact_damage_attr_rows_for_breakdown_only() {
         assert_eq!(
-            breakdown_ability_id(2_203_291, Some(7), None),
+            combat_breakdown_ability_id(2_203_291, Some(7), None),
             Some(2_220_329_107)
         );
         assert_eq!(
-            breakdown_ability_id(2_203_291, Some(9), None),
+            combat_breakdown_ability_id(2_203_291, Some(9), None),
             Some(2_220_329_109)
         );
-        assert_eq!(breakdown_ability_id(2_203_291, Some(8), None), None);
+        assert_eq!(combat_breakdown_ability_id(2_203_291, Some(8), None), None);
     }
 
     #[test]

@@ -31,9 +31,9 @@ use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
     BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
     CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
-    bundled_run_reducer_config, character_id_from_entity_uuid, confirmed_damage_contribution_rules,
-    is_stat_resonance_status, localized_class_name, localized_scene_name,
-    localized_specialization_name,
+    bundled_run_reducer_config, character_id_from_entity_uuid, combat_breakdown_ability_id,
+    confirmed_damage_contribution_rules, is_stat_resonance_status, localized_class_name,
+    localized_scene_name, localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use rlogs_plugin_combat_meter::{
@@ -1098,7 +1098,8 @@ impl SubmissionService {
                 .map_err(ServiceError::Replay)?,
             )),
         )
-        .map_err(ServiceError::Replay)?;
+        .map_err(ServiceError::Replay)?
+        .with_ability_breakdown_resolver(combat_breakdown_ability_id);
         let mut encounter = EncounterRecorderPlugin::new(
             bundled_run_reducer_config()
                 .map_err(|error| ServiceError::Replay(error.to_string()))?,
@@ -2923,7 +2924,8 @@ fn build_public_report(
                 .map_err(ServiceError::Replay)?,
         )),
     )
-    .map_err(ServiceError::Replay)?;
+    .map_err(ServiceError::Replay)?
+    .with_ability_breakdown_resolver(combat_breakdown_ability_id);
     let mut encounter = EncounterRecorderPlugin::new(
         bundled_run_reducer_config().map_err(|error| ServiceError::Replay(error.to_string()))?,
     );
