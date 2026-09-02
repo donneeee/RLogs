@@ -1408,6 +1408,16 @@ textarea {
   font: inherit;
 }
 
+select {
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  color: #edf3fb;
+  background: #101927;
+}
+
 button {
   color: inherit;
 }

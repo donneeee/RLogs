@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "artifact": "fight-defense-attribute-decode-proof",
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "game_build": "24687926",
+  "decision": "authorize exact signed-int32 decoding for the physical and magical defense attribute families while leaving target-mitigation rDPS projection fail-closed",
+  "current_build_table": {
+    "stable_key": "ctb.FightAttrTable",
+    "table_key": 2490336417,
+    "table_key_hex": "0x946f84a1",
+    "package": "bpsr/BPSR_STEAM_Data/StreamingAssets/container/m0.pkg",
+    "offset": 785341844,
+    "bytes": 25549,
+    "sha256": "sha256:dde99a0c22ca2f3015657af382c2ac3d28eca982345c6ab0629dd222f1063e75",
+    "rows": 161,
+    "row_size": 96,
+    "source": "ctb-indexed-inventory-v2.json"
+  },
+  "lineage_identity": {
+    "steam_24568685_sha256": "sha256:dde99a0c22ca2f3015657af382c2ac3d28eca982345c6ab0629dd222f1063e75",
+    "steam_24609362_sha256": "sha256:dde99a0c22ca2f3015657af382c2ac3d28eca982345c6ab0629dd222f1063e75",
+    "steam_24687926_sha256": "sha256:dde99a0c22ca2f3015657af382c2ac3d28eca982345c6ab0629dd222f1063e75",
+    "conclusion": "the decoded FightAttrTable row identities, storage types, and family layout are byte-for-byte stable through build 24687926"
+  },
+  "current_build_enum_source": {
+    "artifact": "rpc-message-surface.v2.json",
+    "enum": "Zproto.EAttrType",
+    "physical_defense": [
+      { "id": 11350, "name": "AttrDefense", "component": "final" },
+      { "id": 11351, "name": "AttrDefenseTotal", "component": "total" },
+      { "id": 11352, "name": "AttrDefenseAdd", "component": "add" },
+      { "id": 11353, "name": "AttrDefenseExAdd", "component": "extra_add" },
+      { "id": 11354, "name": "AttrDefensePer", "component": "percent" },
+      { "id": 11355, "name": "AttrDefenseExPer", "component": "extra_percent" }
+    ],
+    "magical_defense": [
+      { "id": 11360, "name": "AttrMDefense", "component": "final" },
+      { "id": 11361, "name": "AttrMDefenseTotal", "component": "total" },
+      { "id": 11362, "name": "AttrMDefenseAdd", "component": "add" },
+      { "id": 11363, "name": "AttrMDefenseExAdd", "component": "extra_add" },
+      { "id": 11364, "name": "AttrMDefensePer", "component": "percent" },
+      { "id": 11365, "name": "AttrMDefenseExPer", "component": "extra_percent" }
+    ]
+  },
+  "storage_proof": {
+    "decoded_catalog": "game-data/catalog/formulas/fight-attributes.current-build.v1.json",
+    "decoded_catalog_lineage": "the catalog rows are authoritative for build 24687926 because the underlying FightAttrTable payload is byte-identical across the three listed Steam builds",
+    "physical_family_storage_type": "int32",
+    "magical_family_storage_type": "int32",
+    "wire_decode": "protobuf signed int32 scalar retained inside the entity attribute raw-data bytes field",
+    "zero_representation": "an empty scalar payload is exact zero",
+    "negative_representation": "sign-extended ten-byte protobuf int32 varint"
+  },
+  "retained_rlog_validation": {
+    "scope": "privacy-safe aggregate of a local replay; source paths, identities, and artifact hashes are intentionally excluded",
+    "sealed_rlog_count": 15,
+    "source_bytes": 57545267,
+    "canonical_event_count": 1282398,
+    "data_gap_count": 39,
+    "run_boundary_count": 44,
+    "physical_final_total_add": {
+      "attribute_ids": [11350, 11351, 11352],
+      "observations_per_id": 90,
+      "distinct_actors_per_id": 15,
+      "integer_decodes_per_id": 90,
+      "observed_min": 5604,
+      "observed_max": 5615,
+      "same_wire_target_damage_pairs_per_id": 3
+    },
+    "magical_final_total_add": {
+      "attribute_ids": [11360, 11361, 11362],
+      "observations_per_id": 90,
+      "distinct_actors_per_id": 15,
+      "integer_decodes_per_id": 90,
+      "observed_min": 274,
+      "observed_max": 293,
+      "same_wire_target_damage_pairs_per_id": 3
+    },
+    "unobserved_components": [11353, 11354, 11355, 11363, 11364, 11365],
+    "interpretation": "the replay validates exact integer decoding for observed local-character defense snapshots; it does not identify enemy defense or authorize target-mitigation attribution",
+    "formula_authority": false,
+    "runtime_rdps_authority": false
+  },
+  "runtime_scope": {
+    "newly_decoded_ids": [
+      11350,
+      11351,
+      11352,
+      11353,
+      11354,
+      11355,
+      11360,
+      11361,
+      11362,
+      11363,
+      11364,
+      11365
+    ],
+    "canonical_raw_bytes_remain_retained": true,
+    "unknown_neighboring_ids_remain_unresolved": true,
+    "rDPS_projection_enabled_by_this_artifact": false
+  },
+  "remaining_target_mitigation_gates": [
+    "exact per-hit defense-affected versus defense-free body split",
+    "all target and source flat and percentage ignore-defense inputs",
+    "operation ordering and rounding",
+    "provider arbitration when multiple target-defense effects overlap",
+    "matching-build packet observations that exercise the candidate effects"
+  ]
+}

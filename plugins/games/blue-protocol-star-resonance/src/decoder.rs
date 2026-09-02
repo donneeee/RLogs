@@ -87,6 +87,13 @@ const ATTR_MAX_HP_EXTRA_PERCENT: i32 = 11325;
 // same canonical value instead of independently reparsing raw bytes.
 pub(crate) const ATTR_PHYSICAL_ATTACK: i32 = 11330;
 pub(crate) const ATTR_MAGICAL_ATTACK: i32 = 11340;
+// Build 24687926's exact EAttrType surface and byte-identical
+// FightAttrTable.ctb identify the physical/magical defense families as signed
+// int32 values. Retaining every family component makes final-defense snapshots
+// and later inverse mitigation proofs replayable without loosening the generic
+// unknown-attribute gate.
+pub(crate) const ATTR_PHYSICAL_DEFENSE: i32 = 11350;
+pub(crate) const ATTR_MAGICAL_DEFENSE: i32 = 11360;
 pub(crate) const ATTR_MASTERY: i32 = 11940;
 const ATTR_CURRENT_ENERGY: i32 = 20010;
 const ATTR_MAX_ENERGY_FINAL: i32 = 20020;
@@ -5840,7 +5847,11 @@ fn decode_attribute_value(id: i32, raw: &[u8]) -> Option<EntityAttributeValue> {
         | ATTR_PHYSICAL_ATTACK
         | 11331..=11334
         | ATTR_MAGICAL_ATTACK
-        | 11341..=11344 => decode_int32_varint(raw).map(EntityAttributeValue::Integer),
+        | 11341..=11344
+        | ATTR_PHYSICAL_DEFENSE
+        | 11351..=11355
+        | ATTR_MAGICAL_DEFENSE
+        | 11361..=11365 => decode_int32_varint(raw).map(EntityAttributeValue::Integer),
         ATTR_MONSTER_ID
         | ATTR_CLASS_ID
         | ATTR_LEVEL
@@ -10522,6 +10533,32 @@ mod tests {
             decode_attribute_value(ATTR_MASTERY, &[0xb7, 0x07]),
             Some(EntityAttributeValue::Integer(951))
         );
+    }
+
+    #[test]
+    fn defense_formula_families_decode_exact_signed_int32_values() {
+        for attribute_id in 11350..=11355 {
+            assert_eq!(
+                decode_attribute_value(attribute_id, &[0xc1, 0x3d]),
+                Some(EntityAttributeValue::Integer(7_873))
+            );
+        }
+        for attribute_id in 11360..=11365 {
+            assert_eq!(
+                decode_attribute_value(attribute_id, &[]),
+                Some(EntityAttributeValue::Integer(0))
+            );
+        }
+        assert_eq!(
+            decode_attribute_value(
+                11354,
+                &[0xb8, 0xe5, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01],
+            ),
+            Some(EntityAttributeValue::Integer(-3_400))
+        );
+        assert_eq!(decode_attribute_value(11356, &[0xc8, 0x01]), None);
+        assert_eq!(decode_attribute_value(11359, &[0xc8, 0x01]), None);
+        assert_eq!(decode_attribute_value(11366, &[0xc8, 0x01]), None);
     }
 
     #[test]
