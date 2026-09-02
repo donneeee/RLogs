@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  acknowledgeInitialLiveTail,
   parseEventViewerPage,
   parseLiveEventBatch,
   parseLiveEventDetail,
@@ -79,6 +80,27 @@ function examplePage(): Record<string, unknown> {
 }
 
 describe("Event Viewer page contract", () => {
+  it("does not misreport an intentional initial live-tail join as viewer loss", () => {
+    const initial = parseLiveEventBatch({
+      schemaVersion: 2,
+      sessionId: "live",
+      revision: 9_000,
+      droppedBefore: 8_488,
+      hasMore: false,
+      retainedEvents: 8_192,
+      retainedBytes: 4_000_000,
+      capacityEvents: 8_192,
+      capacityBytes: 4_194_304,
+      events: [],
+    });
+
+    expect(acknowledgeInitialLiveTail(initial)).toEqual({
+      ...initial,
+      droppedBefore: 0,
+    });
+    expect(initial.droppedBefore).toBe(8_488);
+  });
+
   it("preserves 64-bit canonical values as strings", () => {
     const page = parseEventViewerPage(examplePage());
 

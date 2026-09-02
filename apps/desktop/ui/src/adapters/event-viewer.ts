@@ -170,6 +170,16 @@ export interface LiveEventDetail {
   protocol: LiveProtocolDetail | null;
 }
 
+/**
+ * A new or resumed Inspector deliberately joins at the bounded live tail.
+ * Events older than that tail were never part of this viewer session, so they
+ * must not be reported as viewer gaps. Later batches keep their authoritative
+ * dropped-before count unchanged.
+ */
+export function acknowledgeInitialLiveTail(batch: LiveEventBatch): LiveEventBatch {
+  return batch.droppedBefore === 0 ? batch : { ...batch, droppedBefore: 0 };
+}
+
 export function parseLiveEventBatch(value: unknown): LiveEventBatch {
   if (
     !isRecord(value) ||

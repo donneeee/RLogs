@@ -42,6 +42,7 @@ import {
   type LiveEventBatch,
   type LiveEventDetail,
   type LiveEventLine,
+  acknowledgeInitialLiveTail,
   parseEventViewerPage,
   parseLiveEventBatch,
   parseLiveEventDetail,
@@ -314,9 +315,12 @@ function subscribeLiveEvents(
         );
         if (!active) return;
         if (!deliveredInitialBatch || batch.revision > revision) {
+          const deliveredBatch = deliveredInitialBatch
+            ? batch
+            : acknowledgeInitialLiveTail(batch);
           deliveredInitialBatch = true;
           revision = Math.max(revision, batch.revision);
-          onBatch(batch);
+          onBatch(deliveredBatch);
         }
       } catch (error) {
         if (!active || abort.signal.aborted) return;
