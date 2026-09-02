@@ -114,7 +114,7 @@ fn matches_filters(
                         || damage
                             .packet
                             .breakdown_ability_id
-                            .is_some_and(|id| id_has_prefix(i64::from(id), prefix))
+                            .is_some_and(|id| id_has_prefix(id, prefix))
                 })
                 && actor_id.is_none_or(|actor_id| {
                     damage.source.actor_id.0 == actor_id || damage.target.actor_id.0 == actor_id
@@ -133,7 +133,7 @@ fn matches_filters(
                         || healing
                             .packet
                             .breakdown_ability_id
-                            .is_some_and(|id| id_has_prefix(i64::from(id), prefix))
+                            .is_some_and(|id| id_has_prefix(id, prefix))
                 })
                 && actor_id.is_none_or(|actor_id| {
                     healing.source.actor_id.0 == actor_id || healing.target.actor_id.0 == actor_id
