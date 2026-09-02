@@ -183,8 +183,14 @@ pub fn optimize(
         SearchMode::Beam => SearchMode::Beam,
     };
 
+    #[cfg(feature = "gpu-opencl")]
     let mut backend = SearchBackend::Cpu;
+    #[cfg(not(feature = "gpu-opencl"))]
+    let backend = SearchBackend::Cpu;
+    #[cfg(feature = "gpu-opencl")]
     let mut accelerator_name = None;
+    #[cfg(not(feature = "gpu-opencl"))]
+    let accelerator_name = None;
     let mut accelerator_fallback = None;
     let (mut ranked, evaluated_states) = match used_mode {
         SearchMode::Exact => {
