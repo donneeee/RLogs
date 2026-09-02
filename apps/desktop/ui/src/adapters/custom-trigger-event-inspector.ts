@@ -57,6 +57,7 @@ export function mountCustomTriggerEventInspector(
   let comparisonBeforeRevision: number | null = null;
   let comparisonAfterRevision: number | null = null;
   let viewerDropped = 0;
+  let pendingStreamFrame: number | null = null;
 
   const root = element("div", "plugin-surface event-inspector-surface");
   const intro = element("section", "content-card event-inspector-intro");
@@ -338,6 +339,14 @@ export function mountCustomTriggerEventInspector(
     }
     stream.replaceChildren(fragment);
     if (!frozen) stream.scrollTop = stream.scrollHeight;
+  };
+
+  const scheduleStreamRender = () => {
+    if (pendingStreamFrame !== null) return;
+    pendingStreamFrame = window.requestAnimationFrame(() => {
+      pendingStreamFrame = null;
+      if (alive) renderStream();
+    });
   };
 
   const renderSelection = () => {
@@ -730,7 +739,7 @@ export function mountCustomTriggerEventInspector(
   });
   changedOnly.addEventListener("change", renderComparison);
   for (const input of [source.select, topic.select, kind.input, search.input]) {
-    input.addEventListener("input", renderStream);
+    input.addEventListener("input", scheduleStreamRender);
   }
 
   startFollowing = () => {
@@ -773,7 +782,7 @@ export function mountCustomTriggerEventInspector(
       status.textContent = batch.sessionId === null
         ? "Connected. Waiting for the game parser to begin a live session."
         : `${batch.sessionId} · following reviewed canonical events and protocol messages`;
-      renderStream();
+      scheduleStreamRender();
       },
       (error) => {
         if (!alive || frozen) return;
@@ -797,6 +806,10 @@ export function mountCustomTriggerEventInspector(
     dispose() {
       alive = false;
       stopFollowing();
+      if (pendingStreamFrame !== null) {
+        window.cancelAnimationFrame(pendingStreamFrame);
+        pendingStreamFrame = null;
+      }
       root.remove();
     },
   };
