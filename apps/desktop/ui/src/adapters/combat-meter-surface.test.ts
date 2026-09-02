@@ -5,6 +5,9 @@ import type { CombatActorSummary } from "./combat-meter";
 
 const ACTOR = {
   dps: 1_234.5,
+  run_dps: 1_000,
+  encounter_dps: 1_125,
+  active_dps: 1_234.5,
   hps: 234.5,
   tps: 34.5,
   rdps_damage: 12_000,
@@ -20,7 +23,9 @@ const ACTOR = {
 describe("Combat Meter actor columns", () => {
   it("keeps rate and relative-damage fields aligned with their headers", () => {
     expect([
-      combatMeterActorColumnText(ACTOR, "dps"),
+      combatMeterActorColumnText(ACTOR, "run_dps"),
+      combatMeterActorColumnText(ACTOR, "encounter_dps"),
+      combatMeterActorColumnText(ACTOR, "active_dps"),
       combatMeterActorColumnText(ACTOR, "hps"),
       combatMeterActorColumnText(ACTOR, "tps"),
       combatMeterActorColumnText(ACTOR, "rdps_damage"),
@@ -32,6 +37,8 @@ describe("Combat Meter actor columns", () => {
       combatMeterActorColumnText(ACTOR, "effective_healing"),
       combatMeterActorColumnText(ACTOR, "deaths"),
     ]).toEqual([
+      "1,000",
+      "1,125",
       "1,234.5",
       "234.5",
       "34.5",

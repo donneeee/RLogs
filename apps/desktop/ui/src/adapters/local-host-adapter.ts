@@ -56,6 +56,12 @@ import {
   parseProfileProjectionResult,
 } from "./profile-packages";
 import {
+  parseLocalModuleInventory,
+  parseOptimizeResponse,
+  parseOptimizerCatalog,
+} from "./module-optimizer";
+import { mountModuleOptimizerSurface } from "./module-optimizer-surface";
+import {
   type PhotoWallPublicationStatus,
   parsePhotoWallPublicationStatus,
   photoWallLastCaptureSummary,
@@ -108,6 +114,7 @@ const COMBAT_METER_PLUGIN_ID = "app.rlogs.combat-meter";
 const COMBAT_OVERLAY_PLUGIN_ID = "app.rlogs.combat-overlay";
 const LOG_UPLOADER_PLUGIN_ID = "app.rlogs.log-uploader";
 const PROFILE_SYNC_PLUGIN_ID = "app.rlogs.bpsr.profile-sync";
+const MODULE_OPTIMIZER_PLUGIN_ID = "app.rlogs.bpsr.module-optimizer";
 const THEMES_PLUGIN_ID = "app.rlogs.themes";
 
 interface RuntimeResult {
@@ -466,6 +473,28 @@ function createLocalHostAdapter(): DesktopHostAdapter {
           return mountLogUploaderSettingsSurface(container);
         case `builtin://${PROFILE_SYNC_PLUGIN_ID}/profile-sync`:
           return mountProfileSyncSettingsSurface(container);
+        case `builtin://${MODULE_OPTIMIZER_PLUGIN_ID}/optimizer`:
+          return mountModuleOptimizerSurface(container, {
+            async loadCatalog() {
+              return parseOptimizerCatalog(
+                await apiJson<unknown>("/api/module-optimizer/catalog"),
+              );
+            },
+            async loadInventory() {
+              return parseLocalModuleInventory(
+                await apiJson<unknown>("/api/module-optimizer/inventory"),
+              );
+            },
+            async optimize(request) {
+              return parseOptimizeResponse(
+                await apiJson<unknown>("/api/module-optimizer/optimize", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(request),
+                }),
+              );
+            },
+          });
         case `builtin://${THEMES_PLUGIN_ID}/appearance`:
           return mountThemeSettingsSurface(container);
         case "core://settings/general":
@@ -623,11 +652,11 @@ function mountCombatMeterOptionsSurface(
     "Display total damage for the selected run segment and target.",
   );
   const showHistoryDpsColumn = checkboxOption(
-    "Show DPS",
-    "Display damage divided by the selected segment's elapsed time.",
+    "Show eDPS",
+    "Display damage divided by the completion-frozen encounter or segment clock.",
   );
   const showHistoryEncounterDpsColumn = checkboxOption(
-    "Show eDPS",
+    "Show aDPS",
     "Display damage divided by active combat time.",
   );
   const showHistoryHpsColumn = checkboxOption(
@@ -861,7 +890,7 @@ function mountCombatMeterOptionsSurface(
   );
   const historyMetricFontSize = numberOption(
     "History metrics",
-    "Prominent timer, damage, DPS, eDPS, HPS, and TPS values.",
+    "Prominent timer, damage, DPS, aDPS, HPS, and TPS values.",
     13,
     36,
   );
@@ -3856,8 +3885,8 @@ function historyPartyColumnLabel(column: HistoryPartyColumnId): string {
     shielding: "Shielding",
     hits: "Hits",
     criticalRate: "Crit %",
-    dps: "DPS",
-    encounterDps: "eDPS",
+    dps: "eDPS",
+    encounterDps: "aDPS",
     hps: "HPS",
     tps: "TPS",
     rdmg: "rDMG",

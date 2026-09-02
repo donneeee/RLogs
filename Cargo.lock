@@ -3156,6 +3156,7 @@ dependencies = [
  "bytes",
  "etherparse",
  "reqwest 0.12.28",
+ "rlogs-bpsr-module-optimizer",
  "rlogs-capture",
  "rlogs-core",
  "rlogs-events",

@@ -34,6 +34,9 @@ export interface CombatActorSummary {
   damage_during_combat: number;
   damage_taken: number;
   dps: number;
+  run_dps: number;
+  encounter_dps: number;
+  active_dps: number;
   hps: number;
   tps: number;
   rdps_damage: number | null;
@@ -72,6 +75,9 @@ export interface CombatTimelineSnapshot {
   combat_started_micros: number | null;
   combat_ended_micros: number | null;
   active_combat_micros: number;
+  encounter_elapsed_micros: number | null;
+  encounter_terminal_micros: number | null;
+  run_terminal_micros: number | null;
   run_elapsed_micros: number | null;
   game_time_micros: number | null;
   true_time_micros: number | null;
@@ -83,7 +89,9 @@ export interface CombatTimelineSnapshot {
 }
 
 export type CombatActorSortKey =
-  | "dps"
+  | "run_dps"
+  | "encounter_dps"
+  | "active_dps"
   | "hps"
   | "tps"
   | "rdps_damage"
@@ -116,6 +124,12 @@ export function parseCombatTimelineSnapshot(
     !isOptionalCounter(value.combat_started_micros) ||
     !isOptionalCounter(value.combat_ended_micros) ||
     !isSafeCounter(value.active_combat_micros) ||
+    (value.encounter_elapsed_micros !== undefined &&
+      !isOptionalCounter(value.encounter_elapsed_micros)) ||
+    (value.encounter_terminal_micros !== undefined &&
+      !isOptionalCounter(value.encounter_terminal_micros)) ||
+    (value.run_terminal_micros !== undefined &&
+      !isOptionalCounter(value.run_terminal_micros)) ||
     !isOptionalCounter(value.run_elapsed_micros) ||
     !isOptionalCounter(value.game_time_micros) ||
     !isOptionalCounter(value.true_time_micros) ||
@@ -152,8 +166,16 @@ export function parseCombatTimelineSnapshot(
     rdps_effect_presentations: value.rdps_effect_presentations ?? [],
     actors: value.actors.map((actor) => ({
       ...actor,
+      run_dps: isFiniteNumber(actor.run_dps) ? actor.run_dps : actor.dps,
+      encounter_dps: isFiniteNumber(actor.encounter_dps)
+        ? actor.encounter_dps
+        : actor.dps,
+      active_dps: isFiniteNumber(actor.active_dps) ? actor.active_dps : actor.dps,
       rdps_incomplete: actor.rdps_incomplete === true,
     })),
+    encounter_elapsed_micros: value.encounter_elapsed_micros ?? null,
+    encounter_terminal_micros: value.encounter_terminal_micros ?? null,
+    run_terminal_micros: value.run_terminal_micros ?? null,
   } as unknown as CombatTimelineSnapshot;
   if (describeRdpsStatus(snapshot.rdps_status).providerCreditEnabled) {
     return snapshot;
@@ -259,6 +281,9 @@ function isCombatActor(value: unknown): value is CombatActorSummary {
     isSafeInteger(value.damage_during_combat) &&
     isSafeInteger(value.damage_taken) &&
     isFiniteNumber(value.dps) &&
+    (value.run_dps === undefined || isFiniteNumber(value.run_dps)) &&
+    (value.encounter_dps === undefined || isFiniteNumber(value.encounter_dps)) &&
+    (value.active_dps === undefined || isFiniteNumber(value.active_dps)) &&
     isFiniteNumber(value.hps) &&
     isFiniteNumber(value.tps) &&
     isOptionalSafeInteger(value.rdps_damage) &&

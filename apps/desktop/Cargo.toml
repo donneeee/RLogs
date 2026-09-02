@@ -10,6 +10,7 @@ rlogs-capture = { path = "../../engine/capture" }
 rlogs-core = { path = "../../engine/core" }
 rlogs-events = { path = "../../engine/events" }
 rlogs-game-bpsr = { path = "../../plugins/games/blue-protocol-star-resonance" }
+rlogs-bpsr-module-optimizer = { path = "../../plugins/games/blue-protocol-star-resonance/features/module-optimizer" }
 rlogs-log-format = { path = "../../engine/log-format" }
 rlogs-network = { path = "../../engine/network" }
 rlogs-plugin-api = { path = "../../engine/plugin-api" }

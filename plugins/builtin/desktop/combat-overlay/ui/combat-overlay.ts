@@ -3,7 +3,7 @@ import {
   mountHotkeyBinding,
 } from "../../../../../apps/desktop/ui/src/adapters/hotkey-settings";
 
-export type OverlayMetric = "dps" | "edps" | "bdps" | "rdps" | "hps" | "tps";
+export type OverlayMetric = "dps" | "edps" | "adps" | "bdps" | "rdps" | "hps" | "tps";
 export type OverlayBackgroundMode = "transparent" | "solid" | "custom";
 export type OverlayBarColorMode = "random" | "class" | "specialization";
 export type OverlayNumberFormat = "compact" | "detailed" | "full";
@@ -38,6 +38,7 @@ export type OverlayHeaderField =
   | "shield_damage"
   | "dps"
   | "edps"
+  | "adps"
   | "bdps"
   | "rdps"
   | "hps"
@@ -165,6 +166,7 @@ interface OverlayActor {
   max_hp?: number | null;
   dps: number;
   edps?: number | null;
+  adps?: number | null;
   bdps?: number | null;
   hps: number;
   tps: number;
@@ -189,6 +191,12 @@ interface OverlayActor {
   rdps_skill_detail_truncated?: boolean;
   abilities?: readonly OverlayAbility[];
   presentation?: OverlayActorPresentation;
+}
+
+interface OverlaySnapshotActor extends OverlayActor {
+  run_dps?: number | null;
+  encounter_dps?: number | null;
+  active_dps?: number | null;
 }
 
 interface OverlayAbility {
@@ -255,6 +263,9 @@ interface OverlaySnapshot {
   rdps_status?: string;
   scene_id?: number | null;
   combat_started_micros?: number | null;
+  encounter_elapsed_micros?: number | null;
+  encounter_terminal_micros?: number | null;
+  run_terminal_micros?: number | null;
   active_combat_micros?: number;
   run_elapsed_micros?: number | null;
   game_time_micros?: number | null;
@@ -266,7 +277,7 @@ interface OverlaySnapshot {
   rdps_damage_influences?: readonly OverlayDamageInfluence[];
   rdps_damage_influences_truncated?: boolean;
   rdps_effect_presentations?: readonly OverlayRdpsEffectPresentation[];
-  actors: readonly OverlayActor[];
+  actors: readonly OverlaySnapshotActor[];
 }
 
 interface OverlayBossPresentation {
@@ -518,7 +529,7 @@ const SAMPLE_ENCOUNTER_PRESENTATION: OverlayEncounterPresentation = {
   },
 };
 
-const METRICS: readonly OverlayMetric[] = ["dps", "edps", "bdps", "rdps", "hps", "tps"];
+const METRICS: readonly OverlayMetric[] = ["dps", "edps", "adps", "bdps", "rdps", "hps", "tps"];
 const BAR_COLOR_PALETTE: readonly string[] = [
   "#63e5d6",
   "#62a8ff",
@@ -545,6 +556,7 @@ const HEADER_FIELDS: readonly OverlayHeaderField[] = [
   "shield_damage",
   "dps",
   "edps",
+  "adps",
   "bdps",
   "rdps",
   "hps",
@@ -568,7 +580,7 @@ const HEADER_FIELDS: readonly OverlayHeaderField[] = [
 const EDITABLE_HEADER_FIELDS = HEADER_FIELDS.filter((field) => field !== "value");
 const HEADER_FIELD_GROUPS: ReadonlyArray<readonly [string, readonly OverlayHeaderField[]]> = [
   ["Identity", ["rank", "class_spec", "name", "weapon", "main_imagines"]],
-  ["Damage", ["damage", "effective_damage", "hp_damage", "shield_damage", "dps", "edps", "bdps", "percent"]],
+  ["Damage", ["damage", "effective_damage", "hp_damage", "shield_damage", "dps", "edps", "adps", "bdps", "percent"]],
   ["Healing", ["healing", "effective_healing", "overheal", "shielding", "hps"]],
   ["Defense", ["damage_taken", "tps"]],
   ["Activity", ["hits", "critical_rate", "casts", "deaths", "revives"]],
@@ -592,7 +604,7 @@ const DEFAULT_SUMMARY_FIELDS: readonly OverlaySummaryField[] = [
   "boss_health",
 ];
 const VIEW_PRESETS: Readonly<Record<string, OverlayViewPreset>> = {
-  damage: { title: "Party damage", metric: "dps", fields: ["rank", "class_spec", "weapon", "main_imagines", "name", "damage", "dps", "edps", "percent"] },
+  damage: { title: "Party damage", metric: "dps", fields: ["rank", "class_spec", "weapon", "main_imagines", "name", "damage", "dps", "edps", "adps", "percent"] },
   healing: { title: "Party healing", metric: "hps", fields: ["rank", "class_spec", "name", "healing", "effective_healing", "overheal", "shielding", "hps", "percent"] },
   defense: { title: "Party defense", metric: "tps", fields: ["rank", "class_spec", "name", "damage_taken", "tps", "deaths", "revives", "percent"] },
   contribution: { title: "Party contribution", metric: "rdps", fields: ["rank", "class_spec", "name", "rdps_damage", "rdps", "contribution_given", "contribution_received"] },
@@ -610,6 +622,7 @@ const DEFAULT_HEADER_WIDTHS: Readonly<Record<OverlayHeaderField, number>> = {
   shield_damage: 102,
   dps: 90,
   edps: 90,
+  adps: 90,
   bdps: 90,
   rdps: 90,
   hps: 90,
@@ -2277,7 +2290,10 @@ export async function mountCombatOverlayRuntimeApp(
         latestSnapshot = update.snapshot;
         encounterPresentation = update.encounter_presentation ?? null;
         const availableViewIds = new Set(
-          encounterPresentation?.run_projection?.views.map((view) => view.id) ?? ["live"],
+          [
+            "live",
+            ...(encounterPresentation?.run_projection?.views.map((view) => view.id) ?? []),
+          ],
         );
         for (const [layerId, viewId] of selectedSegmentByLayer) {
           if (!availableViewIds.has(viewId)) selectedSegmentByLayer.delete(layerId);
@@ -2285,6 +2301,9 @@ export async function mountCombatOverlayRuntimeApp(
         const presentations = update.actor_presentations ?? {};
         actors = (update.snapshot?.actors ?? []).map((actor) => ({
           ...actor,
+          dps: actor.run_dps ?? actor.encounter_dps ?? actor.dps,
+          edps: actor.encounter_dps ?? actor.dps,
+          adps: actor.active_dps ?? actor.dps,
           presentation: presentations[actor.actor_id],
         })).filter(isOverlayRosterActor);
         const nowMillis = Date.now();
@@ -2374,7 +2393,13 @@ function resolveProjectedOverlayState(
   selectedViewId: string | undefined,
 ): ProjectedOverlayState {
   const projection = presentation?.run_projection;
-  if (projection === null || projection === undefined || projection.views.length === 0) {
+  if (
+    selectedViewId === undefined
+    || selectedViewId === "live"
+    || projection === null
+    || projection === undefined
+    || projection.views.length === 0
+  ) {
     const actors = applyOverlayRdpsSkillDetail(
       actorSource,
       snapshot?.rdps_damage_influences ?? [],
@@ -2392,6 +2417,15 @@ function resolveProjectedOverlayState(
   const liveActorsById = new Map(actorSource.map((actor) => [actor.actor_id, actor]));
   const projectedActors = view.actors
     .map(projectedActorToOverlayActor)
+    .map((actor) => view.id === "all"
+      && projection.total_run_time_micros !== null
+      && projection.total_run_time_micros !== undefined
+      && projection.total_run_time_micros > 0
+      ? {
+          ...actor,
+          dps: actor.dps * view.elapsed_micros / projection.total_run_time_micros,
+        }
+      : actor)
     .map((actor) => mergeProjectedActorPresentation(actor, liveActorsById.get(actor.actor_id)))
     .filter(isOverlayRosterActor);
   const actors = applyOverlayRdpsSkillDetail(
@@ -2656,7 +2690,8 @@ function projectedActorToOverlayActor(actor: OverlayActor | OverlayHistoryActor)
     actor_kind: actor.actor_kind,
     monster_id: optionalNumber(actor.monster_id),
     dps: actor.dps,
-    edps: actor.encounter_dps,
+    edps: actor.dps,
+    adps: actor.encounter_dps,
     hps: actor.hps,
     tps: actor.tps,
     rdps: actor.rdps ?? null,
@@ -2774,10 +2809,10 @@ function cycleSelectedSegment(
     selected.set(layerId, "live");
     return;
   }
-  const defaultView = available.find((view) => view.id === "all") ?? available[0]!;
-  const current = selected.get(layerId) ?? defaultView.id;
-  const currentIndex = available.findIndex((view) => view.id === current);
-  selected.set(layerId, available[(currentIndex + 1 + available.length) % available.length]!.id);
+  const viewIds = ["live", ...available.map((view) => view.id)];
+  const current = selected.get(layerId) ?? "live";
+  const currentIndex = viewIds.indexOf(current);
+  selected.set(layerId, viewIds[(currentIndex + 1 + viewIds.length) % viewIds.length]!);
 }
 
 function runtimeControlLabel(
@@ -2792,9 +2827,8 @@ function runtimeControlLabel(
     const views = availableSegmentViews(presentation);
     if (views.length === 0) return "Live";
     const selectedId = selectedSegments?.get(layerId);
-    return (views.find((view) => view.id === selectedId)
-      ?? views.find((view) => view.id === "all")
-      ?? views[0])?.label ?? "Entire run";
+    if (selectedId === undefined || selectedId === "live") return "Live";
+    return views.find((view) => view.id === selectedId)?.label ?? "Live";
   }
   if (control.action === "cycle_timer") {
     const available = availableTimerFields(presentation);
@@ -3521,6 +3555,7 @@ function scaleOverlayActor(actor: OverlayActor, multiplier: number): OverlayActo
     damage_taken: scaleOptional(actor.damage_taken),
     dps: actor.dps * multiplier,
     edps: scaleNullable(actor.edps),
+    adps: scaleNullable(actor.adps),
     bdps: scaleNullable(actor.bdps),
     rdps_damage: scaleNullable(actor.rdps_damage),
     rdps: actor.rdps == null ? actor.rdps : actor.rdps * multiplier,
@@ -4629,6 +4664,7 @@ function safeNonnegativeInteger(value: unknown): number | null {
 
 function metricNumber(actor: OverlayActor, metric: OverlayMetric): number | null {
   if (metric === "edps") return actor.edps ?? actor.dps;
+  if (metric === "adps") return actor.adps ?? actor.edps ?? actor.dps;
   if (metric === "bdps") return actor.bdps ?? null;
   if (metric === "rdps") return actor.rdps ?? null;
   return actor[metric];
@@ -4656,6 +4692,7 @@ function fieldValue(
     case "shield_damage": return optionalNumberText(actor.shield_damage, metricFormat);
     case "dps": return metricText(actor, "dps", metricFormat);
     case "edps": return metricText(actor, "edps", metricFormat);
+    case "adps": return metricText(actor, "adps", metricFormat);
     case "bdps": return metricText(actor, "bdps", metricFormat);
     case "rdps": return metricText(actor, "rdps", metricFormat);
     case "hps": return metricText(actor, "hps", metricFormat);
@@ -4715,7 +4752,7 @@ function overlayScale(settings: CombatOverlaySettings): number {
 }
 
 function metricLabel(metric: OverlayMetric): string {
-  return ({ dps: "DPS", edps: "eDPS", bdps: "bDPS", rdps: "rDPS", hps: "HPS", tps: "TPS" } as const)[metric];
+  return ({ dps: "DPS", edps: "eDPS", adps: "aDPS", bdps: "bDPS", rdps: "rDPS", hps: "HPS", tps: "TPS" } as const)[metric];
 }
 
 function fieldLabel(field: OverlayHeaderField): string {
@@ -4731,6 +4768,7 @@ function fieldLabel(field: OverlayHeaderField): string {
     shield_damage: "Shield damage",
     dps: "DPS",
     edps: "eDPS",
+    adps: "aDPS",
     bdps: "bDPS",
     rdps: "rDPS",
     hps: "HPS",

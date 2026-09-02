@@ -25,6 +25,7 @@ pub enum OverlayBackgroundMode {
 pub enum OverlayMetric {
     Dps,
     Edps,
+    Adps,
     Bdps,
     Rdps,
     Hps,
@@ -87,6 +88,7 @@ pub enum OverlayHeaderField {
     ShieldDamage,
     Dps,
     Edps,
+    Adps,
     Bdps,
     Rdps,
     Hps,
@@ -279,6 +281,7 @@ fn default_header_widths() -> BTreeMap<OverlayHeaderField, u16> {
         (OverlayHeaderField::ShieldDamage, 102),
         (OverlayHeaderField::Dps, 90),
         (OverlayHeaderField::Edps, 90),
+        (OverlayHeaderField::Adps, 90),
         (OverlayHeaderField::Bdps, 90),
         (OverlayHeaderField::Rdps, 90),
         (OverlayHeaderField::Hps, 90),

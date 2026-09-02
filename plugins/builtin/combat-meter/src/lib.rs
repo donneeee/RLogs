@@ -474,6 +474,19 @@ pub struct CombatTimelineSnapshot {
     pub combat_started_micros: Option<u64>,
     pub combat_ended_micros: Option<u64>,
     pub active_combat_micros: u64,
+    /// Cumulative elapsed-combat time across completed and current segments.
+    /// Transitions and retry recovery pause this clock; a retry resumes it on
+    /// the first hostile event without erasing the failed attempt.
+    #[serde(default)]
+    pub encounter_elapsed_micros: Option<u64>,
+    /// Packet timestamp that froze the current encounter clock. A missing
+    /// value means the current encounter remains open.
+    #[serde(default)]
+    pub encounter_terminal_micros: Option<u64>,
+    /// Packet timestamp that froze the full run clock. Scene departure and
+    /// authoritative run completion set this; ordinary boss clears do not.
+    #[serde(default)]
+    pub run_terminal_micros: Option<u64>,
     /// Elapsed wall time from the latest packet-derived dungeon entry through
     /// the latest canonical event. This clock never substitutes for reviewed
     /// in-game or projected-best timing.
@@ -542,7 +555,18 @@ pub struct ActorCombatSummary {
     pub shield_damage: i64,
     pub damage_during_combat: i64,
     pub damage_taken: i64,
+    /// Legacy live active-combat rate retained for snapshot compatibility.
     pub dps: f64,
+    /// Damage divided by the current attempt wall clock. Wipes reset it.
+    #[serde(default)]
+    pub run_dps: f64,
+    /// Full-run damage divided by the sum of completed/open segment clocks.
+    /// Transitions pause it; wipes do not erase failed-attempt damage.
+    #[serde(default)]
+    pub encounter_dps: f64,
+    /// Damage divided by the sum of actual active-combat windows.
+    #[serde(default)]
+    pub active_dps: f64,
     pub hps: f64,
     pub tps: f64,
     #[serde(default)]
@@ -1070,10 +1094,29 @@ pub struct CombatTimelinePlugin {
     encounter_id: Option<String>,
     encounter_state: Option<String>,
     scene_id: Option<i32>,
+    /// Game-owned scenes whose intermediate boss clears belong to one
+    /// continuous Gauntlet encounter. The game catalog, not boss-count
+    /// heuristics, owns this classification.
+    continuous_encounter_scene_ids: BTreeSet<i32>,
     health_attributes: Option<LiveHealthAttributeMapping>,
     active_combat_started: Option<u64>,
     first_combat_started: Option<u64>,
+    /// First hostile timestamp for the currently open segment. This resets
+    /// between independently cleared raid bosses and across retry recovery,
+    /// but not inside a game-owned boss-rush encounter.
+    encounter_combat_started: Option<u64>,
+    /// Completed mobbing/boss/failed-attempt time already banked into live
+    /// eDPS. Transition and retry-recovery gaps are excluded.
+    encounter_elapsed_micros: u64,
     last_combat_ended: Option<u64>,
+    /// Freezes the live encounter-rate denominator on authoritative run
+    /// completion. Encounter clears do not set this because raids can contain
+    /// several bosses in separate realms under one scene ID.
+    encounter_terminal_micros: Option<u64>,
+    run_terminal_micros: Option<u64>,
+    /// Full-run damage numerator for eDPS. Per-attempt actor accumulators can
+    /// reset on wipes without erasing failed-attempt damage from this map.
+    run_damage_during_combat: BTreeMap<u64, i64>,
     active_combat_micros: u64,
     /// Damage-driven combat windows retained independently from the
     /// game-specific run analyzer. Reviewed encounter rules remain
@@ -1150,6 +1193,14 @@ impl CombatTimelinePlugin {
         self
     }
 
+    pub fn with_continuous_encounter_scenes(
+        mut self,
+        scene_ids: impl IntoIterator<Item = i32>,
+    ) -> Self {
+        self.continuous_encounter_scene_ids = scene_ids.into_iter().collect();
+        self
+    }
+
     /// Starts an incremental live projection without invoking the replay host.
     pub fn begin_live(&mut self, header: &RlogHeader) {
         let contribution_rules = self.contribution_rules.clone();
@@ -1201,6 +1252,53 @@ impl CombatTimelinePlugin {
             self.run_entered_micros.remove(0);
         }
         self.run_entered_micros.push(observed_micros);
+        self.encounter_combat_started = None;
+        self.encounter_elapsed_micros = 0;
+        self.encounter_terminal_micros = None;
+        self.run_terminal_micros = None;
+        self.run_damage_during_combat.clear();
+    }
+
+    fn mark_run_terminal(&mut self, observed_micros: u64) {
+        self.run_terminal_micros.get_or_insert(observed_micros);
+        self.close_encounter_clock(observed_micros);
+        self.end_combat(observed_micros);
+    }
+
+    fn begin_encounter(&mut self, observed_micros: u64) {
+        if self.encounter_terminal_micros.is_some() {
+            if self.first_combat_started.is_some() {
+                self.reset_live_attempt(observed_micros);
+            }
+            self.encounter_combat_started = self.active_combat_started.map(|_| observed_micros);
+        }
+        self.encounter_terminal_micros = None;
+    }
+
+    fn close_encounter_clock(&mut self, observed_micros: u64) {
+        if let Some(started) = self.encounter_combat_started.take() {
+            self.encounter_elapsed_micros = self
+                .encounter_elapsed_micros
+                .saturating_add(observed_micros.saturating_sub(started));
+        }
+        self.encounter_terminal_micros
+            .get_or_insert(observed_micros);
+    }
+
+    fn mark_encounter_terminal(&mut self, observed_micros: u64) {
+        self.close_encounter_clock(observed_micros);
+        self.end_combat(observed_micros);
+    }
+
+    fn finish_encounter(&mut self, observed_micros: u64) {
+        if self
+            .scene_id
+            .is_some_and(|scene_id| self.continuous_encounter_scene_ids.contains(&scene_id))
+        {
+            self.end_combat(observed_micros);
+        } else {
+            self.mark_encounter_terminal(observed_micros);
+        }
     }
 
     fn run_entry_for(&self, started_micros: u64) -> Option<u64> {
@@ -1216,6 +1314,10 @@ impl CombatTimelinePlugin {
     /// stable player presentation survives so the next pull does not regress to
     /// anonymous actor labels while waiting for another AOI update.
     fn reset_live_attempt(&mut self, observed_micros: u64) {
+        // A wipe pauses cumulative eDPS. Its failed-attempt damage and elapsed
+        // segment stay banked, while recovery time before the next hostile
+        // event is excluded. DPS, aDPS, and rDPS reset below.
+        self.close_encounter_clock(observed_micros);
         self.end_combat(observed_micros);
         self.actor_ancestry
             .end_active_ownership_intervals(observed_micros);
@@ -1257,6 +1359,12 @@ impl CombatTimelinePlugin {
         self.project_exact_contributions(envelope);
         if let CanonicalEvent::WorldChanged(world) = &envelope.event {
             if let Some(scene_id) = world.scene_id {
+                if self.scene_id.is_some_and(|previous| previous != scene_id.0)
+                    && self.first_combat_started.is_some()
+                    && self.run_terminal_micros.is_none()
+                {
+                    self.mark_run_terminal(envelope.time.observed_micros);
+                }
                 self.scene_id = Some(scene_id.0);
             }
             return;
@@ -1277,17 +1385,22 @@ impl CombatTimelinePlugin {
             if let Some(connection_id) = wire_connection_id(&envelope.provenance) {
                 self.relevant_connection_ids.insert(connection_id);
             }
-            if (dungeon.kind == DungeonEventKind::ObjectiveUpdated
-                && dungeon.objective_complete == Some(true))
-                || matches!(
-                    dungeon.kind,
-                    DungeonEventKind::Completed
-                        | DungeonEventKind::Failed
-                        | DungeonEventKind::Ended
-                        | DungeonEventKind::Exited
-                )
+            if dungeon.kind == DungeonEventKind::ObjectiveUpdated
+                && dungeon.objective_complete == Some(true)
             {
-                self.end_combat(envelope.time.observed_micros);
+                // Objective completion can be an intermediate dungeon segment
+                // (mobbing -> boss), not necessarily the whole run. Close and
+                // bank eDPS here; only authoritative run-terminal events freeze
+                // the run clock.
+                self.finish_encounter(envelope.time.observed_micros);
+            } else if matches!(
+                dungeon.kind,
+                DungeonEventKind::Completed
+                    | DungeonEventKind::Failed
+                    | DungeonEventKind::Ended
+                    | DungeonEventKind::Exited
+            ) {
+                self.mark_run_terminal(envelope.time.observed_micros);
             }
             return;
         }
@@ -1303,10 +1416,10 @@ impl CombatTimelinePlugin {
                 self.encounter_id = encounter_id.clone().or_else(|| self.encounter_id.clone());
                 self.encounter_state = Some(encounter_state_name(*state).into());
                 match state {
-                    EncounterState::Started => {}
+                    EncounterState::Started => self.begin_encounter(envelope.time.observed_micros),
                     EncounterState::Wiped => self.reset_live_attempt(envelope.time.observed_micros),
                     EncounterState::Cleared | EncounterState::Ended => {
-                        self.end_combat(envelope.time.observed_micros)
+                        self.finish_encounter(envelope.time.observed_micros)
                     }
                 }
             }
@@ -1536,6 +1649,14 @@ impl CombatTimelinePlugin {
                         ability.critical_hits = ability.critical_hits.saturating_add(1);
                     }
                 }
+                if during_combat {
+                    let source_actor_id = self.canonical_actor_id(source.actor_id.0);
+                    let run_damage = self
+                        .run_damage_during_combat
+                        .entry(source_actor_id)
+                        .or_default();
+                    *run_damage = run_damage.saturating_add(reported);
+                }
                 self.push_history_fact(CombatFact {
                     observed_micros: envelope.time.observed_micros,
                     source_actor_id: damage.source.actor_id.0,
@@ -1688,7 +1809,7 @@ impl CombatTimelinePlugin {
                     state,
                     RunState::Completed | RunState::Failed | RunState::Ended | RunState::Exited
                 ) {
-                    self.end_combat(envelope.time.observed_micros);
+                    self.mark_run_terminal(envelope.time.observed_micros);
                 }
             }
             TimelineEventKind::EntityAttributes(attributes) => {
@@ -2112,6 +2233,10 @@ impl CombatTimelinePlugin {
             if let Some(other) = self.actors.remove(&raw_canonical) {
                 self.actors.entry(canonical).or_default().merge_from(other);
             }
+            if let Some(other_damage) = self.run_damage_during_combat.remove(&raw_canonical) {
+                let canonical_damage = self.run_damage_during_combat.entry(canonical).or_default();
+                *canonical_damage = canonical_damage.saturating_add(other_damage);
+            }
             if let Some(mut versions) = self.history_identities.remove(&raw_canonical) {
                 let canonical_versions = self.history_identities.entry(canonical).or_default();
                 canonical_versions.append(&mut versions);
@@ -2174,8 +2299,12 @@ impl CombatTimelinePlugin {
 
     fn begin_combat(&mut self, observed_micros: u64) {
         if self.active_combat_started.is_none() {
+            if self.encounter_terminal_micros.is_some() {
+                self.begin_encounter(observed_micros);
+            }
             self.active_combat_started = Some(observed_micros);
             self.first_combat_started.get_or_insert(observed_micros);
+            self.encounter_combat_started.get_or_insert(observed_micros);
             self.combat_window_count = self.combat_window_count.saturating_add(1);
         }
     }
@@ -2229,9 +2358,28 @@ impl CombatTimelinePlugin {
         // The first hostile event opens combat at its own timestamp, so the
         // exact elapsed duration is still zero for that snapshot. Keep the
         // clock exact, but use the same one-second minimum as history rates so
-        // the first positive damage event immediately produces a useful eDPS.
+        // the first positive damage event immediately produces a useful aDPS.
         let rate_duration = if self.first_combat_started.is_some() {
             duration.max(MINIMUM_PERSONAL_ACTIVE_MICROS)
+        } else {
+            0
+        };
+        let encounter_duration = self.encounter_elapsed_micros.saturating_add(
+            self.encounter_combat_started
+                .zip(self.last_event_micros)
+                .map_or(0, |(started, ended)| ended.saturating_sub(started)),
+        );
+        let encounter_rate_duration = if encounter_duration > 0 {
+            encounter_duration.max(MINIMUM_PERSONAL_ACTIVE_MICROS)
+        } else {
+            0
+        };
+        let attempt_duration = self
+            .first_combat_started
+            .zip(self.encounter_terminal_micros.or(self.last_event_micros))
+            .map_or(0, |(started, ended)| ended.saturating_sub(started));
+        let attempt_rate_duration = if self.first_combat_started.is_some() {
+            attempt_duration.max(MINIMUM_PERSONAL_ACTIVE_MICROS)
         } else {
             0
         };
@@ -2269,6 +2417,11 @@ impl CombatTimelinePlugin {
                         })
             })
             .map(|(actor_id, actor)| {
+                let run_damage = self
+                    .run_damage_during_combat
+                    .get(actor_id)
+                    .copied()
+                    .unwrap_or(actor.damage_during_combat);
                 let contribution = contribution_summary.actors.get(actor_id);
                 let rdps_incomplete = incomplete_rdps_actor_ids.contains(actor_id);
                 ActorCombatSummary {
@@ -2296,6 +2449,22 @@ impl CombatTimelinePlugin {
                     damage_during_combat: actor.damage_during_combat,
                     damage_taken: actor.damage_taken,
                     dps: if rate_duration == 0 {
+                        0.0
+                    } else {
+                        actor.damage_during_combat as f64 * 1_000_000.0 / rate_duration as f64
+                    },
+                    run_dps: if attempt_rate_duration == 0 {
+                        0.0
+                    } else {
+                        actor.damage_during_combat as f64 * 1_000_000.0
+                            / attempt_rate_duration as f64
+                    },
+                    encounter_dps: if encounter_rate_duration == 0 {
+                        0.0
+                    } else {
+                        run_damage as f64 * 1_000_000.0 / encounter_rate_duration as f64
+                    },
+                    active_dps: if rate_duration == 0 {
                         0.0
                     } else {
                         actor.damage_during_combat as f64 * 1_000_000.0 / rate_duration as f64
@@ -2379,11 +2548,14 @@ impl CombatTimelinePlugin {
             combat_started_micros: self.first_combat_started,
             combat_ended_micros: self.last_combat_ended,
             active_combat_micros: duration,
+            encounter_elapsed_micros: (encounter_duration > 0).then_some(encounter_duration),
+            encounter_terminal_micros: self.encounter_terminal_micros,
+            run_terminal_micros: self.run_terminal_micros,
             run_elapsed_micros: self
                 .run_entered_micros
                 .last()
                 .copied()
-                .zip(self.last_event_micros)
+                .zip(self.run_terminal_micros.or(self.last_event_micros))
                 .map(|(entered, latest)| latest.saturating_sub(entered)),
             game_time_micros: None,
             true_time_micros: None,
@@ -2442,7 +2614,7 @@ impl CombatTimelinePlugin {
         let segment_intervals = run
             .segments
             .iter()
-            .map(|segment| history_segment_interval(run, segment))
+            .flat_map(|segment| history_segment_edps_intervals(run, segment))
             .collect::<Vec<_>>();
         let pruned_game_time_micros = segment_intervals
             .iter()
@@ -3304,7 +3476,7 @@ impl CombatTimelinePlugin {
             tps: rate_per_second(value.damage_taken, elapsed_seconds),
             rdps: value
                 .rdps_damage
-                .map(|damage| rate_per_second(damage, elapsed_seconds)),
+                .map(|damage| rate_per_second(damage, active_seconds)),
             rdps_damage: value.rdps_damage,
             rdps_contribution_given: value.rdps_contribution_given,
             rdps_contribution_received: value.rdps_contribution_received,
@@ -3828,6 +4000,41 @@ fn history_segment_interval(run: &RunAnalysis, segment: &RunSegmentSummary) -> (
     )
 }
 
+/// Reconstructs the elapsed-combat (eDPS) clock for a saved run.
+///
+/// Normal boss retries contribute every attempt's combat interval, but the
+/// recovery gap between a wipe and the next pull is omitted. Gauntlet is the
+/// deliberate exception: its bosses form one continuous encounter, so the
+/// segment interval remains intact until the whole gauntlet completes.
+fn history_segment_edps_intervals(
+    run: &RunAnalysis,
+    segment: &RunSegmentSummary,
+) -> Vec<(u64, u64)> {
+    match segment.kind {
+        RunSegmentKind::Boss | RunSegmentKind::RaidBoss => {
+            let intervals = segment
+                .encounter_indices
+                .iter()
+                .filter_map(|index| run.encounters.get(*index as usize))
+                .map(|encounter| {
+                    (
+                        encounter.started_micros.min(encounter.ended_micros),
+                        encounter.ended_micros,
+                    )
+                })
+                .collect::<Vec<_>>();
+            if intervals.is_empty() {
+                vec![history_segment_interval(run, segment)]
+            } else {
+                intervals
+            }
+        }
+        RunSegmentKind::Gauntlet | RunSegmentKind::Mobbing | RunSegmentKind::Unknown => {
+            vec![history_segment_interval(run, segment)]
+        }
+    }
+}
+
 fn is_boss_segment_kind(kind: RunSegmentKind) -> bool {
     matches!(
         kind,
@@ -4036,6 +4243,121 @@ mod tests {
         assert_eq!(plugin.run_entry_for(5), None);
         assert_eq!(plugin.run_entry_for(20), Some(10));
         assert_eq!(plugin.run_entry_for(150), Some(100));
+    }
+
+    #[test]
+    fn live_rates_keep_run_encounter_and_active_clocks_distinct_and_frozen() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/replay/reference-combat.rlog");
+        let reader = RlogReader::new(
+            BufReader::new(File::open(fixture).unwrap()),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let mut plugin = CombatTimelinePlugin::new();
+        plugin.begin_live(reader.header());
+        plugin.record_run_entry(1_000_000);
+        plugin.begin_combat(5_000_000);
+        let actor = plugin.actor_mut(1, 100);
+        actor.reported_damage = 9_000;
+        actor.damage_during_combat = 9_000;
+        plugin.last_event_micros = Some(10_000_000);
+        plugin.finish_encounter(10_000_000);
+        plugin.mark_run_terminal(12_000_000);
+        // Later packets must not extend either completed denominator.
+        plugin.last_event_micros = Some(20_000_000);
+
+        let snapshot = plugin.live_snapshot().unwrap();
+        assert_eq!(snapshot.encounter_elapsed_micros, Some(5_000_000));
+        assert_eq!(snapshot.run_elapsed_micros, Some(11_000_000));
+        assert_eq!(snapshot.encounter_terminal_micros, Some(10_000_000));
+        assert_eq!(snapshot.run_terminal_micros, Some(12_000_000));
+        let actor = snapshot
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert!((actor.run_dps - 1_800.0).abs() < 0.001);
+        assert!((actor.encounter_dps - 1_800.0).abs() < 0.001);
+        assert!((actor.active_dps - 1_800.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn gauntlet_boss_clear_keeps_one_encounter_clock_until_run_completion() {
+        let mut plugin = CombatTimelinePlugin::new().with_continuous_encounter_scenes([7_777]);
+        plugin.scene_id = Some(7_777);
+        plugin.begin_combat(5_000_000);
+        plugin.finish_encounter(10_000_000);
+
+        assert_eq!(plugin.encounter_combat_started, Some(5_000_000));
+        assert_eq!(plugin.encounter_terminal_micros, None);
+        assert_eq!(plugin.active_combat_started, None);
+
+        plugin.begin_combat(15_000_000);
+        assert_eq!(plugin.encounter_combat_started, Some(5_000_000));
+        plugin.mark_run_terminal(20_000_000);
+        assert_eq!(plugin.encounter_terminal_micros, Some(20_000_000));
+    }
+
+    #[test]
+    fn retry_resets_attempt_rates_but_pauses_and_resumes_cumulative_edps() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/replay/reference-combat.rlog");
+        let reader = RlogReader::new(
+            BufReader::new(File::open(fixture).unwrap()),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let mut plugin = CombatTimelinePlugin::new();
+        plugin.begin_live(reader.header());
+        plugin.record_run_entry(0);
+
+        plugin.begin_combat(1_000_000);
+        {
+            let actor = plugin.actor_mut(1, 100);
+            actor.actor_kind = Some("player".into());
+            actor.reported_damage = 3_000;
+            actor.damage_during_combat = 3_000;
+        }
+        plugin.run_damage_during_combat.insert(1, 3_000);
+        plugin.last_event_micros = Some(4_000_000);
+        plugin.reset_live_attempt(4_000_000);
+
+        // Recovery packets do not advance eDPS, while attempt-scoped rates
+        // have already reset to zero.
+        plugin.last_event_micros = Some(10_000_000);
+        let recovery = plugin.live_snapshot().unwrap();
+        assert_eq!(recovery.encounter_elapsed_micros, Some(3_000_000));
+        let actor = recovery
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(actor.run_dps, 0.0);
+        assert_eq!(actor.active_dps, 0.0);
+        assert!((actor.encounter_dps - 1_000.0).abs() < 0.001);
+
+        // The retry's first hostile event resumes the cumulative clock. New
+        // attempt DPS/aDPS use only the retry, while eDPS includes both pulls.
+        plugin.begin_combat(10_000_000);
+        {
+            let actor = plugin.actor_mut(1, 100);
+            actor.actor_kind = Some("player".into());
+            actor.reported_damage = 2_000;
+            actor.damage_during_combat = 2_000;
+        }
+        plugin.run_damage_during_combat.insert(1, 5_000);
+        plugin.last_event_micros = Some(12_000_000);
+        let retry = plugin.live_snapshot().unwrap();
+        assert_eq!(retry.encounter_elapsed_micros, Some(5_000_000));
+        let actor = retry
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert!((actor.run_dps - 1_000.0).abs() < 0.001);
+        assert!((actor.active_dps - 1_000.0).abs() < 0.001);
+        assert!((actor.encounter_dps - 1_000.0).abs() < 0.001);
     }
 
     #[test]
@@ -4282,7 +4604,7 @@ mod tests {
             .unwrap();
         assert_eq!(actor.damage, 2_737_001);
         assert_eq!(actor.rdps_damage, Some(2_737_001));
-        assert_eq!(actor.rdps, Some(1_368_500.5));
+        assert_eq!(actor.rdps, Some(2_737_001.0));
         assert_eq!(actor.rdps_contribution_given, Some(0));
         assert_eq!(actor.rdps_contribution_received, Some(0));
     }
@@ -5919,9 +6241,9 @@ mod tests {
         }
 
         let snapshot = plugin.live_snapshot().unwrap();
-        assert_eq!(snapshot.combat_window_count, 2);
-        assert_eq!(snapshot.active_combat_micros, 11_000_000);
-        assert_eq!(snapshot.combat_started_micros, Some(1_000_000));
+        assert_eq!(snapshot.combat_window_count, 1);
+        assert_eq!(snapshot.active_combat_micros, 8_000_000);
+        assert_eq!(snapshot.combat_started_micros, Some(5_000_000));
         assert_eq!(snapshot.combat_ended_micros, Some(13_000_000));
         assert!(!snapshot.closed_at_log_end);
         let player = snapshot
@@ -5929,8 +6251,10 @@ mod tests {
             .iter()
             .find(|actor| actor.actor_id == "1")
             .unwrap();
-        assert_eq!(player.damage_during_combat, 12_000);
-        assert!((player.dps - (12_000.0 / 11.0)).abs() < 0.001);
+        assert_eq!(player.damage_during_combat, 3_000);
+        assert!((player.run_dps - (3_000.0 / 9.0)).abs() < 0.001);
+        assert!((player.active_dps - (3_000.0 / 8.0)).abs() < 0.001);
+        assert!((player.encounter_dps - (12_000.0 / 12.0)).abs() < 0.001);
     }
 
     #[test]
@@ -5960,6 +6284,9 @@ mod tests {
             damage_during_combat: 0,
             damage_taken: 0,
             dps: 0.0,
+            run_dps: 0.0,
+            encounter_dps: 0.0,
+            active_dps: 0.0,
             hps: 0.0,
             tps: 0.0,
             rdps_damage: None,
@@ -6392,6 +6719,10 @@ mod tests {
             history_segment_view_intervals(&run, &run.segments[1]),
             vec![(40_000_000, 50_000_000)]
         );
+        assert_eq!(
+            history_segment_edps_intervals(&run, &run.segments[1]),
+            vec![(20_000_000, 30_000_000), (40_000_000, 50_000_000)]
+        );
         let history = CombatTimelinePlugin::new().build_run_history(0, &run);
         let entire_run = history.views.iter().find(|view| view.id == "all").unwrap();
         let bossing = history.views.iter().find(|view| view.id == "boss").unwrap();
@@ -6406,8 +6737,8 @@ mod tests {
             .find(|view| view.id == "true_time")
             .unwrap();
 
-        assert_eq!(entire_run.elapsed_micros, 40_000_000);
-        assert_eq!(history.game_time_micros, Some(40_000_000));
+        assert_eq!(entire_run.elapsed_micros, 30_000_000);
+        assert_eq!(history.game_time_micros, Some(30_000_000));
         assert_eq!(bossing.label, "Bossing");
         assert_eq!(bossing.elapsed_micros, 10_000_000);
         assert_eq!(bossing.active_combat_micros, 9_000_000);

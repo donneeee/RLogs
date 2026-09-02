@@ -1,0 +1,19 @@
+schema_version = 1
+id = "app.rlogs.bpsr.module-optimizer"
+name = "Module Optimizer"
+version = "0.1.0"
+api_version = 1
+runtime = "browser_overlay"
+entrypoint = "ui/runtime.html"
+capabilities = ["ui_workspace_publish"]
+subscriptions = []
+allowed_network_domains = []
+
+[workspace]
+default_order = -90
+
+[[workspace.tabs]]
+id = "optimizer"
+label = "Optimizer"
+entrypoint = "ui/optimizer.html"
+section = "optimizer"

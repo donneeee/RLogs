@@ -6,6 +6,7 @@ mod combat_overlay_settings;
 mod core_settings;
 mod hotkey_settings;
 mod layout_settings;
+mod module_optimizer;
 mod native_plugin_processes;
 mod profile_packages;
 mod submission_connection;
@@ -39,11 +40,15 @@ pub use hotkey_settings::{
     HotkeySettingsView,
 };
 use layout_settings::{LayoutSettings, LayoutSettingsStore};
+use module_optimizer::{LocalModuleInventoryView, load_local_module_inventories};
 use native_plugin_processes::{NativePluginLaunch, NativePluginProcesses};
 use profile_packages::{
     LocalProfilePackageStore, ProfilePackageInspection, ProfilePackageStoreView,
     ProfilePackageView, ProfilePublicationBaselineStore, ProfilePublicationLedger,
     ProfilePublicationRecord, profile_publication_delta,
+};
+use rlogs_bpsr_module_optimizer::{
+    OptimizeRequest, OptimizeResponse, OptimizerCatalog, load_catalog_from_install_root, optimize,
 };
 use rlogs_capture::{BoundedCaptureIngress, OfflineCapture};
 #[cfg(windows)]
@@ -68,15 +73,15 @@ use rlogs_game_bpsr::{
     RDPS_VALIDATION_REPORT_SCHEMA_VERSION, RdpsValidationAnalyzer, RdpsValidationProgress,
     RdpsValidationReport, RegionResolverError, ResolvedRegion, RouteKey, SealedDungeonRunLog,
     ServerRealmCatalog, auxiliary_action_presentation, battle_imagine_presentation,
-    bundled_run_reducer_config, bundled_scene_run_identities, character_id_from_entity_uuid,
-    combat_action_presentation, confirmed_damage_contribution_rules, is_boss_monster,
-    is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
-    localized_class_identities, localized_combat_action_name, localized_monster_name,
-    localized_recount_group_name, localized_scene_name, localized_specialization_identities,
-    localized_status_effect_name, project_local_profile_packages,
-    proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
-    record_offline_capture, resolve_actor_combat_identity, resolve_actor_combat_presentation,
-    resolve_live_steam_protocol_pack, scene_boss_monster_ids,
+    bundled_gauntlet_scene_ids, bundled_run_reducer_config, bundled_scene_run_identities,
+    character_id_from_entity_uuid, combat_action_presentation, confirmed_damage_contribution_rules,
+    is_boss_monster, is_localized_class_name, localized_auxiliary_action_name,
+    localized_battle_imagine_name, localized_class_identities, localized_combat_action_name,
+    localized_monster_name, localized_recount_group_name, localized_scene_name,
+    localized_specialization_identities, localized_status_effect_name,
+    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
+    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
+    resolve_actor_combat_presentation, resolve_live_steam_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
     status_effect_presentation, weapon_level_presentation, weapon_presentation,
 };
@@ -4350,6 +4355,26 @@ impl RuntimeController {
         Ok(packages.snapshot())
     }
 
+    fn module_optimizer_catalog(&self) -> Result<OptimizerCatalog, String> {
+        load_catalog_from_install_root(&self.install_root)
+            .map(|(_, catalog)| catalog)
+            .map_err(|error| error.to_string())
+    }
+
+    fn module_optimizer_inventory(&self) -> Result<LocalModuleInventoryView, String> {
+        let mut packages = self
+            .profile_packages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        load_local_module_inventories(&mut packages)
+    }
+
+    fn run_module_optimizer(&self, request: OptimizeRequest) -> Result<OptimizeResponse, String> {
+        let (rules, _) = load_catalog_from_install_root(&self.install_root)
+            .map_err(|error| error.to_string())?;
+        optimize(&rules, &request).map_err(|error| error.to_string())
+    }
+
     fn inspect_profile_package(
         &self,
         request: ProfilePackageInspectionRequest,
@@ -8011,7 +8036,10 @@ fn bpsr_combat_timeline_plugin_with_remote_factors(
     .with_live_health_attributes(LiveHealthAttributeMapping {
         current_hp: 11_310,
         max_hp: 11_320,
-    }))
+    })
+    .with_continuous_encounter_scenes(
+        bundled_gauntlet_scene_ids().map_err(|error| error.to_string())?,
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9982,6 +10010,29 @@ fn handle_connection(
         ("GET", "/api/profiles/packages") => {
             write_json(&mut stream, 200, &controller.profile_packages())?;
         }
+        ("GET", "/api/module-optimizer/catalog") => match controller.module_optimizer_catalog() {
+            Ok(catalog) => write_json(&mut stream, 200, &catalog)?,
+            Err(error) => write_api_error(&mut stream, 500, error)?,
+        },
+        ("GET", "/api/module-optimizer/inventory") => {
+            match controller.module_optimizer_inventory() {
+                Ok(inventory) => write_json(&mut stream, 200, &inventory)?,
+                Err(error) => write_api_error(&mut stream, 409, error)?,
+            }
+        }
+        ("POST", "/api/module-optimizer/optimize") => {
+            let request: OptimizeRequest = match serde_json::from_slice(&request.body) {
+                Ok(request) => request,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            match controller.run_module_optimizer(request) {
+                Ok(result) => write_json(&mut stream, 200, &result)?,
+                Err(error) => write_api_error(&mut stream, 400, error)?,
+            }
+        }
         ("GET", "/api/profiles/photo-wall/status") => {
             write_json(
                 &mut stream,
@@ -10678,6 +10729,9 @@ mod tests {
             damage_during_combat: 1,
             damage_taken: 0,
             dps: 1.0,
+            run_dps: 1.0,
+            encounter_dps: 1.0,
+            active_dps: 1.0,
             hps: 0.0,
             tps: 0.0,
             rdps_damage: None,
@@ -10720,6 +10774,9 @@ mod tests {
             combat_started_micros: Some(1),
             combat_ended_micros: None,
             active_combat_micros: 1,
+            encounter_elapsed_micros: Some(1),
+            encounter_terminal_micros: None,
+            run_terminal_micros: None,
             run_elapsed_micros: None,
             game_time_micros: None,
             true_time_micros: None,
@@ -13472,13 +13529,14 @@ kind = "content"
             .unwrap();
         assert!(!package.enabled);
         assert!(!package.active);
-        assert_eq!(catalog.workspaces.len(), 2);
+        assert_eq!(catalog.workspaces.len(), 3);
         assert!(
             catalog
                 .workspaces
                 .iter()
                 .all(|workspace| workspace.id == "app.rlogs.session-recorder"
-                    || workspace.id == "app.rlogs.combat-meter")
+                    || workspace.id == "app.rlogs.combat-meter"
+                    || workspace.id == "app.rlogs.bpsr.module-optimizer")
         );
 
         let catalog = controller
@@ -13494,7 +13552,7 @@ kind = "content"
             .unwrap();
         assert!(package.enabled);
         assert!(package.active);
-        assert_eq!(catalog.workspaces.len(), 3);
+        assert_eq!(catalog.workspaces.len(), 4);
         let workspace = catalog
             .workspaces
             .iter()
@@ -13515,7 +13573,7 @@ kind = "content"
             .unwrap();
         assert!(package.enabled);
         assert!(package.active);
-        assert_eq!(catalog.workspaces.len(), 3);
+        assert_eq!(catalog.workspaces.len(), 4);
 
         std::fs::remove_dir_all(root).unwrap();
     }

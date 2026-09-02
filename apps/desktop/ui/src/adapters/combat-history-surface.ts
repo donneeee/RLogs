@@ -50,8 +50,8 @@ const PARTY_SORT_COLUMNS: ReadonlyArray<{
   { key: "shielding", label: "Shielding", numeric: true },
   { key: "hits", label: "Hits", numeric: true },
   { key: "criticalRate", label: "Crit %", numeric: true },
-  { key: "dps", label: "DPS", numeric: true },
-  { key: "encounterDps", label: "eDPS", numeric: true },
+  { key: "dps", label: "eDPS", numeric: true },
+  { key: "encounterDps", label: "aDPS", numeric: true },
   { key: "hps", label: "HPS", numeric: true },
   { key: "tps", label: "TPS", numeric: true },
   { key: "rdmg", label: "rDMG", numeric: true },
@@ -74,8 +74,8 @@ const ABILITY_SORT_COLUMNS: ReadonlyArray<{
   { key: "hits", label: "Hits", numeric: true },
   { key: "casts", label: "Casts", numeric: true },
   { key: "criticals", label: "Crits", numeric: true },
-  { key: "dps", label: "DPS", numeric: true },
-  { key: "encounterDps", label: "eDPS", numeric: true },
+  { key: "dps", label: "eDPS", numeric: true },
+  { key: "encounterDps", label: "aDPS", numeric: true },
   { key: "healing", label: "Healing", numeric: true },
   { key: "hps", label: "HPS", numeric: true },
 ];
@@ -670,8 +670,8 @@ export function mountCombatHistorySurface(
         ["newest", "Newest first"],
         ["oldest", "Oldest first"],
         ["fastest", "Fastest run"],
-        ["team_dps", "Highest team DPS"],
-        ["team_edps", "Highest team eDPS"],
+        ["team_dps", "Highest team eDPS"],
+        ["team_edps", "Highest team aDPS"],
       ],
       browserSort,
       (value) => {
@@ -775,8 +775,8 @@ export function mountCombatHistorySurface(
         element("span", "combat-history-run-column-favorite", "Fav."),
         element("span", "combat-history-run-column-dungeon", "Dungeon"),
         element("span", "combat-history-run-column-party", "Party"),
-        element("span", "combat-history-run-column-metric", "Team DPS"),
         element("span", "combat-history-run-column-metric", "Team eDPS"),
+        element("span", "combat-history-run-column-metric", "Team aDPS"),
         element("span", "combat-history-run-column-metric", "Run time"),
         element("span", "combat-history-run-column-recorded", "Recorded"),
         element("span", "combat-history-run-column-open", ""),
@@ -1162,7 +1162,7 @@ export function mountCombatHistorySurface(
           "Total run: entry → completion",
         ],
         [formatDuration(run.game_time_micros), "Game time: reviewed intervals"],
-        [formatDuration(entireRun.active_combat_micros), "Active combat / eDPS"],
+        [formatDuration(entireRun.active_combat_micros), "Active combat / aDPS"],
         [formatDuration(run.true_time_micros ?? trueTime?.elapsed_micros ?? null), "True Time: projected best"],
         [
           `${run.retry_count} total · ${run.boss_retry_count} boss`,
@@ -1665,8 +1665,8 @@ export function mountCombatHistorySurface(
     const actorMetrics = displayedMetrics(actor, view, targetActorId);
     const overview = metricGrid([
       [INTEGER.format(actorMetrics.damage), "Damage"],
-      [NUMBER.format(actorMetrics.dps), "DPS"],
-      [NUMBER.format(actorMetrics.encounterDps), "eDPS"],
+      [NUMBER.format(actorMetrics.dps), "eDPS"],
+      [NUMBER.format(actorMetrics.encounterDps), "aDPS"],
       [rdpsDisplay(actor.rdps_damage, true, actor.rdps_incomplete), "rDMG"],
       [rdpsDisplay(actor.rdps, false, actor.rdps_incomplete), "rDPS"],
       [

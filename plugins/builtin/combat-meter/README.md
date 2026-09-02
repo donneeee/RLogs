@@ -18,10 +18,13 @@ The projections contain:
 - one-second damage, effective-healing, and damage-taken graph buckets;
 - data-gap count and replay provenance.
 
-History `DPS` divides damage by the selected elapsed time. History `eDPS`
-(encounter DPS) divides the same damage by selected active-combat time, so
-cutscenes, travel, and downtime between pulls do not lower it. HPS is healing
-per selected elapsed second; TPS is damage taken per selected elapsed second.
+History `eDPS` divides damage by the selected encounter or segment elapsed
+time and freezes on its packet-proven clear. `aDPS` divides the same damage by
+the sum of active-combat windows, so downtime between pulls does not lower it.
+The live overlay also exposes full run `DPS`, whose clock freezes on a run
+completion packet or scene departure. Gauntlet scenes keep one encounter clock
+across intermediate bosses and summoned mobs. HPS is healing per selected
+elapsed second; TPS is damage taken per selected elapsed second.
 
 rDPS is produced only when the active game plug-in supplies reviewed,
 build-matched contribution rules. The reducer follows exact status-effect

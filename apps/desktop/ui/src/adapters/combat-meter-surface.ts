@@ -20,7 +20,9 @@ const SORT_COLUMNS: ReadonlyArray<{
   label: string;
   className: string;
 }> = [
-  { key: "dps", label: "DPS", className: "meter-number" },
+  { key: "run_dps", label: "DPS", className: "meter-number" },
+  { key: "encounter_dps", label: "eDPS", className: "meter-number" },
+  { key: "active_dps", label: "aDPS", className: "meter-number" },
   { key: "hps", label: "HPS", className: "meter-number" },
   { key: "tps", label: "TPS", className: "meter-number" },
   { key: "rdps_damage", label: "rDMG", className: "meter-number" },
@@ -69,7 +71,7 @@ export function mountCombatMeterSurface(
   let busy = false;
   let snapshot: CombatTimelineSnapshot | null = null;
   let renderFrame: number | null = null;
-  let sortKey: CombatActorSortKey = "dps";
+  let sortKey: CombatActorSortKey = "run_dps";
   let sortDirection: "ascending" | "descending" = "descending";
 
   const root = document.createElement("div");
@@ -135,7 +137,9 @@ export function mountCombatMeterSurface(
     const summary = document.createElement("section");
     summary.className = "metric-grid combat-meter-summary";
     summary.append(
-      metric("Active combat", formatDuration(snapshot.active_combat_micros)),
+      metric("Run clock / DPS", optionalDuration(snapshot.run_elapsed_micros)),
+      metric("Encounter / eDPS", optionalDuration(snapshot.encounter_elapsed_micros)),
+      metric("Active combat / aDPS", formatDuration(snapshot.active_combat_micros)),
       metric("Players", INTEGER_FORMAT.format(playerCount)),
       metric("Combat windows", INTEGER_FORMAT.format(snapshot.combat_window_count)),
       metric(
@@ -333,7 +337,9 @@ export function combatMeterActorColumnText(
   key: CombatActorSortKey,
 ): string {
   switch (key) {
-    case "dps":
+    case "run_dps":
+    case "encounter_dps":
+    case "active_dps":
     case "hps":
     case "tps":
     case "rdps": {
@@ -375,6 +381,10 @@ function formatDuration(micros: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}.${milliseconds
     .toString()
     .padStart(3, "0")}`;
+}
+
+function optionalDuration(micros: number | null): string {
+  return micros === null ? "—" : formatDuration(micros);
 }
 
 function formatRegion(snapshot: CombatTimelineSnapshot): string {

@@ -10,7 +10,7 @@ describe("Combat Meter snapshot contract", () => {
   it("preserves exact identifiers and sorts a copy by meter metrics", () => {
     const value = fixture();
     const snapshot = parseCombatTimelineSnapshot(value);
-    const sorted = sortCombatActors(snapshot.actors, "dps", "descending");
+    const sorted = sortCombatActors(snapshot.actors, "run_dps", "descending");
 
     expect(snapshot.actors[0]?.actor_id).toBe("18446744073709551615");
     expect(sorted.map((actor) => actor.display_name)).toEqual(["B", "A"]);
@@ -116,6 +116,11 @@ describe("Combat Meter snapshot contract", () => {
     expect(snapshot.rdps_damage_influences).toEqual([]);
     expect(snapshot.rdps_damage_influences_truncated).toBe(false);
     expect(snapshot.rdps_effect_presentations).toEqual([]);
+    expect(snapshot.actors[0]).toMatchObject({
+      run_dps: 100,
+      encounter_dps: 100,
+      active_dps: 100,
+    });
   });
 });
 

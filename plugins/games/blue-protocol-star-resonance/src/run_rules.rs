@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use rlogs_combat::{
-    ActivityKind, DifficultyTierRange, RunReducerConfig, RunRuleCatalog, RunRuleCatalogError,
-    RunRuleConfidence, RunRuleEvidence, RunRuleTarget, SceneRunRule,
+    ActivityKind, DifficultyTierRange, RaidRouteKind, RunReducerConfig, RunRuleCatalog,
+    RunRuleCatalogError, RunRuleConfidence, RunRuleEvidence, RunRuleTarget, SceneRunRule,
 };
 use serde::Deserialize;
 use thiserror::Error;
@@ -229,6 +229,16 @@ pub fn bundled_run_reducer_config() -> Result<RunReducerConfig, BpsrRunRuleError
         }
     }
     Ok(config)
+}
+
+pub fn bundled_gauntlet_scene_ids() -> Result<BTreeSet<i32>, BpsrRunRuleError> {
+    Ok(bundled_run_reducer_config()?
+        .scene_rules
+        .into_iter()
+        .filter_map(|(scene_id, rule)| {
+            (rule.raid_route_kind == Some(RaidRouteKind::Gauntlet)).then_some(scene_id)
+        })
+        .collect())
 }
 
 pub fn bundled_scene_run_identities()
