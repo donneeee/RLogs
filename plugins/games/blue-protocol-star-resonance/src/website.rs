@@ -88,6 +88,7 @@ mod tests {
             progression: None,
             combat_power: None,
             combat_power_breakdown: None,
+            combat_stats: None,
             season_strength: None,
             master_score: None,
             season: None,

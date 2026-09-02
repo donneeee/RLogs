@@ -1231,6 +1231,7 @@ fn decode_sync_season(
                     progression: None,
                     combat_power: None,
                     combat_power_breakdown: None,
+                    combat_stats: None,
                     season_strength: None,
                     master_score: None,
                     season: Some(SeasonProfile {
@@ -1432,6 +1433,7 @@ fn decode_notify_social_data(
                 .and_then(|attributes| attributes.combat_power)
                 .filter(|combat_power| *combat_power > 0),
             combat_power_breakdown: None,
+            combat_stats: None,
             season_strength,
             master_score: social
                 .master_mode_dungeon
@@ -1818,6 +1820,7 @@ fn decode_team_members(
                 .and_then(|attributes| attributes.combat_power)
                 .filter(|combat_power| *combat_power > 0),
             combat_power_breakdown: None,
+            combat_stats: None,
             season_strength,
             master_score: None,
             season,
@@ -2472,6 +2475,7 @@ fn decode_sync_container(
                 .or_else(|| character.fight_power.as_ref().and_then(|power| power.total))
                 .map(i64::from),
             combat_power_breakdown: container_fight_power(character.fight_power.as_ref()),
+            combat_stats: None,
             season_strength: None,
             master_score: container_master_score(character.master_mode_dungeons.as_ref()),
             season: container_season(
@@ -4243,6 +4247,7 @@ fn decode_sync_container_dirty(
                 progression,
                 combat_power: update.combat_power.filter(|combat_power| *combat_power > 0),
                 combat_power_breakdown: None,
+                combat_stats: None,
                 season_strength: None,
                 master_score: None,
                 season: None,

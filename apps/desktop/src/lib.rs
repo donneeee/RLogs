@@ -15432,6 +15432,7 @@ kind = "content"
             progression: None,
             combat_power: Some(45_000),
             combat_power_breakdown: None,
+            combat_stats: None,
             season_strength: Some(300),
             master_score: None,
             season: None,

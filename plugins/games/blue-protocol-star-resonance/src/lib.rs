@@ -195,7 +195,7 @@ pub use privacy::{
 };
 pub use profile::{
     AchievementProgress, AchievementProgressProfile, ActivityProgress, BattleImagineSkill,
-    CharacterAppearance, CharacterProfilePatch, CharacterProgression,
+    CharacterAppearance, CharacterCombatStatsProfile, CharacterProfilePatch, CharacterProgression,
     CollectionObservationSections, CollectionSummary, CombatPowerBreakdown, CombatPowerComponent,
     CombatPowerSubcomponent, CombatProfessionProfile, CosmeticOwnership, CultivationAreaProfile,
     CultivationLineProfile, DungeonProgress, DungeonTargetProgress, EquipmentAttributeProfile,
@@ -207,8 +207,9 @@ pub use profile::{
     TalentLevel, TalentProgressProfile, WeeklyTowerProgress,
 };
 pub use profile_projection::{
-    BpsrProfileProjectionError, LiveProfileProjection, MAXIMUM_LOCAL_PROFILE_CHARACTERS,
-    merge_profile_patches, project_local_profile_packages,
+    BpsrProfileProjectionError, LIVE_CHARACTER_STATS_SCHEMA_VERSION, LiveCharacterStatsSnapshot,
+    LiveProfileProjection, MAXIMUM_LOCAL_PROFILE_CHARACTERS, merge_profile_patches,
+    project_local_profile_packages,
 };
 pub use rdps::{
     RdpsContributionKind, RdpsEffectLookup, RdpsEffectRule, RdpsReviewState, RdpsSourceScope,

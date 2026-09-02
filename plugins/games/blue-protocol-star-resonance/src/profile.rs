@@ -23,6 +23,14 @@ pub struct CharacterProfilePatch {
     pub combat_power: Option<i64>,
     #[serde(default)]
     pub combat_power_breakdown: Option<CombatPowerBreakdown>,
+    /// Latest authoritative local-player fight-attribute snapshot.
+    ///
+    /// Only integer values belonging to the reviewed character-stat family
+    /// are retained. Missing IDs stay unknown; an omitted value is never
+    /// interpreted as zero. Live combat deltas are published through the
+    /// Overlay runtime and do not overwrite this profile baseline.
+    #[serde(default)]
+    pub combat_stats: Option<CharacterCombatStatsProfile>,
     pub season_strength: Option<i64>,
     #[serde(default)]
     pub master_score: Option<i64>,
@@ -66,6 +74,29 @@ pub struct CharacterProfilePatch {
     #[serde(default)]
     pub current_profession_project_id: Option<i32>,
     pub social_display: Option<SocialDisplay>,
+}
+
+pub const CHARACTER_COMBAT_STATS_SCHEMA_VERSION: u16 = 1;
+
+/// Privacy-reviewed character-sheet values observed in one entity snapshot.
+///
+/// Keys are exact BPSR fight-attribute component IDs. The final decimal digit
+/// identifies the game-defined component lane (`0` through `5`); presentation
+/// catalogs own localized names, units, grouping, and component labels.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharacterCombatStatsProfile {
+    pub schema_version: u16,
+    #[serde(default)]
+    pub snapshot_values: BTreeMap<i32, i64>,
+}
+
+impl CharacterCombatStatsProfile {
+    pub fn new(snapshot_values: BTreeMap<i32, i64>) -> Self {
+        Self {
+            schema_version: CHARACTER_COMBAT_STATS_SCHEMA_VERSION,
+            snapshot_values,
+        }
+    }
 }
 
 impl CharacterProfilePatch {
@@ -632,6 +663,7 @@ mod tests {
             progression: None,
             combat_power: None,
             combat_power_breakdown: None,
+            combat_stats: None,
             season_strength: None,
             master_score: None,
             season: None,

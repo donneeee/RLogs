@@ -1,20 +1,66 @@
-use std::io::BufRead;
+use std::{collections::BTreeMap, io::BufRead};
 
-use rlogs_events::{CanonicalEvent, EventEnvelope, EventSensitivity};
+use rlogs_events::{
+    CanonicalEvent, CharacterIdentity, EntityAttributeEvent, EntityAttributeUpdateKind,
+    EntityAttributeValue, EventEnvelope, EventSensitivity, TimelineEventKind,
+};
 use rlogs_log_format::{RlogError, RlogLimits, RlogReader};
 use rlogs_profiles::{LocalProfilePackage, ProfilePackageError, ProfilePackageSource};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
     AchievementProgress, AchievementProgressProfile, BpsrWebsiteProfileError,
-    CharacterProfilePatch, CharacterProgression, CollectionSummary, HandbookProgress,
-    ProfileEventError, SeasonAchievementProgress, SeasonProfile, SocialDisplay,
-    website_profile_request,
+    CharacterCombatStatsProfile, CharacterProfilePatch, CharacterProgression, CollectionSummary,
+    HandbookProgress, ProfileEventError, SeasonAchievementProgress, SeasonProfile, SocialDisplay,
+    character_id_from_entity_uuid, website_profile_request,
 };
 
 pub const MAXIMUM_LOCAL_PROFILE_CHARACTERS: usize = 8;
 const MAXIMUM_PENDING_PUBLIC_PROFILE_CHARACTERS: usize = 64;
+const MAXIMUM_PENDING_STAT_CHARACTERS: usize = 64;
+pub const LIVE_CHARACTER_STATS_SCHEMA_VERSION: u16 = 1;
+
+/// Current local-player stats for Overlay consumers.
+///
+/// `snapshot_values` is the latest authoritative entity snapshot and is safe
+/// to persist on a profile. `current_values` additionally applies later
+/// packet deltas and is intentionally ephemeral. Missing IDs remain unknown.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveCharacterStatsSnapshot {
+    pub schema_version: u16,
+    pub revision: u64,
+    pub character: Option<CharacterIdentity>,
+    #[serde(default)]
+    pub snapshot_values: BTreeMap<i32, i64>,
+    #[serde(default)]
+    pub current_values: BTreeMap<i32, i64>,
+    pub last_event_sequence: Option<u64>,
+    pub last_game_time_millis: Option<i64>,
+}
+
+impl Default for LiveCharacterStatsSnapshot {
+    fn default() -> Self {
+        Self {
+            schema_version: LIVE_CHARACTER_STATS_SCHEMA_VERSION,
+            revision: 0,
+            character: None,
+            snapshot_values: BTreeMap::new(),
+            current_values: BTreeMap::new(),
+            last_event_sequence: None,
+            last_game_time_millis: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct PendingCharacterStats {
+    snapshot_values: BTreeMap<i32, i64>,
+    current_values: BTreeMap<i32, i64>,
+    last_event_sequence: Option<u64>,
+    last_game_time_millis: Option<i64>,
+}
 
 /// Applies a newer privacy-reviewed profile patch to an accumulated profile.
 ///
@@ -38,6 +84,8 @@ pub fn merge_profile_patches(
 pub struct LiveProfileProjection {
     accumulators: Vec<ProfileAccumulator>,
     pending_public: Vec<CharacterProfilePatch>,
+    pending_stats: BTreeMap<String, PendingCharacterStats>,
+    live_stats: LiveCharacterStatsSnapshot,
 }
 
 impl LiveProfileProjection {
@@ -47,11 +95,17 @@ impl LiveProfileProjection {
         &mut self,
         envelope: &EventEnvelope,
     ) -> Result<bool, BpsrProfileProjectionError> {
+        if let CanonicalEvent::Timeline(timeline) = &envelope.event
+            && let TimelineEventKind::EntityAttributes(attributes) = &timeline.kind
+        {
+            return self.observe_character_stats(envelope, attributes);
+        }
         let CanonicalEvent::CharacterProfileObserved { profile } = &envelope.event else {
             return Ok(false);
         };
-        let patch = CharacterProfilePatch::from_game_event(profile)?;
+        let mut patch = CharacterProfilePatch::from_game_event(profile)?;
         if envelope.sensitivity == EventSensitivity::PersonalGameplay {
+            self.activate_character_stats(&mut patch, envelope);
             if let Some(existing) = self
                 .accumulators
                 .iter_mut()
@@ -117,6 +171,144 @@ impl LiveProfileProjection {
             }
         }
         Ok(false)
+    }
+
+    pub fn live_character_stats(&self) -> LiveCharacterStatsSnapshot {
+        self.live_stats.clone()
+    }
+
+    pub fn live_character_stats_revision(&self) -> u64 {
+        self.live_stats.revision
+    }
+
+    fn activate_character_stats(
+        &mut self,
+        patch: &mut CharacterProfilePatch,
+        envelope: &EventEnvelope,
+    ) {
+        let pending = self
+            .pending_stats
+            .remove(&patch.character.character_id)
+            .unwrap_or_default();
+        if !pending.snapshot_values.is_empty() {
+            patch.combat_stats = Some(CharacterCombatStatsProfile::new(
+                pending.snapshot_values.clone(),
+            ));
+        }
+        let next_snapshot_values = patch
+            .combat_stats
+            .as_ref()
+            .map(|stats| stats.snapshot_values.clone())
+            .unwrap_or_else(|| pending.snapshot_values.clone());
+        let next_current_values = if pending.current_values.is_empty() {
+            next_snapshot_values.clone()
+        } else {
+            pending.current_values
+        };
+        let next_sequence = pending.last_event_sequence.or(Some(envelope.sequence));
+        let next_game_time = pending
+            .last_game_time_millis
+            .or(envelope.time.game_time_millis);
+        let changed = self.live_stats.character.as_ref() != Some(&patch.character)
+            || self.live_stats.snapshot_values != next_snapshot_values
+            || self.live_stats.current_values != next_current_values
+            || self.live_stats.last_event_sequence != next_sequence
+            || self.live_stats.last_game_time_millis != next_game_time;
+        if changed {
+            self.live_stats.revision = self.live_stats.revision.saturating_add(1);
+            self.live_stats.character = Some(patch.character.clone());
+            self.live_stats.snapshot_values = next_snapshot_values;
+            self.live_stats.current_values = next_current_values;
+            self.live_stats.last_event_sequence = next_sequence;
+            self.live_stats.last_game_time_millis = next_game_time;
+        }
+    }
+
+    fn observe_character_stats(
+        &mut self,
+        envelope: &EventEnvelope,
+        attributes: &EntityAttributeEvent,
+    ) -> Result<bool, BpsrProfileProjectionError> {
+        let Some(character_id) = character_id_from_entity_uuid(attributes.actor.entity_uuid.0)
+        else {
+            return Ok(false);
+        };
+        let values = character_stat_values(attributes);
+        if values.is_empty() && attributes.update_kind != EntityAttributeUpdateKind::Snapshot {
+            return Ok(false);
+        }
+        let Some(index) = self
+            .accumulators
+            .iter()
+            .position(|entry| entry.profile.character.character_id == character_id)
+        else {
+            if !self.pending_stats.contains_key(&character_id)
+                && self.pending_stats.len() >= MAXIMUM_PENDING_STAT_CHARACTERS
+                && let Some(oldest) = self.pending_stats.keys().next().cloned()
+            {
+                self.pending_stats.remove(&oldest);
+            }
+            let pending = self.pending_stats.entry(character_id).or_default();
+            apply_character_stat_update(
+                pending,
+                attributes.update_kind,
+                values,
+                envelope.sequence,
+                envelope.time.game_time_millis,
+            );
+            return Ok(false);
+        };
+
+        let active_character =
+            self.live_stats.character.as_ref() == Some(&self.accumulators[index].profile.character);
+        let mut next = PendingCharacterStats {
+            snapshot_values: self.accumulators[index]
+                .profile
+                .combat_stats
+                .as_ref()
+                .map(|stats| stats.snapshot_values.clone())
+                .unwrap_or_default(),
+            current_values: if active_character {
+                self.live_stats.current_values.clone()
+            } else {
+                self.accumulators[index]
+                    .profile
+                    .combat_stats
+                    .as_ref()
+                    .map(|stats| stats.snapshot_values.clone())
+                    .unwrap_or_default()
+            },
+            last_event_sequence: self.live_stats.last_event_sequence,
+            last_game_time_millis: self.live_stats.last_game_time_millis,
+        };
+        let live_changed = apply_character_stat_update(
+            &mut next,
+            attributes.update_kind,
+            values,
+            envelope.sequence,
+            envelope.time.game_time_millis,
+        );
+        let next_profile_stats = (!next.snapshot_values.is_empty())
+            .then(|| CharacterCombatStatsProfile::new(next.snapshot_values.clone()));
+        let profile_changed = attributes.update_kind == EntityAttributeUpdateKind::Snapshot
+            && next_profile_stats.is_some()
+            && next_profile_stats != self.accumulators[index].profile.combat_stats;
+        if profile_changed {
+            self.accumulators[index].profile.combat_stats = next_profile_stats;
+            self.accumulators[index].observation_count = self.accumulators[index]
+                .observation_count
+                .checked_add(1)
+                .ok_or(BpsrProfileProjectionError::ObservationOverflow)?;
+            self.accumulators[index].last_event_sequence = envelope.sequence;
+        }
+        if active_character && live_changed {
+            self.live_stats.revision = self.live_stats.revision.saturating_add(1);
+            self.live_stats.snapshot_values = next.snapshot_values;
+            self.live_stats.current_values = next.current_values;
+            self.live_stats.last_event_sequence = next.last_event_sequence;
+            self.live_stats.last_game_time_millis = next.last_game_time_millis;
+        }
+        Ok(profile_changed)
     }
 
     /// Builds reviewable packages from the current live state without waiting
@@ -237,6 +429,47 @@ struct ProfileAccumulator {
     last_event_sequence: u64,
 }
 
+fn character_stat_values(attributes: &EntityAttributeEvent) -> BTreeMap<i32, i64> {
+    attributes
+        .attributes
+        .iter()
+        .filter(|attribute| is_character_stat_attribute_id(attribute.attribute_id))
+        .filter_map(|attribute| match attribute.decoded {
+            Some(EntityAttributeValue::Integer(value)) => Some((attribute.attribute_id, value)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Current BPSR FightAttrTable component domain.
+///
+/// Exact client-build membership is still enforced upstream by the protocol
+/// decoder and the profile presentation catalog. This range/suffix boundary
+/// prevents identity, position, timestamps, opaque blobs, and unrelated
+/// entity state from entering a public character profile.
+fn is_character_stat_attribute_id(attribute_id: i32) -> bool {
+    (10_000..=20_135).contains(&attribute_id) && attribute_id.rem_euclid(10) <= 5
+}
+
+fn apply_character_stat_update(
+    state: &mut PendingCharacterStats,
+    update_kind: EntityAttributeUpdateKind,
+    values: BTreeMap<i32, i64>,
+    event_sequence: u64,
+    game_time_millis: Option<i64>,
+) -> bool {
+    let before = state.clone();
+    if update_kind == EntityAttributeUpdateKind::Snapshot {
+        state.snapshot_values.clone_from(&values);
+        state.current_values = values;
+    } else {
+        state.current_values.extend(values);
+    }
+    state.last_event_sequence = Some(event_sequence);
+    state.last_game_time_millis = game_time_millis.or(state.last_game_time_millis);
+    *state != before
+}
+
 impl CharacterProfilePatch {
     fn merge_from(
         &mut self,
@@ -257,6 +490,7 @@ impl CharacterProfilePatch {
             &mut self.combat_power_breakdown,
             newer.combat_power_breakdown,
         );
+        replace_if_some(&mut self.combat_stats, newer.combat_stats);
         replace_if_some(&mut self.season_strength, newer.season_strength);
         replace_if_some(&mut self.master_score, newer.master_score);
         merge_season(&mut self.season, newer.season);
@@ -622,8 +856,10 @@ mod tests {
     };
 
     use rlogs_events::{
-        CharacterIdentity, EVENT_SCHEMA_VERSION, EventEnvelope, EventProvenance, EventSensitivity,
-        EventTime, RegionContext, RegionEvidence, RegionEvidenceKind, RegionIdentity,
+        ActorId, CharacterIdentity, EVENT_SCHEMA_VERSION, EntityAttribute, EntityAttributeEvent,
+        EntityAttributeUpdateKind, EntityAttributeValue, EntityRef, EntityUuid, EventEnvelope,
+        EventProvenance, EventSensitivity, EventTime, RegionContext, RegionEvidence,
+        RegionEvidenceKind, RegionIdentity, TimelineEvent, TimelineEventKind,
     };
     use rlogs_log_format::{RlogHeader, RlogWriter};
 
@@ -661,6 +897,7 @@ mod tests {
             progression: None,
             combat_power: None,
             combat_power_breakdown: None,
+            combat_stats: None,
             season_strength: None,
             master_score: None,
             season: None,
@@ -707,6 +944,163 @@ mod tests {
                 profile: Box::new(profile.into_game_event().unwrap()),
             },
         }
+    }
+
+    fn stat_envelope(
+        sequence: u64,
+        character_id: u64,
+        update_kind: EntityAttributeUpdateKind,
+        values: &[(i32, i64)],
+    ) -> EventEnvelope {
+        let time = EventTime {
+            observed_micros: sequence,
+            game_time_millis: Some(sequence as i64 * 10),
+        };
+        EventEnvelope {
+            schema_version: EVENT_SCHEMA_VERSION,
+            session_id: "profile-session".into(),
+            sequence,
+            region: region(),
+            time: time.clone(),
+            provenance: EventProvenance::wire(sequence, 1, 1),
+            sensitivity: EventSensitivity::PersonalGameplay,
+            event: CanonicalEvent::Timeline(TimelineEvent {
+                sequence,
+                time,
+                provenance: EventProvenance::wire(sequence, 1, 1),
+                kind: TimelineEventKind::EntityAttributes(EntityAttributeEvent {
+                    actor: EntityRef {
+                        actor_id: ActorId(character_id),
+                        entity_uuid: EntityUuid(((character_id << 16) | 7) as i64),
+                    },
+                    update_kind,
+                    ownership: None,
+                    attributes: values
+                        .iter()
+                        .map(|(attribute_id, value)| EntityAttribute {
+                            attribute_id: *attribute_id,
+                            raw_value: value.to_le_bytes().to_vec(),
+                            decoded: Some(EntityAttributeValue::Integer(*value)),
+                        })
+                        .collect(),
+                }),
+            }),
+        }
+    }
+
+    #[test]
+    fn stats_seen_before_identity_attach_only_to_the_exact_local_character() {
+        let mut projection = LiveProfileProjection::default();
+        projection
+            .observe(&stat_envelope(
+                1,
+                123_456,
+                EntityAttributeUpdateKind::Snapshot,
+                &[(11_010, 321), (20_135, 17), (9_999, 999)],
+            ))
+            .unwrap();
+        projection
+            .observe(&stat_envelope(
+                2,
+                999_999,
+                EntityAttributeUpdateKind::Snapshot,
+                &[(11_010, 777)],
+            ))
+            .unwrap();
+
+        assert!(
+            projection
+                .observe(&envelope(3, EventSensitivity::PersonalGameplay, profile()))
+                .unwrap()
+        );
+
+        let live = projection.live_character_stats();
+        assert_eq!(live.character.as_ref().unwrap().character_id, "123456");
+        assert_eq!(live.snapshot_values.get(&11_010), Some(&321));
+        assert_eq!(live.snapshot_values.get(&20_135), Some(&17));
+        assert!(!live.snapshot_values.contains_key(&9_999));
+        assert!(!live.snapshot_values.values().any(|value| *value == 777));
+
+        let packages = projection
+            .packages("session", "build", "sha256:pack", 10)
+            .unwrap();
+        assert_eq!(
+            packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11010"],
+            321
+        );
+    }
+
+    #[test]
+    fn live_deltas_do_not_replace_the_persisted_profile_snapshot() {
+        let mut projection = LiveProfileProjection::default();
+        projection
+            .observe(&envelope(1, EventSensitivity::PersonalGameplay, profile()))
+            .unwrap();
+        assert!(
+            projection
+                .observe(&stat_envelope(
+                    2,
+                    123_456,
+                    EntityAttributeUpdateKind::Snapshot,
+                    &[(11_010, 300)],
+                ))
+                .unwrap()
+        );
+        assert!(
+            !projection
+                .observe(&stat_envelope(
+                    3,
+                    123_456,
+                    EntityAttributeUpdateKind::Delta,
+                    &[(11_010, 450)],
+                ))
+                .unwrap()
+        );
+
+        let live = projection.live_character_stats();
+        assert_eq!(live.snapshot_values.get(&11_010), Some(&300));
+        assert_eq!(live.current_values.get(&11_010), Some(&450));
+        let packages = projection
+            .packages("session", "build", "sha256:pack", 10)
+            .unwrap();
+        assert_eq!(
+            packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11010"],
+            300
+        );
+    }
+
+    #[test]
+    fn empty_or_non_stat_snapshots_never_erase_known_profile_stats() {
+        let mut projection = LiveProfileProjection::default();
+        projection
+            .observe(&envelope(1, EventSensitivity::PersonalGameplay, profile()))
+            .unwrap();
+        projection
+            .observe(&stat_envelope(
+                2,
+                123_456,
+                EntityAttributeUpdateKind::Snapshot,
+                &[(11_010, 300)],
+            ))
+            .unwrap();
+        assert!(
+            !projection
+                .observe(&stat_envelope(
+                    3,
+                    123_456,
+                    EntityAttributeUpdateKind::Snapshot,
+                    &[(42, 8)],
+                ))
+                .unwrap()
+        );
+
+        let packages = projection
+            .packages("session", "build", "sha256:pack", 10)
+            .unwrap();
+        assert_eq!(
+            packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11010"],
+            300
+        );
     }
 
     fn collection(
