@@ -684,6 +684,8 @@ interface CoreSettings {
   schemaVersion: 1;
   closeToTray: boolean;
   hideOverlaysWhenUnfocused: boolean;
+  pauseOverlayTimersOutsideCombat: boolean;
+  overlayTimerInactivitySeconds: number;
   captureInterface: string | null;
   dumpcapPath: string | null;
 }
@@ -1456,6 +1458,23 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
     "Hide overlays when the game is not active",
     "Hide every rLogs overlay while neither the active game nor rLogs is the foreground app. Each overlay returns only when its own visibility rules allow it.",
   );
+  const pauseOverlayTimers = checkboxOption(
+    "Pause overlay timers after combat",
+    "Freeze overlay display clocks after the chosen period without damage. New combat resumes them; saved run timing and submission evidence stay unchanged.",
+  );
+  const overlayTimerDelay = document.createElement("label");
+  overlayTimerDelay.className = "submission-policy-field";
+  const overlayTimerDelayCopy = document.createElement("span");
+  overlayTimerDelayCopy.append(
+    text("strong", "Combat inactivity delay"),
+    text("small", "Seconds after the last hostile damage before overlay display clocks pause."),
+  );
+  const overlayTimerDelayInput = document.createElement("input");
+  overlayTimerDelayInput.type = "number";
+  overlayTimerDelayInput.min = "0";
+  overlayTimerDelayInput.max = "300";
+  overlayTimerDelayInput.step = "1";
+  overlayTimerDelay.append(overlayTimerDelayCopy, overlayTimerDelayInput);
   const lockTabs = checkboxOption(
     "Lock tab dragging",
     "Tabs remain selectable, but cannot be reordered inside their own section.",
@@ -1484,6 +1503,8 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
   form.append(
     closeToTray.label,
     hideOverlaysWhenUnfocused.label,
+    pauseOverlayTimers.label,
+    overlayTimerDelay,
     lockTabs.label,
     lockSections.label,
     actions,
@@ -1497,12 +1518,19 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
     closeToTray.input.checked = core.closeToTray;
     hideOverlaysWhenUnfocused.input.checked =
       core.hideOverlaysWhenUnfocused;
+    pauseOverlayTimers.input.checked = core.pauseOverlayTimersOutsideCombat;
+    overlayTimerDelayInput.value = String(core.overlayTimerInactivitySeconds);
+    overlayTimerDelayInput.disabled = !core.pauseOverlayTimersOutsideCombat;
     lockTabs.input.checked = layout.lockTabDragging;
     lockSections.input.checked = layout.lockSectionDragging;
     save.disabled = false;
     reset.disabled = false;
     message.textContent = "Settings are stored by the native host.";
   };
+
+  pauseOverlayTimers.input.addEventListener("change", () => {
+    overlayTimerDelayInput.disabled = !pauseOverlayTimers.input.checked;
+  });
 
   void Promise.all([
     apiJson<unknown>("/api/settings/core").then(parseCoreSettings),
@@ -1533,6 +1561,11 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
             closeToTray: closeToTray.input.checked,
             hideOverlaysWhenUnfocused:
               hideOverlaysWhenUnfocused.input.checked,
+            pauseOverlayTimersOutsideCombat: pauseOverlayTimers.input.checked,
+            overlayTimerInactivitySeconds: Math.max(
+              0,
+              Math.min(300, Math.round(Number(overlayTimerDelayInput.value) || 0)),
+            ),
           }),
         }).then(parseCoreSettings),
         apiJson<unknown>("/api/settings/layout", {
@@ -4301,6 +4334,10 @@ function parseCoreSettings(value: unknown): CoreSettings {
     value.schemaVersion !== 1 ||
     typeof value.closeToTray !== "boolean" ||
     typeof value.hideOverlaysWhenUnfocused !== "boolean" ||
+    typeof value.pauseOverlayTimersOutsideCombat !== "boolean" ||
+    !Number.isInteger(value.overlayTimerInactivitySeconds) ||
+    Number(value.overlayTimerInactivitySeconds) < 0 ||
+    Number(value.overlayTimerInactivitySeconds) > 300 ||
     !isNullableString(value.captureInterface) ||
     !isNullableString(value.dumpcapPath)
   ) {

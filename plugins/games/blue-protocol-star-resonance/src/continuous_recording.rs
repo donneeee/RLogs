@@ -12,8 +12,9 @@ use std::thread::{self, JoinHandle};
 use rlogs_capture::CapturedFrame;
 use rlogs_core::{ConnectionFilterError, GameConnection, GameConnectionFilter};
 use rlogs_events::{
-    CanonicalEvent, DungeonEventKind, EventEnvelope, RegionEvidence, RegionIdentity,
-    TimelineEventKind,
+    BoundaryReason, CanonicalEvent, DungeonEventKind, EventEnvelope, EventProvenance,
+    EventSensitivity, EventTime, RegionContext, RegionEvidence, RegionIdentity, RunState,
+    TimelineEvent, TimelineEventKind,
 };
 use thiserror::Error;
 
@@ -58,6 +59,25 @@ pub struct ContinuousRecordingMetrics {
     pub research_record_count: u64,
 }
 
+#[derive(Debug, Clone)]
+struct ManualEventContext {
+    schema_version: u16,
+    session_id: String,
+    sequence: u64,
+    region: RegionContext,
+    time: EventTime,
+    timeline_sequence: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ContinuousForcedReset {
+    /// Manual boundary supplied to live reducers before their presentation
+    /// state is cleared. `None` means no canonical event had been decoded yet.
+    pub boundary: Option<EventEnvelope>,
+    pub sealed_logs: Vec<SealedDungeonRunLog>,
+    pub invalidated_active_run: bool,
+}
+
 /// Keeps BPSR protocol state hot for the lifetime of one game process.
 ///
 /// All process-owned frames are decoded in memory. The segmented writer opens
@@ -72,6 +92,7 @@ pub struct ContinuousBpsrRecorder<'a> {
     research_journal: Option<ResearchJournal>,
     next_record_sequence: u64,
     previous_record_micros: Option<u64>,
+    last_event_context: Option<ManualEventContext>,
     metrics: ContinuousRecordingMetrics,
 }
 
@@ -130,6 +151,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
             research_journal,
             next_record_sequence: 1,
             previous_record_micros: None,
+            last_event_context: None,
             metrics: ContinuousRecordingMetrics::default(),
         })
     }
@@ -142,6 +164,58 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         self.segments
             .as_ref()
             .is_some_and(AsyncSegmentedDungeonLogWriter::is_recording)
+    }
+
+    /// Seals the active persisted run with an explicit manual boundary. The
+    /// resulting incomplete log remains available locally and its reducer
+    /// carries `manual_boundary`, which makes server submission ineligible.
+    pub fn force_reset(
+        &mut self,
+        observed_micros: u64,
+    ) -> Result<ContinuousForcedReset, ContinuousRecordingError> {
+        let invalidated_active_run = self.is_saving_run();
+        let Some(context) = self.last_event_context.as_ref() else {
+            return Ok(ContinuousForcedReset {
+                boundary: None,
+                sealed_logs: Vec::new(),
+                invalidated_active_run,
+            });
+        };
+        let time = EventTime {
+            observed_micros: observed_micros.max(context.time.observed_micros),
+            game_time_millis: None,
+        };
+        let provenance = EventProvenance::manual("user forced the live overlay to reset");
+        let timeline = TimelineEvent {
+            sequence: context.timeline_sequence.saturating_add(1),
+            time,
+            provenance: provenance.clone(),
+            kind: TimelineEventKind::RunBoundary {
+                state: RunState::Exited,
+                scene_id: None,
+                reason: BoundaryReason::Manual,
+            },
+        };
+        let boundary = EventEnvelope {
+            schema_version: context.schema_version,
+            session_id: context.session_id.clone(),
+            sequence: context.sequence.saturating_add(1),
+            region: context.region.clone(),
+            time,
+            provenance,
+            sensitivity: EventSensitivity::PublicGameplay,
+            event: CanonicalEvent::Timeline(timeline),
+        };
+        let sealed_logs = match self.segments.as_mut() {
+            Some(segments) => segments.consume_batch(vec![boundary.clone()])?,
+            None => Vec::new(),
+        };
+        self.observe_sealed(&sealed_logs);
+        Ok(ContinuousForcedReset {
+            boundary: Some(boundary),
+            sealed_logs,
+            invalidated_active_run,
+        })
     }
 
     /// Adds exact sockets already attributed to the monitored game process.
@@ -291,6 +365,21 @@ impl<'a> ContinuousBpsrRecorder<'a> {
                 .saturating_add(batch.events.len() as u64);
             for event in &batch.events {
                 observe(event);
+                let timeline_sequence = match &event.event {
+                    CanonicalEvent::Timeline(timeline) => timeline.sequence,
+                    _ => self
+                        .last_event_context
+                        .as_ref()
+                        .map_or(0, |context| context.timeline_sequence),
+                };
+                self.last_event_context = Some(ManualEventContext {
+                    schema_version: event.schema_version,
+                    session_id: event.session_id.clone(),
+                    sequence: event.sequence,
+                    region: event.region.clone(),
+                    time: event.time,
+                    timeline_sequence,
+                });
             }
             for photo in &batch.local_photo_assets {
                 observe_photo(photo);
@@ -1207,6 +1296,133 @@ mod tests {
         assert!(writer.finish().unwrap().is_empty());
 
         std::fs::remove_file(&sealed[0].path).unwrap();
+        std::fs::remove_dir(&directory).unwrap();
+    }
+
+    #[test]
+    fn forced_reset_seals_an_active_run_as_incomplete_with_a_manual_boundary() {
+        let directory = std::env::temp_dir().join(format!(
+            "rlogs-forced-reset-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let pack = ProtocolPack::build(crate::ProtocolPackDefinition {
+            schema_version: crate::PROTOCOL_PACK_SCHEMA_VERSION,
+            pack_id: "forced-reset-fixture".into(),
+            target: crate::ProtocolPackTarget {
+                deployment_id: "global".into(),
+                region_id: None,
+                channel: "steam".into(),
+                build_id: "fixture".into(),
+                executable_version: None,
+            },
+            acquisition: crate::ProtocolPackAcquisition {
+                frame_up_layout: crate::BpsrFrameUpLayout::NestedAfterFourBytes,
+            },
+            provenance: Vec::new(),
+            routes: Vec::new(),
+        })
+        .unwrap();
+        let region = RegionIdentity {
+            deployment_id: "global".into(),
+            region_id: "global".into(),
+            realm_id: None,
+            world_id: None,
+        };
+        let mut recorder = ContinuousBpsrRecorder::new(
+            &pack,
+            ContinuousRecordingConfig {
+                base_session_id: "forced-reset".into(),
+                producer: "test".into(),
+                build: GameBuild {
+                    deployment_id: "global".into(),
+                    region_id: Some("global".into()),
+                    channel: "steam".into(),
+                    build_id: "fixture".into(),
+                    executable_version: None,
+                },
+                region: region.clone(),
+                region_evidence: Vec::new(),
+                decoder: ProtocolRuntimeConfig::default(),
+                output_directory: directory.clone(),
+                persist_dungeon_logs: true,
+                research_journal: None,
+            },
+        )
+        .unwrap();
+        let mut envelopes = EventEnvelopeFactory::new(
+            "forced-reset",
+            RegionContext {
+                identity: region,
+                client_build: "fixture".into(),
+                protocol_pack_digest: pack.digest().into(),
+                evidence: Vec::new(),
+            },
+        );
+        let entered = envelopes
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: 1_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(1, 1, 1),
+                sensitivity: EventSensitivity::PublicGameplay,
+                kind: CanonicalEventDraftKind::Dungeon(DungeonEvent {
+                    kind: DungeonEventKind::Entered,
+                    dungeon_id: None,
+                    instance_id: Some("instance-1".into()),
+                    difficulty_id: None,
+                    objective_map_key: None,
+                    objective_id: None,
+                    objective_value: None,
+                    objective_complete: None,
+                    objective_catalog: None,
+                    flow: None,
+                }),
+            })
+            .unwrap();
+        recorder.last_event_context = Some(ManualEventContext {
+            schema_version: entered.schema_version,
+            session_id: entered.session_id.clone(),
+            sequence: entered.sequence,
+            region: entered.region.clone(),
+            time: entered.time,
+            timeline_sequence: 0,
+        });
+        assert!(
+            recorder
+                .segments
+                .as_mut()
+                .unwrap()
+                .consume_batch(vec![entered])
+                .unwrap()
+                .is_empty()
+        );
+        assert!(recorder.is_saving_run());
+
+        let reset = recorder.force_reset(2_000).unwrap();
+        assert!(reset.invalidated_active_run);
+        assert_eq!(reset.sealed_logs.len(), 1);
+        assert!(!reset.sealed_logs[0].is_completed());
+        assert!(!recorder.is_saving_run());
+        let boundary = reset.boundary.expect("manual reset boundary");
+        assert!(matches!(
+            boundary.event,
+            CanonicalEvent::Timeline(TimelineEvent {
+                kind: TimelineEventKind::RunBoundary {
+                    state: RunState::Exited,
+                    reason: BoundaryReason::Manual,
+                    ..
+                },
+                ..
+            })
+        ));
+
+        std::fs::remove_file(&reset.sealed_logs[0].path).unwrap();
         std::fs::remove_dir(&directory).unwrap();
     }
 }

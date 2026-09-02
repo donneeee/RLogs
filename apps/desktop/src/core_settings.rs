@@ -14,6 +14,12 @@ pub struct CoreSettings {
     pub close_to_tray: bool,
     #[serde(default)]
     pub hide_overlays_when_unfocused: bool,
+    /// Presentation-only clock policy shared by every overlay. Canonical run,
+    /// encounter, and submission timing is never rewritten by this setting.
+    #[serde(default = "default_pause_overlay_timers_outside_combat")]
+    pub pause_overlay_timers_outside_combat: bool,
+    #[serde(default = "default_overlay_timer_inactivity_seconds")]
+    pub overlay_timer_inactivity_seconds: u16,
     pub capture_interface: Option<String>,
     pub dumpcap_path: Option<String>,
 }
@@ -24,10 +30,20 @@ impl Default for CoreSettings {
             schema_version: SCHEMA_VERSION,
             close_to_tray: false,
             hide_overlays_when_unfocused: false,
+            pause_overlay_timers_outside_combat: default_pause_overlay_timers_outside_combat(),
+            overlay_timer_inactivity_seconds: default_overlay_timer_inactivity_seconds(),
             capture_interface: None,
             dumpcap_path: None,
         }
     }
+}
+
+const fn default_pause_overlay_timers_outside_combat() -> bool {
+    true
+}
+
+const fn default_overlay_timer_inactivity_seconds() -> u16 {
+    8
 }
 
 #[derive(Debug)]
@@ -80,6 +96,9 @@ fn validate(settings: &CoreSettings) -> Result<(), String> {
             "unsupported Core settings schema {}; expected {SCHEMA_VERSION}",
             settings.schema_version
         ));
+    }
+    if settings.overlay_timer_inactivity_seconds > 300 {
+        return Err("overlay timer inactivity delay must be between 0 and 300 seconds".into());
     }
     validate_optional_text(
         "capture interface",
@@ -180,6 +199,21 @@ mod tests {
         let settings = CoreSettingsStore::open(&path).unwrap().snapshot();
         assert!(settings.close_to_tray);
         assert!(!settings.hide_overlays_when_unfocused);
+        assert!(settings.pause_overlay_timers_outside_combat);
+        assert_eq!(settings.overlay_timer_inactivity_seconds, 8);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn rejects_an_unbounded_overlay_timer_delay() {
+        let path = test_path("overlay-timer-delay");
+        let _ = std::fs::remove_file(&path);
+        let mut store = CoreSettingsStore::open(&path).unwrap();
+        let invalid = CoreSettings {
+            overlay_timer_inactivity_seconds: 301,
+            ..CoreSettings::default()
+        };
+        assert!(store.update(invalid).is_err());
         let _ = std::fs::remove_file(path);
     }
 }

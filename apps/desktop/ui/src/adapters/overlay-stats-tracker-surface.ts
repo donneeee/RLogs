@@ -4,6 +4,7 @@ import {
   formatFightAttributeValue,
   resolveLiveCharacterStatFamilies,
   type FightAttributePresentationCatalog,
+  type LiveCharacterStatFamilyView,
   type LiveCharacterStatsSnapshot,
 } from "./live-character-stats";
 
@@ -11,6 +12,33 @@ export interface OverlayStatsTrackerDependencies {
   loadCatalog(): Promise<FightAttributePresentationCatalog>;
   loadSnapshot(): Promise<LiveCharacterStatsSnapshot>;
   waitForSnapshot(afterRevision: number): Promise<LiveCharacterStatsSnapshot>;
+}
+
+// Exact-build Fight Attribute families used by the compact in-game profile
+// summary. Percentage families are intentionally selected for the rate stats;
+// their raw rating families remain available in the complete observed view.
+export const MAIN_CHARACTER_STAT_FAMILY_IDS = [
+  11_320, // Max HP
+  11_330, // ATK
+  11_030, // Agility
+  11_040, // Endurance
+  11_440, // Illusion-Breaking Strength
+  11_710, // Crit %
+  11_930, // Haste %
+  11_780, // Luck %
+  11_940, // Mastery %
+  11_950, // Versatility %
+  11_970, // Block %
+] as const;
+
+export function selectMainCharacterStatFamilies(
+  families: readonly LiveCharacterStatFamilyView[],
+): LiveCharacterStatFamilyView[] {
+  const byId = new Map(families.map((family) => [family.familyId, family]));
+  return MAIN_CHARACTER_STAT_FAMILY_IDS
+    .map((familyId) => byId.get(familyId))
+    .filter((family): family is LiveCharacterStatFamilyView =>
+      family !== undefined);
 }
 
 export function mountOverlayStatsTrackerSurface(
@@ -21,6 +49,7 @@ export function mountOverlayStatsTrackerSurface(
   let catalog: FightAttributePresentationCatalog | null = null;
   let snapshot: LiveCharacterStatsSnapshot | null = null;
   let searchValue = "";
+  let showAllStats = false;
 
   const root = element("div", "plugin-surface overlay-workspace-surface overlay-stats-surface");
   const header = element("section", "content-card overlay-workspace-intro");
@@ -49,7 +78,13 @@ export function mountOverlayStatsTrackerSurface(
   search.type = "search";
   search.placeholder = "Filter stats";
   search.setAttribute("aria-label", "Filter combat stats");
-  statsHeading.append(statsCopy, search);
+  search.hidden = true;
+  const viewAll = element("button", "secondary-button overlay-stats-view-all");
+  viewAll.type = "button";
+  viewAll.textContent = "View all observed stats";
+  const headingActions = element("div", "overlay-stats-heading-actions");
+  headingActions.append(search, viewAll);
+  statsHeading.append(statsCopy, headingActions);
   const statsBody = element("div", "overlay-stats-grid");
   statsBody.append(text("p", "No local character-stat snapshot has been observed yet.", "runtime-empty-result"));
   statsCard.append(statsHeading, statsBody);
@@ -74,6 +109,16 @@ export function mountOverlayStatsTrackerSurface(
 
   search.addEventListener("input", () => {
     searchValue = search.value.trim().toLocaleLowerCase();
+    render();
+  });
+  viewAll.addEventListener("click", () => {
+    showAllStats = !showAllStats;
+    search.hidden = !showAllStats;
+    viewAll.textContent = showAllStats ? "Hide observed stats" : "View all observed stats";
+    if (!showAllStats) {
+      search.value = "";
+      searchValue = "";
+    }
     render();
   });
 
@@ -104,7 +149,9 @@ export function mountOverlayStatsTrackerSurface(
 
   function render(): void {
     if (catalog === null || snapshot === null) return;
-    const families = resolveLiveCharacterStatFamilies(snapshot, catalog).filter(
+    const observedFamilies = resolveLiveCharacterStatFamilies(snapshot, catalog);
+    const mainFamilies = selectMainCharacterStatFamilies(observedFamilies);
+    const families = observedFamilies.filter(
       (family) =>
         searchValue === "" ||
         family.name.toLocaleLowerCase().includes(searchValue) ||
@@ -112,24 +159,52 @@ export function mountOverlayStatsTrackerSurface(
     );
     state.textContent = snapshot.character === null ? "WAITING" : "LIVE LOCAL";
     state.dataset.state = snapshot.character === null ? "waiting" : "live";
-    const changed = families.filter((family) => family.changed).length;
+    const changed = observedFamilies.filter((family) => family.changed).length;
     statsCopy.querySelector("h3")!.textContent = snapshot.character === null
       ? "Waiting for a complete character snapshot"
-      : `${families.length.toLocaleString()} current stat families`;
+      : `${mainFamilies.length.toLocaleString()} main stats`;
     statsCopy.querySelector("p")!.textContent = snapshot.character === null
       ? "Open the game and enter a scene that publishes your character attributes."
-      : `${changed.toLocaleString()} temporarily changed · exact ${catalog.locale} catalog for game build ${catalog.game_build}`;
+      : `${observedFamilies.length.toLocaleString()} observed stat families · ${changed.toLocaleString()} temporarily changed`;
     statsBody.replaceChildren();
-    if (families.length === 0) {
+    if (mainFamilies.length === 0) {
       statsBody.append(text(
         "p",
-        searchValue === ""
-          ? "The current snapshot contains no nonzero displayable stats."
-          : "No current stats match this filter.",
+        "The current snapshot does not contain the main character-stat families yet.",
         "runtime-empty-result",
       ));
       return;
     }
+    const main = element("section", "overlay-main-stats");
+    main.append(text("h4", "Main stats", "overlay-stats-section-title"));
+    const mainGrid = element("div", "overlay-main-stats-grid");
+    for (const family of mainFamilies) {
+      const primary = family.components.find(
+        (component) => component.presentation.component === "final",
+      ) ?? family.components[0]!;
+      const row = element("article", "overlay-main-stat-row");
+      row.dataset.changed = String(family.changed);
+      row.append(
+        text("span", family.name, "overlay-main-stat-name"),
+        text(
+          "strong",
+          formatFightAttributeValue(
+            primary.currentValue,
+            primary.presentation.number_type,
+            primary.presentation.format_type,
+          ),
+          "overlay-main-stat-value",
+        ),
+      );
+      mainGrid.append(row);
+    }
+    main.append(mainGrid);
+    statsBody.append(main);
+    if (!showAllStats) return;
+
+    const detail = element("section", "overlay-observed-stats");
+    detail.append(text("h4", "All observed stats", "overlay-stats-section-title"));
+    const detailGrid = element("div", "overlay-observed-stats-grid");
     for (const family of families) {
       const primary = family.components.find(
         (component) => component.presentation.component === "final",
@@ -181,8 +256,13 @@ export function mountOverlayStatsTrackerSurface(
       }
       details.append(rows);
       card.append(details);
-      statsBody.append(card);
+      detailGrid.append(card);
     }
+    if (families.length === 0) {
+      detailGrid.append(text("p", "No observed stats match this filter.", "runtime-empty-result"));
+    }
+    detail.append(detailGrid);
+    statsBody.append(detail);
   }
 
   return {

@@ -8,6 +8,7 @@ import {
   type FightAttributePresentationCatalog,
   type LiveCharacterStatsSnapshot,
 } from "./live-character-stats";
+import { selectMainCharacterStatFamilies } from "./overlay-stats-tracker-surface";
 
 const CATALOG = {
   schema_version: 1,
@@ -55,6 +56,12 @@ describe("live character stats", () => {
     expect(formatFightAttributeValue(350, 0, 4)).toBe("3.5%");
     expect(formatFightAttributeValue(2_500, 2, 0)).toBe("2.5s");
     expect(formatFightAttributeValue(12_345, 0, 0)).toBe("12,345");
+  });
+
+  it("keeps the profile-summary families in their deliberate in-game order", () => {
+    const families = resolveLiveCharacterStatFamilies(SNAPSHOT, CATALOG);
+    expect(selectMainCharacterStatFamilies(families).map((family) => family.familyId))
+      .toEqual([11_330]);
   });
 });
 

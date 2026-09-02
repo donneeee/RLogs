@@ -100,8 +100,8 @@ pub use combat_presentation::{
     localized_status_effect_name, rdps_attribution_effect_presentation, status_effect_presentation,
 };
 pub use continuous_recording::{
-    ContinuousBpsrRecorder, ContinuousRecordingConfig, ContinuousRecordingError,
-    ContinuousRecordingMetrics, ContinuousResearchJournalConfig,
+    ContinuousBpsrRecorder, ContinuousForcedReset, ContinuousRecordingConfig,
+    ContinuousRecordingError, ContinuousRecordingMetrics, ContinuousResearchJournalConfig,
 };
 pub use coverage::{
     CoverageReport, CoverageSummary, FragmentCoverage, ProtocolFeatureCoverage,

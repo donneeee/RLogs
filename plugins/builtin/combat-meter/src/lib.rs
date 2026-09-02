@@ -1372,6 +1372,13 @@ impl CombatTimelinePlugin {
         }
     }
 
+    /// User-requested presentation reset. Callers must first persist a manual
+    /// boundary when a run is active; this method only clears the live attempt
+    /// while retaining packet-proven player identity for the next pull.
+    pub fn force_reset_live_attempt(&mut self, observed_micros: u64) {
+        self.reset_live_attempt(observed_micros);
+    }
+
     /// Applies one already-filtered canonical event to the live projection.
     pub fn observe_live(&mut self, envelope: &EventEnvelope) {
         self.event_count = self.event_count.saturating_add(1);

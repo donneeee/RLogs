@@ -4520,6 +4520,22 @@ struct RuntimeController {
     live_stop: Arc<Mutex<Option<WindowsLiveCaptureStopHandle>>>,
     #[cfg(windows)]
     live_process_id: Arc<Mutex<Option<u32>>>,
+    #[cfg(windows)]
+    live_combat_control: Arc<Mutex<Option<SyncSender<LiveCombatControl>>>>,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Clone, Copy)]
+struct LiveCombatControl {
+    requested_after_micros: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveCombatForceResetResult {
+    queued: bool,
+    invalidated_active_run: bool,
+    message: String,
 }
 
 impl RuntimeController {
@@ -4642,6 +4658,8 @@ impl RuntimeController {
             live_stop: Arc::new(Mutex::new(None)),
             #[cfg(windows)]
             live_process_id: Arc::new(Mutex::new(None)),
+            #[cfg(windows)]
+            live_combat_control: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -5140,6 +5158,69 @@ impl RuntimeController {
         );
         self.live_combat_feed
             .wait_after(request.after_revision, timeout)
+    }
+
+    #[cfg(windows)]
+    fn force_reset_live_combat(&self) -> Result<LiveCombatForceResetResult, String> {
+        let snapshot = self.live_combat_feed.current();
+        let requested_after_micros = snapshot
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| {
+                snapshot
+                    .latest_event_micros
+                    .or(snapshot.last_hostile_micros)
+            })
+            .unwrap_or(0);
+        let invalidated_active_run = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .saving_run;
+        let control = self
+            .live_combat_control
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let sender = control
+            .as_ref()
+            .ok_or_else(|| "live packet monitoring is not running".to_owned())?;
+        match sender.try_send(LiveCombatControl {
+            requested_after_micros,
+        }) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                return Ok(LiveCombatForceResetResult {
+                    queued: true,
+                    invalidated_active_run,
+                    message: "A force reset is already queued.".into(),
+                });
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                return Err(
+                    "live packet monitoring stopped before the reset could be queued".into(),
+                );
+            }
+        }
+        drop(control);
+        // Clear the presentation immediately. The ordered capture worker writes
+        // the manual boundary after its already-dequeued frame and before the
+        // following one can enter the next attempt.
+        self.live_combat_feed.publish(None);
+        Ok(LiveCombatForceResetResult {
+            queued: true,
+            invalidated_active_run,
+            message: if invalidated_active_run {
+                "The active run is being sealed locally with a manual-boundary submission blocker."
+                    .into()
+            } else {
+                "The live meter is being cleared; no active run was invalidated.".into()
+            },
+        })
+    }
+
+    #[cfg(not(windows))]
+    fn force_reset_live_combat(&self) -> Result<LiveCombatForceResetResult, String> {
+        Err("live packet monitoring is not available on this platform".into())
     }
 
     fn live_character_stats_snapshot(&self) -> LiveCharacterStatsSnapshot {
@@ -6607,6 +6688,18 @@ impl RuntimeController {
             .publish(LiveCharacterStatsSnapshot::default());
         self.live_event_feed.reset(request.session_id.clone());
 
+        // UI controls cross into the ordered capture worker through a small,
+        // bounded channel. This keeps manual boundaries serialized with packet
+        // events without ever blocking capture ingress.
+        let (live_combat_control_sender, live_combat_control_receiver) = sync_channel(4);
+        {
+            let mut control = self
+                .live_combat_control
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *control = Some(live_combat_control_sender);
+        }
+
         let state = Arc::clone(&self.state);
         let live_combat_feed = Arc::clone(&self.live_combat_feed);
         let live_character_stats_feed = Arc::clone(&self.live_character_stats_feed);
@@ -6641,6 +6734,7 @@ impl RuntimeController {
         let submission_transport_store = Arc::clone(&self.submission_transport);
         let live_stop = Arc::clone(&self.live_stop);
         let live_process_id = Arc::clone(&self.live_process_id);
+        let live_combat_control = Arc::clone(&self.live_combat_control);
         let session_id = request.session_id.clone();
         let validation_game_build = target.build_id.clone();
         let validation_manifest_build = validation_manifest_game_build;
@@ -6832,6 +6926,10 @@ impl RuntimeController {
                         else {
                             break;
                         };
+                        // Repeated clicks are coalesced. The boundary is
+                        // applied after this already-dequeued frame so older
+                        // ingress data cannot leak into the next attempt.
+                        let forced_reset_request = live_combat_control_receiver.try_iter().last();
                         let live_refresh_interval = Duration::from_millis(u64::from(
                             live_overlay_settings
                                 .lock()
@@ -6873,7 +6971,7 @@ impl RuntimeController {
                         let mut local_photo_assets = Vec::new();
                         let decoded_events_before = recorder.metrics().decoded_event_count;
                         let ordered_reduction_started = Instant::now();
-                        let sealed = recorder
+                        let mut sealed = recorder
                             .process_frame_with_inspection(frame, |event| {
                                 if matches!(
                                     &event.event,
@@ -7064,6 +7162,45 @@ impl RuntimeController {
                                 }
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
+                        if let Some(command) = forced_reset_request {
+                            let reset = recorder
+                                .force_reset(command.requested_after_micros)
+                                .map_err(|error| {
+                                    format!("could not persist the forced reset boundary: {error}")
+                                })?;
+                            if let Some(boundary) = reset.boundary.as_ref() {
+                                live_meter.observe_live(boundary);
+                                live_encounter.observe_live(boundary).map_err(|error| {
+                                    format!("live Encounter Recorder could not record the forced reset: {error}")
+                                })?;
+                                if reset.invalidated_active_run {
+                                    let terminal_identities = capture_time_identities.clone();
+                                    let projection = freeze_captured_run_projection(
+                                        &live_meter,
+                                        &live_encounter,
+                                        &terminal_identities,
+                                    )?;
+                                    captured_run_projections.push_back(projection);
+                                    completed_run_identities = Some(terminal_identities);
+                                }
+                            }
+                            sealed.extend(reset.sealed_logs);
+                            live_meter.force_reset_live_attempt(command.requested_after_micros);
+                            begin_live_encounter_preserving_world(
+                                &mut live_encounter,
+                                &live_header,
+                                last_world_context_event.as_ref(),
+                            )?;
+                            capture_time_identities.clear();
+                            live_dungeon_active = false;
+                            live_dungeon_scene_id = None;
+                            live_run_projection = None;
+                            live_boundary_changed = true;
+                            live_dirty = true;
+                            if live_rdps_validation_enabled {
+                                rdps_validation.clear_transient_context();
+                            }
+                        }
                         for photo in &local_photo_assets {
                             match live_profile_projection.observe_local_photo_identity(
                                 photo.character_id,
@@ -7556,6 +7693,12 @@ impl RuntimeController {
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     *process_id = None;
                 }
+                {
+                    let mut control = live_combat_control
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    *control = None;
+                }
 
                 let mut state = state
                     .lock()
@@ -7640,6 +7783,11 @@ impl RuntimeController {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             *process_id = None;
+            let mut control = self
+                .live_combat_control
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *control = None;
             let mut state = self
                 .state
                 .lock()
@@ -11089,6 +11237,12 @@ fn handle_connection(
                 200,
                 &present_live_combat_update(controller.wait_for_live_combat(request)),
             )?;
+        }
+        ("POST", "/api/runtime/live/combat/force-reset") => {
+            match controller.force_reset_live_combat() {
+                Ok(result) => write_json(&mut stream, 200, &result)?,
+                Err(error) => write_api_error(&mut stream, 400, error)?,
+            }
         }
         ("GET", "/api/runtime/live/character-stats") => {
             write_json(

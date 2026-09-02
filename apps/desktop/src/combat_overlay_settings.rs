@@ -394,6 +394,11 @@ impl Default for CombatOverlaySettings {
                         action: OverlayButtonAction::CycleMetric,
                     },
                     OverlayButton {
+                        id: "force-reset".into(),
+                        label: "Force reset".into(),
+                        action: OverlayButtonAction::ResetEncounter,
+                    },
+                    OverlayButton {
                         id: "visibility".into(),
                         label: "Hide".into(),
                         action: OverlayButtonAction::ToggleVisibility,
@@ -489,6 +494,18 @@ fn ensure_live_switch_controls(settings: &mut CombatOverlaySettings) {
                     action: OverlayButtonAction::CycleTimer,
                 },
             );
+        }
+        if layer.buttons.len() < 8
+            && !layer
+                .buttons
+                .iter()
+                .any(|button| button.action == OverlayButtonAction::ResetEncounter)
+        {
+            layer.buttons.push(OverlayButton {
+                id: unique_button_id(&layer.buttons, "force-reset"),
+                label: "Force reset".into(),
+                action: OverlayButtonAction::ResetEncounter,
+            });
         }
     }
 }
@@ -756,7 +773,13 @@ mod tests {
                 .get(&OverlaySummaryField::TeamDamage),
             Some(&1)
         );
-        assert_eq!(settings.layers[0].buttons.len(), 4);
+        assert_eq!(settings.layers[0].buttons.len(), 5);
+        assert!(
+            settings.layers[0]
+                .buttons
+                .iter()
+                .any(|button| button.action == OverlayButtonAction::ResetEncounter)
+        );
         assert!(settings.dynamic_height);
         assert_eq!(settings.max_visible_players, 20);
         assert_eq!(settings.scale_percent, 100);

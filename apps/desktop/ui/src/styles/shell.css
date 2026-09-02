@@ -5528,24 +5528,96 @@ body {
   font-size: 11px;
 }
 
+.overlay-stats-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.overlay-stats-view-all {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
 .overlay-stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 1px;
-  background: var(--line);
+  gap: 18px;
+  padding: 18px 20px 20px;
 }
 
 .overlay-stats-grid > .runtime-empty-result {
   grid-column: 1 / -1;
   margin: 0;
   padding: 20px;
-  background: var(--surface);
+  background: transparent;
+}
+
+.overlay-main-stats,
+.overlay-observed-stats {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.overlay-stats-section-title {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 12px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.overlay-main-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 18px;
+}
+
+.overlay-main-stat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  gap: 14px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-raised) 76%, transparent);
+}
+
+.overlay-main-stat-row[data-changed="true"] {
+  border-left: 3px solid var(--accent);
+}
+
+.overlay-main-stat-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overlay-main-stat-value {
+  color: var(--text-strong);
+  font: 800 15px/1.2 "Cascadia Code", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.overlay-observed-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
 }
 
 .overlay-stat-family {
   min-width: 0;
   padding: 14px 16px;
-  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
 }
 
 .overlay-stat-family[data-changed="true"] {
@@ -5619,6 +5691,24 @@ body {
 .overlay-stat-component-list dt,
 .overlay-stat-component-list dd {
   margin: 0;
+}
+
+@media (max-width: 760px) {
+  .overlay-stats-heading,
+  .overlay-stats-heading-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .overlay-stats-heading input,
+  .overlay-stats-view-all {
+    width: 100%;
+  }
+
+  .overlay-main-stats-grid,
+  .overlay-observed-stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .overlay-stat-component-list dd {

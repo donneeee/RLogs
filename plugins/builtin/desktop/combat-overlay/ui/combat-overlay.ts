@@ -130,6 +130,36 @@ export interface CombatOverlaySettings {
   layers: OverlayLayer[];
 }
 
+interface OverlayGlobalTimerSettings {
+  pauseOverlayTimersOutsideCombat: boolean;
+  overlayTimerInactivitySeconds: number;
+}
+
+export function applyOverlayTimerPause(
+  snapshot: OverlaySnapshot | null,
+  policy: OverlayGlobalTimerSettings,
+): OverlaySnapshot | null {
+  if (
+    snapshot === null ||
+    !policy.pauseOverlayTimersOutsideCombat ||
+    snapshot.last_hostile_micros == null ||
+    snapshot.latest_event_micros == null
+  ) return snapshot;
+  const pauseAt = snapshot.last_hostile_micros
+    + Math.max(0, policy.overlayTimerInactivitySeconds) * 1_000_000;
+  const excess = Math.max(0, snapshot.latest_event_micros - pauseAt);
+  if (excess === 0) return snapshot;
+  const subtract = (value: number | null | undefined): number | null | undefined =>
+    value == null ? value : Math.max(0, value - excess);
+  return {
+    ...snapshot,
+    encounter_elapsed_micros: subtract(snapshot.encounter_elapsed_micros),
+    run_elapsed_micros: subtract(snapshot.run_elapsed_micros),
+    game_time_micros: subtract(snapshot.game_time_micros),
+    true_time_micros: subtract(snapshot.true_time_micros),
+  };
+}
+
 interface OverlayBadgePresentation {
   slot_id: number | null;
   ability_id: number | null;
@@ -2004,8 +2034,12 @@ export async function mountCombatOverlayRuntimeApp(
   container.replaceChildren(root);
   document.documentElement.classList.add("combat-overlay-runtime-document");
 
-  const settings = await loadSettings();
+  const [settings, initialTimerSettings] = await Promise.all([
+    loadSettings(),
+    loadGlobalTimerSettings(),
+  ]);
   let runtimeSettings = settings;
+  let timerSettings = initialTimerSettings;
   let activeLayerId = settings.layers[0]?.id ?? null;
   let actors: readonly OverlayActor[] = [];
   const selectedActorByLayer = new Map<string, string>();
@@ -2023,6 +2057,7 @@ export async function mountCombatOverlayRuntimeApp(
   let stopResizeListener: (() => void) | null = null;
   let stopShowRequestListener: (() => void) | null = null;
   let settingsFingerprint = JSON.stringify(settings);
+  let timerSettingsFingerprint = JSON.stringify(initialTimerSettings);
   let lastSettingsRefreshMillis = 0;
   let lastWindowWidth = Math.round(settings.canvasWidth * overlayScale(settings));
   let lastWindowHeight = Math.round(settings.canvasHeight * overlayScale(settings));
@@ -2158,7 +2193,7 @@ export async function mountCombatOverlayRuntimeApp(
     canvas.style.setProperty("--summary-opacity", String(runtimeSettings.summaryOpacityPercent / 100));
     renderOverlayCanvas(canvas, runtimeSettings, actors, {
       mode: "runtime",
-      snapshot: latestSnapshot,
+      snapshot: applyOverlayTimerPause(latestSnapshot, timerSettings),
       encounterPresentation,
       selectedLayerId: activeLayerId,
       onSelectLayer(layerId) {
@@ -2218,6 +2253,18 @@ export async function mountCombatOverlayRuntimeApp(
           // show path and can make this button appear to do nothing.
           void appWindow.hide().catch((error) =>
             reportWindowSyncFailure("manual hide", error));
+        } else if (action === "reset_encounter") {
+          const confirmed = window.confirm(
+            "Force reset the live meter? If a run is active, rLogs will mark it invalid and it cannot be submitted.",
+          );
+          if (!confirmed) return;
+          void forceResetLiveCombat().then(() => {
+            latestSnapshot = null;
+            encounterPresentation = null;
+            actors = [];
+            selectedActorByLayer.clear();
+            render();
+          }).catch((error) => reportWindowSyncFailure("force reset", error));
         }
       },
     });
@@ -2309,7 +2356,9 @@ export async function mountCombatOverlayRuntimeApp(
         const nowMillis = Date.now();
         const shouldRefreshSettings = !resizeSettingsPending
           && nowMillis - lastSettingsRefreshMillis >= 1_000;
-        const refreshedSettings = shouldRefreshSettings ? await loadSettings() : null;
+        const [refreshedSettings, refreshedTimerSettings] = shouldRefreshSettings
+          ? await Promise.all([loadSettings(), loadGlobalTimerSettings()])
+          : [null, null];
         if (shouldRefreshSettings) lastSettingsRefreshMillis = nowMillis;
         const refreshedFingerprint = refreshedSettings === null
           ? settingsFingerprint
@@ -2337,6 +2386,16 @@ export async function mountCombatOverlayRuntimeApp(
               shouldIgnoreCombatOverlayCursor(automaticallyHidden, runtimeSettings.clickThrough),
             );
           }
+        }
+        const refreshedTimerFingerprint = refreshedTimerSettings === null
+          ? timerSettingsFingerprint
+          : JSON.stringify(refreshedTimerSettings);
+        if (
+          refreshedTimerSettings !== null &&
+          refreshedTimerFingerprint !== timerSettingsFingerprint
+        ) {
+          timerSettings = refreshedTimerSettings;
+          timerSettingsFingerprint = refreshedTimerFingerprint;
         }
         syncCombatVisibility();
         render();
@@ -4443,6 +4502,31 @@ async function loadSettings(): Promise<CombatOverlaySettings> {
   return normalizeHeaderViewGeometry(
     parseCombatOverlaySettings(await apiJson<unknown>("/api/settings/combat-overlay")),
   );
+}
+
+async function loadGlobalTimerSettings(): Promise<OverlayGlobalTimerSettings> {
+  const value = await apiJson<unknown>("/api/settings/core");
+  if (
+    !isRecord(value) ||
+    typeof value.pauseOverlayTimersOutsideCombat !== "boolean" ||
+    !Number.isInteger(value.overlayTimerInactivitySeconds) ||
+    Number(value.overlayTimerInactivitySeconds) < 0 ||
+    Number(value.overlayTimerInactivitySeconds) > 300
+  ) {
+    throw new Error("The local host returned invalid global overlay timer settings.");
+  }
+  return {
+    pauseOverlayTimersOutsideCombat: value.pauseOverlayTimersOutsideCombat,
+    overlayTimerInactivitySeconds: Number(value.overlayTimerInactivitySeconds),
+  };
+}
+
+async function forceResetLiveCombat(): Promise<void> {
+  await apiJson<unknown>("/api/runtime/live/combat/force-reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
 }
 
 async function loadBarColorIdentities(): Promise<readonly BarColorIdentity[]> {

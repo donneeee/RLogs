@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyOverlayTimerPause,
   applyOverlayRdpsSkillDetail,
   actorName,
   describeOverlayRdpsAvailability,
@@ -61,6 +62,31 @@ function editableSummarySettings() {
 }
 
 describe("Combat Overlay plug-in settings", () => {
+  it("freezes elapsed presentation clocks after the global inactivity delay", () => {
+    const snapshot = {
+      active_combat_micros: 12_000_000,
+      encounter_elapsed_micros: 25_000_000,
+      run_elapsed_micros: 30_000_000,
+      game_time_micros: 28_000_000,
+      true_time_micros: 26_000_000,
+      last_hostile_micros: 10_000_000,
+      latest_event_micros: 20_000_000,
+    } as Parameters<typeof applyOverlayTimerPause>[0];
+    const paused = applyOverlayTimerPause(snapshot, {
+      pauseOverlayTimersOutsideCombat: true,
+      overlayTimerInactivitySeconds: 3,
+    });
+
+    expect(paused).toMatchObject({
+      active_combat_micros: 12_000_000,
+      encounter_elapsed_micros: 18_000_000,
+      run_elapsed_micros: 23_000_000,
+      game_time_micros: 21_000_000,
+      true_time_micros: 19_000_000,
+    });
+    expect(snapshot!.run_elapsed_micros).toBe(30_000_000);
+  });
+
   it("keeps internal combat identifiers out of attribution labels", () => {
     expect(humanizeOverlayAttributionComponent(
       "Encore (55333) standalone-generated-damage (Actions 230401/230501)",
