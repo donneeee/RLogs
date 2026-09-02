@@ -60,6 +60,13 @@ pub struct DifficultyTierRange {
 }
 
 impl SceneRunRule {
+    /// A rule with only a boss encounter is a single-encounter boss floor.
+    /// Player-versus-monster combat can enter the boss segment even when the
+    /// activity uses dynamically generated monster identities.
+    pub fn is_boss_only(&self) -> bool {
+        self.mobbing_encounter_id.is_none() && self.boss_encounter_id.is_some()
+    }
+
     pub fn encounter_kind(&self, encounter_id: &str) -> Option<EncounterKind> {
         if self.mobbing_encounter_id.as_deref() == Some(encounter_id) {
             Some(EncounterKind::Mobbing)

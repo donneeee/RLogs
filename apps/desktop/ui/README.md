@@ -32,11 +32,12 @@ cd ..\..\..
 cargo run -p rlogs-desktop-host
 ```
 
-Open `http://127.0.0.1:7419`. Debug builds expose the Session Recorder workspace
-for safe replay, private-capture processing, and manual capture controls. Vite
-removes that workspace from production UI assets, and the release host also
-removes its plug-in and routes. The same adapter publishes separate Log
-Uploader and BPSR Profile Sync workspaces.
+Open `http://127.0.0.1:7419`. Debug builds expose **Session Tools** under
+**Settings** for safe replay, private-capture processing, manual capture
+controls, sealed-session review, and canonical-event diagnostics. Vite removes
+those surfaces from production UI assets, and the release host also removes
+their plug-in and routes. The same adapter publishes separate Log Uploader and
+BPSR Profile Sync settings.
 Profile Sync can build bounded local packages from the last sealed log,
 summarize current packages, and lazily inspect exact JSON without external
 network activity.

@@ -607,26 +607,43 @@ function solutionCard(label: string, solution: ModuleSolution, catalog: Optimize
   const summary = element("div", "module-solution-summary");
   summary.append(
     text("strong", `${solution.score.toLocaleString()} power`),
-    text("span", baseline ? formatDelta(solution.score - baseline.score, "vs equipped") : `${solution.breakdown.total_link_points.toLocaleString()} total Link`),
+    text(
+      "span",
+      [
+        baseline ? formatDelta(solution.score - baseline.score, "vs equipped") : null,
+        `${solution.breakdown.total_link_points.toLocaleString()} total Link`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    ),
   );
-  const details = button("View details", "secondary-button module-view-details");
-  details.addEventListener("click", () => showSolutionModal(label, solution, catalog));
-  heading.append(text("span", label, "module-solution-rank"), summary, details);
-  const modules = element("div", "module-solution-module-strip");
-  modules.append(...solution.modules.map((module) => solutionModuleTile(module, catalog)));
   const effects = element("div", "module-solution-effects");
   const named = new Map(catalog.attributes.map((attribute) => [attribute.id, attribute]));
-  for (const score of solution.breakdown.attributes.filter((entry) => entry.total > 0).sort((left, right) => right.applied_power - left.applied_power).slice(0, 5)) {
+  for (const score of solution.breakdown.attributes
+    .filter((entry) => entry.total > 0)
+    .sort((left, right) => right.applied_power - left.applied_power)) {
     const attribute = named.get(score.attribute_id);
     const chip = element("div", "module-effect-chip");
     chip.append(
       image(optimizerAssetUrl(attribute?.icon ?? null), attribute?.name ?? "Unknown effect"),
       text("span", attribute?.name ?? "Unknown effect"),
-      text("strong", `${score.total} Link`),
+      text(
+        "strong",
+        [
+          `${score.total} Link`,
+          `${score.applied_power.toLocaleString()} power`,
+          score.reached_threshold === null
+            ? "below first threshold"
+            : `threshold ${score.reached_threshold}`,
+        ].join(" · "),
+      ),
     );
     effects.append(chip);
   }
-  card.append(heading, modules, effects);
+  heading.append(text("span", label, "module-solution-rank"), summary, effects);
+  const modules = element("div", "module-solution-module-strip");
+  modules.append(...solution.modules.map((module) => solutionModuleTile(module, catalog)));
+  card.append(heading, modules);
   return card;
 }
 
@@ -638,80 +655,58 @@ function solutionModuleTile(value: ModuleCandidate, catalog: OptimizerCatalog): 
   const copy = element("span");
   copy.append(
     text("strong", shortModuleName(presentation.name)),
-    text("small", `${moduleLinkTotal(value)} Link · ${primaryModuleEffect(value, catalog)}`),
+    text("small", `${moduleQuality(value)} · ${moduleLinkTotal(value)} total Link`),
   );
+  const named = new Map(catalog.attributes.map((attribute) => [attribute.id, attribute]));
+  const effects = element("span", "module-solution-tile-effects");
+  for (const part of value.parts) {
+    effects.append(
+      text(
+        "span",
+        `${named.get(part.part_id)?.name ?? "Unknown effect"} ${part.initial_link_points ?? 0}`,
+      ),
+    );
+  }
+  copy.append(effects);
   tile.append(copy);
   tile.title = presentation.name;
   return tile;
 }
 
-function showSolutionModal(label: string, solution: ModuleSolution, catalog: OptimizerCatalog): void {
-  const backdrop = element("div", "module-solution-modal-backdrop");
-  backdrop.setAttribute("role", "presentation");
-  const dialog = element("section", "module-solution-modal");
-  dialog.setAttribute("role", "dialog");
-  dialog.setAttribute("aria-modal", "true");
-  dialog.setAttribute("aria-label", `${label} module details`);
-  const header = element("header", "module-solution-modal-header");
-  const title = element("div");
-  title.append(text("span", `${label} recommendation`, "eyebrow"), text("h3", "Module set details"));
-  const close = button("×", "module-solution-modal-close");
-  close.setAttribute("aria-label", "Close module set details");
-  header.append(title, close);
-  const totals = element("div", "module-solution-modal-totals");
-  totals.append(metric("Power", solution.score), metric("Ranking power", solution.ranking_score), metric("Total Link", solution.breakdown.total_link_points));
-  const body = element("div", "module-solution-modal-body");
-  const moduleGrid = element("div", "module-solution-modal-modules");
-  moduleGrid.append(...solution.modules.map((module) => compactModuleCard(module, catalog)));
-  const effectGrid = element("div", "module-solution-modal-effects");
-  const named = new Map(catalog.attributes.map((attribute) => [attribute.id, attribute]));
-  for (const score of solution.breakdown.attributes.filter((entry) => entry.total > 0)) {
-    const attribute = named.get(score.attribute_id);
-    const effect = element("article", "module-modal-effect");
-    effect.append(
-      image(optimizerAssetUrl(attribute?.icon ?? null), attribute?.name ?? "Unknown effect"),
-      text("strong", attribute?.name ?? `Effect ${score.attribute_id}`),
-      text("span", `${score.total} Link · ${score.applied_power.toLocaleString()} power${score.multiplier > 1 ? " · wanted" : ""}`),
-    );
-    effectGrid.append(effect);
-  }
-  body.append(text("h4", "Modules"), moduleGrid, text("h4", "Effect totals"), effectGrid);
-  dialog.append(header, totals, body);
-  backdrop.append(dialog);
-  const dismiss = (): void => { document.removeEventListener("keydown", onKeyDown); backdrop.remove(); };
-  const onKeyDown = (event: KeyboardEvent): void => { if (event.key === "Escape") dismiss(); };
-  close.addEventListener("click", dismiss);
-  backdrop.addEventListener("click", (event) => { if (event.target === backdrop) dismiss(); });
-  document.addEventListener("keydown", onKeyDown);
-  document.body.append(backdrop);
-  close.focus();
-}
-
-function compactModuleCard(value: ModuleCandidate, catalog: OptimizerCatalog | null): HTMLElement {
+function compactModuleCard(
+  value: ModuleCandidate,
+  catalog: OptimizerCatalog | null,
+): HTMLElement {
   const presentation = modulePresentation(value);
-  const attributes = new Map((catalog?.attributes ?? []).map((attribute) => [attribute.id, attribute]));
+  const attributes = new Map(
+    (catalog?.attributes ?? []).map((attribute) => [attribute.id, attribute]),
+  );
   const card = element("article", "module-inventory-card");
   card.dataset.quality = String(value.quality ?? presentation.quality);
   card.append(image(presentation.icon, presentation.name));
   const copy = element("div", "module-inventory-copy");
   copy.append(
     text("strong", presentation.name),
-    text("small", `${moduleQuality(value)} · ${moduleLinkTotal(value)} total Link`, "module-card-meta"),
+    text(
+      "small",
+      `${moduleQuality(value)} · ${moduleLinkTotal(value)} total Link`,
+      "module-card-meta",
+    ),
   );
   const effects = element("div", "module-card-effects");
   for (const part of value.parts) {
     const attribute = attributes.get(part.part_id);
-    effects.append(text("span", `${attribute?.name ?? "Unknown effect"} ${part.initial_link_points ?? 0}`, "module-mini-effect"));
+    effects.append(
+      text(
+        "span",
+        `${attribute?.name ?? "Unknown effect"} ${part.initial_link_points ?? 0}`,
+        "module-mini-effect",
+      ),
+    );
   }
   copy.append(effects);
   card.append(copy);
   return card;
-}
-
-function metric(label: string, value: number): HTMLElement {
-  const node = element("div", "module-solution-metric");
-  node.append(text("span", label), text("strong", value.toLocaleString()));
-  return node;
 }
 
 function selectControl(label: string, values: ReadonlyArray<readonly [string, string]>): { wrapper: HTMLElement; select: HTMLSelectElement } {
@@ -795,12 +790,6 @@ function text<K extends keyof HTMLElementTagNameMap>(tag: K, value: string, clas
 
 function moduleLinkTotal(value: ModuleCandidate): number {
   return value.parts.reduce((sum, part) => sum + Math.max(0, part.initial_link_points ?? 0), 0);
-}
-
-function primaryModuleEffect(value: ModuleCandidate, catalog: OptimizerCatalog): string {
-  const strongest = [...value.parts].sort((left, right) => (right.initial_link_points ?? 0) - (left.initial_link_points ?? 0))[0];
-  if (!strongest) return "No effects";
-  return catalog.attributes.find((attribute) => attribute.id === strongest.part_id)?.name ?? "Unknown";
 }
 
 function shortModuleName(name: string): string {

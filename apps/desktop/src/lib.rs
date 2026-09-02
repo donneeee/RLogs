@@ -88,7 +88,8 @@ use rlogs_game_bpsr::{
     rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
     resolve_actor_combat_presentation, resolve_live_steam_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
-    status_effect_presentation, weapon_level_presentation, weapon_presentation,
+    status_effect_presentation, stimen_floor_encounter_kind, weapon_level_presentation,
+    weapon_presentation,
 };
 use rlogs_log_format::{RlogHeader, RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_api::{PluginCapability, PluginDependency, PluginRuntime, PluginWorkspaceTabKind};
@@ -694,6 +695,17 @@ fn select_live_overlay_bosses(
         .collect()
 }
 
+fn select_live_overlay_bosses_for_scene(
+    scene_id: Option<i32>,
+    candidates: Vec<LiveOverlayBossCandidate>,
+) -> Vec<LiveOverlayBossPresentation> {
+    let mut bosses = select_live_overlay_bosses(candidates);
+    if scene_id.and_then(stimen_floor_encounter_kind).is_some() {
+        bosses.truncate(1);
+    }
+    bosses
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct OverlayBarColorIdentityCatalog {
     classes: Vec<OverlayBarColorIdentity>,
@@ -772,6 +784,10 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
         .snapshot
         .as_ref()
         .map(|snapshot| {
+            let stimen_boss_floor = snapshot
+                .scene_id
+                .and_then(stimen_floor_encounter_kind)
+                .is_some();
             let exact_scene_boss_ids = snapshot
                 .scene_id
                 .and_then(|scene_id| scene_boss_monster_ids(scene_id).ok().flatten());
@@ -781,9 +797,10 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                 .filter(|actor| actor.actor_kind.as_deref() == Some("monster"))
                 .filter_map(|actor| {
                     let monster_id = actor.monster_id?;
-                    let is_boss = exact_scene_boss_ids
-                        .map(|ids| ids.contains(&monster_id))
-                        .unwrap_or_else(|| is_boss_monster(monster_id).unwrap_or(false));
+                    let is_boss = stimen_boss_floor
+                        || exact_scene_boss_ids
+                            .map(|ids| ids.contains(&monster_id))
+                            .unwrap_or_else(|| is_boss_monster(monster_id).unwrap_or(false));
                     if !is_boss {
                         return None;
                     }
@@ -808,7 +825,10 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                     })
                 })
                 .collect::<Vec<_>>();
-            let bosses = select_live_overlay_bosses(boss_candidates);
+            // Stimen boss floors use generated monster identities that are not
+            // stable MonsterTable boss IDs. The highest-HP damaged candidate
+            // is the floor's elite or regular boss; summoned adds stay hidden.
+            let bosses = select_live_overlay_bosses_for_scene(snapshot.scene_id, boss_candidates);
             LiveOverlayEncounterPresentation {
                 scene_id: snapshot.scene_id,
                 scene_name: snapshot.scene_id.and_then(|scene_id| {
@@ -12323,6 +12343,24 @@ mod tests {
     }
 
     #[test]
+    fn stimen_boss_floor_selector_keeps_only_the_highest_hp_target() {
+        let bosses = select_live_overlay_bosses_for_scene(
+            Some(32_103),
+            vec![
+                boss_candidate("elite", 120_000_000, true),
+                boss_candidate("summoned-add", 8_000_000, true),
+            ],
+        );
+        assert_eq!(
+            bosses
+                .iter()
+                .map(|boss| boss.actor_id.as_str())
+                .collect::<Vec<_>>(),
+            ["elite"]
+        );
+    }
+
+    #[test]
     fn combat_overlay_background_recognizes_animated_gif() {
         assert_eq!(
             combat_overlay_image_format(b"GIF89a\x01\x00\x01\x00").unwrap(),
@@ -15354,13 +15392,19 @@ kind = "content"
             .unwrap();
         assert!(!package.enabled);
         assert!(!package.active);
-        assert_eq!(catalog.workspaces.len(), 5);
+        assert_eq!(catalog.workspaces.len(), 4);
         assert!(catalog.workspaces.iter().all(|workspace| workspace.id
-            == "app.rlogs.session-recorder"
-            || workspace.id == "app.rlogs.combat-meter"
+            == "app.rlogs.combat-meter"
             || workspace.id == "app.rlogs.bpsr.module-optimizer"
             || workspace.id == "app.rlogs.overlay"
             || workspace.id == "app.rlogs.custom-triggers"));
+        let session_tools = catalog
+            .settings_tabs
+            .iter()
+            .find(|tab| tab.contributor_plugin_id == SESSION_RECORDER_PLUGIN_ID)
+            .expect("debug catalog should nest session diagnostics under Settings");
+        assert_eq!(session_tools.id, "app.rlogs.session-recorder:session-tools");
+        assert_eq!(session_tools.label, "Session Tools");
 
         let catalog = controller
             .set_plugin_enabled(PluginEnablementRequest {
@@ -15375,7 +15419,7 @@ kind = "content"
             .unwrap();
         assert!(package.enabled);
         assert!(package.active);
-        assert_eq!(catalog.workspaces.len(), 6);
+        assert_eq!(catalog.workspaces.len(), 5);
         let workspace = catalog
             .workspaces
             .iter()
@@ -15396,7 +15440,7 @@ kind = "content"
             .unwrap();
         assert!(package.enabled);
         assert!(package.active);
-        assert_eq!(catalog.workspaces.len(), 6);
+        assert_eq!(catalog.workspaces.len(), 5);
 
         std::fs::remove_dir_all(root).unwrap();
     }

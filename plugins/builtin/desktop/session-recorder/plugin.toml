@@ -9,29 +9,9 @@ capabilities = ["ui_workspace_publish"]
 subscriptions = []
 allowed_network_domains = []
 
-[workspace]
-default_order = -100
-
-[[workspace.tabs]]
-id = "control"
-label = "Control"
-entrypoint = "ui/control.html"
-section = "recorder"
-
-[[workspace.tabs]]
-id = "sessions"
-label = "Last Session"
-entrypoint = "ui/sessions.html"
-section = "recorder"
-
-[[workspace.tabs]]
-id = "events"
-label = "Event Viewer"
-entrypoint = "ui/events.html"
-section = "recorder"
-
-[[workspace.tabs]]
-id = "runs"
-label = "Run Report"
-entrypoint = "ui/runs.html"
-section = "recorder"
+[[settings_tab_contributions]]
+id = "session-tools"
+label = "Session Tools"
+entrypoint = "ui/settings.html"
+section = "developer-tools"
+default_order = 900

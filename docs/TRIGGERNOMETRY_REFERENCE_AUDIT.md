@@ -174,7 +174,7 @@ Before runtime implementation, confirm:
 - the five Custom Triggers tabs and six Overlay tabs are understandable;
 - Setup Profile and Trigger Pack naming is acceptable;
 - Event Inspector belongs in Custom Triggers and remains separate from the
-  hidden developer Session Recorder;
+  developer-only Session Tools nested under Settings;
 - shared packs are safe and disabled until reviewed;
 - advanced controls stay inside each rule instead of becoming more tabs.
 

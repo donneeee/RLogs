@@ -21,7 +21,9 @@ use axum::{
     routing::{get, patch, post, put},
 };
 use reqwest::Url;
-use rlogs_combat::{RunAnalysis, RunSegmentKind, RunSubmissionDisposition};
+use rlogs_combat::{
+    ActivityKind, RaidRouteKind, RunAnalysis, RunSegmentKind, RunSubmissionDisposition,
+};
 use rlogs_events::{
     ActorKind, CanonicalEvent, EntityAttributeUpdateKind, EntityRef, EventEnvelope,
     EventProvenance, EventSensitivity, EvidenceSource, GameProfileEvent, RunState, StatusState,
@@ -2354,6 +2356,8 @@ pub struct PublicRun {
     pub correlation_method: RunCorrelationMethod,
     pub activity_id: Option<String>,
     pub activity_family_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity_category_id: Option<String>,
     pub scene_id: Option<i32>,
     pub scene_name: Option<String>,
     pub difficulty_family: Option<String>,
@@ -2653,11 +2657,50 @@ impl CatalogQuery {
     fn matches(&self, entry: &PublicParseCatalogEntry) -> bool {
         optional_matches(&self.deployment, &entry.deployment_id)
             && optional_matches(&self.region, &entry.region_id)
-            && optional_matches_option(&self.activity, &entry.activity_id)
+            && self
+                .activity
+                .as_deref()
+                .is_none_or(|value| catalog_activity_category(entry) == Some(value))
             && self.scene.is_none_or(|value| entry.scene_id == Some(value))
             && optional_matches_option(&self.difficulty, &entry.difficulty_family)
             && optional_matches(&self.terminal, &entry.terminal_state)
     }
+}
+
+fn public_activity_category_id(analysis: &RunAnalysis) -> Option<&'static str> {
+    if analysis.identity.activity_family_id.as_deref() == Some("stimen-vaults") {
+        return Some("stimens");
+    }
+    match analysis.identity.activity_kind {
+        ActivityKind::Dungeon => Some("dungeons"),
+        ActivityKind::Raid
+            if analysis.identity.raid_route_kind == Some(RaidRouteKind::Gauntlet) =>
+        {
+            Some("gauntlets")
+        }
+        ActivityKind::Raid => Some("raids"),
+        ActivityKind::Unknown => None,
+    }
+}
+
+fn catalog_activity_category(entry: &PublicParseCatalogEntry) -> Option<&str> {
+    entry.activity_category_id.as_deref().or_else(|| {
+        // Compatibility for reports written before activity categories were
+        // persisted. The only old public BPSR families were dungeon rules;
+        // Stimen is the one category that must not inherit that default.
+        if entry.activity_family_id.as_deref() == Some("stimen-vaults")
+            || entry.activity_family_id.as_deref() == Some("stimen-remains")
+            || entry
+                .scene_id
+                .is_some_and(|scene_id| (32_101..=32_160).contains(&scene_id))
+        {
+            Some("stimens")
+        } else if entry.activity_family_id.is_some() {
+            Some("dungeons")
+        } else {
+            None
+        }
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2694,6 +2737,8 @@ pub struct PublicParseCatalogEntry {
     pub region_id: String,
     pub activity_id: Option<String>,
     pub activity_family_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity_category_id: Option<String>,
     pub scene_id: Option<i32>,
     pub scene_name: Option<String>,
     pub difficulty_family: Option<String>,
@@ -2863,6 +2908,7 @@ impl PublicParseCatalogEntry {
             region_id: report.region_id.clone(),
             activity_id: run.activity_id.clone(),
             activity_family_id: run.activity_family_id.clone(),
+            activity_category_id: run.activity_category_id.clone(),
             scene_id: run.scene_id,
             scene_name: run.scene_name.clone(),
             difficulty_family: run.difficulty_family.clone(),
@@ -2895,8 +2941,11 @@ impl CatalogFacets {
         for entry in entries {
             increment(&mut deployments, entry.deployment_id.clone());
             increment(&mut regions, entry.region_id.clone());
-            if let Some(value) = entry.activity_id.as_ref() {
-                increment(&mut activities, value.clone());
+            // The public Activity facet is the broad playable category.
+            // Exact scene and family identities remain separate internal
+            // dimensions and are never exposed as an Activity label.
+            if let Some(value) = catalog_activity_category(entry) {
+                increment(&mut activities, value.to_owned());
             }
             if let Some(value) = entry.difficulty_family.as_ref() {
                 increment(&mut difficulties, value.clone());
@@ -3319,6 +3368,7 @@ fn public_runs(
                 },
                 activity_id: run.activity_id.clone(),
                 activity_family_id: run.activity_family_id.clone(),
+                activity_category_id: public_activity_category_id(analysis).map(str::to_owned),
                 scene_id: run.scene_id,
                 scene_name: run
                     .scene_id
@@ -5258,6 +5308,7 @@ mod tests {
             region_id: "north-america".into(),
             activity_id: Some("chaotic".into()),
             activity_family_id: Some("chaotic".into()),
+            activity_category_id: Some("dungeons".into()),
             scene_id: Some(6565),
             scene_name: Some("Chaotic - Sea-Ringed Reef".into()),
             difficulty_family: Some("master".into()),
@@ -5268,8 +5319,54 @@ mod tests {
         }];
         let facets = CatalogFacets::from_entries(&entries);
         assert_eq!(facets.regions[0].id, "north-america");
+        assert_eq!(facets.activities[0].id, "dungeons");
         assert_eq!(facets.scenes[0].id, 6565);
         assert_eq!(facets.difficulties[0].id, "master");
+    }
+
+    #[test]
+    fn catalog_activity_filter_uses_the_broad_category_not_the_scene_key() {
+        let entry = PublicParseCatalogEntry {
+            report_id: "rpt_test".into(),
+            report_ids: vec!["rpt_test".into()],
+            run_index: 0,
+            run_group_id: "run_test".into(),
+            contribution_count: 1,
+            distinct_submitter_count: 1,
+            local_profile_witness_character_count: 0,
+            attribution_reconciliation_status: RunAttributionReconciliationStatus::SingleVantage,
+            created_unix_millis: 1,
+            deployment_id: "global".into(),
+            region_id: "global".into(),
+            activity_id: Some("scene.32160".into()),
+            activity_family_id: Some("stimen-vaults".into()),
+            activity_category_id: None,
+            scene_id: Some(32160),
+            scene_name: Some("Floor 60".into()),
+            difficulty_family: None,
+            difficulty_tier: None,
+            terminal_state: "completed".into(),
+            total_run_time_micros: Some(10),
+            participant_count: 5,
+        };
+
+        let facets = CatalogFacets::from_entries(std::slice::from_ref(&entry));
+        assert_eq!(facets.activities.len(), 1);
+        assert_eq!(facets.activities[0].id, "stimens");
+        assert!(
+            CatalogQuery {
+                activity: Some("stimens".into()),
+                ..CatalogQuery::default()
+            }
+            .matches(&entry)
+        );
+        assert!(
+            !CatalogQuery {
+                activity: Some("scene.32160".into()),
+                ..CatalogQuery::default()
+            }
+            .matches(&entry)
+        );
     }
 
     #[test]
@@ -5288,6 +5385,7 @@ mod tests {
             region_id: "north-america".into(),
             activity_id: Some("chaotic".into()),
             activity_family_id: None,
+            activity_category_id: None,
             scene_id: Some(6565),
             scene_name: None,
             difficulty_family: Some("master".into()),
@@ -6932,6 +7030,7 @@ mod tests {
                 correlation_method: RunCorrelationMethod::ExactInstanceId,
                 activity_id: None,
                 activity_family_id: None,
+                activity_category_id: None,
                 scene_id: Some(7152),
                 scene_name: None,
                 difficulty_family: None,
@@ -6999,6 +7098,7 @@ mod tests {
             region_id: region.into(),
             activity_id: Some("chaotic".into()),
             activity_family_id: Some("chaotic".into()),
+            activity_category_id: Some("dungeons".into()),
             scene_id: Some(6565),
             scene_name: Some("Chaotic - Sea-Ringed Reef".into()),
             difficulty_family: Some("master".into()),

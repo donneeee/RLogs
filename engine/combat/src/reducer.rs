@@ -83,14 +83,12 @@ impl RunSessionReducer {
             }
             CanonicalEvent::Dungeon(event) => self.on_dungeon_event(
                 &envelope.session_id,
-                envelope.sequence,
                 envelope.time.observed_micros,
                 &envelope.provenance,
                 event,
             )?,
             CanonicalEvent::Timeline(timeline) => self.on_timeline_event(
                 &envelope.session_id,
-                envelope.sequence,
                 envelope.time.observed_micros,
                 &envelope.provenance,
                 &timeline.kind,
@@ -251,7 +249,6 @@ impl RunSessionReducer {
     fn on_dungeon_event(
         &mut self,
         session_id: &str,
-        sequence: u64,
         observed_micros: u64,
         provenance: &EventProvenance,
         event: &DungeonEvent,
@@ -262,9 +259,7 @@ impl RunSessionReducer {
             | DungeonEventKind::FlowUpdated
             | DungeonEventKind::ObjectiveRemoved => {}
             DungeonEventKind::ObjectiveUpdated => self.apply_objective_rule(observed_micros, event),
-            DungeonEventKind::Started => {
-                self.start_run(session_id, sequence, observed_micros, true)?
-            }
+            DungeonEventKind::Started => self.start_run(session_id, observed_micros, true)?,
             DungeonEventKind::BossEngaged => {
                 if let Some(run) = &mut self.current {
                     run.switch_segment(RunSegmentKind::Boss, observed_micros, false);
@@ -343,7 +338,6 @@ impl RunSessionReducer {
     fn on_timeline_event(
         &mut self,
         session_id: &str,
-        sequence: u64,
         observed_micros: u64,
         provenance: &EventProvenance,
         event: &TimelineEventKind,
@@ -359,7 +353,7 @@ impl RunSessionReducer {
                 match state {
                     RunState::Entered => {}
                     RunState::Started => {
-                        self.start_run(session_id, sequence, observed_micros, authoritative)?;
+                        self.start_run(session_id, observed_micros, authoritative)?;
                         self.observe_relevant_connection(provenance);
                     }
                     RunState::Completed => self.close_run(
@@ -517,11 +511,6 @@ impl RunSessionReducer {
         };
         let source = self.rule_actors.get(&source_uuid).copied();
         let target = self.rule_actors.get(&target_uuid).copied();
-        let boss_involved = [source, target]
-            .into_iter()
-            .flatten()
-            .filter_map(|actor| actor.monster_id)
-            .any(|monster_id| rule.boss_monster_ids.contains(&monster_id));
         let hostile_pair = [source, target]
             .into_iter()
             .flatten()
@@ -530,6 +519,12 @@ impl RunSessionReducer {
                 .into_iter()
                 .flatten()
                 .any(|actor| actor.kind == ActorKind::Monster);
+        let boss_involved = (rule.is_boss_only() && hostile_pair)
+            || [source, target]
+                .into_iter()
+                .flatten()
+                .filter_map(|actor| actor.monster_id)
+                .any(|monster_id| rule.boss_monster_ids.contains(&monster_id));
         if !boss_involved && !hostile_pair {
             return;
         }
@@ -611,7 +606,6 @@ impl RunSessionReducer {
     fn start_run(
         &mut self,
         session_id: &str,
-        sequence: u64,
         observed_micros: u64,
         authoritative: bool,
     ) -> Result<(), RunReducerError> {
@@ -632,14 +626,22 @@ impl RunSessionReducer {
                 &self.config,
             ));
         }
+        let initial_segment = self.active_rule().and_then(|rule| {
+            rule.is_boss_only().then(|| {
+                rule.boss_encounter_id
+                    .as_deref()
+                    .and_then(|encounter_id| rule.encounter_segment(encounter_id))
+                    .unwrap_or(RunSegmentKind::Boss)
+            })
+        });
         self.current = Some(RunAccumulator::new(
             session_id.to_owned(),
-            sequence,
             observed_micros,
             authoritative,
             self.pending_identity.clone(),
             self.config.encounter_ruleset_id.clone(),
             self.config.encounter_ruleset_version,
+            initial_segment,
         )?);
         Ok(())
     }
@@ -681,17 +683,17 @@ struct RunAccumulator {
 impl RunAccumulator {
     fn new(
         source_session_id: String,
-        _: u64,
         started_micros: u64,
         authoritative_start: bool,
         identity: RunIdentity,
         encounter_ruleset_id: Option<String>,
         encounter_ruleset_version: Option<u32>,
+        configured_initial_segment: Option<RunSegmentKind>,
     ) -> Result<Self, RunReducerError> {
-        let initial_segment = match identity.activity_kind {
+        let initial_segment = configured_initial_segment.unwrap_or(match identity.activity_kind {
             ActivityKind::Dungeon => RunSegmentKind::Mobbing,
             ActivityKind::Raid | ActivityKind::Unknown => RunSegmentKind::Unknown,
-        };
+        });
         let mut run = Self {
             source_session_id,
             identity,
@@ -1740,6 +1742,98 @@ mod tests {
         );
         assert_eq!(run.encounters[1].active_combat_micros, 4_000_000);
         assert_eq!(run.timing.active_combat_micros, 6_000_000);
+    }
+
+    #[test]
+    fn boss_only_floor_accepts_generated_monster_identity_without_a_mobbing_segment() {
+        let scene_rule = SceneRunRule {
+            scene_id: 32_103,
+            runtime_enabled: true,
+            activity_kind: ActivityKind::Dungeon,
+            activity_id: "scene.32103".into(),
+            activity_family_id: Some("stimen-vaults".into()),
+            activity_localization_key: Some("scene.32103.name".into()),
+            difficulty_family: None,
+            difficulty_localization_key: None,
+            difficulty_tier_range: None,
+            route_id: None,
+            raid_route_kind: None,
+            partition: None,
+            candidate_dungeon_ids: BTreeSet::new(),
+            mobbing_encounter_id: None,
+            boss_encounter_id: Some("scene.32103.stimen-elite-boss".into()),
+            boss_monster_ids: BTreeSet::new(),
+            objective_rules: BTreeMap::new(),
+            evidence: Vec::new(),
+        };
+        let mut reducer = RunSessionReducer::new(RunReducerConfig {
+            encounter_ruleset_id: Some("stimen-fixture".into()),
+            encounter_ruleset_version: Some(3),
+            scene_rules: BTreeMap::from([(32_103, scene_rule)]),
+            ..RunReducerConfig::default()
+        });
+        let mut events = factory();
+        let player = EntityRef {
+            actor_id: ActorId(1),
+            entity_uuid: EntityUuid(100),
+        };
+        let generated_elite = EntityRef {
+            actor_id: ActorId(2),
+            entity_uuid: EntityUuid(200),
+        };
+
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(32_103)),
+                map_id: None,
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            actor(1, 100, ActorKind::Player, None),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            actor(2, 200, ActorKind::Monster, None),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            1_000_000,
+            dungeon(DungeonEventKind::Started, "stimen-elite"),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            2_000_000,
+            damage(player, generated_elite),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            3_000_000,
+            dungeon(DungeonEventKind::Completed, "stimen-elite"),
+        );
+
+        let run = &reducer.finish()[0];
+        assert_eq!(run.segments.len(), 1);
+        assert_eq!(run.segments[0].kind, RunSegmentKind::Boss);
+        assert_eq!(run.encounters.len(), 1);
+        assert_eq!(run.encounters[0].kind, EncounterKind::Boss);
+        assert_eq!(
+            run.encounters[0].encounter_id.as_deref(),
+            Some("scene.32103.stimen-elite-boss")
+        );
     }
 
     #[test]

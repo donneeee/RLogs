@@ -14,8 +14,8 @@ Custom Trigger. It follows the useful ACT/Triggernometry workflow of watching
 events happen in real time, but adds structured protobuf inspection and a
 direct **Create Trigger** path.
 
-It replaces neither the Combat Meter nor the hidden developer Session
-Recorder. It is a focused public tool inside Custom Triggers.
+It replaces neither the Combat Meter nor the developer-only Session Tools
+nested under Settings. It is a focused public tool inside Custom Triggers.
 
 ## User workflow
 

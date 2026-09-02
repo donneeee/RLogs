@@ -512,16 +512,8 @@ function createLocalHostAdapter(): DesktopHostAdapter {
       container.replaceChildren();
       if (DEVELOPER_TOOLS_ENABLED) {
         switch (tab.entrypoint) {
-          case `builtin://${SESSION_RECORDER_PLUGIN_ID}/control`:
-            return mountControlSurface(container);
-          case `builtin://${SESSION_RECORDER_PLUGIN_ID}/sessions`:
-            return mountLastSessionSurface(container);
-          case `builtin://${SESSION_RECORDER_PLUGIN_ID}/events`:
-            return mountEventViewerSurface(container);
-          case `builtin://${SESSION_RECORDER_PLUGIN_ID}/runs`:
-            return mountRunReportSurface(container, async () =>
-              parseRunReport(await apiJson<unknown>("/api/runtime/run-report")),
-            );
+          case `builtin://${SESSION_RECORDER_PLUGIN_ID}/session-tools`:
+            return mountSessionToolsSurface(container);
         }
       }
       switch (tab.entrypoint) {
@@ -2037,6 +2029,62 @@ function mountInstalledPackageSurface(
   return {
     dispose() {
       surface.remove();
+    },
+  };
+}
+
+function mountSessionToolsSurface(container: HTMLElement): MountedSurface {
+  const root = document.createElement("div");
+  root.className = "plugin-surface session-tools-settings-surface";
+  const heading = actionCard(
+    "Developer session tools",
+    "Diagnostics for validating rLogs capture and replay: manual monitoring controls, private PCAP processing, the last sealed session, canonical-event inspection, and internal run evidence. Normal users should use automatic monitoring, Combat Meter History, and Custom Triggers → Event Inspector.",
+  );
+  const navigation = document.createElement("div");
+  navigation.className = "content-card runtime-card-actions session-tools-navigation";
+  const content = document.createElement("div");
+  content.className = "session-tools-content";
+  let mounted: MountedSurface | null = null;
+
+  const tools = [
+    ["control", "Capture & Replay", mountControlSurface],
+    ["session", "Last Session", mountLastSessionSurface],
+    ["events", "Canonical Events", mountEventViewerSurface],
+    [
+      "report",
+      "Run Report",
+      (target: HTMLElement) => mountRunReportSurface(target, async () =>
+        parseRunReport(await apiJson<unknown>("/api/runtime/run-report")),
+      ),
+    ],
+  ] as const;
+  const buttons = new Map<string, HTMLButtonElement>();
+  const selectTool = (id: string, mount: (target: HTMLElement) => MountedSurface) => {
+    mounted?.dispose();
+    content.replaceChildren();
+    mounted = mount(content);
+    for (const [buttonId, toolButton] of buttons) {
+      const selected = buttonId === id;
+      toolButton.className = selected ? "primary-button" : "quiet-button";
+      toolButton.setAttribute("aria-pressed", String(selected));
+    }
+  };
+  for (const [id, label, mount] of tools) {
+    const toolButton = button(label, "quiet-button");
+    toolButton.type = "button";
+    toolButton.addEventListener("click", () => selectTool(id, mount));
+    buttons.set(id, toolButton);
+    navigation.append(toolButton);
+  }
+
+  root.append(heading, navigation, content);
+  container.append(root);
+  const first = tools[0];
+  selectTool(first[0], first[2]);
+  return {
+    dispose() {
+      mounted?.dispose();
+      root.remove();
     },
   };
 }

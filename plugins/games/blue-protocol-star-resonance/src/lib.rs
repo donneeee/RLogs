@@ -250,8 +250,9 @@ pub use region::{
 };
 pub use route::{FragmentKind, PacketDirection, RouteKey, RoutedMessage};
 pub use run_rules::{
-    BpsrRunRuleError, BpsrSceneRunIdentity, bundled_gauntlet_scene_ids, bundled_run_reducer_config,
-    bundled_run_rule_catalogs, bundled_scene_run_identities,
+    BpsrRunRuleError, BpsrSceneRunIdentity, StimenFloorEncounterKind, bundled_gauntlet_scene_ids,
+    bundled_run_reducer_config, bundled_run_rule_catalogs, bundled_scene_run_identities,
+    stimen_floor_encounter_kind,
 };
 pub use run_segmentation::{
     DungeonRunSegmenter, DungeonSegmentAction, DungeonSegmentBoundary, DungeonSegmentEndReason,

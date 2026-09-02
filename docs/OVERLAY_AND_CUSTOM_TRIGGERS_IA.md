@@ -53,8 +53,8 @@ Variables, regex, raw IDs, counters, timers, delays, looping, and ordered
 multi-action controls remain inside a rule's **Advanced** section. They are not
 top-level tabs. The complete rule must always remain readable as a sentence.
 
-The Event Inspector is not the hidden developer Session Recorder. It is a
-focused, local trigger-authoring tool with a strict memory budget. Its default
+The Event Inspector is not the developer-only Session Tools page nested under
+Settings. It is a focused, local trigger-authoring tool with a strict memory budget. Its default
 view follows privacy-reviewed canonical events; selected protocol details are
 decoded lazily and never grant shared trigger packs access to raw packets.
 

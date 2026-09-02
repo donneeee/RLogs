@@ -25,8 +25,9 @@ cargo run -p rlogs-desktop-host
 ```
 
 Open `http://127.0.0.1:7419`. The host refuses non-loopback bind addresses.
-Debug builds include a developer-only Session Recorder workspace that is not
-bundled, cataloged, or routable in the public installer. It provides:
+Debug builds include a developer-only **Session Tools** page nested under
+**Settings**. Its package and routes are not bundled, cataloged, or routable in
+the public installer. It provides:
 
 - a sanitized `.rlog` replay through the real bounded Combat Meter plug-in;
 - deterministic whole-run, segment, attempt, pause, and quality projections

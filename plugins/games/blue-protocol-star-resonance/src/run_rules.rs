@@ -32,6 +32,27 @@ pub struct BpsrSceneRunIdentity {
     pub difficulty_family: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StimenFloorEncounterKind {
+    EliteBoss,
+    Boss,
+}
+
+/// Returns the boss-floor kind for the current 60-floor Stimen Vault
+/// sequence. Elite bosses occur midway through each five-floor block and the
+/// block-ending floors contain the regular boss.
+pub fn stimen_floor_encounter_kind(scene_id: i32) -> Option<StimenFloorEncounterKind> {
+    let floor = scene_id.checked_sub(32_100)?;
+    if !(1..=60).contains(&floor) {
+        return None;
+    }
+    match floor % 5 {
+        3 => Some(StimenFloorEncounterKind::EliteBoss),
+        0 => Some(StimenFloorEncounterKind::Boss),
+        _ => None,
+    }
+}
+
 pub fn bundled_run_rule_catalogs() -> Result<Vec<RunRuleCatalog>, BpsrRunRuleError> {
     let mut catalogs = [
         TINA_MINDREALM_RULES,
@@ -45,6 +66,7 @@ pub fn bundled_run_rule_catalogs() -> Result<Vec<RunRuleCatalog>, BpsrRunRuleErr
     .into_iter()
     .map(serde_json::from_slice::<RunRuleCatalog>)
     .collect::<Result<Vec<_>, _>>()?;
+    apply_stimen_boss_floor_rules(&mut catalogs);
     for catalog in &catalogs {
         catalog.validate()?;
     }
@@ -61,6 +83,28 @@ pub fn bundled_run_rule_catalogs() -> Result<Vec<RunRuleCatalog>, BpsrRunRuleErr
     generated_master_catalog.validate()?;
     catalogs.push(generated_master_catalog);
     Ok(catalogs)
+}
+
+fn apply_stimen_boss_floor_rules(catalogs: &mut [RunRuleCatalog]) {
+    for rule in catalogs.iter_mut().flat_map(|catalog| &mut catalog.scenes) {
+        if rule.activity_family_id.as_deref() != Some("stimen-vaults") {
+            continue;
+        }
+        let Some(kind) = stimen_floor_encounter_kind(rule.scene_id) else {
+            continue;
+        };
+        let suffix = match kind {
+            StimenFloorEncounterKind::EliteBoss => "elite-boss",
+            StimenFloorEncounterKind::Boss => "boss",
+        };
+        rule.mobbing_encounter_id = None;
+        rule.boss_encounter_id = Some(format!("scene.{}.stimen-{suffix}", rule.scene_id));
+        rule.evidence.push(RunRuleEvidence {
+            source: "capture-operator-domain-knowledge".to_owned(),
+            reference: format!("stimen-vaults:{suffix}-floor-pattern"),
+            confidence: RunRuleConfidence::UserConfirmed,
+        });
+    }
 }
 
 fn bundled_master_dungeon_catalog(
@@ -383,6 +427,36 @@ mod tests {
             assert_eq!(rule.difficulty_family, None);
             assert_eq!(rule.difficulty_tier_range, None);
         }
+    }
+
+    #[test]
+    fn stimen_boss_floor_patterns_cover_every_five_floor_block() {
+        let config = bundled_run_reducer_config().unwrap();
+        for floor in 1..=60 {
+            let scene_id = 32_100 + floor;
+            let rule = config.scene_rules.get(&scene_id).unwrap();
+            let expected = match floor % 5 {
+                3 => Some(StimenFloorEncounterKind::EliteBoss),
+                0 => Some(StimenFloorEncounterKind::Boss),
+                _ => None,
+            };
+            assert_eq!(stimen_floor_encounter_kind(scene_id), expected);
+            assert_eq!(rule.is_boss_only(), expected.is_some());
+            if let Some(kind) = expected {
+                let suffix = match kind {
+                    StimenFloorEncounterKind::EliteBoss => "elite-boss",
+                    StimenFloorEncounterKind::Boss => "boss",
+                };
+                assert_eq!(
+                    rule.boss_encounter_id.as_deref(),
+                    Some(format!("scene.{scene_id}.stimen-{suffix}").as_str())
+                );
+            } else {
+                assert_eq!(rule.boss_encounter_id, None);
+            }
+        }
+        assert_eq!(stimen_floor_encounter_kind(32_100), None);
+        assert_eq!(stimen_floor_encounter_kind(32_161), None);
     }
 
     #[test]
