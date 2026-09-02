@@ -915,6 +915,9 @@ struct CombatFact {
     source_actor_id: u64,
     source_entity_uuid: i64,
     target: Option<(u64, i64)>,
+    /// User-facing breakdown identity. Raw `ability_id` remains authoritative
+    /// for rDPS joins and canonical audit replay.
+    breakdown_ability_id: Option<i64>,
     ability_id: Option<i64>,
     kind: CombatFactKind,
 }
@@ -1377,6 +1380,7 @@ impl CombatTimelinePlugin {
                     source_actor_id: 0,
                     source_entity_uuid: 0,
                     target: None,
+                    breakdown_ability_id: None,
                     ability_id: None,
                     kind: CombatFactKind::StatusReset,
                 });
@@ -1592,6 +1596,7 @@ impl CombatTimelinePlugin {
                     target: cast
                         .target
                         .map(|target| (target.actor_id.0, target.entity_uuid.0)),
+                    breakdown_ability_id: Some(cast.ability.0),
                     ability_id: Some(cast.ability.0),
                     kind: CombatFactKind::Cast,
                 });
@@ -1641,7 +1646,12 @@ impl CombatTimelinePlugin {
                     accumulator.critical_hits = accumulator.critical_hits.saturating_add(1);
                 }
                 if let Some(ability_id) = damage.ability {
-                    let ability = accumulator.abilities.entry(ability_id.0).or_default();
+                    let breakdown_ability_id =
+                        damage.packet.breakdown_ability_id.unwrap_or(ability_id.0);
+                    let ability = accumulator
+                        .abilities
+                        .entry(breakdown_ability_id)
+                        .or_default();
                     ability.hits = ability.hits.saturating_add(1);
                     ability.reported_damage = ability.reported_damage.saturating_add(reported);
                     ability.effective_damage = ability.effective_damage.saturating_add(effective);
@@ -1662,6 +1672,10 @@ impl CombatTimelinePlugin {
                     source_actor_id: damage.source.actor_id.0,
                     source_entity_uuid: damage.source.entity_uuid.0,
                     target: Some((damage.target.actor_id.0, damage.target.entity_uuid.0)),
+                    breakdown_ability_id: damage
+                        .packet
+                        .breakdown_ability_id
+                        .or(damage.ability.map(|ability| ability.0)),
                     ability_id: damage.ability.map(|ability| ability.0),
                     kind: CombatFactKind::Damage {
                         reported,
@@ -1714,6 +1728,7 @@ impl CombatTimelinePlugin {
                     source_actor_id: healing.source.actor_id.0,
                     source_entity_uuid: healing.source.entity_uuid.0,
                     target: Some((healing.target.actor_id.0, healing.target.entity_uuid.0)),
+                    breakdown_ability_id: healing.ability.map(|ability| ability.0),
                     ability_id: healing.ability.map(|ability| ability.0),
                     kind: CombatFactKind::Healing {
                         reported,
@@ -1741,6 +1756,7 @@ impl CombatTimelinePlugin {
                     source_actor_id: shield.source.actor_id.0,
                     source_entity_uuid: shield.source.entity_uuid.0,
                     target: Some((shield.target.actor_id.0, shield.target.entity_uuid.0)),
+                    breakdown_ability_id: Some(shield.ability.0),
                     ability_id: Some(shield.ability.0),
                     kind: CombatFactKind::Shield { amount },
                 });
@@ -1762,6 +1778,7 @@ impl CombatTimelinePlugin {
                     source_actor_id: actor.actor_id.0,
                     source_entity_uuid: actor.entity_uuid.0,
                     target: None,
+                    breakdown_ability_id: None,
                     ability_id: None,
                     kind: CombatFactKind::Life { state: *state },
                 });
@@ -1800,6 +1817,7 @@ impl CombatTimelinePlugin {
                         source_actor_id: 0,
                         source_entity_uuid: 0,
                         target: None,
+                        breakdown_ability_id: None,
                         ability_id: None,
                         kind: CombatFactKind::StatusReset,
                     });
@@ -1879,6 +1897,7 @@ impl CombatTimelinePlugin {
                     source_actor_id: source.actor_id.0,
                     source_entity_uuid: source.entity_uuid.0,
                     target: Some((target.actor_id.0, target.entity_uuid.0)),
+                    breakdown_ability_id: None,
                     ability_id: None,
                     kind: CombatFactKind::Status {
                         effect_id: status.effect.0,
@@ -2027,6 +2046,7 @@ impl CombatTimelinePlugin {
                 source_actor_id: contribution.provider_actor_id,
                 source_entity_uuid: provider_entity_uuid,
                 target: Some((contribution.recipient_actor_id, recipient_entity_uuid)),
+                breakdown_ability_id: None,
                 ability_id: None,
                 kind: CombatFactKind::ExactDamageContribution {
                     effect_id: contribution.effect_id,
@@ -2106,6 +2126,7 @@ impl CombatTimelinePlugin {
                 source_actor_id: contribution.provider_actor_id,
                 source_entity_uuid: provider_entity_uuid,
                 target: Some((contribution.recipient_actor_id, recipient_entity_uuid)),
+                breakdown_ability_id: None,
                 ability_id: None,
                 kind: CombatFactKind::ExactRationalDamageContribution {
                     effect_id: contribution.effect_id,
@@ -2931,6 +2952,7 @@ impl CombatTimelinePlugin {
             source_actor_id,
             source_entity_uuid: source.entity_uuid.0,
             target,
+            breakdown_ability_id: fact.breakdown_ability_id,
             ability_id: fact.ability_id,
             kind,
         }
@@ -3138,7 +3160,11 @@ impl CombatTimelinePlugin {
                     source.casts = source.casts.saturating_add(1);
                     let ability = source
                         .abilities
-                        .entry(fact.ability_id.unwrap_or_default())
+                        .entry(
+                            fact.breakdown_ability_id
+                                .or(fact.ability_id)
+                                .unwrap_or_default(),
+                        )
                         .or_default();
                     ability.casts = ability.casts.saturating_add(1);
                 }
@@ -3168,7 +3194,11 @@ impl CombatTimelinePlugin {
                         target_point.damage = target_point.damage.saturating_add(reported);
                         let ability = source
                             .abilities
-                            .entry(fact.ability_id.unwrap_or_default())
+                            .entry(
+                                fact.breakdown_ability_id
+                                    .or(fact.ability_id)
+                                    .unwrap_or_default(),
+                            )
                             .or_default();
                         ability.damage = ability.damage.saturating_add(reported);
                         ability.effective_damage =
@@ -3206,7 +3236,11 @@ impl CombatTimelinePlugin {
                     source.effective_healing = source.effective_healing.saturating_add(effective);
                     let ability = source
                         .abilities
-                        .entry(fact.ability_id.unwrap_or_default())
+                        .entry(
+                            fact.breakdown_ability_id
+                                .or(fact.ability_id)
+                                .unwrap_or_default(),
+                        )
                         .or_default();
                     ability.healing = ability.healing.saturating_add(reported);
                     ability.effective_healing = ability.effective_healing.saturating_add(effective);
@@ -3230,7 +3264,11 @@ impl CombatTimelinePlugin {
                     source.shielding = source.shielding.saturating_add(amount);
                     let ability = source
                         .abilities
-                        .entry(fact.ability_id.unwrap_or_default())
+                        .entry(
+                            fact.breakdown_ability_id
+                                .or(fact.ability_id)
+                                .unwrap_or_default(),
+                        )
                         .or_default();
                     ability.shielding = ability.shielding.saturating_add(amount);
                     if let Some((target_actor_id, target_entity_uuid)) = fact.target {
@@ -5101,6 +5139,89 @@ mod tests {
     }
 
     #[test]
+    fn exact_breakdown_identity_splits_one_raw_wire_action_without_rewriting_audit_identity() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/replay/reference-combat.rlog");
+        let reader = RlogReader::new(
+            BufReader::new(File::open(fixture).unwrap()),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let mut header = reader.header().clone();
+        header.session_id = "split-breakdown-identity".into();
+        let mut plugin = CombatTimelinePlugin::new();
+        plugin.begin_live(&header);
+        let mut factory =
+            EventEnvelopeFactory::new(header.session_id.clone(), header.region.clone());
+        let source = EntityRef {
+            actor_id: ActorId(1),
+            entity_uuid: EntityUuid(101),
+        };
+        let target = EntityRef {
+            actor_id: ActorId(2),
+            entity_uuid: EntityUuid(102),
+        };
+        for (sequence, breakdown_ability_id, amount) in
+            [(1, 2_220_329_107, 1_500), (2, 2_220_329_109, 3_500)]
+        {
+            let observed_micros = sequence * 1_000_000;
+            let envelope = factory
+                .emit(CanonicalEventDraft {
+                    time: EventTime {
+                        observed_micros,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(observed_micros, 1, sequence),
+                    sensitivity: EventSensitivity::PublicGameplay,
+                    kind: CanonicalEventDraftKind::Timeline(TimelineEventKind::Damage(
+                        DamageEvent {
+                            source,
+                            direct_source: None,
+                            target,
+                            ability: Some(AbilityId(2_203_291)),
+                            amount,
+                            actual_amount: Some(amount),
+                            hp_loss: Some(amount),
+                            shield_loss: None,
+                            hit_event_id: None,
+                            damage_source: None,
+                            damage_type: None,
+                            flags: DamageFlags::default(),
+                            packet: rlogs_events::DamagePacketDetail {
+                                breakdown_ability_id: Some(breakdown_ability_id),
+                                ..Default::default()
+                            },
+                        },
+                    )),
+                })
+                .unwrap();
+            plugin.observe_live(&envelope);
+        }
+
+        let snapshot = plugin.live_snapshot().unwrap();
+        let actor = snapshot
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(actor.reported_damage, 5_000);
+        assert_eq!(
+            actor
+                .abilities
+                .iter()
+                .map(|ability| (ability.ability_id.as_str(), ability.reported_damage))
+                .collect::<Vec<_>>(),
+            vec![("2220329107", 1_500), ("2220329109", 3_500)]
+        );
+        assert!(plugin.history_facts.iter().all(|fact| {
+            fact.ability_id == Some(2_203_291)
+                && fact
+                    .breakdown_ability_id
+                    .is_some_and(|id| id == 2_220_329_107 || id == 2_220_329_109)
+        }));
+    }
+
+    #[test]
     fn late_player_identity_updates_the_existing_damaged_actor() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../tests/fixtures/replay/reference-combat.rlog");
@@ -5848,6 +5969,7 @@ mod tests {
             source_actor_id: child.actor_id.0,
             source_entity_uuid: child.entity_uuid.0,
             target: Some((target.actor_id.0, target.entity_uuid.0)),
+            breakdown_ability_id: Some(55),
             ability_id: Some(55),
             kind: CombatFactKind::Damage {
                 reported: 100,
@@ -6434,6 +6556,7 @@ mod tests {
             source_actor_id: 1,
             source_entity_uuid: 1001,
             target: None,
+            breakdown_ability_id: None,
             ability_id: None,
             kind: CombatFactKind::Life {
                 state: LifeState::Died,
@@ -6450,6 +6573,7 @@ mod tests {
                 source_actor_id: 1,
                 source_entity_uuid: 1001,
                 target: Some((2, 2001)),
+                breakdown_ability_id: None,
                 ability_id: None,
                 kind: CombatFactKind::Status {
                     effect_id: 2_203_031,
@@ -6466,6 +6590,7 @@ mod tests {
             source_actor_id: 1,
             source_entity_uuid: 1001,
             target: Some((3, 3001)),
+            breakdown_ability_id: None,
             ability_id: None,
             kind: CombatFactKind::Status {
                 effect_id: 2_203_293,
@@ -6481,6 +6606,7 @@ mod tests {
             source_actor_id: 2,
             source_entity_uuid: 2001,
             target: Some((1, 1001)),
+            breakdown_ability_id: Some(9001),
             ability_id: Some(9001),
             kind: CombatFactKind::Damage {
                 reported: 500,

@@ -140,6 +140,7 @@ pub use factor_attribution::{
     PsychoscopeFactorValueUnit, PsychoscopeFormulaInputRole, PsychoscopeRecountParent,
     PsychoscopeStatCreditPolicy, psychoscope_factor_by_item_id, psychoscope_factor_rules,
     psychoscope_factor_runtime_rules_enabled, psychoscope_recount_parent,
+    psychoscope_recount_parent_for_damage_id,
 };
 pub use factor_correlation::{
     FACTOR_CORRELATION_SCHEMA_VERSION, FactorActionDamageAggregate, FactorActionDamageRole,

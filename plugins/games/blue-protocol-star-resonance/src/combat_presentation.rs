@@ -723,6 +723,29 @@ mod tests {
     }
 
     #[test]
+    fn falcon_damage_attr_rows_have_distinct_localized_breakdown_names() {
+        for (damage_attr_id, expected_name, expected_group) in [
+            (2_220_329_107, "Falcon Strike", 94),
+            (2_220_329_109, "Falcon Lightning Strike", 95),
+        ] {
+            let presentation = combat_action_presentation(damage_attr_id)
+                .unwrap()
+                .unwrap_or_else(|| panic!("DamageAttr row {damage_attr_id} is absent"));
+            assert_eq!(presentation.resolution, "localized");
+            assert_eq!(
+                crate::psychoscope_recount_parent_for_damage_id(damage_attr_id)
+                    .unwrap()
+                    .map(|parent| parent.recount_group_id),
+                Some(expected_group)
+            );
+            assert_eq!(
+                localized_combat_action_name(damage_attr_id, "en-US").unwrap(),
+                Some(expected_name)
+            );
+        }
+    }
+
+    #[test]
     fn every_generated_current_build_recount_action_keeps_a_parent_relation() {
         let source: serde_json::Value = serde_json::from_str(include_str!(
             "../game-data/catalog/combat-actions/current-build-recount.v1.json"

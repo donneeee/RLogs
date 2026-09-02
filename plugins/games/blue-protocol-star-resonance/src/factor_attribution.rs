@@ -445,6 +445,17 @@ pub fn psychoscope_recount_parent(
         .map(|index| &catalog.recount_parents[index]))
 }
 
+/// Resolves an exact current-build DamageAttr row to its user-facing Recount
+/// family without replacing the raw wire action carried by the combat event.
+pub fn psychoscope_recount_parent_for_damage_id(
+    damage_id: i64,
+) -> Result<Option<&'static PsychoscopeRecountParent>, String> {
+    Ok(factor_attribution_catalog()?
+        .recount_parents
+        .iter()
+        .find(|parent| parent.damage_ids.contains(&damage_id)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

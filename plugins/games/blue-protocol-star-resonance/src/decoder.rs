@@ -4910,6 +4910,9 @@ fn decode_aoi_delta(
             .map(|flags| flags & DAMAGE_FLAG_CRITICAL != 0)
             .or(damage.critical);
         let ability_id = damage.owner_id.map(i64::from);
+        let breakdown_ability_id = ability_id.and_then(|ability_id| {
+            breakdown_ability_id(ability_id, damage.hit_event_id, damage.damage_source)
+        });
         if let Some(state) = ability_id.and_then(|ability_id| {
             entities.observe_specialization_ability(attributed_uuid, ability_id)
         }) {
@@ -4940,6 +4943,7 @@ fn decode_aoi_delta(
                         attacker_uuid: damage.attacker_uuid,
                         top_summoner_uuid: damage.top_summoner_uuid,
                         owner_id: damage.owner_id,
+                        breakdown_ability_id,
                         dead: damage.dead,
                         missed: damage.missed,
                         reported_critical: damage.critical,
@@ -5024,6 +5028,7 @@ fn decode_aoi_delta(
                         attacker_uuid: damage.attacker_uuid,
                         top_summoner_uuid: damage.top_summoner_uuid,
                         owner_id: damage.owner_id,
+                        breakdown_ability_id,
                         dead: damage.dead,
                         missed: damage.missed,
                         reported_critical: damage.critical,
@@ -5086,6 +5091,22 @@ fn decode_aoi_delta(
         }
     }
     Ok(())
+}
+
+fn breakdown_ability_id(
+    raw_ability_id: i64,
+    hit_event_id: Option<i32>,
+    damage_source: Option<i32>,
+) -> Option<i64> {
+    let damage_attr_id = crate::damage_stage::damage_attr_id_for_action(
+        raw_ability_id,
+        hit_event_id,
+        damage_source,
+    )?;
+    crate::psychoscope_recount_parent_for_damage_id(damage_attr_id)
+        .ok()
+        .flatten()
+        .map(|_| damage_attr_id)
 }
 
 fn decode_status_snapshot(
@@ -6114,6 +6135,19 @@ mod tests {
     const SOCIAL_SERVICE: u64 = 625_772_963;
     const UNION_SERVICE: u64 = 504_281_929;
     const TEAM_SERVICE: u64 = 966_773_353;
+
+    #[test]
+    fn falcon_wire_family_uses_exact_damage_attr_rows_for_breakdown_only() {
+        assert_eq!(
+            breakdown_ability_id(2_203_291, Some(7), None),
+            Some(2_220_329_107)
+        );
+        assert_eq!(
+            breakdown_ability_id(2_203_291, Some(9), None),
+            Some(2_220_329_109)
+        );
+        assert_eq!(breakdown_ability_id(2_203_291, Some(8), None), None);
+    }
 
     #[test]
     fn owned_titles_come_only_from_positive_personal_zone_inventory_rows() {

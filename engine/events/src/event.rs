@@ -527,6 +527,12 @@ pub struct DamagePacketDetail {
     /// Raw owner/ability ID from `SyncDamageInfo` before `AbilityId` wrapping.
     #[serde(default)]
     pub owner_id: Option<i32>,
+    /// Exact game-table identity used only to split user-facing breakdown
+    /// rows when one raw wire action contains multiple independently named
+    /// damage families. `DamageEvent::ability` remains the authoritative raw
+    /// action for replay, attribution, and audit joins.
+    #[serde(default)]
+    pub breakdown_ability_id: Option<i64>,
     /// Raw death bit on this exact combat result. The decoder also emits the
     /// semantic `LifeState::Died` event when this is true.
     #[serde(default)]
