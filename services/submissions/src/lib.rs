@@ -6217,7 +6217,11 @@ mod tests {
             fixture_public_report("rpt_dddddddddddddddddddddddddddddddd", "3296036", 0);
         report.visibility = ReportVisibility::Unlisted;
         report.submission_provenance.submitter_id = Some("account-one".into());
-        write_json_atomic(&service.projection_path(&report.report_id).unwrap(), &report).unwrap();
+        write_json_atomic(
+            &service.projection_path(&report.report_id).unwrap(),
+            &report,
+        )
+        .unwrap();
 
         assert!(matches!(
             service.update_report_visibility(
@@ -6228,27 +6232,34 @@ mod tests {
             Err(ServiceError::NotFound)
         ));
         let published = service
-            .update_report_visibility(
-                &report.report_id,
-                "account-one",
-                ReportVisibility::Public,
-            )
+            .update_report_visibility(&report.report_id, "account-one", ReportVisibility::Public)
             .unwrap();
         assert_eq!(published.visibility, ReportVisibility::Public);
         assert!(published.share_url.is_some());
-        assert_eq!(service.catalog(&CatalogQuery::default()).unwrap().total_entries, 1);
+        assert_eq!(
+            service
+                .catalog(&CatalogQuery::default())
+                .unwrap()
+                .total_entries,
+            1
+        );
 
         let private = service
-            .update_report_visibility(
-                &report.report_id,
-                "account-one",
-                ReportVisibility::Private,
-            )
+            .update_report_visibility(&report.report_id, "account-one", ReportVisibility::Private)
             .unwrap();
         assert_eq!(private.visibility, ReportVisibility::Private);
         assert!(private.share_url.is_none());
-        assert_eq!(service.catalog(&CatalogQuery::default()).unwrap().total_entries, 0);
-        assert!(matches!(service.report(&report.report_id), Err(ServiceError::NotFound)));
+        assert_eq!(
+            service
+                .catalog(&CatalogQuery::default())
+                .unwrap()
+                .total_entries,
+            0
+        );
+        assert!(matches!(
+            service.report(&report.report_id),
+            Err(ServiceError::NotFound)
+        ));
         assert_eq!(
             service
                 .account_report(&report.report_id, "account-one")
