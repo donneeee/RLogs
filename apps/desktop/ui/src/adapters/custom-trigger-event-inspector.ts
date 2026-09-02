@@ -16,6 +16,21 @@ import type { MountedSurface } from "../shell/types";
 const MAXIMUM_VISIBLE_EVENTS = 1_000;
 const MAXIMUM_PINNED_EVENTS = 16;
 
+interface PinnedInspectorEvent {
+  event: LiveEventLine;
+  detail: LiveEventDetail;
+}
+
+export interface EventInspectorFieldDiff {
+  source: "canonical" | "protocol";
+  path: string;
+  label: string;
+  valueType: string;
+  before: string | null;
+  after: string | null;
+  changed: boolean;
+}
+
 export interface EventInspectorDependencies {
   subscribe(
     onBatch: (batch: LiveEventBatch) => void,
@@ -38,7 +53,9 @@ export function mountCustomTriggerEventInspector(
   let selectedFieldPaths = new Set<string>();
   let currentDraft: CustomTriggerDraft | null = null;
   let visibleEvents: LiveEventLine[] = [];
-  let pinnedEvents: LiveEventLine[] = [];
+  let pinnedEvents: PinnedInspectorEvent[] = [];
+  let comparisonBeforeRevision: number | null = null;
+  let comparisonAfterRevision: number | null = null;
   let viewerDropped = 0;
 
   const root = element("div", "plugin-surface event-inspector-surface");
@@ -180,7 +197,38 @@ export function mountCustomTriggerEventInspector(
       "runtime-empty-result",
     ),
   );
-  pinsCard.append(pinsHeader, pins);
+  const comparison = element("section", "event-inspector-comparison");
+  const comparisonHeader = element("header", "event-inspector-comparison-heading");
+  const comparisonHeading = element("div");
+  comparisonHeading.append(
+    text("span", "FIELD DIFF", "eyebrow"),
+    text("h3", "Compare pinned events"),
+  );
+  const comparisonCount = text("span", "Pin 2 events", "event-inspector-count");
+  comparisonHeader.append(comparisonHeading, comparisonCount);
+  const comparisonControls = element("div", "event-inspector-comparison-controls");
+  const comparisonBefore = selectField("Before", "Choose first event", []);
+  const comparisonAfter = selectField("After", "Choose second event", []);
+  const changedOnlyLabel = element("label", "event-inspector-comparison-toggle");
+  const changedOnly = element("input");
+  changedOnly.type = "checkbox";
+  changedOnly.checked = true;
+  changedOnlyLabel.append(changedOnly, text("span", "Changes only"));
+  comparisonControls.append(
+    comparisonBefore.label,
+    comparisonAfter.label,
+    changedOnlyLabel,
+  );
+  const comparisonBody = element("div", "event-inspector-comparison-body");
+  comparisonBody.append(
+    text(
+      "p",
+      "Pin two decoded events to compare their exact canonical and protobuf field values.",
+      "runtime-empty-result",
+    ),
+  );
+  comparison.append(comparisonHeader, comparisonControls, comparisonBody);
+  pinsCard.append(pinsHeader, pins, comparison);
 
   const boundary = element("section", "event-inspector-boundary");
   boundary.append(
@@ -445,8 +493,13 @@ export function mountCustomTriggerEventInspector(
           : `${selectedFieldPaths.size.toLocaleString()} field${selectedFieldPaths.size === 1 ? "" : "s"} will be copied into a disabled draft.`;
     }
     detailBody.replaceChildren(...rows);
-    pin.disabled = pinnedEvents.some((event) => event.revision === selected!.revision);
-    pin.textContent = pin.disabled ? "Pinned" : "Pin event";
+    const isPinned = pinnedEvents.some(({ event }) => event.revision === selected!.revision);
+    pin.disabled = selectedDetail === null || isPinned;
+    pin.textContent = isPinned
+      ? "Pinned"
+      : selectedDetail === null
+        ? "Loading detail…"
+        : "Pin event";
   };
 
   const renderDraft = () => {
@@ -500,7 +553,7 @@ export function mountCustomTriggerEventInspector(
       return;
     }
     pins.replaceChildren(
-      ...pinnedEvents.map((event) => {
+      ...pinnedEvents.map(({ event }) => {
         const item = button(
           `#${event.sequence} · ${formatIdentifier(event.kind)} · ${event.rawIds}`,
           "event-inspector-pin",
@@ -511,6 +564,91 @@ export function mountCustomTriggerEventInspector(
         return item;
       }),
     );
+  };
+
+  const renderComparison = () => {
+    const selectedBefore = comparisonBeforeRevision === null
+      ? undefined
+      : pinnedEvents.find(({ event }) => event.revision === comparisonBeforeRevision);
+    const selectedAfter = comparisonAfterRevision === null
+      ? undefined
+      : pinnedEvents.find(({ event }) => event.revision === comparisonAfterRevision);
+    replaceComparisonOptions(
+      comparisonBefore.select,
+      pinnedEvents,
+      comparisonBeforeRevision,
+      "Choose first event",
+    );
+    replaceComparisonOptions(
+      comparisonAfter.select,
+      pinnedEvents,
+      comparisonAfterRevision,
+      "Choose second event",
+    );
+    if (selectedBefore === undefined || selectedAfter === undefined) {
+      comparisonCount.textContent = pinnedEvents.length < 2
+        ? "Pin 2 events"
+        : "Choose 2 events";
+      comparisonBody.replaceChildren(
+        text(
+          "p",
+          pinnedEvents.length < 2
+            ? "Pin two decoded events to compare their exact canonical and protobuf field values."
+            : "Choose a Before and After event from the bounded pinned set.",
+          "runtime-empty-result",
+        ),
+      );
+      return;
+    }
+    if (selectedBefore.event.revision === selectedAfter.event.revision) {
+      comparisonCount.textContent = "Choose different events";
+      comparisonBody.replaceChildren(
+        text("p", "Before and After must be different pinned events.", "runtime-empty-result"),
+      );
+      return;
+    }
+    const differences = compareEventInspectorDetails(
+      selectedBefore.detail,
+      selectedAfter.detail,
+    );
+    const changed = differences.filter((row) => row.changed);
+    const visible = changedOnly.checked ? changed : differences;
+    comparisonCount.textContent = `${changed.length.toLocaleString()} changed · ${differences.length.toLocaleString()} fields`;
+    const table = element("div", "event-inspector-comparison-table");
+    const header = element("div", "event-inspector-comparison-row event-inspector-comparison-columns");
+    header.append(
+      text("strong", "Field"),
+      text("strong", `Before · #${selectedBefore.event.sequence}`),
+      text("strong", `After · #${selectedAfter.event.sequence}`),
+    );
+    table.append(header);
+    for (const row of visible) {
+      const item = element("div", "event-inspector-comparison-row");
+      item.dataset.changed = String(row.changed);
+      const identity = element("span", "event-inspector-comparison-field");
+      identity.append(
+        text("strong", row.label),
+        text("code", `${formatIdentifier(row.source)} · ${row.path}`),
+      );
+      item.append(
+        identity,
+        text("code", row.before ?? "Not present", "event-inspector-comparison-value"),
+        text("code", row.after ?? "Not present", "event-inspector-comparison-value"),
+      );
+      table.append(item);
+    }
+    if (visible.length === 0) {
+      table.append(
+        text(
+          "p",
+          changedOnly.checked
+            ? "No field values changed between these events. Turn off Changes only to review every retained field."
+            : "Neither event contains retained comparison fields.",
+          "runtime-empty-result",
+        ),
+      );
+    }
+    comparisonBody.replaceChildren(table);
   };
 
   let unsubscribe: (() => void) | null = null;
@@ -546,11 +684,20 @@ export function mountCustomTriggerEventInspector(
     renderStream();
   });
   pin.addEventListener("click", () => {
-    if (selected === null || pinnedEvents.some((event) => event.revision === selected!.revision)) return;
+    if (
+      selected === null ||
+      selectedDetail === null ||
+      pinnedEvents.some(({ event }) => event.revision === selected!.revision)
+    ) return;
     if (pinnedEvents.length >= MAXIMUM_PINNED_EVENTS) pinnedEvents.shift();
-    pinnedEvents.push(selected);
+    pinnedEvents.push({ event: selected, detail: selectedDetail });
+    if (pinnedEvents.length >= 2) {
+      comparisonBeforeRevision = pinnedEvents.at(-2)!.event.revision;
+      comparisonAfterRevision = pinnedEvents.at(-1)!.event.revision;
+    }
     renderSelection();
     renderPins();
+    renderComparison();
   });
   createRule.addEventListener("click", () => {
     if (selectedDetail === null) return;
@@ -567,9 +714,21 @@ export function mountCustomTriggerEventInspector(
   });
   clearPins.addEventListener("click", () => {
     pinnedEvents = [];
+    comparisonBeforeRevision = null;
+    comparisonAfterRevision = null;
     renderSelection();
     renderPins();
+    renderComparison();
   });
+  comparisonBefore.select.addEventListener("change", () => {
+    comparisonBeforeRevision = selectedRevision(comparisonBefore.select.value);
+    renderComparison();
+  });
+  comparisonAfter.select.addEventListener("change", () => {
+    comparisonAfterRevision = selectedRevision(comparisonAfter.select.value);
+    renderComparison();
+  });
+  changedOnly.addEventListener("change", renderComparison);
   for (const input of [source.select, topic.select, kind.input, search.input]) {
     input.addEventListener("input", renderStream);
   }
@@ -586,8 +745,11 @@ export function mountCustomTriggerEventInspector(
         selectedFieldPaths = new Set();
         selectedDetailRequest += 1;
         pinnedEvents = [];
+        comparisonBeforeRevision = null;
+        comparisonAfterRevision = null;
         renderSelection();
         renderPins();
+        renderComparison();
       }
       activeSessionId = batch.sessionId;
       connection.textContent = batch.sessionId === null ? "WAITING FOR GAME" : "LIVE";
@@ -629,6 +791,7 @@ export function mountCustomTriggerEventInspector(
 
   renderStream();
   renderDraft();
+  renderComparison();
   startFollowing();
   return {
     dispose() {
@@ -637,6 +800,80 @@ export function mountCustomTriggerEventInspector(
       root.remove();
     },
   };
+}
+
+export function compareEventInspectorDetails(
+  before: LiveEventDetail,
+  after: LiveEventDetail,
+): EventInspectorFieldDiff[] {
+  const beforeFields = comparisonFields(before);
+  const afterFields = comparisonFields(after);
+  const keys = new Set([...beforeFields.keys(), ...afterFields.keys()]);
+  return [...keys]
+    .map((key) => {
+      const left = beforeFields.get(key);
+      const right = afterFields.get(key);
+      const beforeValue = left?.value ?? null;
+      const afterValue = right?.value ?? null;
+      return {
+        source: left?.source ?? right!.source,
+        path: left?.path ?? right!.path,
+        label: left?.label ?? right!.label,
+        valueType: left?.valueType ?? right!.valueType,
+        before: beforeValue,
+        after: afterValue,
+        changed: beforeValue !== afterValue,
+      };
+    })
+    .sort((left, right) =>
+      Number(right.changed) - Number(left.changed) ||
+      left.source.localeCompare(right.source) ||
+      left.path.localeCompare(right.path));
+}
+
+function comparisonFields(detail: LiveEventDetail): Map<string, Omit<EventInspectorFieldDiff, "before" | "after" | "changed"> & { value: string }> {
+  const fields = new Map<string, Omit<EventInspectorFieldDiff, "before" | "after" | "changed"> & { value: string }>();
+  for (const field of detail.fields) {
+    fields.set(`canonical:${field.path}`, {
+      source: "canonical",
+      path: field.path,
+      label: field.label,
+      valueType: field.valueType,
+      value: field.value,
+    });
+  }
+  for (const field of detail.protocol?.fields ?? []) {
+    fields.set(`protocol:${field.path}`, {
+      source: "protocol",
+      path: field.path,
+      label: `Protobuf field ${field.fieldNumber}`,
+      valueType: field.wireType,
+      value: field.value,
+    });
+  }
+  return fields;
+}
+
+function replaceComparisonOptions(
+  select: HTMLSelectElement,
+  pinnedEvents: readonly PinnedInspectorEvent[],
+  selected: number | null,
+  placeholder: string,
+): void {
+  select.replaceChildren(new Option(placeholder, ""));
+  for (const { event } of pinnedEvents) {
+    select.append(new Option(
+      `#${event.sequence} · ${formatIdentifier(event.kind)}`,
+      String(event.revision),
+    ));
+  }
+  select.value = selected === null ? "" : String(selected);
+}
+
+function selectedRevision(value: string): number | null {
+  if (value === "") return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function metric(label: string, initial: string) {
