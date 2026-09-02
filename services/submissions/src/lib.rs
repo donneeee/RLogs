@@ -18,7 +18,7 @@ use axum::{
         header::{AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE, ETAG},
     },
     response::{IntoResponse, Redirect, Response},
-    routing::{get, post, put},
+    routing::{get, patch, post, put},
 };
 use reqwest::Url;
 use rlogs_combat::{RunAnalysis, RunSegmentKind, RunSubmissionDisposition};
@@ -35,7 +35,9 @@ use rlogs_game_bpsr::{
     localized_class_name, localized_scene_name, localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
-use rlogs_plugin_combat_meter::{CombatHistorySnapshot, CombatTimelinePlugin, HistoryActorSummary};
+use rlogs_plugin_combat_meter::{
+    CombatHistorySnapshot, CombatHistoryView, CombatTimelinePlugin, HistoryActorSummary,
+};
 use rlogs_plugin_encounter_recorder::EncounterRecorderPlugin;
 use rlogs_submission::{
     ArtifactBuildLimits, LocalLogArtifact, ReportVisibility, Sha256Digest, SubmissionSession,
@@ -63,9 +65,9 @@ use profiles::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 7;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 8;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 5;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 7;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 8;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -249,6 +251,8 @@ struct PrivateRunMembership {
 struct CrossVantageReplayResult {
     participants: Vec<PublicReconciledParticipant>,
     conservation: PublicAttributionConservation,
+    rdps_effects: Vec<PublicRdpsEffectPresentation>,
+    rdps_influences: Vec<PublicRdpsInfluence>,
     swift_vortex_candidate_audit: Option<SwiftVortexCandidateAuditReport>,
 }
 
@@ -602,6 +606,31 @@ impl SubmissionService {
         } else {
             Err(ServiceError::NotFound)
         }
+    }
+
+    fn update_report_visibility(
+        &self,
+        report_id: &str,
+        submitter_id: &str,
+        visibility: ReportVisibility,
+    ) -> Result<UpdateParseVisibilityResponse, ServiceError> {
+        validate_identifier(report_id, "report ID")?;
+        let _write = self.write_guard();
+        let path = self.projection_path(report_id)?;
+        let mut report: PublicParseReport = read_json(&path)?;
+        if report.submission_provenance.submitter_id.as_deref() != Some(submitter_id) {
+            // Do not disclose whether a report exists to a different account.
+            return Err(ServiceError::NotFound);
+        }
+        report.visibility = visibility;
+        write_json_atomic(&path, &report)?;
+        self.rebuild_catalog_locked()?;
+        Ok(UpdateParseVisibilityResponse {
+            schema_version: 1,
+            report_id: report.report_id,
+            visibility,
+            share_url: (visibility != ReportVisibility::Private).then(|| self.share_url(report_id)),
+        })
     }
 
     fn my_parse_catalog(
@@ -1089,6 +1118,8 @@ impl SubmissionService {
         Ok(CrossVantageReplayResult {
             participants,
             conservation,
+            rdps_effects: public_rdps_effects(view),
+            rdps_influences: public_rdps_influences(view),
             swift_vortex_candidate_audit: (swift_vortex_candidate_audit
                 .candidate_status_event_count
                 > 0)
@@ -1302,6 +1333,8 @@ impl SubmissionService {
                                     RunAttributionReconciliationStatus::Reconciled;
                                 reconciliation.reconciled_participants = result.participants;
                                 reconciliation.conservation = Some(result.conservation);
+                                reconciliation.rdps_effects = result.rdps_effects;
+                                reconciliation.rdps_influences = result.rdps_influences;
                                 reconciliation.swift_vortex_candidate_audit =
                                     result.swift_vortex_candidate_audit;
                                 reconciliation.attribution_replay_completed = true;
@@ -1577,6 +1610,10 @@ pub fn router(service: SubmissionService) -> Router {
         .route("/v1/auth/profiles", get(get_account_profiles))
         .route("/v1/auth/parses", get(get_account_parses))
         .route("/v1/auth/parses/{report_id}", get(get_account_parse))
+        .route(
+            "/v1/auth/parses/{report_id}/visibility",
+            patch(update_account_parse_visibility),
+        )
         .route("/v1/auth/app-tokens", post(issue_app_token))
         .route("/v1/uploads", post(begin_upload))
         .route(
@@ -1758,6 +1795,24 @@ async fn get_account_parse(
     Ok(Json(
         service.account_report(&report_id, &account.submitter_id)?,
     ))
+}
+
+async fn update_account_parse_visibility(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+    AxumPath(report_id): AxumPath<String>,
+    Json(request): Json<UpdateParseVisibilityRequest>,
+) -> Result<Json<UpdateParseVisibilityResponse>, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    let account = service
+        .inner
+        .accounts
+        .authenticate_web(token, unix_millis()?)?;
+    Ok(Json(service.update_report_visibility(
+        &report_id,
+        &account.submitter_id,
+        request.visibility,
+    )?))
 }
 
 async fn begin_upload(
@@ -2147,6 +2202,13 @@ pub struct PublicRun {
     pub local_state_witnesses: Vec<PublicLocalStateWitness>,
     pub segments: Vec<PublicRunSegment>,
     pub participants: Vec<PublicParticipant>,
+    /// Exact packet-derived provider/recipient relationships for this replay.
+    /// The rows retain decimal strings and reduced fractions so browsers never
+    /// lose precision while explaining an rDPS total.
+    #[serde(default)]
+    pub rdps_influences: Vec<PublicRdpsInfluence>,
+    #[serde(default)]
+    pub rdps_effects: Vec<PublicRdpsEffectPresentation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2234,6 +2296,72 @@ pub struct PublicParticipant {
     pub tps: f64,
     pub rdps: Option<f64>,
     pub deaths: u64,
+    #[serde(default)]
+    pub death_seconds: Vec<u32>,
+    #[serde(default)]
+    pub abilities: Vec<PublicAbilitySummary>,
+    /// Sparse one-second points. Missing seconds are zero and do not increase
+    /// the public projection or Cloudflare transfer size.
+    #[serde(default)]
+    pub series: Vec<PublicSeriesPoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicAbilitySummary {
+    pub ability_id: String,
+    pub presentation_name: Option<String>,
+    pub presentation_kind: Option<String>,
+    pub icon_asset_path: Option<String>,
+    pub casts: u64,
+    pub hits: u64,
+    pub critical_hits: u64,
+    pub damage: i64,
+    pub effective_damage: i64,
+    pub healing: i64,
+    pub effective_healing: i64,
+    pub shielding: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicSeriesPoint {
+    pub second: u32,
+    pub damage: i64,
+    pub effective_healing: i64,
+    pub damage_taken: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicRdpsEffectPresentation {
+    pub effect_id: String,
+    pub presentation_name: String,
+    pub presentation_kind: String,
+    pub icon_asset_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicRationalDamageDelta {
+    pub numerator: String,
+    pub denominator: String,
+    pub contribution_count: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicRdpsInfluence {
+    pub effect_id: String,
+    pub attribution_component: Option<String>,
+    pub complete_effect: bool,
+    pub provider_actor_id: String,
+    pub recipient_actor_id: String,
+    pub affected_ability_id: Option<String>,
+    pub target_actor_id: Option<String>,
+    pub first_observed_micros: u64,
+    pub last_observed_micros: u64,
+    pub damage_event_count: u64,
+    pub observed_damage: String,
+    pub exact_integer_delta: String,
+    pub exact_rational_deltas: Vec<PublicRationalDamageDelta>,
+    pub attributed_rdps: Option<String>,
+    pub damage_context_complete: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -2271,6 +2399,20 @@ pub struct MyParseCatalogEntry {
     pub visibility: ReportVisibility,
     pub submitted_by_you: bool,
     pub matched_character_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateParseVisibilityRequest {
+    pub visibility: ReportVisibility,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UpdateParseVisibilityResponse {
+    pub schema_version: u16,
+    pub report_id: String,
+    pub visibility: ReportVisibility,
+    pub share_url: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -2366,6 +2508,12 @@ pub struct PublicRunReconciliation {
     pub reconciled_participants: Vec<PublicReconciledParticipant>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conservation: Option<PublicAttributionConservation>,
+    /// These rows come from the conserved replay that consumed all verified
+    /// cross-vantage state. They are empty until that replay completes.
+    #[serde(default)]
+    pub rdps_influences: Vec<PublicRdpsInfluence>,
+    #[serde(default)]
+    pub rdps_effects: Vec<PublicRdpsEffectPresentation>,
     /// Audit-only exact paired lifecycle evidence for the unpromoted Swift
     /// Vortex candidate. This can satisfy the magnitude review gate but can
     /// never enable production attribution by itself.
@@ -2966,6 +3114,8 @@ fn public_runs(
                             .collect()
                     })
                     .unwrap_or_default(),
+                rdps_influences: view.map(public_rdps_influences).unwrap_or_default(),
+                rdps_effects: view.map(public_rdps_effects).unwrap_or_default(),
             })
         })
         .collect()
@@ -3839,6 +3989,8 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
         verified_state_input_sha256: None,
         reconciled_participants: Vec::new(),
         conservation: None,
+        rdps_influences: Vec::new(),
+        rdps_effects: Vec::new(),
         swift_vortex_candidate_audit: None,
         attribution_replay_completed: false,
     }
@@ -4210,7 +4362,79 @@ fn public_participant(actor: &HistoryActorSummary) -> PublicParticipant {
         tps: actor.tps,
         rdps: actor.rdps,
         deaths: actor.deaths,
+        death_seconds: actor.death_seconds.clone(),
+        abilities: actor
+            .abilities
+            .iter()
+            .map(|ability| PublicAbilitySummary {
+                ability_id: ability.ability_id.clone(),
+                presentation_name: ability.presentation_name.clone(),
+                presentation_kind: ability.presentation_kind.clone(),
+                icon_asset_path: ability.icon_asset_path.clone(),
+                casts: ability.casts,
+                hits: ability.hits,
+                critical_hits: ability.critical_hits,
+                damage: ability.damage,
+                effective_damage: ability.effective_damage,
+                healing: ability.healing,
+                effective_healing: ability.effective_healing,
+                shielding: ability.shielding,
+            })
+            .collect(),
+        series: actor
+            .series
+            .iter()
+            .map(|point| PublicSeriesPoint {
+                second: point.second,
+                damage: point.damage,
+                effective_healing: point.effective_healing,
+                damage_taken: point.damage_taken,
+            })
+            .collect(),
     }
+}
+
+fn public_rdps_effects(view: &CombatHistoryView) -> Vec<PublicRdpsEffectPresentation> {
+    view.rdps_effect_presentations
+        .iter()
+        .map(|effect| PublicRdpsEffectPresentation {
+            effect_id: effect.effect_id.clone(),
+            presentation_name: effect.presentation_name.clone(),
+            presentation_kind: effect.presentation_kind.clone(),
+            icon_asset_path: effect.icon_asset_path.clone(),
+        })
+        .collect()
+}
+
+fn public_rdps_influences(view: &CombatHistoryView) -> Vec<PublicRdpsInfluence> {
+    view.damage_influences
+        .iter()
+        .map(|influence| PublicRdpsInfluence {
+            effect_id: influence.effect_id.clone(),
+            attribution_component: influence.attribution_component.clone(),
+            complete_effect: influence.complete_effect,
+            provider_actor_id: influence.provider_actor_id.clone(),
+            recipient_actor_id: influence.recipient_actor_id.clone(),
+            affected_ability_id: influence.affected_ability_id.clone(),
+            target_actor_id: influence.target_actor_id.clone(),
+            first_observed_micros: influence.first_observed_micros,
+            last_observed_micros: influence.last_observed_micros,
+            damage_event_count: influence.damage_event_count,
+            observed_damage: influence.observed_damage.clone(),
+            exact_integer_delta: influence.exact_integer_delta.clone(),
+            exact_rational_deltas: influence
+                .exact_rational_deltas
+                .iter()
+                .map(|delta| PublicRationalDamageDelta {
+                    numerator: delta.numerator.clone(),
+                    denominator: delta.denominator.clone(),
+                    contribution_count: delta.contribution_count,
+                })
+                .collect(),
+            attributed_rdps: influence.attributed_rdps.clone(),
+            damage_context_complete: influence.damage_context_complete,
+        })
+        .collect()
 }
 
 fn public_participant_key(participant: &PublicParticipant) -> String {
@@ -5983,6 +6207,57 @@ mod tests {
         );
     }
 
+    #[test]
+    fn report_owner_can_change_visibility_and_public_catalog_updates_atomically() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let mut report =
+            fixture_public_report("rpt_dddddddddddddddddddddddddddddddd", "3296036", 0);
+        report.visibility = ReportVisibility::Unlisted;
+        report.submission_provenance.submitter_id = Some("account-one".into());
+        write_json_atomic(&service.projection_path(&report.report_id).unwrap(), &report).unwrap();
+
+        assert!(matches!(
+            service.update_report_visibility(
+                &report.report_id,
+                "account-two",
+                ReportVisibility::Public,
+            ),
+            Err(ServiceError::NotFound)
+        ));
+        let published = service
+            .update_report_visibility(
+                &report.report_id,
+                "account-one",
+                ReportVisibility::Public,
+            )
+            .unwrap();
+        assert_eq!(published.visibility, ReportVisibility::Public);
+        assert!(published.share_url.is_some());
+        assert_eq!(service.catalog(&CatalogQuery::default()).unwrap().total_entries, 1);
+
+        let private = service
+            .update_report_visibility(
+                &report.report_id,
+                "account-one",
+                ReportVisibility::Private,
+            )
+            .unwrap();
+        assert_eq!(private.visibility, ReportVisibility::Private);
+        assert!(private.share_url.is_none());
+        assert_eq!(service.catalog(&CatalogQuery::default()).unwrap().total_entries, 0);
+        assert!(matches!(service.report(&report.report_id), Err(ServiceError::NotFound)));
+        assert_eq!(
+            service
+                .account_report(&report.report_id, "account-one")
+                .unwrap()
+                .visibility,
+            ReportVisibility::Private
+        );
+    }
+
     fn fixture_public_report(
         report_id: &str,
         local_character_id: &str,
@@ -6004,6 +6279,9 @@ mod tests {
             tps: 0.0,
             rdps: None,
             deaths: 0,
+            death_seconds: Vec::new(),
+            abilities: Vec::new(),
+            series: Vec::new(),
         };
         PublicParseReport {
             schema_version: PUBLIC_PARSE_SCHEMA_VERSION,
@@ -6073,6 +6351,8 @@ mod tests {
                 }],
                 segments: Vec::new(),
                 participants: vec![participant("character-a"), participant("character-b")],
+                rdps_influences: Vec::new(),
+                rdps_effects: Vec::new(),
             }],
         }
     }

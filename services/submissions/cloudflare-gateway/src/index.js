@@ -9,6 +9,7 @@ const PUBLIC_ROUTES = [
   ["GET", /^\/v1\/auth\/profiles$/],
   ["GET", /^\/v1\/auth\/parses$/],
   ["GET", /^\/v1\/auth\/parses\/[A-Za-z0-9_-]+$/],
+  ["PATCH", /^\/v1\/auth\/parses\/[A-Za-z0-9_-]+\/visibility$/],
   ["GET", /^\/v1\/parses$/],
   ["GET", /^\/v1\/parses\/[A-Za-z0-9_-]+$/],
   ["GET", /^\/v1\/run-groups\/[A-Za-z0-9_-]+\/reconciliation$/],
@@ -33,7 +34,7 @@ const INGEST_ROUTES = [
 function corsHeaders(origin, allowedOrigin) {
   const headers = new Headers({
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, PATCH, POST, PUT, OPTIONS",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   });
