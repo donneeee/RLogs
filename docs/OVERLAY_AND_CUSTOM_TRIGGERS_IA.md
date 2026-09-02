@@ -1,7 +1,9 @@
 # Overlay and Custom Triggers information architecture
 
-Status: menu-only design preview. No runtime subscriptions, packet consumers,
-trigger execution, or game-overlay windows are enabled by these workspaces.
+Status: the workspace menus and cross-workspace navigation are implemented.
+The bounded Event Inspector is the first working Custom Triggers component.
+Rule execution and game-overlay rendering remain disabled while their contracts
+are reviewed.
 
 ## Product boundary
 

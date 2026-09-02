@@ -1,4 +1,9 @@
 import type { MountedSurface } from "../shell/types";
+import { requestWorkspaceNavigation } from "../shell/workspace-navigation";
+import { readStoredDrafts } from "./custom-trigger-draft";
+
+const CUSTOM_TRIGGERS_WORKSPACE_ID = "app.rlogs.custom-triggers";
+const OVERLAY_WORKSPACE_ID = "app.rlogs.overlay";
 
 export type CustomTriggersWorkspacePage =
   | "overview"
@@ -11,6 +16,10 @@ interface MenuItem {
   title: string;
   description: string;
   items?: readonly string[];
+  destination?: {
+    workspaceId: string;
+    entrypoint: string;
+  };
 }
 
 interface PageDefinition {
@@ -31,21 +40,25 @@ const PAGE_DEFINITIONS: Record<CustomTriggersWorkspacePage, PageDefinition> = {
         title: "Rules",
         description: "Create, group, enable, test, and review readable When / If / Then rules.",
         items: ["My rules", "Folders", "Enable or disable groups", "Search"],
+        destination: destination(CUSTOM_TRIGGERS_WORKSPACE_ID, "rules"),
       },
       {
         title: "Library",
         description: "Start from reviewed encounter packs, timelines, class packs, and utility patterns.",
         items: ["Encounter packs", "Timelines", "Class packs", "Imports"],
+        destination: destination(CUSTOM_TRIGGERS_WORKSPACE_ID, "library"),
       },
       {
         title: "Event Inspector",
         description: "Watch a bounded live event stream, inspect decoded fields, and use a selected value to start a rule.",
         items: ["Live follow", "Decoded fields", "Pin and compare", "Create rule from event"],
+        destination: destination(CUSTOM_TRIGGERS_WORKSPACE_ID, "event-inspector"),
       },
       {
         title: "Integrations",
         description: "Choose where trigger actions are allowed to appear or play.",
         items: ["Overlay", "Sound", "Mechanics Map"],
+        destination: destination(OVERLAY_WORKSPACE_ID, "overview"),
       },
     ],
   },
@@ -220,13 +233,26 @@ export function mountCustomTriggersWorkspaceSurface(
     text("h2", definition.title),
     text("p", definition.description, "card-copy"),
   );
-  header.append(heading, text("span", "MENU PREVIEW", "overlay-menu-preview-badge"));
+  header.append(heading, text("span", "DESIGN PREVIEW", "overlay-menu-preview-badge"));
 
   const menu = element("section", "overlay-menu-grid");
   for (const item of definition.items) {
-    const card = element("article", "content-card overlay-menu-card");
+    const destination = item.destination;
+    const card = destination === undefined
+      ? element("article", "content-card overlay-menu-card")
+      : element("button", "content-card overlay-menu-card overlay-menu-card-action");
+    if (card instanceof HTMLButtonElement) {
+      card.type = "button";
+      card.setAttribute("aria-label", `Open ${item.title}`);
+      card.addEventListener("click", () => {
+        requestWorkspaceNavigation(destination!);
+      });
+    }
     const cardHeader = element("div", "overlay-menu-card-heading");
-    cardHeader.append(text("h3", item.title), text("span", "›", "overlay-menu-chevron"));
+    cardHeader.append(text("h3", item.title));
+    if (destination !== undefined) {
+      cardHeader.append(text("span", "›", "overlay-menu-chevron"));
+    }
     card.append(cardHeader, text("p", item.description, "card-copy"));
     if (item.items !== undefined) {
       const children = element("ul", "overlay-menu-children");
@@ -238,12 +264,84 @@ export function mountCustomTriggersWorkspaceSurface(
 
   const note = element("section", "overlay-menu-note");
   note.append(
-    text("strong", "Navigation only"),
-    text("span", "No rules subscribe to events or execute actions in this menu preview."),
+    text("strong", "Safe foundation"),
+    text("span", "Event Inspector is live and bounded. Rule editing and action execution remain disabled until their contracts are reviewed."),
   );
-  root.append(header, menu, note);
+  root.append(header);
+  if (page === "rules") {
+    root.append(renderInspectorDraftInbox());
+  }
+  root.append(menu, note);
   container.replaceChildren(root);
   return { dispose: () => root.remove() };
+}
+
+function renderInspectorDraftInbox(): HTMLElement {
+  const drafts = readStoredDrafts(window.localStorage);
+  const card = element("section", "content-card trigger-draft-inbox");
+  const header = element("header", "trigger-draft-inbox-heading");
+  const copy = element("div");
+  copy.append(
+    text("span", "EVENT INSPECTOR HANDOFF", "eyebrow"),
+    text("h3", "Inspector drafts"),
+    text(
+      "p",
+      "Evidence-backed When clauses saved by Event Inspector appear here disabled until the Rules editor can review conditions and add actions.",
+      "card-copy",
+    ),
+  );
+  header.append(
+    copy,
+    text(
+      "span",
+      `${drafts.length.toLocaleString()} saved`,
+      "overlay-menu-preview-badge",
+    ),
+  );
+  card.append(header);
+  if (drafts.length === 0) {
+    card.append(
+      text(
+        "p",
+        "No Inspector drafts yet. Freeze a useful live event, select trigger-safe fields, and create a disabled draft.",
+        "runtime-empty-result",
+      ),
+    );
+    return card;
+  }
+
+  const list = element("div", "trigger-draft-inbox-list");
+  for (const draft of drafts.slice(-6).reverse()) {
+    const item = element("article", "trigger-draft-inbox-item");
+    const itemCopy = element("div");
+    itemCopy.append(
+      text("strong", draft.name),
+      text(
+        "span",
+        `${draft.when.criteria.length.toLocaleString()} exact condition${draft.when.criteria.length === 1 ? "" : "s"} · source event #${draft.source.sequence.toLocaleString()}`,
+      ),
+    );
+    item.append(itemCopy, text("span", "DISABLED", "trigger-draft-state"));
+    list.append(item);
+  }
+  card.append(list);
+  if (drafts.length > 6) {
+    card.append(
+      text(
+        "p",
+        `${(drafts.length - 6).toLocaleString()} older draft${drafts.length - 6 === 1 ? "" : "s"} retained within the bounded local draft store.`,
+        "runtime-action-message",
+      ),
+    );
+  }
+  return card;
+}
+
+function destination(workspaceId: string, page: string) {
+  return {
+    workspaceId,
+    entrypoint: `builtin://${workspaceId}/${page}`,
+  };
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(

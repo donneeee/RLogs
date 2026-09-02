@@ -1,4 +1,8 @@
 import type { MountedSurface } from "../shell/types";
+import { requestWorkspaceNavigation } from "../shell/workspace-navigation";
+
+const OVERLAY_WORKSPACE_ID = "app.rlogs.overlay";
+const CUSTOM_TRIGGERS_WORKSPACE_ID = "app.rlogs.custom-triggers";
 
 export type OverlayWorkspacePage =
   | "overview"
@@ -12,6 +16,10 @@ interface MenuItem {
   title: string;
   description: string;
   items?: readonly string[];
+  destination?: {
+    workspaceId: string;
+    entrypoint: string;
+  };
 }
 
 interface PageDefinition {
@@ -32,21 +40,25 @@ const PAGE_DEFINITIONS: Record<OverlayWorkspacePage, PageDefinition> = {
         title: "Setups",
         description: "Use a ready-made setup or share a complete configuration with someone else.",
         items: ["My setups", "Browse", "Import", "Share"],
+        destination: destination(OVERLAY_WORKSPACE_ID, "setups"),
       },
       {
         title: "Trackers",
         description: "Group the information that changes while you play.",
         items: ["Combat stats", "Skills & cooldowns", "Energy & resources"],
+        destination: destination(OVERLAY_WORKSPACE_ID, "trackers"),
       },
       {
         title: "Mechanics Map",
         description: "Configure the game-like map and encounter guidance layer.",
         items: ["Live map", "Encounter guides", "Markers"],
+        destination: destination(OVERLAY_WORKSPACE_ID, "mechanics-map"),
       },
       {
         title: "Automation Connections",
         description: "Choose which layouts, widgets, alerts, and map markers Custom Triggers may control.",
         items: ["Show or hide", "Display an alert", "Map markers"],
+        destination: destination(CUSTOM_TRIGGERS_WORKSPACE_ID, "overview"),
       },
     ],
   },
@@ -219,17 +231,27 @@ export function mountOverlayWorkspaceSurface(
     text("h2", definition.title),
     text("p", definition.description, "card-copy"),
   );
-  const status = text("span", "MENU PREVIEW", "overlay-menu-preview-badge");
+  const status = text("span", "DESIGN PREVIEW", "overlay-menu-preview-badge");
   header.append(heading, status);
 
   const menu = element("section", "overlay-menu-grid");
   for (const item of definition.items) {
-    const card = element("article", "content-card overlay-menu-card");
+    const destination = item.destination;
+    const card = destination === undefined
+      ? element("article", "content-card overlay-menu-card")
+      : element("button", "content-card overlay-menu-card overlay-menu-card-action");
+    if (card instanceof HTMLButtonElement) {
+      card.type = "button";
+      card.setAttribute("aria-label", `Open ${item.title}`);
+      card.addEventListener("click", () => {
+        requestWorkspaceNavigation(destination!);
+      });
+    }
     const cardHeader = element("div", "overlay-menu-card-heading");
-    cardHeader.append(
-      text("h3", item.title),
-      text("span", "›", "overlay-menu-chevron"),
-    );
+    cardHeader.append(text("h3", item.title));
+    if (destination !== undefined) {
+      cardHeader.append(text("span", "›", "overlay-menu-chevron"));
+    }
     card.append(cardHeader, text("p", item.description, "card-copy"));
     if (item.items !== undefined) {
       const children = element("ul", "overlay-menu-children");
@@ -243,10 +265,10 @@ export function mountOverlayWorkspaceSurface(
 
   const note = element("section", "overlay-menu-note");
   note.append(
-    text("strong", "Navigation only"),
+    text("strong", "Layout first"),
     text(
       "span",
-      "These sections do not read packets, open an in-game window, or run trackers and triggers yet.",
+      "These planned overlay sections do not read packets or render over the game yet. Event inspection stays isolated in Custom Triggers.",
     ),
   );
 
@@ -256,6 +278,13 @@ export function mountOverlayWorkspaceSurface(
     dispose() {
       root.remove();
     },
+  };
+}
+
+function destination(workspaceId: string, page: string) {
+  return {
+    workspaceId,
+    entrypoint: `builtin://${workspaceId}/${page}`,
   };
 }
 

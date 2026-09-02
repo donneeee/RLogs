@@ -10,6 +10,10 @@ import {
   type OrderedTabSection,
 } from "./tab-order";
 import { wireNativeWindowChrome } from "./native-window";
+import {
+  readWorkspaceNavigationRequest,
+  WORKSPACE_NAVIGATION_EVENT,
+} from "./workspace-navigation";
 import type {
   DesktopHostAdapter,
   EngineState,
@@ -149,6 +153,20 @@ export class DesktopShell {
           : (this.#order[0] ?? null);
       this.#applyLayoutPreferences(preferences);
       this.#render();
+    });
+    window.addEventListener(WORKSPACE_NAVIGATION_EVENT, (event) => {
+      const request = readWorkspaceNavigationRequest(event);
+      if (request === null) return;
+      const workspace = this.#workspaces.get(request.workspaceId);
+      const tab = workspace?.tabs.find(
+        (candidate) => candidate.entrypoint === request.entrypoint,
+      );
+      if (workspace === undefined || tab === undefined) return;
+      this.#activeHostView = null;
+      this.#activeWorkspaceId = workspace.id;
+      this.#activeTabs[workspace.id] = tab.id;
+      this.#render();
+      void this.#persistPreferences();
     });
   }
 

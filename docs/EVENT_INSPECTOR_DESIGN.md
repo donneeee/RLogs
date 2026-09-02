@@ -31,8 +31,9 @@ Recorder. It is a focused public tool inside Custom Triggers.
 6. Expand canonical fields or the local protocol/protobuf detail tree.
 7. Pin one or more rows and compare field changes when necessary.
 8. Select an event or field and choose **Create Trigger**.
-9. Continue in the Rules editor with a localized, typed When clause already
-   filled in.
+9. Open **Rules**. The bounded Inspector draft inbox shows the localized,
+   typed When clause as disabled until the Rules editor can review it and add
+   actions.
 
 Raw numeric IDs and protobuf tags remain visible beside localized names because
 they are necessary evidence, but the generated rule prefers stable typed event

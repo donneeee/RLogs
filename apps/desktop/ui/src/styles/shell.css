@@ -5404,6 +5404,31 @@ body {
   padding: 18px 20px;
 }
 
+.overlay-menu-card-action {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.overlay-menu-card-action:hover {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  transform: translateY(-1px);
+}
+
+.overlay-menu-card-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.overlay-menu-card-action:hover .overlay-menu-chevron,
+.overlay-menu-card-action:focus-visible .overlay-menu-chevron {
+  color: var(--accent);
+  transform: translateX(2px);
+}
+
 .overlay-menu-card-heading {
   display: flex;
   align-items: center;
@@ -5424,6 +5449,7 @@ body {
   color: var(--muted);
   font-size: 18px;
   line-height: 1;
+  transition: color 120ms ease, transform 120ms ease;
 }
 
 .overlay-menu-children {
@@ -5460,6 +5486,83 @@ body {
   color: var(--text-soft);
 }
 
+.trigger-draft-inbox {
+  overflow: hidden;
+}
+
+.trigger-draft-inbox-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.trigger-draft-inbox-heading h3,
+.trigger-draft-inbox-heading .card-copy {
+  margin: 0;
+}
+
+.trigger-draft-inbox-heading h3 {
+  margin-top: 5px;
+  font-size: 16px;
+}
+
+.trigger-draft-inbox-heading .card-copy {
+  max-width: 760px;
+  margin-top: 6px;
+}
+
+.trigger-draft-inbox > .runtime-empty-result,
+.trigger-draft-inbox > .runtime-action-message {
+  margin: 0;
+  padding: 16px 20px;
+}
+
+.trigger-draft-inbox-list {
+  display: grid;
+}
+
+.trigger-draft-inbox-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.trigger-draft-inbox-item > div,
+.trigger-draft-inbox-item strong,
+.trigger-draft-inbox-item div > span {
+  display: block;
+  min-width: 0;
+}
+
+.trigger-draft-inbox-item strong {
+  color: var(--text-strong);
+  font-size: 11px;
+}
+
+.trigger-draft-inbox-item div > span {
+  margin-top: 3px;
+  color: var(--muted);
+  font: 9px/1.4 "Cascadia Code", Consolas, monospace;
+}
+
+.trigger-draft-state {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border: 1px solid rgb(242 195 107 / 25%);
+  border-radius: 999px;
+  color: #f2c36b;
+  background: rgb(242 195 107 / 7%);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
 @media (max-width: 760px) {
   .overlay-workspace-intro {
     display: grid;
@@ -5478,6 +5581,15 @@ body {
   .overlay-menu-note {
     display: grid;
     gap: 2px;
+  }
+
+  .trigger-draft-inbox-heading {
+    display: grid;
+    gap: 12px;
+  }
+
+  .trigger-draft-inbox-heading .overlay-menu-preview-badge {
+    justify-self: start;
   }
 }
 
