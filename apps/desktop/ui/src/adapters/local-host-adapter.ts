@@ -99,7 +99,6 @@ import {
   mergeProfileSyncPolicy,
   parseMockSubmissionResult,
   parseSubmissionPolicy,
-  parseSubmissionTransportResult,
   submissionVisibilityExplanation,
 } from "./submission-policy";
 import {
@@ -2748,26 +2747,18 @@ function mountSubmissionPolicyOptionsSurface(
   const heading = actionCard(
     isUploader ? "Log Uploader consent" : "BPSR Profile Sync consent",
     isUploader
-      ? "Controls permission to submit sealed combat artifacts. Local drafts continue to be created while this is off, so capture and recovery never depend on a website."
-      : "Controls permission to build and submit Blue Protocol: Star Resonance character-profile packages. This is intentionally separate from combat-log consent.",
+      ? "Choose whether rLogs automatically submits each completed, verified combat artifact. Submission is either opted in or disabled; there is no per-run manual submission mode."
+      : "Choose whether rLogs automatically publishes packet-observed Blue Protocol: Star Resonance character-profile updates. This remains separate from combat-log consent.",
   );
   const form = document.createElement("form");
   form.className = "content-card submission-policy-form";
   const enable = checkboxOption(
-    isUploader ? "Enable Log Uploader" : "Enable BPSR Profile Sync",
+    isUploader ? "Automatically submit completed parses" : "Automatically sync my profile",
     isUploader
-      ? "Permits verified uploads through the connected rLogs account."
-      : "Permits sealed local profile projection and authenticated UID publication through the connected rLogs account.",
+      ? "When enabled, completed live parses are sealed, verified, queued, and uploaded through the connected rLogs account. Disable this to submit nothing."
+      : "When enabled, current per-character packages are sealed and published through the connected rLogs account. Disable this to publish nothing.",
   );
-  const automatic = checkboxOption(
-    isUploader
-      ? "Automatically submit completed combat logs"
-      : "Automatically sync character profiles",
-    isUploader
-      ? "Uploads completed sealed logs when your rLogs account is connected. Local drafts are still created either way."
-      : "Builds and publishes current per-character packages when your rLogs account is connected. If unavailable, the sealed package remains local and retryable.",
-  );
-  form.append(enable.label, automatic.label);
+  form.append(enable.label);
   const photoWallImages = isUploader
     ? null
     : checkboxOption(
@@ -2827,7 +2818,6 @@ function mountSubmissionPolicyOptionsSurface(
     current = view;
     if (isUploader) {
       enable.input.checked = view.log_uploader.enabled;
-      automatic.input.checked = view.log_uploader.automatic_combat_logs;
       if (visibility !== null) {
         visibility.value = view.log_uploader.default_visibility;
       }
@@ -2837,8 +2827,6 @@ function mountSubmissionPolicyOptionsSurface(
       }
     } else {
       enable.input.checked = view.bpsr_profile_sync.enabled;
-      automatic.input.checked =
-        view.bpsr_profile_sync.automatic_profiles;
       if (photoWallImages !== null) {
         photoWallImages.input.checked =
           view.bpsr_profile_sync.publish_photo_wall_images;
@@ -2882,7 +2870,7 @@ function mountSubmissionPolicyOptionsSurface(
     const selectedUploader: SubmissionPolicy["log_uploader"] = {
       ...current.log_uploader,
       enabled: enable.input.checked,
-      automatic_combat_logs: automatic.input.checked,
+      automatic_combat_logs: true,
       default_visibility:
         (visibility?.value ?? current.log_uploader.default_visibility) as SubmissionPolicy["log_uploader"]["default_visibility"],
       successful_artifact_retention:
@@ -2891,7 +2879,7 @@ function mountSubmissionPolicyOptionsSurface(
     const selectedProfileSync: SubmissionPolicy["bpsr_profile_sync"] = {
       ...current.bpsr_profile_sync,
       enabled: enable.input.checked,
-      automatic_profiles: automatic.input.checked,
+      automatic_profiles: true,
       publish_photo_wall_images:
         photoWallImages?.input.checked ?? current.bpsr_profile_sync.publish_photo_wall_images,
     };
@@ -3382,7 +3370,7 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
   root.className = "plugin-surface submission-queue-surface";
   const heading = actionCard(
     "Local submission drafts",
-    "Every completed live session creates one crash-safe local draft after its sealed log passes integrity verification. When you submit, the authenticated rLogs service re-verifies and replays it before publication.",
+    "With submission opted in, every completed live parse becomes one crash-safe local draft after its sealed log passes integrity verification. rLogs uploads it automatically, then the service re-verifies and replays it before publication.",
   );
   const headingActions = document.createElement("div");
   headingActions.className = "runtime-card-actions";
@@ -3508,58 +3496,6 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
       refreshButton.disabled = false;
       importButton.disabled = false;
       dryRunButton.disabled = currentPolicy?.log_uploader.enabled !== true;
-    }
-  }
-
-  async function uploadSubmission(
-    queueId: string,
-    visibility: SubmissionPolicy["log_uploader"]["default_visibility"],
-    uploadButton: HTMLButtonElement,
-    uploadMessage: HTMLElement,
-  ) {
-    if (busy) {
-      return;
-    }
-    busy = true;
-    refreshButton.disabled = true;
-    importButton.disabled = true;
-    uploadButton.disabled = true;
-    uploadMessage.classList.remove("error");
-    uploadMessage.textContent =
-      "Re-verifying the sealed artifact and sending only missing chunks...";
-    try {
-      const result = parseSubmissionTransportResult(
-        await apiJson<unknown>("/api/submissions/queue/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ queueId }),
-        }),
-      );
-      if (alive) {
-        const link = document.createElement("a");
-        link.href = result.share_url;
-        link.target = "_blank";
-        link.rel = "noreferrer";
-        link.textContent = "Open verified parse";
-        uploadMessage.replaceChildren(
-          `${result.duplicate ? "Existing" : "New"} replayed report ${result.report_id}; `,
-          link,
-          `. ${result.uploaded_chunk_count.toLocaleString()} chunk${result.uploaded_chunk_count === 1 ? "" : "s"} sent (${formatBytes(result.uploaded_bytes)}).`,
-          ` ${submissionVisibilityExplanation(visibility)}`,
-        );
-      }
-    } catch (error) {
-      if (alive) {
-        uploadMessage.textContent = errorMessage(error);
-        uploadMessage.classList.add("error");
-      }
-    } finally {
-      busy = false;
-      refreshButton.disabled = false;
-      importButton.disabled = false;
-      uploadButton.disabled =
-        currentPolicy?.log_uploader.enabled !== true ||
-        currentPolicy.transport_mode !== "http";
     }
   }
 
@@ -3723,28 +3659,20 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
             dryRunMessage,
           );
         });
-        const uploadActions = document.createElement("div");
-        uploadActions.className =
-          "runtime-card-actions submission-verification-actions";
-        const uploadButton = button("Submit verified parse", "primary-button");
-        uploadButton.disabled =
-          !policy.log_uploader.enabled || policy.transport_mode !== "http";
-        const uploadMessage = text(
-          "span",
-          !policy.log_uploader.enabled
-            ? "Enable Log Uploader in Options before submitting."
-            : policy.transport_mode !== "http"
-              ? "This PC is not connected to your rLogs account."
-              : "Uploads the sealed artifact to the rLogs service, which replays it before publication.",
+        const automaticStatus = text(
+          "p",
+          entry.state === "submitted"
+            ? "Uploaded automatically and accepted by the rLogs verification service."
+            : !policy.log_uploader.enabled
+              ? "Automatic submission is disabled; this draft remains local."
+              : policy.transport_mode !== "http"
+                ? "Automatic submission is waiting for this PC to reconnect to your rLogs account."
+                : "Automatic submission is queued; rLogs will re-verify and replay it before publication.",
           "runtime-action-message",
         );
-        uploadButton.addEventListener("click", () => {
-          void uploadSubmission(entry.queue_id, entry.visibility, uploadButton, uploadMessage);
-        });
-        uploadActions.append(uploadButton, uploadMessage);
         dryRunActions.append(dryRunButton, dryRunMessage);
         verificationActions.append(verifyButton, verifyMessage);
-        card.append(header, details, uploadActions);
+        card.append(header, details, automaticStatus);
         if (DEVELOPER_TOOLS_ENABLED) {
           card.append(verificationActions, dryRunActions);
         }

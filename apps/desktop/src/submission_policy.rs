@@ -42,6 +42,9 @@ impl Default for SubmissionPolicy {
 #[serde(deny_unknown_fields)]
 pub struct LogUploaderPolicy {
     pub enabled: bool,
+    /// Retained in schema v1 for settings-file compatibility. Public builds
+    /// normalize this to `true`: consent enables automatic completed-run
+    /// submission, and withdrawing consent disables submission entirely.
     pub automatic_combat_logs: bool,
     pub default_visibility: ReportVisibility,
     pub successful_artifact_retention: SuccessfulArtifactRetention,
@@ -62,6 +65,9 @@ impl Default for LogUploaderPolicy {
 #[serde(deny_unknown_fields)]
 pub struct ProfileSyncPolicy {
     pub enabled: bool,
+    /// Retained in schema v1 for settings-file compatibility. Public builds
+    /// normalize this to `true`; profile publication is either opted in and
+    /// automatic or disabled.
     pub automatic_profiles: bool,
     /// Photo Wall images are substantially more personal than ordinary game
     /// progression and therefore require a second, explicit opt-in.
@@ -135,8 +141,9 @@ impl SubmissionPolicyStore {
         }
     }
 
-    pub fn update(&mut self, policy: SubmissionPolicy) -> Result<SubmissionPolicyView, String> {
+    pub fn update(&mut self, mut policy: SubmissionPolicy) -> Result<SubmissionPolicyView, String> {
         policy.validate()?;
+        enforce_automatic_opt_in_policy(&mut policy);
         save_policy(&self.path, &policy)?;
         self.policy = policy;
         self.issue = None;
@@ -169,15 +176,21 @@ fn load_policy(path: &Path) -> (SubmissionPolicy, Option<String>) {
         let mut bytes = Vec::with_capacity(metadata.len() as usize);
         file.read_to_end(&mut bytes)
             .map_err(|error| format!("could not read submission policy: {error}"))?;
-        let policy: SubmissionPolicy = serde_json::from_slice(&bytes)
+        let mut policy: SubmissionPolicy = serde_json::from_slice(&bytes)
             .map_err(|error| format!("submission policy is invalid: {error}"))?;
         policy.validate()?;
+        enforce_automatic_opt_in_policy(&mut policy);
         Ok::<_, String>(policy)
     })();
     match result {
         Ok(policy) => (policy, None),
         Err(error) => (SubmissionPolicy::default(), Some(error)),
     }
+}
+
+fn enforce_automatic_opt_in_policy(policy: &mut SubmissionPolicy) {
+    policy.log_uploader.automatic_combat_logs = true;
+    policy.bpsr_profile_sync.automatic_profiles = true;
 }
 
 fn save_policy(path: &Path, policy: &SubmissionPolicy) -> Result<(), String> {
@@ -334,6 +347,31 @@ mod tests {
         assert!(!store.policy().log_uploader.enabled);
         assert!(!store.policy().bpsr_profile_sync.enabled);
         assert!(store.snapshot().issue.is_some());
+
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn legacy_manual_flags_are_normalized_to_automatic_opt_in() {
+        let path = temporary_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut policy = SubmissionPolicy::default();
+        policy.log_uploader.enabled = true;
+        policy.log_uploader.automatic_combat_logs = false;
+        policy.bpsr_profile_sync.enabled = true;
+        policy.bpsr_profile_sync.automatic_profiles = false;
+        std::fs::write(&path, serde_json::to_vec_pretty(&policy).unwrap()).unwrap();
+
+        let mut store = SubmissionPolicyStore::open(path.clone()).unwrap();
+        assert!(store.policy().log_uploader.automatic_combat_logs);
+        assert!(store.policy().bpsr_profile_sync.automatic_profiles);
+
+        let mut attempted_manual = store.policy().clone();
+        attempted_manual.log_uploader.automatic_combat_logs = false;
+        attempted_manual.bpsr_profile_sync.automatic_profiles = false;
+        store.update(attempted_manual).unwrap();
+        assert!(store.policy().log_uploader.automatic_combat_logs);
+        assert!(store.policy().bpsr_profile_sync.automatic_profiles);
 
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }

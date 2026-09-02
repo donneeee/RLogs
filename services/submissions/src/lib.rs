@@ -30,9 +30,10 @@ use rlogs_events::{
 use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
     BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
-    SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport, bundled_run_reducer_config,
-    character_id_from_entity_uuid, confirmed_damage_contribution_rules, is_stat_resonance_status,
-    localized_class_name, localized_scene_name, localized_specialization_name,
+    CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
+    bundled_run_reducer_config, character_id_from_entity_uuid, confirmed_damage_contribution_rules,
+    is_stat_resonance_status, localized_class_name, localized_scene_name,
+    localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use rlogs_plugin_combat_meter::{
@@ -65,7 +66,7 @@ use profiles::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 9;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 10;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
 pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 10;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
@@ -191,6 +192,31 @@ struct LocalProfileObservation {
     observed_micros: u64,
     game_time_millis: Option<i64>,
     payload_sha256: String,
+    loadout: ProfileLoadoutObservation,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ProfileLoadoutObservation {
+    display_name: Option<String>,
+    class_id: Option<i32>,
+    specialization_id: Option<i32>,
+    equipped_skill_ids: Vec<String>,
+    equipped_imagines: Vec<PublicCombatImagineLoadout>,
+    equipment_count: Option<usize>,
+    equipped_module_count: Option<usize>,
+    talent_count: Option<usize>,
+}
+
+impl ProfileLoadoutObservation {
+    fn is_empty(&self) -> bool {
+        self.class_id.is_none()
+            && self.specialization_id.is_none()
+            && self.equipped_skill_ids.is_empty()
+            && self.equipped_imagines.is_empty()
+            && self.equipment_count.is_none()
+            && self.equipped_module_count.is_none()
+            && self.talent_count.is_none()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -2319,6 +2345,12 @@ pub struct PublicRun {
     /// the referenced canonical event.
     #[serde(default)]
     pub local_state_witnesses: Vec<PublicLocalStateWitness>,
+    /// Human-readable, privacy-reviewed combat loadout phases. These are
+    /// emitted only from profile snapshots observed after combat began and
+    /// through the authoritative run completion, so lobby configuration can
+    /// never backfill a parse.
+    #[serde(default)]
+    pub combat_loadout_phases: Vec<PublicCombatLoadoutPhase>,
     pub segments: Vec<PublicRunSegment>,
     pub participants: Vec<PublicParticipant>,
     /// Exact packet-derived provider/recipient relationships for this replay.
@@ -2328,6 +2360,37 @@ pub struct PublicRun {
     pub rdps_influences: Vec<PublicRdpsInfluence>,
     #[serde(default)]
     pub rdps_effects: Vec<PublicRdpsEffectPresentation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicCombatLoadoutPhase {
+    pub character_id: String,
+    pub display_name: Option<String>,
+    pub observed_micros: u64,
+    pub run_elapsed_micros: u64,
+    pub game_time_millis: Option<i64>,
+    pub segment_index: Option<u32>,
+    pub encounter_index: Option<u32>,
+    pub attempt_number: Option<u32>,
+    pub in_active_combat: bool,
+    pub class_id: Option<i32>,
+    pub class_name: Option<String>,
+    pub specialization_id: Option<i32>,
+    pub specialization_name: Option<String>,
+    #[serde(default)]
+    pub equipped_skill_ids: Vec<String>,
+    #[serde(default)]
+    pub equipped_imagines: Vec<PublicCombatImagineLoadout>,
+    pub equipment_count: Option<usize>,
+    pub equipped_module_count: Option<usize>,
+    pub talent_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicCombatImagineLoadout {
+    pub skill_id: String,
+    pub tier: Option<u32>,
+    pub equipped_slot: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2877,6 +2940,7 @@ fn build_public_report(
         if event.sensitivity == EventSensitivity::PersonalGameplay
             && let CanonicalEvent::CharacterProfileObserved { profile } = &event.event
         {
+            let loadout = profile_loadout_observation(profile)?;
             local_profile_observations.push(LocalProfileObservation {
                 character_id: profile.character.character_id.clone(),
                 event_sequence: event.sequence,
@@ -2884,6 +2948,7 @@ fn build_public_report(
                 game_time_millis: event.time.game_time_millis,
                 payload_sha256: local_profile_payload_digest(profile)
                     .map_err(|error| error.to_string())?,
+                loadout,
             });
         }
         if let CanonicalEvent::Timeline(timeline) = &event.event {
@@ -3186,6 +3251,11 @@ fn public_runs(
                 &participant_character_ids,
                 local_profile_observations,
             );
+            let combat_loadout_phases = run_scoped_combat_loadout_phases(
+                analysis,
+                &participant_character_ids,
+                local_profile_observations,
+            );
             let local_profile_character_ids = local_profile_witnesses
                 .iter()
                 .map(|witness| witness.character_id.clone())
@@ -3232,6 +3302,7 @@ fn public_runs(
                 local_profile_character_ids: local_profile_character_ids.iter().cloned().collect(),
                 local_profile_witnesses,
                 local_state_witnesses,
+                combat_loadout_phases,
                 segments: analysis
                     .segments
                     .iter()
@@ -3273,58 +3344,173 @@ fn local_profile_payload_digest(profile: &GameProfileEvent) -> Result<String, se
     Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
+fn profile_loadout_observation(
+    profile: &GameProfileEvent,
+) -> Result<ProfileLoadoutObservation, String> {
+    let patch = CharacterProfilePatch::from_game_event(profile)
+        .map_err(|error| format!("could not decode privacy-reviewed combat loadout: {error}"))?;
+    let mut equipped_skill_ids = patch
+        .equipped_action_slots
+        .as_ref()
+        .map(|slots| {
+            slots
+                .iter()
+                .map(|slot| slot.skill_id.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    equipped_skill_ids.sort();
+    equipped_skill_ids.dedup();
+    let mut equipped_imagines = patch
+        .battle_imagine_skills
+        .as_ref()
+        .into_iter()
+        .flatten()
+        .filter_map(|imagine| {
+            Some(PublicCombatImagineLoadout {
+                skill_id: imagine.skill_id.to_string(),
+                tier: imagine.remodel_level,
+                equipped_slot: imagine.equipped_slot?,
+            })
+        })
+        .collect::<Vec<_>>();
+    equipped_imagines.sort_by_key(|imagine| imagine.equipped_slot);
+    Ok(ProfileLoadoutObservation {
+        display_name: patch.display_name,
+        class_id: patch.class_id,
+        specialization_id: patch.specialization_id,
+        equipped_skill_ids,
+        equipped_imagines,
+        equipment_count: patch.equipment.as_ref().map(Vec::len),
+        equipped_module_count: patch
+            .modules
+            .as_ref()
+            .map(|modules| modules.equipped_slots.len()),
+        talent_count: patch.talents.as_ref().map(Vec::len),
+    })
+}
+
 fn run_scoped_profile_witnesses(
     analysis: &RunAnalysis,
     participant_character_ids: &BTreeSet<String>,
     observations: &[LocalProfileObservation],
 ) -> Vec<PublicLocalProfileWitness> {
-    let started_micros = analysis.timing.started_micros;
-    let ended_micros = analysis
-        .timing
-        .ended_micros
-        .unwrap_or(analysis.timing.observed_until_micros);
-    let mut latest_before = BTreeMap::<&str, &LocalProfileObservation>::new();
-    for observation in observations.iter().filter(|observation| {
-        participant_character_ids.contains(observation.character_id.as_str())
-            && observation.observed_micros <= started_micros
-    }) {
-        latest_before
-            .entry(observation.character_id.as_str())
-            .and_modify(|existing| {
-                if (observation.observed_micros, observation.event_sequence)
-                    > (existing.observed_micros, existing.event_sequence)
-                {
-                    *existing = observation;
-                }
-            })
-            .or_insert(observation);
-    }
-
-    let mut selected = latest_before
-        .into_values()
-        .map(|observation| (observation, LocalStateWitnessPlacement::PreRunBaseline))
-        .chain(
-            observations
-                .iter()
-                .filter(|observation| {
-                    participant_character_ids.contains(observation.character_id.as_str())
-                        && observation.observed_micros > started_micros
-                        && observation.observed_micros <= ended_micros
-                })
-                .map(|observation| (observation, LocalStateWitnessPlacement::InRun)),
-        )
-        .map(|(observation, placement)| PublicLocalProfileWitness {
+    run_scoped_profile_observations(analysis, participant_character_ids, observations)
+        .into_iter()
+        .map(|observation| PublicLocalProfileWitness {
             character_id: observation.character_id.clone(),
-            placement,
+            placement: LocalStateWitnessPlacement::InRun,
             event_sequence: observation.event_sequence,
             observed_micros: observation.observed_micros,
             game_time_millis: observation.game_time_millis,
             payload_sha256: observation.payload_sha256.clone(),
         })
+        .collect()
+}
+
+fn run_scoped_profile_observations<'a>(
+    analysis: &RunAnalysis,
+    participant_character_ids: &BTreeSet<String>,
+    observations: &'a [LocalProfileObservation],
+) -> Vec<&'a LocalProfileObservation> {
+    // A lobby/entry snapshot is not authoritative combat-loadout evidence:
+    // players can change class, specialization, modules, skills, or Imagines
+    // after entering and before the pull. Only snapshots strictly after the
+    // first observed combat window may fill a submitted run's state gaps.
+    // Every later snapshot remains ordered so mid-run and boss-specific swaps
+    // are replayed at their actual time instead of rewriting the whole run.
+    let Some(first_combat_started_micros) = analysis
+        .encounters
+        .iter()
+        .flat_map(|encounter| &encounter.combat_windows)
+        .map(|window| window.started_micros)
+        .min()
+    else {
+        return Vec::new();
+    };
+    let ended_micros = analysis
+        .timing
+        .ended_micros
+        .unwrap_or(analysis.timing.observed_until_micros);
+    let mut selected = observations
+        .iter()
+        .filter(|observation| {
+            participant_character_ids.contains(observation.character_id.as_str())
+                && observation.observed_micros > first_combat_started_micros
+                && observation.observed_micros <= ended_micros
+        })
         .collect::<Vec<_>>();
-    selected.sort_by_key(|witness| (witness.observed_micros, witness.event_sequence));
-    selected.dedup_by_key(|witness| witness.event_sequence);
+    selected.sort_by_key(|observation| (observation.observed_micros, observation.event_sequence));
+    selected.dedup_by_key(|observation| observation.event_sequence);
     selected
+}
+
+fn run_scoped_combat_loadout_phases(
+    analysis: &RunAnalysis,
+    participant_character_ids: &BTreeSet<String>,
+    observations: &[LocalProfileObservation],
+) -> Vec<PublicCombatLoadoutPhase> {
+    let mut last_loadout_by_character = BTreeMap::<String, ProfileLoadoutObservation>::new();
+    run_scoped_profile_observations(analysis, participant_character_ids, observations)
+        .into_iter()
+        .filter_map(|observation| {
+            if observation.loadout.is_empty()
+                || last_loadout_by_character
+                    .get(&observation.character_id)
+                    .is_some_and(|previous| previous == &observation.loadout)
+            {
+                return None;
+            }
+            last_loadout_by_character.insert(
+                observation.character_id.clone(),
+                observation.loadout.clone(),
+            );
+            let segment = analysis.segments.iter().find(|segment| {
+                observation.observed_micros >= segment.started_micros
+                    && observation.observed_micros <= segment.ended_micros
+            });
+            let encounter = analysis.encounters.iter().find(|encounter| {
+                observation.observed_micros >= encounter.started_micros
+                    && observation.observed_micros <= encounter.ended_micros
+            });
+            let in_active_combat = encounter.is_some_and(|encounter| {
+                encounter.combat_windows.iter().any(|window| {
+                    observation.observed_micros >= window.started_micros
+                        && observation.observed_micros <= window.ended_micros
+                })
+            });
+            Some(PublicCombatLoadoutPhase {
+                character_id: observation.character_id.clone(),
+                display_name: observation.loadout.display_name.clone(),
+                observed_micros: observation.observed_micros,
+                run_elapsed_micros: observation
+                    .observed_micros
+                    .saturating_sub(analysis.timing.started_micros),
+                game_time_millis: observation.game_time_millis,
+                segment_index: segment.map(|segment| segment.index),
+                encounter_index: encounter.map(|encounter| encounter.index),
+                attempt_number: encounter.map(|encounter| encounter.attempt_number),
+                in_active_combat,
+                class_id: observation.loadout.class_id,
+                class_name: observation
+                    .loadout
+                    .class_id
+                    .and_then(|id| localized_class_name(id, "en-US").ok().flatten())
+                    .map(str::to_owned),
+                specialization_id: observation.loadout.specialization_id,
+                specialization_name: observation
+                    .loadout
+                    .specialization_id
+                    .and_then(|id| localized_specialization_name(id, "en-US").ok().flatten())
+                    .map(str::to_owned),
+                equipped_skill_ids: observation.loadout.equipped_skill_ids.clone(),
+                equipped_imagines: observation.loadout.equipped_imagines.clone(),
+                equipment_count: observation.loadout.equipment_count,
+                equipped_module_count: observation.loadout.equipped_module_count,
+                talent_count: observation.loadout.talent_count,
+            })
+        })
+        .collect()
 }
 
 fn local_state_payload_digest(payload: &[u8]) -> String {
@@ -5172,7 +5358,34 @@ mod tests {
 
     #[test]
     fn run_scoped_profile_witnesses_keep_only_personal_state_relevant_to_the_run() {
-        let analysis = fixture_analysis("capture-a", Some("instance-42"));
+        let mut analysis = fixture_analysis("capture-a", Some("instance-42"));
+        analysis.timing.started_micros = 10;
+        analysis.timing.ended_micros = Some(40);
+        analysis.timing.observed_until_micros = 40;
+        analysis.encounters.push(
+            serde_json::from_value(serde_json::json!({
+                "index": 0,
+                "encounter_id": "boss-1",
+                "kind": "boss",
+                "segment_index": 0,
+                "attempt_number": 1,
+                "is_retry": false,
+                "is_successful_attempt": true,
+                "terminal_state": "cleared",
+                "started_micros": 20,
+                "ended_micros": 40,
+                "wall_time_micros": 20,
+                "active_combat_micros": 20,
+                "combat_windows": [{
+                    "started_micros": 20,
+                    "ended_micros": 40,
+                    "duration_micros": 20,
+                    "closed_at_boundary": true
+                }],
+                "closed_at_run_end": true
+            }))
+            .unwrap(),
+        );
         let participants = ["character-a".to_owned()].into_iter().collect();
         let observations = vec![
             LocalProfileObservation {
@@ -5181,34 +5394,65 @@ mod tests {
                 observed_micros: 0,
                 game_time_millis: None,
                 payload_sha256: "sha256:old".into(),
+                loadout: ProfileLoadoutObservation::default(),
             },
             LocalProfileObservation {
                 character_id: "character-a".into(),
                 event_sequence: 2,
-                observed_micros: 1,
+                observed_micros: 15,
                 game_time_millis: None,
-                payload_sha256: "sha256:start".into(),
+                payload_sha256: "sha256:pre-pull".into(),
+                loadout: ProfileLoadoutObservation::default(),
             },
             LocalProfileObservation {
                 character_id: "character-a".into(),
                 event_sequence: 3,
-                observed_micros: 2,
-                game_time_millis: Some(2),
-                payload_sha256: "sha256:during".into(),
+                observed_micros: 25,
+                game_time_millis: Some(25),
+                payload_sha256: "sha256:first-combat-loadout".into(),
+                loadout: ProfileLoadoutObservation {
+                    display_name: Some("Player".into()),
+                    class_id: Some(5),
+                    specialization_id: Some(2),
+                    equipped_skill_ids: vec!["2203291".into()],
+                    equipment_count: Some(11),
+                    equipped_module_count: Some(8),
+                    talent_count: Some(12),
+                    ..Default::default()
+                },
             },
             LocalProfileObservation {
                 character_id: "character-a".into(),
                 event_sequence: 4,
-                observed_micros: 3,
-                game_time_millis: Some(3),
-                payload_sha256: "sha256:after".into(),
+                observed_micros: 35,
+                game_time_millis: Some(35),
+                payload_sha256: "sha256:boss-swap".into(),
+                loadout: ProfileLoadoutObservation {
+                    display_name: Some("Player".into()),
+                    class_id: Some(2),
+                    specialization_id: Some(1),
+                    equipped_skill_ids: vec!["1714".into()],
+                    equipment_count: Some(11),
+                    equipped_module_count: Some(8),
+                    talent_count: Some(12),
+                    ..Default::default()
+                },
             },
             LocalProfileObservation {
                 character_id: "not-a-participant".into(),
                 event_sequence: 5,
-                observed_micros: 2,
-                game_time_millis: Some(2),
+                observed_micros: 30,
+                game_time_millis: Some(30),
                 payload_sha256: "sha256:unrelated".into(),
+                loadout: ProfileLoadoutObservation::default(),
+            },
+            LocalProfileObservation {
+                character_id: "character-a".into(),
+                event_sequence: 6,
+                observed_micros: 45,
+                game_time_millis: Some(45),
+                payload_sha256: "sha256:after-completion".into(),
+                loadout: ProfileLoadoutObservation::default(),
             },
         ];
 
@@ -5218,8 +5462,37 @@ mod tests {
                 .iter()
                 .map(|witness| witness.event_sequence)
                 .collect::<Vec<_>>(),
-            vec![2, 3]
+            vec![3, 4]
         );
+        assert_eq!(
+            selected
+                .iter()
+                .map(|witness| witness.placement)
+                .collect::<Vec<_>>(),
+            vec![LocalStateWitnessPlacement::InRun; 2]
+        );
+        assert!(selected.iter().all(|witness| witness.event_sequence != 2));
+        assert!(selected.iter().all(|witness| witness.event_sequence != 6));
+
+        let phases = run_scoped_combat_loadout_phases(&analysis, &participants, &observations);
+        assert_eq!(phases.len(), 2);
+        assert_eq!(
+            phases
+                .iter()
+                .map(|phase| phase.class_id)
+                .collect::<Vec<_>>(),
+            vec![Some(5), Some(2)]
+        );
+        assert_eq!(
+            phases
+                .iter()
+                .map(|phase| phase.run_elapsed_micros)
+                .collect::<Vec<_>>(),
+            vec![15, 25]
+        );
+        assert!(phases.iter().all(|phase| phase.in_active_combat));
+        assert_eq!(phases[0].equipped_skill_ids, vec!["2203291"]);
+        assert_eq!(phases[1].equipped_skill_ids, vec!["1714"]);
     }
 
     #[test]
@@ -6645,6 +6918,7 @@ mod tests {
                     game_time_millis: Some(100),
                     payload_sha256: format!("sha256:state-{local_character_id}"),
                 }],
+                combat_loadout_phases: Vec::new(),
                 segments: Vec::new(),
                 participants: vec![participant("character-a"), participant("character-b")],
                 rdps_influences: Vec::new(),
