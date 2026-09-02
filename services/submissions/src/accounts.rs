@@ -456,7 +456,7 @@ impl AccountStore {
             .join(format!("{}.json", account.submitter_id));
         let mut record: AccountRecord = read_json(&path)?.ok_or(AccountError::Unauthorized)?;
         if record.username.as_deref() == Some(username.as_str()) {
-            return Ok(account_view(record)?);
+            return account_view(record);
         }
         let index_path = self
             .root
@@ -754,16 +754,15 @@ fn validate_username(value: &str) -> Result<String, AccountError> {
 fn default_username(discord_username: &str, account_id: u64) -> String {
     let mut value = String::new();
     for character in discord_username.trim().to_ascii_lowercase().chars() {
-        let next = if character.is_ascii_lowercase() || character.is_ascii_digit() {
-            Some(character)
-        } else if matches!(character, '-' | '_') {
-            Some(character)
-        } else {
-            Some('-')
-        };
-        if let Some(next) = next
-            && !(matches!(next, '-' | '_') && (value.ends_with('-') || value.ends_with('_')))
+        let next = if character.is_ascii_lowercase()
+            || character.is_ascii_digit()
+            || matches!(character, '-' | '_')
         {
+            character
+        } else {
+            '-'
+        };
+        if !(matches!(next, '-' | '_') && (value.ends_with('-') || value.ends_with('_'))) {
             value.push(next);
         }
     }
@@ -783,7 +782,7 @@ fn truncate_username(value: &str, maximum: usize) -> String {
         .chars()
         .take(maximum)
         .collect::<String>()
-        .trim_end_matches(|character| matches!(character, '-' | '_'))
+        .trim_end_matches(['-', '_'])
         .to_owned()
 }
 
