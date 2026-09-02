@@ -74,6 +74,11 @@ import {
   type OverlayWorkspacePage,
 } from "./overlay-workspace-surface";
 import {
+  parseFightAttributePresentationCatalog,
+  parseLiveCharacterStatsSnapshot,
+} from "./live-character-stats";
+import { mountOverlayStatsTrackerSurface } from "./overlay-stats-tracker-surface";
+import {
   type PhotoWallPublicationStatus,
   parsePhotoWallPublicationStatus,
   photoWallLastCaptureSummary,
@@ -597,13 +602,34 @@ function createLocalHostAdapter(): DesktopHostAdapter {
         case `builtin://${OVERLAY_PLUGIN_ID}/overview`:
         case `builtin://${OVERLAY_PLUGIN_ID}/setups`:
         case `builtin://${OVERLAY_PLUGIN_ID}/editor`:
-        case `builtin://${OVERLAY_PLUGIN_ID}/trackers`:
         case `builtin://${OVERLAY_PLUGIN_ID}/mechanics-map`:
         case `builtin://${OVERLAY_PLUGIN_ID}/settings`:
           return mountOverlayWorkspaceSurface(
             container,
             builtinSurfacePage(tab.entrypoint) as OverlayWorkspacePage,
           );
+        case `builtin://${OVERLAY_PLUGIN_ID}/trackers`:
+          return mountOverlayStatsTrackerSurface(container, {
+            async loadCatalog() {
+              return parseFightAttributePresentationCatalog(
+                await apiJson<unknown>("/api/runtime/live/character-stats/catalog"),
+              );
+            },
+            async loadSnapshot() {
+              return parseLiveCharacterStatsSnapshot(
+                await apiJson<unknown>("/api/runtime/live/character-stats"),
+              );
+            },
+            async waitForSnapshot(afterRevision) {
+              return parseLiveCharacterStatsSnapshot(
+                await apiJson<unknown>("/api/runtime/live/character-stats/wait", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ after_revision: afterRevision, timeout_millis: 30_000 }),
+                }),
+              );
+            },
+          });
         case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/overview`:
         case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/rules`:
         case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/library`:

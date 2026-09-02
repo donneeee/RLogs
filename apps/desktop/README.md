@@ -67,6 +67,10 @@ bundled, cataloged, or routable in the public installer. It provides:
   an active run seal or explicit offline processing pauses it;
 - cooperative restart, which drains the current decoder and marks an open run
   incomplete without turning a completed run into a leaderboard candidate.
+- a local Combat Stats tracker in the Overlay workspace. It uses the exact
+  build-stamped Fight Attribute catalog, long-polls only on revisions, keeps
+  complete profile snapshots separate from temporary combat deltas, and keeps
+  internal attribute IDs out of the normal user-facing view.
 
 Event Viewer verifies and caches the current sealed artifact before exposing
 rows. Each filter owns one resumable stream cursor, reads at most 50,000 source

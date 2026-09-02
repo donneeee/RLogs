@@ -14,7 +14,7 @@ use crate::{
     AchievementProgress, AchievementProgressProfile, BpsrWebsiteProfileError,
     CharacterCombatStatsProfile, CharacterProfilePatch, CharacterProgression, CollectionSummary,
     HandbookProgress, ProfileEventError, SeasonAchievementProgress, SeasonProfile, SocialDisplay,
-    character_id_from_entity_uuid, website_profile_request,
+    character_id_from_entity_uuid, fight_attribute_presentation, website_profile_request,
 };
 
 pub const MAXIMUM_LOCAL_PROFILE_CHARACTERS: usize = 8;
@@ -233,7 +233,7 @@ impl LiveProfileProjection {
         else {
             return Ok(false);
         };
-        let values = character_stat_values(attributes);
+        let values = character_stat_values(attributes)?;
         if values.is_empty() && attributes.update_kind != EntityAttributeUpdateKind::Snapshot {
             return Ok(false);
         }
@@ -429,26 +429,22 @@ struct ProfileAccumulator {
     last_event_sequence: u64,
 }
 
-fn character_stat_values(attributes: &EntityAttributeEvent) -> BTreeMap<i32, i64> {
-    attributes
-        .attributes
-        .iter()
-        .filter(|attribute| is_character_stat_attribute_id(attribute.attribute_id))
-        .filter_map(|attribute| match attribute.decoded {
-            Some(EntityAttributeValue::Integer(value)) => Some((attribute.attribute_id, value)),
-            _ => None,
-        })
-        .collect()
-}
-
-/// Current BPSR FightAttrTable component domain.
-///
-/// Exact client-build membership is still enforced upstream by the protocol
-/// decoder and the profile presentation catalog. This range/suffix boundary
-/// prevents identity, position, timestamps, opaque blobs, and unrelated
-/// entity state from entering a public character profile.
-fn is_character_stat_attribute_id(attribute_id: i32) -> bool {
-    (10_000..=20_135).contains(&attribute_id) && attribute_id.rem_euclid(10) <= 5
+fn character_stat_values(
+    attributes: &EntityAttributeEvent,
+) -> Result<BTreeMap<i32, i64>, BpsrProfileProjectionError> {
+    let mut values = BTreeMap::new();
+    for attribute in &attributes.attributes {
+        if fight_attribute_presentation(attribute.attribute_id)
+            .map_err(BpsrProfileProjectionError::FightAttributeCatalog)?
+            .is_none()
+        {
+            continue;
+        }
+        if let Some(EntityAttributeValue::Integer(value)) = attribute.decoded {
+            values.insert(attribute.attribute_id, value);
+        }
+    }
+    Ok(values)
 }
 
 fn apply_character_stat_update(
@@ -837,6 +833,9 @@ pub enum BpsrProfileProjectionError {
 
     #[error("live profile projection could not encode canonical content: {0}")]
     Serialization(#[from] serde_json::Error),
+
+    #[error("bundled BPSR Fight Attribute presentation is invalid: {0}")]
+    FightAttributeCatalog(String),
 
     #[error("one profile accumulator received two character identities")]
     CharacterMismatch,

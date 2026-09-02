@@ -2,8 +2,9 @@
 
 Status: the workspace menus and cross-workspace navigation are implemented.
 The bounded Event Inspector is the first working Custom Triggers component.
-Rule execution and game-overlay rendering remain disabled while their contracts
-are reviewed.
+The Overlay Trackers page now has a working local Combat Stats component backed
+by the exact build-stamped Fight Attribute catalog. Rule execution and actual
+game-overlay rendering remain disabled while their contracts are reviewed.
 
 ## Product boundary
 
@@ -29,6 +30,13 @@ embed or silently replace the destination's visual configuration.
    mechanic layers, and map appearance.
 6. **Settings** — general behavior, performance, hotkeys, accessibility, and
    localization.
+
+Combat Stats is the first working tracker. It long-polls a bounded native feed,
+shows the latest complete snapshot separately from temporary packet-observed
+changes, and exposes only localized members of the exact 906-member catalog for
+the active BPSR build. Internal `AttrLevel` members and raw numeric identifiers
+are not part of the normal presentation. The website profile generator consumes
+that same catalog, while profiles persist only complete snapshots.
 
 ## Custom Triggers menu
 

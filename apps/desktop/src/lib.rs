@@ -71,22 +71,22 @@ use rlogs_game_bpsr::{
     AllowedDataDomain, BPSR_GAME_PLUGIN_ID, BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline,
     BpsrSceneRunIdentity, BpsrStateDamageContributionProjector, CaptureRecord, CaptureRecordKind,
     ContinuousBpsrRecorder, ContinuousRecordingConfig, ContinuousResearchJournalConfig,
-    DecodeDisposition, GameBuild, LiveProfileProjection, LiveProtocolPackKind,
-    LocalPhotoAssetReference, NetworkEndpoint, OfflineRecordingConfig, OfflineRecordingLimits,
-    OfflineRecordingReport, ProtocolDecodeStatus, ProtocolPack, ProtocolPackRouteDisposition,
-    ProtocolRuntimeConfig, RDPS_VALIDATION_REPORT_SCHEMA_VERSION, RdpsValidationAnalyzer,
-    RdpsValidationProgress, RdpsValidationReport, RegionResolverError, ResolvedRegion, RouteKey,
-    SealedDungeonRunLog, ServerRealmCatalog, auxiliary_action_presentation,
-    battle_imagine_presentation, bundled_gauntlet_scene_ids, bundled_run_reducer_config,
-    bundled_scene_run_identities, character_id_from_entity_uuid, combat_action_presentation,
-    combat_breakdown_ability_id, confirmed_damage_contribution_rules, is_boss_monster,
-    is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
-    localized_class_identities, localized_combat_action_name, localized_monster_name,
-    localized_recount_group_name, localized_scene_name, localized_specialization_identities,
-    localized_status_effect_name, project_local_profile_packages,
-    proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
-    record_offline_capture, resolve_actor_combat_identity, resolve_actor_combat_presentation,
-    resolve_live_steam_protocol_pack, scene_boss_monster_ids,
+    DecodeDisposition, GameBuild, LiveCharacterStatsSnapshot, LiveProfileProjection,
+    LiveProtocolPackKind, LocalPhotoAssetReference, NetworkEndpoint, OfflineRecordingConfig,
+    OfflineRecordingLimits, OfflineRecordingReport, ProtocolDecodeStatus, ProtocolPack,
+    ProtocolPackRouteDisposition, ProtocolRuntimeConfig, RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
+    RdpsValidationAnalyzer, RdpsValidationProgress, RdpsValidationReport, RegionResolverError,
+    ResolvedRegion, RouteKey, SealedDungeonRunLog, ServerRealmCatalog,
+    auxiliary_action_presentation, battle_imagine_presentation, bundled_gauntlet_scene_ids,
+    bundled_run_reducer_config, bundled_scene_run_identities, character_id_from_entity_uuid,
+    combat_action_presentation, combat_breakdown_ability_id, confirmed_damage_contribution_rules,
+    fight_attribute_presentation_catalog, is_boss_monster, is_localized_class_name,
+    localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
+    localized_combat_action_name, localized_monster_name, localized_recount_group_name,
+    localized_scene_name, localized_specialization_identities, localized_status_effect_name,
+    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
+    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
+    resolve_actor_combat_presentation, resolve_live_steam_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
     status_effect_presentation, weapon_level_presentation, weapon_presentation,
 };
@@ -591,6 +591,8 @@ fn automatic_profile_package_ready(created_unix_millis: u64, now_unix_millis: u6
 const LIVE_COMBAT_FEED_SCHEMA_VERSION: u16 = 1;
 const DEFAULT_LIVE_COMBAT_WAIT_MILLIS: u64 = 1_000;
 const MAXIMUM_LIVE_COMBAT_WAIT_MILLIS: u64 = 5_000;
+const DEFAULT_LIVE_CHARACTER_STATS_WAIT_MILLIS: u64 = 5_000;
+const MAXIMUM_LIVE_CHARACTER_STATS_WAIT_MILLIS: u64 = 30_000;
 const COMBAT_HISTORY_FEED_SCHEMA_VERSION: u16 = 2;
 const DEFAULT_COMBAT_HISTORY_WAIT_MILLIS: u64 = 5_000;
 const MAXIMUM_COMBAT_HISTORY_WAIT_MILLIS: u64 = 30_000;
@@ -1103,10 +1105,66 @@ impl LiveCombatFeed {
     }
 }
 
+#[derive(Debug, Default)]
+struct LiveCharacterStatsFeed {
+    snapshot: Mutex<LiveCharacterStatsSnapshot>,
+    changed: Condvar,
+}
+
+impl LiveCharacterStatsFeed {
+    fn publish(&self, mut snapshot: LiveCharacterStatsSnapshot) {
+        let mut current = self
+            .snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *current == snapshot {
+            return;
+        }
+        if snapshot.revision <= current.revision {
+            snapshot.revision = current.revision.saturating_add(1);
+        }
+        *current = snapshot;
+        self.changed.notify_all();
+    }
+
+    fn current(&self) -> LiveCharacterStatsSnapshot {
+        self.snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    fn wait_after(&self, after_revision: u64, timeout: Duration) -> LiveCharacterStatsSnapshot {
+        let deadline = Instant::now() + timeout;
+        let mut snapshot = self
+            .snapshot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while snapshot.revision <= after_revision {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            snapshot = match self.changed.wait_timeout(snapshot, remaining) {
+                Ok((snapshot, _)) => snapshot,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
+        }
+        snapshot.clone()
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct LiveCombatWaitRequest {
     after_revision: u64,
     #[serde(default = "default_live_combat_wait_millis")]
+    timeout_millis: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct LiveCharacterStatsWaitRequest {
+    after_revision: u64,
+    #[serde(default = "default_live_character_stats_wait_millis")]
     timeout_millis: u64,
 }
 
@@ -1470,6 +1528,10 @@ struct CombatHistoryDeleteRequest {
 
 fn default_live_combat_wait_millis() -> u64 {
     DEFAULT_LIVE_COMBAT_WAIT_MILLIS
+}
+
+fn default_live_character_stats_wait_millis() -> u64 {
+    DEFAULT_LIVE_CHARACTER_STATS_WAIT_MILLIS
 }
 
 fn default_combat_history_wait_millis() -> u64 {
@@ -4421,6 +4483,7 @@ struct RuntimeController {
     artifact_verification: Mutex<()>,
     profile_projection: Mutex<()>,
     live_combat_feed: Arc<LiveCombatFeed>,
+    live_character_stats_feed: Arc<LiveCharacterStatsFeed>,
     live_event_feed: Arc<LiveEventFeed>,
     combat_history_feed: Arc<CombatHistoryRevisionFeed>,
     history_rdps_backfill: Arc<HistoryRdpsBackfillQueue>,
@@ -4542,6 +4605,7 @@ impl RuntimeController {
             artifact_verification: Mutex::new(()),
             profile_projection: Mutex::new(()),
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
+            live_character_stats_feed: Arc::new(LiveCharacterStatsFeed::default()),
             live_event_feed: Arc::new(LiveEventFeed::default()),
             combat_history_feed: Arc::new(CombatHistoryRevisionFeed::default()),
             history_rdps_backfill: Arc::new(history_rdps_backfill),
@@ -5047,6 +5111,23 @@ impl RuntimeController {
                 .clamp(1, MAXIMUM_LIVE_COMBAT_WAIT_MILLIS),
         );
         self.live_combat_feed
+            .wait_after(request.after_revision, timeout)
+    }
+
+    fn live_character_stats_snapshot(&self) -> LiveCharacterStatsSnapshot {
+        self.live_character_stats_feed.current()
+    }
+
+    fn wait_for_live_character_stats(
+        &self,
+        request: LiveCharacterStatsWaitRequest,
+    ) -> LiveCharacterStatsSnapshot {
+        let timeout = Duration::from_millis(
+            request
+                .timeout_millis
+                .clamp(1, MAXIMUM_LIVE_CHARACTER_STATS_WAIT_MILLIS),
+        );
+        self.live_character_stats_feed
             .wait_after(request.after_revision, timeout)
     }
 
@@ -6494,10 +6575,13 @@ impl RuntimeController {
             state.sealed_run_count = 0;
         }
         self.live_combat_feed.publish(None);
+        self.live_character_stats_feed
+            .publish(LiveCharacterStatsSnapshot::default());
         self.live_event_feed.reset(request.session_id.clone());
 
         let state = Arc::clone(&self.state);
         let live_combat_feed = Arc::clone(&self.live_combat_feed);
+        let live_character_stats_feed = Arc::clone(&self.live_character_stats_feed);
         let live_event_feed = Arc::clone(&self.live_event_feed);
         let submission_queue = Arc::clone(&self.submission_queue);
         let combat_history = Arc::clone(&self.combat_history);
@@ -6791,11 +6875,14 @@ impl RuntimeController {
                                         ));
                                     }
                                 }
-                                if profile_sync.enabled
-                                    && event.event.topic() == EventTopic::CharacterProfile
-                                {
+                                if matches!(
+                                    event.event.topic(),
+                                    EventTopic::CharacterProfile | EventTopic::Actor
+                                ) {
+                                    let previous_stats_revision =
+                                        live_profile_projection.live_character_stats_revision();
                                     match live_profile_projection.observe(event) {
-                                        Ok(true) => {
+                                        Ok(true) if profile_sync.enabled => {
                                             let created_unix_millis = unix_millis().max(
                                                 last_live_profile_created_unix_millis
                                                     .saturating_add(1),
@@ -6852,7 +6939,7 @@ impl RuntimeController {
                                                 }
                                             }
                                         }
-                                        Ok(false) => {}
+                                        Ok(true) | Ok(false) => {}
                                         Err(error) => {
                                             live_profile_sync_status =
                                                 format!("live_projection_failed: {error}");
@@ -6860,6 +6947,13 @@ impl RuntimeController {
                                                 "live profile observation could not be merged: {error}"
                                             );
                                         }
+                                    }
+                                    if live_profile_projection.live_character_stats_revision()
+                                        != previous_stats_revision
+                                    {
+                                        live_character_stats_feed.publish(
+                                            live_profile_projection.live_character_stats(),
+                                        );
                                     }
                                 }
                                 let next_world_scene_id = world_scene_id(&event.event);
@@ -10956,6 +11050,38 @@ fn handle_connection(
                 &present_live_combat_update(controller.wait_for_live_combat(request)),
             )?;
         }
+        ("GET", "/api/runtime/live/character-stats") => {
+            write_json(
+                &mut stream,
+                200,
+                &controller.live_character_stats_snapshot(),
+            )?;
+        }
+        ("GET", "/api/runtime/live/character-stats/catalog") => {
+            let catalog = match fight_attribute_presentation_catalog() {
+                Ok(catalog) => catalog,
+                Err(error) => {
+                    write_api_error(&mut stream, 500, error)?;
+                    return Ok(());
+                }
+            };
+            write_json(&mut stream, 200, catalog)?;
+        }
+        ("POST", "/api/runtime/live/character-stats/wait") => {
+            let request: LiveCharacterStatsWaitRequest = match serde_json::from_slice(&request.body)
+            {
+                Ok(request) => request,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            write_json(
+                &mut stream,
+                200,
+                &controller.wait_for_live_character_stats(request),
+            )?;
+        }
         ("POST", "/api/runtime/live/events/wait") => {
             let request: LiveEventWaitRequest = match serde_json::from_slice(&request.body) {
                 Ok(request) => request,
@@ -13655,6 +13781,47 @@ mod tests {
         assert_eq!(update.schema_version, LIVE_COMBAT_FEED_SCHEMA_VERSION);
         assert_eq!(update.revision, 1);
         assert!(update.snapshot.is_none());
+    }
+
+    #[test]
+    fn live_character_stats_feed_wakes_only_for_changed_snapshots() {
+        let feed = Arc::new(LiveCharacterStatsFeed::default());
+        let publisher = Arc::clone(&feed);
+        let worker = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(10));
+            publisher.publish(LiveCharacterStatsSnapshot {
+                revision: 1,
+                snapshot_values: BTreeMap::from([(11_330, 12_345)]),
+                current_values: BTreeMap::from([(11_330, 12_345)]),
+                ..LiveCharacterStatsSnapshot::default()
+            });
+        });
+
+        let snapshot = feed.wait_after(0, Duration::from_secs(1));
+        worker.join().unwrap();
+        assert_eq!(snapshot.revision, 1);
+        assert_eq!(snapshot.current_values.get(&11_330), Some(&12_345));
+
+        feed.publish(snapshot.clone());
+        assert_eq!(feed.current().revision, 1);
+        assert_eq!(feed.wait_after(1, Duration::from_millis(1)).revision, 1);
+    }
+
+    #[test]
+    fn live_character_stats_feed_keeps_revisions_monotonic_across_session_reset() {
+        let feed = LiveCharacterStatsFeed::default();
+        feed.publish(LiveCharacterStatsSnapshot {
+            revision: 8,
+            snapshot_values: BTreeMap::from([(11_330, 12_345)]),
+            current_values: BTreeMap::from([(11_330, 12_345)]),
+            ..LiveCharacterStatsSnapshot::default()
+        });
+        feed.publish(LiveCharacterStatsSnapshot::default());
+
+        let reset = feed.wait_after(8, Duration::from_millis(1));
+        assert_eq!(reset.revision, 9);
+        assert!(reset.character.is_none());
+        assert!(reset.current_values.is_empty());
     }
 
     #[test]

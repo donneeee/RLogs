@@ -20,6 +20,7 @@ mod dungeon_dirty_v1;
 mod effect_fingerprint;
 mod factor_attribution;
 mod factor_correlation;
+mod fight_attribute_presentation;
 mod fight_source;
 mod framer_set;
 mod framing;
@@ -150,6 +151,11 @@ pub use factor_correlation::{
     FactorSelectionEvidence, FactorSelectionObservation, FactorWindowCloseReason,
     PsychoscopeFactorCorrelationAnalyzer, PsychoscopeFactorCorrelationReport,
     UnmatchedFactorLifecycleEvent,
+};
+pub use fight_attribute_presentation::{
+    FIGHT_ATTRIBUTE_PRESENTATION_SCHEMA_VERSION, FightAttributePresentation,
+    FightAttributePresentationCatalog, fight_attribute_presentation,
+    fight_attribute_presentation_catalog,
 };
 pub use fight_source::BpsrFightSourceKind;
 pub use framer_set::{
