@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   modulePresentation,
+  parseGpuSupport,
   parseLocalModuleInventory,
+  parseOptimizeResponse,
   parseOptimizerCatalog,
 } from "./module-optimizer";
 
@@ -70,5 +72,43 @@ describe("local module optimizer contracts", () => {
     });
     expect(presentation.name).toBe("Excellent Support Module - Premium");
     expect(presentation.icon).toContain("item_icons_mod_device_5.png");
+  });
+
+  it("accepts a dynamically discovered cross-vendor GPU", () => {
+    const support = parseGpuSupport({
+      available: true,
+      backend: "open_cl",
+      device_name: "AMD Radeon RX 7900 XTX",
+      vendor: "Advanced Micro Devices, Inc.",
+      detail: "OpenCL exact search is ready.",
+    });
+    expect(support.backend).toBe("open_cl");
+    expect(support.device_name).toContain("Radeon");
+  });
+
+  it("requires optimizer results to disclose the engine and fallback state", () => {
+    const result = parseOptimizeResponse({
+      scoring_revision: "reviewed",
+      catalog_revision: "catalog",
+      current_setup: null,
+      solutions: [],
+      search: {
+        requested_mode: "auto",
+        used_mode: "exact",
+        exact: true,
+        input_module_count: 12,
+        candidate_module_count: 10,
+        excluded_module_count: 2,
+        total_combinations: 210,
+        evaluated_states: 210,
+        combination_size: 4,
+        beam_width: null,
+        backend: "open_cl",
+        accelerator_name: "GeForce RTX 5060",
+        accelerator_fallback: null,
+      },
+    });
+    expect(result.search.backend).toBe("open_cl");
+    expect(result.search.accelerator_fallback).toBeNull();
   });
 });

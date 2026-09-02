@@ -158,9 +158,28 @@ impl CaptureTimeCharacterIdentityStore {
         event: &EventEnvelope,
         fallback: Option<&dyn CharacterIdentityResolver>,
     ) -> Result<bool, String> {
-        let Some(identity) = identity_from_event(event, Some(self), fallback, true)? else {
+        let Some(mut identity) = identity_from_event(event, Some(self), fallback, true)? else {
             return Ok(false);
         };
+        // A local action-slot update can exactly confirm the two equipped
+        // Imagines without repeating their remodel tiers. The persistent
+        // UID-matched observation may fill only that omitted field, and only
+        // while slot, ability, and item identity still agree. It cannot supply
+        // a changed or otherwise missing loadout.
+        if let Some(previous) = fallback.and_then(|resolver| {
+            resolver.resolve_identity(
+                &identity.deployment_id,
+                &identity.region_id,
+                identity.world_id.as_deref(),
+                &identity.character_id,
+            )
+        }) {
+            retain_matching_loadout_tiers(&mut identity.primary_loadout, &previous.primary_loadout);
+            retain_matching_loadout_tiers(
+                &mut identity.auxiliary_loadout,
+                &previous.auxiliary_loadout,
+            );
+        }
         upsert_catalog(&mut self.catalog, identity)
     }
 
@@ -373,7 +392,7 @@ fn resolve_identity<'a>(
 
 fn upsert_catalog(
     catalog: &mut CharacterIdentityCatalog,
-    identity: CharacterPresentationIdentity,
+    mut identity: CharacterPresentationIdentity,
 ) -> Result<bool, String> {
     if let Some(existing) = catalog.entries.iter_mut().find(|entry| {
         entry.game_plugin_id == identity.game_plugin_id
@@ -382,6 +401,8 @@ fn upsert_catalog(
             && entry.world_id == identity.world_id
             && entry.character_id == identity.character_id
     }) {
+        retain_matching_loadout_tiers(&mut identity.primary_loadout, &existing.primary_loadout);
+        retain_matching_loadout_tiers(&mut identity.auxiliary_loadout, &existing.auxiliary_loadout);
         let mut changed = false;
         if existing.display_name != identity.display_name {
             existing.display_name = identity.display_name;
@@ -460,6 +481,41 @@ fn upsert_catalog(
             .then_with(|| left.character_id.cmp(&right.character_id))
     });
     Ok(true)
+}
+
+/// Retains an earlier packet-observed tier only for the same equipped object.
+/// A missing tier is absence of a field, not evidence that the tier became
+/// unknown. Conflicting ability or item identity fails closed and carries
+/// nothing across the update.
+fn retain_matching_loadout_tiers(incoming: &mut [ActorLoadoutSlot], previous: &[ActorLoadoutSlot]) {
+    for slot in incoming.iter_mut().filter(|slot| slot.tier.is_none()) {
+        let Some(known) = previous.iter().find(|known| {
+            known.slot_id == slot.slot_id && loadout_slot_identity_matches(slot, known)
+        }) else {
+            continue;
+        };
+        slot.tier = known.tier;
+    }
+}
+
+fn loadout_slot_identity_matches(left: &ActorLoadoutSlot, right: &ActorLoadoutSlot) -> bool {
+    let ability_conflicts = left
+        .ability_id
+        .zip(right.ability_id)
+        .is_some_and(|(left, right)| left != right);
+    let item_conflicts = left
+        .item_id
+        .zip(right.item_id)
+        .is_some_and(|(left, right)| left != right);
+    let has_exact_join = left
+        .ability_id
+        .zip(right.ability_id)
+        .is_some_and(|(left, right)| left == right)
+        || left
+            .item_id
+            .zip(right.item_id)
+            .is_some_and(|(left, right)| left == right);
+    has_exact_join && !ability_conflicts && !item_conflicts
 }
 
 fn profile_weapon_breakthrough_count(profile: &CharacterProfilePatch) -> Option<u32> {
@@ -817,6 +873,89 @@ mod tests {
         assert_eq!(identity.primary_loadout[1].ability_id, Some(3_982));
         assert_eq!(identity.primary_loadout[1].item_id, Some(3_001_001));
         assert_ne!(identity.primary_loadout[1].ability_id, Some(3_969));
+    }
+
+    #[test]
+    fn matching_local_imagines_retain_an_observed_tier_when_slot_update_omits_it() {
+        let fallback = CharacterIdentityStore {
+            path: PathBuf::new(),
+            catalog: CharacterIdentityCatalog {
+                schema_version: SCHEMA_VERSION,
+                entries: vec![CharacterPresentationIdentity {
+                    game_plugin_id: BPSR_GAME_PLUGIN_ID.into(),
+                    deployment_id: "global".into(),
+                    region_id: "global".into(),
+                    world_id: Some("asteria".into()),
+                    character_id: "3296036".into(),
+                    display_name: "MarieRose".into(),
+                    class_id: Some(11),
+                    specialization_id: Some(117),
+                    level: Some(60),
+                    ability_score: Some(61_734),
+                    weapon_item_id: Some(2_000_631),
+                    weapon_breakthrough_count: Some(3),
+                    seasonal_strength: Some(3_505),
+                    primary_loadout: vec![
+                        ActorLoadoutSlot {
+                            slot_id: 7,
+                            ability_id: Some(3_948),
+                            item_id: Some(3_000_101),
+                            tier: Some(5),
+                        },
+                        ActorLoadoutSlot {
+                            slot_id: 8,
+                            ability_id: Some(3_969),
+                            item_id: Some(3_000_121),
+                            tier: Some(5),
+                        },
+                    ],
+                    auxiliary_loadout: Vec::new(),
+                }],
+            },
+        };
+        let mut value = serde_json::to_value(captured_actor_event(Some("MarieRose"))).unwrap();
+        let slots = value
+            .pointer_mut("/event/data/kind/data/primary_loadout")
+            .and_then(serde_json::Value::as_array_mut)
+            .unwrap();
+        slots[0]["tier"] = serde_json::Value::Null;
+        slots[1] = serde_json::json!({
+            "slot_id": 8,
+            "ability_id": 3969,
+            "item_id": 3000121,
+            "tier": null
+        });
+        let event: EventEnvelope = serde_json::from_value(value).unwrap();
+
+        let mut captured = CaptureTimeCharacterIdentityStore::default();
+        assert!(
+            captured
+                .observe_with_name_fallback(&event, &fallback)
+                .unwrap()
+        );
+        let identity = captured
+            .resolve_identity("global", "global", Some("asteria"), "3296036")
+            .unwrap();
+        assert_eq!(identity.primary_loadout[0].tier, Some(5));
+        assert_eq!(identity.primary_loadout[1].tier, Some(5));
+
+        // A changed equipped Imagine must not inherit the old slot's tier.
+        let mut changed = event;
+        if let CanonicalEvent::Timeline(timeline) = &mut changed.event
+            && let TimelineEventKind::Actor(actor) = &mut timeline.kind
+        {
+            actor.primary_loadout[1].ability_id = Some(3_982);
+            actor.primary_loadout[1].item_id = Some(3_001_001);
+            actor.primary_loadout[1].tier = None;
+        }
+        captured
+            .observe_with_name_fallback(&changed, &fallback)
+            .unwrap();
+        let identity = captured
+            .resolve_identity("global", "global", Some("asteria"), "3296036")
+            .unwrap();
+        assert_eq!(identity.primary_loadout[1].ability_id, Some(3_982));
+        assert_eq!(identity.primary_loadout[1].tier, None);
     }
 
     #[test]

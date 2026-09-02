@@ -1,10 +1,12 @@
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 
+use rayon::prelude::*;
+
 use crate::scoring::{ScoringRules, attribute_multiplier};
 use crate::types::{
     ModuleCandidate, ModuleSolution, OptimizeRequest, OptimizeResponse, OptimizerError,
-    ScoreBreakdown, SearchMode, SearchSummary,
+    ScoreBreakdown, SearchBackend, SearchMode, SearchSummary,
 };
 
 const MAX_EXACT_COMBINATIONS: u64 = 10_000_000;
@@ -14,10 +16,10 @@ const MAX_ATTRIBUTE_SLOTS: usize = 32;
 const MAX_COMBINATION_SIZE: usize = 5;
 
 #[derive(Debug, Clone)]
-struct DenseCandidate {
-    module: ModuleCandidate,
-    values: Vec<i32>,
-    total_link_points: i32,
+pub(crate) struct DenseCandidate {
+    pub(crate) module: ModuleCandidate,
+    pub(crate) values: Vec<i32>,
+    pub(crate) total_link_points: i32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -95,9 +97,9 @@ fn score_table_index(power: &[i32], value: i32) -> usize {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct RankedCombination {
-    indices: Vec<usize>,
-    ranking_score: i32,
+pub(crate) struct RankedCombination {
+    pub(crate) indices: Vec<usize>,
+    pub(crate) ranking_score: i32,
 }
 
 impl Ord for RankedCombination {
@@ -181,15 +183,64 @@ pub fn optimize(
         SearchMode::Beam => SearchMode::Beam,
     };
 
+    let mut backend = SearchBackend::Cpu;
+    let mut accelerator_name = None;
+    let mut accelerator_fallback = None;
     let (mut ranked, evaluated_states) = match used_mode {
-        SearchMode::Exact => exact_search(
-            rules,
-            &candidates,
-            request,
-            &target_attributes,
-            &exclude_attributes,
-            solution_limit,
-        ),
+        SearchMode::Exact => {
+            #[cfg(feature = "gpu-opencl")]
+            if request.use_gpu {
+                match crate::gpu::exact_search_opencl(
+                    rules,
+                    &candidates,
+                    request,
+                    &target_attributes,
+                    &exclude_attributes,
+                    solution_limit,
+                ) {
+                    Ok(result) => {
+                        backend = SearchBackend::OpenCl;
+                        accelerator_name = Some(result.device_name);
+                        (result.ranked, result.evaluated_states)
+                    }
+                    Err(error) => {
+                        accelerator_fallback = Some(error);
+                        exact_search(
+                            rules,
+                            &candidates,
+                            request,
+                            &target_attributes,
+                            &exclude_attributes,
+                            solution_limit,
+                        )
+                    }
+                }
+            } else {
+                exact_search(
+                    rules,
+                    &candidates,
+                    request,
+                    &target_attributes,
+                    &exclude_attributes,
+                    solution_limit,
+                )
+            }
+            #[cfg(not(feature = "gpu-opencl"))]
+            {
+                if request.use_gpu {
+                    accelerator_fallback =
+                        Some("this build does not include the optional OpenCL backend".into());
+                }
+                exact_search(
+                    rules,
+                    &candidates,
+                    request,
+                    &target_attributes,
+                    &exclude_attributes,
+                    solution_limit,
+                )
+            }
+        }
         SearchMode::Beam => beam_search(
             rules,
             &candidates,
@@ -233,6 +284,9 @@ pub fn optimize(
             evaluated_states,
             combination_size: request.combination_size,
             beam_width: (used_mode == SearchMode::Beam).then_some(request.beam_width),
+            backend,
+            accelerator_name,
+            accelerator_fallback,
         },
     })
 }
@@ -438,33 +492,66 @@ fn exact_search(
     exclude_attributes: &BTreeSet<i32>,
     solution_limit: usize,
 ) -> (Vec<RankedCombination>, u64) {
-    let mut top = BinaryHeap::<Reverse<RankedCombination>>::new();
-    let mut combination = (0..request.combination_size).collect::<Vec<_>>();
-    let mut evaluated = 0_u64;
-    loop {
-        evaluated += 1;
-        let (values, total_link_points) = sum_combination(candidates, &combination);
-        if meets_requirements(rules, &values, &request.min_attr_requirements) {
-            let ranking_score = rules.ranking_score_dense(
-                &values,
-                total_link_points,
-                target_attributes,
-                exclude_attributes,
+    let prefix_pairs = exact_prefix_pairs(candidates.len(), request.combination_size);
+    let (top, evaluated) = prefix_pairs
+        .into_par_iter()
+        .map(|(first, second)| {
+            let mut top = BinaryHeap::<Reverse<RankedCombination>>::new();
+            let mut combination = Vec::with_capacity(request.combination_size);
+            combination.push(first);
+            combination.push(second);
+            combination.extend(
+                (0..request.combination_size.saturating_sub(2)).map(|offset| second + offset + 1),
             );
-            retain_ranked(
-                &mut top,
-                RankedCombination {
-                    indices: combination.clone(),
-                    ranking_score,
-                },
-                solution_limit,
-            );
-        }
-        if !next_combination(&mut combination, candidates.len()) {
-            break;
+            let mut evaluated = 0_u64;
+            loop {
+                evaluated += 1;
+                let (values, total_link_points) = sum_combination(candidates, &combination);
+                if meets_requirements(rules, &values, &request.min_attr_requirements) {
+                    let ranking_score = rules.ranking_score_dense(
+                        &values,
+                        total_link_points,
+                        target_attributes,
+                        exclude_attributes,
+                    );
+                    retain_ranked(
+                        &mut top,
+                        RankedCombination {
+                            indices: combination.clone(),
+                            ranking_score,
+                        },
+                        solution_limit,
+                    );
+                }
+                if !next_combination(&mut combination, candidates.len())
+                    || combination[0] != first
+                    || combination[1] != second
+                {
+                    break;
+                }
+            }
+            (top, evaluated)
+        })
+        .reduce(
+            || (BinaryHeap::new(), 0_u64),
+            |(mut left, left_count), (right, right_count)| {
+                for candidate in right.into_iter().map(|entry| entry.0) {
+                    retain_ranked(&mut left, candidate, solution_limit);
+                }
+                (left, left_count.saturating_add(right_count))
+            },
+        );
+    (finish_ranked(top), evaluated)
+}
+
+fn exact_prefix_pairs(item_count: usize, pick_count: usize) -> Vec<(usize, usize)> {
+    let mut pairs = Vec::new();
+    for first in 0..=item_count - pick_count {
+        for second in first + 1..=item_count - pick_count + 1 {
+            pairs.push((first, second));
         }
     }
-    (finish_ranked(top), evaluated)
+    pairs
 }
 
 fn beam_search(
@@ -827,7 +914,7 @@ fn module_solution(
     }
 }
 
-fn retain_ranked(
+pub(crate) fn retain_ranked(
     heap: &mut BinaryHeap<Reverse<RankedCombination>>,
     candidate: RankedCombination,
     limit: usize,
@@ -840,7 +927,9 @@ fn retain_ranked(
     }
 }
 
-fn finish_ranked(heap: BinaryHeap<Reverse<RankedCombination>>) -> Vec<RankedCombination> {
+pub(crate) fn finish_ranked(
+    heap: BinaryHeap<Reverse<RankedCombination>>,
+) -> Vec<RankedCombination> {
     let mut ranked = heap.into_iter().map(|entry| entry.0).collect::<Vec<_>>();
     ranked.sort_by(|left, right| right.cmp(left));
     ranked
@@ -1012,7 +1101,12 @@ mod tests {
         request.min_attr_requirements.insert(1110, 16);
         let response = optimize(&rules, &request).unwrap();
         assert!(response.search.exact);
+        assert_eq!(response.search.backend, SearchBackend::Cpu);
         assert_eq!(response.search.total_combinations, 15);
+        assert_eq!(response.search.evaluated_states, 15);
+        let serialized = serde_json::to_value(&response.search).unwrap();
+        assert!(serialized["accelerator_name"].is_null());
+        assert!(serialized["accelerator_fallback"].is_null());
         assert_eq!(response.solutions[0].instance_ids, ["a", "b", "c", "d"]);
         assert!(response.solutions.iter().all(|solution| {
             solution
@@ -1022,6 +1116,47 @@ mod tests {
                 .find(|attribute| attribute.attribute_id == 1110)
                 .is_some_and(|attribute| attribute.total >= 16)
         }));
+    }
+
+    #[cfg(feature = "gpu-opencl")]
+    #[test]
+    fn opencl_exact_search_matches_the_parallel_cpu_result() {
+        if !crate::gpu_support().available {
+            return;
+        }
+        let rules = ScoringRules::cn_0_2_0_fixture();
+        let modules = (0..28)
+            .map(|index| {
+                module(
+                    &format!("{index:03}"),
+                    &[
+                        (1110 + index % 5, 1 + index % 10),
+                        (1407 + index % 4, 1 + (index * 3) % 10),
+                        (2104 + index % 2, 1 + (index * 7) % 10),
+                    ],
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut cpu_request = OptimizeRequest {
+            modules,
+            target_attributes: vec![1110, 1111],
+            search_mode: SearchMode::Exact,
+            max_solutions: 20,
+            exact_combination_limit: 1_000_000,
+            require_target_match: false,
+            ..OptimizeRequest::default()
+        };
+        cpu_request.min_attr_requirements.insert(1110, 4);
+        let cpu = optimize(&rules, &cpu_request).unwrap();
+        let mut gpu_request = cpu_request;
+        gpu_request.use_gpu = true;
+        let gpu = optimize(&rules, &gpu_request).unwrap();
+
+        assert_eq!(gpu.search.backend, SearchBackend::OpenCl);
+        assert_eq!(gpu.search.accelerator_fallback, None);
+        assert_eq!(gpu.search.total_combinations, cpu.search.total_combinations);
+        assert_eq!(gpu.search.evaluated_states, cpu.search.evaluated_states);
+        assert_eq!(gpu.solutions, cpu.solutions);
     }
 
     #[test]

@@ -58,6 +58,7 @@ export interface OptimizeRequest {
   combination_size: number;
   max_solutions: number;
   search_mode: "auto" | "exact" | "beam";
+  use_gpu: boolean;
   exact_combination_limit: number;
   beam_width: number;
   minimum_parts: number;
@@ -104,7 +105,18 @@ export interface OptimizeResponse {
     evaluated_states: number;
     combination_size: number;
     beam_width: number | null;
+    backend: "cpu" | "open_cl";
+    accelerator_name: string | null;
+    accelerator_fallback: string | null;
   };
+}
+
+export interface GpuSupport {
+  available: boolean;
+  backend: "cpu" | "open_cl";
+  device_name: string | null;
+  vendor: string | null;
+  detail: string;
 }
 
 interface ModulePresentation {
@@ -147,7 +159,7 @@ function module(name: string, icon: string, quality: number): ModulePresentation
 export function modulePresentation(value: ModuleCandidate): ModulePresentation {
   return (
     MODULES[String(value.config_id)] ?? {
-      name: "Unknown module",
+      name: `Module ${value.config_id.toLocaleString()}`,
       icon: "/game-assets/blue-protocol-star-resonance/shared/icons/modules/types/4-universal.png",
       quality: value.quality ?? 0,
     }
@@ -195,6 +207,20 @@ export function parseLocalModuleInventory(value: unknown): LocalModuleInventory 
   return value as unknown as LocalModuleInventory;
 }
 
+export function parseGpuSupport(value: unknown): GpuSupport {
+  if (
+    !isRecord(value) ||
+    typeof value.available !== "boolean" ||
+    !isSearchBackend(value.backend) ||
+    !nullableString(value.device_name) ||
+    !nullableString(value.vendor) ||
+    typeof value.detail !== "string"
+  ) {
+    throw new Error("The local host returned invalid GPU support details.");
+  }
+  return value as unknown as GpuSupport;
+}
+
 export function parseOptimizeResponse(value: unknown): OptimizeResponse {
   if (
     !isRecord(value) ||
@@ -206,9 +232,17 @@ export function parseOptimizeResponse(value: unknown): OptimizeResponse {
     !isRecord(value.search) ||
     !isSearchMode(value.search.requested_mode) ||
     !isSearchMode(value.search.used_mode) ||
+    !isSearchBackend(value.search.backend) ||
     typeof value.search.exact !== "boolean" ||
+    !nonnegativeInteger(value.search.input_module_count) ||
+    !nonnegativeInteger(value.search.candidate_module_count) ||
+    !nonnegativeInteger(value.search.excluded_module_count) ||
     !nonnegativeInteger(value.search.evaluated_states) ||
-    !nonnegativeInteger(value.search.total_combinations)
+    !nonnegativeInteger(value.search.total_combinations) ||
+    !positiveInteger(value.search.combination_size) ||
+    !(value.search.beam_width === null || positiveInteger(value.search.beam_width)) ||
+    !nullableString(value.search.accelerator_name) ||
+    !nullableString(value.search.accelerator_fallback)
   ) {
     throw new Error("The local host returned an invalid module optimization result.");
   }
@@ -283,6 +317,10 @@ function isSolution(value: unknown): boolean {
 
 function isSearchMode(value: unknown): boolean {
   return value === "auto" || value === "exact" || value === "beam";
+}
+
+function isSearchBackend(value: unknown): boolean {
+  return value === "cpu" || value === "open_cl";
 }
 
 function isIntegerArray(value: unknown): value is number[] {

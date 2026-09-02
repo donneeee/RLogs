@@ -48,7 +48,8 @@ use profile_packages::{
     ProfilePublicationRecord, profile_publication_delta,
 };
 use rlogs_bpsr_module_optimizer::{
-    OptimizeRequest, OptimizeResponse, OptimizerCatalog, load_catalog_from_install_root, optimize,
+    GpuSupport, OptimizeRequest, OptimizeResponse, OptimizerCatalog, gpu_support,
+    load_catalog_from_install_root, optimize,
 };
 use rlogs_capture::{BoundedCaptureIngress, OfflineCapture};
 #[cfg(windows)]
@@ -4369,6 +4370,10 @@ impl RuntimeController {
         load_local_module_inventories(&mut packages)
     }
 
+    fn module_optimizer_gpu_support(&self) -> GpuSupport {
+        gpu_support()
+    }
+
     fn run_module_optimizer(&self, request: OptimizeRequest) -> Result<OptimizeResponse, String> {
         let (rules, _) = load_catalog_from_install_root(&self.install_root)
             .map_err(|error| error.to_string())?;
@@ -7095,10 +7100,15 @@ fn apply_live_run_projection_clocks(
     };
     if let Some(entire_run) = run.views.iter().find(|view| view.id == "all") {
         snapshot.game_time_micros = run.game_time_micros.or(Some(entire_run.elapsed_micros));
-        snapshot.active_combat_micros = entire_run.active_combat_micros;
     } else {
         snapshot.game_time_micros = run.game_time_micros;
     }
+    // The reviewed run projection owns cumulative game/eDPS and projected-best
+    // clocks, but the live meter owns the current-attempt active clock. In
+    // particular, a retry resets DPS, aDPS, and rDPS while cumulative eDPS
+    // remains banked and paused until the next hostile event. Replacing the
+    // live clock with the entire-run active time made the overlay look as if
+    // aDPS had not reset even though its numerator and rate had reset.
     snapshot.true_time_micros = run.true_time_micros;
 }
 
@@ -9185,6 +9195,11 @@ fn freeze_bpsr_history_character_state(
                         .iter()
                         .map(HistoryLoadoutSlot::from)
                         .collect();
+                } else {
+                    retain_matching_history_loadout_tiers(
+                        &mut actor.primary_loadout,
+                        &identity.primary_loadout,
+                    );
                 }
                 if actor.auxiliary_loadout.is_empty() {
                     actor.auxiliary_loadout = identity
@@ -9192,11 +9207,49 @@ fn freeze_bpsr_history_character_state(
                         .iter()
                         .map(HistoryLoadoutSlot::from)
                         .collect();
+                } else {
+                    retain_matching_history_loadout_tiers(
+                        &mut actor.auxiliary_loadout,
+                        &identity.auxiliary_loadout,
+                    );
                 }
             }
         }
     }
     Ok(())
+}
+
+fn retain_matching_history_loadout_tiers(
+    incoming: &mut [HistoryLoadoutSlot],
+    observed: &[ActorLoadoutSlot],
+) {
+    for slot in incoming.iter_mut().filter(|slot| slot.tier.is_none()) {
+        let Some(known) = observed.iter().find(|known| {
+            if known.slot_id != slot.slot_id {
+                return false;
+            }
+            let ability_conflicts = slot
+                .ability_id
+                .zip(known.ability_id)
+                .is_some_and(|(left, right)| left != right);
+            let item_conflicts = slot
+                .item_id
+                .zip(known.item_id)
+                .is_some_and(|(left, right)| left != right);
+            let has_exact_join = slot
+                .ability_id
+                .zip(known.ability_id)
+                .is_some_and(|(left, right)| left == right)
+                || slot
+                    .item_id
+                    .zip(known.item_id)
+                    .is_some_and(|(left, right)| left == right);
+            has_exact_join && !ability_conflicts && !item_conflicts
+        }) else {
+            continue;
+        };
+        slot.tier = known.tier;
+    }
 }
 
 /// Resolve only public display labels for saved history rows.
@@ -10019,6 +10072,9 @@ fn handle_connection(
                 Ok(inventory) => write_json(&mut stream, 200, &inventory)?,
                 Err(error) => write_api_error(&mut stream, 409, error)?,
             }
+        }
+        ("GET", "/api/module-optimizer/gpu-support") => {
+            write_json(&mut stream, 200, &controller.module_optimizer_gpu_support())?;
         }
         ("POST", "/api/module-optimizer/optimize") => {
             let request: OptimizeRequest = match serde_json::from_slice(&request.body) {
@@ -11561,6 +11617,38 @@ mod tests {
         .unwrap()
     }
 
+    #[test]
+    fn reviewed_run_clocks_do_not_undo_the_live_retry_reset() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/replay/reference-combat.rlog");
+        let reader = RlogReader::new(
+            BufReader::new(File::open(fixture).unwrap()),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let mut meter = CombatTimelinePlugin::new();
+        meter.begin_live(reader.header());
+        let mut snapshot = meter.live_snapshot().unwrap();
+        snapshot.active_combat_micros = 2_000_000;
+
+        let mut history = captured_marksman_history();
+        let run = &mut history.runs[0];
+        run.game_time_micros = Some(11_000_000);
+        run.true_time_micros = Some(9_000_000);
+        run.views[0].id = "all".into();
+        run.views[0].elapsed_micros = 11_000_000;
+        run.views[0].active_combat_micros = 8_000_000;
+
+        apply_live_run_projection_clocks(&mut snapshot, Some(run));
+
+        assert_eq!(snapshot.game_time_micros, Some(11_000_000));
+        assert_eq!(snapshot.true_time_micros, Some(9_000_000));
+        assert_eq!(
+            snapshot.active_combat_micros, 2_000_000,
+            "the overlay must retain the current retry's aDPS clock"
+        );
+    }
+
     fn add_history_damage_influence(snapshot: &mut CombatHistorySnapshot, effect_id: i64) {
         snapshot.runs[0].views[0].damage_influences.push(
             serde_json::from_value(serde_json::json!({
@@ -12257,6 +12345,16 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let marksman = identity_store(&root, "marksman", 11, 117, 61_382, 3_000_101);
         let mut snapshot = captured_marksman_history();
+        snapshot.runs[0].views[0].actors[0].primary_loadout = vec![HistoryLoadoutSlot {
+            slot_id: 7,
+            ability_id: Some(3_948),
+            item_id: Some(3_000_101),
+            tier: None,
+            presentation_name: None,
+            icon_asset_path: None,
+            item_tier: None,
+            maximum_tier: None,
+        }];
         freeze_bpsr_history_character_state(&mut snapshot, &marksman).unwrap();
 
         let actor = &snapshot.runs[0].views[0].actors[0];
@@ -12268,6 +12366,7 @@ mod tests {
         assert_eq!(actor.weapon_breakthrough_count, Some(3));
         assert_eq!(actor.seasonal_score, Some(3_505));
         assert_eq!(actor.primary_loadout[0].item_id, Some(3_000_101));
+        assert_eq!(actor.primary_loadout[0].tier, Some(5));
         assert_eq!(actor.auxiliary_loadout[0].ability_id, Some(3_612));
 
         let current_dissonance =

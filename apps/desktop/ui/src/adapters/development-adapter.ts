@@ -5,6 +5,13 @@ import type {
   WorkspaceDescriptor,
   WorkspaceTabDescriptor,
 } from "../shell/types";
+import { mountModuleOptimizerSurface } from "./module-optimizer-surface";
+import type {
+  LocalModuleInventory,
+  ModuleCandidate,
+  OptimizeResponse,
+  OptimizerCatalog,
+} from "./module-optimizer";
 
 const PREFERENCES_KEY = "rlogs.desktop-shell.preferences.v1";
 const EXAMPLES_KEY = "rlogs.desktop-shell.examples-enabled.v1";
@@ -145,6 +152,9 @@ export function createDevelopmentAdapter(): DesktopHostAdapter {
 
     async mountSurface(workspace, tab, container) {
       container.replaceChildren();
+      if (tab.entrypoint === "development://profile/modules") {
+        return mountDevelopmentModuleOptimizer(container);
+      }
       const surface = renderDevelopmentSurface(workspace, tab);
       container.append(surface);
       return noOpSurface();
@@ -156,6 +166,159 @@ export function createDevelopmentAdapter(): DesktopHostAdapter {
       } catch {
         // The query string still provides a deterministic blank-shell route.
       }
+    },
+  };
+}
+
+const DEVELOPMENT_OPTIMIZER_CATALOG: OptimizerCatalog = {
+  game_id: "blue-protocol-star-resonance",
+  catalog_revision: "development-visual-fixture",
+  scoring_revision: "reviewed-cn-formula",
+  client_builds: ["24687926"],
+  combination_sizes: [4, 5],
+  default_max_solutions: 10,
+  attributes: [
+    [1110, "Strength", "Strength Boost", "1110-strength-boost.png"],
+    [1111, "Agility", "Agility Boost", "1111-agility-boost.png"],
+    [1112, "Intellect", "Intellect Boost", "1112-intellect-boost.png"],
+    [1113, "Willpower", "Willpower Boost", "1113-willpower-boost.png"],
+    [1114, "Endurance", "Endurance Boost", "1114-endurance-boost.png"],
+    [1407, "Critical", "Critical Boost", "1407-critical-boost.png"],
+    [1408, "Haste", "Haste Boost", "1408-haste-boost.png"],
+    [1409, "Mastery", "Mastery Boost", "1409-mastery-boost.png"],
+    [1410, "Luck", "Luck Boost", "1410-luck-boost.png"],
+    [2104, "Attack", "Attack Boost", "2104-attack-boost.png"],
+  ].map(([id, name, officialName, icon]) => ({
+    id: Number(id),
+    name: String(name),
+    official_name: String(officialName),
+    icon: `icons/modules/effects/${icon}`,
+    thresholds: [1, 4, 8, 12, 16, 20],
+    fight_values: [7, 14, 29, 44, 167, 254],
+  })),
+};
+
+const DEVELOPMENT_MODULES: readonly ModuleCandidate[] = Array.from(
+  { length: 12 },
+  (_, index) => ({
+    instance_id: `9007199254741${String(index).padStart(3, "0")}`,
+    config_id: 5_500_101 + (index % 8),
+    quality: 3 + (index % 3),
+    parts: [
+      { part_id: 1110 + (index % 5), initial_link_points: 4 + (index % 7) },
+      { part_id: 1407 + (index % 4), initial_link_points: 3 + ((index * 3) % 8) },
+      { part_id: 2104, initial_link_points: 2 + ((index * 5) % 9) },
+    ],
+  }),
+);
+
+const DEVELOPMENT_OPTIMIZER_INVENTORY: LocalModuleInventory = {
+  schema_version: 1,
+  characters: [
+    {
+      package_id: "development-character",
+      character_id: "3296036",
+      display_name: "Local Character",
+      deployment: "global",
+      region: "na",
+      source_client_build: "24687926",
+      observed_unix_millis: Date.now(),
+      modules: DEVELOPMENT_MODULES,
+      current_instance_ids: DEVELOPMENT_MODULES.slice(0, 4).map(
+        (module) => module.instance_id,
+      ),
+      module_snapshot_available: true,
+      module_snapshot_detail: "12 owned modules · 4 equipped",
+    },
+  ],
+  issues: [],
+};
+
+function mountDevelopmentModuleOptimizer(container: HTMLElement): MountedSurface {
+  return mountModuleOptimizerSurface(container, {
+    async loadCatalog() {
+      return DEVELOPMENT_OPTIMIZER_CATALOG;
+    },
+    async loadInventory() {
+      return DEVELOPMENT_OPTIMIZER_INVENTORY;
+    },
+    async loadGpuSupport() {
+      return {
+        available: true,
+        backend: "open_cl",
+        device_name: "GeForce RTX 5060",
+        vendor: "NVIDIA",
+        detail: "OpenCL exact search is ready.",
+      };
+    },
+    async optimize(request) {
+      const modules = DEVELOPMENT_MODULES.slice(0, request.combination_size);
+      const score = developmentSolution(modules);
+      return {
+        scoring_revision: "reviewed-cn-formula",
+        catalog_revision: "development-visual-fixture",
+        current_setup: score,
+        solutions: [
+          developmentSolution(
+            DEVELOPMENT_MODULES.slice(-request.combination_size),
+          ),
+          developmentSolution(
+            DEVELOPMENT_MODULES.slice(2, 2 + request.combination_size),
+          ),
+        ],
+        search: {
+          requested_mode: request.search_mode,
+          used_mode: "exact",
+          exact: true,
+          input_module_count: DEVELOPMENT_MODULES.length,
+          candidate_module_count: DEVELOPMENT_MODULES.length,
+          excluded_module_count: 0,
+          total_combinations: 495,
+          evaluated_states: 495,
+          combination_size: request.combination_size,
+          beam_width: null,
+          backend: request.use_gpu ? "open_cl" : "cpu",
+          accelerator_name: request.use_gpu ? "GeForce RTX 5060" : null,
+          accelerator_fallback: null,
+        },
+      } satisfies OptimizeResponse;
+    },
+  });
+}
+
+function developmentSolution(modules: readonly ModuleCandidate[]) {
+  const totals = new Map<number, number>();
+  let totalLink = 0;
+  for (const module of modules) {
+    for (const part of module.parts) {
+      const value = Math.max(0, part.initial_link_points ?? 0);
+      totals.set(part.part_id, (totals.get(part.part_id) ?? 0) + value);
+      totalLink += value;
+    }
+  }
+  const attributes = [...totals].map(([attribute_id, total]) => ({
+    attribute_id,
+    total,
+    reached_threshold: total,
+    base_power: total * 7,
+    multiplier: 1,
+    applied_power: total * 7,
+  }));
+  const thresholdPower = attributes.reduce(
+    (sum, attribute) => sum + attribute.applied_power,
+    0,
+  );
+  return {
+    instance_ids: modules.map((module) => module.instance_id),
+    modules,
+    score: thresholdPower + totalLink * 4,
+    ranking_score: thresholdPower + totalLink * 4,
+    breakdown: {
+      threshold_power: thresholdPower,
+      ranking_threshold_power: thresholdPower,
+      total_link_points: totalLink,
+      total_link_power: totalLink * 4,
+      attributes,
     },
   };
 }

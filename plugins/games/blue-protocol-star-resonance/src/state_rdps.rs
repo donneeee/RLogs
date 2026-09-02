@@ -9618,6 +9618,12 @@ impl BpsrStateDamageContributionProjector {
 
     fn observe_arcane_time_decree_provider_loadout(&mut self, actor: &rlogs_events::ActorEvent) {
         let config = &self.runtime.arcane_time_decree;
+        let has_provider_slot = actor.primary_loadout.iter().any(|slot| {
+            slot.ability_id == Some(config.provider_imagine_ability_id)
+                && slot
+                    .item_id
+                    .is_none_or(|item_id| item_id == config.provider_imagine_item_id)
+        });
         let mut magnitudes = actor
             .primary_loadout
             .iter()
@@ -9637,7 +9643,8 @@ impl BpsrStateDamageContributionProjector {
                     .insert(entity_uuid, *magnitude);
             }
             [] if actor.loadout_observation.primary
-                == rlogs_events::ActorLoadoutEvidence::ExactSlots =>
+                == rlogs_events::ActorLoadoutEvidence::ExactSlots
+                && !has_provider_slot =>
             {
                 self.arcane_time_decree_basis_points_by_provider_entity
                     .remove(&entity_uuid);
@@ -9659,6 +9666,12 @@ impl BpsrStateDamageContributionProjector {
             return;
         }
         let config = &self.runtime.poison_explosion_vulnerability;
+        let has_provider_slot = actor.primary_loadout.iter().any(|slot| {
+            slot.ability_id == Some(config.provider_imagine_ability_id)
+                && slot
+                    .item_id
+                    .is_none_or(|item_id| item_id == config.provider_imagine_item_id)
+        });
         let mut magnitudes = actor
             .primary_loadout
             .iter()
@@ -9676,7 +9689,12 @@ impl BpsrStateDamageContributionProjector {
                 self.poison_explosion_basis_points_per_stack_by_provider_entity
                     .insert(entity_uuid, *magnitude);
             }
-            [] | [_, _, ..] => {
+            [] if !has_provider_slot => {
+                self.poison_explosion_basis_points_per_stack_by_provider_entity
+                    .remove(&entity_uuid);
+            }
+            [] => {}
+            [_, _, ..] => {
                 self.poison_explosion_basis_points_per_stack_by_provider_entity
                     .remove(&entity_uuid);
             }
@@ -9692,6 +9710,12 @@ impl BpsrStateDamageContributionProjector {
             return;
         }
         let config = &self.runtime.celestial_guardian_vulnerability;
+        let has_provider_slot = actor.primary_loadout.iter().any(|slot| {
+            slot.ability_id == Some(config.provider_imagine_ability_id)
+                && slot
+                    .item_id
+                    .is_none_or(|item_id| item_id == config.provider_imagine_item_id)
+        });
         let mut magnitudes = actor
             .primary_loadout
             .iter()
@@ -9709,7 +9733,12 @@ impl BpsrStateDamageContributionProjector {
                 self.celestial_guardian_basis_points_by_provider_entity
                     .insert(entity_uuid, *magnitude);
             }
-            [] | [_, _, ..] => {
+            [] if !has_provider_slot => {
+                self.celestial_guardian_basis_points_by_provider_entity
+                    .remove(&entity_uuid);
+            }
+            [] => {}
+            [_, _, ..] => {
                 self.celestial_guardian_basis_points_by_provider_entity
                     .remove(&entity_uuid);
             }
@@ -19277,6 +19306,89 @@ mod tests {
             count: None,
             created_at_millis: None,
         }
+    }
+
+    #[test]
+    fn matching_provider_slots_retain_exact_tier_when_a_later_packet_omits_it() {
+        let mut projector = poison_explosion_test_projector();
+
+        let poison = poison_explosion_test_actor(2, 20, 5);
+        projector.observe_poison_explosion_provider_loadout(&poison);
+        let poison_basis_points = projector
+            .poison_explosion_basis_points_per_stack_by_provider_entity
+            .get(&20)
+            .copied();
+        let mut poison_without_tier = poison.clone();
+        poison_without_tier.primary_loadout[0].tier = None;
+        projector.observe_poison_explosion_provider_loadout(&poison_without_tier);
+        assert_eq!(
+            projector
+                .poison_explosion_basis_points_per_stack_by_provider_entity
+                .get(&20)
+                .copied(),
+            poison_basis_points
+        );
+
+        let celestial = celestial_guardian_test_actor(6, 60, 5);
+        projector.observe_celestial_guardian_provider_loadout(&celestial);
+        let celestial_basis_points = projector
+            .celestial_guardian_basis_points_by_provider_entity
+            .get(&60)
+            .copied();
+        let mut celestial_without_tier = celestial.clone();
+        celestial_without_tier.primary_loadout[0].tier = None;
+        projector.observe_celestial_guardian_provider_loadout(&celestial_without_tier);
+        assert_eq!(
+            projector
+                .celestial_guardian_basis_points_by_provider_entity
+                .get(&60)
+                .copied(),
+            celestial_basis_points
+        );
+
+        let config = &runtime().arcane_time_decree;
+        let mut time_decree = poison_explosion_test_actor(4, 40, 5);
+        time_decree.primary_loadout[0].ability_id = Some(config.provider_imagine_ability_id);
+        time_decree.primary_loadout[0].item_id = Some(config.provider_imagine_item_id);
+        projector.observe_arcane_time_decree_provider_loadout(&time_decree);
+        let time_decree_basis_points = projector
+            .arcane_time_decree_basis_points_by_provider_entity
+            .get(&40)
+            .copied();
+        let mut time_decree_without_tier = time_decree.clone();
+        time_decree_without_tier.primary_loadout[0].tier = None;
+        projector.observe_arcane_time_decree_provider_loadout(&time_decree_without_tier);
+        assert_eq!(
+            projector
+                .arcane_time_decree_basis_points_by_provider_entity
+                .get(&40)
+                .copied(),
+            time_decree_basis_points
+        );
+
+        poison_without_tier.primary_loadout.clear();
+        projector.observe_poison_explosion_provider_loadout(&poison_without_tier);
+        assert!(
+            !projector
+                .poison_explosion_basis_points_per_stack_by_provider_entity
+                .contains_key(&20)
+        );
+
+        celestial_without_tier.primary_loadout.clear();
+        projector.observe_celestial_guardian_provider_loadout(&celestial_without_tier);
+        assert!(
+            !projector
+                .celestial_guardian_basis_points_by_provider_entity
+                .contains_key(&60)
+        );
+
+        time_decree_without_tier.primary_loadout.clear();
+        projector.observe_arcane_time_decree_provider_loadout(&time_decree_without_tier);
+        assert!(
+            !projector
+                .arcane_time_decree_basis_points_by_provider_entity
+                .contains_key(&40)
+        );
     }
 
     #[test]

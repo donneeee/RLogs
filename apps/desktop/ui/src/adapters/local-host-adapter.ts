@@ -56,6 +56,7 @@ import {
   parseProfileProjectionResult,
 } from "./profile-packages";
 import {
+  parseGpuSupport,
   parseLocalModuleInventory,
   parseOptimizeResponse,
   parseOptimizerCatalog,
@@ -483,6 +484,11 @@ function createLocalHostAdapter(): DesktopHostAdapter {
             async loadInventory() {
               return parseLocalModuleInventory(
                 await apiJson<unknown>("/api/module-optimizer/inventory"),
+              );
+            },
+            async loadGpuSupport() {
+              return parseGpuSupport(
+                await apiJson<unknown>("/api/module-optimizer/gpu-support"),
               );
             },
             async optimize(request) {

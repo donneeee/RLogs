@@ -30,6 +30,14 @@ pub enum SearchMode {
     Beam,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchBackend {
+    #[default]
+    Cpu,
+    OpenCl,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OptimizeRequest {
     pub modules: Vec<ModuleCandidate>,
@@ -51,6 +59,12 @@ pub struct OptimizeRequest {
     pub max_solutions: usize,
     #[serde(default)]
     pub search_mode: SearchMode,
+    /// Prefer the optional cross-vendor OpenCL exact-search backend.
+    ///
+    /// Unsupported devices and backend failures fall back to the reviewed CPU
+    /// implementation; the response records which backend actually ran.
+    #[serde(default)]
+    pub use_gpu: bool,
     #[serde(default = "default_exact_combination_limit")]
     pub exact_combination_limit: u64,
     #[serde(default = "default_beam_width")]
@@ -74,6 +88,7 @@ impl Default for OptimizeRequest {
             combination_size: default_combination_size(),
             max_solutions: default_max_solutions(),
             search_mode: SearchMode::Auto,
+            use_gpu: false,
             exact_combination_limit: default_exact_combination_limit(),
             beam_width: default_beam_width(),
             minimum_parts: default_minimum_parts(),
@@ -160,6 +175,21 @@ pub struct SearchSummary {
     pub evaluated_states: u64,
     pub combination_size: usize,
     pub beam_width: Option<usize>,
+    #[serde(default)]
+    pub backend: SearchBackend,
+    #[serde(default)]
+    pub accelerator_name: Option<String>,
+    #[serde(default)]
+    pub accelerator_fallback: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GpuSupport {
+    pub available: bool,
+    pub backend: SearchBackend,
+    pub device_name: Option<String>,
+    pub vendor: Option<String>,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -65,9 +65,9 @@ use profiles::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 8;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 9;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 5;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 8;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 9;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -2301,6 +2301,10 @@ pub struct PublicLocalProfileWitness {
 pub enum LocalStateWitnessKind {
     EntityAttributes,
     TemporaryAttributes,
+    /// Exact local combat-resource snapshots/deltas. These remain committed
+    /// private-artifact evidence until a matched cross-vantage replay verifies
+    /// and imports them; clients never submit a derived opportunity claim.
+    Resource,
     LifeWaveTriggerStatus,
     LifeWaveTriggerHealing,
     StatResonanceStatus,
@@ -2903,6 +2907,22 @@ fn build_public_report(
                         related_entity_uuid: None,
                     });
                 }
+                TimelineEventKind::Resource(resource) => {
+                    let payload =
+                        serde_json::to_vec(&timeline.kind).map_err(|error| error.to_string())?;
+                    raw_local_state_observations.push(RawLocalStateObservation {
+                        actor_id: resource.actor.actor_id.0,
+                        entity_uuid: resource.actor.entity_uuid.0,
+                        kind: LocalStateWitnessKind::Resource,
+                        update_kind: resource.update_kind,
+                        event_sequence: event.sequence,
+                        observed_micros: event.time.observed_micros,
+                        game_time_millis: event.time.game_time_millis,
+                        payload_sha256: local_state_payload_digest(&payload),
+                        wire: event_wire_identity(event),
+                        related_entity_uuid: None,
+                    });
+                }
                 TimelineEventKind::Status(status) if is_stat_resonance_status(status) => {
                     let payload =
                         serde_json::to_vec(&timeline.kind).map_err(|error| error.to_string())?;
@@ -3284,7 +3304,7 @@ fn verified_state_input_digest(
     events: &[VerifiedCrossVantageStateEvent],
 ) -> Result<String, serde_json::Error> {
     let mut hasher = Sha256::new();
-    hasher.update(b"rlogs-cross-vantage-verified-state-profile-and-trigger-v4\0");
+    hasher.update(b"rlogs-cross-vantage-verified-state-profile-trigger-resource-v5\0");
     hasher.update(reconciliation.canonical_spine.artifact_sha256.as_bytes());
     hasher.update(reconciliation.canonical_spine.run_index.to_le_bytes());
     for event in events {
@@ -3410,6 +3430,7 @@ fn remap_cross_vantage_state_entities(
         match &mut timeline.kind {
             TimelineEventKind::EntityAttributes(attributes) => attributes.actor = canonical,
             TimelineEventKind::TemporaryAttributes(attributes) => attributes.actor = canonical,
+            TimelineEventKind::Resource(resource) => resource.actor = canonical,
             TimelineEventKind::Status(status) => {
                 status.target = canonical;
                 if is_stat_resonance_status(status) {
@@ -3680,6 +3701,12 @@ fn verify_state_witness_event(
             attributes.actor.entity_uuid.0,
             attributes.update_kind,
             LocalStateWitnessKind::TemporaryAttributes,
+        ),
+        TimelineEventKind::Resource(resource) => (
+            resource.actor.actor_id.0,
+            resource.actor.entity_uuid.0,
+            resource.update_kind,
+            LocalStateWitnessKind::Resource,
         ),
         TimelineEventKind::Status(status) => (
             status.target.actor_id.0,
@@ -4016,6 +4043,7 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
             hasher.update(match witness.kind {
                 LocalStateWitnessKind::EntityAttributes => b"entity-attributes".as_slice(),
                 LocalStateWitnessKind::TemporaryAttributes => b"temporary-attributes".as_slice(),
+                LocalStateWitnessKind::Resource => b"resource".as_slice(),
                 LocalStateWitnessKind::LifeWaveTriggerStatus => {
                     b"life-wave-trigger-status".as_slice()
                 }
@@ -5495,6 +5523,36 @@ mod tests {
         )
     }
 
+    fn cross_vantage_resource_envelope(
+        sequence: u64,
+        observed_micros: u64,
+        game_time_millis: Option<i64>,
+        resource_value: u32,
+    ) -> EventEnvelope {
+        cross_vantage_timeline_envelope(
+            sequence,
+            observed_micros,
+            game_time_millis,
+            TimelineEventKind::Resource(rlogs_events::ResourceEvent {
+                actor: EntityRef {
+                    actor_id: rlogs_events::ActorId(22),
+                    entity_uuid: rlogs_events::EntityUuid(222),
+                },
+                update_kind: EntityAttributeUpdateKind::Snapshot,
+                origin_energy_raw_bits: Some(100.0_f32.to_bits()),
+                resource_ids: vec![7],
+                resource_values: vec![resource_value],
+                cooldowns: vec![rlogs_events::ResourceCooldown {
+                    resource_id: Some(7),
+                    begin_time_millis: Some(650),
+                    duration_millis: Some(1_500),
+                    valid_cooldown_time_millis: Some(1_500),
+                    existence_time_millis: Some(2_000),
+                }],
+            }),
+        )
+    }
+
     fn cross_vantage_profile_envelope(
         sequence: u64,
         observed_micros: u64,
@@ -5720,6 +5778,43 @@ mod tests {
             unreachable!();
         };
         attributes.attributes[0].decoded = Some(rlogs_events::EntityAttributeValue::Integer(1235));
+        assert!(matches!(
+            verify_state_witness_event("rpt_b", &witness, &tampered),
+            Err(ServiceError::CrossVantageWitnessMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn sealed_resource_witness_requires_the_exact_local_resource_payload() {
+        let envelope = cross_vantage_resource_envelope(9, 90, Some(900), 80);
+        let CanonicalEvent::Timeline(timeline) = &envelope.event else {
+            unreachable!();
+        };
+        let witness = PublicLocalStateWitness {
+            character_id: "character-b".into(),
+            related_character_id: None,
+            actor_id: 22,
+            entity_uuid: 222,
+            kind: LocalStateWitnessKind::Resource,
+            update_kind: "snapshot".into(),
+            placement: LocalStateWitnessPlacement::InRun,
+            event_sequence: 9,
+            observed_micros: 90,
+            game_time_millis: Some(900),
+            payload_sha256: local_state_payload_digest(
+                &serde_json::to_vec(&timeline.kind).unwrap(),
+            ),
+        };
+        verify_state_witness_event("rpt_b", &witness, &envelope).unwrap();
+
+        let mut tampered = envelope;
+        let CanonicalEvent::Timeline(timeline) = &mut tampered.event else {
+            unreachable!();
+        };
+        let TimelineEventKind::Resource(resource) = &mut timeline.kind else {
+            unreachable!();
+        };
+        resource.resource_values[0] = 81;
         assert!(matches!(
             verify_state_witness_event("rpt_b", &witness, &tampered),
             Err(ServiceError::CrossVantageWitnessMismatch { .. })

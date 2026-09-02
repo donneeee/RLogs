@@ -1,5 +1,6 @@
 import type { MountedSurface } from "../shell/types";
 import {
+  type GpuSupport,
   type LocalModuleCharacter,
   type LocalModuleInventory,
   type ModuleCandidate,
@@ -15,6 +16,7 @@ import {
 interface OptimizerLoaders {
   loadCatalog(): Promise<OptimizerCatalog>;
   loadInventory(): Promise<LocalModuleInventory>;
+  loadGpuSupport(): Promise<GpuSupport>;
   optimize(request: OptimizeRequest): Promise<OptimizeResponse>;
 }
 
@@ -32,6 +34,7 @@ export function mountModuleOptimizerSurface(
   let busy = false;
   let catalog: OptimizerCatalog | null = null;
   let inventory: LocalModuleInventory | null = null;
+  let gpuSupport: GpuSupport | null = null;
   let selectedCharacter: LocalModuleCharacter | null = null;
   const attributeControls = new Map<number, AttributeControls>();
 
@@ -39,11 +42,11 @@ export function mountModuleOptimizerSurface(
   const heading = element("section", "content-card module-optimizer-hero");
   const headingCopy = element("div", "module-optimizer-hero-copy");
   headingCopy.append(
-    text("span", "LOCAL · EXACT GAME CATALOG", "eyebrow"),
+    text("span", "LOCAL LOADOUT BUILDER", "eyebrow"),
     text("h2", "Module Optimizer"),
     text(
       "p",
-      "Build the strongest module set from the inventory rLogs observed live. Calculations run locally with the reviewed game formula; no sign-in or upload is required.",
+      "Build from the modules rLogs observed in game. Every result uses the reviewed catalog and stays on this PC.",
       "section-copy",
     ),
   );
@@ -63,6 +66,27 @@ export function mountModuleOptimizerSurface(
   const characterMeta = text("p", "Waiting for a live profile snapshot.", "section-copy");
   const equippedPreview = element("div", "module-equipped-preview");
   characterCard.append(characterSelect, characterMeta, equippedPreview);
+
+  const gpuCard = element("section", "content-card module-gpu-card");
+  const gpuCopy = element("div", "module-gpu-copy");
+  gpuCopy.append(
+    text("span", "SEARCH ENGINE", "eyebrow"),
+    text("h3", "GPU acceleration"),
+    text(
+      "p",
+      "Detecting a compatible NVIDIA or AMD graphics driver…",
+      "section-copy module-gpu-detail",
+    ),
+  );
+  const gpuToggle = element("label", "module-gpu-toggle") as HTMLLabelElement;
+  const gpuInput = document.createElement("input");
+  gpuInput.type = "checkbox";
+  gpuInput.checked = readGpuPreference();
+  const gpuSwitch = element("span", "module-gpu-switch");
+  const gpuToggleCopy = element("span", "module-gpu-toggle-copy");
+  gpuToggleCopy.append(text("strong", "Use GPU"), text("small", "Exact searches only"));
+  gpuToggle.append(gpuInput, gpuSwitch, gpuToggleCopy);
+  gpuCard.append(gpuCopy, gpuToggle);
 
   const preferenceCard = element("section", "content-card module-preference-card");
   preferenceCard.append(
@@ -126,7 +150,7 @@ export function mountModuleOptimizerSurface(
     ),
   );
   right.append(empty);
-  left.append(characterCard, preferenceCard, searchCard);
+  left.append(characterCard, gpuCard, preferenceCard, searchCard);
   setup.append(left, right);
   root.append(heading, status, setup);
   container.append(root);
@@ -209,6 +233,18 @@ export function mountModuleOptimizerSurface(
     );
   }
 
+  function renderGpuSupport(value: GpuSupport): void {
+    const detail = gpuCard.querySelector<HTMLElement>(".module-gpu-detail");
+    if (detail === null) return;
+    gpuInput.disabled = !value.available;
+    if (!value.available) gpuInput.checked = false;
+    const identity = [value.vendor, value.device_name].filter(Boolean).join(" · ");
+    detail.textContent = value.available
+      ? `${identity || "OpenCL GPU"} · optional exact-search acceleration with automatic CPU fallback.`
+      : `${value.detail} Multi-core CPU search remains available.`;
+    gpuCard.dataset.available = String(value.available);
+  }
+
   async function load(): Promise<void> {
     if (busy) return;
     busy = true;
@@ -217,14 +253,17 @@ export function mountModuleOptimizerSurface(
     status.classList.remove("error");
     status.textContent = "Refreshing the reviewed catalog and local profile snapshots…";
     try {
-      const [nextCatalog, nextInventory] = await Promise.all([
+      const [nextCatalog, nextInventory, nextGpuSupport] = await Promise.all([
         loaders.loadCatalog(),
         loaders.loadInventory(),
+        loaders.loadGpuSupport(),
       ]);
       if (!alive) return;
       catalog = nextCatalog;
       inventory = nextInventory;
+      gpuSupport = nextGpuSupport;
       renderCatalog(nextCatalog);
+      renderGpuSupport(nextGpuSupport);
       const previousId = selectedCharacter?.package_id;
       characterSelect.replaceChildren();
       if (nextInventory.characters.length === 0) {
@@ -251,7 +290,7 @@ export function mountModuleOptimizerSurface(
       const ready = nextInventory.characters.filter(
         (entry) => entry.module_snapshot_available,
       ).length;
-      status.textContent = `${nextCatalog.attributes.length} localized effects · ${ready} usable character snapshot${ready === 1 ? "" : "s"} · all calculations remain on this PC`;
+      status.textContent = `${nextCatalog.attributes.length} localized effects · ${ready} usable character snapshot${ready === 1 ? "" : "s"} · ${nextGpuSupport.available ? "GPU ready" : "multi-core CPU ready"} · all calculations remain on this PC`;
       if (nextInventory.issues.length > 0) {
         status.textContent += ` · ${nextInventory.issues.length} local snapshot warning${nextInventory.issues.length === 1 ? "" : "s"}`;
       }
@@ -296,7 +335,9 @@ export function mountModuleOptimizerSurface(
         combination_size: Number(sizeSelect.select.value),
         max_solutions: Number(resultSelect.select.value),
         search_mode: modeSelect.select.value as OptimizeRequest["search_mode"],
-        exact_combination_limit: 500_000,
+        use_gpu: gpuInput.checked && gpuSupport?.available === true,
+        exact_combination_limit:
+          gpuInput.checked && gpuSupport?.available === true ? 10_000_000 : 500_000,
         beam_width: workstationBeamWidth(),
         minimum_parts: 2,
         minimum_module_total:
@@ -308,7 +349,13 @@ export function mountModuleOptimizerSurface(
       });
       if (!alive) return;
       renderResults(right, result, catalog);
-      searchStatus.textContent = `${result.solutions.length} recommendation${result.solutions.length === 1 ? "" : "s"} · ${result.search.evaluated_states.toLocaleString()} states · ${result.search.exact ? "exact search" : `${result.search.used_mode} search`}`;
+      const engine = result.search.backend === "open_cl"
+        ? result.search.accelerator_name ?? "GPU"
+        : "multi-core CPU";
+      searchStatus.textContent = `${result.solutions.length} recommendation${result.solutions.length === 1 ? "" : "s"} · ${result.search.evaluated_states.toLocaleString()} states · ${result.search.exact ? "exact" : result.search.used_mode} · ${engine}`;
+      if (result.search.accelerator_fallback) {
+        searchStatus.textContent += ` · GPU fallback: ${result.search.accelerator_fallback}`;
+      }
     } catch (error) {
       if (!alive) return;
       searchStatus.textContent = errorMessage(error);
@@ -324,6 +371,9 @@ export function mountModuleOptimizerSurface(
     setSelectedCharacter(characterSelect.value),
   );
   refresh.addEventListener("click", () => void load());
+  gpuInput.addEventListener("change", () => {
+    writeGpuPreference(gpuInput.checked);
+  });
   run.addEventListener("click", () => void optimize());
   void load();
 
@@ -386,11 +436,21 @@ function solutionCard(
     metric("Power", solution.score),
     metric("Total Link", solution.breakdown.total_link_points),
   );
-  const modules = element("div", "module-solution-modules");
-  modules.append(...solution.modules.map((module) => compactModuleCard(module, catalog)));
+  const modules = element("div", "module-solution-module-strip");
+  modules.append(
+    ...solution.modules.map((module) => {
+      const presentation = modulePresentation(module);
+      const icon = image(presentation.icon, presentation.name);
+      icon.title = presentation.name;
+      return icon;
+    }),
+  );
   const effects = element("div", "module-solution-effects");
   const named = new Map(catalog.attributes.map((attribute) => [attribute.id, attribute]));
-  for (const score of solution.breakdown.attributes.filter((entry) => entry.total > 0)) {
+  for (const score of solution.breakdown.attributes
+    .filter((entry) => entry.total > 0)
+    .sort((left, right) => right.applied_power - left.applied_power)
+    .slice(0, 5)) {
     const attribute = named.get(score.attribute_id);
     const chip = element("div", "module-effect-chip");
     chip.append(
@@ -400,8 +460,79 @@ function solutionCard(
     );
     effects.append(chip);
   }
-  card.append(heading, modules, effects);
+  const details = button("View full set", "secondary-button module-view-details");
+  details.addEventListener("click", () => showSolutionModal(label, solution, catalog));
+  const footer = element("div", "module-solution-footer");
+  footer.append(effects, details);
+  card.append(heading, modules, footer);
   return card;
+}
+
+function showSolutionModal(
+  label: string,
+  solution: ModuleSolution,
+  catalog: OptimizerCatalog,
+): void {
+  const backdrop = element("div", "module-solution-modal-backdrop");
+  backdrop.setAttribute("role", "presentation");
+  const dialog = element("section", "module-solution-modal");
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-label", `${label} module details`);
+  const header = element("header", "module-solution-modal-header");
+  const title = element("div");
+  title.append(text("span", label, "eyebrow"), text("h3", "Module set details"));
+  const close = button("×", "module-solution-modal-close");
+  close.setAttribute("aria-label", "Close module set details");
+  header.append(title, close);
+
+  const totals = element("div", "module-solution-modal-totals");
+  totals.append(
+    metric("Power", solution.score),
+    metric("Ranking power", solution.ranking_score),
+    metric("Total Link", solution.breakdown.total_link_points),
+  );
+  const body = element("div", "module-solution-modal-body");
+  const moduleGrid = element("div", "module-solution-modal-modules");
+  moduleGrid.append(...solution.modules.map((module) => compactModuleCard(module, catalog)));
+  const effectGrid = element("div", "module-solution-modal-effects");
+  const named = new Map(catalog.attributes.map((attribute) => [attribute.id, attribute]));
+  for (const score of solution.breakdown.attributes.filter((entry) => entry.total > 0)) {
+    const attribute = named.get(score.attribute_id);
+    const effect = element("article", "module-modal-effect");
+    effect.append(
+      image(optimizerAssetUrl(attribute?.icon ?? null), attribute?.name ?? "Unknown effect"),
+      text("strong", attribute?.name ?? `Effect ${score.attribute_id}`),
+      text(
+        "span",
+        `${score.total} Link · ${score.applied_power.toLocaleString()} power${score.multiplier > 1 ? " · prioritized" : ""}`,
+      ),
+    );
+    effectGrid.append(effect);
+  }
+  body.append(
+    text("h4", "Modules"),
+    moduleGrid,
+    text("h4", "Effect totals"),
+    effectGrid,
+  );
+  dialog.append(header, totals, body);
+  backdrop.append(dialog);
+
+  const dismiss = (): void => {
+    document.removeEventListener("keydown", onKeyDown);
+    backdrop.remove();
+  };
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") dismiss();
+  };
+  close.addEventListener("click", dismiss);
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) dismiss();
+  });
+  document.addEventListener("keydown", onKeyDown);
+  document.body.append(backdrop);
+  close.focus();
 }
 
 function compactModuleCard(
@@ -543,9 +674,29 @@ function text<K extends keyof HTMLElementTagNameMap>(
 }
 
 function workstationBeamWidth(): number {
-  return (navigator.hardwareConcurrency || 4) >= 8 ? 512 : 256;
+  const threads = navigator.hardwareConcurrency || 4;
+  if (threads >= 24) return 2_048;
+  if (threads >= 12) return 1_024;
+  if (threads >= 8) return 512;
+  return 256;
 }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function readGpuPreference(): boolean {
+  try {
+    return localStorage.getItem("rlogs.module-optimizer.gpu") === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeGpuPreference(enabled: boolean): void {
+  try {
+    localStorage.setItem("rlogs.module-optimizer.gpu", String(enabled));
+  } catch {
+    // A restricted WebView can keep the setting for this mounted session only.
+  }
 }
