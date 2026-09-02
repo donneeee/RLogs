@@ -7,6 +7,8 @@ use serde::Deserialize;
 pub struct AuxiliaryActionPresentation {
     pub skill_id: i64,
     pub icon: String,
+    pub action_kind: String,
+    pub maximum_tier: Option<u32>,
     pub replacement_imagine_skill_id: Option<i64>,
 }
 
@@ -47,6 +49,17 @@ fn presentation_catalog() -> Result<&'static AuxiliaryActionPresentationCatalog,
                     skill.skill_id <= 0
                         || skill.icon.trim().is_empty()
                         || skill.replacement_imagine_skill_id.is_some_and(|id| id <= 0)
+                        || match skill.action_kind.as_str() {
+                            "role_skill" => {
+                                skill.replacement_imagine_skill_id.is_some()
+                                    || skill.maximum_tier.is_some()
+                            }
+                            "role_imagine" => {
+                                skill.replacement_imagine_skill_id.is_none()
+                                    || skill.maximum_tier != Some(4)
+                            }
+                            _ => true,
+                        }
                 })
             {
                 return Err(
@@ -179,6 +192,8 @@ mod tests {
     fn resolves_current_capture_auxiliary_actions() {
         let thunderfall = auxiliary_action_presentation(3_021).unwrap().unwrap();
         assert_eq!(thunderfall.replacement_imagine_skill_id, Some(3_902));
+        assert_eq!(thunderfall.action_kind, "role_imagine");
+        assert_eq!(thunderfall.maximum_tier, Some(4));
         assert_eq!(
             localized_auxiliary_action_name(3_021, "en-US").unwrap(),
             Some("Thunderfall Grasp")
@@ -186,6 +201,8 @@ mod tests {
 
         let unyielding = auxiliary_action_presentation(3_612).unwrap().unwrap();
         assert_eq!(unyielding.replacement_imagine_skill_id, None);
+        assert_eq!(unyielding.action_kind, "role_skill");
+        assert_eq!(unyielding.maximum_tier, None);
         assert_eq!(
             localized_auxiliary_action_name(3_612, "en-US").unwrap(),
             Some("Unyielding Spirit")

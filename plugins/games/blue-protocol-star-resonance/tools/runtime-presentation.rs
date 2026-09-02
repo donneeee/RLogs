@@ -122,6 +122,8 @@ struct BattleImagineLocalizationBundle {
 struct AuxiliaryActionPresentation {
     skill_id: i64,
     icon: String,
+    action_kind: String,
+    maximum_tier: Option<u32>,
     replacement_imagine_skill_id: Option<i64>,
 }
 
@@ -558,6 +560,8 @@ fn load_auxiliary_actions(
         let presentation = AuxiliaryActionPresentation {
             skill_id: action.skill_id,
             icon: action.icon,
+            maximum_tier: (action.kind == "role_imagine").then_some(4),
+            action_kind: action.kind,
             replacement_imagine_skill_id: action.replacement_imagine_skill_id,
         };
         if presentation_by_skill

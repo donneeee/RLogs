@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "game": "blue-protocol-star-resonance",
+  "deployment_id": "global",
+  "channel": "steam",
+  "game_build": "24687926",
+  "policy": {
+    "role_action_and_normal_imagine_action_ids_are_distinct": true,
+    "role_imagine_maximum_tier": 4,
+    "battle_imagine_maximum_tier": 5,
+    "normal_imagine_name_prefix": "Arcane! "
+  },
+  "sources": {
+    "role_actions": {
+      "table": "SkillDutyTable.json",
+      "sha256": "12f44e3033716d2e730177b57abfa6bdf16a66b38cd9946cb07d3e444f8af44b",
+      "semantic_sha256": "9d69de781d2859e62ada296b593e0dcf90ee89e48ceabd02dae96fb1ee1f1800",
+      "row_count": 20
+    },
+    "normal_imagine_actions": {
+      "table": "SkillAoyiTable.json",
+      "sha256": "9949c86594aea3d323223c0dabcd0c57e5476ceca5c1f3c0442d860ecc609de0",
+      "semantic_sha256": "9a66fb9388e2ebbe0936f11fe4ab19ac3b31eb59a6d01ef2951aa771e0dbadc6",
+      "row_count": 73
+    },
+    "joined_action_coverage": {
+      "artifact": "all-skills-and-actions.json",
+      "sha256": "c7f6385b72cad2a59f28cf5607ea40db6f59cfbd9b9667aa55a64d748ccabaae"
+    },
+    "runtime_provider_recipient_proof": {
+      "artifact": "imagine-runtime-provider-recipient-proof.v1.json",
+      "sha256": "4ab545fdbd1a17f29fd6002f2efd21d488034c7b69fb310e84df050ef9366a8e"
+    }
+  },
+  "pairs": [
+    {
+      "role_action_id": 3021,
+      "role_action_name": "Thunderfall Grasp",
+      "role_action_row_sha256": "d3081d14782aeb85b49763765180beced0aa45152bf1d4a90a0b5d5560ba6cf4",
+      "normal_imagine_action_id": 3902,
+      "normal_imagine_action_name": "Arcane! Thunderfall Grasp",
+      "normal_imagine_action_row_sha256": "0f75d211c12e561ab7a5695968b56dd8f5959ef9623b4e259db8b4981e095f58",
+      "battle_imagine_item_id": 3000009,
+      "battle_imagine_name": "Tempest Ogre"
+    },
+    {
+      "role_action_id": 3022,
+      "role_action_name": "Flame Roar",
+      "role_action_row_sha256": "e806a31de6dbc7a5977ecbeb483b4fd32e7a6724fb61331a399f5029129f5e32",
+      "normal_imagine_action_id": 3901,
+      "normal_imagine_action_name": "Arcane! Flame Roar",
+      "normal_imagine_action_row_sha256": "50e2994f2fa25dea69a5a558a37927e142c3528abf8de1de8500c4f832134d1f",
+      "battle_imagine_item_id": 3000025,
+      "battle_imagine_name": "Inferno Ogre"
+    },
+    {
+      "role_action_id": 3023,
+      "role_action_name": "Pulse Benediction",
+      "role_action_row_sha256": "f5ed9b424c763e32a0e89fda4c44386968c1ffc2c6a2fbfda439bc7219b2b14d",
+      "normal_imagine_action_id": 3908,
+      "normal_imagine_action_name": "Arcane! Pulse Benediction",
+      "normal_imagine_action_row_sha256": "84b12106cf5d747c2c26277bcb5d9c33da83d367c571a22a85cd31072a785e78",
+      "battle_imagine_item_id": 3000007,
+      "battle_imagine_name": "Muku King"
+    },
+    {
+      "role_action_id": 3024,
+      "role_action_name": "Infernal Thrust",
+      "role_action_row_sha256": "33059880d91616ec7e7c19dce482e31d7c2eb66acc33b49ae1a9da912ee843e9",
+      "normal_imagine_action_id": 3943,
+      "normal_imagine_action_name": "Arcane! Infernal Thrust",
+      "normal_imagine_action_row_sha256": "e0e4b99e3850dacbd4e9560c57b05901422c80cec81df6bd02158a3b9959d0f7",
+      "battle_imagine_item_id": 3000042,
+      "battle_imagine_name": "Iron Fang"
+    },
+    {
+      "role_action_id": 3025,
+      "role_action_name": "Thunder Roar",
+      "role_action_row_sha256": "b88a1f6ad40ba27bb16f5395df889e1faaa4b604a6db4a2309a4fee70e8c8351",
+      "normal_imagine_action_id": 3935,
+      "normal_imagine_action_name": "Arcane! Thunder Roar",
+      "normal_imagine_action_row_sha256": "0e2fcb450e6c132e15ba24a8fa4010edf887420cf12752fcfbef2495ec424390",
+      "battle_imagine_item_id": 3000036,
+      "battle_imagine_name": "Golden Juggernaut"
+    },
+    {
+      "role_action_id": 3026,
+      "role_action_name": "Silent Tide",
+      "role_action_row_sha256": "6034bd74baf4f911f65bb01f3feaecb666a7a204f377cc5fd16c451d619de00f",
+      "normal_imagine_action_id": 3945,
+      "normal_imagine_action_name": "Arcane! Silent Tide",
+      "normal_imagine_action_row_sha256": "898e651ae54f5252d5ee9354adaffde1f80521a184cfffca3009c57439534da9",
+      "battle_imagine_item_id": 3000044,
+      "battle_imagine_name": "Lizardman King"
+    },
+    {
+      "role_action_id": 3027,
+      "role_action_name": "Blessing of Life",
+      "role_action_row_sha256": "81c17253cb564ef26e58b6e776f6b48944ca7d57d64ae967b4bbacf2cb2e1ff3",
+      "normal_imagine_action_id": 3920,
+      "normal_imagine_action_name": "Arcane! Blessing of Life",
+      "normal_imagine_action_row_sha256": "de2aca7ed83c70afdee2ed94f6eb91486ce283c78cf032da2bfe183b1cb8b929",
+      "battle_imagine_item_id": 3000008,
+      "battle_imagine_name": "Airona"
+    },
+    {
+      "role_action_id": 3028,
+      "role_action_name": "Guardian's Boundary",
+      "role_action_row_sha256": "f3a9844d3ea616e04bdc6a81d0caeb38a452097d6328b7f276f5b1228f1ffe4b",
+      "normal_imagine_action_id": 3951,
+      "normal_imagine_action_name": "Arcane! Guardian's Boundary",
+      "normal_imagine_action_row_sha256": "b64840eb3cf14e872239112a9aae5241a0acbedc0acb9cd17ffca4c423bc1356",
+      "battle_imagine_item_id": 3000103,
+      "battle_imagine_name": "Fafala"
+    }
+  ]
+}

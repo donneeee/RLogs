@@ -25,6 +25,8 @@ jobs:
             services/submissions/cloudflare-gateway/package-lock.json
       - name: Verify BPSR promotion frontier
         run: node tools/bpsr-promotion-frontier-audit.mjs verify
+      - name: Verify BPSR Imagine role-action identities
+        run: node tools/bpsr-auxiliary-action-identity-audit.mjs verify
       - name: Verify Blade Sweep inverse-defense proof
         run: |
           node tools/bpsr-blade-sweep-inverse-defense-proof.mjs self-test
