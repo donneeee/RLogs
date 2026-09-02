@@ -40,14 +40,21 @@ import {
   type EventViewerPage,
   type EventViewerTopic,
   type LiveEventBatch,
+  type LiveEventDetail,
   type LiveEventLine,
   parseEventViewerPage,
   parseLiveEventBatch,
+  parseLiveEventDetail,
 } from "./event-viewer";
 import {
   type LocalPluginCatalog,
   parsePluginCatalog,
 } from "./plugin-catalog";
+import {
+  type CustomTriggersWorkspacePage,
+  mountCustomTriggersWorkspaceSurface,
+} from "./custom-triggers-workspace-surface";
+import { mountCustomTriggerEventInspector } from "./custom-trigger-event-inspector";
 import {
   type ProfilePackageStoreView,
   parseProfilePackageInspection,
@@ -62,6 +69,10 @@ import {
   parseOptimizerCatalog,
 } from "./module-optimizer";
 import { mountModuleOptimizerSurface } from "./module-optimizer-surface";
+import {
+  mountOverlayWorkspaceSurface,
+  type OverlayWorkspacePage,
+} from "./overlay-workspace-surface";
 import {
   type PhotoWallPublicationStatus,
   parsePhotoWallPublicationStatus,
@@ -113,9 +124,11 @@ const SESSION_RECORDER_PLUGIN_ID = "app.rlogs.session-recorder";
 const DEVELOPER_TOOLS_ENABLED = import.meta.env.DEV;
 const COMBAT_METER_PLUGIN_ID = "app.rlogs.combat-meter";
 const COMBAT_OVERLAY_PLUGIN_ID = "app.rlogs.combat-overlay";
+const CUSTOM_TRIGGERS_PLUGIN_ID = "app.rlogs.custom-triggers";
 const LOG_UPLOADER_PLUGIN_ID = "app.rlogs.log-uploader";
 const PROFILE_SYNC_PLUGIN_ID = "app.rlogs.bpsr.profile-sync";
 const MODULE_OPTIMIZER_PLUGIN_ID = "app.rlogs.bpsr.module-optimizer";
+const OVERLAY_PLUGIN_ID = "app.rlogs.overlay";
 const THEMES_PLUGIN_ID = "app.rlogs.themes";
 
 interface RuntimeResult {
@@ -209,18 +222,78 @@ export async function createLocalHostAdapterIfAvailable(): Promise<DesktopHostAd
   }
 }
 
+export function mountStandaloneEventInspector(container: HTMLElement): MountedSurface {
+  return mountCustomTriggerEventInspector(container, {
+    subscribe(onBatch, onError) {
+      return subscribeLiveEvents(
+        "/api/custom-triggers/event-inspector/live/wait",
+        onBatch,
+        onError,
+      );
+    },
+    detail: loadLiveEventDetail,
+  });
+}
+
+function mountEventInspectorWindowLauncher(container: HTMLElement): MountedSurface {
+  const root = document.createElement("section");
+  root.className = "plugin-surface event-inspector-launcher";
+  const card = document.createElement("section");
+  card.className = "content-card";
+  const eyebrow = document.createElement("span");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "DEDICATED REVIEW WINDOW";
+  const heading = document.createElement("h2");
+  heading.textContent = "Event Inspector";
+  const copy = document.createElement("p");
+  copy.className = "card-copy";
+  copy.textContent =
+    "The Inspector runs in its own resizable window so its frozen log can be minimized, restored, filtered, and reviewed without changing workspaces.";
+  const actions = document.createElement("div");
+  actions.className = "runtime-card-actions";
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "primary-button";
+  open.textContent = "Open Event Inspector";
+  const status = document.createElement("span");
+  status.className = "runtime-action-message";
+  const show = async () => {
+    open.disabled = true;
+    status.classList.remove("error");
+    status.textContent = "Opening the dedicated Inspector window…";
+    try {
+      await invoke("show_event_inspector");
+      status.textContent = "Event Inspector is open in its own window.";
+    } catch (error) {
+      status.classList.add("error");
+      status.textContent = errorMessage(error);
+    } finally {
+      open.disabled = false;
+    }
+  };
+  open.addEventListener("click", () => void show());
+  actions.append(open, status);
+  card.append(eyebrow, heading, copy, actions);
+  root.append(card);
+  container.replaceChildren(root);
+  void show();
+  return { dispose: () => root.remove() };
+}
+
 function subscribeLiveEvents(
+  endpoint: string,
   onBatch: (batch: LiveEventBatch) => void,
   onError: (error: unknown) => void,
 ): () => void {
   let active = true;
   let revision = 0;
+  let deliveredInitialBatch = false;
   const abort = new AbortController();
   const run = async () => {
     while (active) {
       try {
         const batch = parseLiveEventBatch(
-          await apiJson<unknown>("/api/runtime/live/events/wait", {
+          await apiJson<unknown>(endpoint, {
             method: "POST",
             headers: {
               Accept: "application/json",
@@ -236,8 +309,9 @@ function subscribeLiveEvents(
           }),
         );
         if (!active) return;
-        if (batch.revision > revision) {
-          revision = batch.revision;
+        if (!deliveredInitialBatch || batch.revision > revision) {
+          deliveredInitialBatch = true;
+          revision = Math.max(revision, batch.revision);
           onBatch(batch);
         }
       } catch (error) {
@@ -252,6 +326,26 @@ function subscribeLiveEvents(
     active = false;
     abort.abort();
   };
+}
+
+async function loadLiveEventDetail(
+  sessionId: string,
+  event: LiveEventLine,
+): Promise<LiveEventDetail> {
+  return parseLiveEventDetail(
+    await apiJson<unknown>("/api/custom-triggers/event-inspector/live/detail", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sessionId,
+        revision: event.revision,
+        sequence: event.sequence,
+      }),
+    }),
+  );
 }
 
 interface CombatHistoryRevisionUpdate {
@@ -501,6 +595,28 @@ function createLocalHostAdapter(): DesktopHostAdapter {
               );
             },
           });
+        case `builtin://${OVERLAY_PLUGIN_ID}/overview`:
+        case `builtin://${OVERLAY_PLUGIN_ID}/setups`:
+        case `builtin://${OVERLAY_PLUGIN_ID}/editor`:
+        case `builtin://${OVERLAY_PLUGIN_ID}/trackers`:
+        case `builtin://${OVERLAY_PLUGIN_ID}/mechanics-map`:
+        case `builtin://${OVERLAY_PLUGIN_ID}/settings`:
+          return mountOverlayWorkspaceSurface(
+            container,
+            builtinSurfacePage(tab.entrypoint) as OverlayWorkspacePage,
+          );
+        case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/overview`:
+        case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/rules`:
+        case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/library`:
+        case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/settings`:
+          return mountCustomTriggersWorkspaceSurface(
+            container,
+            builtinSurfacePage(tab.entrypoint) as CustomTriggersWorkspacePage,
+          );
+        case `builtin://${CUSTOM_TRIGGERS_PLUGIN_ID}/event-inspector`:
+          return window.__TAURI_INTERNALS__ === undefined
+            ? mountStandaloneEventInspector(container)
+            : mountEventInspectorWindowLauncher(container);
         case `builtin://${THEMES_PLUGIN_ID}/appearance`:
           return mountThemeSettingsSurface(container);
         case "core://settings/general":
@@ -537,6 +653,10 @@ function createLocalHostAdapter(): DesktopHostAdapter {
       });
     },
   };
+}
+
+function builtinSurfacePage(entrypoint: string): string {
+  return entrypoint.slice(entrypoint.lastIndexOf("/") + 1);
 }
 
 interface CoreSettings {
@@ -2457,7 +2577,7 @@ function mountEventViewerSurface(container: HTMLElement): MountedSurface {
     pendingLiveEvents = [];
     pendingDropped = 0;
   });
-  const unsubscribeLive = subscribeLiveEvents(queueLiveBatch, (error) => {
+  const unsubscribeLive = subscribeLiveEvents("/api/runtime/live/events/wait", queueLiveBatch, (error) => {
     if (!alive) return;
     liveMessage.textContent = errorMessage(error);
     liveMessage.classList.add("error");

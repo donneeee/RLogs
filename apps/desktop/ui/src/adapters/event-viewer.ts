@@ -94,24 +94,86 @@ export interface LiveEventLine {
   revision: number;
   sequence: number;
   observedMicros: number;
+  sourceKind: "canonical" | "protocol";
   topic: EventViewerTopic;
   kind: string;
   rawIds: string;
 }
 
 export interface LiveEventBatch {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2 | 3;
   sessionId: string | null;
   revision: number;
   droppedBefore: number;
   hasMore: boolean;
+  retainedEvents: number;
+  retainedBytes: number;
+  capacityEvents: number;
+  capacityBytes: number;
   events: readonly LiveEventLine[];
+}
+
+export interface LiveEventDetailField {
+  path: string;
+  label: string;
+  value: string;
+  valueType: string;
+  usableInTrigger: boolean;
+}
+
+export interface LiveProtocolField {
+  path: string;
+  fieldNumber: number;
+  wireType: "varint" | "fixed64" | "length_delimited" | "fixed32";
+  value: string;
+}
+
+export interface LiveProtocolDetail {
+  schemaVersion: 1;
+  captureSequence: number;
+  observedMicros: number;
+  connectionId: number;
+  streamId: number;
+  direction: string;
+  fragment: string;
+  compression: string;
+  serviceId: number;
+  methodId: number;
+  stubId: number;
+  callId: number | null;
+  serviceName: string;
+  methodName: string;
+  messageName: string | null;
+  domain: string;
+  decodeStatus: string;
+  applicationBytes: number;
+  payloadRetained: boolean;
+  omissionReason: string | null;
+  fields: readonly LiveProtocolField[];
+  truncated: boolean;
+  parseError: string | null;
+}
+
+export interface LiveEventDetail {
+  schemaVersion: 1;
+  sessionId: string;
+  revision: number;
+  sequence: number;
+  timelineSequence: number | null;
+  observedMicros: number;
+  sourceKind: "canonical" | "protocol";
+  gameTimeMillis: number | null;
+  topic: EventViewerTopic;
+  kind: string;
+  fields: readonly LiveEventDetailField[];
+  protocolCaptureSequence: number | null;
+  protocol: LiveProtocolDetail | null;
 }
 
 export function parseLiveEventBatch(value: unknown): LiveEventBatch {
   if (
     !isRecord(value) ||
-    value.schemaVersion !== 1 ||
+    (value.schemaVersion !== 1 && value.schemaVersion !== 2 && value.schemaVersion !== 3) ||
     !isOptionalString(value.sessionId) ||
     !isSafeCounter(value.revision) ||
     !isSafeCounter(value.droppedBefore) ||
@@ -121,7 +183,95 @@ export function parseLiveEventBatch(value: unknown): LiveEventBatch {
   ) {
     throw new Error("The native host returned an invalid live Event Viewer batch.");
   }
-  return value as unknown as LiveEventBatch;
+  if (
+    value.schemaVersion >= 2 &&
+    (!isSafeCounter(value.retainedEvents) ||
+      !isSafeCounter(value.retainedBytes) ||
+      !isSafeCounter(value.capacityEvents) ||
+      !isSafeCounter(value.capacityBytes) ||
+      value.retainedEvents > value.capacityEvents ||
+      value.retainedBytes > value.capacityBytes)
+  ) {
+    throw new Error("The native host returned invalid Event Inspector memory bounds.");
+  }
+  const bounded = value.schemaVersion >= 2;
+  return {
+    ...(value as unknown as Omit<LiveEventBatch, "retainedEvents" | "retainedBytes" | "capacityEvents" | "capacityBytes" | "events">),
+    retainedEvents: bounded ? (value.retainedEvents as number) : 0,
+    retainedBytes: bounded ? (value.retainedBytes as number) : 0,
+    capacityEvents: bounded ? (value.capacityEvents as number) : 0,
+    capacityBytes: bounded ? (value.capacityBytes as number) : 0,
+    events: value.events.map((event) => ({
+      ...event,
+      sourceKind: event.sourceKind ?? "canonical",
+    })),
+  };
+}
+
+export function parseLiveEventDetail(value: unknown): LiveEventDetail {
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    typeof value.sessionId !== "string" ||
+    !isSafeCounter(value.revision) ||
+    !isSafeCounter(value.sequence) ||
+    (value.timelineSequence !== null && !isSafeCounter(value.timelineSequence)) ||
+    !isSafeCounter(value.observedMicros) ||
+    !isLiveSourceKind(value.sourceKind) ||
+    (value.gameTimeMillis !== null && !Number.isSafeInteger(value.gameTimeMillis)) ||
+    !isTopic(value.topic) ||
+    typeof value.kind !== "string" ||
+    !Array.isArray(value.fields) ||
+    !value.fields.every(isLiveEventDetailField) ||
+    (value.protocolCaptureSequence !== null &&
+      !isSafeCounter(value.protocolCaptureSequence)) ||
+    (value.protocol !== null && !isLiveProtocolDetail(value.protocol))
+  ) {
+    throw new Error("The native host returned invalid selected-event detail.");
+  }
+  return value as unknown as LiveEventDetail;
+}
+
+function isLiveProtocolDetail(value: unknown): value is LiveProtocolDetail {
+  return (
+    isRecord(value) &&
+    value.schemaVersion === 1 &&
+    isSafeCounter(value.captureSequence) &&
+    isSafeCounter(value.observedMicros) &&
+    isSafeCounter(value.connectionId) &&
+    isSafeCounter(value.streamId) &&
+    typeof value.direction === "string" &&
+    typeof value.fragment === "string" &&
+    typeof value.compression === "string" &&
+    isSafeCounter(value.serviceId) &&
+    isSafeCounter(value.methodId) &&
+    isSafeCounter(value.stubId) &&
+    (value.callId === null || isSafeCounter(value.callId)) &&
+    typeof value.serviceName === "string" &&
+    typeof value.methodName === "string" &&
+    isOptionalString(value.messageName) &&
+    typeof value.domain === "string" &&
+    typeof value.decodeStatus === "string" &&
+    isSafeCounter(value.applicationBytes) &&
+    typeof value.payloadRetained === "boolean" &&
+    isOptionalString(value.omissionReason) &&
+    Array.isArray(value.fields) &&
+    value.fields.every(isLiveProtocolField) &&
+    typeof value.truncated === "boolean" &&
+    isOptionalString(value.parseError)
+  );
+}
+
+function isLiveProtocolField(value: unknown): value is LiveProtocolField {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    isSafeCounter(value.fieldNumber) &&
+    ["varint", "fixed64", "length_delimited", "fixed32"].includes(
+      String(value.wireType),
+    ) &&
+    typeof value.value === "string"
+  );
 }
 
 export function parseEventViewerPage(value: unknown): EventViewerPage {
@@ -154,9 +304,26 @@ function isLiveEvent(value: unknown): value is LiveEventLine {
     isSafeCounter(value.revision) &&
     isSafeCounter(value.sequence) &&
     isSafeCounter(value.observedMicros) &&
+    (value.sourceKind === undefined || isLiveSourceKind(value.sourceKind)) &&
     isTopic(value.topic) &&
     typeof value.kind === "string" &&
     typeof value.rawIds === "string"
+  );
+}
+
+function isLiveSourceKind(value: unknown): value is LiveEventLine["sourceKind"] {
+  return value === "canonical" || value === "protocol";
+}
+
+function isLiveEventDetailField(value: unknown): value is LiveEventDetailField {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    value.path.length > 0 &&
+    typeof value.label === "string" &&
+    typeof value.value === "string" &&
+    typeof value.valueType === "string" &&
+    typeof value.usableInTrigger === "boolean"
   );
 }
 

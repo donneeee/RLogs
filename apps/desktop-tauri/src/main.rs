@@ -368,6 +368,34 @@ fn build_combat_overlay_window(
 }
 
 #[tauri::command]
+fn show_event_inspector(
+    app: tauri::AppHandle,
+    host: tauri::State<'_, EmbeddedLocalHost>,
+) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("event-inspector") {
+        if window.is_minimized().map_err(|error| error.to_string())? {
+            window.unminimize().map_err(|error| error.to_string())?;
+        }
+        window.show().map_err(|error| error.to_string())?;
+        window.set_focus().map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    let url = format!("http://{}/?surface=event-inspector", host.address())
+        .parse::<tauri::Url>()
+        .map_err(|error| error.to_string())?;
+    WebviewWindowBuilder::new(&app, "event-inspector", WebviewUrl::External(url))
+        .title("rLogs Event Inspector")
+        .decorations(true)
+        .inner_size(1280.0, 820.0)
+        .min_inner_size(780.0, 560.0)
+        .resizable(true)
+        .skip_taskbar(false)
+        .build()
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn combat_overlay_ready(
     app: tauri::AppHandle,
     state: tauri::State<'_, CombatOverlayWindowState>,
@@ -648,6 +676,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .invoke_handler(tauri::generate_handler![
             quit_rlogs,
+            show_event_inspector,
             show_combat_overlay,
             set_combat_overlay_enabled,
             hide_combat_overlay,

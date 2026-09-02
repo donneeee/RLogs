@@ -1,0 +1,56 @@
+schema_version = 1
+id = "app.rlogs.overlay"
+name = "Overlay"
+version = "0.1.0"
+api_version = 1
+runtime = "browser_overlay"
+entrypoint = "ui/runtime.html"
+capabilities = ["ui_workspace_publish"]
+subscriptions = []
+allowed_network_domains = []
+
+[workspace]
+default_order = -92
+
+[[workspace.tabs]]
+id = "overview"
+label = "Overview"
+entrypoint = "ui/overview.html"
+section = "setup"
+default_order = 100
+
+[[workspace.tabs]]
+id = "setups"
+label = "Setups"
+entrypoint = "ui/setups.html"
+section = "setup"
+default_order = 110
+
+[[workspace.tabs]]
+id = "editor"
+label = "Editor"
+entrypoint = "ui/editor.html"
+section = "setup"
+default_order = 120
+
+[[workspace.tabs]]
+id = "trackers"
+label = "Trackers"
+entrypoint = "ui/trackers.html"
+section = "tools"
+default_order = 200
+
+[[workspace.tabs]]
+id = "mechanics-map"
+label = "Mechanics Map"
+entrypoint = "ui/mechanics-map.html"
+section = "tools"
+default_order = 210
+
+[[workspace.tabs]]
+id = "settings"
+label = "Settings"
+entrypoint = "ui/settings.html"
+kind = "options"
+section = "configuration"
+default_order = 300

@@ -64,27 +64,29 @@ use rlogs_capture::{
 use rlogs_core::{GameConnection, ResearchConnectionFile};
 use rlogs_events::{
     ActorLoadoutSlot, CanonicalEvent, DataGapKind, DungeonEventKind, EntityRef, EventEnvelope,
-    EventTopic, RegionContext, RegionEvidence, RegionEvidenceKind, RegionIdentity, RunState,
-    TimelineEventKind,
+    EventTopic, EvidenceSource, RegionContext, RegionEvidence, RegionEvidenceKind, RegionIdentity,
+    RunState, TimelineEventKind,
 };
 use rlogs_game_bpsr::{
-    BPSR_GAME_PLUGIN_ID, BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline, BpsrSceneRunIdentity,
-    BpsrStateDamageContributionProjector, ContinuousBpsrRecorder, ContinuousRecordingConfig,
-    ContinuousResearchJournalConfig, GameBuild, LiveProfileProjection, LiveProtocolPackKind,
-    LocalPhotoAssetReference, NetworkEndpoint, OfflineRecordingConfig, OfflineRecordingLimits,
-    OfflineRecordingReport, ProtocolPack, ProtocolPackRouteDisposition, ProtocolRuntimeConfig,
-    RDPS_VALIDATION_REPORT_SCHEMA_VERSION, RdpsValidationAnalyzer, RdpsValidationProgress,
-    RdpsValidationReport, RegionResolverError, ResolvedRegion, RouteKey, SealedDungeonRunLog,
-    ServerRealmCatalog, auxiliary_action_presentation, battle_imagine_presentation,
-    bundled_gauntlet_scene_ids, bundled_run_reducer_config, bundled_scene_run_identities,
-    character_id_from_entity_uuid, combat_action_presentation, confirmed_damage_contribution_rules,
-    is_boss_monster, is_localized_class_name, localized_auxiliary_action_name,
-    localized_battle_imagine_name, localized_class_identities, localized_combat_action_name,
-    localized_monster_name, localized_recount_group_name, localized_scene_name,
-    localized_specialization_identities, localized_status_effect_name,
-    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
-    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
-    resolve_actor_combat_presentation, resolve_live_steam_protocol_pack, scene_boss_monster_ids,
+    AllowedDataDomain, BPSR_GAME_PLUGIN_ID, BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline,
+    BpsrSceneRunIdentity, BpsrStateDamageContributionProjector, CaptureRecord, CaptureRecordKind,
+    ContinuousBpsrRecorder, ContinuousRecordingConfig, ContinuousResearchJournalConfig,
+    DecodeDisposition, GameBuild, LiveProfileProjection,
+    LiveProtocolPackKind, LocalPhotoAssetReference, NetworkEndpoint, OfflineRecordingConfig,
+    OfflineRecordingLimits, OfflineRecordingReport, ProtocolDecodeStatus, ProtocolPack,
+    ProtocolPackRouteDisposition, ProtocolRuntimeConfig, RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
+    RdpsValidationAnalyzer, RdpsValidationProgress, RdpsValidationReport, RegionResolverError,
+    ResolvedRegion, RouteKey, SealedDungeonRunLog, ServerRealmCatalog,
+    auxiliary_action_presentation, battle_imagine_presentation, bundled_gauntlet_scene_ids,
+    bundled_run_reducer_config, bundled_scene_run_identities, character_id_from_entity_uuid,
+    combat_action_presentation, confirmed_damage_contribution_rules, is_boss_monster,
+    is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
+    localized_class_identities, localized_combat_action_name, localized_monster_name,
+    localized_recount_group_name, localized_scene_name, localized_specialization_identities,
+    localized_status_effect_name, project_local_profile_packages,
+    proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
+    record_offline_capture, resolve_actor_combat_identity, resolve_actor_combat_presentation,
+    resolve_live_steam_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
     status_effect_presentation, weapon_level_presentation, weapon_presentation,
 };
@@ -1804,13 +1806,22 @@ struct EventViewerEventView {
     canonical_json: String,
 }
 
-const LIVE_EVENT_FEED_SCHEMA_VERSION: u16 = 1;
+const LIVE_EVENT_FEED_SCHEMA_VERSION: u16 = 3;
+const LIVE_EVENT_DETAIL_SCHEMA_VERSION: u16 = 1;
 const LIVE_EVENT_RING_CAPACITY: usize = 8_192;
+const LIVE_EVENT_RING_MAX_BYTES: usize = 4 * 1024 * 1024;
 const DEFAULT_LIVE_EVENT_WAIT_MILLIS: u64 = 1_000;
 const MAXIMUM_LIVE_EVENT_WAIT_MILLIS: u64 = 5_000;
 const DEFAULT_LIVE_EVENT_BATCH_SIZE: usize = 256;
 const MAXIMUM_LIVE_EVENT_BATCH_SIZE: usize = 512;
 const LIVE_EVENT_COALESCE_MILLIS: u64 = 8;
+const LIVE_EVENT_READER_LEASE_GRACE_MILLIS: u64 = 2_000;
+const LIVE_PROTOCOL_DETAIL_SCHEMA_VERSION: u16 = 1;
+const LIVE_PROTOCOL_RING_CAPACITY: usize = 512;
+const LIVE_PROTOCOL_RING_MAX_BYTES: usize = 2 * 1024 * 1024;
+const LIVE_PROTOCOL_MAX_PAYLOAD_BYTES: usize = 64 * 1024;
+const LIVE_PROTOCOL_MAX_FIELDS: usize = 1_024;
+const LIVE_PROTOCOL_VALUE_PREVIEW_BYTES: usize = 96;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1818,24 +1829,485 @@ struct LiveEventLine {
     revision: u64,
     sequence: u64,
     observed_micros: u64,
+    source_kind: &'static str,
     topic: EventTopic,
     kind: String,
     raw_ids: String,
 }
 
 impl LiveEventLine {
+    fn retained_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.kind.len())
+            .saturating_add(self.raw_ids.len())
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveEventField {
+    path: &'static str,
+    label: &'static str,
+    value: String,
+    value_type: &'static str,
+    usable_in_trigger: bool,
+}
+
+impl LiveEventField {
+    fn retained_bytes(&self) -> usize {
+        std::mem::size_of::<Self>().saturating_add(self.value.len())
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LiveEventRecord {
+    line: LiveEventLine,
+    capture_sequence: Option<u64>,
+    timeline_sequence: Option<u64>,
+    game_time_millis: Option<i64>,
+    fields: Vec<LiveEventField>,
+}
+
+impl LiveEventRecord {
     fn from_envelope(canonical: &EventEnvelope) -> Self {
-        let (topic, _timeline_sequence, kind, summary, _amount, _identifiers) =
+        let (topic, timeline_sequence, kind, summary, amount, identifiers) =
             event_viewer_fields(canonical);
-        Self {
+        let line = LiveEventLine {
             revision: 0,
             sequence: canonical.sequence,
             observed_micros: canonical.time.observed_micros,
+            source_kind: "canonical",
             topic,
             kind: kind.into(),
             raw_ids: summary,
+        };
+        let fields = live_event_fields(canonical, timeline_sequence, kind, amount, &identifiers);
+        let capture_sequence = match &canonical.provenance.source {
+            EvidenceSource::Wire {
+                capture_sequence, ..
+            } => Some(*capture_sequence),
+            EvidenceSource::Derived { .. } | EvidenceSource::Manual { .. } => None,
+        };
+        Self {
+            line,
+            capture_sequence,
+            timeline_sequence,
+            game_time_millis: canonical.time.game_time_millis,
+            fields,
         }
     }
+
+    fn retained_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.line.retained_bytes())
+            .saturating_add(
+                self.fields
+                    .iter()
+                    .map(LiveEventField::retained_bytes)
+                    .sum::<usize>(),
+            )
+    }
+
+    fn from_protocol(protocol: &LiveProtocolRecord) -> Self {
+        let mut fields = vec![
+            LiveEventField {
+                path: "protocol.route.service_id",
+                label: "Service ID",
+                value: protocol.service_id.to_string(),
+                value_type: "u64",
+                usable_in_trigger: false,
+            },
+            LiveEventField {
+                path: "protocol.route.method_id",
+                label: "Method ID",
+                value: protocol.method_id.to_string(),
+                value_type: "u32",
+                usable_in_trigger: false,
+            },
+            LiveEventField {
+                path: "protocol.route.stub_id",
+                label: "Stub ID",
+                value: protocol.stub_id.to_string(),
+                value_type: "u32",
+                usable_in_trigger: false,
+            },
+        ];
+        if let Some(call_id) = protocol.call_id {
+            fields.push(LiveEventField {
+                path: "protocol.route.call_id",
+                label: "Call ID",
+                value: call_id.to_string(),
+                value_type: "u32",
+                usable_in_trigger: false,
+            });
+        }
+        let message = protocol
+            .message_name
+            .as_deref()
+            .unwrap_or("schema name unavailable");
+        Self {
+            line: LiveEventLine {
+                revision: 0,
+                sequence: protocol.capture_sequence,
+                observed_micros: protocol.observed_micros,
+                source_kind: "protocol",
+                topic: event_topic_for_protocol_domain(protocol.domain),
+                kind: "protocol_message".into(),
+                raw_ids: format!(
+                    "{}.{} · message:{} · service:{} · method:{} · connection:{} · stream:{}",
+                    protocol.service_name,
+                    protocol.method_name,
+                    message,
+                    protocol.service_id,
+                    protocol.method_id,
+                    protocol.connection_id,
+                    protocol.stream_id,
+                ),
+            },
+            capture_sequence: Some(protocol.capture_sequence),
+            timeline_sequence: None,
+            game_time_millis: None,
+            fields,
+        }
+    }
+}
+
+fn event_topic_for_protocol_domain(domain: &str) -> EventTopic {
+    match domain {
+        "combat" => EventTopic::Combat,
+        "encounter" => EventTopic::Encounter,
+        "actor_state" => EventTopic::Actor,
+        "character_profile" => EventTopic::CharacterProfile,
+        "public_chat" | "party_chat" => EventTopic::Chat,
+        _ => EventTopic::World,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct LiveProtocolRecord {
+    capture_sequence: u64,
+    observed_micros: u64,
+    connection_id: u64,
+    stream_id: u64,
+    direction: String,
+    fragment: String,
+    compression: String,
+    service_id: u64,
+    method_id: u32,
+    stub_id: u32,
+    call_id: Option<u32>,
+    service_name: String,
+    method_name: String,
+    message_name: Option<String>,
+    domain: &'static str,
+    decode_status: &'static str,
+    application_bytes: usize,
+    payload: Option<Vec<u8>>,
+    omission_reason: Option<&'static str>,
+}
+
+impl LiveProtocolRecord {
+    fn from_capture(
+        pack: &ProtocolPack,
+        record: &CaptureRecord,
+        status: ProtocolDecodeStatus,
+    ) -> Option<Self> {
+        let CaptureRecordKind::Packet(packet) = &record.kind else {
+            return None;
+        };
+        let routed = packet.route?;
+        let DecodeDisposition::Allowed(domain) = pack.disposition(Some(&routed.key)) else {
+            return None;
+        };
+        let mapping = pack.route(&routed.key)?;
+        let application_bytes = packet
+            .payload
+            .application_bytes
+            .as_ref()
+            .map_or(0, Vec::len);
+        let (payload, omission_reason) = match packet.payload.application_bytes.as_ref() {
+            Some(bytes) if bytes.len() <= LIVE_PROTOCOL_MAX_PAYLOAD_BYTES => {
+                (Some(bytes.clone()), None)
+            }
+            Some(_) => (None, Some("payload_exceeds_local_detail_limit")),
+            None => (None, Some("application_payload_unavailable")),
+        };
+        Some(Self {
+            capture_sequence: record.sequence,
+            observed_micros: record.observed_micros,
+            connection_id: packet.connection_id,
+            stream_id: packet.stream_id,
+            direction: format!("{:?}", packet.direction),
+            fragment: packet
+                .fragment
+                .map_or_else(|| "Unknown".to_owned(), |value| format!("{value:?}")),
+            compression: format!("{:?}", packet.compression),
+            service_id: routed.key.service_id,
+            method_id: routed.key.method_id,
+            stub_id: routed.stub_id,
+            call_id: routed.call_id,
+            service_name: mapping.service_name.clone(),
+            method_name: mapping.method_name.clone(),
+            message_name: mapping.message_name.clone(),
+            domain: allowed_data_domain_name(domain),
+            decode_status: protocol_decode_status_name(status),
+            application_bytes,
+            payload,
+            omission_reason,
+        })
+    }
+
+    fn retained_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            .saturating_add(self.direction.len())
+            .saturating_add(self.fragment.len())
+            .saturating_add(self.compression.len())
+            .saturating_add(self.service_name.len())
+            .saturating_add(self.method_name.len())
+            .saturating_add(self.message_name.as_ref().map_or(0, String::len))
+            .saturating_add(self.payload.as_ref().map_or(0, Vec::len))
+    }
+
+    fn detail(&self) -> LiveProtocolDetail {
+        let (fields, truncated, parse_error) = self
+            .payload
+            .as_deref()
+            .map_or_else(|| (Vec::new(), false, None), parse_bounded_protobuf_fields);
+        LiveProtocolDetail {
+            schema_version: LIVE_PROTOCOL_DETAIL_SCHEMA_VERSION,
+            capture_sequence: self.capture_sequence,
+            observed_micros: self.observed_micros,
+            connection_id: self.connection_id,
+            stream_id: self.stream_id,
+            direction: self.direction.clone(),
+            fragment: self.fragment.clone(),
+            compression: self.compression.clone(),
+            service_id: self.service_id,
+            method_id: self.method_id,
+            stub_id: self.stub_id,
+            call_id: self.call_id,
+            service_name: self.service_name.clone(),
+            method_name: self.method_name.clone(),
+            message_name: self.message_name.clone(),
+            domain: self.domain,
+            decode_status: self.decode_status,
+            application_bytes: self.application_bytes,
+            payload_retained: self.payload.is_some(),
+            omission_reason: self.omission_reason,
+            fields,
+            truncated,
+            parse_error,
+        }
+    }
+}
+
+fn allowed_data_domain_name(domain: AllowedDataDomain) -> &'static str {
+    match domain {
+        AllowedDataDomain::Combat => "combat",
+        AllowedDataDomain::Encounter => "encounter",
+        AllowedDataDomain::ActorState => "actor_state",
+        AllowedDataDomain::CharacterProfile => "character_profile",
+        AllowedDataDomain::WorldState => "world_state",
+        AllowedDataDomain::PublicChat => "public_chat",
+        AllowedDataDomain::PartyChat => "party_chat",
+    }
+}
+
+fn protocol_decode_status_name(status: ProtocolDecodeStatus) -> &'static str {
+    match status {
+        ProtocolDecodeStatus::Decoded => "decoded",
+        ProtocolDecodeStatus::CaptureGap => "capture_gap",
+        ProtocolDecodeStatus::Unrouted => "unrouted",
+        ProtocolDecodeStatus::OpaqueLocalOnly => "opaque_local_only",
+        ProtocolDecodeStatus::Prohibited(_) => "prohibited",
+        ProtocolDecodeStatus::MissingApplicationPayload => "missing_application_payload",
+        ProtocolDecodeStatus::DecodeFailed => "decode_failed",
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveProtocolField {
+    path: String,
+    field_number: u32,
+    wire_type: &'static str,
+    value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveProtocolDetail {
+    schema_version: u16,
+    capture_sequence: u64,
+    observed_micros: u64,
+    connection_id: u64,
+    stream_id: u64,
+    direction: String,
+    fragment: String,
+    compression: String,
+    service_id: u64,
+    method_id: u32,
+    stub_id: u32,
+    call_id: Option<u32>,
+    service_name: String,
+    method_name: String,
+    message_name: Option<String>,
+    domain: &'static str,
+    decode_status: &'static str,
+    application_bytes: usize,
+    payload_retained: bool,
+    omission_reason: Option<&'static str>,
+    fields: Vec<LiveProtocolField>,
+    truncated: bool,
+    parse_error: Option<String>,
+}
+
+fn parse_bounded_protobuf_fields(payload: &[u8]) -> (Vec<LiveProtocolField>, bool, Option<String>) {
+    let mut fields = Vec::new();
+    let mut cursor = 0_usize;
+    let mut occurrences = BTreeMap::<u32, usize>::new();
+    while cursor < payload.len() && fields.len() < LIVE_PROTOCOL_MAX_FIELDS {
+        let key = match read_protobuf_varint(payload, &mut cursor) {
+            Ok(value) => value,
+            Err(error) => return (fields, false, Some(error)),
+        };
+        let field_number = u32::try_from(key >> 3).unwrap_or(u32::MAX);
+        if field_number == 0 {
+            return (
+                fields,
+                false,
+                Some("protobuf field number zero is invalid".into()),
+            );
+        }
+        let occurrence = occurrences.entry(field_number).or_default();
+        let path = format!("field.{field_number}[{occurrence}]");
+        *occurrence = occurrence.saturating_add(1);
+        let wire = key & 0x07;
+        let (wire_type, value) = match wire {
+            0 => {
+                let value = match read_protobuf_varint(payload, &mut cursor) {
+                    Ok(value) => value,
+                    Err(error) => return (fields, false, Some(error)),
+                };
+                ("varint", format!("{value} (0x{value:x})"))
+            }
+            1 => {
+                let Some(bytes) = payload.get(cursor..cursor.saturating_add(8)) else {
+                    return (fields, false, Some("truncated fixed64 field".into()));
+                };
+                cursor = cursor.saturating_add(8);
+                let value = u64::from_le_bytes(bytes.try_into().expect("eight-byte slice"));
+                ("fixed64", format!("{value} (0x{value:016x})"))
+            }
+            2 => {
+                let length = match read_protobuf_varint(payload, &mut cursor).and_then(|value| {
+                    usize::try_from(value)
+                        .map_err(|_| "protobuf length exceeds this platform".to_owned())
+                }) {
+                    Ok(value) => value,
+                    Err(error) => return (fields, false, Some(error)),
+                };
+                let Some(bytes) = payload.get(cursor..cursor.saturating_add(length)) else {
+                    return (
+                        fields,
+                        false,
+                        Some("truncated length-delimited field".into()),
+                    );
+                };
+                cursor = cursor.saturating_add(length);
+                ("length_delimited", preview_protobuf_bytes(bytes))
+            }
+            5 => {
+                let Some(bytes) = payload.get(cursor..cursor.saturating_add(4)) else {
+                    return (fields, false, Some("truncated fixed32 field".into()));
+                };
+                cursor = cursor.saturating_add(4);
+                let value = u32::from_le_bytes(bytes.try_into().expect("four-byte slice"));
+                ("fixed32", format!("{value} (0x{value:08x})"))
+            }
+            unsupported => {
+                return (
+                    fields,
+                    false,
+                    Some(format!("unsupported protobuf wire type {unsupported}")),
+                );
+            }
+        };
+        fields.push(LiveProtocolField {
+            path,
+            field_number,
+            wire_type,
+            value,
+        });
+    }
+    (
+        fields,
+        cursor < payload.len(),
+        (cursor < payload.len()).then(|| "protobuf field limit reached".to_owned()),
+    )
+}
+
+fn read_protobuf_varint(payload: &[u8], cursor: &mut usize) -> Result<u64, String> {
+    let mut value = 0_u64;
+    for shift in (0..70).step_by(7) {
+        let byte = *payload
+            .get(*cursor)
+            .ok_or_else(|| "truncated protobuf varint".to_owned())?;
+        *cursor = cursor.saturating_add(1);
+        if shift == 63 && byte > 1 {
+            return Err("protobuf varint exceeds 64 bits".into());
+        }
+        value |= u64::from(byte & 0x7f) << shift;
+        if byte & 0x80 == 0 {
+            return Ok(value);
+        }
+    }
+    Err("protobuf varint exceeds 10 bytes".into())
+}
+
+fn preview_protobuf_bytes(bytes: &[u8]) -> String {
+    let preview_len = bytes.len().min(LIVE_PROTOCOL_VALUE_PREVIEW_BYTES);
+    let preview = &bytes[..preview_len];
+    let suffix = if bytes.len() > preview_len { "…" } else { "" };
+    if let Ok(text) = std::str::from_utf8(preview)
+        && text
+            .chars()
+            .all(|character| !character.is_control() || matches!(character, '\n' | '\r' | '\t'))
+    {
+        return format!("{} bytes · text {:?}{suffix}", bytes.len(), text);
+    }
+    let hex = preview
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{} bytes · hex {hex}{suffix}", bytes.len())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LiveEventDetailRequest {
+    session_id: String,
+    revision: u64,
+    sequence: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveEventDetail {
+    schema_version: u16,
+    session_id: String,
+    revision: u64,
+    sequence: u64,
+    timeline_sequence: Option<u64>,
+    observed_micros: u64,
+    source_kind: &'static str,
+    game_time_millis: Option<i64>,
+    topic: EventTopic,
+    kind: String,
+    fields: Vec<LiveEventField>,
+    protocol_capture_sequence: Option<u64>,
+    protocol: Option<LiveProtocolDetail>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1846,6 +2318,10 @@ struct LiveEventBatch {
     revision: u64,
     dropped_before: u64,
     has_more: bool,
+    retained_events: usize,
+    retained_bytes: usize,
+    capacity_events: usize,
+    capacity_bytes: usize,
     events: Vec<LiveEventLine>,
 }
 
@@ -1872,16 +2348,38 @@ fn default_live_event_batch_size() -> usize {
 struct LiveEventFeed {
     state: Mutex<LiveEventFeedState>,
     changed: Condvar,
+    active_reader_until_unix_millis: AtomicU64,
 }
 
 #[derive(Debug, Default)]
 struct LiveEventFeedState {
     session_id: Option<String>,
     revision: u64,
-    events: VecDeque<LiveEventLine>,
+    evicted_through_revision: u64,
+    retained_bytes: usize,
+    events: VecDeque<LiveEventRecord>,
+    protocol_retained_bytes: usize,
+    protocol_records: VecDeque<LiveProtocolRecord>,
 }
 
 impl LiveEventFeed {
+    fn has_active_reader(&self) -> bool {
+        self.has_active_reader_at(unix_millis())
+    }
+
+    fn has_active_reader_at(&self, now_unix_millis: u64) -> bool {
+        self.active_reader_until_unix_millis.load(Ordering::Acquire) >= now_unix_millis
+    }
+
+    fn renew_reader_lease(&self, timeout: Duration) {
+        let timeout_millis = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+        let active_until = unix_millis()
+            .saturating_add(timeout_millis)
+            .saturating_add(LIVE_EVENT_READER_LEASE_GRACE_MILLIS);
+        self.active_reader_until_unix_millis
+            .fetch_max(active_until, Ordering::AcqRel);
+    }
+
     fn reset(&self, session_id: String) {
         let mut state = self
             .state
@@ -1889,11 +2387,42 @@ impl LiveEventFeed {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.session_id = Some(session_id);
         state.revision = state.revision.saturating_add(1);
+        state.evicted_through_revision = state.revision;
+        state.retained_bytes = 0;
         state.events.clear();
+        state.protocol_retained_bytes = 0;
+        state.protocol_records.clear();
         self.changed.notify_all();
     }
 
-    fn publish_batch(&self, mut events: Vec<LiveEventLine>) {
+    fn publish_protocol_batch(&self, mut records: Vec<LiveProtocolRecord>) {
+        if records.is_empty() {
+            return;
+        }
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for record in records.drain(..) {
+            state.protocol_retained_bytes = state
+                .protocol_retained_bytes
+                .saturating_add(record.retained_bytes());
+            state.protocol_records.push_back(record);
+            while state.protocol_records.len() > LIVE_PROTOCOL_RING_CAPACITY
+                || state.protocol_retained_bytes > LIVE_PROTOCOL_RING_MAX_BYTES
+            {
+                let Some(evicted) = state.protocol_records.pop_front() else {
+                    state.protocol_retained_bytes = 0;
+                    break;
+                };
+                state.protocol_retained_bytes = state
+                    .protocol_retained_bytes
+                    .saturating_sub(evicted.retained_bytes());
+            }
+        }
+    }
+
+    fn publish_batch(&self, mut events: Vec<LiveEventRecord>) {
         if events.is_empty() {
             return;
         }
@@ -1901,13 +2430,23 @@ impl LiveEventFeed {
             .state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        for event in &mut events {
+        for mut event in events.drain(..) {
             state.revision = state.revision.saturating_add(1);
-            event.revision = state.revision;
-        }
-        state.events.extend(events);
-        while state.events.len() > LIVE_EVENT_RING_CAPACITY {
-            state.events.pop_front();
+            event.line.revision = state.revision;
+            state.retained_bytes = state.retained_bytes.saturating_add(event.retained_bytes());
+            state.events.push_back(event);
+            while state.events.len() > LIVE_EVENT_RING_CAPACITY
+                || state.retained_bytes > LIVE_EVENT_RING_MAX_BYTES
+            {
+                let Some(evicted) = state.events.pop_front() else {
+                    state.retained_bytes = 0;
+                    break;
+                };
+                state.retained_bytes = state
+                    .retained_bytes
+                    .saturating_sub(evicted.retained_bytes());
+                state.evicted_through_revision = evicted.line.revision;
+            }
         }
         self.changed.notify_all();
     }
@@ -1919,6 +2458,7 @@ impl LiveEventFeed {
         limit: usize,
         tail: bool,
     ) -> LiveEventBatch {
+        self.renew_reader_lease(timeout);
         let deadline = Instant::now() + timeout;
         let mut state = self
             .state
@@ -1937,7 +2477,7 @@ impl LiveEventFeed {
         let received_new_event = state
             .events
             .back()
-            .is_some_and(|event| event.revision > after_revision);
+            .is_some_and(|event| event.line.revision > after_revision);
         if received_new_event {
             drop(state);
             thread::sleep(Duration::from_millis(LIVE_EVENT_COALESCE_MILLIS));
@@ -1948,7 +2488,7 @@ impl LiveEventFeed {
         }
         let effective_after_revision = if tail {
             state.events.back().map_or(after_revision, |event| {
-                event.revision.saturating_sub(limit as u64)
+                event.line.revision.saturating_sub(limit as u64)
             })
         } else {
             after_revision
@@ -1956,15 +2496,22 @@ impl LiveEventFeed {
         let events = state
             .events
             .iter()
-            .filter(|event| event.revision > effective_after_revision)
+            .filter(|event| event.line.revision > effective_after_revision)
             .take(limit)
-            .cloned()
+            .map(|event| event.line.clone())
             .collect::<Vec<_>>();
-        let dropped_before = events.first().map_or(0, |event| {
-            event
-                .revision
-                .saturating_sub(after_revision.saturating_add(1))
-        });
+        let dropped_before = events.first().map_or_else(
+            || {
+                state
+                    .evicted_through_revision
+                    .saturating_sub(after_revision)
+            },
+            |event| {
+                event
+                    .revision
+                    .saturating_sub(after_revision.saturating_add(1))
+            },
+        );
         let revision = events.last().map_or(state.revision, |event| event.revision);
         LiveEventBatch {
             schema_version: LIVE_EVENT_FEED_SCHEMA_VERSION,
@@ -1974,9 +2521,58 @@ impl LiveEventFeed {
             has_more: state
                 .events
                 .back()
-                .is_some_and(|event| event.revision > revision),
+                .is_some_and(|event| event.line.revision > revision),
+            retained_events: state.events.len(),
+            retained_bytes: state.retained_bytes,
+            capacity_events: LIVE_EVENT_RING_CAPACITY,
+            capacity_bytes: LIVE_EVENT_RING_MAX_BYTES,
             events,
         }
+    }
+
+    fn detail(&self, request: LiveEventDetailRequest) -> Result<LiveEventDetail, String> {
+        if request.session_id.trim().is_empty() || request.session_id.len() > 256 {
+            return Err("Event Inspector session ID is invalid".into());
+        }
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if state.session_id.as_deref() != Some(request.session_id.as_str()) {
+            return Err("the selected event belongs to an inactive capture session".into());
+        }
+        let record = state
+            .events
+            .iter()
+            .find(|event| {
+                event.line.revision == request.revision && event.line.sequence == request.sequence
+            })
+            .ok_or_else(|| {
+                "the selected event is no longer retained in the bounded Inspector buffer"
+                    .to_owned()
+            })?;
+        Ok(LiveEventDetail {
+            schema_version: LIVE_EVENT_DETAIL_SCHEMA_VERSION,
+            session_id: request.session_id,
+            revision: record.line.revision,
+            sequence: record.line.sequence,
+            timeline_sequence: record.timeline_sequence,
+            observed_micros: record.line.observed_micros,
+            source_kind: record.line.source_kind,
+            game_time_millis: record.game_time_millis,
+            topic: record.line.topic,
+            kind: record.line.kind.clone(),
+            fields: record.fields.clone(),
+            protocol_capture_sequence: record.capture_sequence,
+            protocol: record.capture_sequence.and_then(|capture_sequence| {
+                state
+                    .protocol_records
+                    .iter()
+                    .rev()
+                    .find(|protocol| protocol.capture_sequence == capture_sequence)
+                    .map(LiveProtocolRecord::detail)
+            }),
+        })
     }
 }
 
@@ -2074,6 +2670,354 @@ fn event_viewer_fields(
         _ => event_viewer_summary(kind, &identifiers, amount.as_deref()),
     };
     (topic, timeline_sequence, kind, summary, amount, identifiers)
+}
+
+fn live_event_fields(
+    canonical: &EventEnvelope,
+    timeline_sequence: Option<u64>,
+    kind: &'static str,
+    amount: Option<String>,
+    identifiers: &EventViewerIdentifiersView,
+) -> Vec<LiveEventField> {
+    let mut fields = Vec::with_capacity(32);
+    push_live_event_field(
+        &mut fields,
+        "sequence",
+        "Canonical sequence",
+        canonical.sequence.to_string(),
+        "u64",
+        false,
+    );
+    push_live_event_field(
+        &mut fields,
+        "time.observed_micros",
+        "Observed time (µs)",
+        canonical.time.observed_micros.to_string(),
+        "u64",
+        false,
+    );
+    if let Some(game_time_millis) = canonical.time.game_time_millis {
+        push_live_event_field(
+            &mut fields,
+            "time.game_time_millis",
+            "Game time (ms)",
+            game_time_millis.to_string(),
+            "i64",
+            false,
+        );
+    }
+    if let Some(sequence) = timeline_sequence {
+        push_live_event_field(
+            &mut fields,
+            "event.data.sequence",
+            "Timeline sequence",
+            sequence.to_string(),
+            "u64",
+            false,
+        );
+    }
+    push_live_event_field(
+        &mut fields,
+        "event.topic",
+        "Topic",
+        event_topic_identifier(canonical.event.topic()).into(),
+        "enum",
+        true,
+    );
+    push_live_event_field(
+        &mut fields,
+        "event.kind",
+        "Event kind",
+        kind.into(),
+        "enum",
+        true,
+    );
+    push_live_event_field(
+        &mut fields,
+        "sensitivity",
+        "Sensitivity",
+        match canonical.sensitivity {
+            rlogs_events::EventSensitivity::PublicGameplay => "public_gameplay",
+            rlogs_events::EventSensitivity::PersonalGameplay => "personal_gameplay",
+            rlogs_events::EventSensitivity::LocalSensitive => "local_sensitive",
+        }
+        .into(),
+        "enum",
+        false,
+    );
+    push_live_event_field(
+        &mut fields,
+        "provenance.confidence",
+        "Evidence confidence",
+        match canonical.provenance.confidence {
+            rlogs_events::EvidenceConfidence::Exact => "exact",
+            rlogs_events::EvidenceConfidence::Inferred => "inferred",
+            rlogs_events::EvidenceConfidence::Estimated => "estimated",
+        }
+        .into(),
+        "enum",
+        false,
+    );
+    match &canonical.provenance.source {
+        rlogs_events::EvidenceSource::Wire {
+            capture_sequence,
+            connection_id,
+            stream_id,
+        } => {
+            push_live_event_field(
+                &mut fields,
+                "provenance.source.type",
+                "Evidence source",
+                "wire".into(),
+                "enum",
+                false,
+            );
+            push_live_event_field(
+                &mut fields,
+                "provenance.source.capture_sequence",
+                "Capture sequence",
+                capture_sequence.to_string(),
+                "u64",
+                false,
+            );
+            push_live_event_field(
+                &mut fields,
+                "provenance.source.connection_id",
+                "Connection ID",
+                connection_id.to_string(),
+                "u64",
+                false,
+            );
+            push_live_event_field(
+                &mut fields,
+                "provenance.source.stream_id",
+                "Stream ID",
+                stream_id.to_string(),
+                "u64",
+                false,
+            );
+        }
+        rlogs_events::EvidenceSource::Derived {
+            rule_id,
+            evidence_sequences,
+        } => {
+            push_live_event_field(
+                &mut fields,
+                "provenance.source.type",
+                "Evidence source",
+                "derived".into(),
+                "enum",
+                false,
+            );
+            push_live_event_field(
+                &mut fields,
+                "provenance.source.rule_id",
+                "Derivation rule",
+                rule_id.clone(),
+                "string",
+                false,
+            );
+            if !evidence_sequences.is_empty() {
+                push_live_event_field(
+                    &mut fields,
+                    "provenance.source.evidence_sequences",
+                    "Evidence sequences",
+                    evidence_sequences
+                        .iter()
+                        .map(u64::to_string)
+                        .collect::<Vec<_>>()
+                        .join(","),
+                    "u64[]",
+                    false,
+                );
+            }
+        }
+        rlogs_events::EvidenceSource::Manual { .. } => {
+            // Manual reasons can contain operator-entered text. Preserve the
+            // provenance type without exposing that text to public plug-ins.
+            push_live_event_field(
+                &mut fields,
+                "provenance.source.type",
+                "Evidence source",
+                "manual".into(),
+                "enum",
+                false,
+            );
+        }
+    }
+    push_live_event_entity_fields(
+        &mut fields,
+        "event.actor.actor_id",
+        "event.actor.entity_uuid",
+        "Actor ID",
+        "Actor entity UUID",
+        identifiers.actor.as_ref(),
+    );
+    push_live_event_entity_fields(
+        &mut fields,
+        "event.source.actor_id",
+        "event.source.entity_uuid",
+        "Source actor ID",
+        "Source entity UUID",
+        identifiers.source.as_ref(),
+    );
+    push_live_event_entity_fields(
+        &mut fields,
+        "event.direct_source.actor_id",
+        "event.direct_source.entity_uuid",
+        "Direct-source actor ID",
+        "Direct-source entity UUID",
+        identifiers.direct_source.as_ref(),
+    );
+    push_live_event_entity_fields(
+        &mut fields,
+        "event.target.actor_id",
+        "event.target.entity_uuid",
+        "Target actor ID",
+        "Target entity UUID",
+        identifiers.target.as_ref(),
+    );
+    for (path, label, value, value_type) in [
+        (
+            "event.ability_id",
+            "Ability ID",
+            &identifiers.ability,
+            "u32",
+        ),
+        ("event.status_id", "Status ID", &identifiers.status, "u32"),
+        (
+            "event.status_instance_id",
+            "Status instance ID",
+            &identifiers.status_instance,
+            "u64",
+        ),
+        (
+            "event.status_origin_type_id",
+            "Status origin type ID",
+            &identifiers.status_origin_type,
+            "i32",
+        ),
+        (
+            "event.status_origin_config_id",
+            "Status origin config ID",
+            &identifiers.status_origin_config,
+            "i32",
+        ),
+        (
+            "event.status_state",
+            "Status state",
+            &identifiers.status_state,
+            "enum",
+        ),
+        (
+            "event.status_stacks",
+            "Status stacks",
+            &identifiers.status_stacks,
+            "u32",
+        ),
+        (
+            "event.status_duration_millis",
+            "Status duration (ms)",
+            &identifiers.status_duration_millis,
+            "u64",
+        ),
+        (
+            "event.monster_id",
+            "Monster ID",
+            &identifiers.monster,
+            "u32",
+        ),
+        ("event.scene_id", "Scene ID", &identifiers.scene, "i32"),
+        ("event.map_id", "Map ID", &identifiers.map, "i32"),
+        (
+            "event.dungeon_id",
+            "Dungeon ID",
+            &identifiers.dungeon,
+            "i32",
+        ),
+        (
+            "event.character_id",
+            "Character ID",
+            &identifiers.character_id,
+            "string",
+        ),
+    ] {
+        if let Some(value) = value {
+            push_live_event_field(&mut fields, path, label, value.clone(), value_type, true);
+        }
+    }
+    if let Some(amount) = amount {
+        push_live_event_field(
+            &mut fields,
+            "event.amount",
+            "Amount",
+            amount,
+            "decimal",
+            true,
+        );
+    }
+    fields
+}
+
+fn push_live_event_entity_fields(
+    fields: &mut Vec<LiveEventField>,
+    actor_path: &'static str,
+    entity_path: &'static str,
+    actor_label: &'static str,
+    entity_label: &'static str,
+    entity: Option<&EventViewerEntityView>,
+) {
+    let Some(entity) = entity else {
+        return;
+    };
+    push_live_event_field(
+        fields,
+        actor_path,
+        actor_label,
+        entity.actor_id.clone(),
+        "u64",
+        true,
+    );
+    push_live_event_field(
+        fields,
+        entity_path,
+        entity_label,
+        entity.entity_uuid.clone(),
+        "u64",
+        true,
+    );
+}
+
+fn push_live_event_field(
+    fields: &mut Vec<LiveEventField>,
+    path: &'static str,
+    label: &'static str,
+    value: String,
+    value_type: &'static str,
+    usable_in_trigger: bool,
+) {
+    fields.push(LiveEventField {
+        path,
+        label,
+        value,
+        value_type,
+        usable_in_trigger,
+    });
+}
+
+fn event_topic_identifier(topic: EventTopic) -> &'static str {
+    match topic {
+        EventTopic::Combat => "combat",
+        EventTopic::Encounter => "encounter",
+        EventTopic::Actor => "actor",
+        EventTopic::CharacterProfile => "character_profile",
+        EventTopic::Party => "party",
+        EventTopic::World => "world",
+        EventTopic::Map => "map",
+        EventTopic::Dungeon => "dungeon",
+        EventTopic::Chat => "chat",
+        EventTopic::DataQuality => "data_quality",
+    }
 }
 
 fn data_gap_kind_label(kind: DataGapKind) -> &'static str {
@@ -4117,6 +5061,13 @@ impl RuntimeController {
             .wait_after(request.after_revision, timeout, limit, request.tail)
     }
 
+    fn live_event_detail(
+        &self,
+        request: LiveEventDetailRequest,
+    ) -> Result<LiveEventDetail, String> {
+        self.live_event_feed.detail(request)
+    }
+
     fn combat_history_catalog(&self) -> Result<CombatHistoryCatalog, String> {
         let mut catalog = self
             .combat_history
@@ -5578,7 +6529,6 @@ impl RuntimeController {
         let submission_transport_store = Arc::clone(&self.submission_transport);
         let live_stop = Arc::clone(&self.live_stop);
         let live_process_id = Arc::clone(&self.live_process_id);
-        let live_event_stream_enabled = self.developer_tools_enabled;
         let session_id = request.session_id.clone();
         let validation_game_build = target.build_id.clone();
         let validation_manifest_build = validation_manifest_game_build;
@@ -5801,12 +6751,17 @@ impl RuntimeController {
                         let mut frozen_capture_time_identities = None;
                         let mut live_snapshot_error = None;
                         let mut live_event_lines = Vec::new();
+                        // Sample the reader lease once per captured frame. The
+                        // Inspector remains a side consumer without adding a
+                        // clock read to every decoded event in burst traffic.
+                        let live_event_inspector_active = live_event_feed.has_active_reader();
+                        let mut live_protocol_records = Vec::new();
                         let mut live_damage_activity = Vec::new();
                         let mut local_photo_assets = Vec::new();
                         let decoded_events_before = recorder.metrics().decoded_event_count;
                         let ordered_reduction_started = Instant::now();
                         let sealed = recorder
-                            .process_frame_with_local_observations(frame, |event| {
+                            .process_frame_with_inspection(frame, |event| {
                                 if matches!(
                                     &event.event,
                                     CanonicalEvent::Timeline(timeline)
@@ -6021,13 +6976,23 @@ impl RuntimeController {
                                     }
                                 }
                                 // Ordered reducers have consumed this typed
-                                // event. Developer builds may also retain the
-                                // compact, pre-localization Event Viewer line.
-                                if live_event_stream_enabled {
-                                    live_event_lines.push(LiveEventLine::from_envelope(event));
+                                // event. Retain only the compact,
+                                // privacy-reviewed canonical selector fields
+                                // in the byte-bounded Event Inspector ring.
+                                // Full canonical/protobuf serialization stays
+                                // out of the capture callback.
+                                if live_event_inspector_active {
+                                    live_event_lines.push(LiveEventRecord::from_envelope(event));
                                 }
                             }, |photo| {
                                 local_photo_assets.push(photo.clone());
+                            }, |record, status| {
+                                if live_event_inspector_active
+                                    && let Some(protocol) =
+                                        LiveProtocolRecord::from_capture(&pack, record, status)
+                                {
+                                    live_protocol_records.push(protocol);
+                                }
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
                         burst_metrics.observe_reduction(
@@ -6211,9 +7176,20 @@ impl RuntimeController {
                         if let Some(error) = live_snapshot_error {
                             return Err(error);
                         }
-                        if live_event_stream_enabled {
-                            live_event_feed.publish_batch(live_event_lines);
-                        }
+                        live_event_lines.extend(
+                            live_protocol_records
+                                .iter()
+                                .map(LiveEventRecord::from_protocol),
+                        );
+                        live_event_lines.sort_by_key(|record| {
+                            (
+                                record.capture_sequence.unwrap_or(u64::MAX),
+                                u8::from(record.line.source_kind != "protocol"),
+                                record.line.sequence,
+                            )
+                        });
+                        live_event_feed.publish_protocol_batch(live_protocol_records);
+                        live_event_feed.publish_batch(live_event_lines);
                         if live_rdps_validation_enabled
                             && !validation_checkpoint_failed
                             && last_validation_checkpoint.elapsed()
@@ -9989,6 +10965,29 @@ fn handle_connection(
             };
             write_json(&mut stream, 200, &controller.wait_for_live_events(request))?;
         }
+        ("POST", "/api/custom-triggers/event-inspector/live/wait") => {
+            let request: LiveEventWaitRequest = match serde_json::from_slice(&request.body) {
+                Ok(request) => request,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            write_json(&mut stream, 200, &controller.wait_for_live_events(request))?;
+        }
+        ("POST", "/api/custom-triggers/event-inspector/live/detail") => {
+            let request: LiveEventDetailRequest = match serde_json::from_slice(&request.body) {
+                Ok(request) => request,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            match controller.live_event_detail(request) {
+                Ok(detail) => write_json(&mut stream, 200, &detail)?,
+                Err(error) => write_api_error(&mut stream, 404, error)?,
+            }
+        }
         ("GET", "/api/runtime/environment") => {
             write_json(&mut stream, 200, &runtime_environment())?;
         }
@@ -12845,13 +13844,26 @@ mod tests {
     fn live_event_feed_batches_id_first_lines_without_canonical_json() {
         let feed = LiveEventFeed::default();
         feed.reset("live-session".into());
-        feed.publish_batch(vec![LiveEventLine {
-            revision: 0,
-            sequence: 7,
-            observed_micros: 99,
-            topic: EventTopic::Combat,
-            kind: "damage".into(),
-            raw_ids: "entity:20 -> entity:30 · ability:40 · amount:50".into(),
+        feed.publish_batch(vec![LiveEventRecord {
+            line: LiveEventLine {
+                revision: 0,
+                sequence: 7,
+                observed_micros: 99,
+                source_kind: "canonical",
+                topic: EventTopic::Combat,
+                kind: "damage".into(),
+                raw_ids: "entity:20 -> entity:30 · ability:40 · amount:50".into(),
+            },
+            capture_sequence: Some(17),
+            timeline_sequence: Some(3),
+            game_time_millis: Some(88),
+            fields: vec![LiveEventField {
+                path: "event.ability_id",
+                label: "Ability ID",
+                value: "40".into(),
+                value_type: "u32",
+                usable_in_trigger: true,
+            }],
         }]);
 
         let batch = feed.wait_after(0, Duration::from_millis(1), 16, false);
@@ -12860,6 +13872,307 @@ mod tests {
         assert_eq!(batch.events[0].sequence, 7);
         assert_eq!(batch.events[0].kind, "damage");
         assert!(!batch.has_more);
+
+        let detail = feed
+            .detail(LiveEventDetailRequest {
+                session_id: "live-session".into(),
+                revision: batch.events[0].revision,
+                sequence: 7,
+            })
+            .unwrap();
+        assert_eq!(detail.timeline_sequence, Some(3));
+        assert_eq!(detail.game_time_millis, Some(88));
+        assert_eq!(detail.fields.len(), 1);
+        assert_eq!(detail.fields[0].path, "event.ability_id");
+        assert!(detail.fields[0].usable_in_trigger);
+        assert_eq!(detail.protocol_capture_sequence, Some(17));
+        assert!(detail.protocol.is_none());
+    }
+
+    #[test]
+    fn live_event_feed_activates_only_for_a_bounded_reader_lease() {
+        let feed = LiveEventFeed::default();
+        assert!(!feed.has_active_reader());
+
+        let _ = feed.wait_after(0, Duration::from_millis(1), 1, false);
+        assert!(feed.has_active_reader());
+        let lease_end = feed.active_reader_until_unix_millis.load(Ordering::Acquire);
+        assert!(!feed.has_active_reader_at(lease_end.saturating_add(1)));
+    }
+
+    #[test]
+    fn live_protocol_detail_parses_only_bounded_generic_wire_fields() {
+        let payload = [
+            0x08, 0x96, 0x01, // field 1: varint 150
+            0x12, 0x03, b'a', b'b', b'c', // field 2: bytes "abc"
+            0x1d, 0x78, 0x56, 0x34, 0x12, // field 3: fixed32
+        ];
+        let (fields, truncated, error) = parse_bounded_protobuf_fields(&payload);
+        assert!(!truncated);
+        assert_eq!(error, None);
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].path, "field.1[0]");
+        assert_eq!(fields[0].wire_type, "varint");
+        assert_eq!(fields[0].value, "150 (0x96)");
+        assert_eq!(fields[1].wire_type, "length_delimited");
+        assert!(fields[1].value.contains("text \"abc\""));
+        assert_eq!(fields[2].wire_type, "fixed32");
+
+        let (_, _, malformed) = parse_bounded_protobuf_fields(&[0x12, 0x05, 0x01]);
+        assert_eq!(
+            malformed.as_deref(),
+            Some("truncated length-delimited field")
+        );
+    }
+
+    #[test]
+    fn live_protocol_detail_has_an_independent_hard_byte_budget() {
+        let feed = LiveEventFeed::default();
+        feed.reset("protocol-session".into());
+        feed.publish_protocol_batch(
+            (1..=40)
+                .map(|capture_sequence| LiveProtocolRecord {
+                    capture_sequence,
+                    observed_micros: capture_sequence,
+                    connection_id: 1,
+                    stream_id: 2,
+                    direction: "ServerToClient".into(),
+                    fragment: "Notify".into(),
+                    compression: "NotCompressed".into(),
+                    service_id: 3,
+                    method_id: 4,
+                    stub_id: 5,
+                    call_id: None,
+                    service_name: "WorldNtf".into(),
+                    method_name: "Fixture".into(),
+                    message_name: Some("FixtureNtf".into()),
+                    domain: "combat",
+                    decode_status: "decoded",
+                    application_bytes: LIVE_PROTOCOL_MAX_PAYLOAD_BYTES,
+                    payload: Some(vec![0; LIVE_PROTOCOL_MAX_PAYLOAD_BYTES]),
+                    omission_reason: None,
+                })
+                .collect(),
+        );
+        let state = feed
+            .state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(state.protocol_records.len() < 40);
+        assert!(state.protocol_records.len() <= LIVE_PROTOCOL_RING_CAPACITY);
+        assert!(state.protocol_retained_bytes <= LIVE_PROTOCOL_RING_MAX_BYTES);
+        assert_eq!(state.protocol_records.back().unwrap().capture_sequence, 40);
+    }
+
+    #[test]
+    fn allowlisted_protocol_message_can_be_selected_without_a_canonical_event() {
+        let feed = LiveEventFeed::default();
+        feed.reset("protocol-only-session".into());
+        let protocol = LiveProtocolRecord {
+            capture_sequence: 23,
+            observed_micros: 45_000,
+            connection_id: 7,
+            stream_id: 8,
+            direction: "ServerToClient".into(),
+            fragment: "Notify".into(),
+            compression: "NotCompressed".into(),
+            service_id: 100,
+            method_id: 200,
+            stub_id: 300,
+            call_id: None,
+            service_name: "WorldNtf".into(),
+            method_name: "Fixture".into(),
+            message_name: Some("FixtureNtf".into()),
+            domain: "world_state",
+            decode_status: "decoded",
+            application_bytes: 2,
+            payload: Some(vec![0x08, 0x01]),
+            omission_reason: None,
+        };
+        let line = LiveEventRecord::from_protocol(&protocol);
+        feed.publish_protocol_batch(vec![protocol]);
+        feed.publish_batch(vec![line]);
+
+        let batch = feed.wait_after(0, Duration::from_millis(1), 16, false);
+        assert_eq!(batch.schema_version, 3);
+        assert_eq!(batch.events.len(), 1);
+        assert_eq!(batch.events[0].source_kind, "protocol");
+        assert_eq!(batch.events[0].kind, "protocol_message");
+        assert!(batch.events[0].raw_ids.contains("WorldNtf.Fixture"));
+
+        let detail = feed
+            .detail(LiveEventDetailRequest {
+                session_id: "protocol-only-session".into(),
+                revision: batch.events[0].revision,
+                sequence: 23,
+            })
+            .unwrap();
+        assert_eq!(detail.source_kind, "protocol");
+        assert_eq!(detail.fields.len(), 3);
+        assert_eq!(detail.protocol.unwrap().fields[0].value, "1 (0x1)");
+    }
+
+    #[test]
+    fn protocol_inspector_rejects_unrouted_opaque_and_prohibited_payloads() {
+        let allowed_route = RouteKey::new(
+            rlogs_game_bpsr::PacketDirection::ServerToClient,
+            rlogs_game_bpsr::FragmentKind::Notify,
+            100,
+            1,
+        );
+        let opaque_route = RouteKey::new(
+            rlogs_game_bpsr::PacketDirection::ServerToClient,
+            rlogs_game_bpsr::FragmentKind::Notify,
+            100,
+            2,
+        );
+        let prohibited_route = RouteKey::new(
+            rlogs_game_bpsr::PacketDirection::ServerToClient,
+            rlogs_game_bpsr::FragmentKind::Notify,
+            100,
+            3,
+        );
+        let decoder = rlogs_game_bpsr::DecoderKind::NotifyEnterWorldV1;
+        let mapping = |route, method_name: &str, disposition| rlogs_game_bpsr::ProtocolPackRoute {
+            route,
+            service_name: "Fixture".into(),
+            method_name: method_name.into(),
+            message_name: Some(format!("{method_name}Ntf")),
+            confidence: rlogs_game_bpsr::MappingConfidence::Verified,
+            provenance: Vec::new(),
+            features: Vec::new(),
+            disposition,
+        };
+        let pack = ProtocolPack::build(rlogs_game_bpsr::ProtocolPackDefinition {
+            schema_version: rlogs_game_bpsr::PROTOCOL_PACK_SCHEMA_VERSION,
+            pack_id: "inspector-privacy-fixture".into(),
+            target: rlogs_game_bpsr::ProtocolPackTarget {
+                deployment_id: "global".into(),
+                region_id: None,
+                channel: "steam".into(),
+                build_id: "fixture".into(),
+                executable_version: None,
+            },
+            acquisition: rlogs_game_bpsr::ProtocolPackAcquisition::default(),
+            provenance: Vec::new(),
+            routes: vec![
+                mapping(
+                    allowed_route,
+                    "Allowed",
+                    ProtocolPackRouteDisposition::Allowed {
+                        domain: decoder.domain(),
+                        decoder,
+                    },
+                ),
+                mapping(opaque_route, "Opaque", ProtocolPackRouteDisposition::Opaque),
+                mapping(
+                    prohibited_route,
+                    "Prohibited",
+                    ProtocolPackRouteDisposition::Prohibited {
+                        class: rlogs_game_bpsr::ProhibitedDataClass::AuthenticationToken,
+                    },
+                ),
+            ],
+        })
+        .unwrap();
+        let record = |sequence, route: Option<RouteKey>, payload: Vec<u8>| CaptureRecord {
+            sequence,
+            observed_micros: sequence,
+            wall_clock_unix_micros: None,
+            kind: CaptureRecordKind::Packet(rlogs_game_bpsr::PacketEnvelope {
+                connection_id: 7,
+                stream_id: 8,
+                source: None,
+                destination: None,
+                direction: rlogs_game_bpsr::PacketDirection::ServerToClient,
+                fragment: Some(rlogs_game_bpsr::FragmentKind::Notify),
+                route: route.map(|key| rlogs_game_bpsr::RoutedMessage {
+                    key,
+                    stub_id: 9,
+                    call_id: None,
+                }),
+                compression: rlogs_game_bpsr::CompressionState::NotCompressed,
+                payload: rlogs_game_bpsr::PacketPayload {
+                    wire_bytes: Vec::new(),
+                    application_bytes: Some(payload),
+                },
+            }),
+        };
+
+        assert!(
+            LiveProtocolRecord::from_capture(
+                &pack,
+                &record(1, None, vec![1]),
+                ProtocolDecodeStatus::Unrouted,
+            )
+            .is_none()
+        );
+        assert!(
+            LiveProtocolRecord::from_capture(
+                &pack,
+                &record(2, Some(opaque_route), vec![2]),
+                ProtocolDecodeStatus::OpaqueLocalOnly,
+            )
+            .is_none()
+        );
+        assert!(
+            LiveProtocolRecord::from_capture(
+                &pack,
+                &record(3, Some(prohibited_route), vec![3]),
+                ProtocolDecodeStatus::Prohibited(
+                    rlogs_game_bpsr::ProhibitedDataClass::AuthenticationToken,
+                ),
+            )
+            .is_none()
+        );
+        let oversized = LiveProtocolRecord::from_capture(
+            &pack,
+            &record(
+                4,
+                Some(allowed_route),
+                vec![0; LIVE_PROTOCOL_MAX_PAYLOAD_BYTES + 1],
+            ),
+            ProtocolDecodeStatus::Decoded,
+        )
+        .unwrap();
+        assert!(oversized.payload.is_none());
+        assert_eq!(
+            oversized.omission_reason,
+            Some("payload_exceeds_local_detail_limit")
+        );
+    }
+
+    #[test]
+    fn live_event_feed_enforces_row_and_byte_budgets_together() {
+        let feed = LiveEventFeed::default();
+        feed.reset("bounded-session".into());
+        feed.publish_batch(
+            (1..=6)
+                .map(|sequence| LiveEventRecord {
+                    line: LiveEventLine {
+                        revision: 0,
+                        sequence,
+                        observed_micros: sequence,
+                        source_kind: "canonical",
+                        topic: EventTopic::Actor,
+                        kind: "actor".into(),
+                        raw_ids: "x".repeat(1024 * 1024),
+                    },
+                    capture_sequence: None,
+                    timeline_sequence: None,
+                    game_time_millis: None,
+                    fields: Vec::new(),
+                })
+                .collect(),
+        );
+
+        let batch = feed.wait_after(0, Duration::from_millis(1), 16, true);
+        assert!(batch.retained_events <= LIVE_EVENT_RING_CAPACITY);
+        assert!(batch.retained_bytes <= LIVE_EVENT_RING_MAX_BYTES);
+        assert_eq!(batch.capacity_events, LIVE_EVENT_RING_CAPACITY);
+        assert_eq!(batch.capacity_bytes, LIVE_EVENT_RING_MAX_BYTES);
+        assert!(batch.retained_events < 6);
+        assert!(batch.dropped_before > 0);
     }
 
     #[test]
@@ -12900,12 +14213,20 @@ mod tests {
             }),
         };
 
-        let line = LiveEventLine::from_envelope(&event);
-        assert_eq!(line.kind, "data_gap");
+        let record = LiveEventRecord::from_envelope(&event);
+        assert_eq!(record.line.kind, "data_gap");
         assert_eq!(
-            line.raw_ids,
+            record.line.raw_ids,
             "data_gap | unknown_route | WorldNtf notify method 45 was not decoded"
         );
+        assert!(record.fields.iter().any(|field| {
+            field.path == "event.kind" && field.value == "data_gap" && field.usable_in_trigger
+        }));
+        assert!(record.fields.iter().any(|field| {
+            field.path == "provenance.source.connection_id"
+                && field.value == "45"
+                && !field.usable_in_trigger
+        }));
     }
 
     #[test]
@@ -12914,13 +14235,20 @@ mod tests {
         feed.reset("live-session".into());
         feed.publish_batch(
             (1..=20)
-                .map(|sequence| LiveEventLine {
-                    revision: 0,
-                    sequence,
-                    observed_micros: sequence,
-                    topic: EventTopic::Actor,
-                    kind: "actor".into(),
-                    raw_ids: format!("entity:{sequence}"),
+                .map(|sequence| LiveEventRecord {
+                    line: LiveEventLine {
+                        revision: 0,
+                        sequence,
+                        observed_micros: sequence,
+                        source_kind: "canonical",
+                        topic: EventTopic::Actor,
+                        kind: "actor".into(),
+                        raw_ids: format!("entity:{sequence}"),
+                    },
+                    capture_sequence: None,
+                    timeline_sequence: None,
+                    game_time_millis: None,
+                    fields: Vec::new(),
                 })
                 .collect(),
         );
@@ -13791,6 +15119,14 @@ kind = "content"
         assert!(!is_developer_only_route(
             "GET",
             "/api/profiles/photo-wall/status"
+        ));
+        assert!(!is_developer_only_route(
+            "POST",
+            "/api/custom-triggers/event-inspector/live/wait"
+        ));
+        assert!(!is_developer_only_route(
+            "POST",
+            "/api/custom-triggers/event-inspector/live/detail"
         ));
     }
 

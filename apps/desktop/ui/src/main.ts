@@ -1,7 +1,10 @@
 import "./styles/shell.css";
 
 import { createDevelopmentAdapter } from "./adapters/development-adapter";
-import { createLocalHostAdapterIfAvailable } from "./adapters/local-host-adapter";
+import {
+  createLocalHostAdapterIfAvailable,
+  mountStandaloneEventInspector,
+} from "./adapters/local-host-adapter";
 import { loadAndApplyThemeSettings } from "./adapters/theme-settings";
 import { DesktopShell } from "./shell/desktop-shell";
 import { installInterfaceZoom } from "./shell/ui-zoom";
@@ -18,6 +21,9 @@ const query = new URLSearchParams(window.location.search);
 const isCombatOverlayRuntime =
   window.location.pathname === "/combat-overlay-runtime" ||
   query.get("surface") === "combat-overlay";
+const isEventInspectorRuntime =
+  window.location.pathname === "/event-inspector-runtime" ||
+  query.get("surface") === "event-inspector";
 
 if (isCombatOverlayRuntime) {
   const appWindow = getCurrentWindow();
@@ -93,6 +99,11 @@ if (isCombatOverlayRuntime) {
     // native surface if initialization fails after navigation succeeds.
     await invoke("combat_overlay_ready").catch(() => undefined);
   }
+} else if (isEventInspectorRuntime) {
+  await loadAndApplyThemeSettings();
+  installInterfaceZoom();
+  document.body.dataset.surface = "event-inspector";
+  mountStandaloneEventInspector(root);
 } else {
   await loadAndApplyThemeSettings();
   installInterfaceZoom();

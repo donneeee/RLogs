@@ -196,8 +196,21 @@ impl<'a> ContinuousBpsrRecorder<'a> {
     pub fn process_frame_with_local_observations(
         &mut self,
         frame: CapturedFrame,
+        observe: impl FnMut(&rlogs_events::EventEnvelope),
+        observe_photo: impl FnMut(&LocalPhotoAssetReference),
+    ) -> Result<Vec<SealedDungeonRunLog>, ContinuousRecordingError> {
+        self.process_frame_with_inspection(frame, observe, observe_photo, |_, _| {})
+    }
+
+    /// Decodes one frame and exposes the reviewed capture record/status pair
+    /// after protocol routing. The observer is intentionally borrowed and
+    /// synchronous so callers can retain only explicitly bounded local detail.
+    pub fn process_frame_with_inspection(
+        &mut self,
+        frame: CapturedFrame,
         mut observe: impl FnMut(&rlogs_events::EventEnvelope),
         mut observe_photo: impl FnMut(&LocalPhotoAssetReference),
+        mut observe_protocol: impl FnMut(&CaptureRecord, crate::ProtocolDecodeStatus),
     ) -> Result<Vec<SealedDungeonRunLog>, ContinuousRecordingError> {
         self.metrics.frame_count = self.metrics.frame_count.saturating_add(1);
         let pipeline = self
@@ -206,7 +219,12 @@ impl<'a> ContinuousBpsrRecorder<'a> {
             .ok_or(ContinuousRecordingError::NoAttributedConnection)?;
         let mut drafts = Vec::new();
         pipeline.process_frame(&frame, |draft| drafts.push(draft));
-        self.process_drafts(drafts, &mut observe, &mut observe_photo)
+        self.process_drafts(
+            drafts,
+            &mut observe,
+            &mut observe_photo,
+            &mut observe_protocol,
+        )
     }
 
     /// Drains transport/framing state and seals an active run as incomplete.
@@ -216,7 +234,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         if let Some(pipeline) = &mut self.pipeline {
             let mut drafts = Vec::new();
             pipeline.finish(|draft| drafts.push(draft));
-            sealed.extend(self.process_drafts(drafts, &mut |_| {}, &mut |_| {})?);
+            sealed.extend(self.process_drafts(drafts, &mut |_| {}, &mut |_| {}, &mut |_, _| {})?);
         }
         if let Some(segments) = &mut self.segments {
             let final_segment = segments.finish()?;
@@ -234,6 +252,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         drafts: Vec<CaptureRecordDraft>,
         observe: &mut impl FnMut(&rlogs_events::EventEnvelope),
         observe_photo: &mut impl FnMut(&LocalPhotoAssetReference),
+        observe_protocol: &mut impl FnMut(&CaptureRecord, crate::ProtocolDecodeStatus),
     ) -> Result<Vec<SealedDungeonRunLog>, ContinuousRecordingError> {
         let mut sealed = Vec::new();
         for draft in drafts {
@@ -264,6 +283,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
                     self.metrics.research_record_count.saturating_add(1);
             }
             let batch = self.runtime.process(&record)?;
+            observe_protocol(&record, batch.status);
             self.metrics.record_count = self.metrics.record_count.saturating_add(1);
             self.metrics.decoded_event_count = self
                 .metrics
@@ -879,11 +899,13 @@ mod tests {
         let return_wire = bpsr_frame(3, &return_payload);
         let mut events = Vec::new();
         let mut photos = Vec::new();
+        let mut protocol = Vec::new();
         recorder
-            .process_frame_with_local_observations(
+            .process_frame_with_inspection(
                 captured_frame(2, 200, server, client, 200, &return_wire),
                 |event| events.push(event.clone()),
                 |photo| photos.push(photo.clone()),
+                |record, status| protocol.push((record.sequence, status)),
             )
             .unwrap();
 
@@ -892,6 +914,7 @@ mod tests {
         assert_eq!(photos[0].character_id, 3_296_036);
         assert_eq!(photos[0].photo_id, 42);
         assert_eq!(photos[0].version, Some(3));
+        assert_eq!(protocol, vec![(3, crate::ProtocolDecodeStatus::Decoded)]);
         std::fs::remove_dir_all(directory).unwrap();
     }
 
