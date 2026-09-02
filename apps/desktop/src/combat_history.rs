@@ -3,6 +3,7 @@ use std::fs::OpenOptions;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
+use rlogs_game_bpsr::character_id_from_entity_uuid;
 use rlogs_plugin_combat_meter::{
     COMBAT_HISTORY_SCHEMA_VERSION, CombatHistorySnapshot, CombatHistoryView, HistoryAbilitySummary,
     HistoryAbilityTargetSummary, HistoryActorSummary, HistoryLoadoutSlot,
@@ -175,8 +176,10 @@ impl CombatHistoryStore {
     }
 
     /// Atomically replaces only the derived rDPS projection in an existing
-    /// history artifact. The saved ordinary combat cube remains authoritative;
-    /// replay must match it exactly before any formula result is accepted.
+    /// history artifact. Stable player UIDs bridge replay-local actor aliases.
+    /// Ordinary saved values are preserved; exact replay must match them or be
+    /// a field-by-field subset from the legacy terminal-frame overrun. Any such
+    /// additive suffix remains conserved and is explicitly marked incomplete.
     pub fn refresh_rdps_projection(
         &self,
         projection: &CombatHistorySnapshot,
@@ -635,7 +638,7 @@ pub(crate) fn merge_rdps_projection(
             let projected_actors = projected_view
                 .actors
                 .iter()
-                .map(|actor| ((actor.actor_id.as_str(), actor.entity_uuid.as_str()), actor))
+                .map(|actor| (replay_actor_identity(actor), actor))
                 .collect::<HashMap<_, _>>();
             if projected_actors.len() != projected_view.actors.len() {
                 return Err(format!(
@@ -646,10 +649,10 @@ pub(crate) fn merge_rdps_projection(
             let existing_actor_keys = view
                 .actors
                 .iter()
-                .map(|actor| (actor.actor_id.clone(), actor.entity_uuid.clone()))
+                .map(replay_actor_identity)
                 .collect::<HashSet<_>>();
             for actor in &mut view.actors {
-                let key = (actor.actor_id.as_str(), actor.entity_uuid.as_str());
+                let key = replay_actor_identity(actor);
                 let Some(projected_actor) = projected_actors.get(&key) else {
                     if actor.damage != 0 {
                         return Err(format!(
@@ -664,16 +667,26 @@ pub(crate) fn merge_rdps_projection(
                     actor.rdps_incomplete = false;
                     continue;
                 };
-                if actor.damage != projected_actor.damage {
+                if actor.damage < projected_actor.damage {
                     return Err(format!(
-                        "replayed combat history run {} view {} changed ordinary damage for actor {}",
+                        "replayed combat history run {} view {} exceeds saved ordinary damage for actor {}",
                         run.run_index, view.id, actor.actor_id
                     ));
                 }
-                actor.rdps_damage = projected_actor.rdps_damage;
+                let legacy_terminal_delta = actor.damage.saturating_sub(projected_actor.damage);
+                actor.rdps_damage = projected_actor
+                    .rdps_damage
+                    .and_then(|damage| damage.checked_add(legacy_terminal_delta));
+                if projected_actor.rdps_damage.is_some() && actor.rdps_damage.is_none() {
+                    return Err(format!(
+                        "replayed combat history run {} view {} overflowed adjusted damage for actor {}",
+                        run.run_index, view.id, actor.actor_id
+                    ));
+                }
                 actor.rdps_contribution_given = projected_actor.rdps_contribution_given;
                 actor.rdps_contribution_received = projected_actor.rdps_contribution_received;
-                actor.rdps_incomplete = projected_actor.rdps_incomplete;
+                actor.rdps_incomplete =
+                    projected_actor.rdps_incomplete || legacy_terminal_delta != 0;
                 actor.rdps = actor.rdps_damage.map(|damage| {
                     if view.elapsed_micros == 0 {
                         0.0
@@ -683,7 +696,7 @@ pub(crate) fn merge_rdps_projection(
                 });
             }
             if let Some(actor) = projected_view.actors.iter().find(|actor| {
-                !existing_actor_keys.contains(&(actor.actor_id.clone(), actor.entity_uuid.clone()))
+                !existing_actor_keys.contains(&replay_actor_identity(actor))
                     && (actor.rdps_contribution_given.unwrap_or_default() != 0
                         || actor.rdps_contribution_received.unwrap_or_default() != 0)
             }) {
@@ -692,8 +705,13 @@ pub(crate) fn merge_rdps_projection(
                     run.run_index, view.id, actor.actor_id
                 ));
             }
-            view.damage_influences
-                .clone_from(&projected_view.damage_influences);
+            view.damage_influences = remap_projected_damage_influences(view, projected_view)?;
+            validate_rdps_conservation(view).map_err(|error| {
+                format!(
+                    "replayed combat history run {} view {} could not conserve the saved ordinary combat cube: {error}",
+                    run.run_index, view.id
+                )
+            })?;
         }
         run.rdps_status.clone_from(&projected.rdps_status);
     }
@@ -708,14 +726,29 @@ fn validate_ordinary_view_matches(
         .actors
         .iter()
         .filter(|actor| ordinary_actor_has_activity(actor))
-        .map(|actor| ((actor.actor_id.as_str(), actor.entity_uuid.as_str()), actor))
+        .map(|actor| (replay_actor_identity(actor), actor))
         .collect::<HashMap<_, _>>();
     let projected_actors = projected
         .actors
         .iter()
         .filter(|actor| ordinary_actor_has_activity(actor))
-        .map(|actor| ((actor.actor_id.as_str(), actor.entity_uuid.as_str()), actor))
+        .map(|actor| (replay_actor_identity(actor), actor))
         .collect::<HashMap<_, _>>();
+    if saved_actors.len()
+        != saved
+            .actors
+            .iter()
+            .filter(|actor| ordinary_actor_has_activity(actor))
+            .count()
+        || projected_actors.len()
+            != projected
+                .actors
+                .iter()
+                .filter(|actor| ordinary_actor_has_activity(actor))
+                .count()
+    {
+        return Err("ordinary combat cube contains duplicate stable actor identities".into());
+    }
     for (key, saved_actor) in &saved_actors {
         let projected_actor = projected_actors.get(key).ok_or_else(|| {
             format!(
@@ -723,14 +756,7 @@ fn validate_ordinary_view_matches(
                 saved_actor.actor_id
             )
         })?;
-        let differences = ordinary_actor_differences(saved_actor, projected_actor);
-        if !differences.is_empty() {
-            return Err(format!(
-                "actor {} changed fields: {}",
-                saved_actor.actor_id,
-                differences.join(", ")
-            ));
-        }
+        validate_ordinary_actor_compatible(saved, projected, saved_actor, projected_actor)?;
     }
     if let Some((_, actor)) = projected_actors
         .iter()
@@ -745,59 +771,226 @@ fn ordinary_actor_has_activity(actor: &HistoryActorSummary) -> bool {
     actor.damage != 0 || actor.effective_damage != 0 || actor.hits != 0 || actor.critical_hits != 0
 }
 
-fn ordinary_actor_differences(
-    saved: &HistoryActorSummary,
-    projected: &HistoryActorSummary,
-) -> Vec<&'static str> {
-    let mut differences = Vec::new();
-    for (matches, label) in [
-        (saved.damage == projected.damage, "damage"),
-        (
-            saved.effective_damage == projected.effective_damage,
-            "effective_damage",
-        ),
-        (saved.hits == projected.hits, "hits"),
-        (
-            saved.critical_hits == projected.critical_hits,
-            "critical_hits",
-        ),
-        (
-            ordinary_abilities_match(&saved.abilities, &projected.abilities),
-            "abilities",
-        ),
-    ] {
-        if !matches {
-            differences.push(label);
-        }
-    }
-    differences
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum ReplayActorIdentity {
+    Character(String),
+    Runtime {
+        actor_id: String,
+        entity_uuid: String,
+    },
 }
 
-fn ordinary_abilities_match(
-    saved: &[HistoryAbilitySummary],
-    projected: &[HistoryAbilitySummary],
-) -> bool {
-    let projected = projected
+fn replay_actor_identity(actor: &HistoryActorSummary) -> ReplayActorIdentity {
+    replay_identity(
+        actor.actor_kind.as_deref(),
+        actor.character_id.as_deref(),
+        &actor.actor_id,
+        &actor.entity_uuid,
+    )
+}
+
+fn replay_identity(
+    actor_kind: Option<&str>,
+    character_id: Option<&str>,
+    actor_id: &str,
+    entity_uuid: &str,
+) -> ReplayActorIdentity {
+    if actor_kind == Some("player") {
+        let stable_character_id = character_id
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_owned)
+            .or_else(|| {
+                entity_uuid
+                    .parse::<i64>()
+                    .ok()
+                    .and_then(character_id_from_entity_uuid)
+            });
+        if let Some(character_id) = stable_character_id {
+            return ReplayActorIdentity::Character(character_id);
+        }
+    }
+    ReplayActorIdentity::Runtime {
+        actor_id: actor_id.to_owned(),
+        entity_uuid: entity_uuid.to_owned(),
+    }
+}
+
+fn replay_target_identity(
+    view: &CombatHistoryView,
+    actor_id: &str,
+    entity_uuid: &str,
+) -> ReplayActorIdentity {
+    if let Some(actor) = view
+        .actors
+        .iter()
+        .find(|actor| actor.actor_id == actor_id && actor.entity_uuid == entity_uuid)
+    {
+        return replay_actor_identity(actor);
+    }
+    if let Some(target) = view
+        .targets
+        .iter()
+        .find(|target| target.actor_id == actor_id && target.entity_uuid == entity_uuid)
+    {
+        return replay_identity(target.actor_kind.as_deref(), None, actor_id, entity_uuid);
+    }
+    ReplayActorIdentity::Runtime {
+        actor_id: actor_id.to_owned(),
+        entity_uuid: entity_uuid.to_owned(),
+    }
+}
+
+fn saved_reference_for_identity(
+    view: &CombatHistoryView,
+    identity: &ReplayActorIdentity,
+) -> Option<(String, String)> {
+    view.actors
+        .iter()
+        .find(|actor| replay_actor_identity(actor) == *identity)
+        .map(|actor| (actor.actor_id.clone(), actor.entity_uuid.clone()))
+        .or_else(|| {
+            view.targets.iter().find_map(|target| {
+                (replay_identity(
+                    target.actor_kind.as_deref(),
+                    None,
+                    &target.actor_id,
+                    &target.entity_uuid,
+                ) == *identity)
+                    .then(|| (target.actor_id.clone(), target.entity_uuid.clone()))
+            })
+        })
+}
+
+fn remap_projected_damage_influences(
+    saved_view: &CombatHistoryView,
+    projected_view: &CombatHistoryView,
+) -> Result<Vec<rlogs_plugin_combat_meter::HistoryDamageInfluenceSummary>, String> {
+    projected_view
+        .damage_influences
+        .iter()
+        .map(|projected| {
+            let mut influence = projected.clone();
+            for (label, actor_id, entity_uuid) in [
+                (
+                    "provider",
+                    &mut influence.provider_actor_id,
+                    &mut influence.provider_entity_uuid,
+                ),
+                (
+                    "recipient",
+                    &mut influence.recipient_actor_id,
+                    &mut influence.recipient_entity_uuid,
+                ),
+            ] {
+                let identity = replay_target_identity(projected_view, actor_id, entity_uuid);
+                let (saved_actor_id, saved_entity_uuid) =
+                    saved_reference_for_identity(saved_view, &identity).ok_or_else(|| {
+                        format!(
+                            "replayed damage influence {label} {actor_id} has no saved stable identity"
+                        )
+                    })?;
+                *actor_id = saved_actor_id;
+                *entity_uuid = saved_entity_uuid;
+            }
+            match (
+                influence.target_actor_id.as_mut(),
+                influence.target_entity_uuid.as_mut(),
+            ) {
+                (Some(actor_id), Some(entity_uuid)) => {
+                    let identity = replay_target_identity(projected_view, actor_id, entity_uuid);
+                    let (saved_actor_id, saved_entity_uuid) =
+                        saved_reference_for_identity(saved_view, &identity).ok_or_else(|| {
+                            format!(
+                                "replayed damage influence target {actor_id} has no saved stable identity"
+                            )
+                        })?;
+                    *actor_id = saved_actor_id;
+                    *entity_uuid = saved_entity_uuid;
+                }
+                (None, None) => {}
+                _ => return Err("replayed damage influence has a partial target identity".into()),
+            }
+            Ok(influence)
+        })
+        .collect()
+}
+
+fn validate_ordinary_actor_compatible(
+    saved_view: &CombatHistoryView,
+    projected_view: &CombatHistoryView,
+    saved: &HistoryActorSummary,
+    projected: &HistoryActorSummary,
+) -> Result<(), String> {
+    for (compatible, label) in [
+        (saved.damage >= projected.damage, "damage"),
+        (
+            saved.effective_damage >= projected.effective_damage,
+            "effective_damage",
+        ),
+        (saved.hits >= projected.hits, "hits"),
+        (
+            saved.critical_hits >= projected.critical_hits,
+            "critical_hits",
+        ),
+    ] {
+        if !compatible {
+            return Err(format!(
+                "actor {} replay exceeds saved {label}",
+                saved.actor_id
+            ));
+        }
+    }
+    validate_ordinary_abilities_compatible(saved_view, projected_view, saved, projected)
+        .map_err(|error| format!("actor {} changed abilities: {error}", saved.actor_id))
+}
+
+fn validate_ordinary_abilities_compatible(
+    saved_view: &CombatHistoryView,
+    projected_view: &CombatHistoryView,
+    saved_actor: &HistoryActorSummary,
+    projected_actor: &HistoryActorSummary,
+) -> Result<(), String> {
+    let saved = saved_actor
+        .abilities
         .iter()
         .filter(|ability| ordinary_ability_has_damage(ability))
         .map(|ability| (ability.ability_id.as_str(), ability))
         .collect::<HashMap<_, _>>();
-    let saved = saved
+    let projected = projected_actor
+        .abilities
         .iter()
         .filter(|ability| ordinary_ability_has_damage(ability))
-        .collect::<Vec<_>>();
-    saved.len() == projected.len()
-        && saved.into_iter().all(|ability| {
-            projected
-                .get(ability.ability_id.as_str())
-                .is_some_and(|candidate| {
-                    ability.hits == candidate.hits
-                        && ability.critical_hits == candidate.critical_hits
-                        && ability.damage == candidate.damage
-                        && ability.effective_damage == candidate.effective_damage
-                        && ordinary_ability_targets_match(&ability.targets, &candidate.targets)
-                })
-        })
+        .map(|ability| (ability.ability_id.as_str(), ability))
+        .collect::<HashMap<_, _>>();
+    for (ability_id, projected_ability) in projected {
+        let saved_ability = saved
+            .get(ability_id)
+            .ok_or_else(|| format!("replay introduced damaging ability {ability_id}"))?;
+        for (compatible, label) in [
+            (saved_ability.damage >= projected_ability.damage, "damage"),
+            (
+                saved_ability.effective_damage >= projected_ability.effective_damage,
+                "effective_damage",
+            ),
+            (saved_ability.hits >= projected_ability.hits, "hits"),
+            (
+                saved_ability.critical_hits >= projected_ability.critical_hits,
+                "critical_hits",
+            ),
+        ] {
+            if !compatible {
+                return Err(format!("ability {ability_id} replay exceeds saved {label}"));
+            }
+        }
+        validate_ordinary_ability_targets_compatible(
+            saved_view,
+            projected_view,
+            &saved_ability.targets,
+            &projected_ability.targets,
+        )
+        .map_err(|error| format!("ability {ability_id} targets changed: {error}"))?;
+    }
+    Ok(())
 }
 
 fn ordinary_ability_has_damage(ability: &HistoryAbilitySummary) -> bool {
@@ -807,35 +1000,54 @@ fn ordinary_ability_has_damage(ability: &HistoryAbilitySummary) -> bool {
         || ability.critical_hits != 0
 }
 
-fn ordinary_ability_targets_match(
+fn validate_ordinary_ability_targets_compatible(
+    saved_view: &CombatHistoryView,
+    projected_view: &CombatHistoryView,
     saved: &[HistoryAbilityTargetSummary],
     projected: &[HistoryAbilityTargetSummary],
-) -> bool {
+) -> Result<(), String> {
+    let saved = saved
+        .iter()
+        .filter(|target| ordinary_ability_target_has_damage(target))
+        .map(|target| {
+            (
+                replay_target_identity(saved_view, &target.actor_id, &target.entity_uuid),
+                target,
+            )
+        })
+        .collect::<HashMap<_, _>>();
     let projected = projected
         .iter()
         .filter(|target| ordinary_ability_target_has_damage(target))
         .map(|target| {
             (
-                (target.actor_id.as_str(), target.entity_uuid.as_str()),
+                replay_target_identity(projected_view, &target.actor_id, &target.entity_uuid),
                 target,
             )
         })
         .collect::<HashMap<_, _>>();
-    let saved = saved
-        .iter()
-        .filter(|target| ordinary_ability_target_has_damage(target))
-        .collect::<Vec<_>>();
-    saved.len() == projected.len()
-        && saved.into_iter().all(|target| {
-            projected
-                .get(&(target.actor_id.as_str(), target.entity_uuid.as_str()))
-                .is_some_and(|candidate| {
-                    target.damage == candidate.damage
-                        && target.effective_damage == candidate.effective_damage
-                        && target.hits == candidate.hits
-                        && target.critical_hits == candidate.critical_hits
-                })
-        })
+    for (identity, projected_target) in projected {
+        let saved_target = saved
+            .get(&identity)
+            .ok_or_else(|| format!("replay introduced target {identity:?}"))?;
+        for (compatible, label) in [
+            (saved_target.damage >= projected_target.damage, "damage"),
+            (
+                saved_target.effective_damage >= projected_target.effective_damage,
+                "effective_damage",
+            ),
+            (saved_target.hits >= projected_target.hits, "hits"),
+            (
+                saved_target.critical_hits >= projected_target.critical_hits,
+                "critical_hits",
+            ),
+        ] {
+            if !compatible {
+                return Err(format!("target {identity:?} replay exceeds saved {label}"));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn ordinary_ability_target_has_damage(target: &HistoryAbilityTargetSummary) -> bool {
@@ -1227,6 +1439,63 @@ mod tests {
         projection.runs[0].views[0].actors[1].damage = 61;
         projection.runs[0].views[0].actors[1].rdps_damage = Some(51);
         assert!(merge_rdps_projection(&saved, &projection).is_err());
+    }
+
+    #[test]
+    fn rdps_refresh_matches_players_by_character_uid_and_marks_legacy_suffix_incomplete() {
+        let mut saved = fixture_snapshot("monitor.formula-stable-player", &[0]);
+        let mut saved_actor = fixture_actor("1", "216009015296", 100);
+        saved_actor.character_id = Some("3296036".into());
+        saved_actor.hits = 2;
+        saved.runs[0].views[0].actors = vec![saved_actor];
+
+        let mut projection = saved.clone();
+        projection.rdps_formula_identity = Some("sha256:new".into());
+        let projected_actor = &mut projection.runs[0].views[0].actors[0];
+        projected_actor.actor_id = "2".into();
+        projected_actor.entity_uuid = "216009015936".into();
+        projected_actor.character_id = None;
+        projected_actor.damage = 90;
+        projected_actor.effective_damage = 90;
+        projected_actor.hits = 1;
+        projected_actor.rdps = Some(90.0);
+        projected_actor.rdps_damage = Some(90);
+        projection.runs[0].views[0].damage_influences = vec![
+            serde_json::from_value(serde_json::json!({
+                "effect_id": "3003052",
+                "attribution_component": "fixture",
+                "complete_effect": true,
+                "provider_actor_id": "2",
+                "provider_entity_uuid": "216009015936",
+                "recipient_actor_id": "2",
+                "recipient_entity_uuid": "216009015936",
+                "affected_ability_id": "5001",
+                "target_actor_id": "2",
+                "target_entity_uuid": "216009015936",
+                "first_observed_micros": 30,
+                "last_observed_micros": 30,
+                "damage_event_count": 1,
+                "observed_damage": "90",
+                "exact_integer_delta": "0",
+                "exact_rational_deltas": [],
+                "attributed_rdps": "0",
+                "damage_context_complete": true
+            }))
+            .unwrap(),
+        ];
+
+        let refreshed = merge_rdps_projection(&saved, &projection).unwrap();
+        let actor = &refreshed.runs[0].views[0].actors[0];
+        assert_eq!(actor.actor_id, "1");
+        assert_eq!(actor.entity_uuid, "216009015296");
+        assert_eq!(actor.damage, 100);
+        assert_eq!(actor.rdps_damage, Some(100));
+        assert!(actor.rdps_incomplete);
+        let influence = &refreshed.runs[0].views[0].damage_influences[0];
+        assert_eq!(influence.provider_actor_id, "1");
+        assert_eq!(influence.provider_entity_uuid, "216009015296");
+        assert_eq!(influence.recipient_actor_id, "1");
+        assert_eq!(influence.target_actor_id.as_deref(), Some("1"));
     }
 
     #[test]
