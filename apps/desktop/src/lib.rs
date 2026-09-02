@@ -149,6 +149,8 @@ const PHOTO_WALL_PENDING_ASSET_CAPACITY: usize = 256;
 /// traffic occupies a small fraction of that amount.
 const LIVE_CAPTURE_INGRESS_QUEUE_CAPACITY: usize = 512;
 const PHOTO_WALL_RETRY_INTERVAL: Duration = Duration::from_secs(10);
+const AUTOMATIC_UPLOAD_INITIAL_RETRY_INTERVAL: Duration = Duration::from_secs(5);
+const AUTOMATIC_UPLOAD_MAXIMUM_RETRY_INTERVAL: Duration = Duration::from_secs(300);
 /// Coalesce the burst of partial profile observations emitted after a scene
 /// refresh into one current package before the automatic publisher spends a
 /// submissions-service request. Manual publication remains immediate.
@@ -161,6 +163,18 @@ fn submission_service_url(developer_tools_enabled: bool, developer_override: Opt
     } else {
         PUBLIC_SUBMISSION_SERVICE_URL
     }
+}
+
+fn automatic_upload_retry_interval(consecutive_failures: u32) -> Duration {
+    let exponent = consecutive_failures.saturating_sub(1).min(16);
+    AUTOMATIC_UPLOAD_INITIAL_RETRY_INTERVAL
+        .checked_mul(1_u32 << exponent)
+        .unwrap_or(AUTOMATIC_UPLOAD_MAXIMUM_RETRY_INTERVAL)
+        .min(AUTOMATIC_UPLOAD_MAXIMUM_RETRY_INTERVAL)
+}
+
+fn retry_deadline_reached(deadline: Option<Instant>) -> bool {
+    deadline.is_none_or(|deadline| Instant::now() >= deadline)
 }
 
 fn provisional_research_routes(pack: &ProtocolPack) -> BTreeSet<RouteKey> {
@@ -3453,6 +3467,7 @@ struct RuntimeController {
     photo_wall_publication_status: Arc<Mutex<PhotoWallPublicationStatus>>,
     submission_policy: Arc<Mutex<SubmissionPolicyStore>>,
     submission_connection: Mutex<SubmissionConnectionStore>,
+    submission_connection_revision: AtomicU64,
     submission_transport: Mutex<Option<SubmissionTransport>>,
     core_settings: Mutex<CoreSettingsStore>,
     hotkey_settings: Mutex<HotkeySettingsStore>,
@@ -3573,6 +3588,7 @@ impl RuntimeController {
             )),
             submission_policy: Arc::new(Mutex::new(submission_policy)),
             submission_connection: Mutex::new(submission_connection),
+            submission_connection_revision: AtomicU64::new(0),
             submission_transport: Mutex::new(submission_transport),
             core_settings: Mutex::new(core_settings),
             hotkey_settings: Mutex::new(hotkey_settings),
@@ -3601,12 +3617,30 @@ impl RuntimeController {
         let controller = Arc::clone(self);
         thread::Builder::new()
             .name("rlogs-submission-uploader".into())
-            .spawn(move || loop {
+            .spawn(move || {
+                let mut connection_revision = controller
+                    .submission_connection_revision
+                    .load(Ordering::Acquire);
+                let mut submission_failures = 0_u32;
+                let mut submission_retry_after = None;
+                let mut profile_failures = 0_u32;
+                let mut profile_retry_after = None;
+                loop {
                 if shutdown
                     .as_ref()
                     .is_some_and(|shutdown| shutdown.load(Ordering::Acquire))
                 {
                     return;
+                }
+                let current_connection_revision = controller
+                    .submission_connection_revision
+                    .load(Ordering::Acquire);
+                if current_connection_revision != connection_revision {
+                    connection_revision = current_connection_revision;
+                    submission_failures = 0;
+                    submission_retry_after = None;
+                    profile_failures = 0;
+                    profile_retry_after = None;
                 }
                 let policy = controller
                     .submission_policy
@@ -3622,6 +3656,7 @@ impl RuntimeController {
                 if policy.log_uploader.enabled
                     && policy.log_uploader.automatic_combat_logs
                     && connected
+                    && retry_deadline_reached(submission_retry_after)
                 {
                     let next = controller
                         .submission_queue()
@@ -3636,27 +3671,66 @@ impl RuntimeController {
                         match controller.upload_queued_submission(SubmissionUploadRequest {
                             queue_id: entry.queue_id,
                         }) {
-                            Ok(_) => continue,
+                            Ok(_) => {
+                                submission_failures = 0;
+                                submission_retry_after = None;
+                                continue;
+                            }
                             Err(error)
                                 if error.contains("another full artifact import")
                                     || error.contains("was not found") => {}
-                            Err(error) => eprintln!(
-                                "automatic research submission will retry after an error: {error}"
-                            ),
+                            Err(error) => {
+                                submission_failures = submission_failures.saturating_add(1);
+                                let delay = automatic_upload_retry_interval(submission_failures);
+                                submission_retry_after = Some(Instant::now() + delay);
+                                eprintln!(
+                                    "automatic research submission will retry in {} seconds after an error: {error}",
+                                    delay.as_secs()
+                                );
+                            }
                         }
+                    } else {
+                        submission_failures = 0;
+                        submission_retry_after = None;
                     }
+                } else if !policy.log_uploader.enabled
+                    || !policy.log_uploader.automatic_combat_logs
+                    || !connected
+                {
+                    submission_failures = 0;
+                    submission_retry_after = None;
                 }
                 if policy.bpsr_profile_sync.enabled
                     && policy.bpsr_profile_sync.automatic_profiles
                     && connected
+                    && retry_deadline_reached(profile_retry_after)
                 {
                     match controller.publish_next_pending_profile() {
-                        Ok(true) => continue,
-                        Ok(false) => {}
-                        Err(error) => eprintln!(
-                            "automatic profile publication will retry after an error: {error}"
-                        ),
+                        Ok(true) => {
+                            profile_failures = 0;
+                            profile_retry_after = None;
+                            continue;
+                        }
+                        Ok(false) => {
+                            profile_failures = 0;
+                            profile_retry_after = None;
+                        }
+                        Err(error) => {
+                            profile_failures = profile_failures.saturating_add(1);
+                            let delay = automatic_upload_retry_interval(profile_failures);
+                            profile_retry_after = Some(Instant::now() + delay);
+                            eprintln!(
+                                "automatic profile publication will retry in {} seconds after an error: {error}",
+                                delay.as_secs()
+                            );
+                        }
                     }
+                } else if !policy.bpsr_profile_sync.enabled
+                    || !policy.bpsr_profile_sync.automatic_profiles
+                    || !connected
+                {
+                    profile_failures = 0;
+                    profile_retry_after = None;
                 }
                 // Keep automatic profile publication responsive after a fresh
                 // live observation or account connection. This loop performs
@@ -3670,6 +3744,7 @@ impl RuntimeController {
                         return;
                     }
                     thread::sleep(Duration::from_millis(250));
+                }
                 }
             })
             .map(|_| ())
@@ -4686,6 +4761,8 @@ impl RuntimeController {
             .submission_transport
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(transport);
+        self.submission_connection_revision
+            .fetch_add(1, Ordering::AcqRel);
         Ok(view)
     }
 
@@ -4699,6 +4776,8 @@ impl RuntimeController {
             .submission_transport
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        self.submission_connection_revision
+            .fetch_add(1, Ordering::AcqRel);
         Ok(view)
     }
 
@@ -10615,6 +10694,20 @@ mod tests {
         assert_eq!(continuous_optional_worker_count(16), 8);
         assert_eq!(continuous_optional_worker_count(32), 8);
         assert_eq!(continuous_optional_worker_count(128), 8);
+    }
+
+    #[test]
+    fn automatic_upload_retries_back_off_without_exceeding_five_minutes() {
+        assert_eq!(automatic_upload_retry_interval(0), Duration::from_secs(5));
+        assert_eq!(automatic_upload_retry_interval(1), Duration::from_secs(5));
+        assert_eq!(automatic_upload_retry_interval(2), Duration::from_secs(10));
+        assert_eq!(automatic_upload_retry_interval(3), Duration::from_secs(20));
+        assert_eq!(automatic_upload_retry_interval(6), Duration::from_secs(160));
+        assert_eq!(automatic_upload_retry_interval(7), Duration::from_secs(300));
+        assert_eq!(
+            automatic_upload_retry_interval(64),
+            Duration::from_secs(300)
+        );
     }
 
     #[test]
