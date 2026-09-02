@@ -40,9 +40,9 @@ use rlogs_plugin_combat_meter::{
 };
 use rlogs_plugin_encounter_recorder::EncounterRecorderPlugin;
 use rlogs_submission::{
-    ArtifactBuildLimits, LocalLogArtifact, ReportVisibility, Sha256Digest, SubmissionSession,
-    UploadManifest, VerificationTier, build_privacy_verified_submission_artifact,
-    submission_privacy_policy_digest,
+    ArtifactBuildLimits, LocalLogArtifact, ReportVisibility, Sha256Digest, SubmissionMetadata,
+    SubmissionSession, UploadManifest, VerificationTier,
+    build_privacy_verified_submission_artifact, submission_privacy_policy_digest,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -572,7 +572,7 @@ impl SubmissionService {
         if report.visibility == ReportVisibility::Private {
             return Err(ServiceError::NotFound);
         }
-        Ok(report)
+        self.refresh_projection_if_needed(report)
     }
 
     fn account_report(
@@ -585,7 +585,7 @@ impl SubmissionService {
         let submitted_by_account =
             report.submission_provenance.submitter_id.as_deref() == Some(submitter_id);
         if submitted_by_account {
-            return Ok(report);
+            return self.refresh_projection_if_needed(report);
         }
         if report.visibility == ReportVisibility::Private {
             return Err(ServiceError::NotFound);
@@ -602,10 +602,80 @@ impl SubmissionService {
                 .iter()
                 .any(|character_id| claimed_character_ids.contains(character_id))
         }) {
-            Ok(report)
+            self.refresh_projection_if_needed(report)
         } else {
             Err(ServiceError::NotFound)
         }
+    }
+
+    /// Replays a legacy public projection from its immutable, privacy-verified
+    /// artifact when a user first opens it. This keeps old My Parses entries
+    /// useful without trusting a client resubmission or paying the replay cost
+    /// on every receiver startup.
+    fn refresh_projection_if_needed(
+        &self,
+        report: PublicParseReport,
+    ) -> Result<PublicParseReport, ServiceError> {
+        if report.schema_version >= PUBLIC_PARSE_SCHEMA_VERSION {
+            return Ok(report);
+        }
+        let _write = self.write_guard();
+        let current: PublicParseReport = read_json(&self.projection_path(&report.report_id)?)?;
+        if current.schema_version >= PUBLIC_PARSE_SCHEMA_VERSION {
+            return Ok(current);
+        }
+        let refreshed = self.refresh_projection_locked(current)?;
+        if refreshed.visibility == ReportVisibility::Public {
+            self.rebuild_catalog_locked()?;
+        }
+        Ok(refreshed)
+    }
+
+    fn refresh_projection_locked(
+        &self,
+        report: PublicParseReport,
+    ) -> Result<PublicParseReport, ServiceError> {
+        let artifact_digest = Sha256Digest::parse(report.verification.artifact_sha256.clone())?;
+        let artifact_path = self.artifact_path(&artifact_digest)?;
+        let artifact_file = File::open(&artifact_path)?;
+        let artifact = build_privacy_verified_submission_artifact(
+            artifact_file,
+            ArtifactBuildLimits::default(),
+            RlogLimits::default(),
+        )
+        .map_err(std::io::Error::other)?;
+        let protocol_digest = report
+            .protocol_pack_digest
+            .strip_prefix("sha256:")
+            .unwrap_or(&report.protocol_pack_digest);
+        let metadata = SubmissionMetadata::new(
+            report.game_plugin_id.clone(),
+            report.report_id.clone(),
+            0,
+            report.report_id.clone(),
+            report.region_id.clone(),
+            report.client_build.clone(),
+            Sha256Digest::parse(protocol_digest.to_owned())?,
+            Sha256Digest::parse(report.verification.privacy_policy_digest.clone())?,
+            report.visibility,
+        );
+        let manifest = UploadManifest {
+            metadata,
+            chunks: Vec::new(),
+            sealed_log_digest: Some(artifact_digest),
+        };
+        let refreshed = build_public_report(
+            &artifact_path,
+            &manifest,
+            &artifact,
+            &report.report_id,
+            report.created_unix_millis,
+            report.submission_provenance,
+        )?;
+        let membership = build_private_parse_membership(&artifact_path, &refreshed)?;
+        write_json_atomic(&self.membership_path(&refreshed.report_id)?, &membership)?;
+        write_json_atomic(&self.projection_path(&refreshed.report_id)?, &refreshed)?;
+        Ok(refreshed)
     }
 
     fn update_report_visibility(
@@ -621,6 +691,9 @@ impl SubmissionService {
         if report.submission_provenance.submitter_id.as_deref() != Some(submitter_id) {
             // Do not disclose whether a report exists to a different account.
             return Err(ServiceError::NotFound);
+        }
+        if report.schema_version < PUBLIC_PARSE_SCHEMA_VERSION {
+            report = self.refresh_projection_locked(report)?;
         }
         report.visibility = visibility;
         write_json_atomic(&path, &report)?;
