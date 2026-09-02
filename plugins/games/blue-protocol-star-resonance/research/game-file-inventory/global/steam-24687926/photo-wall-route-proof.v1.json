@@ -4,7 +4,7 @@
   "game_build": "24687926",
   "deployment": "global",
   "channel": "steam",
-  "decision": "append two local-only reviewed photograph return decoders and publish the exact server-bound full render or wall-card thumbnail as candidate routes",
+  "decision": "append two local-only reviewed photograph return decoders; GetPhoto is now runtime-verified for exact server-bound full-render publication while GetAlbumPhotos remains a candidate until its own live reply is retained",
   "protocol_pack_migration": {
     "prior_pack_id": "global-steam-24687926-static-candidate-v4",
     "prior_protocol_pack_digest": "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
@@ -21,6 +21,26 @@
     "modified_combat_route_count": 0,
     "removed_combat_route_count": 0,
     "formula_compatibility_decision": "authorized: the v5 identity changes only the pack ID and appends two character-profile return routes whose decoded values are local-only; all 53 prior routes and every combat decoder are unchanged"
+  },
+  "runtime_validation": {
+    "validated_route": "Photograph/GetPhoto return (service 904190988, method 12)",
+    "game_build": "24687926",
+    "character_id": 3296036,
+    "photo_id": 1,
+    "selected_picture_type": "ECameraRender (2)",
+    "published_media_type": "image/png",
+    "published_byte_length": 3144767,
+    "published_sha256": "282c8807bd8ab90d3e86f4df865e8a6a82702b780413c9eef50eca2b74811934",
+    "published_dimensions": {
+      "width": 1920,
+      "height": 1080
+    },
+    "public_asset_route": "/v1/profiles/prf_e569ead2193f107ea0ce6c44de4e5983/photo-wall/1",
+    "public_get_result": "HTTP 200 with the exact expected byte length, media type, and SHA-256",
+    "website_result": "the deployed public profile loaded the route as a complete 1920x1080 image and displayed it in Wall slot 1",
+    "visual_adjudication": "the published render matches the image content supplied by the character owner from the in-game Photo Wall",
+    "sensitive_values_retained": false,
+    "get_album_photos_status": "not promoted by this observation"
   },
   "sources": [
     {
@@ -93,7 +113,7 @@
       "method_name": "GetPhoto",
       "method_id": 12,
       "decoder": "get_photo_v1",
-      "runtime_confidence": "candidate-until-next-live-gallery-observation"
+      "runtime_confidence": "verified-live-global-steam-24687926"
     }
   ],
   "privacy": {

@@ -519,6 +519,7 @@ fn reviewed_photo_source_url(value: &str) -> Result<Url, String> {
         || !url.username().is_empty()
         || url.password().is_some()
         || !url.path().starts_with("/xinghen-prod/")
+        || url.query().is_some()
         || url.fragment().is_some()
     {
         return Err("reviewed Photo Wall URL is outside the approved BPSR image origin".into());
@@ -645,6 +646,10 @@ mod tests {
         assert!(reviewed_photo_source_url("http://photo.playbpsr.com/xinghen-prod/a.png").is_err());
         assert!(reviewed_photo_source_url("https://example.com/xinghen-prod/a.png").is_err());
         assert!(reviewed_photo_source_url("https://photo.playbpsr.com/private/a.png").is_err());
+        assert!(
+            reviewed_photo_source_url("https://photo.playbpsr.com/xinghen-prod/a.png?token=secret")
+                .is_err()
+        );
     }
 
     #[test]

@@ -202,6 +202,8 @@ Image URLs require a separate gate:
 
 - the character owner explicitly enables image publication;
 - only HTTPS URLs from reviewed game/CDN hosts are accepted;
+- URL query strings and fragments are rejected before a reference can enter
+  the publication pipeline;
 - the website fetches through a bounded image proxy, validates size and
   content type, and caches or rehosts the result;
 - query credentials, unexpected hosts, redirects, and non-image responses are
@@ -210,6 +212,14 @@ Image URLs require a separate gate:
   capability;
 - public guild identity/badge data may appear on profiles; guild photos and
   descriptions remain a separately reviewed user-generated-content domain.
+
+An exact live Photo Wall reference that passes those gates is retained in a
+bounded, local-only retry ledger under `runtime-data/profile-sync`. The ledger
+is not a canonical event and is never written to an `.rlog` or website profile
+payload. It exists so an account/network outage or app restart does not require
+the owner to reopen the same Photo Wall image. A successful server publication
+atomically removes only the matching character/photo/version reference; a
+newer observation cannot be cleared by an older receipt.
 
 This preserves game profile pictures without turning a packet-supplied string
 into an arbitrary remote URL in a public page.

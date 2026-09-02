@@ -8,6 +8,7 @@ mod hotkey_settings;
 mod layout_settings;
 mod module_optimizer;
 mod native_plugin_processes;
+mod photo_wall_pending;
 mod profile_packages;
 mod submission_connection;
 mod submission_policy;
@@ -42,6 +43,7 @@ pub use hotkey_settings::{
 use layout_settings::{LayoutSettings, LayoutSettingsStore};
 use module_optimizer::{LocalModuleInventoryView, load_local_module_inventories};
 use native_plugin_processes::{NativePluginLaunch, NativePluginProcesses};
+use photo_wall_pending::PhotoWallPendingStore;
 use profile_packages::{
     LocalProfilePackageStore, ProfilePackageInspection, ProfilePackageStoreView,
     ProfilePackageView, ProfilePublicationBaselineStore, ProfilePublicationLedger,
@@ -3447,6 +3449,7 @@ struct RuntimeController {
     profile_publications: Arc<Mutex<ProfilePublicationLedger>>,
     profile_publication_baselines: Arc<Mutex<ProfilePublicationBaselineStore>>,
     profile_publication: Arc<Mutex<()>>,
+    photo_wall_pending: Arc<Mutex<PhotoWallPendingStore>>,
     photo_wall_publication_status: Arc<Mutex<PhotoWallPublicationStatus>>,
     submission_policy: Arc<Mutex<SubmissionPolicyStore>>,
     submission_connection: Mutex<SubmissionConnectionStore>,
@@ -3508,6 +3511,9 @@ impl RuntimeController {
         let profile_publication_baselines = ProfilePublicationBaselineStore::open(
             install_root.join("runtime-data/profile-sync/packages"),
         )?;
+        let photo_wall_pending = PhotoWallPendingStore::open(
+            install_root.join("runtime-data/profile-sync/photo-wall-pending.v1.json"),
+        )?;
         profile_publications.reconcile(&active_profile_package_ids)?;
         let submission_policy = SubmissionPolicyStore::open(
             install_root.join("runtime-data/settings/submission-policy.v1.json"),
@@ -3561,6 +3567,7 @@ impl RuntimeController {
             profile_publications: Arc::new(Mutex::new(profile_publications)),
             profile_publication_baselines: Arc::new(Mutex::new(profile_publication_baselines)),
             profile_publication: Arc::new(Mutex::new(())),
+            photo_wall_pending: Arc::new(Mutex::new(photo_wall_pending)),
             photo_wall_publication_status: Arc::new(Mutex::new(
                 PhotoWallPublicationStatus::default(),
             )),
@@ -5471,6 +5478,7 @@ impl RuntimeController {
         let profile_packages = Arc::clone(&self.profile_packages);
         let profile_publications = Arc::clone(&self.profile_publications);
         let profile_publication = Arc::clone(&self.profile_publication);
+        let photo_wall_pending = Arc::clone(&self.photo_wall_pending);
         let photo_wall_publication_status = Arc::clone(&self.photo_wall_publication_status);
         let live_submission_policy = Arc::clone(&self.submission_policy);
         let live_overlay_settings = Arc::clone(&self.combat_overlay_settings);
@@ -5648,9 +5656,9 @@ impl RuntimeController {
                         );
                     let (photo_publication_sender, photo_publication_worker) =
                         spawn_photo_wall_publication_worker(
-                            submission_transport.is_some(),
                             submission_transport.clone(),
                             Arc::clone(&profile_publications),
+                            Arc::clone(&photo_wall_pending),
                             Arc::clone(&photo_wall_publication_status),
                         )
                         .map_or((None, None), |(sender, worker)| {
@@ -7261,21 +7269,29 @@ fn apply_profile_sync_policy(
 }
 
 fn spawn_photo_wall_publication_worker(
-    enabled: bool,
     transport: Option<SubmissionTransport>,
     publications: Arc<Mutex<ProfilePublicationLedger>>,
+    pending_store: Arc<Mutex<PhotoWallPendingStore>>,
     status: Arc<Mutex<PhotoWallPublicationStatus>>,
 ) -> Option<(SyncSender<LocalPhotoAssetReference>, JoinHandle<()>)> {
-    if !enabled {
-        return None;
-    }
-    let transport = transport?;
     let (sender, receiver) =
         sync_channel::<LocalPhotoAssetReference>(PHOTO_WALL_PUBLICATION_QUEUE_CAPACITY);
     let worker = thread::Builder::new()
         .name("rlogs-photo-wall-publisher".into())
         .spawn(move || {
-            let mut pending = BTreeMap::<(i64, u32), LocalPhotoAssetReference>::new();
+            let mut pending = pending_store
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .references()
+                .into_iter()
+                .map(|reference| ((reference.character_id, reference.photo_id), reference))
+                .collect::<BTreeMap<_, _>>();
+            for reference in pending.values() {
+                status
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .queued(reference);
+            }
             let mut attempted_at = BTreeMap::<(i64, u32), Instant>::new();
             let mut published = BTreeSet::<(i64, u32, Option<u32>, String)>::new();
             let mut disconnected = false;
@@ -7296,6 +7312,20 @@ fn spawn_photo_wall_publication_worker(
                                 >= current.version.unwrap_or_default()
                         });
                         if replace {
+                            if let Err(error) = pending_store
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .upsert(&reference)
+                            {
+                                status
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                    .retryable_failure(&reference, error.clone());
+                                eprintln!(
+                                    "Photo Wall image {} for UID {} could not enter the retry ledger: {error}",
+                                    reference.photo_id, reference.character_id
+                                );
+                            }
                             if pending.len() >= PHOTO_WALL_PENDING_ASSET_CAPACITY
                                 && !pending.contains_key(&key)
                             {
@@ -7327,6 +7357,9 @@ fn spawn_photo_wall_publication_worker(
                         return true;
                     }
                     attempted_at.insert(*key, Instant::now());
+                    let Some(transport) = transport.as_ref() else {
+                        return !disconnected;
+                    };
                     let character_id = reference.character_id.to_string();
                     let profile_id = publications
                         .lock()
@@ -7343,6 +7376,16 @@ fn spawn_photo_wall_publication_worker(
                         reference.declared_size,
                     ) {
                         Ok(_) => {
+                            if let Err(error) = pending_store
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                .remove_if_matches(reference)
+                            {
+                                eprintln!(
+                                    "Published Photo Wall image {} for UID {} but could not clear its retry ledger entry: {error}",
+                                    reference.photo_id, reference.character_id
+                                );
+                            }
                             status
                                 .lock()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -10626,6 +10669,32 @@ mod tests {
         assert_eq!(published.state, "published");
         assert_eq!(published.published_count, 1);
         assert_eq!(published.last_error, None);
+    }
+
+    #[test]
+    fn photo_wall_worker_retains_exact_reference_without_an_account_connection() {
+        let root = temporary_root();
+        let pending_path = root.join("photo-wall-pending.v1.json");
+        let pending = Arc::new(Mutex::new(
+            PhotoWallPendingStore::open(pending_path.clone()).unwrap(),
+        ));
+        let publications = Arc::new(Mutex::new(
+            ProfilePublicationLedger::open(root.join("publications.v1.json")).unwrap(),
+        ));
+        let status = Arc::new(Mutex::new(PhotoWallPublicationStatus::default()));
+        let (sender, worker) =
+            spawn_photo_wall_publication_worker(None, publications, Arc::clone(&pending), status)
+                .unwrap();
+        let mut photo = test_photo_wall_reference();
+        photo.source_url = "https://photo.playbpsr.com/xinghen-prod/1/3296036/7/photo.png".into();
+        sender.send(photo.clone()).unwrap();
+        drop(sender);
+        worker.join().unwrap();
+
+        drop(pending);
+        let restored = PhotoWallPendingStore::open(pending_path).unwrap();
+        assert_eq!(restored.references(), vec![photo]);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
