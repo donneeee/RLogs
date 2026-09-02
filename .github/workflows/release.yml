@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/ui/package-lock.json
+
+      - name: Install desktop UI dependencies
+        working-directory: apps/desktop/ui
+        run: npm ci --ignore-scripts
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify tag matches the desktop version
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/desktop-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match desktop version v$version"
+          }
+
+      - name: Build and attach the Windows installer
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop-tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: rLogs v__VERSION__
+          releaseBody: Installer validation is still running.
+          releaseDraft: true
+          prerelease: false
+          args: --ci
+          retryAttempts: 2
+
+      - name: Record the checksum and publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content apps/desktop-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $installer = Get-ChildItem target/release/bundle/nsis -Filter "rLogs_${version}_x64-setup.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "The expected NSIS installer was not produced"
+          }
+          $sha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
+          $body = @(
+            "rLogs v$version"
+            ""
+            "- Adds the bounded standalone Event Inspector with freeze/resume, searchable protocol-route metadata, pinned-field comparison, and burst-coalesced rendering."
+            "- Captures current character stats and exact Battle Imagine role-action identities and tiers, while keeping Falcon Strike and Falcon Lightning Strike separate."
+            "- Time-gates automatic parse submissions, coalesces profile updates, and binds exact Photo Wall replies to the proven local profile for verified image publishing."
+            ""
+            "Installer SHA-256: $sha256"
+          ) -join [Environment]::NewLine
+          gh release edit "${{ github.ref_name }}" --title "rLogs v$version" --notes $body --draft=false --latest
