@@ -173,6 +173,11 @@ another run.
 The catalog exposes every contributing report ID, contribution count, and
 distinct submitter count. Source artifacts and projections remain independent,
 so disagreements can be compared and resolved as evidence rather than erased.
+Catalog schema 6 derives participant coverage from the private membership index
+that was independently rebuilt from each sealed artifact. Public projections
+may redact remote character IDs; reconciliation schema 10 therefore uses those
+private IDs for set membership and coverage math without adding redacted remote
+UIDs to the public character manifest.
 
 ### Cross-vantage rDPS reconciliation
 

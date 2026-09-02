@@ -66,8 +66,8 @@ use profiles::{
 use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 9;
-pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 5;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 9;
+pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 10;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -266,11 +266,31 @@ struct ReconciliationRunSource {
     quality: CanonicalSpineQuality,
     local_profile_witnesses: Vec<PublicLocalProfileWitness>,
     local_state_witnesses: Vec<PublicLocalStateWitness>,
+    /// Stable participant identities that were already present in the public
+    /// projection. Only this subset may be exposed by the public
+    /// reconciliation manifest.
+    public_participant_character_ids: Vec<String>,
+    /// Exact participant membership recovered from the sealed artifact. This
+    /// is used only for coverage and witness matching; remote UIDs that were
+    /// redacted from the public projection stay private.
     participant_character_ids: Vec<String>,
 }
 
 impl ReconciliationRunSource {
-    fn from_report(report: &PublicParseReport, run: &PublicRun) -> Self {
+    fn from_report(
+        report: &PublicParseReport,
+        run: &PublicRun,
+        private_membership: Option<&PrivateRunMembership>,
+    ) -> Self {
+        let public_participant_character_ids = run
+            .participants
+            .iter()
+            .filter_map(|participant| participant.character_id.clone())
+            .collect::<BTreeSet<_>>();
+        let mut participant_character_ids = public_participant_character_ids.clone();
+        if let Some(private_membership) = private_membership {
+            participant_character_ids.extend(private_membership.character_ids.iter().cloned());
+        }
         Self {
             report_id: report.report_id.clone(),
             run_index: run.run_index,
@@ -280,11 +300,10 @@ impl ReconciliationRunSource {
             quality: CanonicalSpineQuality::from_report(report, run),
             local_profile_witnesses: run.local_profile_witnesses.clone(),
             local_state_witnesses: run.local_state_witnesses.clone(),
-            participant_character_ids: run
-                .participants
-                .iter()
-                .filter_map(|participant| participant.character_id.clone())
+            public_participant_character_ids: public_participant_character_ids
+                .into_iter()
                 .collect(),
+            participant_character_ids: participant_character_ids.into_iter().collect(),
         }
     }
 }
@@ -397,8 +416,13 @@ impl SubmissionService {
                 writes: Mutex::new(()),
             }),
         };
-        service.ensure_catalog()?;
-        service.ensure_membership_indexes()?;
+        let memberships_changed = service.ensure_membership_indexes()?;
+        if memberships_changed {
+            let _write = service.write_guard();
+            service.rebuild_catalog_locked()?;
+        } else {
+            service.ensure_catalog()?;
+        }
         service.reconcile_github_archive_outbox()?;
         Ok(service)
     }
@@ -1265,14 +1289,23 @@ impl SubmissionService {
 
     fn ensure_catalog(&self) -> Result<(), ServiceError> {
         let _write = self.write_guard();
-        if !self.catalog_path().exists() {
+        let path = self.catalog_path();
+        let current = path
+            .is_file()
+            .then(|| read_json::<PublicParseCatalog>(&path).ok())
+            .flatten();
+        if !current
+            .as_ref()
+            .is_some_and(|catalog| catalog.schema_version == PUBLIC_CATALOG_SCHEMA_VERSION)
+        {
             self.rebuild_catalog_locked()?;
         }
         Ok(())
     }
 
-    fn ensure_membership_indexes(&self) -> Result<(), ServiceError> {
+    fn ensure_membership_indexes(&self) -> Result<bool, ServiceError> {
         let _write = self.write_guard();
+        let mut changed = false;
         for file in std::fs::read_dir(self.inner.root.join("projections"))? {
             let file = file?;
             if file.path().extension().and_then(|value| value.to_str()) != Some("json") {
@@ -1302,8 +1335,9 @@ impl SubmissionService {
             }
             let membership = build_private_parse_membership(&artifact_path, &report)?;
             write_json_atomic(&path, &membership)?;
+            changed = true;
         }
-        Ok(())
+        Ok(changed)
     }
 
     fn read_membership(
@@ -1332,10 +1366,22 @@ impl SubmissionService {
             if report.visibility != ReportVisibility::Public {
                 continue;
             }
+            let membership_path = self.membership_path(&report.report_id)?;
+            let membership = membership_path
+                .is_file()
+                .then(|| self.read_membership(&report))
+                .transpose()?;
             for run in &report.runs {
                 let entry = PublicParseCatalogEntry::from_report(&report, run);
                 let quality = CanonicalSpineQuality::from_report(&report, run);
-                let reconciliation_source = ReconciliationRunSource::from_report(&report, run);
+                let private_run_membership = membership.as_ref().and_then(|membership| {
+                    membership
+                        .runs
+                        .iter()
+                        .find(|membership| membership.run_index == run.run_index)
+                });
+                let reconciliation_source =
+                    ReconciliationRunSource::from_report(&report, run, private_run_membership);
                 let submitter = report.submission_provenance.submitter_id.clone();
                 match grouped.entry(entry.run_group_id.clone()) {
                     std::collections::btree_map::Entry::Vacant(vacant) => {
@@ -3907,9 +3953,14 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
     sources.sort_by(|left, right| {
         (&left.report_id, left.run_index).cmp(&(&right.report_id, right.run_index))
     });
-    let mut character_ids = sources
+    let participant_character_ids = sources
         .iter()
         .flat_map(|source| source.participant_character_ids.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let participant_character_count = participant_character_ids.len();
+    let mut character_ids = sources
+        .iter()
+        .flat_map(|source| source.public_participant_character_ids.iter().cloned())
         .collect::<BTreeSet<_>>();
     character_ids.extend(
         sources
@@ -3917,7 +3968,6 @@ fn build_public_reconciliation(group: &CatalogRunGroup) -> PublicRunReconciliati
             .flat_map(|source| source.local_profile_witnesses.iter())
             .map(|witness| witness.character_id.clone()),
     );
-    let participant_character_count = character_ids.len();
 
     let characters = character_ids
         .into_iter()
@@ -5336,6 +5386,72 @@ mod tests {
     }
 
     #[test]
+    fn sealed_membership_counts_redacted_participants_without_publishing_remote_uids() {
+        let mut report =
+            fixture_public_report("rpt_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "character-a", 0);
+        for participant in &mut report.runs[0].participants {
+            participant.character_id = None;
+        }
+        let private_membership = PrivateRunMembership {
+            run_index: 0,
+            character_ids: vec!["character-a".into(), "character-b".into()],
+        };
+        let group = CatalogRunGroup {
+            representative: PublicParseCatalogEntry::from_report(&report, &report.runs[0]),
+            representative_quality: CanonicalSpineQuality::from_report(&report, &report.runs[0]),
+            submitters: BTreeSet::new(),
+            local_profile_witnesses: ["character-a".to_owned()].into_iter().collect(),
+            reconciliation_sources: vec![ReconciliationRunSource::from_report(
+                &report,
+                &report.runs[0],
+                Some(&private_membership),
+            )],
+        };
+
+        let reconciliation = build_public_reconciliation(&group);
+
+        assert_eq!(reconciliation.participant_character_count, 2);
+        assert_eq!(reconciliation.local_vantage_character_count, 1);
+        assert!(!reconciliation.complete_local_vantage_coverage);
+        assert_eq!(reconciliation.characters.len(), 1);
+        assert_eq!(reconciliation.characters[0].character_id, "character-a");
+        assert!(
+            reconciliation
+                .characters
+                .iter()
+                .all(|character| character.character_id != "character-b")
+        );
+    }
+
+    #[test]
+    fn startup_rebuilds_a_stale_derived_catalog_schema() {
+        let root = tempfile::tempdir().unwrap();
+        let service =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        write_json_atomic(
+            &service.catalog_path(),
+            &PublicParseCatalog {
+                schema_version: PUBLIC_CATALOG_SCHEMA_VERSION - 1,
+                total_entries: 0,
+                offset: 0,
+                next_offset: None,
+                entries: Vec::new(),
+                facets: CatalogFacets::default(),
+            },
+        )
+        .unwrap();
+        drop(service);
+
+        let reopened =
+            SubmissionService::open(root.path().into(), "https://example.test".into(), None)
+                .unwrap();
+        let catalog: PublicParseCatalog = read_json(&reopened.catalog_path()).unwrap();
+
+        assert_eq!(catalog.schema_version, PUBLIC_CATALOG_SCHEMA_VERSION);
+    }
+
+    #[test]
     fn duplicate_reports_from_one_local_character_are_not_cross_vantage() {
         let report = |report_id: &str| PublicReconciliationReport {
             report_id: report_id.into(),
@@ -6104,6 +6220,7 @@ mod tests {
             reconciliation_sources: vec![ReconciliationRunSource::from_report(
                 &report,
                 &report.runs[0],
+                None,
             )],
         };
         let reconciliation = build_public_reconciliation(&group);
