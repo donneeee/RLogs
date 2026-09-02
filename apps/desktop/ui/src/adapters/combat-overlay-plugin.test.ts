@@ -6,6 +6,7 @@ import {
   describeOverlayRdpsAvailability,
   formatOverlayNumber,
   formatOverlayPercent,
+  humanizeOverlayAttributionComponent,
   isOverlayRosterActor,
   mergeProjectedActorPresentation,
   maskUnavailableOverlayRdps,
@@ -60,6 +61,12 @@ function editableSummarySettings() {
 }
 
 describe("Combat Overlay plug-in settings", () => {
+  it("keeps internal combat identifiers out of attribution labels", () => {
+    expect(humanizeOverlayAttributionComponent(
+      "Encore (55333) standalone-generated-damage (Actions 230401/230501)",
+    )).toBe("Encore Standalone Generated Damage");
+  });
+
   it("groups live rDPS detail by affected skill and provider/effect/component", () => {
     const actors = [{
       actor_id: "18446744073709551615",
@@ -290,7 +297,7 @@ describe("Combat Overlay plug-in settings", () => {
     expect(preferredOverlayDisplayName("UID 3296036", null)).toBe("UID 3296036");
   });
 
-  it("labels live combatants by name, character UID, then exact entity identity", () => {
+  it("labels live combatants without exposing runtime entity identifiers", () => {
     const base = {
       actor_id: "77",
       entity_uuid: "216009015936",
@@ -319,8 +326,8 @@ describe("Combat Overlay plug-in settings", () => {
         primary_imagines: [],
       },
     })).toBe("UID 3296036");
-    expect(actorName(base)).toBe("Entity UUID 216009015936");
-    expect(actorName({ ...base, entity_uuid: null })).toBe("Actor ID 77");
+    expect(actorName(base)).toBe("Unidentified player");
+    expect(actorName({ ...base, entity_uuid: null })).toBe("Unidentified player");
   });
 
   it("keeps confirmed combatants and excludes unresolved damage targets from the roster", () => {

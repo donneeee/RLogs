@@ -2491,7 +2491,7 @@ export function applyOverlayRdpsSkillDetail(
     providerGrants.set(grantKey, {
       providerAbilityId,
       effect_id: influence.effect_id,
-      effect_name: effectNames.get(influence.effect_id) ?? `Effect ${influence.effect_id}`,
+      effect_name: effectNames.get(influence.effect_id) ?? "Unlocalized combat effect",
       attribution_component: component,
       attributed_rdps: amount.toString(),
       rdps: 0,
@@ -2519,9 +2519,9 @@ export function applyOverlayRdpsSkillDetail(
           + BigInt(row.attributed_rdps);
         grouped.set(key, {
           provider_actor_id: row.provider_actor_id,
-          provider_name: actorNames.get(row.provider_actor_id) ?? `Actor ID ${row.provider_actor_id}`,
+          provider_name: actorNames.get(row.provider_actor_id) ?? "Unidentified participant",
           effect_id: row.effect_id,
-          effect_name: effectNames.get(row.effect_id) ?? `Effect ${row.effect_id}`,
+          effect_name: effectNames.get(row.effect_id) ?? "Unlocalized combat effect",
           attribution_component: component,
           attributed_rdps: amount.toString(),
           rdps: duration === 0 ? 0 : Number(amount) * 1_000_000 / duration,
@@ -3414,12 +3414,12 @@ function renderAbilityBreakdown(
     }
     const labels = el("span");
     labels.append(
-      text("strong", ability.presentation_name?.trim() || `Ability ${ability.ability_id}`),
+      text("strong", ability.presentation_name?.trim() || "Unlocalized combat action"),
       text(
         "small",
         ability.rdps_support_effect
-          ? `Support effect ID ${ability.rdps_effect_id ?? "unknown"}`
-          : `ID ${ability.ability_id}`,
+          ? "Support contribution"
+          : "Observed combat action",
       ),
     );
     identity.append(labels);
@@ -3430,14 +3430,14 @@ function renderAbilityBreakdown(
       const receivedTooltip = sources.map((source) => {
         const component = source.attribution_component === null
           ? "complete effect"
-          : source.attribution_component;
-        return `Received from ${source.provider_name} → ${source.effect_name} (ID ${source.effect_id}) · ${component}: ${formatDecimalAmount(source.attributed_rdps)} rDMG / ${formatOverlayNumber(source.rdps, numberFormats.skillValues)} rDPS · ${source.damage_event_count} events`;
+          : humanizeOverlayAttributionComponent(source.attribution_component);
+        return `Received from ${source.provider_name} → ${source.effect_name} · ${component}: ${formatDecimalAmount(source.attributed_rdps)} rDMG / ${formatOverlayNumber(source.rdps, numberFormats.skillValues)} rDPS · ${source.damage_event_count} events`;
       });
       const givenTooltip = grants.map((grant) => {
         const component = grant.attribution_component === null
           ? "complete effect"
-          : grant.attribution_component;
-        return `Given via ${grant.effect_name} (ID ${grant.effect_id}) · ${component}: ${formatDecimalAmount(grant.attributed_rdps)} rDMG / ${formatOverlayNumber(grant.rdps, numberFormats.skillValues)} rDPS · ${grant.damage_event_count} events`;
+          : humanizeOverlayAttributionComponent(grant.attribution_component);
+        return `Given via ${grant.effect_name} · ${component}: ${formatDecimalAmount(grant.attributed_rdps)} rDMG / ${formatOverlayNumber(grant.rdps, numberFormats.skillValues)} rDPS · ${grant.damage_event_count} events`;
       });
       const tooltip = [...receivedTooltip, ...givenTooltip].join("\n");
       const rdmg = text(
@@ -3478,19 +3478,19 @@ function renderAbilityBreakdown(
       for (const source of ability.rdps_sources!) {
         const component = source.attribution_component === null
           ? "complete effect"
-          : source.attribution_component;
+          : humanizeOverlayAttributionComponent(source.attribution_component);
         details.append(text(
           "div",
-          `Received from ${source.provider_name} → ${source.effect_name} (ID ${source.effect_id}) · ${component} · ${formatDecimalAmount(source.attributed_rdps)} rDMG · ${formatOverlayNumber(source.rdps, numberFormats.skillValues)} rDPS · ${source.damage_event_count} events`,
+          `Received from ${source.provider_name} → ${source.effect_name} · ${component} · ${formatDecimalAmount(source.attributed_rdps)} rDMG · ${formatOverlayNumber(source.rdps, numberFormats.skillValues)} rDPS · ${source.damage_event_count} events`,
         ));
       }
       for (const grant of ability.rdps_grants ?? []) {
         const component = grant.attribution_component === null
           ? "complete effect"
-          : grant.attribution_component;
+          : humanizeOverlayAttributionComponent(grant.attribution_component);
         details.append(text(
           "div",
-          `Given via ${grant.effect_name} (ID ${grant.effect_id}) · ${component} · ${formatDecimalAmount(grant.attributed_rdps)} rDMG · ${formatOverlayNumber(grant.rdps, numberFormats.skillValues)} rDPS · ${grant.damage_event_count} events`,
+          `Given via ${grant.effect_name} · ${component} · ${formatDecimalAmount(grant.attributed_rdps)} rDMG · ${formatOverlayNumber(grant.rdps, numberFormats.skillValues)} rDPS · ${grant.damage_event_count} events`,
         ));
       }
       rows.append(details);
@@ -3782,9 +3782,18 @@ export function actorName(actor: OverlayActor): string {
   if (displayName) return displayName;
   const characterId = actor.presentation?.character_id?.trim();
   if (characterId) return `UID ${characterId}`;
-  const entityUuid = actor.entity_uuid?.trim();
-  if (entityUuid && entityUuid !== "0") return `Entity UUID ${entityUuid}`;
-  return `Actor ID ${actor.actor_id}`;
+  return "Unidentified player";
+}
+
+export function humanizeOverlayAttributionComponent(component: string): string {
+  const cleaned = component
+    .replace(/\s*\((?:actions?\s*)?\d+(?:[\s/,]+\d+)*\)/giu, "")
+    .replace(/\b(?:effect|action)\s+\d+(?:[\s/,]+\d+)*\b/giu, "")
+    .replace(/[-_]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (!cleaned) return "Complete effect";
+  return cleaned.replace(/\b\w/gu, (letter) => letter.toUpperCase());
 }
 
 export function isOverlayRosterActor(actor: OverlayActor): boolean {
@@ -3843,12 +3852,8 @@ function renderBadgeCell(
       cell.append(unknownBadge(`Class and specialization were not observed for ${actorName(actor)}.`));
       return cell;
     }
-    const identity = [
-      presentation.class_name,
-      presentation.specialization_name,
-      presentation.class_id === null ? null : `Class ID ${presentation.class_id}`,
-      presentation.specialization_id === null ? null : `Specialization ID ${presentation.specialization_id}`,
-    ].filter((value): value is string => Boolean(value));
+    const identity = [presentation.class_name, presentation.specialization_name]
+      .filter((value): value is string => Boolean(value));
     cell.append(overlayRoleBadge(
       presentation.class_spec_icon_asset_path,
       "?",
@@ -3955,9 +3960,6 @@ function unknownBadge(tooltip: string): HTMLElement {
 function badgeTooltip(badge: OverlayBadgePresentation, kind: string): string {
   return [
     badge.label || kind,
-    badge.slot_id === null ? null : `Slot ${badge.slot_id}`,
-    badge.ability_id === null ? null : `Ability ID ${badge.ability_id}`,
-    badge.item_id === null ? null : `Item ID ${badge.item_id}`,
     badge.tier === null ? null : `Tier ${badge.tier}`,
     badge.level === null
       ? badge.level_min !== null && badge.level_max !== null
