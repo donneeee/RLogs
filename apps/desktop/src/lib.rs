@@ -15324,15 +15324,13 @@ kind = "content"
             .unwrap();
         assert!(!package.enabled);
         assert!(!package.active);
-        assert_eq!(catalog.workspaces.len(), 3);
-        assert!(
-            catalog
-                .workspaces
-                .iter()
-                .all(|workspace| workspace.id == "app.rlogs.session-recorder"
-                    || workspace.id == "app.rlogs.combat-meter"
-                    || workspace.id == "app.rlogs.bpsr.module-optimizer")
-        );
+        assert_eq!(catalog.workspaces.len(), 5);
+        assert!(catalog.workspaces.iter().all(|workspace| workspace.id
+            == "app.rlogs.session-recorder"
+            || workspace.id == "app.rlogs.combat-meter"
+            || workspace.id == "app.rlogs.bpsr.module-optimizer"
+            || workspace.id == "app.rlogs.overlay"
+            || workspace.id == "app.rlogs.custom-triggers"));
 
         let catalog = controller
             .set_plugin_enabled(PluginEnablementRequest {
@@ -15347,7 +15345,7 @@ kind = "content"
             .unwrap();
         assert!(package.enabled);
         assert!(package.active);
-        assert_eq!(catalog.workspaces.len(), 4);
+        assert_eq!(catalog.workspaces.len(), 6);
         let workspace = catalog
             .workspaces
             .iter()
@@ -15368,7 +15366,7 @@ kind = "content"
             .unwrap();
         assert!(package.enabled);
         assert!(package.active);
-        assert_eq!(catalog.workspaces.len(), 4);
+        assert_eq!(catalog.workspaces.len(), 6);
 
         std::fs::remove_dir_all(root).unwrap();
     }
