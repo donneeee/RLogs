@@ -10,6 +10,7 @@ test("only the submission API surface is routable", () => {
   assert.equal(routeAllowed("GET", "/v1/auth/discord/callback"), true);
   assert.equal(routeAllowed("POST", "/v1/auth/discord/complete"), true);
   assert.equal(routeAllowed("GET", "/v1/auth/device"), true);
+  assert.equal(routeAllowed("PATCH", "/v1/auth/me"), true);
   assert.equal(routeAllowed("GET", "/v1/auth/profiles"), true);
   assert.equal(routeAllowed("GET", "/v1/auth/parses"), true);
   assert.equal(routeAllowed("GET", "/v1/auth/parses/rpt_0123456789abcdef0123456789abcdef"), true);
@@ -30,6 +31,8 @@ test("only the submission API surface is routable", () => {
   assert.equal(routeAllowed("GET", "/v1/profiles?character_id=1000001"), false);
   assert.equal(routeAllowed("GET", "/v1/profiles"), true);
   assert.equal(routeAllowed("GET", "/v1/profiles/prf_0123456789abcdef0123456789abcdef"), true);
+  assert.equal(routeAllowed("GET", "/v1/users/583104927614"), true);
+  assert.equal(routeAllowed("GET", "/v1/users/3296036"), false);
   assert.equal(
     routeAllowed(
       "GET",

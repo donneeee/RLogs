@@ -57,12 +57,12 @@ mod profiles;
 
 use accounts::{
     AccountError, AccountStore, AccountView, AppTokenReceipt, DiscordConfiguration,
-    WebSessionReceipt,
+    PublicAccountIdentity, WebSessionReceipt,
 };
 use github_archive::{ArchiveJob, GithubArchive};
 use profiles::{
     PhotoAssetContent, PhotoAssetReceipt, ProfilePublishReceipt, ProfileRegistry,
-    ProfileRegistryError, PublicProfile, PublicProfileCatalog,
+    ProfileRegistryError, PublicProfile, PublicProfileCatalog, PublicProfileCatalogEntry,
 };
 use rlogs_profiles::LocalProfilePackage;
 
@@ -1751,7 +1751,7 @@ pub fn router(service: SubmissionService) -> Router {
             post(complete_discord_auth_from_site),
         )
         .route("/v1/auth/session/exchange", post(exchange_auth_code))
-        .route("/v1/auth/me", get(get_account))
+        .route("/v1/auth/me", get(get_account).patch(update_account))
         .route("/v1/auth/device", get(get_device_account))
         .route("/v1/auth/profiles", get(get_account_profiles))
         .route("/v1/auth/parses", get(get_account_parses))
@@ -1779,6 +1779,7 @@ pub fn router(service: SubmissionService) -> Router {
         )
         .route("/v1/profiles", get(list_profiles))
         .route("/v1/profiles/{profile_id}", get(get_profile))
+        .route("/v1/users/{account_id}", get(get_public_account))
         .route(
             "/v1/profiles/{profile_id}/photo-wall/{photo_id}",
             get(get_profile_photo),
@@ -1864,6 +1865,19 @@ async fn get_account(
     ))
 }
 
+async fn update_account(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+    Json(request): Json<UpdateAccountRequest>,
+) -> Result<Json<AccountView>, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    Ok(Json(service.inner.accounts.update_username(
+        token,
+        &request.username,
+        unix_millis()?,
+    )?))
+}
+
 async fn get_device_account(
     State(service): State<SubmissionService>,
     headers: HeaderMap,
@@ -1911,6 +1925,21 @@ async fn get_account_profiles(
         .accounts
         .authenticate_web(token, unix_millis()?)?;
     Ok(Json(service.owned_profile_catalog(&account.submitter_id)?))
+}
+
+async fn get_public_account(
+    State(service): State<SubmissionService>,
+    AxumPath(account_id): AxumPath<u64>,
+) -> Result<Json<PublicAccountProfileCatalog>, ApiError> {
+    let Some((submitter_id, account)) = service.inner.accounts.public_identity(account_id)? else {
+        return Err(ServiceError::NotFound.into());
+    };
+    let profiles = service.owned_profile_catalog(&submitter_id)?;
+    Ok(Json(PublicAccountProfileCatalog {
+        schema_version: 1,
+        account,
+        profiles: profiles.profiles,
+    }))
 }
 
 async fn get_account_parses(
@@ -2212,6 +2241,19 @@ struct DiscordCallbackQuery {
 #[serde(deny_unknown_fields)]
 struct LoginCodeExchangeRequest {
     code: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateAccountRequest {
+    username: String,
+}
+
+#[derive(Debug, Serialize)]
+struct PublicAccountProfileCatalog {
+    schema_version: u16,
+    account: PublicAccountIdentity,
+    profiles: Vec<PublicProfileCatalogEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -5070,6 +5112,14 @@ impl IntoResponse for ApiError {
             Self::Account(AccountError::DiscordUnavailable) => (
                 StatusCode::BAD_GATEWAY,
                 "Discord authentication is temporarily unavailable".into(),
+            ),
+            Self::Account(AccountError::InvalidUsername) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "username must be 3-24 letters, numbers, hyphens, or underscores".into(),
+            ),
+            Self::Account(AccountError::UsernameUnavailable) => (
+                StatusCode::CONFLICT,
+                "that username is already in use".into(),
             ),
             Self::Account(error) => (StatusCode::BAD_REQUEST, error.to_string()),
             Self::Service(ServiceError::NotFound) => {

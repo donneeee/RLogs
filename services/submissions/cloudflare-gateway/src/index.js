@@ -5,6 +5,7 @@ const PUBLIC_ROUTES = [
   ["GET", /^\/v1\/auth\/discord\/callback$/],
   ["POST", /^\/v1\/auth\/discord\/complete$/],
   ["GET", /^\/v1\/auth\/me$/],
+  ["PATCH", /^\/v1\/auth\/me$/],
   ["GET", /^\/v1\/auth\/device$/],
   ["GET", /^\/v1\/auth\/profiles$/],
   ["GET", /^\/v1\/auth\/parses$/],
@@ -16,6 +17,7 @@ const PUBLIC_ROUTES = [
   ["GET", /^\/v1\/profiles$/],
   ["GET", /^\/v1\/profiles\/prf_[a-z0-9_]+$/],
   ["GET", /^\/v1\/profiles\/prf_[a-z0-9_]+\/photo-wall\/[1-9][0-9]*$/],
+  ["GET", /^\/v1\/users\/[1-9][0-9]{11}$/],
 ];
 
 const INGEST_ROUTES = [

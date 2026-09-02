@@ -76,9 +76,18 @@ impl DiscordConfiguration {
 pub struct AccountView {
     pub schema_version: u16,
     pub submitter_id: String,
+    pub account_id: u64,
+    pub username: String,
     pub discord_username: String,
     pub discord_global_name: Option<String>,
     pub discord_avatar_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PublicAccountIdentity {
+    pub schema_version: u16,
+    pub account_id: u64,
+    pub username: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -108,6 +117,10 @@ pub struct DeviceIdentity {
 struct AccountRecord {
     schema_version: u16,
     submitter_id: String,
+    #[serde(default)]
+    account_id: Option<u64>,
+    #[serde(default)]
+    username: Option<String>,
     discord_user_id: String,
     discord_username: String,
     discord_global_name: Option<String>,
@@ -164,6 +177,10 @@ pub enum AccountError {
     InvalidOrExpiredCode,
     #[error("the account token is invalid or expired")]
     Unauthorized,
+    #[error("username must be 3-24 lowercase letters, numbers, hyphens, or underscores")]
+    InvalidUsername,
+    #[error("that username is already in use")]
+    UsernameUnavailable,
     #[error("Discord authentication is temporarily unavailable")]
     DiscordUnavailable,
     #[error("account storage failed: {0}")]
@@ -194,6 +211,8 @@ impl AccountStore {
             "login-codes",
             "web-sessions",
             "device-tokens",
+            "account-id-index",
+            "username-index",
         ] {
             std::fs::create_dir_all(root.join(relative))?;
         }
@@ -422,6 +441,80 @@ impl AccountStore {
         })
     }
 
+    pub fn update_username(
+        &self,
+        web_token: &str,
+        requested_username: &str,
+        now: u64,
+    ) -> Result<AccountView, AccountError> {
+        let account = self.authenticate_web(web_token, now)?;
+        let username = validate_username(requested_username)?;
+        let _write = self.write_guard();
+        let path = self
+            .root
+            .join("users")
+            .join(format!("{}.json", account.submitter_id));
+        let mut record: AccountRecord = read_json(&path)?.ok_or(AccountError::Unauthorized)?;
+        if record.username.as_deref() == Some(username.as_str()) {
+            return Ok(account_view(record)?);
+        }
+        let index_path = self
+            .root
+            .join("username-index")
+            .join(format!("{username}.json"));
+        let indexed_submitter: Option<String> = read_json(&index_path)?;
+        if indexed_submitter
+            .as_deref()
+            .is_some_and(|value| value != record.submitter_id)
+        {
+            return Err(AccountError::UsernameUnavailable);
+        }
+        if indexed_submitter.is_none() {
+            write_json_new(&index_path, &record.submitter_id)?;
+        }
+        let previous = record.username.replace(username.clone());
+        record.updated_unix_millis = now;
+        write_json_atomic(&path, &record)?;
+        if let Some(previous) = previous.filter(|value| value != &username) {
+            let previous_path = self
+                .root
+                .join("username-index")
+                .join(format!("{previous}.json"));
+            let previous_owner: Option<String> = read_json(&previous_path)?;
+            if previous_owner.as_deref() == Some(record.submitter_id.as_str()) {
+                std::fs::remove_file(previous_path)?;
+            }
+        }
+        account_view(record)
+    }
+
+    pub fn public_identity(
+        &self,
+        account_id: u64,
+    ) -> Result<Option<(String, PublicAccountIdentity)>, AccountError> {
+        if !(100_000_000_000..=999_999_999_999).contains(&account_id) {
+            return Ok(None);
+        }
+        let submitter_id: Option<String> = read_json(
+            &self
+                .root
+                .join("account-id-index")
+                .join(format!("{account_id}.json")),
+        )?;
+        let Some(submitter_id) = submitter_id else {
+            return Ok(None);
+        };
+        let account = self.account(&submitter_id)?;
+        Ok(Some((
+            submitter_id,
+            PublicAccountIdentity {
+                schema_version: 1,
+                account_id: account.account_id,
+                username: account.username,
+            },
+        )))
+    }
+
     fn upsert_discord_user(
         &self,
         discord: DiscordUserResponse,
@@ -452,6 +545,8 @@ impl AccountStore {
         let record = AccountRecord {
             schema_version: RECORD_SCHEMA_VERSION,
             submitter_id: submitter_id.clone(),
+            account_id: existing.as_ref().and_then(|value| value.account_id),
+            username: existing.as_ref().and_then(|value| value.username.clone()),
             discord_user_id: discord.id,
             discord_username: discord.username,
             discord_global_name: discord.global_name,
@@ -466,20 +561,103 @@ impl AccountStore {
             write_json_new(&index_path, &submitter_id)?;
         }
         write_json_atomic(&user_path, &record)?;
-        Ok(record)
+        drop(_write);
+        self.ensure_public_identity(&submitter_id)
     }
 
     fn account(&self, submitter_id: &str) -> Result<AccountView, AccountError> {
-        let record: AccountRecord =
-            read_json(&self.root.join("users").join(format!("{submitter_id}.json")))?
-                .ok_or(AccountError::Unauthorized)?;
-        Ok(AccountView {
-            schema_version: 1,
-            submitter_id: record.submitter_id,
-            discord_username: record.discord_username,
-            discord_global_name: record.discord_global_name,
-            discord_avatar_url: record.discord_avatar_url,
-        })
+        account_view(self.ensure_public_identity(submitter_id)?)
+    }
+
+    fn ensure_public_identity(&self, submitter_id: &str) -> Result<AccountRecord, AccountError> {
+        let _write = self.write_guard();
+        let path = self.root.join("users").join(format!("{submitter_id}.json"));
+        let mut record: AccountRecord = read_json(&path)?.ok_or(AccountError::Unauthorized)?;
+        let mut changed = false;
+        if record.account_id.is_none() {
+            record.account_id = Some(self.allocate_account_id(submitter_id)?);
+            changed = true;
+        }
+        if record.username.is_none() {
+            record.username = Some(self.allocate_username(
+                &record.discord_username,
+                submitter_id,
+                record.account_id.unwrap(),
+            )?);
+            changed = true;
+        }
+        let account_id = record.account_id.unwrap();
+        let account_index = self
+            .root
+            .join("account-id-index")
+            .join(format!("{account_id}.json"));
+        if !account_index.exists() {
+            write_json_new(&account_index, &record.submitter_id)?;
+        }
+        let username = record.username.as_deref().unwrap();
+        let username_index = self
+            .root
+            .join("username-index")
+            .join(format!("{username}.json"));
+        if !username_index.exists() {
+            write_json_new(&username_index, &record.submitter_id)?;
+        }
+        if changed {
+            write_json_atomic(&path, &record)?;
+        }
+        Ok(record)
+    }
+
+    fn allocate_account_id(&self, submitter_id: &str) -> Result<u64, AccountError> {
+        for _ in 0..128 {
+            let candidate = random_public_account_id();
+            let existing: Option<String> = read_json(
+                &self
+                    .root
+                    .join("account-id-index")
+                    .join(format!("{candidate}.json")),
+            )?;
+            if existing
+                .as_deref()
+                .is_none_or(|value| value == submitter_id)
+            {
+                return Ok(candidate);
+            }
+        }
+        Err(AccountError::InvalidConfiguration(
+            "could not allocate a unique public account ID".into(),
+        ))
+    }
+
+    fn allocate_username(
+        &self,
+        discord_username: &str,
+        submitter_id: &str,
+        account_id: u64,
+    ) -> Result<String, AccountError> {
+        let base = default_username(discord_username, account_id);
+        for candidate in [
+            base.clone(),
+            format!(
+                "{}-{}",
+                truncate_username(&base, 17),
+                account_id % 1_000_000
+            ),
+        ] {
+            let existing: Option<String> = read_json(
+                &self
+                    .root
+                    .join("username-index")
+                    .join(format!("{candidate}.json")),
+            )?;
+            if existing
+                .as_deref()
+                .is_none_or(|value| value == submitter_id)
+            {
+                return Ok(candidate);
+            }
+        }
+        Err(AccountError::UsernameUnavailable)
     }
 
     fn configuration(&self) -> Result<&DiscordConfiguration, AccountError> {
@@ -545,6 +723,86 @@ fn random_token(prefix: &str) -> String {
         Uuid::new_v4().simple(),
         Uuid::new_v4().simple()
     )
+}
+
+fn random_public_account_id() -> u64 {
+    const FIRST: u64 = 100_000_000_000;
+    const COUNT: u128 = 900_000_000_000;
+    FIRST + (Uuid::new_v4().as_u128() % COUNT) as u64
+}
+
+fn validate_username(value: &str) -> Result<String, AccountError> {
+    let username = value.trim().to_ascii_lowercase();
+    if !(3..=24).contains(&username.len())
+        || !username.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'_'
+        })
+        || !username
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        || !username
+            .bytes()
+            .next_back()
+            .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+    {
+        return Err(AccountError::InvalidUsername);
+    }
+    Ok(username)
+}
+
+fn default_username(discord_username: &str, account_id: u64) -> String {
+    let mut value = String::new();
+    for character in discord_username.trim().to_ascii_lowercase().chars() {
+        let next = if character.is_ascii_lowercase() || character.is_ascii_digit() {
+            Some(character)
+        } else if matches!(character, '-' | '_') {
+            Some(character)
+        } else {
+            Some('-')
+        };
+        if let Some(next) = next
+            && !(matches!(next, '-' | '_') && (value.ends_with('-') || value.ends_with('_')))
+        {
+            value.push(next);
+        }
+    }
+    value = truncate_username(
+        value.trim_matches(|character| matches!(character, '-' | '_')),
+        24,
+    );
+    if validate_username(&value).is_ok() {
+        value
+    } else {
+        format!("user-{:06}", account_id % 1_000_000)
+    }
+}
+
+fn truncate_username(value: &str, maximum: usize) -> String {
+    value
+        .chars()
+        .take(maximum)
+        .collect::<String>()
+        .trim_end_matches(|character| matches!(character, '-' | '_'))
+        .to_owned()
+}
+
+fn account_view(record: AccountRecord) -> Result<AccountView, AccountError> {
+    let account_id = record.account_id.ok_or_else(|| {
+        AccountError::InvalidConfiguration("account is missing its public account ID".into())
+    })?;
+    let username = record.username.ok_or_else(|| {
+        AccountError::InvalidConfiguration("account is missing its public username".into())
+    })?;
+    Ok(AccountView {
+        schema_version: 1,
+        submitter_id: record.submitter_id,
+        account_id,
+        username,
+        discord_username: record.discord_username,
+        discord_global_name: record.discord_global_name,
+        discord_avatar_url: record.discord_avatar_url,
+    })
 }
 
 fn token_hash(domain: &str, token: &str, pepper: &str) -> String {
@@ -670,6 +928,69 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn public_account_identity_is_stable_and_username_is_editable() {
+        let root = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(root.path().into(), Some(configuration())).unwrap();
+        let record = store
+            .upsert_discord_user(
+                DiscordUserResponse {
+                    id: "discord-public-identity".into(),
+                    username: "Initial.Name".into(),
+                    global_name: Some("Initial Name".into()),
+                    avatar: None,
+                },
+                10,
+            )
+            .unwrap();
+        let original = account_view(record).unwrap();
+        assert!((100_000_000_000..=999_999_999_999).contains(&original.account_id));
+        assert_eq!(original.username, "initial-name");
+
+        let public = store.public_identity(original.account_id).unwrap().unwrap();
+        assert_eq!(public.0, original.submitter_id);
+        assert_eq!(public.1.username, "initial-name");
+
+        let web_token = random_token("rlw");
+        let web_hash = token_hash(
+            "web-session",
+            &web_token,
+            &store.configuration().unwrap().token_pepper,
+        );
+        write_json_new(
+            &root
+                .path()
+                .join("web-sessions")
+                .join(format!("{web_hash}.json")),
+            &ExpiringIdentityRecord {
+                schema_version: 1,
+                submitter_id: original.submitter_id,
+                expires_unix_millis: 1_000,
+            },
+        )
+        .unwrap();
+        let updated = store.update_username(&web_token, "Marie_Rose", 20).unwrap();
+        assert_eq!(updated.account_id, original.account_id);
+        assert_eq!(updated.username, "marie_rose");
+        assert_eq!(
+            store
+                .public_identity(original.account_id)
+                .unwrap()
+                .unwrap()
+                .1
+                .username,
+            "marie_rose"
+        );
+    }
+
+    #[test]
+    fn public_username_validation_rejects_unsafe_routes() {
+        assert_eq!(validate_username("Marie-Rose").unwrap(), "marie-rose");
+        assert!(validate_username("../private").is_err());
+        assert!(validate_username("-leading").is_err());
+        assert!(validate_username("ab").is_err());
     }
 
     #[test]
