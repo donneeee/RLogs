@@ -5213,6 +5213,29 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![("2220329107", 1_500), ("2220329109", 3_500)]
         );
+        let history = plugin.build_history_view(&HistoryViewSpec {
+            id: "all".into(),
+            label: "Entire run".into(),
+            kind: "all".into(),
+            segment_indices: vec![0],
+            intervals: vec![(0, 3_000_000)],
+            elapsed_micros: 3_000_000,
+            active_combat_micros: 2_000_000,
+            compress_intervals: false,
+        });
+        let actor = history
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(
+            actor
+                .abilities
+                .iter()
+                .map(|ability| (ability.ability_id.as_str(), ability.damage))
+                .collect::<Vec<_>>(),
+            vec![("2220329107", 1_500), ("2220329109", 3_500)]
+        );
         assert!(plugin.history_facts.iter().all(|fact| {
             fact.ability_id == Some(2_203_291)
                 && fact
