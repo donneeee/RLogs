@@ -8,6 +8,8 @@
     "role_action_and_normal_imagine_action_ids_are_distinct": true,
     "role_imagine_maximum_tier": 4,
     "battle_imagine_maximum_tier": 5,
+    "unobserved_battle_imagine_tier": 0,
+    "empty_archive_member_list_uses_all_observed_imagines": true,
     "normal_imagine_name_prefix": "Arcane! "
   },
   "sources": {
@@ -23,6 +25,27 @@
       "semantic_sha256": "9a66fb9388e2ebbe0936f11fe4ab19ac3b31eb59a6d01ef2951aa771e0dbadc6",
       "row_count": 73
     },
+    "role_tier_guides": {
+      "table": "SkillAoyiGuideTable.json",
+      "sha256": "1ede7144e7e673c6cc6ec722b7f07306fdf274cb0d40a7cddb3bb013dfaeaf7e",
+      "semantic_sha256": "b14983f8f5b95760832b1bd30ee2f835e81428e757a2f4063f04dd7e3f0c745e",
+      "row_count": 8
+    },
+    "role_tier_thresholds": {
+      "table": "SkillAoyiGuideEffectTable.json",
+      "sha256": "05aae09f9ad78e1f63de467f5a3aa9d7badb323079bc64cda0bd459220c2bb63",
+      "semantic_sha256": "8cda1e74eef3d7b697856b64daf99dc9089d9350a65115b2227e2043f92fca58",
+      "row_count": 32
+    },
+    "role_tier_unlocks": {
+      "table": "SkillUpgradeTable.json",
+      "sha256": "ce61000bb133388a382af4cf243a7269f6f741e0b1b932bb93d25677baeeb21f"
+    },
+    "archive_condition_semantics": {
+      "table": "ConditionTable.json",
+      "sha256": "53236b785f1f29fa7d1ed7c6837cb7d86d5a593a392266e4ef6457ba2eb95bbf",
+      "condition_type": 134
+    },
     "joined_action_coverage": {
       "artifact": "all-skills-and-actions.json",
       "sha256": "c7f6385b72cad2a59f28cf5607ea40db6f59cfbd9b9667aa55a64d748ccabaae"
@@ -32,6 +55,12 @@
       "sha256": "4ab545fdbd1a17f29fd6002f2efd21d488034c7b69fb310e84df050ef9366a8e"
     }
   },
+  "role_tier_requirements": [
+    { "tier": 1, "minimum_total_imagine_tier": 5, "minimum_core_imagine_tier": 0 },
+    { "tier": 2, "minimum_total_imagine_tier": 15, "minimum_core_imagine_tier": 1 },
+    { "tier": 3, "minimum_total_imagine_tier": 20, "minimum_core_imagine_tier": 3 },
+    { "tier": 4, "minimum_total_imagine_tier": 25, "minimum_core_imagine_tier": 5 }
+  ],
   "pairs": [
     {
       "role_action_id": 3021,
@@ -41,7 +70,9 @@
       "normal_imagine_action_name": "Arcane! Thunderfall Grasp",
       "normal_imagine_action_row_sha256": "0f75d211c12e561ab7a5695968b56dd8f5959ef9623b4e259db8b4981e095f58",
       "battle_imagine_item_id": 3000009,
-      "battle_imagine_name": "Tempest Ogre"
+      "battle_imagine_name": "Tempest Ogre",
+      "archive_guide_id": 1001,
+      "archive_member_normal_imagine_action_ids": []
     },
     {
       "role_action_id": 3022,
@@ -51,7 +82,9 @@
       "normal_imagine_action_name": "Arcane! Flame Roar",
       "normal_imagine_action_row_sha256": "50e2994f2fa25dea69a5a558a37927e142c3528abf8de1de8500c4f832134d1f",
       "battle_imagine_item_id": 3000025,
-      "battle_imagine_name": "Inferno Ogre"
+      "battle_imagine_name": "Inferno Ogre",
+      "archive_guide_id": 1002,
+      "archive_member_normal_imagine_action_ids": [3901, 3923, 3955, 3930, 3934, 3966]
     },
     {
       "role_action_id": 3023,
@@ -61,7 +94,9 @@
       "normal_imagine_action_name": "Arcane! Pulse Benediction",
       "normal_imagine_action_row_sha256": "84b12106cf5d747c2c26277bcb5d9c33da83d367c571a22a85cd31072a785e78",
       "battle_imagine_item_id": 3000007,
-      "battle_imagine_name": "Muku King"
+      "battle_imagine_name": "Muku King",
+      "archive_guide_id": 1003,
+      "archive_member_normal_imagine_action_ids": [3908, 3926, 3942, 3962, 3941, 3961]
     },
     {
       "role_action_id": 3024,
@@ -71,7 +106,9 @@
       "normal_imagine_action_name": "Arcane! Infernal Thrust",
       "normal_imagine_action_row_sha256": "e0e4b99e3850dacbd4e9560c57b05901422c80cec81df6bd02158a3b9959d0f7",
       "battle_imagine_item_id": 3000042,
-      "battle_imagine_name": "Iron Fang"
+      "battle_imagine_name": "Iron Fang",
+      "archive_guide_id": 1004,
+      "archive_member_normal_imagine_action_ids": [3943, 3946, 3957, 3929, 3905, 3939]
     },
     {
       "role_action_id": 3025,
@@ -81,7 +118,9 @@
       "normal_imagine_action_name": "Arcane! Thunder Roar",
       "normal_imagine_action_row_sha256": "0e2fcb450e6c132e15ba24a8fa4010edf887420cf12752fcfbef2495ec424390",
       "battle_imagine_item_id": 3000036,
-      "battle_imagine_name": "Golden Juggernaut"
+      "battle_imagine_name": "Golden Juggernaut",
+      "archive_guide_id": 1005,
+      "archive_member_normal_imagine_action_ids": [3935, 3944, 3953, 3964, 3927, 3940]
     },
     {
       "role_action_id": 3026,
@@ -91,7 +130,9 @@
       "normal_imagine_action_name": "Arcane! Silent Tide",
       "normal_imagine_action_row_sha256": "898e651ae54f5252d5ee9354adaffde1f80521a184cfffca3009c57439534da9",
       "battle_imagine_item_id": 3000044,
-      "battle_imagine_name": "Lizardman King"
+      "battle_imagine_name": "Lizardman King",
+      "archive_guide_id": 1006,
+      "archive_member_normal_imagine_action_ids": [3945, 3952, 3954, 3936, 3937, 3907]
     },
     {
       "role_action_id": 3027,
@@ -101,7 +142,9 @@
       "normal_imagine_action_name": "Arcane! Blessing of Life",
       "normal_imagine_action_row_sha256": "de2aca7ed83c70afdee2ed94f6eb91486ce283c78cf032da2bfe183b1cb8b929",
       "battle_imagine_item_id": 3000008,
-      "battle_imagine_name": "Airona"
+      "battle_imagine_name": "Airona",
+      "archive_guide_id": 1007,
+      "archive_member_normal_imagine_action_ids": [3920, 3921, 3903, 3917, 3913, 3960]
     },
     {
       "role_action_id": 3028,
@@ -111,7 +154,9 @@
       "normal_imagine_action_name": "Arcane! Guardian's Boundary",
       "normal_imagine_action_row_sha256": "b64840eb3cf14e872239112a9aae5241a0acbedc0acb9cd17ffca4c423bc1356",
       "battle_imagine_item_id": 3000103,
-      "battle_imagine_name": "Fafala"
+      "battle_imagine_name": "Fafala",
+      "archive_guide_id": 1008,
+      "archive_member_normal_imagine_action_ids": [3951, 3948, 3906, 3914, 3915, 3959]
     }
   ]
 }

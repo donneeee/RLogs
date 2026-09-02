@@ -67,10 +67,22 @@ function verifyProofShape(value) {
     "role Imagine tier domain must end at T4");
   assert(value.policy?.battle_imagine_maximum_tier === 5,
     "normal Battle Imagine tier domain must end at T5");
+  assert(value.policy?.unobserved_battle_imagine_tier === 0,
+    "unobserved Battle Imagine tiers must remain T0");
+  assert(value.policy?.empty_archive_member_list_uses_all_observed_imagines === true,
+    "the empty Gluttony archive list must retain its all-Imagine total scope");
   assert(value.policy?.normal_imagine_name_prefix === "Arcane! ",
     "normal Imagine action name normalization changed");
   assert(Array.isArray(value.pairs) && value.pairs.length === 8,
     "the exact role Imagine identity set must contain eight pairs");
+  assert(JSON.stringify(value.role_tier_requirements) === JSON.stringify([
+    { tier: 1, minimum_total_imagine_tier: 5, minimum_core_imagine_tier: 0 },
+    { tier: 2, minimum_total_imagine_tier: 15, minimum_core_imagine_tier: 1 },
+    { tier: 3, minimum_total_imagine_tier: 20, minimum_core_imagine_tier: 3 },
+    { tier: 4, minimum_total_imagine_tier: 25, minimum_core_imagine_tier: 5 },
+  ]), "role Imagine archive tier thresholds drifted from the current build");
+  assert(value.sources?.archive_condition_semantics?.condition_type === 134,
+    "role Imagine archive tier condition type drifted");
 
   for (const sourceRecord of Object.values(value.sources ?? {})) {
     assert(isSha256(sourceRecord.sha256), "a proof source is missing its exact SHA-256");
@@ -98,6 +110,19 @@ function verifyProofShape(value) {
       `role action ${pair.role_action_id} has no exact row fingerprint`);
     assert(isSha256(pair.normal_imagine_action_row_sha256),
       `normal Imagine action ${pair.normal_imagine_action_id} has no exact row fingerprint`);
+    assert(pair.archive_guide_id === pair.role_action_id - 2_020,
+      `role action ${pair.role_action_id} has the wrong archive guide UID`);
+    assert(Array.isArray(pair.archive_member_normal_imagine_action_ids),
+      `role action ${pair.role_action_id} has no archive member UID set`);
+    if (pair.archive_guide_id === 1_001) {
+      assert(pair.archive_member_normal_imagine_action_ids.length === 0,
+        "the Gluttony archive must retain its exact empty member list");
+    } else {
+      assert(pair.archive_member_normal_imagine_action_ids.length === 6
+        && unique(pair.archive_member_normal_imagine_action_ids)
+        && pair.archive_member_normal_imagine_action_ids.includes(pair.normal_imagine_action_id),
+      `role action ${pair.role_action_id} has an invalid archive member UID set`);
+    }
     assert(pair.normal_imagine_action_name.startsWith(value.policy.normal_imagine_name_prefix),
       `normal Imagine action ${pair.normal_imagine_action_id} is missing its exact prefix`);
     assert(
@@ -185,6 +210,10 @@ function verifyCatalogs(
         === pair.battle_imagine_name,
       `Battle Imagine item ${pair.battle_imagine_item_id} localization drifted`,
     );
+    for (const memberId of pair.archive_member_normal_imagine_action_ids) {
+      assert(imagineByActionId.has(memberId),
+        `archive guide ${pair.archive_guide_id} references unknown Imagine action ${memberId}`);
+    }
   }
 }
 
