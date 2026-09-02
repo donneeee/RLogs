@@ -173,6 +173,43 @@ impl LiveProfileProjection {
         Ok(false)
     }
 
+    /// Adds an exact Photo Wall image identity observed by the reviewed photo
+    /// reply decoder to an already-proven local character. Photo replies can
+    /// also describe another player's wall, so this method never activates a
+    /// character and cannot make a remote social lookup claimable.
+    pub fn observe_local_photo_identity(
+        &mut self,
+        character_id: i64,
+        photo_id: u32,
+    ) -> Result<bool, BpsrProfileProjectionError> {
+        if character_id <= 0 || photo_id == 0 {
+            return Ok(false);
+        }
+        let character_id = character_id.to_string();
+        let Some(accumulator) = self
+            .accumulators
+            .iter_mut()
+            .find(|accumulator| accumulator.profile.character.character_id == character_id)
+        else {
+            return Ok(false);
+        };
+        let photo_id = i64::from(photo_id);
+        let collection = accumulator
+            .profile
+            .collection_summary
+            .get_or_insert_with(CollectionSummary::default);
+        if collection.photo_ids.contains(&photo_id) {
+            return Ok(false);
+        }
+        collection.photo_ids.push(photo_id);
+        collection.photo_ids.sort_unstable();
+        accumulator.observation_count = accumulator
+            .observation_count
+            .checked_add(1)
+            .ok_or(BpsrProfileProjectionError::ObservationOverflow)?;
+        Ok(true)
+    }
+
     pub fn live_character_stats(&self) -> LiveCharacterStatsSnapshot {
         self.live_stats.clone()
     }
@@ -1027,6 +1064,49 @@ mod tests {
             packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11010"],
             321
         );
+    }
+
+    #[test]
+    fn exact_photo_replies_enrich_only_an_activated_local_profile() {
+        let mut projection = LiveProfileProjection::default();
+        assert!(
+            !projection
+                .observe_local_photo_identity(123_456, 42)
+                .unwrap()
+        );
+        projection
+            .observe(&envelope(1, EventSensitivity::PersonalGameplay, profile()))
+            .unwrap();
+
+        assert!(
+            !projection
+                .observe_local_photo_identity(999_999, 42)
+                .unwrap()
+        );
+        assert!(
+            projection
+                .observe_local_photo_identity(123_456, 42)
+                .unwrap()
+        );
+        assert!(
+            !projection
+                .observe_local_photo_identity(123_456, 42)
+                .unwrap()
+        );
+        assert!(
+            projection
+                .observe_local_photo_identity(123_456, 41)
+                .unwrap()
+        );
+
+        let packages = projection
+            .packages("session", "build", "sha256:pack", 10)
+            .unwrap();
+        assert_eq!(
+            packages[0].request.payload.body["collection_summary"]["photo_ids"],
+            serde_json::json!([41, 42])
+        );
+        assert_eq!(packages[0].source.observation_count, 3);
     }
 
     #[test]

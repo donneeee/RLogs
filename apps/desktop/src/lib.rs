@@ -6766,6 +6766,7 @@ impl RuntimeController {
                     // dropping its dirty bit would leave profile/loadout
                     // enrichment stale until a later event.
                     let mut live_dirty = false;
+                    let mut live_profile_package_dirty = false;
                     let mut photo_wall_publication_enabled =
                         live_photo_wall_publication_enabled(&live_submission_policy);
                     let mut photo_wall_transport_connected = submission_transport_store
@@ -6891,61 +6892,7 @@ impl RuntimeController {
                                         live_profile_projection.live_character_stats_revision();
                                     match live_profile_projection.observe(event) {
                                         Ok(true) if profile_sync.enabled => {
-                                            let created_unix_millis = unix_millis().max(
-                                                last_live_profile_created_unix_millis
-                                                    .saturating_add(1),
-                                            );
-                                            last_live_profile_created_unix_millis =
-                                                created_unix_millis;
-                                            match live_profile_projection
-                                                .packages(
-                                                    &session_id,
-                                                    &live_profile_client_build,
-                                                    &live_profile_pack_digest,
-                                                    created_unix_millis,
-                                                )
-                                                .map_err(|error| error.to_string())
-                                                .and_then(|mut packages| {
-                                                    if let Some(transport) =
-                                                        submission_transport.as_ref()
-                                                    {
-                                                        transport.bind_live_profile_packages(
-                                                            &mut packages,
-                                                        )?;
-                                                    }
-                                                    let package_count = packages.len();
-                                                    let mut store = profile_packages
-                                                        .lock()
-                                                        .unwrap_or_else(
-                                                            std::sync::PoisonError::into_inner,
-                                                        );
-                                                    for package in packages {
-                                                        store.upsert(package)?;
-                                                    }
-                                                    Ok(package_count)
-                                                })
-                                            {
-                                                Ok(package_count) => {
-                                                    live_profile_sync_status = if submission_transport
-                                                        .is_some()
-                                                    {
-                                                        format!(
-                                                            "packaged_live:{package_count}; publication_queued"
-                                                        )
-                                                    } else {
-                                                        format!(
-                                                            "packaged_live:{package_count}; waiting_for_account_connection"
-                                                        )
-                                                    };
-                                                }
-                                                Err(error) => {
-                                                    live_profile_sync_status =
-                                                        format!("live_projection_failed: {error}");
-                                                    eprintln!(
-                                                        "live profile projection will retry on the next observation: {error}"
-                                                    );
-                                                }
-                                            }
+                                            live_profile_package_dirty = true;
                                         }
                                         Ok(true) | Ok(false) => {}
                                         Err(error) => {
@@ -7097,6 +7044,71 @@ impl RuntimeController {
                                 }
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
+                        for photo in &local_photo_assets {
+                            match live_profile_projection.observe_local_photo_identity(
+                                photo.character_id,
+                                photo.photo_id,
+                            ) {
+                                Ok(true) if profile_sync.enabled => {
+                                    live_profile_package_dirty = true;
+                                }
+                                Ok(true) | Ok(false) => {}
+                                Err(error) => {
+                                    live_profile_sync_status =
+                                        format!("live_projection_failed: {error}");
+                                    eprintln!(
+                                        "live Photo Wall identity could not be merged: {error}"
+                                    );
+                                }
+                            }
+                        }
+                        if live_profile_package_dirty {
+                            let created_unix_millis = unix_millis().max(
+                                last_live_profile_created_unix_millis.saturating_add(1),
+                            );
+                            last_live_profile_created_unix_millis = created_unix_millis;
+                            match live_profile_projection
+                                .packages(
+                                    &session_id,
+                                    &live_profile_client_build,
+                                    &live_profile_pack_digest,
+                                    created_unix_millis,
+                                )
+                                .map_err(|error| error.to_string())
+                                .and_then(|mut packages| {
+                                    if let Some(transport) = submission_transport.as_ref() {
+                                        transport.bind_live_profile_packages(&mut packages)?;
+                                    }
+                                    let package_count = packages.len();
+                                    let mut store = profile_packages
+                                        .lock()
+                                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                                    for package in packages {
+                                        store.upsert(package)?;
+                                    }
+                                    Ok(package_count)
+                                }) {
+                                Ok(package_count) => {
+                                    live_profile_sync_status = if submission_transport.is_some() {
+                                        format!(
+                                            "packaged_live:{package_count}; publication_queued"
+                                        )
+                                    } else {
+                                        format!(
+                                            "packaged_live:{package_count}; waiting_for_account_connection"
+                                        )
+                                    };
+                                }
+                                Err(error) => {
+                                    live_profile_sync_status =
+                                        format!("live_projection_failed: {error}");
+                                    eprintln!(
+                                        "live profile projection will retry on the next observation: {error}"
+                                    );
+                                }
+                            }
+                            live_profile_package_dirty = false;
+                        }
                         burst_metrics.observe_reduction(
                             recorder
                                 .metrics()

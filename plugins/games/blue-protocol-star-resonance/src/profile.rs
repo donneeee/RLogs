@@ -395,7 +395,7 @@ pub struct LifeProfessionProfile {
     pub specialization_levels: BTreeMap<i32, u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionSummary {
     /// Identifies which independent container managers were actually present
     /// in this observation. The profile projector uses this to apply an
