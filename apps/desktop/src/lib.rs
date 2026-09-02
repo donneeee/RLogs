@@ -148,7 +148,6 @@ const PHOTO_WALL_PENDING_ASSET_CAPACITY: usize = 256;
 /// this is a hard worst-case frame-payload bound of 128 MiB; normal Ethernet
 /// traffic occupies a small fraction of that amount.
 const LIVE_CAPTURE_INGRESS_QUEUE_CAPACITY: usize = 512;
-const PHOTO_WALL_RETRY_INTERVAL: Duration = Duration::from_secs(10);
 const AUTOMATIC_UPLOAD_INITIAL_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 const AUTOMATIC_UPLOAD_MAXIMUM_RETRY_INTERVAL: Duration = Duration::from_secs(300);
 /// Coalesce the burst of partial profile observations emitted after a scene
@@ -3468,7 +3467,7 @@ struct RuntimeController {
     submission_policy: Arc<Mutex<SubmissionPolicyStore>>,
     submission_connection: Mutex<SubmissionConnectionStore>,
     submission_connection_revision: AtomicU64,
-    submission_transport: Mutex<Option<SubmissionTransport>>,
+    submission_transport: Arc<Mutex<Option<SubmissionTransport>>>,
     core_settings: Mutex<CoreSettingsStore>,
     hotkey_settings: Mutex<HotkeySettingsStore>,
     layout_settings: Mutex<LayoutSettingsStore>,
@@ -3589,7 +3588,7 @@ impl RuntimeController {
             submission_policy: Arc::new(Mutex::new(submission_policy)),
             submission_connection: Mutex::new(submission_connection),
             submission_connection_revision: AtomicU64::new(0),
-            submission_transport: Mutex::new(submission_transport),
+            submission_transport: Arc::new(Mutex::new(submission_transport)),
             core_settings: Mutex::new(core_settings),
             hotkey_settings: Mutex::new(hotkey_settings),
             layout_settings: Mutex::new(layout_settings),
@@ -5576,6 +5575,7 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
+        let submission_transport_store = Arc::clone(&self.submission_transport);
         let live_stop = Arc::clone(&self.live_stop);
         let live_process_id = Arc::clone(&self.live_process_id);
         let live_event_stream_enabled = self.developer_tools_enabled;
@@ -5726,16 +5726,20 @@ impl RuntimeController {
                     let mut live_dirty = false;
                     let mut photo_wall_publication_enabled =
                         live_photo_wall_publication_enabled(&live_submission_policy);
+                    let mut photo_wall_transport_connected = submission_transport_store
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .is_some();
                     photo_wall_publication_status
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
                         .configure(
                             photo_wall_publication_enabled,
-                            submission_transport.is_some(),
+                            photo_wall_transport_connected,
                         );
                     let (photo_publication_sender, photo_publication_worker) =
                         spawn_photo_wall_publication_worker(
-                            submission_transport.clone(),
+                            Arc::clone(&submission_transport_store),
                             Arc::clone(&profile_publications),
                             Arc::clone(&photo_wall_pending),
                             Arc::clone(&photo_wall_publication_status),
@@ -6140,17 +6144,25 @@ impl RuntimeController {
                         live_combat_feed.signal_damage_batch(&live_damage_activity);
                         let current_photo_wall_publication_enabled =
                             live_photo_wall_publication_enabled(&live_submission_policy);
+                        let current_photo_wall_transport_connected = submission_transport_store
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .is_some();
                         if current_photo_wall_publication_enabled
                             != photo_wall_publication_enabled
+                            || current_photo_wall_transport_connected
+                                != photo_wall_transport_connected
                         {
                             photo_wall_publication_enabled =
                                 current_photo_wall_publication_enabled;
+                            photo_wall_transport_connected =
+                                current_photo_wall_transport_connected;
                             photo_wall_publication_status
                                 .lock()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                                 .configure(
                                     photo_wall_publication_enabled,
-                                    submission_transport.is_some(),
+                                    photo_wall_transport_connected,
                                 );
                         }
                         if photo_wall_publication_enabled {
@@ -7348,7 +7360,7 @@ fn apply_profile_sync_policy(
 }
 
 fn spawn_photo_wall_publication_worker(
-    transport: Option<SubmissionTransport>,
+    transport_store: Arc<Mutex<Option<SubmissionTransport>>>,
     publications: Arc<Mutex<ProfilePublicationLedger>>,
     pending_store: Arc<Mutex<PhotoWallPendingStore>>,
     status: Arc<Mutex<PhotoWallPublicationStatus>>,
@@ -7371,7 +7383,7 @@ fn spawn_photo_wall_publication_worker(
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .queued(reference);
             }
-            let mut attempted_at = BTreeMap::<(i64, u32), Instant>::new();
+            let mut attempted_at = BTreeMap::<(i64, u32), (Instant, u32)>::new();
             let mut published = BTreeSet::<(i64, u32, Option<u32>, String)>::new();
             let mut disconnected = false;
             while !disconnected {
@@ -7410,7 +7422,7 @@ fn spawn_photo_wall_publication_worker(
                             {
                                 if let Some(oldest) = attempted_at
                                     .iter()
-                                    .min_by_key(|(_, attempted)| **attempted)
+                                    .min_by_key(|(_, (attempted, _))| *attempted)
                                     .map(|(key, _)| *key)
                                     .or_else(|| pending.keys().next().copied())
                                 {
@@ -7428,15 +7440,22 @@ fn spawn_photo_wall_publication_worker(
                     }
                 }
                 pending.retain(|key, reference| {
+                    let previous_failures = attempted_at
+                        .get(key)
+                        .map(|(_, failures)| *failures)
+                        .unwrap_or_default();
                     if !disconnected
-                        && attempted_at.get(key).is_some_and(|attempted| {
-                            attempted.elapsed() < PHOTO_WALL_RETRY_INTERVAL
+                        && attempted_at.get(key).is_some_and(|(attempted, failures)| {
+                            attempted.elapsed() < automatic_upload_retry_interval(*failures)
                         })
                     {
                         return true;
                     }
-                    attempted_at.insert(*key, Instant::now());
-                    let Some(transport) = transport.as_ref() else {
+                    let Some(transport) = transport_store
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .clone()
+                    else {
                         return !disconnected;
                     };
                     let character_id = reference.character_id.to_string();
@@ -7479,6 +7498,13 @@ fn spawn_photo_wall_publication_worker(
                             false
                         }
                         Err(error) => {
+                            attempted_at.insert(
+                                *key,
+                                (
+                                    Instant::now(),
+                                    previous_failures.saturating_add(1),
+                                ),
+                            );
                             status
                                 .lock()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -10775,9 +10801,13 @@ mod tests {
             ProfilePublicationLedger::open(root.join("publications.v1.json")).unwrap(),
         ));
         let status = Arc::new(Mutex::new(PhotoWallPublicationStatus::default()));
-        let (sender, worker) =
-            spawn_photo_wall_publication_worker(None, publications, Arc::clone(&pending), status)
-                .unwrap();
+        let (sender, worker) = spawn_photo_wall_publication_worker(
+            Arc::new(Mutex::new(None)),
+            publications,
+            Arc::clone(&pending),
+            status,
+        )
+        .unwrap();
         let mut photo = test_photo_wall_reference();
         photo.source_url = "https://photo.playbpsr.com/xinghen-prod/1/3296036/7/photo.png".into();
         sender.send(photo.clone()).unwrap();
