@@ -8,6 +8,7 @@ pub struct BattleImaginePresentation {
     pub skill_id: i64,
     pub item_id: i64,
     pub item_tier: u32,
+    pub rarity: String,
     pub maximum_tier: u32,
     pub icon: String,
 }
@@ -49,6 +50,7 @@ fn presentation_catalog() -> Result<&'static BattleImaginePresentationCatalog, S
                     imagine.skill_id <= 0
                         || imagine.item_id <= 0
                         || imagine.item_tier == 0
+                        || !matches!(imagine.rarity.as_str(), "Epic" | "SR" | "SSR" | "Collab")
                         || imagine.maximum_tier == 0
                         || imagine.icon.trim().is_empty()
                 })
@@ -186,6 +188,7 @@ mod tests {
     fn resolves_current_capture_primary_imagines() {
         let rorola = battle_imagine_presentation(3_948).unwrap().unwrap();
         assert_eq!(rorola.item_id, 3_000_101);
+        assert_eq!(rorola.rarity, "SSR");
         assert_eq!(rorola.maximum_tier, 5);
         assert_eq!(
             localized_battle_imagine_name(rorola.item_id, "en-US").unwrap(),
@@ -194,10 +197,35 @@ mod tests {
 
         let igoreus = battle_imagine_presentation(3_969).unwrap().unwrap();
         assert_eq!(igoreus.item_id, 3_000_121);
+        assert_eq!(igoreus.rarity, "SSR");
         assert!(
             localized_battle_imagine_name(igoreus.item_id, "ja-JP")
                 .unwrap()
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn separates_epic_sr_and_ssr_from_advancement_tier() {
+        assert_eq!(
+            battle_imagine_presentation(3_913).unwrap().unwrap().rarity,
+            "Epic"
+        );
+        assert_eq!(
+            battle_imagine_presentation(3_901).unwrap().unwrap().rarity,
+            "SR"
+        );
+        assert_eq!(
+            battle_imagine_presentation(3_948).unwrap().unwrap().rarity,
+            "SSR"
+        );
+        assert_eq!(
+            battle_imagine_presentation(3_970).unwrap().unwrap().rarity,
+            "SSR"
+        );
+        assert_eq!(
+            battle_imagine_presentation(3_982).unwrap().unwrap().rarity,
+            "Collab"
         );
     }
 

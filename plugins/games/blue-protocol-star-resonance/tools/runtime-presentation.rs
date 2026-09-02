@@ -41,6 +41,7 @@ struct BattleImagineRecord {
 #[derive(Debug, Deserialize)]
 struct BattleImagineAttributes {
     item_tier: u32,
+    rarity_classification: Option<u32>,
     aoyi_skill_id: Option<i64>,
     aoyi_skill_name_localization_key: Option<String>,
     maximum_tier: Option<u32>,
@@ -99,6 +100,7 @@ struct BattleImaginePresentation {
     skill_id: i64,
     item_id: i64,
     item_tier: u32,
+    rarity: String,
     maximum_tier: u32,
     icon: String,
 }
@@ -623,6 +625,11 @@ fn load_battle_imagines(
             skill_id,
             item_id: record.id,
             item_tier: record.attributes.item_tier,
+            rarity: battle_imagine_rarity(
+                record.attributes.item_tier,
+                record.attributes.rarity_classification,
+            )?
+            .to_owned(),
             maximum_tier: record.attributes.maximum_tier.ok_or_else(|| {
                 format!("mapped battle-Imagine skill {skill_id} has no maximum tier")
             })?,
@@ -633,6 +640,22 @@ fn load_battle_imagines(
         }
     }
     Ok((keys, by_skill.into_values().collect()))
+}
+
+fn battle_imagine_rarity(
+    item_tier: u32,
+    rarity_classification: Option<u32>,
+) -> Result<&'static str, Box<dyn std::error::Error>> {
+    match (item_tier, rarity_classification) {
+        (3, None | Some(1)) => Ok("Epic"),
+        (4, None | Some(2)) => Ok("SR"),
+        (4, Some(3)) => Ok("SSR"),
+        (4, Some(4)) => Ok("Collab"),
+        _ => Err(format!(
+            "unsupported Battle Imagine rarity: item tier {item_tier}, classification {rarity_classification:?}"
+        )
+        .into()),
+    }
 }
 
 fn load_monster_keys(root: &Path) -> Result<BTreeMap<String, i64>, Box<dyn std::error::Error>> {
