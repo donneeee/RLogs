@@ -277,9 +277,11 @@ function mountDevelopmentModuleOptimizer(container: HTMLElement): MountedSurface
           evaluated_states: 495,
           combination_size: request.combination_size,
           beam_width: null,
-          backend: request.use_gpu ? "open_cl" : "cpu",
-          accelerator_name: request.use_gpu ? "GeForce RTX 5060" : null,
-          accelerator_fallback: null,
+          backend: "cpu",
+          accelerator_name: null,
+          accelerator_fallback: request.use_gpu
+            ? "multi-core CPU is faster below 50000 exact combinations"
+            : null,
         },
       } satisfies OptimizeResponse;
     },

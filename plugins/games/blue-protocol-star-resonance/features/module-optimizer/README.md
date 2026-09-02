@@ -1,8 +1,9 @@
 # BPSR module optimizer
 
-This crate is the portable, website-facing module optimizer for Blue Protocol:
-Star Resonance. It is deliberately separate from packet capture, character
-decoding, and presentation code.
+This crate is the portable module optimizer shared by the local rLogs desktop
+surface and future website/WASM consumers for Blue Protocol: Star Resonance.
+It is deliberately separate from packet capture, character decoding, and
+presentation code.
 
 The scoring and search behavior is a Rust port of the module optimizer in
 `fudiyangjin/resonance-logs-cn` version `0.2.0`, commit
@@ -23,13 +24,19 @@ The scoring and search behavior is a Rust port of the module optimizer in
   bounded beam mode for full inventories (512 states by default, adjustable
   through the API);
 - runs complementary attribute-cluster, special-effect, and total-link
-  candidate orderings with feasible greedy completion scoring so threshold
-  synergies survive early pruning;
+  candidate orderings in parallel with feasible greedy completion scoring so
+  threshold synergies survive early pruning;
+- optionally runs exact enumeration through a dynamically loaded OpenCL 1.2
+  backend for NVIDIA and AMD GPUs, with an exact multi-core CPU fallback;
+- compiles and retains a successful OpenCL runtime only after the explicit GPU
+  check, performs device-side radix top-result reduction, and keeps small exact
+  searches on CPU when GPU dispatch overhead would be slower;
 - lets browser clients choose a conservative 64-512-state beam width from
   the device's reported CPU, memory, and mobile capabilities without changing
   the scoring rules or blocking the browser's main thread;
 - contains no packet capture, account, login, password, or token handling.
 
-The Plugin Lab exposes this crate through a loopback-only JSON API and browser
-screen. A future standalone site can use the same request/response contract
-from a server worker or a WASM wrapper without adopting the desktop UI.
+The desktop host exposes this crate through a loopback-only JSON API and the
+local Module Optimizer add-on. A future standalone site can use the same
+request/response contract from a server worker or a WASM wrapper without
+adopting the desktop UI.

@@ -10,6 +10,8 @@ use crate::types::{
 };
 
 const MAX_EXACT_COMBINATIONS: u64 = 10_000_000;
+#[cfg(feature = "gpu-opencl")]
+const MIN_GPU_COMBINATIONS: u64 = 50_000;
 const MAX_BEAM_WIDTH: usize = 32_768;
 const MAX_INPUT_MODULES: usize = 4_096;
 const MAX_ATTRIBUTE_SLOTS: usize = 32;
@@ -195,7 +197,7 @@ pub fn optimize(
     let (mut ranked, evaluated_states) = match used_mode {
         SearchMode::Exact => {
             #[cfg(feature = "gpu-opencl")]
-            if request.use_gpu {
+            if request.use_gpu && total_combinations >= MIN_GPU_COMBINATIONS {
                 match crate::gpu::exact_search_opencl(
                     rules,
                     &candidates,
@@ -222,6 +224,11 @@ pub fn optimize(
                     }
                 }
             } else {
+                if request.use_gpu {
+                    accelerator_fallback = Some(format!(
+                        "multi-core CPU is faster below {MIN_GPU_COMBINATIONS} exact combinations"
+                    ));
+                }
                 exact_search(
                     rules,
                     &candidates,
@@ -572,13 +579,18 @@ fn beam_search(
     let mut top = BinaryHeap::<Reverse<RankedCombination>>::new();
     let mut seen = BTreeSet::new();
     let mut evaluated = 0_u64;
-    for ordering in candidate_orderings(rules, candidates, request, &scorer) {
-        let ordered = ordering
-            .iter()
-            .map(|index| candidates[*index].clone())
-            .collect::<Vec<_>>();
-        let (ranked, strategy_evaluated) =
-            beam_search_ordered(rules, &ordered, request, &scorer, solution_limit);
+    let strategy_results = candidate_orderings(rules, candidates, request, &scorer)
+        .into_par_iter()
+        .map(|ordering| {
+            let ordered = ordering
+                .iter()
+                .map(|index| candidates[*index].clone())
+                .collect::<Vec<_>>();
+            let result = beam_search_ordered(rules, &ordered, request, &scorer, solution_limit);
+            (ordering, result)
+        })
+        .collect::<Vec<_>>();
+    for (ordering, (ranked, strategy_evaluated)) in strategy_results {
         evaluated = evaluated.saturating_add(strategy_evaluated);
         for mut combination in ranked {
             for index in &mut combination.indices {
@@ -1131,7 +1143,7 @@ mod tests {
             return;
         }
         let rules = ScoringRules::cn_0_2_0_fixture();
-        let modules = (0..28)
+        let modules = (0..50)
             .map(|index| {
                 module(
                     &format!("{index:03}"),

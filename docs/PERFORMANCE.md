@@ -98,6 +98,23 @@ but is not used as a brittle CI assertion across dissimilar machines.
 Repeatable replay benchmarks and allocation/CPU budgets will be added before
 the live parser is considered release-ready.
 
+## Module optimizer compute boundary
+
+Module scoring remains deterministic across compute backends. Exact CPU search
+uses Rayon prefix partitions; bounded beam search runs its independent
+candidate orderings in parallel. Users may explicitly enable the optional
+OpenCL 1.2 path, which supports driver-provided NVIDIA and AMD devices and
+falls back to CPU on discovery, compilation, allocation, or execution failure.
+
+The GPU path is selected only for exact searches large enough to offset device
+dispatch. Its compiled program is retained for the app process, and byte-radix
+thresholding plus device-side compaction return only competitive results to
+the CPU. On the development RTX 5060, an accuracy-checked 3,921,225-combination
+probe measured about 105 ms on the release CPU path and 7 ms after the explicit
+GPU check had compiled the kernel. This is a machine-specific diagnostic, not
+a portable performance guarantee; AMD compatibility follows the OpenCL 1.2
+contract and still requires hardware validation on an AMD system.
+
 ## Game-data memory boundary
 
 Game data is not one process-lifetime JSON object. Build output is divided into

@@ -35,10 +35,13 @@ export function mountModuleOptimizerSurface(
   let catalog: OptimizerCatalog | null = null;
   let inventory: LocalModuleInventory | null = null;
   let gpuSupport: GpuSupport | null = null;
+  let gpuChecking = false;
   let selectedCharacter: LocalModuleCharacter | null = null;
   const attributeControls = new Map<number, AttributeControls>();
 
   const root = element("div", "plugin-surface module-optimizer-surface");
+  const run = button("Optimize loadout", "primary-button module-run-button");
+  run.disabled = true;
   const heading = element("section", "content-card module-optimizer-hero");
   const headingCopy = element("div", "module-optimizer-hero-copy");
   headingCopy.append(
@@ -50,13 +53,14 @@ export function mountModuleOptimizerSurface(
       "section-copy",
     ),
   );
-  const refresh = button("Refresh local snapshot", "secondary-button");
-  heading.append(headingCopy, refresh);
+  const refresh = button("Refresh modules", "secondary-button");
+  const headingActions = element("div", "module-optimizer-hero-actions");
+  headingActions.append(refresh, run);
+  heading.append(headingCopy, headingActions);
 
   const status = text("p", "Loading the local module catalog…", "runtime-action-message");
-  const setup = element("div", "module-optimizer-layout");
-  const left = element("div", "module-optimizer-controls");
-  const right = element("div", "module-optimizer-results");
+  const overview = element("div", "module-optimizer-overview");
+  const results = element("div", "module-optimizer-results");
 
   const characterCard = element("section", "content-card module-character-card");
   characterCard.append(text("h3", "Character inventory"));
@@ -84,9 +88,15 @@ export function mountModuleOptimizerSurface(
   gpuInput.checked = readGpuPreference();
   const gpuSwitch = element("span", "module-gpu-switch");
   const gpuToggleCopy = element("span", "module-gpu-toggle-copy");
-  gpuToggleCopy.append(text("strong", "Use GPU"), text("small", "Exact searches only"));
+  gpuToggleCopy.append(
+    text("strong", "Use GPU acceleration"),
+    text("small", "NVIDIA and AMD via OpenCL"),
+  );
   gpuToggle.append(gpuInput, gpuSwitch, gpuToggleCopy);
-  gpuCard.append(gpuCopy, gpuToggle);
+  const gpuActions = element("div", "module-gpu-actions");
+  const checkGpu = button("Check GPU", "secondary-button module-check-gpu");
+  gpuActions.append(gpuToggle, checkGpu);
+  gpuCard.append(gpuCopy, gpuActions);
 
   const preferenceCard = element("section", "content-card module-preference-card");
   preferenceCard.append(
@@ -129,16 +139,12 @@ export function mountModuleOptimizerSurface(
     minimumTotal.wrapper,
     requireTarget.wrapper,
   );
-  const run = button("Find best module sets", "primary-button");
-  run.disabled = true;
   const searchStatus = text(
     "span",
-    "Choose a character with an observed module inventory.",
+    "Choose preferences, then optimize your observed inventory.",
     "runtime-action-message",
   );
-  const actions = element("div", "runtime-card-actions");
-  actions.append(run, searchStatus);
-  searchCard.append(searchGrid, actions);
+  searchCard.append(searchGrid, searchStatus);
 
   const empty = element("section", "content-card module-results-empty");
   empty.append(
@@ -149,10 +155,9 @@ export function mountModuleOptimizerSurface(
       "runtime-empty-result",
     ),
   );
-  right.append(empty);
-  left.append(characterCard, gpuCard, preferenceCard, searchCard);
-  setup.append(left, right);
-  root.append(heading, status, setup);
+  results.append(empty);
+  overview.append(characterCard, searchCard, gpuCard);
+  root.append(heading, status, overview, preferenceCard, results);
   container.append(root);
 
   function setSelectedCharacter(packageId: string): void {
@@ -212,7 +217,9 @@ export function mountModuleOptimizerSurface(
       minimum.type = "number";
       minimum.min = "0";
       minimum.max = String(Math.max(...attribute.thresholds));
-      minimum.placeholder = "Min";
+      minimum.placeholder = "Minimum Link";
+      minimum.setAttribute("aria-label", `Minimum ${attribute.name} Link`);
+      minimum.title = `Minimum total ${attribute.name} Link`;
       minimum.className = "module-minimum-input";
       target.input.addEventListener("change", () => {
         if (target.input.checked) exclude.input.checked = false;
@@ -236,13 +243,55 @@ export function mountModuleOptimizerSurface(
   function renderGpuSupport(value: GpuSupport): void {
     const detail = gpuCard.querySelector<HTMLElement>(".module-gpu-detail");
     if (detail === null) return;
-    gpuInput.disabled = !value.available;
-    if (!value.available) gpuInput.checked = false;
     const identity = [value.vendor, value.device_name].filter(Boolean).join(" · ");
     detail.textContent = value.available
-      ? `${identity || "OpenCL GPU"} · optional exact-search acceleration with automatic CPU fallback.`
-      : `${value.detail} Multi-core CPU search remains available.`;
+      ? `${identity || "OpenCL GPU"} is ready. Exact searches reuse the compiled GPU kernel; CPU remains the automatic fallback.`
+      : `${value.detail} Multi-core CPU search is ready, and you can check again after a driver update.`;
     gpuCard.dataset.available = String(value.available);
+    gpuCard.dataset.state = value.available ? "ready" : "unavailable";
+    checkGpu.textContent = "Check again";
+  }
+
+  function renderGpuUnchecked(): void {
+    const detail = gpuCard.querySelector<HTMLElement>(".module-gpu-detail");
+    if (detail === null) return;
+    detail.textContent = gpuInput.checked
+      ? "GPU is enabled. Check the installed driver now, or rLogs will check once when you optimize."
+      : "GPU is off. CPU search uses multiple cores; enable this for optional NVIDIA or AMD acceleration.";
+    gpuCard.dataset.available = "unknown";
+    gpuCard.dataset.state = "unchecked";
+    checkGpu.textContent = "Check GPU";
+  }
+
+  async function refreshGpuSupport(): Promise<GpuSupport | null> {
+    if (gpuChecking) return gpuSupport;
+    gpuChecking = true;
+    checkGpu.disabled = true;
+    checkGpu.textContent = "Checking…";
+    gpuCard.dataset.state = "checking";
+    const detail = gpuCard.querySelector<HTMLElement>(".module-gpu-detail");
+    if (detail !== null) {
+      detail.textContent = "Checking the graphics driver without changing your selected search settings…";
+    }
+    try {
+      const support = await loaders.loadGpuSupport();
+      if (!alive) return null;
+      gpuSupport = support;
+      renderGpuSupport(support);
+      return support;
+    } catch (error) {
+      if (!alive) return null;
+      gpuSupport = null;
+      gpuCard.dataset.state = "unavailable";
+      if (detail !== null) {
+        detail.textContent = `${errorMessage(error)} Multi-core CPU search remains available.`;
+      }
+      checkGpu.textContent = "Check again";
+      return null;
+    } finally {
+      gpuChecking = false;
+      checkGpu.disabled = false;
+    }
   }
 
   async function load(): Promise<void> {
@@ -253,17 +302,15 @@ export function mountModuleOptimizerSurface(
     status.classList.remove("error");
     status.textContent = "Refreshing the reviewed catalog and local profile snapshots…";
     try {
-      const [nextCatalog, nextInventory, nextGpuSupport] = await Promise.all([
+      const [nextCatalog, nextInventory] = await Promise.all([
         loaders.loadCatalog(),
         loaders.loadInventory(),
-        loaders.loadGpuSupport(),
       ]);
       if (!alive) return;
       catalog = nextCatalog;
       inventory = nextInventory;
-      gpuSupport = nextGpuSupport;
       renderCatalog(nextCatalog);
-      renderGpuSupport(nextGpuSupport);
+      if (gpuSupport === null) renderGpuUnchecked();
       const previousId = selectedCharacter?.package_id;
       characterSelect.replaceChildren();
       if (nextInventory.characters.length === 0) {
@@ -290,7 +337,7 @@ export function mountModuleOptimizerSurface(
       const ready = nextInventory.characters.filter(
         (entry) => entry.module_snapshot_available,
       ).length;
-      status.textContent = `${nextCatalog.attributes.length} localized effects · ${ready} usable character snapshot${ready === 1 ? "" : "s"} · ${nextGpuSupport.available ? "GPU ready" : "multi-core CPU ready"} · all calculations remain on this PC`;
+      status.textContent = `${nextCatalog.attributes.length} localized effects · ${ready} usable character snapshot${ready === 1 ? "" : "s"} · multi-core CPU ready · all calculations remain on this PC`;
       if (nextInventory.issues.length > 0) {
         status.textContent += ` · ${nextInventory.issues.length} local snapshot warning${nextInventory.issues.length === 1 ? "" : "s"}`;
       }
@@ -310,10 +357,13 @@ export function mountModuleOptimizerSurface(
   async function optimize(): Promise<void> {
     if (busy || selectedCharacter === null || catalog === null) return;
     busy = true;
+    root.classList.add("is-optimizing");
     refresh.disabled = true;
     run.disabled = true;
+    run.textContent = "Optimizing…";
     searchStatus.classList.remove("error");
-    searchStatus.textContent = "Scoring your observed inventory locally…";
+    const started = performance.now();
+    searchStatus.textContent = "Preparing your observed inventory…";
     try {
       const target: number[] = [];
       const exclude: number[] = [];
@@ -326,6 +376,15 @@ export function mountModuleOptimizerSurface(
           minimums[String(attributeId)] = minimum;
         }
       }
+      let selectedGpu = gpuInput.checked ? gpuSupport : null;
+      if (gpuInput.checked && selectedGpu === null) {
+        searchStatus.textContent = "Checking the GPU, then scoring your inventory…";
+        selectedGpu = await refreshGpuSupport();
+      }
+      const gpuEnabled = gpuInput.checked && selectedGpu?.available === true;
+      searchStatus.textContent = gpuEnabled
+        ? "Scoring combinations on the GPU…"
+        : "Scoring combinations across CPU cores…";
       const result = await loaders.optimize({
         modules: selectedCharacter.modules,
         current_instance_ids: selectedCharacter.current_instance_ids,
@@ -335,9 +394,9 @@ export function mountModuleOptimizerSurface(
         combination_size: Number(sizeSelect.select.value),
         max_solutions: Number(resultSelect.select.value),
         search_mode: modeSelect.select.value as OptimizeRequest["search_mode"],
-        use_gpu: gpuInput.checked && gpuSupport?.available === true,
+        use_gpu: gpuEnabled,
         exact_combination_limit:
-          gpuInput.checked && gpuSupport?.available === true ? 10_000_000 : 500_000,
+          gpuEnabled ? 10_000_000 : 500_000,
         beam_width: workstationBeamWidth(),
         minimum_parts: 2,
         minimum_module_total:
@@ -348,13 +407,14 @@ export function mountModuleOptimizerSurface(
         require_target_match: requireTarget.input.checked,
       });
       if (!alive) return;
-      renderResults(right, result, catalog);
+      renderResults(results, result, catalog);
       const engine = result.search.backend === "open_cl"
         ? result.search.accelerator_name ?? "GPU"
         : "multi-core CPU";
-      searchStatus.textContent = `${result.solutions.length} recommendation${result.solutions.length === 1 ? "" : "s"} · ${result.search.evaluated_states.toLocaleString()} states · ${result.search.exact ? "exact" : result.search.used_mode} · ${engine}`;
+      const elapsed = Math.max(0, performance.now() - started);
+      searchStatus.textContent = `${result.solutions.length} recommendation${result.solutions.length === 1 ? "" : "s"} · ${result.search.evaluated_states.toLocaleString()} states · ${result.search.exact ? "exact" : result.search.used_mode} · ${engine} · ${formatElapsed(elapsed)}`;
       if (result.search.accelerator_fallback) {
-        searchStatus.textContent += ` · GPU fallback: ${result.search.accelerator_fallback}`;
+        searchStatus.textContent += ` · GPU note: ${result.search.accelerator_fallback}`;
       }
     } catch (error) {
       if (!alive) return;
@@ -362,8 +422,10 @@ export function mountModuleOptimizerSurface(
       searchStatus.classList.add("error");
     } finally {
       busy = false;
+      root.classList.remove("is-optimizing");
       refresh.disabled = false;
       run.disabled = !selectedCharacter?.module_snapshot_available;
+      run.textContent = "Optimize loadout";
     }
   }
 
@@ -373,7 +435,9 @@ export function mountModuleOptimizerSurface(
   refresh.addEventListener("click", () => void load());
   gpuInput.addEventListener("change", () => {
     writeGpuPreference(gpuInput.checked);
+    if (gpuSupport === null) renderGpuUnchecked();
   });
+  checkGpu.addEventListener("click", () => void refreshGpuSupport());
   run.addEventListener("click", () => void optimize());
   void load();
 
@@ -642,7 +706,12 @@ function image(source: string | null, alternative: string): HTMLImageElement {
   node.className = "module-icon";
   node.alt = alternative;
   node.loading = "lazy";
-  if (source !== null) node.src = source;
+  if (source !== null) {
+    node.addEventListener("error", () => node.classList.add("is-missing"), {
+      once: true,
+    });
+    node.src = source;
+  }
   return node;
 }
 
@@ -679,6 +748,11 @@ function workstationBeamWidth(): number {
   if (threads >= 12) return 1_024;
   if (threads >= 8) return 512;
   return 256;
+}
+
+function formatElapsed(milliseconds: number): string {
+  if (milliseconds < 1_000) return `${Math.round(milliseconds)} ms`;
+  return `${(milliseconds / 1_000).toFixed(milliseconds < 10_000 ? 1 : 0)} s`;
 }
 
 function errorMessage(error: unknown): string {
