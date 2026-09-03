@@ -13,11 +13,15 @@ const PUBLIC_ROUTES = [
   ["PATCH", /^\/v1\/auth\/parses\/[A-Za-z0-9_-]+\/visibility$/],
   ["GET", /^\/v1\/parses$/],
   ["GET", /^\/v1\/parses\/[A-Za-z0-9_-]+$/],
+  ["GET", /^\/v1\/activity\/milestones$/],
   ["GET", /^\/v1\/run-groups\/[A-Za-z0-9_-]+\/reconciliation$/],
   ["GET", /^\/v1\/profiles$/],
+  ["GET", /^\/v1\/photos$/],
   ["GET", /^\/v1\/profiles\/prf_[a-z0-9_]+$/],
   ["GET", /^\/v1\/profiles\/prf_[a-z0-9_]+\/photo-wall\/[1-9][0-9]*$/],
   ["GET", /^\/v1\/users\/[1-9][0-9]{11}$/],
+  ["PUT", /^\/v1\/profiles\/prf_[a-z0-9_]+\/photo-wall\/[1-9][0-9]*\/like$/],
+  ["DELETE", /^\/v1\/profiles\/prf_[a-z0-9_]+\/photo-wall\/[1-9][0-9]*\/like$/],
 ];
 
 const INGEST_ROUTES = [
@@ -36,7 +40,7 @@ const INGEST_ROUTES = [
 function corsHeaders(origin, allowedOrigin) {
   const headers = new Headers({
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, PATCH, POST, PUT, OPTIONS",
+    "Access-Control-Allow-Methods": "DELETE, GET, PATCH, POST, PUT, OPTIONS",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   });

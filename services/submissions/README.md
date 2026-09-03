@@ -92,6 +92,18 @@ same owner can publish only a newer live-proven package. The public profile
 retains the complete privacy-reviewed BPSR envelope, including module inventory
 and equipped-slot state under that character ID.
 
+Published Photo Wall images are exposed through a bounded public photo catalog.
+The receiver timestamps the image upload itself, so an ordinary profile refresh
+does not make an old image look new. Signed-in website accounts can like or
+unlike a photo; the write is idempotent and one account contributes at most one
+like to an image. The public feed exposes only a count and never an account list.
+
+The receiver also materializes a small community milestone catalog while it
+rebuilds the public parse catalog. It records only authoritative completed
+public runs and keeps the first M20-or-higher dungeon clear or Nightmare raid
+clear for each character and exact scene. Requests read the cached catalog and
+never rescan sealed artifacts or all projections.
+
 ## Private GitHub research archive
 
 The receiver can copy every accepted evidence package into a private GitHub
@@ -380,10 +392,12 @@ accounts/                                private account, session, and token-has
 profiles/<profile-id>/claim.json         private immutable UID owner mapping
 profiles/<profile-id>/public.json        public current character profile and modules
 profiles/catalog.v1.json                 rebuildable public profile catalog
+profiles/<profile-id>/photo-wall/        validated images, upload metadata, and hashed like records
 uploads/<upload-id>/                     resumable temporary chunks
 archive-outbox/<report-id>.json           retryable private archive jobs
 archive-receipts/<report-id>.json         completed private archive receipts
 catalog.v1.json                           compact rebuildable discovery index
+community-milestones.v1.json              compact rebuildable first-clear activity index
 ```
 
 The filesystem artifact boundary is intentionally narrow so a deployment can

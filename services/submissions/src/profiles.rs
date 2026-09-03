@@ -20,6 +20,7 @@ pub const PUBLIC_PROFILE_CATALOG_SCHEMA_VERSION: u16 = 1;
 const PROFILE_CLAIM_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_PROFILE_COUNT: usize = 100_000;
 pub const MAXIMUM_PHOTO_WALL_IMAGE_BYTES: usize = 8 * 1024 * 1024;
+const MAXIMUM_PUBLIC_PHOTO_FEED_ENTRIES: usize = 100;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct PhotoAssetReceipt {
@@ -30,6 +31,7 @@ pub struct PhotoAssetReceipt {
     pub sha256: String,
     pub media_type: String,
     pub image_path: String,
+    pub uploaded_unix_millis: u64,
 }
 
 #[derive(Debug)]
@@ -50,6 +52,59 @@ struct StoredPhotoAsset {
     media_type: String,
     file_name: String,
     image_path: String,
+    #[serde(default)]
+    uploaded_unix_millis: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PhotoCatalogSort {
+    #[default]
+    Newest,
+    Popular,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PhotoCatalogQuery {
+    pub sort: Option<PhotoCatalogSort>,
+    pub limit: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PublicPhotoCatalog {
+    pub schema_version: u16,
+    pub total_entries: usize,
+    pub entries: Vec<PublicPhotoCatalogEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PublicPhotoCatalogEntry {
+    pub profile_id: String,
+    pub character_id: String,
+    pub display_name: Option<String>,
+    pub photo_id: u32,
+    pub image_path: String,
+    pub uploaded_unix_millis: u64,
+    pub like_count: usize,
+    pub viewer_liked: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PhotoLikeReceipt {
+    pub schema_version: u16,
+    pub profile_id: String,
+    pub photo_id: u32,
+    pub liked: bool,
+    pub like_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredPhotoLike {
+    schema_version: u16,
+    submitter_digest: String,
+    liked_unix_millis: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -333,6 +388,10 @@ impl ProfileRegistry {
             write_bytes_new(&file_path, bytes)?;
         }
         let image_path = format!("/v1/profiles/{profile_id}/photo-wall/{photo_id}");
+        let uploaded_unix_millis = previous
+            .as_ref()
+            .filter(|asset| asset.sha256 == sha256)
+            .map_or(accepted_unix_millis, |asset| asset.uploaded_unix_millis);
         let stored = StoredPhotoAsset {
             schema_version: 1,
             profile_id: profile_id.to_owned(),
@@ -342,6 +401,7 @@ impl ProfileRegistry {
             media_type: media_type.into(),
             file_name,
             image_path: image_path.clone(),
+            uploaded_unix_millis,
         };
         write_json_atomic(&metadata_path, &stored)?;
         upsert_public_photo_asset(&mut profile, &stored)?;
@@ -365,7 +425,194 @@ impl ProfileRegistry {
             sha256,
             media_type: media_type.into(),
             image_path,
+            uploaded_unix_millis,
         })
+    }
+
+    pub fn photo_catalog(
+        &self,
+        query: &PhotoCatalogQuery,
+        viewer_submitter_id: Option<&str>,
+    ) -> Result<PublicPhotoCatalog, ProfileRegistryError> {
+        let mut entries = Vec::new();
+        for directory in std::fs::read_dir(&self.root)? {
+            let directory = directory?;
+            if !directory.file_type()?.is_dir() {
+                continue;
+            }
+            let profile_path = directory.path().join("public.json");
+            if !profile_path.is_file() {
+                continue;
+            }
+            let profile: PublicProfile = read_json(&profile_path)?;
+            let assets = directory.path().join("photo-wall");
+            if !assets.is_dir() {
+                continue;
+            }
+            for metadata in std::fs::read_dir(&assets)? {
+                let metadata = metadata?;
+                let file_name = metadata.file_name();
+                let Some(file_name) = file_name.to_str() else {
+                    continue;
+                };
+                if !metadata.file_type()?.is_file()
+                    || !file_name.starts_with("photo-")
+                    || !file_name.ends_with(".json")
+                {
+                    continue;
+                }
+                let stored: StoredPhotoAsset = read_json(&metadata.path())?;
+                if stored.profile_id != profile.profile_id
+                    || !profile_contains_photo_id(&profile, stored.photo_id)
+                    || !stored_photo_file_name_is_safe(&stored)
+                {
+                    continue;
+                }
+                let uploaded_unix_millis = if stored.uploaded_unix_millis > 0 {
+                    stored.uploaded_unix_millis
+                } else {
+                    file_modified_unix_millis(&metadata.path())
+                        .unwrap_or(profile.updated_unix_millis)
+                };
+                entries.push(PublicPhotoCatalogEntry {
+                    profile_id: profile.profile_id.clone(),
+                    character_id: profile.character_id.clone(),
+                    display_name: profile.display_name.clone(),
+                    photo_id: stored.photo_id,
+                    image_path: stored.image_path,
+                    uploaded_unix_millis,
+                    like_count: self.photo_like_count(&profile.profile_id, stored.photo_id)?,
+                    viewer_liked: viewer_submitter_id.is_some_and(|submitter_id| {
+                        self.photo_like_path(&profile.profile_id, stored.photo_id, submitter_id)
+                            .is_file()
+                    }),
+                });
+            }
+        }
+        match query.sort.unwrap_or_default() {
+            PhotoCatalogSort::Newest => entries.sort_by(|left, right| {
+                right
+                    .uploaded_unix_millis
+                    .cmp(&left.uploaded_unix_millis)
+                    .then_with(|| right.like_count.cmp(&left.like_count))
+                    .then_with(|| left.profile_id.cmp(&right.profile_id))
+                    .then_with(|| left.photo_id.cmp(&right.photo_id))
+            }),
+            PhotoCatalogSort::Popular => entries.sort_by(|left, right| {
+                right
+                    .like_count
+                    .cmp(&left.like_count)
+                    .then_with(|| right.uploaded_unix_millis.cmp(&left.uploaded_unix_millis))
+                    .then_with(|| left.profile_id.cmp(&right.profile_id))
+                    .then_with(|| left.photo_id.cmp(&right.photo_id))
+            }),
+        }
+        let total_entries = entries.len();
+        entries.truncate(
+            query
+                .limit
+                .unwrap_or(24)
+                .clamp(1, MAXIMUM_PUBLIC_PHOTO_FEED_ENTRIES),
+        );
+        Ok(PublicPhotoCatalog {
+            schema_version: 1,
+            total_entries,
+            entries,
+        })
+    }
+
+    pub fn set_photo_like(
+        &self,
+        profile_id: &str,
+        photo_id: u32,
+        submitter_id: &str,
+        liked: bool,
+        accepted_unix_millis: u64,
+    ) -> Result<PhotoLikeReceipt, ProfileRegistryError> {
+        validate_profile_id(profile_id)?;
+        if submitter_id.is_empty()
+            || submitter_id.len() > 128
+            || submitter_id.chars().any(char::is_control)
+        {
+            return Err(ProfileRegistryError::AuthenticationRequired);
+        }
+        let profile = self.get(profile_id)?;
+        if !profile_contains_photo_id(&profile, photo_id) {
+            return Err(ProfileRegistryError::NotFound);
+        }
+        let metadata_path = self
+            .root
+            .join(profile_id)
+            .join("photo-wall")
+            .join(format!("photo-{photo_id}.json"));
+        if !metadata_path.is_file() {
+            return Err(ProfileRegistryError::NotFound);
+        }
+        let path = self.photo_like_path(profile_id, photo_id, submitter_id);
+        if liked {
+            if !path.exists() {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let submitter_digest = photo_like_submitter_digest(submitter_id);
+                write_json_new(
+                    &path,
+                    &StoredPhotoLike {
+                        schema_version: 1,
+                        submitter_digest,
+                        liked_unix_millis: accepted_unix_millis,
+                    },
+                )?;
+            }
+        } else {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(PhotoLikeReceipt {
+            schema_version: 1,
+            profile_id: profile_id.to_owned(),
+            photo_id,
+            liked,
+            like_count: self.photo_like_count(profile_id, photo_id)?,
+        })
+    }
+
+    fn photo_like_path(&self, profile_id: &str, photo_id: u32, submitter_id: &str) -> PathBuf {
+        self.root
+            .join(profile_id)
+            .join("photo-wall")
+            .join("likes")
+            .join(format!("photo-{photo_id}"))
+            .join(format!(
+                "{}.json",
+                photo_like_submitter_digest(submitter_id)
+            ))
+    }
+
+    fn photo_like_count(
+        &self,
+        profile_id: &str,
+        photo_id: u32,
+    ) -> Result<usize, ProfileRegistryError> {
+        let directory = self
+            .root
+            .join(profile_id)
+            .join("photo-wall")
+            .join("likes")
+            .join(format!("photo-{photo_id}"));
+        if !directory.is_dir() {
+            return Ok(0);
+        }
+        Ok(std::fs::read_dir(directory)?
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry.file_type().is_ok_and(|kind| kind.is_file())
+                    && entry.path().extension().and_then(|value| value.to_str()) == Some("json")
+            })
+            .count())
     }
 
     pub fn photo_asset(
@@ -648,6 +895,7 @@ fn upsert_public_photo_asset(
         "sha256": stored.sha256,
         "media_type": stored.media_type,
         "byte_length": stored.byte_length,
+        "uploaded_unix_millis": stored.uploaded_unix_millis,
     }));
     assets.sort_by_key(|asset| {
         asset
@@ -656,6 +904,23 @@ fn upsert_public_photo_asset(
             .unwrap_or(u64::MAX)
     });
     Ok(())
+}
+
+fn photo_like_submitter_digest(submitter_id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rlogs-photo-like-v1\0");
+    hasher.update(submitter_id.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+fn file_modified_unix_millis(path: &Path) -> Option<u64> {
+    path.metadata()
+        .ok()?
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
 }
 
 fn reviewed_image_format(bytes: &[u8]) -> Option<(&'static str, &'static str)> {
@@ -1269,6 +1534,84 @@ mod tests {
         let loaded = registry.photo_asset(&published.profile_id, 42).unwrap();
         assert_eq!(loaded.bytes, png);
         assert_eq!(loaded.sha256, receipt.sha256);
+    }
+
+    #[test]
+    fn photo_feed_uses_asset_upload_time_and_idempotent_account_likes() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let first = registry
+            .publish(
+                package_with_photos(10, "1000001", 1, &[42]),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+        let second = registry
+            .publish(
+                package_with_photos(11, "2000002", 1, &[84]),
+                Some("user-two"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                21,
+            )
+            .unwrap();
+        let png = one_pixel_png();
+        registry
+            .publish_photo_asset(&first.profile_id, 42, &png, Some("user-one"), 30)
+            .unwrap();
+        registry
+            .publish_photo_asset(&second.profile_id, 84, &png, Some("user-two"), 40)
+            .unwrap();
+
+        let newest = registry
+            .photo_catalog(
+                &PhotoCatalogQuery {
+                    sort: Some(PhotoCatalogSort::Newest),
+                    limit: None,
+                },
+                None,
+            )
+            .unwrap();
+        assert_eq!(newest.total_entries, 2);
+        assert_eq!(newest.entries[0].photo_id, 84);
+        assert_eq!(newest.entries[1].uploaded_unix_millis, 30);
+
+        let liked = registry
+            .set_photo_like(&first.profile_id, 42, "viewer-one", true, 50)
+            .unwrap();
+        assert_eq!(liked.like_count, 1);
+        let duplicate = registry
+            .set_photo_like(&first.profile_id, 42, "viewer-one", true, 51)
+            .unwrap();
+        assert_eq!(duplicate.like_count, 1);
+        registry
+            .set_photo_like(&first.profile_id, 42, "viewer-two", true, 52)
+            .unwrap();
+
+        let popular = registry
+            .photo_catalog(
+                &PhotoCatalogQuery {
+                    sort: Some(PhotoCatalogSort::Popular),
+                    limit: Some(1),
+                },
+                Some("viewer-one"),
+            )
+            .unwrap();
+        assert_eq!(popular.total_entries, 2);
+        assert_eq!(popular.entries.len(), 1);
+        assert_eq!(popular.entries[0].photo_id, 42);
+        assert_eq!(popular.entries[0].like_count, 2);
+        assert!(popular.entries[0].viewer_liked);
+
+        let unliked = registry
+            .set_photo_like(&first.profile_id, 42, "viewer-one", false, 60)
+            .unwrap();
+        assert_eq!(unliked.like_count, 1);
+        assert!(!unliked.liked);
     }
 
     #[test]

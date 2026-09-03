@@ -63,8 +63,9 @@ use accounts::{
 };
 use github_archive::{ArchiveJob, GithubArchive};
 use profiles::{
-    PhotoAssetContent, PhotoAssetReceipt, ProfilePublishReceipt, ProfileRegistry,
-    ProfileRegistryError, PublicProfile, PublicProfileCatalog, PublicProfileCatalogEntry,
+    PhotoAssetContent, PhotoAssetReceipt, PhotoCatalogQuery, PhotoLikeReceipt,
+    ProfilePublishReceipt, ProfileRegistry, ProfileRegistryError, PublicPhotoCatalog,
+    PublicProfile, PublicProfileCatalog, PublicProfileCatalogEntry,
 };
 use rlogs_profiles::LocalProfilePackage;
 
@@ -79,6 +80,7 @@ const UPLOAD_OWNER_SCHEMA_VERSION: u16 = 1;
 const AUTH_INTROSPECTION_SCHEMA_VERSION: u16 = 1;
 const PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION: u16 = 1;
 const MY_PARSE_CATALOG_SCHEMA_VERSION: u16 = 1;
+const COMMUNITY_MILESTONE_CATALOG_SCHEMA_VERSION: u16 = 1;
 const LIFE_WAVE_SOURCE_TYPE_ID: i32 = 1;
 const LIFE_WAVE_SOURCE_CONFIG_ID: i64 = 2_302_420;
 const LIFE_WAVE_EFFECT_ID: i64 = 2_302_421;
@@ -176,6 +178,14 @@ struct CatalogRunGroup {
     submitters: BTreeSet<String>,
     local_profile_witnesses: BTreeSet<String>,
     reconciliation_sources: Vec<ReconciliationRunSource>,
+    milestone_source: MilestoneSource,
+}
+
+#[derive(Debug, Clone)]
+struct MilestoneSource {
+    entry: PublicParseCatalogEntry,
+    authoritative_completion: bool,
+    participants: Vec<PublicParticipant>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -890,6 +900,34 @@ impl SubmissionService {
         Ok(self.inner.profiles.catalog(query.character_id.as_deref())?)
     }
 
+    fn photo_catalog(
+        &self,
+        query: &PhotoCatalogQuery,
+        viewer_submitter_id: Option<&str>,
+    ) -> Result<PublicPhotoCatalog, ServiceError> {
+        Ok(self
+            .inner
+            .profiles
+            .photo_catalog(query, viewer_submitter_id)?)
+    }
+
+    fn set_profile_photo_like(
+        &self,
+        profile_id: &str,
+        photo_id: u32,
+        submitter_id: &str,
+        liked: bool,
+    ) -> Result<PhotoLikeReceipt, ServiceError> {
+        let _write = self.write_guard();
+        Ok(self.inner.profiles.set_photo_like(
+            profile_id,
+            photo_id,
+            submitter_id,
+            liked,
+            unix_millis()?,
+        )?)
+    }
+
     fn owned_profile_catalog(
         &self,
         submitter_id: &str,
@@ -1272,6 +1310,17 @@ impl SubmissionService {
         Ok(catalog)
     }
 
+    pub fn community_milestones(
+        &self,
+        query: &CommunityMilestoneQuery,
+    ) -> Result<PublicCommunityMilestoneCatalog, ServiceError> {
+        let mut catalog: PublicCommunityMilestoneCatalog =
+            read_json(&self.community_milestone_catalog_path())?;
+        let limit = query.limit.unwrap_or(12).clamp(1, 50);
+        catalog.entries.truncate(limit);
+        Ok(catalog)
+    }
+
     fn finalize_response(
         &self,
         report_id: &str,
@@ -1326,6 +1375,7 @@ impl SubmissionService {
         if !current
             .as_ref()
             .is_some_and(|catalog| catalog.schema_version == PUBLIC_CATALOG_SCHEMA_VERSION)
+            || !self.community_milestone_catalog_path().is_file()
         {
             self.rebuild_catalog_locked()?;
         }
@@ -1411,6 +1461,11 @@ impl SubmissionService {
                 });
                 let reconciliation_source =
                     ReconciliationRunSource::from_report(&report, run, private_run_membership);
+                let milestone_source = MilestoneSource {
+                    entry: entry.clone(),
+                    authoritative_completion: run.authoritative_completion,
+                    participants: run.participants.clone(),
+                };
                 let submitter = report.submission_provenance.submitter_id.clone();
                 match grouped.entry(entry.run_group_id.clone()) {
                     std::collections::btree_map::Entry::Vacant(vacant) => {
@@ -1426,6 +1481,7 @@ impl SubmissionService {
                             submitters,
                             local_profile_witnesses,
                             reconciliation_sources: vec![reconciliation_source],
+                            milestone_source,
                         });
                     }
                     std::collections::btree_map::Entry::Occupied(mut occupied) => {
@@ -1444,6 +1500,7 @@ impl SubmissionService {
                         if quality.is_better_than(&group.representative_quality) {
                             group.representative = entry;
                             group.representative_quality = quality;
+                            group.milestone_source = milestone_source;
                         }
                         group.representative.report_ids = report_ids;
                         group.representative.contribution_count =
@@ -1457,6 +1514,7 @@ impl SubmissionService {
             }
         }
         let mut entries = Vec::with_capacity(grouped.len());
+        let mut milestone_sources = Vec::with_capacity(grouped.len());
         for group in grouped.into_values() {
             let mut reconciliation = build_public_reconciliation(&group);
             let replay_ready = matches!(
@@ -1514,6 +1572,7 @@ impl SubmissionService {
             entry.local_profile_witness_character_count = group.local_profile_witnesses.len();
             entry.attribution_reconciliation_status = reconciliation.status;
             entries.push(entry);
+            milestone_sources.push(group.milestone_source);
         }
         entries.sort_by_key(|entry| std::cmp::Reverse(entry.created_unix_millis));
         let facets = CatalogFacets::from_entries(&entries);
@@ -1527,6 +1586,10 @@ impl SubmissionService {
                 entries,
                 facets,
             },
+        )?;
+        write_json_atomic(
+            &self.community_milestone_catalog_path(),
+            &build_community_milestone_catalog(milestone_sources),
         )
     }
 
@@ -1673,6 +1736,10 @@ impl SubmissionService {
         self.inner.root.join("catalog.v1.json")
     }
 
+    fn community_milestone_catalog_path(&self) -> PathBuf {
+        self.inner.root.join("community-milestones.v1.json")
+    }
+
     fn upload_directory(&self, upload_id: &str) -> Result<PathBuf, ServiceError> {
         validate_identifier(upload_id, "upload ID")?;
         Ok(self.inner.root.join("uploads").join(upload_id))
@@ -1770,6 +1837,7 @@ pub fn router(service: SubmissionService) -> Router {
         )
         .route("/v1/uploads/{upload_id}/finalize", post(finalize_upload))
         .route("/v1/parses", get(list_parses))
+        .route("/v1/activity/milestones", get(list_community_milestones))
         .route("/v1/parses/{report_id}", get(get_parse))
         .route(
             "/v1/games/blue-protocol-star-resonance/profiles",
@@ -1780,11 +1848,16 @@ pub fn router(service: SubmissionService) -> Router {
             put(publish_bpsr_profile_photo),
         )
         .route("/v1/profiles", get(list_profiles))
+        .route("/v1/photos", get(list_profile_photos))
         .route("/v1/profiles/{profile_id}", get(get_profile))
         .route("/v1/users/{account_id}", get(get_public_account))
         .route(
             "/v1/profiles/{profile_id}/photo-wall/{photo_id}",
             get(get_profile_photo),
+        )
+        .route(
+            "/v1/profiles/{profile_id}/photo-wall/{photo_id}/like",
+            put(like_profile_photo).delete(unlike_profile_photo),
         )
         .route(
             "/v1/run-groups/{run_group_id}/reconciliation",
@@ -2029,6 +2102,13 @@ async fn list_parses(
     Ok(Json(service.catalog(&query)?))
 }
 
+async fn list_community_milestones(
+    State(service): State<SubmissionService>,
+    Query(query): Query<CommunityMilestoneQuery>,
+) -> Result<Json<PublicCommunityMilestoneCatalog>, ApiError> {
+    Ok(Json(service.community_milestones(&query)?))
+}
+
 async fn get_parse(
     State(service): State<SubmissionService>,
     AxumPath(report_id): AxumPath<String>,
@@ -2081,6 +2161,27 @@ async fn list_profiles(
     Ok(Json(service.profile_catalog(&query)?))
 }
 
+async fn list_profile_photos(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+    Query(query): Query<PhotoCatalogQuery>,
+) -> Result<Json<PublicPhotoCatalog>, ApiError> {
+    let viewer = if let Some(token) = bearer_token(&headers) {
+        Some(
+            service
+                .inner
+                .accounts
+                .authenticate_web(token, unix_millis()?)?,
+        )
+    } else {
+        None
+    };
+    Ok(Json(service.photo_catalog(
+        &query,
+        viewer.as_ref().map(|account| account.submitter_id.as_str()),
+    )?))
+}
+
 async fn get_profile(
     State(service): State<SubmissionService>,
     AxumPath(profile_id): AxumPath<String>,
@@ -2104,6 +2205,42 @@ async fn get_profile_photo(
                 "could not build Photo Wall response".into(),
             ))
         })
+}
+
+async fn like_profile_photo(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+    AxumPath((profile_id, photo_id)): AxumPath<(String, u32)>,
+) -> Result<Json<PhotoLikeReceipt>, ApiError> {
+    set_profile_photo_like(service, headers, profile_id, photo_id, true).await
+}
+
+async fn unlike_profile_photo(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+    AxumPath((profile_id, photo_id)): AxumPath<(String, u32)>,
+) -> Result<Json<PhotoLikeReceipt>, ApiError> {
+    set_profile_photo_like(service, headers, profile_id, photo_id, false).await
+}
+
+async fn set_profile_photo_like(
+    service: SubmissionService,
+    headers: HeaderMap,
+    profile_id: String,
+    photo_id: u32,
+    liked: bool,
+) -> Result<Json<PhotoLikeReceipt>, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    let account = service
+        .inner
+        .accounts
+        .authenticate_web(token, unix_millis()?)?;
+    Ok(Json(service.set_profile_photo_like(
+        &profile_id,
+        photo_id,
+        &account.submitter_id,
+        liked,
+    )?))
 }
 
 async fn get_run_reconciliation(
@@ -2610,6 +2747,41 @@ pub struct CatalogQuery {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommunityMilestoneQuery {
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicCommunityMilestoneCatalog {
+    pub schema_version: u16,
+    pub total_entries: usize,
+    pub entries: Vec<PublicCommunityMilestone>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommunityMilestoneKind {
+    MasterTwentyDungeon,
+    NightmareRaid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicCommunityMilestone {
+    pub kind: CommunityMilestoneKind,
+    pub character_id: String,
+    pub display_name: Option<String>,
+    pub report_id: String,
+    pub run_index: u32,
+    pub completed_unix_millis: u64,
+    pub scene_id: Option<i32>,
+    pub scene_name: Option<String>,
+    pub difficulty_family: String,
+    pub difficulty_tier: Option<u32>,
+    pub total_run_time_micros: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct MyParsesQuery {
     pub limit: Option<usize>,
     pub offset: Option<usize>,
@@ -2701,6 +2873,85 @@ fn catalog_activity_category(entry: &PublicParseCatalogEntry) -> Option<&str> {
             None
         }
     })
+}
+
+fn build_community_milestone_catalog(
+    sources: Vec<MilestoneSource>,
+) -> PublicCommunityMilestoneCatalog {
+    let mut firsts =
+        BTreeMap::<(CommunityMilestoneKind, String, String), PublicCommunityMilestone>::new();
+    for source in sources {
+        if source.entry.terminal_state != "completed" || !source.authoritative_completion {
+            continue;
+        }
+        let kind = match (
+            catalog_activity_category(&source.entry),
+            source.entry.difficulty_family.as_deref(),
+            source.entry.difficulty_tier,
+        ) {
+            (Some("dungeons"), Some("master"), Some(tier)) if tier >= 20 => {
+                CommunityMilestoneKind::MasterTwentyDungeon
+            }
+            (Some("raids"), Some("nightmare"), _) => CommunityMilestoneKind::NightmareRaid,
+            _ => continue,
+        };
+        let scene_key = source
+            .entry
+            .scene_id
+            .map(|scene_id| format!("scene:{scene_id}"))
+            .or_else(|| {
+                source
+                    .entry
+                    .activity_id
+                    .as_ref()
+                    .map(|activity_id| format!("activity:{activity_id}"))
+            })
+            .unwrap_or_else(|| "unknown".into());
+        for participant in source.participants {
+            let Some(character_id) = participant.character_id.filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            let candidate = PublicCommunityMilestone {
+                kind,
+                character_id: character_id.clone(),
+                display_name: participant.display_name,
+                report_id: source.entry.report_id.clone(),
+                run_index: source.entry.run_index,
+                completed_unix_millis: source.entry.created_unix_millis,
+                scene_id: source.entry.scene_id,
+                scene_name: source.entry.scene_name.clone(),
+                difficulty_family: source.entry.difficulty_family.clone().unwrap_or_default(),
+                difficulty_tier: source.entry.difficulty_tier,
+                total_run_time_micros: source.entry.total_run_time_micros,
+            };
+            let key = (kind, character_id, scene_key.clone());
+            match firsts.entry(key) {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(candidate);
+                }
+                std::collections::btree_map::Entry::Occupied(mut entry)
+                    if candidate.completed_unix_millis < entry.get().completed_unix_millis =>
+                {
+                    entry.insert(candidate);
+                }
+                std::collections::btree_map::Entry::Occupied(_) => {}
+            }
+        }
+    }
+    let mut entries = firsts.into_values().collect::<Vec<_>>();
+    entries.sort_by(|left, right| {
+        right
+            .completed_unix_millis
+            .cmp(&left.completed_unix_millis)
+            .then_with(|| left.character_id.cmp(&right.character_id))
+            .then_with(|| left.report_id.cmp(&right.report_id))
+    });
+    PublicCommunityMilestoneCatalog {
+        schema_version: COMMUNITY_MILESTONE_CATALOG_SCHEMA_VERSION,
+        total_entries: entries.len(),
+        entries,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5370,6 +5621,79 @@ mod tests {
     }
 
     #[test]
+    fn community_milestones_keep_the_first_authoritative_clear_per_character_and_scene() {
+        let source = |report: &str,
+                      created: u64,
+                      category: &str,
+                      difficulty: &str,
+                      tier: Option<u32>,
+                      authoritative_completion: bool| {
+            MilestoneSource {
+                entry: PublicParseCatalogEntry {
+                    report_id: report.into(),
+                    report_ids: vec![report.into()],
+                    run_index: 0,
+                    run_group_id: format!("run_{report}"),
+                    contribution_count: 1,
+                    distinct_submitter_count: 1,
+                    local_profile_witness_character_count: 1,
+                    attribution_reconciliation_status:
+                        RunAttributionReconciliationStatus::SingleVantage,
+                    created_unix_millis: created,
+                    deployment_id: "global".into(),
+                    region_id: "global".into(),
+                    activity_id: Some("scene.6500".into()),
+                    activity_family_id: Some("test".into()),
+                    activity_category_id: Some(category.into()),
+                    scene_id: Some(6500),
+                    scene_name: Some("Test activity".into()),
+                    difficulty_family: Some(difficulty.into()),
+                    difficulty_tier: tier,
+                    terminal_state: "completed".into(),
+                    total_run_time_micros: Some(90_000_000),
+                    participant_count: 1,
+                },
+                authoritative_completion,
+                participants: vec![PublicParticipant {
+                    actor_id: "1".into(),
+                    character_id: Some("3296036".into()),
+                    display_name: Some("MarieRose".into()),
+                    actor_kind: Some("player".into()),
+                    class_id: None,
+                    class_name: None,
+                    specialization_id: None,
+                    specialization_name: None,
+                    damage: 1,
+                    dps: 1.0,
+                    encounter_dps: 1.0,
+                    hps: 0.0,
+                    tps: 0.0,
+                    rdps: None,
+                    deaths: 0,
+                    death_seconds: Vec::new(),
+                    abilities: Vec::new(),
+                    series: Vec::new(),
+                }],
+            }
+        };
+        let catalog = build_community_milestone_catalog(vec![
+            source("rpt_later", 200, "dungeons", "master", Some(20), true),
+            source("rpt_first", 100, "dungeons", "master", Some(20), true),
+            source("rpt_unverified", 50, "dungeons", "master", Some(20), false),
+            source("rpt_nightmare", 300, "raids", "nightmare", None, true),
+            source("rpt_not_m20", 400, "dungeons", "master", Some(19), true),
+        ]);
+
+        assert_eq!(catalog.total_entries, 2);
+        assert_eq!(
+            catalog.entries[0].kind,
+            CommunityMilestoneKind::NightmareRaid
+        );
+        assert_eq!(catalog.entries[1].report_id, "rpt_first");
+        assert_eq!(catalog.entries[1].completed_unix_millis, 100);
+    }
+
+    #[test]
     fn query_filters_without_a_hand_authored_dungeon_list() {
         let entry = PublicParseCatalogEntry {
             report_id: "rpt_a".into(),
@@ -5829,6 +6153,11 @@ mod tests {
                 &report.runs[0],
                 Some(&private_membership),
             )],
+            milestone_source: MilestoneSource {
+                entry: PublicParseCatalogEntry::from_report(&report, &report.runs[0]),
+                authoritative_completion: report.runs[0].authoritative_completion,
+                participants: report.runs[0].participants.clone(),
+            },
         };
 
         let reconciliation = build_public_reconciliation(&group);
@@ -6645,6 +6974,11 @@ mod tests {
                 &report.runs[0],
                 None,
             )],
+            milestone_source: MilestoneSource {
+                entry: PublicParseCatalogEntry::from_report(&report, &report.runs[0]),
+                authoritative_completion: report.runs[0].authoritative_completion,
+                participants: report.runs[0].participants.clone(),
+            },
         };
         let reconciliation = build_public_reconciliation(&group);
         let target = EntityRef {

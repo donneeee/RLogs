@@ -27,12 +27,28 @@ test("only the submission API surface is routable", () => {
   assert.equal(routeAllowed("PUT", "/v1/uploads/up_123/chunks/4"), true);
   assert.equal(routeAllowed("POST", "/v1/uploads/up_123/finalize"), true);
   assert.equal(routeAllowed("GET", "/v1/parses/rpt_123"), true);
+  assert.equal(routeAllowed("GET", "/v1/activity/milestones"), true);
   assert.equal(routeAllowed("GET", "/v1/run-groups/run_123/reconciliation"), true);
   assert.equal(routeAllowed("GET", "/v1/profiles?character_id=1000001"), false);
   assert.equal(routeAllowed("GET", "/v1/profiles"), true);
+  assert.equal(routeAllowed("GET", "/v1/photos"), true);
   assert.equal(routeAllowed("GET", "/v1/profiles/prf_0123456789abcdef0123456789abcdef"), true);
   assert.equal(routeAllowed("GET", "/v1/users/583104927614"), true);
   assert.equal(routeAllowed("GET", "/v1/users/3296036"), false);
+  assert.equal(
+    routeAllowed(
+      "PUT",
+      "/v1/profiles/prf_0123456789abcdef0123456789abcdef/photo-wall/42/like",
+    ),
+    true,
+  );
+  assert.equal(
+    routeAllowed(
+      "DELETE",
+      "/v1/profiles/prf_0123456789abcdef0123456789abcdef/photo-wall/42/like",
+    ),
+    true,
+  );
   assert.equal(
     routeAllowed(
       "GET",
