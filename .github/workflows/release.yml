@@ -62,14 +62,14 @@ jobs:
           if (-not $installer) {
             throw "The expected NSIS installer was not produced"
           }
+          $notesPath = "docs/releases/v$version.md"
+          if (-not (Test-Path -LiteralPath $notesPath -PathType Leaf)) {
+            throw "Release notes are required at $notesPath"
+          }
           $sha256 = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
-          $body = @(
-            "rLogs v$version"
-            ""
-            "- Adds Overlay and Custom Triggers to the development shell so their complete menu structure can be reviewed without a live capture runtime."
-            "- Reorganizes Custom Trigger rules around a beginner-friendly When, optional If, Then flow while keeping timing, variables, expressions, and loops under Advanced."
-            "- Fixes both workspace layouts at the minimum desktop window size so cards remain readable without horizontal clipping."
-            ""
-            "Installer SHA-256: $sha256"
-          ) -join [Environment]::NewLine
+          $stableInstaller = Join-Path $installer.DirectoryName "rLogs_x64-setup.exe"
+          Copy-Item -LiteralPath $installer.FullName -Destination $stableInstaller -Force
+          gh release upload "${{ github.ref_name }}" $stableInstaller --clobber
+          $notes = (Get-Content -Raw -LiteralPath $notesPath).Trim()
+          $body = @($notes, "", "Installer SHA-256: $sha256") -join [Environment]::NewLine
           gh release edit "${{ github.ref_name }}" --title "rLogs v$version" --notes $body --draft=false --latest

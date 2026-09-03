@@ -23,7 +23,9 @@
 - [done] expose sealed post-decode, pre-localization canonical logs through a
   bounded Event Viewer with exact-ID filtering, resumable pagination,
   integrity verification, and replay details;
-- add Event Viewer live-follow mode on the writer's acknowledged event stream;
+- [done] follow the writer's acknowledged event stream in the bounded Event
+  Inspector, with true frozen review, lazy protocol detail, pinning, comparison,
+  and disabled evidence-backed trigger drafts;
 - expand the implemented route, byte, decoder, feature, event, and gap coverage
   report into continuous live diagnostics;
 - compile human-readable game-data/localization/icon end products into indexed

@@ -31,6 +31,17 @@ jobs:
         run: |
           node tools/bpsr-blade-sweep-inverse-defense-proof.mjs self-test
           node tools/bpsr-blade-sweep-inverse-defense-proof.mjs verify --input plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/blade-sweep-inverse-defense-proof.v1.json
+      - name: Verify desktop release metadata
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/desktop-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $notesPath = "docs/releases/v$version.md"
+          if (-not (Test-Path -LiteralPath $notesPath -PathType Leaf)) {
+            throw "Release notes are required at $notesPath"
+          }
+          if ((Get-Item -LiteralPath $notesPath).Length -eq 0) {
+            throw "Release notes at $notesPath are empty"
+          }
       - name: Build desktop UI
         working-directory: apps/desktop/ui
         run: |
