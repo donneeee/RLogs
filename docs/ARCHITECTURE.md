@@ -220,4 +220,7 @@ privileges on both systems. See [Packet capture decision](CAPTURE.md).
 
 Plugin APIs are language-neutral. SDKs may be provided for Rust, TypeScript,
 Python, C#, Go, and other languages without moving packet processing into
-those runtimes.
+those runtimes. The checked-in Rust SDK runs plug-in adapters twice against
+sealed, sanitized `.rlog` fixtures, pins fixture identity and output schemas,
+and rejects manifest/descriptor drift before replay. It is a compatibility
+harness only; production permissions and sandboxing remain host-owned.

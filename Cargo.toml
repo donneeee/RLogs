@@ -32,6 +32,7 @@ members = [
     "plugins/games/blue-protocol-star-resonance/tools/offline-recorder",
     "plugins/games/blue-protocol-star-resonance/tools/protocol-journal",
     "plugins/games/blue-protocol-star-resonance/tools/protocol-coverage",
+    "sdk/rust",
     "services/submissions",
 ]
 resolver = "3"

@@ -75,7 +75,8 @@
   unsafe-native permission before supervising a native developer package;
 - [done] mount validated installed browser/native settings surfaces without
   exposing arbitrary package files;
-- add deterministic fixture suites and compatibility checks to the SDK;
+- [done] add deterministic sealed-fixture suites and strict manifest/code
+  compatibility checks to the Rust SDK;
 - keep native game decoders outside the ordinary community trust boundary.
 
 ## Service
