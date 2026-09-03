@@ -435,6 +435,20 @@ interface OverlayLiveUpdate {
   encounter_presentation?: OverlayEncounterPresentation;
 }
 
+export function overlayActorsFromLiveUpdate(
+  update: OverlayLiveUpdate | null | undefined,
+): OverlayActor[] {
+  const presentations = update?.actor_presentations ?? {};
+  return (update?.snapshot?.actors ?? []).map((actor) => ({
+    ...actor,
+    damage_during_combat: actor.damage_during_combat ?? actor.reported_damage,
+    dps: actor.run_dps ?? actor.encounter_dps ?? actor.dps,
+    edps: actor.encounter_dps ?? actor.dps,
+    adps: actor.active_dps ?? actor.dps,
+    presentation: presentations[actor.actor_id],
+  })).filter(isOverlayRosterActor);
+}
+
 interface MountedSurface {
   dispose(): void;
 }
@@ -459,6 +473,8 @@ type OverlayResizeDirection = "East" | "South" | "SouthEast";
 
 interface RenderOptions {
   mode: "preview" | "runtime";
+  /** Override the actor-table empty state without changing renderer geometry. */
+  emptyMessage?: string;
   selectedLayerId?: string | null;
   onSelectLayer?: (layerId: string) => void;
   onReorderLayers?: (source: string, target: string, placement: ReorderPlacement) => void;
@@ -780,6 +796,12 @@ export function mountCombatOverlayEditorSurface(
   let settings: CombatOverlaySettings | null = null;
   let selectedLayerId: string | null = null;
   let previewVisibilityDimmed = false;
+  let previewDataMode: "live" | "example" = "live";
+  let previewLiveUpdate: OverlayLiveUpdate | null = null;
+  let previewTimerSettings: OverlayGlobalTimerSettings = {
+    pauseOverlayTimersOutsideCombat: true,
+    overlayTimerInactivitySeconds: 3,
+  };
   const selectedActorByLayer = new Map<string, string>();
   const selectedTimerByLayer = new Map<string, OverlaySummaryField>();
   const selectedSegmentByLayer = new Map<string, string>();
@@ -791,7 +813,7 @@ export function mountCombatOverlayEditorSurface(
     text("h2", "Combat Overlay designer"),
     text(
       "p",
-      "This is an inactive example. It uses the exact renderer and saved layout used by the native live overlay.",
+      "The preview uses the exact renderer, saved layout, and current data used by the native live overlay.",
     ),
   );
   const actions = el("div", "combat-overlay-editor-actions");
@@ -828,7 +850,15 @@ export function mountCombatOverlayEditorSurface(
   previewHeight.input.step = "10";
   previewDimensions.append(previewWidth.label, previewHeight.label);
   const previewControls = el("div", "combat-overlay-preview-controls");
-  previewControls.append(previewDimensions, previewScale);
+  const previewData = selectField(
+    "Preview data",
+    [["live", "Live overlay"], ["example", "Example combat"]],
+    "live",
+  );
+  previewData.label.classList.add("combat-overlay-preview-data-control");
+  const refreshPreviewData = button("Refresh", "secondary-button combat-overlay-preview-refresh");
+  refreshPreviewData.title = "Reload the current live combat state";
+  previewControls.append(previewData.label, refreshPreviewData, previewDimensions, previewScale);
   previewLabel.append(
     text("strong", "Inactive preview"),
     text("span", "Drag headers and controls to arrange them."),
@@ -876,10 +906,21 @@ export function mountCombatOverlayEditorSurface(
     canvas.style.setProperty("--bar-opacity", String(settings.barOpacityPercent / 100));
     canvas.style.setProperty("--summary-opacity", String(settings.summaryOpacityPercent / 100));
     canvas.dataset.previewDimmed = String(previewVisibilityDimmed);
-    renderOverlayCanvas(canvas, settings, SAMPLE_ACTORS, {
+    const showingLiveData = previewDataMode === "live";
+    const previewActors = showingLiveData
+      ? overlayActorsFromLiveUpdate(previewLiveUpdate)
+      : SAMPLE_ACTORS;
+    const previewSnapshot = showingLiveData
+      ? applyOverlayTimerPause(previewLiveUpdate?.snapshot ?? null, previewTimerSettings)
+      : SAMPLE_SNAPSHOT;
+    const previewPresentation = showingLiveData
+      ? previewLiveUpdate?.encounter_presentation ?? null
+      : SAMPLE_ENCOUNTER_PRESENTATION;
+    renderOverlayCanvas(canvas, settings, previewActors, {
       mode: "preview",
-      snapshot: SAMPLE_SNAPSHOT,
-      encounterPresentation: SAMPLE_ENCOUNTER_PRESENTATION,
+      emptyMessage: showingLiveData ? "Waiting for combat..." : "No example rows",
+      snapshot: previewSnapshot,
+      encounterPresentation: previewPresentation,
       selectedLayerId,
       onSelectLayer(layerId) {
         selectedLayerId = layerId;
@@ -939,8 +980,8 @@ export function mountCombatOverlayEditorSurface(
           cycleSelectedTimer(
             selectedTimerByLayer,
             layerId,
-            SAMPLE_ENCOUNTER_PRESENTATION,
-            SAMPLE_SNAPSHOT,
+            previewPresentation,
+            previewSnapshot,
           );
           render();
           return;
@@ -949,7 +990,7 @@ export function mountCombatOverlayEditorSurface(
           cycleSelectedSegment(
             selectedSegmentByLayer,
             layerId,
-            SAMPLE_ENCOUNTER_PRESENTATION,
+            previewPresentation,
           );
           selectedActorByLayer.delete(layerId);
           render();
@@ -984,6 +1025,30 @@ export function mountCombatOverlayEditorSurface(
     canvas.style.height = `${resolvedOverlayHeight(canvas, settings)}px`;
     canvas.append(previewResizeHandle);
     renderInspector();
+  };
+
+  const loadPreviewData = async () => {
+    refreshPreviewData.disabled = true;
+    try {
+      const [update, timerSettings] = await Promise.all([
+        apiJson<OverlayLiveUpdate>("/api/runtime/live/combat"),
+        loadGlobalTimerSettings(),
+      ]);
+      if (!alive) return;
+      previewLiveUpdate = update;
+      previewTimerSettings = timerSettings;
+      status.textContent = update.snapshot === null
+        ? "Live preview matches the overlay's waiting state. Choose Example combat to arrange populated rows."
+        : "Live preview refreshed from the current combat overlay state.";
+      status.classList.remove("error");
+      if (previewDataMode === "live") render();
+    } catch (error) {
+      if (!alive) return;
+      status.textContent = `Could not load live preview data: ${errorMessage(error)}`;
+      status.classList.add("error");
+    } finally {
+      refreshPreviewData.disabled = false;
+    }
   };
 
   const updateLayer = (
@@ -1695,6 +1760,20 @@ export function mountCombatOverlayEditorSurface(
   };
   previewWidth.input.addEventListener("change", updatePreviewDimensions);
   previewHeight.input.addEventListener("change", updatePreviewDimensions);
+  previewData.select.addEventListener("change", () => {
+    previewDataMode = previewData.select.value === "example" ? "example" : "live";
+    refreshPreviewData.hidden = previewDataMode !== "live";
+    if (previewDataMode === "live" && previewLiveUpdate === null) {
+      void loadPreviewData();
+      return;
+    }
+    status.textContent = previewDataMode === "live"
+      ? "Showing the current data used by the native live overlay."
+      : "Showing stable example combat so populated rows can be arranged.";
+    status.classList.remove("error");
+    render();
+  });
+  refreshPreviewData.addEventListener("click", () => void loadPreviewData());
   previewResizeHandle.addEventListener("pointerdown", (event) => {
     if (settings === null || event.button !== 0) return;
     event.preventDefault();
@@ -1782,8 +1861,9 @@ export function mountCombatOverlayEditorSurface(
       if (!alive) return;
       settings = loaded;
       selectedLayerId = loaded.layers[0]?.id ?? null;
-      status.textContent = "Preview only — no capture or live calculations are running in this tab.";
+      status.textContent = "Loading the current live overlay state...";
       render();
+      void loadPreviewData();
     })
     .catch((error) => {
       status.textContent = errorMessage(error);
@@ -2463,15 +2543,7 @@ export async function mountCombatOverlayRuntimeApp(
         for (const [layerId, viewId] of selectedSegmentByLayer) {
           if (!availableViewIds.has(viewId)) selectedSegmentByLayer.delete(layerId);
         }
-        const presentations = update.actor_presentations ?? {};
-        actors = (update.snapshot?.actors ?? []).map((actor) => ({
-          ...actor,
-          damage_during_combat: actor.damage_during_combat ?? actor.reported_damage,
-          dps: actor.run_dps ?? actor.encounter_dps ?? actor.dps,
-          edps: actor.encounter_dps ?? actor.dps,
-          adps: actor.active_dps ?? actor.dps,
-          presentation: presentations[actor.actor_id],
-        })).filter(isOverlayRosterActor);
+        actors = overlayActorsFromLiveUpdate(update);
         const nowMillis = Date.now();
         const shouldRefreshSettings = !resizeSettingsPending
           && nowMillis - lastSettingsRefreshMillis >= 1_000;
@@ -3308,7 +3380,11 @@ export function renderOverlayCanvas(
       rows.append(row);
     }
     if (rows.childElementCount === 0) {
-      rows.append(text("p", options.mode === "runtime" ? "Waiting for combat..." : "No example rows", "combat-overlay-empty"));
+      rows.append(text(
+        "p",
+        options.emptyMessage ?? (options.mode === "runtime" ? "Waiting for combat..." : "No example rows"),
+        "combat-overlay-empty",
+      ));
     }
     layerElement.append(summary);
     if (layerUsesRdps(layer) && !rdpsAvailability.providerCreditEnabled) {
@@ -5842,6 +5918,10 @@ function installStyles(): void {
     .combat-overlay-preview-label strong { color:var(--text); text-transform:uppercase; letter-spacing:.08em; }
     .combat-overlay-preview-label > span { min-width:120px; flex:1 1 auto; }
     .combat-overlay-preview-controls { display:flex; flex:0 0 auto; align-items:end; justify-content:flex-end; gap:12px; }
+    .combat-overlay-preview-data-control { display:grid; gap:2px; color:var(--muted); font-size:9px; }
+    .combat-overlay-preview-data-control select { min-width:112px; min-height:28px; border:1px solid var(--line); border-radius:6px; padding:3px 7px; color:var(--text); background:var(--input); font:600 11px/1.2 system-ui; color-scheme:dark; }
+    .combat-overlay-preview-data-control option { color:#edf3fb; background:#101927; }
+    .combat-overlay-preview-refresh { min-height:28px; padding:3px 9px; }
     .combat-overlay-dimension-controls { display:flex; align-items:end; gap:6px; }
     .combat-overlay-dimension-control { display:grid; gap:2px; color:var(--muted); font-size:9px; }
     .combat-overlay-dimension-control input { width:72px; min-height:28px; border:1px solid var(--line); border-radius:6px; padding:3px 6px; color:var(--text); background:var(--input); font:600 11px/1.2 system-ui; text-align:right; }
@@ -5888,7 +5968,7 @@ function installStyles(): void {
     .combat-overlay-summary-draggable.is-dragging { cursor:grabbing; }
     .combat-overlay-summary-stat > .combat-overlay-reorder-grip { pointer-events:none; }
     .combat-overlay-summary-control { position:relative; box-sizing:border-box; min-width:0; flex:0 0 auto; align-self:center; justify-content:center; margin:2px 3px; white-space:nowrap; }
-    .combat-overlay-summary-control[data-button-action='cycle_timer'] { font-variant-numeric:tabular-nums; }
+    .combat-overlay-summary-control[data-button-action='cycle_timer'] { width:${FIXED_TIMER_CONTROL_WIDTH}px; min-width:${FIXED_TIMER_CONTROL_WIDTH}px; max-width:${FIXED_TIMER_CONTROL_WIDTH}px; flex-basis:${FIXED_TIMER_CONTROL_WIDTH}px; overflow:hidden; justify-content:center; font-variant-numeric:tabular-nums; text-overflow:ellipsis; }
     .combat-overlay-summary-editor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
     .combat-overlay-summary-editor { display:grid; grid-template-columns:minmax(0,1fr) 76px; min-width:0; min-height:38px; gap:10px; align-items:center; padding:4px 8px; border:1px solid color-mix(in srgb,var(--line) 78%,transparent); border-radius:7px; background:color-mix(in srgb,var(--surface-soft) 72%,transparent); }
     .combat-overlay-summary-editor .combat-overlay-width-field { display:block; }

@@ -19,6 +19,7 @@ import {
   moveSummaryField,
   nextOverlayHeaderViewId,
   normalizeHeaderViewGeometry,
+  overlayActorsFromLiveUpdate,
   parseCombatOverlaySettings,
   planCombatOverlayVisibility,
   preferredOverlayDisplayName,
@@ -548,6 +549,51 @@ describe("Combat Overlay plug-in settings", () => {
     expect(buttonWidthFor({ action: "cycle_timer", width: 72 })).toBe(116);
     expect(buttonWidthFor({ action: "cycle_timer", width: 480 })).toBe(116);
     expect(layer.buttons[0]?.width).toBe(116);
+  });
+
+  it("projects designer live data through the same actor mapping as the runtime", () => {
+    const actors = overlayActorsFromLiveUpdate({
+      revision: 4,
+      snapshot: {
+        actors: [{
+          actor_id: "3296036",
+          actor_kind: "player",
+          display_name: "MarieRose",
+          dps: 1,
+          run_dps: 900,
+          encounter_dps: 1_100,
+          active_dps: 1_300,
+          reported_damage: 9_000,
+          hps: 0,
+          tps: 0,
+          rdps: null,
+        }],
+      },
+      actor_presentations: {
+        "3296036": {
+          character_id: "3296036",
+          class_id: 11,
+          specialization_id: 117,
+          class_name: "Marksman",
+          specialization_name: "Falconry Spec",
+          class_spec_icon_asset_path: null,
+          role: "damage",
+          accent: "damage_glow",
+          weapon: null,
+          primary_imagines: [],
+        },
+      },
+    });
+
+    expect(actors).toHaveLength(1);
+    expect(actors[0]).toMatchObject({
+      actor_id: "3296036",
+      damage_during_combat: 9_000,
+      dps: 900,
+      edps: 1_100,
+      adps: 1_300,
+      presentation: { specialization_name: "Falconry Spec" },
+    });
   });
 
   it("recalculates every rate from the selected visible timer without changing totals", () => {
