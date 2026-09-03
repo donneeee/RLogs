@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "pack_id": "global-steam-24687926-static-candidate-v6",
+  "pack_id": "global-steam-24687926-static-candidate-v7",
   "target": {
     "deployment_id": "global",
     "region_id": null,
@@ -38,17 +38,23 @@
       "service_name": "World",
       "method_name": "UseSlot",
       "message_name": "Zproto.World.Types.UseSlot",
-      "confidence": "candidate",
+      "confidence": "verified",
       "provenance": [
         {
           "source": "exact-current-build-use-slot-static-proof",
           "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/use-skill-attribute-envelope.v3.json"
+        },
+        {
+          "source": "exact-current-build-protobuf-wire-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/protobuf-native-wire-proof.v1.json"
         }
       ],
       "features": [
         "skill"
       ],
-      "disposition": "opaque"
+      "disposition": "allowed",
+      "domain": "combat",
+      "decoder": "world_use_slot_v1"
     },
     {
       "route": {
@@ -1259,9 +1265,7 @@
       "features": [
         "skill"
       ],
-      "disposition": "allowed",
-      "domain": "combat",
-      "decoder": "sync_client_use_skill_v1"
+      "disposition": "opaque"
     },
     {
       "route": {

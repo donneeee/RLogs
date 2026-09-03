@@ -627,7 +627,7 @@ allowed_network_domains = []
             first_observed_micros: Some(1_000_000),
             last_observed_micros: Some(12_100_000),
             content_sha256: Some(
-                "sha256:be0791004d71f1c1a5270487cfde52e7b3535942f7ecae2bdf67275d03fe0b83".into(),
+                "sha256:c22fa0f9be17522b3a4f08df49aa2b329edf06cbdabcdf5e79ddfaee9bcd9c24".into(),
             ),
             output_schemas: vec![OutputSchemaExpectation {
                 schema_id: "app.rlogs.fixture-counter.summary".into(),
@@ -656,7 +656,7 @@ allowed_network_domains = []
         assert_eq!(report.outputs_emitted, 1);
         assert_eq!(
             report.rlog.content_sha256,
-            "sha256:be0791004d71f1c1a5270487cfde52e7b3535942f7ecae2bdf67275d03fe0b83"
+            "sha256:c22fa0f9be17522b3a4f08df49aa2b329edf06cbdabcdf5e79ddfaee9bcd9c24"
         );
         assert_eq!(
             serde_json::to_value(&report.outputs[0]).unwrap()["payload"],

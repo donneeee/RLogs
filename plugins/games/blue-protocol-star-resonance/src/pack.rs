@@ -877,7 +877,7 @@ mod tests {
     }
 
     #[test]
-    fn frame_up_acquisition_layout_is_exact_pack_versioned_with_opaque_compatibility() {
+    fn current_pack_has_exact_acquisition_and_action_route_contracts() {
         let historical = ProtocolPack::from_json(include_bytes!(
             "../protocol-packs/global/steam-24252055/pack.json"
         ))
@@ -895,17 +895,50 @@ mod tests {
             current.definition().acquisition.frame_up_layout,
             BpsrFrameUpLayout::NestedAfterFourBytes
         );
+        let use_slot = current
+            .definition()
+            .routes
+            .iter()
+            .find(|route| {
+                route.route.direction == PacketDirection::ClientToServer
+                    && route.route.service_id == 103_198_054
+                    && route.route.method_id == 249_858
+            })
+            .expect("current-build World.UseSlot action route");
+        assert_eq!(use_slot.confidence, MappingConfidence::Verified);
+        assert_eq!(
+            use_slot.disposition,
+            ProtocolPackRouteDisposition::Allowed {
+                domain: AllowedDataDomain::Combat,
+                decoder: DecoderKind::WorldUseSlotV1,
+            }
+        );
+        let unobserved_server_cast = current
+            .definition()
+            .routes
+            .iter()
+            .find(|route| {
+                route.route.direction == PacketDirection::ServerToClient
+                    && route.route.service_id == 1_664_308_034
+                    && route.route.method_id == 67
+            })
+            .expect("unobserved server cast notification route");
+        assert_eq!(
+            unobserved_server_cast.disposition,
+            ProtocolPackRouteDisposition::Opaque,
+            "the local action request is authoritative and must not be double-counted"
+        );
         assert_eq!(
             current.digest(),
-            "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1"
+            "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3"
         );
 
         let unchanged_route_prefix = &current.definition().routes[..48];
         let unchanged_route_prefix_bytes = serde_json::to_vec(unchanged_route_prefix).unwrap();
         assert_eq!(
             format!("{:x}", Sha256::digest(unchanged_route_prefix_bytes)),
-            "61da48adb6ec45a940f4d85d520750eb0d62baee20f0e9dfb5f5dc0e37953ae2",
-            "profile-route carry-forward must not modify any pre-existing route"
+            "a5aa3fa14424969958032e7198d40fe6b95f1e359593a84129f6a59fdfa66c8e",
+            "reviewed current-build combat route set must remain exact"
         );
         assert_eq!(current.definition().routes.len(), 56);
         let profile_route_prefix = &current.definition().routes[..53];
@@ -914,8 +947,8 @@ mod tests {
                 "{:x}",
                 Sha256::digest(serde_json::to_vec(profile_route_prefix).unwrap())
             ),
-            "ddef4d6ad1b32f81f9c2117f689d27b3f4e845a1f0a4b83793d96265166efa7f",
-            "Photo Wall support must append routes without changing the reviewed v4 route set"
+            "3689ddad270601b376f4a9f4e6a8061707a4029fceaab6da4183c2694cbd713e",
+            "Photo Wall support must preserve the reviewed action and profile route set"
         );
         let photo_wall_route_prefix = &current.definition().routes[..55];
         assert_eq!(
@@ -923,8 +956,8 @@ mod tests {
                 "{:x}",
                 Sha256::digest(serde_json::to_vec(photo_wall_route_prefix).unwrap())
             ),
-            "143a25cd34538b37379c8b450b13a677551c60f0857ebf0e0f9f67559258bd0e",
-            "guild support must append its route without changing the reviewed v5 route set"
+            "0d993d762b829f2d4510d09ca1a32f28a0f30841cb8b7479aeef690644f821bd",
+            "guild support must preserve the reviewed action, profile, and Photo Wall route set"
         );
         assert!(current.definition().routes[48..].iter().all(|route| {
             matches!(

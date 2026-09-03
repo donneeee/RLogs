@@ -1039,7 +1039,7 @@ mod tests {
                 deployment_id: "global".into(),
                 region_id: None,
                 channel: "steam".into(),
-                build_id: crate::BPSR_USE_SKILL_ATTR_BUILD.into(),
+                build_id: crate::BPSR_CURRENT_USE_SKILL_ATTR_BUILD.into(),
                 executable_version: None,
             },
             acquisition: crate::ProtocolPackAcquisition {
@@ -1096,7 +1096,7 @@ mod tests {
             deployment_id: "global".into(),
             region_id: None,
             channel: "steam".into(),
-            build_id: crate::BPSR_USE_SKILL_ATTR_BUILD.into(),
+            build_id: crate::BPSR_CURRENT_USE_SKILL_ATTR_BUILD.into(),
             executable_version: None,
         };
         let mut recorder = ContinuousBpsrRecorder::new(

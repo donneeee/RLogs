@@ -2682,6 +2682,12 @@ pub struct PublicAbilitySummary {
     pub presentation_name: Option<String>,
     pub presentation_kind: Option<String>,
     pub icon_asset_path: Option<String>,
+    /// Stable game presentation family used to associate an action request
+    /// with the exact child damage rows it produced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presentation_recount_group_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presentation_recount_group_name: Option<String>,
     pub casts: u64,
     pub hits: u64,
     pub critical_hits: u64,
@@ -5053,6 +5059,8 @@ fn public_participant(actor: &HistoryActorSummary) -> PublicParticipant {
                 presentation_name: ability.presentation_name.clone(),
                 presentation_kind: ability.presentation_kind.clone(),
                 icon_asset_path: ability.icon_asset_path.clone(),
+                presentation_recount_group_id: ability.presentation_recount_group_id.clone(),
+                presentation_recount_group_name: ability.presentation_recount_group_name.clone(),
                 casts: ability.casts,
                 hits: ability.hits,
                 critical_hits: ability.critical_hits,

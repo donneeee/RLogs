@@ -16,9 +16,17 @@ use thiserror::Error;
 type Aes128CbcDecryptor = cbc::Decryptor<Aes128>;
 type HmacSha256 = Hmac<Sha256>;
 
-/// Exact Steam client build from which this contract and its gameplay-only
-/// keys were recovered.
+/// First exact Steam client build from which this contract and its
+/// gameplay-only keys were recovered.
 pub const BPSR_USE_SKILL_ATTR_BUILD: &str = "24609362";
+
+/// Current Steam client build whose native protobuf branches, `World.UseSlot`
+/// route, and authenticated-envelope keys were independently verified.
+pub const BPSR_CURRENT_USE_SKILL_ATTR_BUILD: &str = "24687926";
+
+const BPSR_SUPPORTED_USE_SKILL_ATTR_BUILDS: [&str; 2] =
+    [BPSR_USE_SKILL_ATTR_BUILD, BPSR_CURRENT_USE_SKILL_ATTR_BUILD];
+const BPSR_SUPPORTED_USE_SKILL_ATTR_BUILD_LABEL: &str = "24609362 or 24687926";
 
 const IV_LENGTH: usize = 16;
 const MAC_LENGTH: usize = 32;
@@ -232,7 +240,7 @@ pub enum UseSkillActionDecodeError {
     MissingField { message: &'static str, field: u32 },
 }
 
-/// Verifies, decrypts, and strictly decodes one build-24609362 `AttrData`
+/// Verifies, decrypts, and strictly decodes one reviewed-build `AttrData`
 /// envelope using caller-owned reusable storage.
 ///
 /// The HMAC is verified before any CBC decryption. `scratch` is reused across
@@ -244,10 +252,10 @@ pub fn decode_use_skill_attr_into(
     envelope: &[u8],
     scratch: &mut Vec<u8>,
 ) -> Result<UseSkillAttributes, UseSkillAttrDecodeError> {
-    if game_build != BPSR_USE_SKILL_ATTR_BUILD {
+    if !BPSR_SUPPORTED_USE_SKILL_ATTR_BUILDS.contains(&game_build) {
         return Err(UseSkillAttrDecodeError::UnsupportedBuild {
             observed: game_build.to_owned(),
-            expected: BPSR_USE_SKILL_ATTR_BUILD,
+            expected: BPSR_SUPPORTED_USE_SKILL_ATTR_BUILD_LABEL,
         });
     }
     if envelope.len() < ENVELOPE_PREFIX_LENGTH + AES_BLOCK_LENGTH {
@@ -304,10 +312,10 @@ pub fn decode_world_use_slot_skill_action_into(
     payload: &[u8],
     scratch: &mut Vec<u8>,
 ) -> Result<Option<UseSkillActionSnapshot>, UseSkillActionDecodeError> {
-    if game_build != BPSR_USE_SKILL_ATTR_BUILD {
+    if !BPSR_SUPPORTED_USE_SKILL_ATTR_BUILDS.contains(&game_build) {
         return Err(UseSkillAttrDecodeError::UnsupportedBuild {
             observed: game_build.to_owned(),
-            expected: BPSR_USE_SKILL_ATTR_BUILD,
+            expected: BPSR_SUPPORTED_USE_SKILL_ATTR_BUILD_LABEL,
         }
         .into());
     }
@@ -1047,7 +1055,7 @@ pub(crate) mod tests {
     fn decodes_exact_current_build_gameplay_fields() {
         let mut scratch = Vec::new();
         let decoded = decode_use_skill_attr_into(
-            BPSR_USE_SKILL_ATTR_BUILD,
+            BPSR_CURRENT_USE_SKILL_ATTR_BUILD,
             &envelope(&exact_plaintext()),
             &mut scratch,
         )
@@ -1071,7 +1079,7 @@ pub(crate) mod tests {
     fn decodes_exact_world_use_slot_skill_identity_target_and_speed_snapshot() {
         let mut scratch = Vec::new();
         let decoded = decode_world_use_slot_skill_action_into(
-            BPSR_USE_SKILL_ATTR_BUILD,
+            BPSR_CURRENT_USE_SKILL_ATTR_BUILD,
             &world_skill_use_payload(),
             &mut scratch,
         )
@@ -1135,6 +1143,34 @@ pub(crate) mod tests {
                 .is_none()
         );
         assert!(scratch.is_empty());
+    }
+
+    #[test]
+    fn reviewed_builds_decode_the_same_authenticated_skill_action() {
+        let payload = world_skill_use_payload();
+        let mut scratch = Vec::new();
+        let historical = decode_world_use_slot_skill_action_into(
+            BPSR_USE_SKILL_ATTR_BUILD,
+            &payload,
+            &mut scratch,
+        )
+        .unwrap();
+        let current = decode_world_use_slot_skill_action_into(
+            BPSR_CURRENT_USE_SKILL_ATTR_BUILD,
+            &payload,
+            &mut scratch,
+        )
+        .unwrap();
+
+        assert_eq!(historical, current);
+        let error = decode_world_use_slot_skill_action_into("unreviewed", &payload, &mut scratch)
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            UseSkillActionDecodeError::AttributeEnvelope(
+                UseSkillAttrDecodeError::UnsupportedBuild { .. }
+            )
+        ));
     }
 
     #[test]

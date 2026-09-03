@@ -6633,7 +6633,7 @@ mod tests {
                 deployment_id: "global".into(),
                 region_id: None,
                 channel: "steam".into(),
-                build_id: crate::BPSR_USE_SKILL_ATTR_BUILD.into(),
+                build_id: crate::BPSR_CURRENT_USE_SKILL_ATTR_BUILD.into(),
                 executable_version: None,
             },
             acquisition: Default::default(),
@@ -6660,7 +6660,7 @@ mod tests {
 
     fn current_build_runtime(pack: &ProtocolPack) -> ProtocolRuntime<'_> {
         let mut build = build();
-        build.build_id = crate::BPSR_USE_SKILL_ATTR_BUILD.into();
+        build.build_id = crate::BPSR_CURRENT_USE_SKILL_ATTR_BUILD.into();
         ProtocolRuntime::new(
             pack,
             "capture-current-use-slot",

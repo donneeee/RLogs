@@ -316,10 +316,10 @@ pub use swift_vortex_audit::{
     SwiftVortexMagnitudeReceipt,
 };
 pub use use_skill_attr::{
-    BPSR_USE_SKILL_ATTR_BUILD, ClientSkillStageEndSnapshot, ClientSkillStageTriggerSnapshot,
-    ServerSkillStageEndSnapshot, UseSkillActionDecodeError, UseSkillActionSnapshot,
-    UseSkillAttrDecodeError, UseSkillAttributes, UseSkillParamSnapshot, UseSkillPosition,
-    decode_client_skill_stage_end, decode_client_skill_stage_trigger,
+    BPSR_CURRENT_USE_SKILL_ATTR_BUILD, BPSR_USE_SKILL_ATTR_BUILD, ClientSkillStageEndSnapshot,
+    ClientSkillStageTriggerSnapshot, ServerSkillStageEndSnapshot, UseSkillActionDecodeError,
+    UseSkillActionSnapshot, UseSkillAttrDecodeError, UseSkillAttributes, UseSkillParamSnapshot,
+    UseSkillPosition, decode_client_skill_stage_end, decode_client_skill_stage_trigger,
     decode_server_skill_stage_end, decode_use_skill_attr_into,
     decode_world_use_slot_skill_action_into,
 };

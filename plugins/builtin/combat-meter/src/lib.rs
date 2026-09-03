@@ -14,9 +14,9 @@ use rlogs_combat::{
 };
 use rlogs_events::{
     ActorId, ActorKind, ActorLoadoutEvidence, ActorLoadoutSlot, ActorState, CanonicalEvent,
-    CombatState, DungeonEventKind, EncounterState, EntityAttributeValue, EntityRef, EntityUuid,
-    EventEnvelope, EventProvenance, EventTopic, EvidenceSource, LifeState, RunState, StatusState,
-    TimelineEventKind,
+    CastState, CombatState, DungeonEventKind, EncounterState, EntityAttributeValue, EntityRef,
+    EntityUuid, EventEnvelope, EventProvenance, EventTopic, EvidenceSource, LifeState, RunState,
+    StatusState, TimelineEventKind,
 };
 use rlogs_log_format::RlogHeader;
 use rlogs_plugin_api::PluginCapability;
@@ -1603,6 +1603,9 @@ impl CombatTimelinePlugin {
                 }
             }
             TimelineEventKind::Cast(cast) => {
+                if cast.state != CastState::Started {
+                    return;
+                }
                 self.actor_ancestry.observe_entity(cast.source);
                 if let Some(target) = cast.target {
                     self.actor_ancestry.observe_entity(target);
@@ -4295,6 +4298,119 @@ mod tests {
         assert!(!history_target_is_selectable(Some("training_dummy")));
         assert!(history_target_is_selectable(Some("projectile")));
         assert!(history_target_is_selectable(Some("monster")));
+    }
+
+    #[test]
+    fn cast_starts_are_counted_independently_from_landed_hits() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/replay/reference-combat.rlog");
+        let reader = RlogReader::new(
+            BufReader::new(File::open(fixture).unwrap()),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let mut plugin = CombatTimelinePlugin::new();
+        plugin.begin_live(reader.header());
+        let mut factory = EventEnvelopeFactory::new(
+            reader.header().session_id.clone(),
+            reader.header().region.clone(),
+        );
+        let source = EntityRef {
+            actor_id: ActorId(1),
+            entity_uuid: EntityUuid(101),
+        };
+        let target = EntityRef {
+            actor_id: ActorId(2),
+            entity_uuid: EntityUuid(102),
+        };
+        let ability = AbilityId(2_233);
+
+        for (observed_micros, state) in [
+            (1_000_000, CastState::Started),
+            (1_100_000, CastState::Completed),
+        ] {
+            let cast = factory
+                .emit(CanonicalEventDraft {
+                    time: EventTime {
+                        observed_micros,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(observed_micros, 1, observed_micros),
+                    sensitivity: EventSensitivity::PublicGameplay,
+                    kind: CanonicalEventDraftKind::Timeline(TimelineEventKind::Cast(
+                        rlogs_events::CastEvent {
+                            source,
+                            ability,
+                            target: Some(target),
+                            state,
+                            action_timing: None,
+                        },
+                    )),
+                })
+                .unwrap();
+            plugin.observe_live(&cast);
+        }
+
+        let missed = plugin.live_snapshot().unwrap();
+        let actor = missed
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(actor.casts, 1, "completion must not count as another cast");
+        assert_eq!(actor.hits, 0, "a ranged miss still has no landed hit");
+        assert_eq!(actor.abilities[0].casts, 1);
+        assert_eq!(actor.abilities[0].hits, 0);
+        assert_eq!(
+            plugin
+                .history_facts
+                .iter()
+                .filter(|fact| matches!(fact.kind, CombatFactKind::Cast))
+                .count(),
+            1
+        );
+
+        for sequence in 0..2_u64 {
+            let damage = factory
+                .emit(CanonicalEventDraft {
+                    time: EventTime {
+                        observed_micros: 2_000_000 + sequence,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance::wire(2_000_000 + sequence, 1, sequence),
+                    sensitivity: EventSensitivity::PublicGameplay,
+                    kind: CanonicalEventDraftKind::Timeline(TimelineEventKind::Damage(
+                        DamageEvent {
+                            source,
+                            direct_source: None,
+                            target,
+                            ability: Some(ability),
+                            amount: 100,
+                            actual_amount: Some(100),
+                            hp_loss: Some(100),
+                            shield_loss: None,
+                            hit_event_id: None,
+                            damage_source: None,
+                            damage_type: None,
+                            flags: DamageFlags::default(),
+                            packet: Default::default(),
+                        },
+                    )),
+                })
+                .unwrap();
+            plugin.observe_live(&damage);
+        }
+
+        let multi_hit = plugin.live_snapshot().unwrap();
+        let actor = multi_hit
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(actor.casts, 1);
+        assert_eq!(actor.hits, 2, "one cast may land more than one hit");
+        assert_eq!(actor.abilities[0].casts, 1);
+        assert_eq!(actor.abilities[0].hits, 2);
     }
 
     use super::*;
