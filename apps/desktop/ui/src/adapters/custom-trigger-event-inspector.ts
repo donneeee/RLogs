@@ -31,6 +31,11 @@ export interface EventInspectorFieldDiff {
   changed: boolean;
 }
 
+export interface EventInspectorViewerBuffer {
+  events: readonly LiveEventLine[];
+  unavailableRows: number;
+}
+
 export interface EventInspectorDependencies {
   subscribe(
     onBatch: (batch: LiveEventBatch) => void,
@@ -79,7 +84,7 @@ export function mountCustomTriggerEventInspector(
   const sessionMetric = metric("Session", "Waiting for capture");
   const retainedMetric = metric("Host ring", "0 rows");
   const memoryMetric = metric("Memory", "0 B");
-  const gapMetric = metric("Viewer gaps", "0");
+  const gapMetric = metric("Rows no longer visible", "0");
   telemetry.append(
     sessionMetric.root,
     retainedMetric.root,
@@ -89,7 +94,7 @@ export function mountCustomTriggerEventInspector(
 
   const controls = element("section", "content-card event-inspector-controls");
   const filterGrid = element("div", "event-inspector-filter-grid");
-  const source = selectField("Source", "All sources", [
+  const source = selectField("Data source", "All sources", [
     ["Canonical events", "canonical"],
     ["Protocol messages", "protocol"],
   ]);
@@ -99,10 +104,11 @@ export function mountCustomTriggerEventInspector(
     EVENT_VIEWER_TOPICS.map((value) => [formatIdentifier(value), value]),
   );
   const kind = inputField("Event kind", "damage, status, scene…");
-  const search = inputField("IDs or values", "source, target, ability, status…", "search");
+  const search = inputField("Event data", "source, target, skill, effect, or scene ID…", "search");
   filterGrid.append(source.label, topic.label, kind.label, search.label);
   const controlActions = element("div", "runtime-card-actions event-inspector-actions");
   const pause = button("Freeze log", "secondary-button");
+  pause.setAttribute("aria-pressed", "false");
   const clear = button("Clear visible events", "quiet-button");
   const status = text(
     "span",
@@ -667,6 +673,7 @@ export function mountCustomTriggerEventInspector(
   pause.addEventListener("click", () => {
     frozen = !frozen;
     pause.textContent = frozen ? "Resume live" : "Freeze log";
+    pause.setAttribute("aria-pressed", String(frozen));
     if (frozen) {
       stopFollowing();
       connection.textContent = "FROZEN";
@@ -689,6 +696,7 @@ export function mountCustomTriggerEventInspector(
     selectedFieldPaths = new Set();
     selectedDetailRequest += 1;
     viewerDropped = 0;
+    gapMetric.value.textContent = "0";
     renderSelection();
     renderStream();
   });
@@ -770,14 +778,14 @@ export function mountCustomTriggerEventInspector(
       memoryMetric.value.textContent = batch.capacityBytes > 0
         ? `${formatBytes(batch.retainedBytes)} / ${formatBytes(batch.capacityBytes)}`
         : formatBytes(batch.retainedBytes);
-      viewerDropped += batch.droppedBefore;
+      const nextBuffer = appendEventInspectorBatch(
+        visibleEvents,
+        viewerDropped,
+        batch,
+      );
+      visibleEvents = [...nextBuffer.events];
+      viewerDropped = nextBuffer.unavailableRows;
       gapMetric.value.textContent = viewerDropped.toLocaleString();
-      visibleEvents.push(...batch.events);
-      if (visibleEvents.length > MAXIMUM_VISIBLE_EVENTS) {
-        viewerDropped += visibleEvents.length - MAXIMUM_VISIBLE_EVENTS;
-        visibleEvents = visibleEvents.slice(-MAXIMUM_VISIBLE_EVENTS);
-        gapMetric.value.textContent = viewerDropped.toLocaleString();
-      }
       status.classList.remove("error");
       status.textContent = batch.sessionId === null
         ? "Connected. Waiting for the game parser to begin a live session."
@@ -812,6 +820,23 @@ export function mountCustomTriggerEventInspector(
       }
       root.remove();
     },
+  };
+}
+
+export function appendEventInspectorBatch(
+  currentEvents: readonly LiveEventLine[],
+  unavailableRows: number,
+  batch: Pick<LiveEventBatch, "droppedBefore" | "events">,
+  maximumVisibleEvents = MAXIMUM_VISIBLE_EVENTS,
+): EventInspectorViewerBuffer {
+  if (!Number.isSafeInteger(maximumVisibleEvents) || maximumVisibleEvents < 1) {
+    throw new Error("The Event Inspector visible-row limit must be a positive safe integer.");
+  }
+  const combined = [...currentEvents, ...batch.events];
+  const viewerOverflow = Math.max(0, combined.length - maximumVisibleEvents);
+  return {
+    events: viewerOverflow === 0 ? combined : combined.slice(viewerOverflow),
+    unavailableRows: unavailableRows + batch.droppedBefore + viewerOverflow,
   };
 }
 

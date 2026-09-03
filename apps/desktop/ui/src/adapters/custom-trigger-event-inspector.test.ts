@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { compareEventInspectorDetails } from "./custom-trigger-event-inspector";
-import type { LiveEventDetail } from "./event-viewer";
+import {
+  appendEventInspectorBatch,
+  compareEventInspectorDetails,
+} from "./custom-trigger-event-inspector";
+import type { LiveEventDetail, LiveEventLine } from "./event-viewer";
 
 function detail(
   amount: string,
@@ -116,5 +119,34 @@ describe("Event Inspector pinned-event comparison", () => {
       }),
     ]));
     expect(differences.slice(0, 3).every((row) => row.changed)).toBe(true);
+  });
+});
+
+describe("Event Inspector visible buffer", () => {
+  const line = (sequence: number): LiveEventLine => ({
+    revision: sequence,
+    sequence,
+    observedMicros: sequence * 1_000,
+    sourceKind: "canonical",
+    topic: "combat",
+    kind: "damage",
+    rawIds: `ability=${sequence}`,
+  });
+
+  it("retains the newest rows and accounts separately reported host loss", () => {
+    const result = appendEventInspectorBatch(
+      [line(1), line(2)],
+      4,
+      { droppedBefore: 3, events: [line(3), line(4)] },
+      3,
+    );
+
+    expect(result.events.map(({ sequence }) => sequence)).toEqual([2, 3, 4]);
+    expect(result.unavailableRows).toBe(8);
+  });
+
+  it("rejects an invalid visible-row limit", () => {
+    expect(() => appendEventInspectorBatch([], 0, { droppedBefore: 0, events: [] }, 0))
+      .toThrow("positive safe integer");
   });
 });

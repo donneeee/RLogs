@@ -66,9 +66,9 @@ jobs:
           $body = @(
             "rLogs v$version"
             ""
-            "- Makes Combat Overlay summary controls use the same persisted geometry in the designer and live native window."
-            "- Gives the cycle-timer control a fixed default width so Encounter, Game, True, and Run labels cannot shift the rest of the header."
-            "- Adds exact width inputs and drag handles for every summary control; existing layouts migrate automatically."
+            "- Fixes the Event Inspector native window so every section remains reachable instead of being cropped below the window edge."
+            "- Improves Event Inspector readability and responsive layout down to its supported 780 by 560 minimum window size."
+            "- Clarifies event filters, makes Freeze and Resume state explicit, and accurately tracks rows that leave the bounded viewer buffer."
             ""
             "Installer SHA-256: $sha256"
           ) -join [Environment]::NewLine

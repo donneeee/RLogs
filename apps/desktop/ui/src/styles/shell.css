@@ -4104,7 +4104,7 @@ button:focus-visible,
   border-radius: 999px;
   color: #e7bd70;
   background: rgb(242 195 107 / 7%);
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 850;
   letter-spacing: 0.08em;
 }
@@ -4149,7 +4149,7 @@ button:focus-visible,
 
 .event-inspector-telemetry span {
   color: var(--muted);
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -4159,7 +4159,7 @@ button:focus-visible,
   overflow: hidden;
   margin-top: 7px;
   color: #d4dfed;
-  font: 9px "Cascadia Code", Consolas, monospace;
+  font: 12px "Cascadia Code", Consolas, monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4210,12 +4210,12 @@ button:focus-visible,
 .event-inspector-detail h2,
 .event-inspector-pins h2 {
   margin: 5px 0 0;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .event-inspector-count {
   color: var(--muted);
-  font: 8px "Cascadia Code", Consolas, monospace;
+  font: 10px "Cascadia Code", Consolas, monospace;
   white-space: nowrap;
 }
 
@@ -4240,7 +4240,7 @@ button:focus-visible,
   border-bottom: 1px solid rgb(49 66 87 / 45%);
   color: #aebdd0;
   background: transparent;
-  font: 8px/1.5 "Cascadia Code", "Cascadia Mono", Consolas, monospace;
+  font: 11px/1.5 "Cascadia Code", "Cascadia Mono", Consolas, monospace;
   text-align: left;
   cursor: pointer;
 }
@@ -4282,13 +4282,13 @@ button:focus-visible,
 
 .event-inspector-detail-body span {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .event-inspector-detail-body strong,
 .event-inspector-detail-body code {
   color: #c6d3e3;
-  font: 8px/1.55 "Cascadia Code", Consolas, monospace;
+  font: 11px/1.55 "Cascadia Code", Consolas, monospace;
   overflow-wrap: anywhere;
 }
 
@@ -4372,7 +4372,7 @@ button:focus-visible,
 
 .event-inspector-field-heading strong {
   color: #d8e3ef;
-  font-size: 8px;
+  font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -4421,7 +4421,7 @@ button:focus-visible,
 
 .event-inspector-field-copy code {
   color: #75889e;
-  font-size: 7px;
+  font-size: 9px;
 }
 
 .event-inspector-field-value {
@@ -4433,7 +4433,7 @@ button:focus-visible,
   border: 1px solid var(--line);
   border-radius: 999px;
   color: #7f91a8 !important;
-  font: 7px "Cascadia Code", Consolas, monospace !important;
+  font: 9px "Cascadia Code", Consolas, monospace !important;
 }
 
 .event-inspector-draft {
@@ -4447,7 +4447,7 @@ button:focus-visible,
 
 .event-inspector-draft h2 {
   margin: 5px 0 0;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .event-inspector-draft-body {
@@ -4466,7 +4466,7 @@ button:focus-visible,
   margin: 0;
   padding-left: 20px;
   color: #aebed0;
-  font: 8px/1.5 "Cascadia Code", Consolas, monospace;
+  font: 11px/1.5 "Cascadia Code", Consolas, monospace;
 }
 
 .event-inspector-launcher {
@@ -4494,6 +4494,8 @@ body[data-surface="event-inspector"] #app {
   width: 100%;
   min-height: 100vh;
   padding: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 body[data-surface="event-inspector"] .event-inspector-surface {
@@ -4516,7 +4518,7 @@ body[data-surface="event-inspector"] .event-inspector-surface {
   border-radius: 7px;
   color: #b9c8da;
   background: #0b131e;
-  font: 8px "Cascadia Code", Consolas, monospace;
+  font: 11px "Cascadia Code", Consolas, monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
@@ -4760,6 +4762,10 @@ body[data-surface="event-inspector"] .event-inspector-surface {
   }
 
   .event-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .event-inspector-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
