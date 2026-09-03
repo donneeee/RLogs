@@ -6,6 +6,14 @@ import type {
   WorkspaceTabDescriptor,
 } from "../shell/types";
 import { mountModuleOptimizerSurface } from "./module-optimizer-surface";
+import {
+  mountCustomTriggersWorkspaceSurface,
+  type CustomTriggersWorkspacePage,
+} from "./custom-triggers-workspace-surface";
+import {
+  mountOverlayWorkspaceSurface,
+  type OverlayWorkspacePage,
+} from "./overlay-workspace-surface";
 import type {
   LocalModuleInventory,
   ModuleCandidate,
@@ -116,6 +124,39 @@ const SAMPLE_WORKSPACES: readonly WorkspaceDescriptor[] = [
       },
     ],
   },
+  {
+    id: "app.rlogs.overlay",
+    name: "Overlay",
+    description: "Design and organize future on-screen tools before enabling their live behavior.",
+    version: "0.1.1",
+    iconUrl: null,
+    iconFallback: "OV",
+    defaultOrder: 40,
+    tabs: [
+      developmentTab("app.rlogs.overlay", "overview", "Overview", "setup", 0),
+      developmentTab("app.rlogs.overlay", "setups", "Setups", "setup", 1),
+      developmentTab("app.rlogs.overlay", "editor", "Editor", "setup", 2),
+      developmentTab("app.rlogs.overlay", "trackers", "Trackers", "tools", 100),
+      developmentTab("app.rlogs.overlay", "mechanics-map", "Mechanics Map", "tools", 101),
+      developmentTab("app.rlogs.overlay", "settings", "Settings", "configuration", 200, "options"),
+    ],
+  },
+  {
+    id: "app.rlogs.custom-triggers",
+    name: "Custom Triggers",
+    description: "Build readable event rules and connect their future actions to approved destinations.",
+    version: "0.1.2",
+    iconUrl: null,
+    iconFallback: "CT",
+    defaultOrder: 50,
+    tabs: [
+      developmentTab("app.rlogs.custom-triggers", "overview", "Overview", "build", 0),
+      developmentTab("app.rlogs.custom-triggers", "rules", "Rules", "build", 1),
+      developmentTab("app.rlogs.custom-triggers", "event-inspector", "Event Inspector", "build", 2),
+      developmentTab("app.rlogs.custom-triggers", "library", "Library", "reuse", 100),
+      developmentTab("app.rlogs.custom-triggers", "settings", "Settings", "configuration", 200, "options"),
+    ],
+  },
 ];
 
 const DEFAULT_PREFERENCES: ShellPreferences = {
@@ -155,6 +196,18 @@ export function createDevelopmentAdapter(): DesktopHostAdapter {
       if (tab.entrypoint === "development://profile/modules") {
         return mountDevelopmentModuleOptimizer(container);
       }
+      if (tab.entrypoint.startsWith("builtin://app.rlogs.overlay/")) {
+        return mountOverlayWorkspaceSurface(
+          container,
+          developmentSurfacePage(tab.entrypoint) as OverlayWorkspacePage,
+        );
+      }
+      if (tab.entrypoint.startsWith("builtin://app.rlogs.custom-triggers/")) {
+        return mountCustomTriggersWorkspaceSurface(
+          container,
+          developmentSurfacePage(tab.entrypoint) as CustomTriggersWorkspacePage,
+        );
+      }
       const surface = renderDevelopmentSurface(workspace, tab);
       container.append(surface);
       return noOpSurface();
@@ -168,6 +221,29 @@ export function createDevelopmentAdapter(): DesktopHostAdapter {
       }
     },
   };
+}
+
+function developmentTab(
+  workspaceId: string,
+  page: string,
+  label: string,
+  section: string,
+  defaultOrder: number,
+  kind: WorkspaceTabDescriptor["kind"] = "content",
+): WorkspaceTabDescriptor {
+  return {
+    id: `${workspaceId}:${page}`,
+    label,
+    kind,
+    entrypoint: `builtin://${workspaceId}/${page}`,
+    contributorPluginId: workspaceId,
+    sectionId: `${workspaceId}:${section}`,
+    defaultOrder,
+  };
+}
+
+function developmentSurfacePage(entrypoint: string): string {
+  return entrypoint.slice(entrypoint.lastIndexOf("/") + 1);
 }
 
 const DEVELOPMENT_OPTIMIZER_CATALOG: OptimizerCatalog = {

@@ -16,6 +16,8 @@ interface MenuItem {
   title: string;
   description: string;
   items?: readonly string[];
+  group?: "management" | "flow" | "review" | "advanced";
+  step?: number;
   destination?: {
     workspaceId: string;
     entrypoint: string;
@@ -72,41 +74,52 @@ const PAGE_DEFINITIONS: Record<CustomTriggersWorkspacePage, PageDefinition> = {
         title: "My Rules & Folders",
         description: "Organize rules by encounter, class, role, purpose, or personal workflow, then enable or disable a whole branch.",
         items: ["Nested folders", "Enable as a group", "Scope", "Search and filters"],
+        group: "management",
       },
       {
         title: "When",
         description: "Choose the event that begins the rule.",
         items: ["Source or target UID", "Skill or effect", "Stat or resource", "Scene or timer"],
+        group: "flow",
+        step: 1,
       },
       {
         title: "If",
         description: "Add optional conditions without hiding the rule’s event source.",
         items: ["All / any / one / none", "Equals or changes", "Above or below", "Present or absent"],
+        group: "flow",
+        step: 2,
       },
       {
         title: "Then",
         description: "Run one or more clearly ordered actions.",
         items: ["Show or hide overlay", "Display alert", "Play sound", "Map marker"],
+        group: "flow",
+        step: 3,
       },
       {
         title: "Timing & Repeat",
         description: "Control delays, action order, duplicate suppression, refire timing, and what happens to actions already waiting.",
         items: ["Delay", "Sequential or together", "Cooldown / refire", "Keep or interrupt queued actions"],
+        group: "advanced",
       },
       {
         title: "State & Variables",
         description: "Reuse values, counters, timers, lists, and rule or folder state when a simple rule is not enough.",
         items: ["Named values", "Counters and timers", "Enable or disable another rule", "Reset scope"],
+        group: "advanced",
       },
       {
         title: "Test & Review",
         description: "Read the complete rule, run it against a chosen event, and inspect every decision before enabling it.",
         items: ["Plain-language summary", "Event evidence", "Condition trace", "Action preview and history"],
+        group: "review",
       },
       {
         title: "Advanced",
         description: "Reveal regex, raw IDs, expressions, loops, and precise multi-action control only when needed.",
         items: ["Hidden by default", "Triggernometry-style power", "Safe capability limits", "Summary always stays visible"],
+        group: "advanced",
       },
     ],
   },
@@ -235,32 +248,9 @@ export function mountCustomTriggersWorkspaceSurface(
   );
   header.append(heading, text("span", "DESIGN PREVIEW", "overlay-menu-preview-badge"));
 
-  const menu = element("section", "overlay-menu-grid");
-  for (const item of definition.items) {
-    const destination = item.destination;
-    const card = destination === undefined
-      ? element("article", "content-card overlay-menu-card")
-      : element("button", "content-card overlay-menu-card overlay-menu-card-action");
-    if (card instanceof HTMLButtonElement) {
-      card.type = "button";
-      card.setAttribute("aria-label", `Open ${item.title}`);
-      card.addEventListener("click", () => {
-        requestWorkspaceNavigation(destination!);
-      });
-    }
-    const cardHeader = element("div", "overlay-menu-card-heading");
-    cardHeader.append(text("h3", item.title));
-    if (destination !== undefined) {
-      cardHeader.append(text("span", "›", "overlay-menu-chevron"));
-    }
-    card.append(cardHeader, text("p", item.description, "card-copy"));
-    if (item.items !== undefined) {
-      const children = element("ul", "overlay-menu-children");
-      for (const child of item.items) children.append(text("li", child));
-      card.append(children);
-    }
-    menu.append(card);
-  }
+  const menu = page === "rules"
+    ? renderRuleBuilderPreview(definition.items)
+    : renderMenuGrid(definition.items);
 
   const note = element("section", "overlay-menu-note");
   note.append(
@@ -269,11 +259,110 @@ export function mountCustomTriggersWorkspaceSurface(
   );
   root.append(header);
   if (page === "rules") {
-    root.append(renderInspectorDraftInbox());
+    const entryPoints = element("section", "rule-builder-entry-grid");
+    entryPoints.append(
+      renderMenuGrid(
+        definition.items.filter(({ group }) => group === "management"),
+        "rule-builder-management",
+      ),
+      renderInspectorDraftInbox(),
+    );
+    root.append(entryPoints);
   }
   root.append(menu, note);
   container.replaceChildren(root);
   return { dispose: () => root.remove() };
+}
+
+export function customTriggerRuleMenuGroups(): Readonly<Record<string, readonly string[]>> {
+  const groups = new Map<string, string[]>();
+  for (const item of PAGE_DEFINITIONS.rules.items) {
+    const group = item.group ?? "ungrouped";
+    const titles = groups.get(group) ?? [];
+    titles.push(item.title);
+    groups.set(group, titles);
+  }
+  return Object.fromEntries(groups);
+}
+
+function renderRuleBuilderPreview(items: readonly MenuItem[]): HTMLElement {
+  const root = element("section", "rule-builder-preview");
+  const groups = groupMenuItems(items);
+
+  const guided = element("section", "content-card rule-builder-guided");
+  const heading = element("header", "rule-builder-guided-heading");
+  heading.append(
+    text("span", "GUIDED MODE", "eyebrow"),
+    text("h3", "Build one readable rule"),
+    text(
+      "p",
+      "When something happens, optionally check If something is true, Then choose what rLogs should do.",
+      "card-copy",
+    ),
+  );
+  const flow = element("div", "rule-builder-flow");
+  for (const item of groups.flow) {
+    const card = renderMenuCard(item, "rule-builder-step");
+    if (item.step !== undefined) {
+      card.dataset.step = String(item.step);
+      card.prepend(text("span", `STEP ${item.step}`, "rule-builder-step-number"));
+    }
+    flow.append(card);
+  }
+  guided.append(heading, flow);
+  root.append(guided);
+  root.append(renderMenuGrid(groups.review, "rule-builder-review"));
+
+  const advanced = element("details", "content-card rule-builder-advanced");
+  const summary = element("summary");
+  const summaryCopy = element("span");
+  summaryCopy.append(
+    text("strong", "Advanced rule controls"),
+    text("span", "Timing, variables, expressions, loops, and precise multi-action behavior"),
+  );
+  summary.append(summaryCopy, text("span", "SHOW", "rule-builder-advanced-state"));
+  advanced.append(summary, renderMenuGrid(groups.advanced, "rule-builder-advanced-grid"));
+  root.append(advanced);
+  return root;
+}
+
+function groupMenuItems(items: readonly MenuItem[]) {
+  return {
+    management: items.filter(({ group }) => group === "management"),
+    flow: items.filter(({ group }) => group === "flow"),
+    review: items.filter(({ group }) => group === "review"),
+    advanced: items.filter(({ group }) => group === "advanced"),
+  };
+}
+
+function renderMenuGrid(items: readonly MenuItem[], className = ""): HTMLElement {
+  const grid = element("section", `overlay-menu-grid ${className}`.trim());
+  for (const item of items) grid.append(renderMenuCard(item));
+  return grid;
+}
+
+function renderMenuCard(item: MenuItem, className = ""): HTMLElement {
+  const destination = item.destination;
+  const classes = ["content-card", "overlay-menu-card", className];
+  if (destination !== undefined) classes.push("overlay-menu-card-action");
+  const card = destination === undefined
+    ? element("article", classes.join(" ").trim())
+    : element("button", classes.join(" ").trim());
+  if (card instanceof HTMLButtonElement) {
+    card.type = "button";
+    card.setAttribute("aria-label", `Open ${item.title}`);
+    card.addEventListener("click", () => requestWorkspaceNavigation(destination!));
+  }
+  const cardHeader = element("div", "overlay-menu-card-heading");
+  cardHeader.append(text("h3", item.title));
+  if (destination !== undefined) cardHeader.append(text("span", "›", "overlay-menu-chevron"));
+  card.append(cardHeader, text("p", item.description, "card-copy"));
+  if (item.items !== undefined) {
+    const children = element("ul", "overlay-menu-children");
+    for (const child of item.items) children.append(text("li", child));
+    card.append(children);
+  }
+  return card;
 }
 
 function renderInspectorDraftInbox(): HTMLElement {

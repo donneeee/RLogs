@@ -5,6 +5,11 @@ The bounded Event Inspector is the first working Custom Triggers component.
 The Overlay Trackers page now has a working local Combat Stats component backed
 by the exact build-stamped Fight Attribute catalog. Rule execution and actual
 game-overlay rendering remain disabled while their contracts are reviewed.
+Both workspace menus are also published by the development shell so their
+desktop and minimum-window layouts can be reviewed without attaching a capture
+runtime. The Rules preview keeps the guided `When -> If -> Then` path visible,
+while timing, variables, expressions, loops, and precise multi-action controls
+remain collapsed under **Advanced**.
 
 ## Product boundary
 

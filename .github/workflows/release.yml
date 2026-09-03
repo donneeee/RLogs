@@ -66,9 +66,9 @@ jobs:
           $body = @(
             "rLogs v$version"
             ""
-            "- Fixes the Event Inspector native window so every section remains reachable instead of being cropped below the window edge."
-            "- Improves Event Inspector readability and responsive layout down to its supported 780 by 560 minimum window size."
-            "- Clarifies event filters, makes Freeze and Resume state explicit, and accurately tracks rows that leave the bounded viewer buffer."
+            "- Adds Overlay and Custom Triggers to the development shell so their complete menu structure can be reviewed without a live capture runtime."
+            "- Reorganizes Custom Trigger rules around a beginner-friendly When, optional If, Then flow while keeping timing, variables, expressions, and loops under Advanced."
+            "- Fixes both workspace layouts at the minimum desktop window size so cards remain readable without horizontal clipping."
             ""
             "Installer SHA-256: $sha256"
           ) -join [Environment]::NewLine
