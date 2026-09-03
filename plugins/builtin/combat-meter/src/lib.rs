@@ -167,6 +167,11 @@ pub struct HistoryDamageInfluenceSummary {
     pub last_observed_micros: u64,
     /// Unique canonical damage events represented by this relationship.
     pub damage_event_count: u64,
+    /// Exact number of packet-reported critical hits among those unique
+    /// damage events. Absent when the source event did not retain critical
+    /// evidence (for example, an older history artifact).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub critical_hit_count: Option<u64>,
     /// Sum of the packet-observed damage values for those unique events. This
     /// is context, not an attribution total, and may appear in more than one
     /// relationship when multiple proven sources affect the same event.
@@ -930,6 +935,7 @@ struct DamageProjectionContext {
     affected_ability_id: Option<i64>,
     target_actor_id: u64,
     target_entity_uuid: i64,
+    critical: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -969,6 +975,7 @@ enum CombatFactKind {
         damage_event_sequence: Option<u64>,
         affected_ability_id: Option<i64>,
         affected_target: Option<(u64, i64)>,
+        critical: Option<bool>,
     },
     ExactRationalDamageContribution {
         effect_id: i64,
@@ -981,6 +988,7 @@ enum CombatFactKind {
         damage_event_sequence: Option<u64>,
         affected_ability_id: Option<i64>,
         affected_target: Option<(u64, i64)>,
+        critical: Option<bool>,
     },
 }
 
@@ -1002,6 +1010,7 @@ struct HistoryDamageInfluenceAccumulator {
     first_observed_micros: Option<u64>,
     last_observed_micros: u64,
     damage_event_count: u64,
+    critical_hit_count: Option<u64>,
     observed_damage: i64,
     exact_integer_delta: i64,
     rational_by_denominator: BTreeMap<i128, (i128, u64)>,
@@ -1993,6 +2002,7 @@ impl CombatTimelinePlugin {
                     affected_ability_id: damage.ability.map(|ability| ability.0),
                     target_actor_id: self.canonical_actor_id(damage.target.actor_id.0),
                     target_entity_uuid: damage.target.entity_uuid.0,
+                    critical: damage.flags.critical,
                 }),
                 _ => None,
             },
@@ -2069,6 +2079,7 @@ impl CombatTimelinePlugin {
                 affected_ability_id: damage_context.and_then(|context| context.affected_ability_id),
                 affected_target: damage_context
                     .map(|context| (context.target_actor_id, context.target_entity_uuid)),
+                critical: damage_context.and_then(|context| context.critical),
                 observed_damage: contribution.observed_damage,
                 exact_integer_delta: Some(contribution.amount),
                 exact_rational_delta: None,
@@ -2092,6 +2103,7 @@ impl CombatTimelinePlugin {
                         .and_then(|context| context.affected_ability_id),
                     affected_target: damage_context
                         .map(|context| (context.target_actor_id, context.target_entity_uuid)),
+                    critical: damage_context.and_then(|context| context.critical),
                 },
             });
         }
@@ -2113,6 +2125,7 @@ impl CombatTimelinePlugin {
                     affected_ability_id: context.affected_ability_id,
                     target_actor_id: self.canonical_actor_id(context.target_actor_id),
                     target_entity_uuid: context.target_entity_uuid,
+                    critical: None,
                 })
                 .or(damage_context);
             self.latest_exact_rational_contributions.push(contribution);
@@ -2149,6 +2162,7 @@ impl CombatTimelinePlugin {
                     .and_then(|context| context.affected_ability_id),
                 affected_target: contribution_damage_context
                     .map(|context| (context.target_actor_id, context.target_entity_uuid)),
+                critical: contribution_damage_context.and_then(|context| context.critical),
                 observed_damage: contribution.observed_damage,
                 exact_integer_delta: None,
                 exact_rational_delta: Some((contribution.numerator, contribution.denominator)),
@@ -2174,6 +2188,7 @@ impl CombatTimelinePlugin {
                         .and_then(|context| context.affected_ability_id),
                     affected_target: contribution_damage_context
                         .map(|context| (context.target_actor_id, context.target_entity_uuid)),
+                    critical: contribution_damage_context.and_then(|context| context.critical),
                 },
             });
         }
@@ -2919,6 +2934,7 @@ impl CombatTimelinePlugin {
                 damage_event_sequence,
                 affected_ability_id,
                 affected_target,
+                critical,
             } => CombatFactKind::ExactDamageContribution {
                 effect_id: *effect_id,
                 scope: *scope,
@@ -2941,6 +2957,7 @@ impl CombatTimelinePlugin {
                         target.entity_uuid.0,
                     )
                 }),
+                critical: *critical,
             },
             CombatFactKind::ExactRationalDamageContribution {
                 effect_id,
@@ -2953,6 +2970,7 @@ impl CombatTimelinePlugin {
                 damage_event_sequence,
                 affected_ability_id,
                 affected_target,
+                critical,
             } => CombatFactKind::ExactRationalDamageContribution {
                 effect_id: *effect_id,
                 scope: *scope,
@@ -2976,6 +2994,7 @@ impl CombatTimelinePlugin {
                         target.entity_uuid.0,
                     )
                 }),
+                critical: *critical,
             },
             other => other.clone(),
         };
@@ -3088,6 +3107,7 @@ impl CombatTimelinePlugin {
                     damage_event_sequence,
                     affected_ability_id,
                     affected_target,
+                    critical,
                 } => {
                     attribution.observe_exact_contribution(ExactDamageContributionEvent {
                         observed_micros: fact.observed_micros,
@@ -3116,6 +3136,7 @@ impl CombatTimelinePlugin {
                                 damage_event_sequence,
                                 affected_ability_id,
                                 affected_target,
+                                critical,
                                 observed_damage,
                                 exact_integer_delta: Some(amount),
                                 exact_rational_delta: None,
@@ -3134,6 +3155,7 @@ impl CombatTimelinePlugin {
                     damage_event_sequence,
                     affected_ability_id,
                     affected_target,
+                    critical,
                 } => {
                     attribution.observe_exact_rational_contribution(
                         ExactRationalDamageContributionEvent {
@@ -3166,6 +3188,7 @@ impl CombatTimelinePlugin {
                                 damage_event_sequence,
                                 affected_ability_id,
                                 affected_target,
+                                critical,
                                 observed_damage,
                                 exact_integer_delta: None,
                                 exact_rational_delta: Some((numerator, denominator)),
@@ -3673,6 +3696,7 @@ struct HistoryDamageInfluenceObservation {
     damage_event_sequence: Option<u64>,
     affected_ability_id: Option<i64>,
     affected_target: Option<(u64, i64)>,
+    critical: Option<bool>,
     observed_damage: i64,
     exact_integer_delta: Option<i64>,
     exact_rational_delta: Option<(i128, i128)>,
@@ -3706,7 +3730,18 @@ fn observe_history_damage_influence(
     let new_damage_event = observation.damage_event_sequence.is_none()
         || accumulator.last_damage_event_sequence != observation.damage_event_sequence;
     if new_damage_event {
+        let first_damage_event = accumulator.damage_event_count == 0;
         accumulator.damage_event_count = accumulator.damage_event_count.saturating_add(1);
+        accumulator.critical_hit_count = match (
+            accumulator.critical_hit_count,
+            observation.critical,
+            first_damage_event,
+        ) {
+            (_, None, _) => None,
+            (Some(total), Some(critical), _) => Some(total.saturating_add(u64::from(critical))),
+            (None, Some(critical), true) => Some(u64::from(critical)),
+            (None, Some(_), false) => None,
+        };
         accumulator.observed_damage = accumulator
             .observed_damage
             .saturating_add(observation.observed_damage);
@@ -3807,6 +3842,7 @@ fn finish_history_damage_influences(
                 first_observed_micros: accumulator.first_observed_micros.unwrap_or_default(),
                 last_observed_micros: accumulator.last_observed_micros,
                 damage_event_count: accumulator.damage_event_count,
+                critical_hit_count: accumulator.critical_hit_count,
                 observed_damage: accumulator.observed_damage.to_string(),
                 exact_integer_delta: accumulator.exact_integer_delta.to_string(),
                 exact_rational_deltas: accumulator
@@ -4557,6 +4593,7 @@ mod tests {
             damage_event_sequence: Some(10),
             affected_ability_id: Some(2_206_290),
             affected_target: Some((3, 103)),
+            critical: Some(true),
             observed_damage: 100_000,
             exact_integer_delta: Some(5_000),
             exact_rational_delta: None,
@@ -4605,6 +4642,7 @@ mod tests {
         assert_eq!(row.affected_ability_id.as_deref(), Some("2206290"));
         assert_eq!(row.target_actor_id.as_deref(), Some("3"));
         assert_eq!(row.damage_event_count, 2);
+        assert_eq!(row.critical_hit_count, Some(2));
         assert_eq!(row.observed_damage, "220000");
         assert_eq!(row.exact_integer_delta, "11000");
         assert_eq!(row.exact_rational_deltas.len(), 1);
@@ -4628,6 +4666,7 @@ mod tests {
             damage_event_sequence: Some(10),
             affected_ability_id: Some(5_001),
             affected_target: Some((3, 103)),
+            critical: Some(false),
             observed_damage: 100,
             exact_integer_delta: Some(2),
             exact_rational_delta: Some((1, 3)),
@@ -6452,6 +6491,7 @@ mod tests {
                 damage_event_sequence: Some(effect_id as u64),
                 affected_ability_id: Some(55),
                 affected_target: Some((3, 103)),
+                critical: None,
                 observed_damage: 1,
                 exact_integer_delta: Some(1),
                 exact_rational_delta: None,

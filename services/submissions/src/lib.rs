@@ -69,9 +69,9 @@ use profiles::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 10;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 11;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 10;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 11;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -2781,6 +2781,8 @@ pub struct PublicRdpsInfluence {
     pub first_observed_micros: u64,
     pub last_observed_micros: u64,
     pub damage_event_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub critical_hit_count: Option<u64>,
     pub observed_damage: String,
     pub exact_integer_delta: String,
     pub exact_rational_deltas: Vec<PublicRationalDamageDelta>,
@@ -5158,6 +5160,7 @@ fn public_rdps_influences(view: &CombatHistoryView) -> Vec<PublicRdpsInfluence> 
             first_observed_micros: influence.first_observed_micros,
             last_observed_micros: influence.last_observed_micros,
             damage_event_count: influence.damage_event_count,
+            critical_hit_count: influence.critical_hit_count,
             observed_damage: influence.observed_damage.clone(),
             exact_integer_delta: influence.exact_integer_delta.clone(),
             exact_rational_deltas: influence

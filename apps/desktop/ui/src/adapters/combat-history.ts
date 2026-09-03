@@ -162,6 +162,7 @@ export interface HistoryDamageInfluenceSummary {
   first_observed_micros: number;
   last_observed_micros: number;
   damage_event_count: number;
+  critical_hit_count?: number | null;
   observed_damage: string;
   exact_integer_delta: string;
   exact_rational_deltas: HistoryRationalDamageDelta[];
@@ -247,6 +248,8 @@ export interface HistoryAbilitySummary {
   casts: number;
   hits: number;
   critical_hits: number;
+  /** False only for synthesized rows whose legacy evidence omitted crit flags. */
+  critical_hits_observed?: boolean;
   damage: number;
   effective_damage: number;
   healing: number;
@@ -268,6 +271,7 @@ export interface HistoryAbilityTargetSummary {
   shielding: number;
   hits: number;
   critical_hits: number;
+  critical_hits_observed?: boolean;
 }
 
 export interface HistoryTargetSummary {
@@ -668,6 +672,10 @@ export function parseCombatHistorySnapshot(value: unknown): CombatHistorySnapsho
           counter(parsedInfluence.first_observed_micros, "influence first timestamp");
           counter(parsedInfluence.last_observed_micros, "influence last timestamp");
           counter(parsedInfluence.damage_event_count, "influence damage event count");
+          if (parsedInfluence.critical_hit_count === undefined) {
+            parsedInfluence.critical_hit_count = null;
+          }
+          optionalCounter(parsedInfluence.critical_hit_count, "influence critical hit count");
           text(parsedInfluence.observed_damage, "influence observed damage");
           text(parsedInfluence.exact_integer_delta, "influence exact integer delta");
           if (parsedInfluence.attributed_rdps === undefined) {

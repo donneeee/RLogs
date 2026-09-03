@@ -238,7 +238,14 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
     providerEntityUuid: string;
     damage: bigint;
     events: number;
-    targets: Map<string, { actorId: string; entityUuid: string; damage: bigint; events: number }>;
+    criticalHits: number | null;
+    targets: Map<string, {
+      actorId: string;
+      entityUuid: string;
+      damage: bigint;
+      events: number;
+      criticalHits: number | null;
+    }>;
   };
   const movements = new Map<string, Map<string, Movement>>();
   for (const influence of view.damage_influences) {
@@ -266,10 +273,14 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
       providerEntityUuid: influence.provider_entity_uuid,
       damage: 0n,
       events: 0,
+      criticalHits: 0,
       targets: new Map(),
     };
     movement.damage += amount;
     movement.events += influence.damage_event_count;
+    movement.criticalHits = movement.criticalHits === null || influence.critical_hit_count == null
+      ? null
+      : movement.criticalHits + influence.critical_hit_count;
     if (influence.target_actor_id && influence.target_entity_uuid) {
       const targetKey = `${influence.target_actor_id}\0${influence.target_entity_uuid}`;
       const target = movement.targets.get(targetKey) ?? {
@@ -277,9 +288,13 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
         entityUuid: influence.target_entity_uuid,
         damage: 0n,
         events: 0,
+        criticalHits: 0,
       };
       target.damage += amount;
       target.events += influence.damage_event_count;
+      target.criticalHits = target.criticalHits === null || influence.critical_hit_count == null
+        ? null
+        : target.criticalHits + influence.critical_hit_count;
       movement.targets.set(targetKey, target);
     }
     providers.set(providerKey, movement);
@@ -312,13 +327,26 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
     if (!provider) continue;
     const damage = rows.reduce((sum, row) => sum + row.damage, 0n);
     const events = rows.reduce((sum, row) => sum + row.events, 0);
+    const criticalHits = rows.reduce<number | null>(
+      (sum, row) => sum === null || row.criticalHits === null ? null : sum + row.criticalHits,
+      0,
+    );
     const numericDamage = Number(damage);
     if (!Number.isSafeInteger(numericDamage)) continue;
-    const targets = new Map<string, { actorId: string; entityUuid: string; damage: bigint; events: number }>();
+    const targets = new Map<string, {
+      actorId: string;
+      entityUuid: string;
+      damage: bigint;
+      events: number;
+      criticalHits: number | null;
+    }>();
     for (const row of rows) for (const [key, incoming] of row.targets) {
       const target = targets.get(key) ?? { ...incoming, damage: 0n, events: 0 };
       target.damage += incoming.damage;
       target.events += incoming.events;
+      target.criticalHits = target.criticalHits === null || incoming.criticalHits === null
+        ? null
+        : target.criticalHits + incoming.criticalHits;
       targets.set(key, target);
     }
     provider.abilities.push({
@@ -331,7 +359,8 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
       presentation_recount_group_name: null,
       casts: 0,
       hits: events,
-      critical_hits: 0,
+      critical_hits: criticalHits ?? 0,
+      critical_hits_observed: criticalHits !== null,
       damage: numericDamage,
       effective_damage: numericDamage,
       healing: 0,
@@ -351,7 +380,8 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
           effective_healing: 0,
           shielding: 0,
           hits: target.events,
-          critical_hits: 0,
+          critical_hits: target.criticalHits ?? 0,
+          critical_hits_observed: target.criticalHits !== null,
         }] : [];
       }),
     });
@@ -1983,7 +2013,11 @@ export function mountCombatHistorySurface(
           case "rdpsReceived": row.append(relativeDamageSkillCell(ability, view, "rate")); break;
           case "hits": row.append(numeric(ability.hits, true)); break;
           case "casts": row.append(numeric(ability.casts, true)); break;
-          case "criticals": row.append(numeric(ability.criticals, true)); break;
+          case "criticals": row.append(
+            ability.criticalsObserved !== false
+              ? numeric(ability.criticals, true)
+              : textTableCell("—"),
+          ); break;
           case "dps": row.append(numeric(ability.dps)); break;
           case "encounterDps": row.append(numeric(ability.encounterDps)); break;
           case "healing": row.append(numeric(ability.healing, true)); break;
@@ -2663,6 +2697,7 @@ function displayedAbility(
       hits: ability.hits,
       casts: ability.casts,
       criticals: ability.critical_hits,
+      criticalsObserved: ability.critical_hits_observed !== false,
       dps: ability.dps,
       encounterDps: ability.encounter_dps,
       healing: ability.healing,
@@ -2689,6 +2724,7 @@ function displayedAbility(
     hits: target?.hits ?? 0,
     casts: ability.casts,
     criticals: target?.critical_hits ?? 0,
+    criticalsObserved: target?.critical_hits_observed !== false,
     dps: perSecond(damage, view.elapsed_micros),
     encounterDps: perSecond(damage, view.active_combat_micros),
     healing,
@@ -2699,7 +2735,9 @@ function displayedAbility(
   };
 }
 
-export type DisplayedAbility = ReturnType<typeof displayedAbility>;
+export type DisplayedAbility = Omit<ReturnType<typeof displayedAbility>, "criticalsObserved"> & {
+  criticalsObserved?: boolean;
+};
 
 export function displayedUnmappedRdpsSkill(
   rdps: RdpsReceivedSkillSummary,
@@ -2719,6 +2757,7 @@ export function displayedUnmappedRdpsSkill(
     hits: 0,
     casts: 0,
     criticals: 0,
+    criticalsObserved: false,
     dps: 0,
     encounterDps: 0,
     healing: 0,
@@ -2840,6 +2879,7 @@ function recountParentAbility(
     hits: total((ability) => ability.hits),
     casts: total((ability) => ability.casts),
     criticals: total((ability) => ability.criticals),
+    criticalsObserved: children.every((ability) => ability.criticalsObserved !== false),
     dps: total((ability) => ability.dps),
     encounterDps: total((ability) => ability.encounterDps),
     healing: total((ability) => ability.healing),
@@ -2926,7 +2966,7 @@ function abilitySortValue(
     case "rdpsReceived": return ability.receivedRdps;
     case "hits": return ability.hits;
     case "casts": return ability.casts;
-    case "criticals": return ability.criticals;
+    case "criticals": return ability.criticalsObserved !== false ? ability.criticals : null;
     case "dps": return ability.dps;
     case "encounterDps": return ability.encounterDps;
     case "healing": return ability.healing;

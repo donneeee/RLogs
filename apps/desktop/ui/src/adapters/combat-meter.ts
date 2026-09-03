@@ -226,6 +226,9 @@ function isLiveDamageInfluence(value: unknown): value is HistoryDamageInfluenceS
     isSafeCounter(value.first_observed_micros) &&
     isSafeCounter(value.last_observed_micros) &&
     isSafeCounter(value.damage_event_count) &&
+    (value.critical_hit_count === undefined ||
+      value.critical_hit_count === null ||
+      isSafeCounter(value.critical_hit_count)) &&
     isDecimalIdentifier(value.observed_damage, true) &&
     isDecimalIdentifier(value.exact_integer_delta, true) &&
     Array.isArray(value.exact_rational_deltas) &&

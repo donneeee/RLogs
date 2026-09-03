@@ -14009,6 +14009,7 @@ mod tests {
                 first_observed_micros: 1_000,
                 last_observed_micros: 2_000,
                 damage_event_count: 1,
+                critical_hit_count: Some(1),
                 observed_damage: "1200".into(),
                 exact_integer_delta: "0".into(),
                 exact_rational_deltas: Vec::new(),
