@@ -31,8 +31,10 @@ use rlogs_game_bpsr::{
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
-const RDPS_REPLAY_AUDIT_SCHEMA_VERSION: u16 = 30;
+const RDPS_REPLAY_AUDIT_SCHEMA_VERSION: u16 = 31;
+const COMPACT_REPLAY_RECEIPT_SCHEMA_VERSION: u16 = 1;
 
 #[derive(Debug, Serialize)]
 struct ReplayAuditBundle {
@@ -55,6 +57,60 @@ struct ReplayAuditBundle {
     reports: Vec<ReplayAuditReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     inspiration_combined_reconciliation: Option<InspirationCombinedReconciliationReceipt>,
+}
+
+#[derive(Debug, Serialize)]
+struct CompactReplayReceiptBundle {
+    schema_version: u16,
+    generated_by: &'static str,
+    proof_scope: &'static str,
+    attribution_mode: &'static str,
+    runtime_rule_deployment: &'static str,
+    runtime_rule_build: &'static str,
+    rule_effect_ids: Vec<i64>,
+    policy: CompactReplayReceiptPolicy,
+    total_events: u64,
+    total_damage_events: u64,
+    total_attributed_damage_events: u64,
+    total_attributed_bonus_damage: String,
+    all_runtime_targets_match: bool,
+    all_reports_conserved: bool,
+    reports: Vec<CompactReplayReceipt>,
+    content_sha256: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CompactReplayReceiptPolicy {
+    canonical_integrity_seal_required: bool,
+    exact_runtime_identity_required: bool,
+    production_promoted_rules_only: bool,
+    exact_party_conservation_required: bool,
+    incomplete_actor_count_reported: bool,
+    raw_packet_payloads_included: bool,
+    source_paths_included: bool,
+    runtime_authority_changed: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct CompactReplayReceipt {
+    session_id: String,
+    canonical_content_sha256: String,
+    deployment_id: String,
+    client_build: String,
+    protocol_pack_digest: String,
+    runtime_target_match: bool,
+    event_count: u64,
+    damage_event_count: u64,
+    attributed_damage_event_count: u64,
+    attributed_bonus_damage: i64,
+    missing_source_status_count: u64,
+    incomplete_rdps_actor_count: usize,
+    emitted_contribution_events_by_effect: BTreeMap<i64, u64>,
+    raw_damage: String,
+    rdps_damage: String,
+    contribution_given: String,
+    contribution_received: String,
+    conserved: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -281,6 +337,7 @@ struct InspirationCombinedPriorContributionReport {
 struct ReplayAuditReport {
     source_path: String,
     session_id: String,
+    canonical_content_sha256: String,
     deployment_id: String,
     client_build: String,
     protocol_pack_digest: String,
@@ -1940,9 +1997,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             observe(&mut reducer, &envelope.event, envelope.time.observed_micros);
         }
-        if reader.summary().is_none() {
-            return Err(format!("{} is not a sealed canonical rlog", path.display()).into());
-        }
+        let canonical_content_sha256 = reader
+            .summary()
+            .ok_or_else(|| format!("{} is not a sealed canonical rlog", path.display()))?
+            .content_sha256
+            .clone();
         let summary = reducer.summary();
         let critical_cold_direct_projected_credit = critical_cold_direct_reducer
             .summary()
@@ -1968,6 +2027,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         reports.push(ReplayAuditReport {
             source_path: path.display().to_string(),
             session_id,
+            canonical_content_sha256,
             deployment_id,
             client_build,
             protocol_pack_digest,
@@ -2046,21 +2106,38 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     let inspiration_combined_reconciliation = inspiration_combined_reconciliation
         .map(|accumulator| finish_inspiration_combined_reconciliation(accumulator, &reports));
+    let attribution_mode = if inspiration_combined_reconciliation.is_some() {
+        "focused_inspiration_combined_receipt_not_production_attribution"
+    } else if arguments.inspiration_candidate_audit_enabled
+        || arguments.harmony_grace_candidate_audit_enabled
+        || arguments.mechanical_power_candidate_audit_enabled
+        || arguments.mechanical_power_tier0_candidate_audit_enabled
+        || arguments.target_vulnerability_candidate_audit_enabled
+    {
+        "offline_candidate_gate_audit_not_production_attribution"
+    } else {
+        "production_promoted_rules"
+    };
+    if arguments.compact {
+        let mut receipt = compact_replay_receipt(
+            attribution_mode,
+            state_damage_contribution_deployment_id()?,
+            state_damage_contribution_game_build()?,
+            rule_effect_ids,
+            total_events,
+            &reports,
+        );
+        receipt.content_sha256 = compact_receipt_digest(&receipt)?;
+        let mut writer = BufWriter::new(File::create(arguments.output)?);
+        serde_json::to_writer_pretty(&mut writer, &receipt)?;
+        writer.write_all(b"\n")?;
+        writer.flush()?;
+        return Ok(());
+    }
     let bundle = ReplayAuditBundle {
         schema_version: RDPS_REPLAY_AUDIT_SCHEMA_VERSION,
         proof_scope: "packet_proven_rules_only_partial_game_coverage",
-        attribution_mode: if inspiration_combined_reconciliation.is_some() {
-            "focused_inspiration_combined_receipt_not_production_attribution"
-        } else if arguments.inspiration_candidate_audit_enabled
-            || arguments.harmony_grace_candidate_audit_enabled
-            || arguments.mechanical_power_candidate_audit_enabled
-            || arguments.mechanical_power_tier0_candidate_audit_enabled
-            || arguments.target_vulnerability_candidate_audit_enabled
-        {
-            "offline_candidate_gate_audit_not_production_attribution"
-        } else {
-            "production_promoted_rules"
-        },
+        attribution_mode,
         inspiration_candidate_audit_enabled: arguments.inspiration_candidate_audit_enabled,
         harmony_grace_candidate_audit_enabled: arguments.harmony_grace_candidate_audit_enabled,
         mechanical_power_candidate_audit_enabled: arguments
@@ -2516,12 +2593,115 @@ fn observe(reducer: &mut DamageContributionReducer, event: &CanonicalEvent, obse
     }
 }
 
+fn compact_replay_receipt(
+    attribution_mode: &'static str,
+    runtime_rule_deployment: &'static str,
+    runtime_rule_build: &'static str,
+    rule_effect_ids: Vec<i64>,
+    total_events: u64,
+    reports: &[ReplayAuditReport],
+) -> CompactReplayReceiptBundle {
+    let compact_reports = reports
+        .iter()
+        .map(|report| {
+            let contribution_given = report
+                .summary
+                .actors
+                .values()
+                .map(|actor| i128::from(actor.contribution_given))
+                .sum::<i128>();
+            let contribution_received = report
+                .summary
+                .actors
+                .values()
+                .map(|actor| i128::from(actor.contribution_received))
+                .sum::<i128>();
+            CompactReplayReceipt {
+                session_id: report.session_id.clone(),
+                canonical_content_sha256: report.canonical_content_sha256.clone(),
+                deployment_id: report.deployment_id.clone(),
+                client_build: report.client_build.clone(),
+                protocol_pack_digest: report.protocol_pack_digest.clone(),
+                runtime_target_match: report.runtime_target_match,
+                event_count: report.event_count,
+                damage_event_count: report.summary.damage_event_count,
+                attributed_damage_event_count: report.summary.attributed_damage_event_count,
+                attributed_bonus_damage: report.summary.attributed_bonus_damage,
+                missing_source_status_count: report.summary.missing_source_status_count,
+                incomplete_rdps_actor_count: report.incomplete_rdps_actor_ids.len(),
+                emitted_contribution_events_by_effect: report
+                    .emitted_contribution_events_by_effect
+                    .clone(),
+                raw_damage: report.summary.raw_damage_total().to_string(),
+                rdps_damage: report.summary.rdps_damage_total().to_string(),
+                contribution_given: contribution_given.to_string(),
+                contribution_received: contribution_received.to_string(),
+                conserved: report.conserved,
+            }
+        })
+        .collect::<Vec<_>>();
+    CompactReplayReceiptBundle {
+        schema_version: COMPACT_REPLAY_RECEIPT_SCHEMA_VERSION,
+        generated_by: "rlogs-bpsr-rdps-replay-audit",
+        proof_scope: "packet_proven_rules_only_partial_game_coverage",
+        attribution_mode,
+        runtime_rule_deployment,
+        runtime_rule_build,
+        rule_effect_ids,
+        policy: CompactReplayReceiptPolicy {
+            canonical_integrity_seal_required: true,
+            exact_runtime_identity_required: true,
+            production_promoted_rules_only: attribution_mode == "production_promoted_rules",
+            exact_party_conservation_required: true,
+            incomplete_actor_count_reported: true,
+            raw_packet_payloads_included: false,
+            source_paths_included: false,
+            runtime_authority_changed: false,
+        },
+        total_events,
+        total_damage_events: compact_reports
+            .iter()
+            .map(|report| report.damage_event_count)
+            .sum(),
+        total_attributed_damage_events: compact_reports
+            .iter()
+            .map(|report| report.attributed_damage_event_count)
+            .sum(),
+        total_attributed_bonus_damage: compact_reports
+            .iter()
+            .map(|report| i128::from(report.attributed_bonus_damage))
+            .sum::<i128>()
+            .to_string(),
+        all_runtime_targets_match: compact_reports
+            .iter()
+            .all(|report| report.runtime_target_match),
+        all_reports_conserved: compact_reports.iter().all(|report| report.conserved),
+        reports: compact_reports,
+        content_sha256: String::new(),
+    }
+}
+
+fn compact_receipt_digest(
+    receipt: &CompactReplayReceiptBundle,
+) -> Result<String, serde_json::Error> {
+    let mut value = serde_json::to_value(receipt)?;
+    value
+        .as_object_mut()
+        .expect("serialized compact receipt must be an object")
+        .remove("content_sha256");
+    Ok(format!(
+        "sha256:{:x}",
+        Sha256::digest(serde_json::to_vec(&value)?)
+    ))
+}
+
 #[derive(Debug)]
 struct Arguments {
     rlogs: Vec<PathBuf>,
     output: PathBuf,
     inspiration_combined_authority: Option<PathBuf>,
     summary_only: bool,
+    compact: bool,
     inspiration_candidate_audit_enabled: bool,
     harmony_grace_candidate_audit_enabled: bool,
     mechanical_power_candidate_audit_enabled: bool,
@@ -2534,7 +2714,8 @@ fn arguments() -> Result<Arguments, String> {
     let output = take_value(&mut values, "--output")?;
     let inspiration_combined_authority =
         take_optional_value(&mut values, "--inspiration-combined-authority")?;
-    let summary_only = take_switch(&mut values, "--summary-only");
+    let compact = take_switch(&mut values, "--compact");
+    let summary_only = take_switch(&mut values, "--summary-only") || compact;
     let inspiration_candidate_audit_enabled =
         take_switch(&mut values, "--audit-enable-inspiration-candidate");
     let harmony_grace_candidate_audit_enabled =
@@ -2561,6 +2742,16 @@ fn arguments() -> Result<Arguments, String> {
     {
         return Err("select only one offline candidate audit mode".into());
     }
+    if compact
+        && (inspiration_combined_authority.is_some()
+            || inspiration_candidate_audit_enabled
+            || harmony_grace_candidate_audit_enabled
+            || mechanical_power_candidate_audit_enabled
+            || mechanical_power_tier0_candidate_audit_enabled
+            || target_vulnerability_candidate_audit_enabled)
+    {
+        return Err("--compact is limited to production-promoted-rule replay receipts".into());
+    }
     let mut rlogs = BTreeSet::new();
     while let Some(position) = values.iter().position(|value| value == "--rlog") {
         if position + 1 >= values.len() {
@@ -2584,6 +2775,7 @@ fn arguments() -> Result<Arguments, String> {
         output: output.into(),
         inspiration_combined_authority: inspiration_combined_authority.map(PathBuf::from),
         summary_only,
+        compact,
         inspiration_candidate_audit_enabled,
         harmony_grace_candidate_audit_enabled,
         mechanical_power_candidate_audit_enabled,
@@ -2654,7 +2846,7 @@ fn take_optional_value(values: &mut Vec<OsString>, flag: &str) -> Result<Option<
 }
 
 fn usage() -> String {
-    "usage: rlogs-bpsr-rdps-replay-audit ((--rlog <sealed.rlog> | --rlog-dir <directory>)... | --inspiration-combined-authority <v19.json>) [--summary-only] [--audit-enable-inspiration-candidate | --audit-enable-harmony-grace-candidate | --audit-enable-mechanical-power-candidate | --audit-enable-mechanical-power-tier0-candidate | --audit-enable-target-vulnerability-candidate] --output <report.json>".into()
+    "usage: rlogs-bpsr-rdps-replay-audit ((--rlog <sealed.rlog> | --rlog-dir <directory>)... | --inspiration-combined-authority <v19.json>) [--summary-only | --compact] [--audit-enable-inspiration-candidate | --audit-enable-harmony-grace-candidate | --audit-enable-mechanical-power-candidate | --audit-enable-mechanical-power-tier0-candidate | --audit-enable-target-vulnerability-candidate] --output <report.json>".into()
 }
 
 #[cfg(test)]
@@ -2907,5 +3099,42 @@ mod tests {
             contribution_rules_for_target(&rules, "cn", confirmed_damage_contribution_game_build())
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn compact_receipt_is_self_hashing_and_path_free() {
+        let mut receipt = CompactReplayReceiptBundle {
+            schema_version: COMPACT_REPLAY_RECEIPT_SCHEMA_VERSION,
+            generated_by: "rlogs-bpsr-rdps-replay-audit",
+            proof_scope: "packet_proven_rules_only_partial_game_coverage",
+            attribution_mode: "production_promoted_rules",
+            runtime_rule_deployment: "global",
+            runtime_rule_build: "24687926",
+            rule_effect_ids: vec![31_602],
+            policy: CompactReplayReceiptPolicy {
+                canonical_integrity_seal_required: true,
+                exact_runtime_identity_required: true,
+                production_promoted_rules_only: true,
+                exact_party_conservation_required: true,
+                incomplete_actor_count_reported: true,
+                raw_packet_payloads_included: false,
+                source_paths_included: false,
+                runtime_authority_changed: false,
+            },
+            total_events: 1,
+            total_damage_events: 1,
+            total_attributed_damage_events: 1,
+            total_attributed_bonus_damage: "1".into(),
+            all_runtime_targets_match: true,
+            all_reports_conserved: true,
+            reports: Vec::new(),
+            content_sha256: String::new(),
+        };
+        let digest = compact_receipt_digest(&receipt).unwrap();
+        receipt.content_sha256 = digest.clone();
+        assert_eq!(compact_receipt_digest(&receipt).unwrap(), digest);
+        let serialized = serde_json::to_string(&receipt).unwrap();
+        assert!(!serialized.contains("\"source_path\":"));
+        assert!(!serialized.contains("\"packet_payload\":"));
     }
 }

@@ -909,3 +909,12 @@ and the independent promotion receipt SHA-256 is
 `b11981a739e4eefcead86c699704d76e3ff53db7b79b317afd9cd6cd66d92fbd`.
 Other Mechanical Power tiers or classes, overlapping providers, rejected or
 unresolved rows, and its haste/action-opportunity component transfer zero.
+
+The compact shared-log production receipt dated 2026-09-03 adds seven sealed
+build-`24687926` sessions across both accepted protocol-pack digests without
+retaining source paths or packet payloads. It replays `133,517` canonical
+events and `12,135` damage events; `376` events exercise promoted effects
+`31602`, `55333`, and `2204471`, redistributing `4,537,089` damage. Every
+runtime identity matches, every session conserves exactly, and the receipt
+explicitly leaves runtime authority unchanged. Its self-authenticating content
+digest is `sha256:e8217384bac555795178e56ddef3d4ff3832ac1a2cf473c6030d0c44dd7e9eab`.

@@ -285,6 +285,16 @@ totals. It does not drop canonical input events or unresolved evidence. Files
 ending in `.partial.rlog` are excluded; every included `.rlog` must have a
 valid seal.
 
+Use `--compact` when the output is a retained production replay receipt rather
+than a diagnostic workbook. Compact mode still replays every canonical event,
+requires the integrity seal and exact runtime identity, and fails on any party
+conservation error. Its output keeps each session ID, canonical content hash,
+protocol-pack digest, contribution totals, unresolved actor count, and emitted
+effect counts, but omits source paths, packet payloads, per-event examples, and
+candidate-only diagnostics. Candidate audit switches and combined-authority
+inputs are intentionally rejected in compact mode; it cannot promote or change
+runtime authority.
+
 The bundle contains two complementary views:
 
 - each report retains session-local provider, recipient, source, and target
