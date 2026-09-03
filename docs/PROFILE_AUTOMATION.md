@@ -224,6 +224,21 @@ newer observation cannot be cleared by an older receipt.
 This preserves game profile pictures without turning a packet-supplied string
 into an arbitrary remote URL in a public page.
 
+### Capturing all four Photo Wall pages
+
+The game does not load every wall image when its first page opens. With rLogs
+monitoring the live game process and both Profile Sync and `Publish my Photo
+Wall images` enabled, the character owner must:
+
+1. open their own in-game Profile and its Photo Wall;
+2. use the wall's right arrow to visit pages 1, 2, 3, and 4; and
+3. optionally open every occupied photo once to replace the card thumbnail
+   with the full rendered image.
+
+Each occupied tile requests its exact character/photo pair as that page is
+shown. Empty slots do not emit an image reply. rLogs only observes those game
+replies; it does not send photograph requests or modify game state.
+
 ## Explicitly excluded
 
 - account ID, open ID, publisher/platform ID, and Discord ID from packets;

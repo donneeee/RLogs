@@ -80,6 +80,7 @@ import {
 } from "./live-character-stats";
 import { mountOverlayStatsTrackerSurface } from "./overlay-stats-tracker-surface";
 import {
+  PHOTO_WALL_CAPTURE_STEPS,
   type PhotoWallPublicationStatus,
   parsePhotoWallPublicationStatus,
   photoWallLastCaptureSummary,
@@ -3072,6 +3073,7 @@ function mountProfileSyncStatusSurface(
   let alive = true;
   let busy = false;
   let currentPolicy: SubmissionPolicyView | null = null;
+  let currentPackages: ProfilePackageStoreView | null = null;
   const root = document.createElement("div");
   root.className = "plugin-surface profile-sync-status-surface";
   const heading = actionCard(
@@ -3093,6 +3095,32 @@ function mountProfileSyncStatusSurface(
   const status = document.createElement("section");
   status.className = "content-card runtime-file-list";
   status.append(fileRow("Policy", "Loading…"));
+  const photoWallGuide = document.createElement("section");
+  photoWallGuide.className = "content-card photo-wall-capture-guide";
+  const photoWallGuideCopy = document.createElement("div");
+  photoWallGuideCopy.append(
+    text("h2", "Sync your Photo Wall"),
+    text(
+      "p",
+      "rLogs listens for exact image replies produced by the game. It never sends Photo Wall requests or changes your game data.",
+    ),
+  );
+  const photoWallGuideState = text(
+    "strong",
+    "Checking capture readiness…",
+    "photo-wall-capture-state",
+  );
+  photoWallGuideState.setAttribute("role", "status");
+  photoWallGuideState.setAttribute("aria-live", "polite");
+  const photoWallGuideSteps = document.createElement("ol");
+  for (const step of PHOTO_WALL_CAPTURE_STEPS) {
+    photoWallGuideSteps.append(text("li", step));
+  }
+  photoWallGuide.append(
+    photoWallGuideCopy,
+    photoWallGuideState,
+    photoWallGuideSteps,
+  );
   const content = document.createElement("div");
   content.className = "profile-package-content";
   const inspection = document.createElement("section");
@@ -3102,7 +3130,7 @@ function mountProfileSyncStatusSurface(
     "Current boundary",
     "A claimable package is HMAC-bound to this PC's authenticated app token and its live process-owned capture. The first valid personal package claims that region-scoped UID, and only the same account can publish newer state. Modules remain attached to that character ID.",
   );
-  root.append(heading, status, content);
+  root.append(heading, photoWallGuide, status, content);
   if (DEVELOPER_TOOLS_ENABLED) {
     root.append(inspection);
   }
@@ -3115,6 +3143,7 @@ function mountProfileSyncStatusSurface(
     photoWallStatus: PhotoWallPublicationStatus,
   ) => {
     currentPolicy = policy;
+    currentPackages = packages;
     buildButton.disabled = !policy.bpsr_profile_sync.enabled;
     const photoWallSummary =
       !policy.bpsr_profile_sync.enabled ||
@@ -3153,6 +3182,8 @@ function mountProfileSyncStatusSurface(
       statusRows.push(fileRow("Package folder", packages.package_root));
     }
     status.replaceChildren(...statusRows);
+    photoWallGuide.dataset.state = photoWallStatus.state;
+    photoWallGuideState.textContent = photoWallSummary;
 
     const metrics = document.createElement("div");
     metrics.className = "runtime-result-grid profile-package-metrics";
@@ -3375,6 +3406,42 @@ function mountProfileSyncStatusSurface(
     }
   };
 
+  const refreshPhotoWallStatus = async () => {
+    if (!alive || currentPolicy === null || currentPackages === null) {
+      return;
+    }
+    try {
+      const photoWallStatus = parsePhotoWallPublicationStatus(
+        await apiJson<unknown>("/api/profiles/photo-wall/status"),
+      );
+      if (alive && currentPolicy !== null && currentPackages !== null) {
+        const photoWallSummary =
+          !currentPolicy.bpsr_profile_sync.enabled ||
+          !currentPolicy.bpsr_profile_sync.publish_photo_wall_images
+            ? "Disabled"
+            : currentPolicy.transport_mode !== "http"
+              ? "Waiting for this PC to be connected to your rLogs account"
+              : photoWallPublicationSummary(photoWallStatus);
+        photoWallGuide.dataset.state = photoWallStatus.state;
+        photoWallGuideState.textContent = photoWallSummary;
+        const rows = Array.from(status.children);
+        const photoRow = rows[3]?.querySelector("code");
+        const pipelineRow = rows[4]?.querySelector("code");
+        const captureRow = rows[5]?.querySelector("code");
+        if (photoRow != null) photoRow.textContent = photoWallSummary;
+        if (pipelineRow != null) {
+          pipelineRow.textContent = `${photoWallStatus.observedCount.toLocaleString()} observed · ${photoWallStatus.queuedCount.toLocaleString()} queued · ${photoWallStatus.publishedCount.toLocaleString()} published · ${photoWallStatus.retryableFailureCount.toLocaleString()} retry attempts`;
+        }
+        if (captureRow != null) {
+          captureRow.textContent = photoWallLastCaptureSummary(photoWallStatus);
+        }
+      }
+    } catch {
+      // The full surface load owns error reporting. A transient poll failure
+      // must not replace useful package and policy state.
+    }
+  };
+
   buildButton.addEventListener("click", async () => {
     if (busy) {
       return;
@@ -3424,10 +3491,15 @@ function mountProfileSyncStatusSurface(
   });
   refreshButton.addEventListener("click", () => void load(true));
   void load(false);
+  const photoWallStatusTimer = window.setInterval(
+    () => void refreshPhotoWallStatus(),
+    2_000,
+  );
 
   return {
     dispose() {
       alive = false;
+      window.clearInterval(photoWallStatusTimer);
     },
   };
 }

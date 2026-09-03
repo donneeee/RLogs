@@ -23,6 +23,14 @@ export interface PhotoWallPublicationStatus {
   lastError: string | null;
 }
 
+export const PHOTO_WALL_CAPTURE_STEPS = Object.freeze([
+  "In BPSR Profile Sync → Options, turn on Automatically sync my profile and Publish my Photo Wall images, then choose Save options.",
+  "Keep rLogs monitoring and leave your character logged in.",
+  "In BPSR, open your own Profile, then open its Photo Wall.",
+  "Use the Photo Wall's right arrow until you have visited pages 1, 2, 3, and 4. Only occupied tiles send image replies.",
+  "Optional for full quality: open each occupied photo once. Otherwise rLogs publishes the exact wall thumbnail it observed.",
+]);
+
 const STATES = new Set<PhotoWallPublicationState>([
   "waiting_for_live_parse",
   "disabled",
@@ -69,7 +77,7 @@ export function photoWallPublicationSummary(
     case "waiting_for_account_connection":
       return "Waiting for this PC to be connected to your rLogs account";
     case "waiting_for_photo_wall":
-      return "Ready — keep the parser running and open your own Photo Wall in game";
+      return "Ready — open your own Photo Wall and visit pages 1–4";
     case "observed_exact_game_image":
       return "Exact in-game Photo Wall image observed";
     case "publication_queued":
@@ -81,7 +89,7 @@ export function photoWallPublicationSummary(
         ? "Publication needs another attempt"
         : `Needs another attempt — ${status.lastError}`;
     case "waiting_for_live_parse":
-      return "Ready — start a live parse and open your own Photo Wall in game";
+      return "Start a live parse, then open your own Photo Wall and visit pages 1–4";
   }
 }
 

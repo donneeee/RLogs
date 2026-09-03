@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PHOTO_WALL_CAPTURE_STEPS,
   parsePhotoWallPublicationStatus,
   photoWallLastCaptureSummary,
   photoWallPublicationSummary,
@@ -24,6 +25,15 @@ function publishedStatus() {
 }
 
 describe("Photo Wall publication status", () => {
+  it("spells out the packet-triggering actions for every wall page", () => {
+    expect(PHOTO_WALL_CAPTURE_STEPS).toHaveLength(5);
+    expect(PHOTO_WALL_CAPTURE_STEPS[0]).toContain(
+      "Publish my Photo Wall images",
+    );
+    expect(PHOTO_WALL_CAPTURE_STEPS[3]).toContain("pages 1, 2, 3, and 4");
+    expect(PHOTO_WALL_CAPTURE_STEPS[4]).toContain("Optional for full quality");
+  });
+
   it("validates and describes an exact full-render publication", () => {
     const status = parsePhotoWallPublicationStatus(publishedStatus());
     expect(photoWallPublicationSummary(status)).toBe("Published (1)");
@@ -46,7 +56,7 @@ describe("Photo Wall publication status", () => {
       lastVersion: null,
     });
     expect(photoWallPublicationSummary(status)).toContain(
-      "open your own Photo Wall in game",
+      "visit pages 1–4",
     );
     expect(photoWallLastCaptureSummary(status)).toContain("No exact in-game");
   });

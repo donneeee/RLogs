@@ -3204,6 +3204,104 @@ button:focus-visible,
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.photo-wall-capture-guide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 24px;
+  padding: 17px 18px;
+}
+
+.photo-wall-capture-guide h2,
+.photo-wall-capture-guide p {
+  margin: 0;
+}
+
+.photo-wall-capture-guide h2 {
+  font-size: 13px;
+}
+
+.photo-wall-capture-guide p {
+  max-width: 760px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.photo-wall-capture-state {
+  align-self: start;
+  max-width: 360px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--cyan);
+  background: rgb(92 228 212 / 5%);
+  font-size: 9px;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.photo-wall-capture-guide ol {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: photo-wall-step;
+}
+
+.photo-wall-capture-guide li {
+  position: relative;
+  min-width: 0;
+  padding: 11px 10px 11px 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgb(7 12 19 / 42%);
+  font-size: 8px;
+  line-height: 1.5;
+  counter-increment: photo-wall-step;
+}
+
+.photo-wall-capture-guide li::before {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  color: #061217;
+  background: var(--cyan);
+  content: counter(photo-wall-step);
+  font: 700 8px "Cascadia Code", Consolas, monospace;
+}
+
+@media (max-width: 1180px) {
+  .photo-wall-capture-guide ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .photo-wall-capture-guide {
+    grid-template-columns: 1fr;
+  }
+
+  .photo-wall-capture-state {
+    max-width: none;
+    text-align: left;
+  }
+
+  .photo-wall-capture-guide ol {
+    grid-column: 1;
+    grid-template-columns: 1fr;
+  }
+}
+
 .profile-package-entry {
   overflow: hidden;
 }
