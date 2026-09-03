@@ -66,9 +66,9 @@ jobs:
           $body = @(
             "rLogs v$version"
             ""
-            "- Fixes the live Combat Overlay Hide control by granting its native window the required host commands and retaining a direct idempotent hide fallback."
-            "- Coalesces repeated Force reset clicks while the reset request is in flight."
-            "- Adds persisted, independently adjustable widths for summary values such as the Scene title; resize them from the cyan preview divider or enter an exact width in the editor."
+            "- Makes Combat Overlay summary controls use the same persisted geometry in the designer and live native window."
+            "- Gives the cycle-timer control a fixed default width so Encounter, Game, True, and Run labels cannot shift the rest of the header."
+            "- Adds exact width inputs and drag handles for every summary control; existing layouts migrate automatically."
             ""
             "Installer SHA-256: $sha256"
           ) -join [Environment]::NewLine

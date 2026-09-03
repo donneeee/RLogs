@@ -142,6 +142,9 @@ pub struct OverlayButton {
     pub id: String,
     pub label: String,
     pub action: OverlayButtonAction,
+    /// Fixed logical width. Zero keeps non-timer controls content-sized.
+    #[serde(default)]
+    pub width: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -400,26 +403,31 @@ impl Default for CombatOverlaySettings {
                         id: "segment".into(),
                         label: "Entire run".into(),
                         action: OverlayButtonAction::CycleSegment,
+                        width: 0,
                     },
                     OverlayButton {
                         id: "timer".into(),
                         label: "Encounter".into(),
                         action: OverlayButtonAction::CycleTimer,
+                        width: 116,
                     },
                     OverlayButton {
                         id: "metric".into(),
                         label: "DPS".into(),
                         action: OverlayButtonAction::CycleMetric,
+                        width: 0,
                     },
                     OverlayButton {
                         id: "force-reset".into(),
                         label: "Force reset".into(),
                         action: OverlayButtonAction::ResetEncounter,
+                        width: 0,
                     },
                     OverlayButton {
                         id: "visibility".into(),
                         label: "Hide".into(),
                         action: OverlayButtonAction::ToggleVisibility,
+                        width: 0,
                     },
                 ],
             }],
@@ -482,6 +490,11 @@ fn load(path: &Path) -> Result<CombatOverlaySettings, String> {
 
 fn ensure_live_switch_controls(settings: &mut CombatOverlaySettings) {
     for layer in &mut settings.layers {
+        for button in &mut layer.buttons {
+            if button.action == OverlayButtonAction::CycleTimer && button.width == 0 {
+                button.width = 116;
+            }
+        }
         if layer.buttons.len() < 8
             && !layer
                 .buttons
@@ -494,6 +507,7 @@ fn ensure_live_switch_controls(settings: &mut CombatOverlaySettings) {
                     id: unique_button_id(&layer.buttons, "segment"),
                     label: "Entire run".into(),
                     action: OverlayButtonAction::CycleSegment,
+                    width: 0,
                 },
             );
         }
@@ -510,6 +524,7 @@ fn ensure_live_switch_controls(settings: &mut CombatOverlaySettings) {
                     id: unique_button_id(&layer.buttons, "timer"),
                     label: "Encounter".into(),
                     action: OverlayButtonAction::CycleTimer,
+                    width: 116,
                 },
             );
         }
@@ -523,6 +538,7 @@ fn ensure_live_switch_controls(settings: &mut CombatOverlaySettings) {
                 id: unique_button_id(&layer.buttons, "force-reset"),
                 label: "Force reset".into(),
                 action: OverlayButtonAction::ResetEncounter,
+                width: 0,
             });
         }
     }
@@ -735,6 +751,16 @@ fn validate(settings: &CombatOverlaySettings) -> Result<(), String> {
             if button.label.trim().is_empty() || button.label.len() > 24 {
                 return Err(format!(
                     "Combat Overlay button {:?} has an invalid label",
+                    button.id
+                ));
+            }
+            if button.width > 480
+                || (button.action == OverlayButtonAction::CycleTimer
+                    && button.width != 0
+                    && button.width < 32)
+            {
+                return Err(format!(
+                    "Combat Overlay button {:?} has an invalid width",
                     button.id
                 ));
             }
@@ -1016,6 +1042,34 @@ mod tests {
         assert!(settings.layers[0].summary_field_rows.is_empty());
         assert!(settings.layers[0].summary_field_widths.is_empty());
         assert!(settings.layers[0].show_boss_dps);
+        validate(&settings).unwrap();
+    }
+
+    #[test]
+    fn older_timer_controls_receive_a_fixed_width() {
+        let mut settings = CombatOverlaySettings::default();
+        let layer = &mut settings.layers[0];
+        layer
+            .buttons
+            .iter_mut()
+            .find(|button| button.action == OverlayButtonAction::CycleTimer)
+            .unwrap()
+            .width = 0;
+
+        ensure_live_switch_controls(&mut settings);
+
+        let timer = settings.layers[0]
+            .buttons
+            .iter()
+            .find(|button| button.action == OverlayButtonAction::CycleTimer)
+            .unwrap();
+        let visibility = settings.layers[0]
+            .buttons
+            .iter()
+            .find(|button| button.action == OverlayButtonAction::ToggleVisibility)
+            .unwrap();
+        assert_eq!(timer.width, 116);
+        assert_eq!(visibility.width, 0);
         validate(&settings).unwrap();
     }
 

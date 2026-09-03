@@ -76,11 +76,14 @@ export type OverlayButtonAction =
   | "open_history";
 
 const MIN_OVERLAY_HEIGHT = 80;
+const DEFAULT_TIMER_CONTROL_WIDTH = 116;
 
 export interface OverlayButton {
   id: string;
   label: string;
   action: OverlayButtonAction;
+  /** Fixed logical width. Zero keeps non-timer controls content-sized. */
+  width: number;
 }
 
 export interface OverlayLayer {
@@ -478,6 +481,7 @@ interface RenderOptions {
   ) => void;
   onResizeHeader?: (layerId: string, field: OverlayHeaderField, width: number) => void;
   onResizeSummary?: (layerId: string, field: OverlaySummaryField, width: number) => void;
+  onResizeButton?: (layerId: string, buttonId: string, width: number) => void;
   onContextMenu?: (event: MouseEvent, target: ContextTarget) => void;
   onRuntimeAction?: (layerId: string, action: OverlayButtonAction) => void;
   onStartWindowDrag?: () => void;
@@ -914,6 +918,14 @@ export function mountCombatOverlayEditorSurface(
           summaryFieldWidths: { ...layer.summaryFieldWidths, [field]: width },
         }));
       },
+      onResizeButton(layerId, buttonId, width) {
+        updateLayer(layerId, (layer) => ({
+          ...layer,
+          buttons: layer.buttons.map((value) => value.id === buttonId
+            ? { ...value, width }
+            : value),
+        }));
+      },
       onContextMenu: showContextMenu,
       onRuntimeAction(layerId, action) {
         if (action === "cycle_metric") {
@@ -1126,6 +1138,13 @@ export function mountCombatOverlayEditorSurface(
           ACTIONS.map((value) => [value, actionLabel(value)] as const),
           overlayButton.action,
         );
+        const controlWidth = inputField("Width", String(buttonWidthFor(overlayButton)), "number");
+        controlWidth.input.min = overlayButton.action === "cycle_timer" ? "32" : "0";
+        controlWidth.input.max = "480";
+        controlWidth.input.step = "1";
+        controlWidth.input.title = overlayButton.action === "cycle_timer"
+          ? "The timer keeps a fixed width so changing clocks cannot move the rest of the header."
+          : "Use 0 for automatic width, or enter a fixed logical-pixel width.";
         label.input.addEventListener("change", () =>
           updateButton(layer.id, overlayButton.id, {
             ...overlayButton,
@@ -1136,12 +1155,25 @@ export function mountCombatOverlayEditorSurface(
           updateButton(layer.id, overlayButton.id, {
             ...overlayButton,
             action: action.select.value as OverlayButtonAction,
+            width: action.select.value === "cycle_timer" && overlayButton.width === 0
+              ? DEFAULT_TIMER_CONTROL_WIDTH
+              : overlayButton.width,
+          }),
+        );
+        controlWidth.input.addEventListener("change", () =>
+          updateButton(layer.id, overlayButton.id, {
+            ...overlayButton,
+            width: clamp(
+              Number(controlWidth.input.value),
+              overlayButton.action === "cycle_timer" ? 32 : 0,
+              480,
+            ),
           }),
         );
         const remove = button("Remove", "secondary-button danger-button combat-overlay-remove-control");
         remove.title = `Remove the ${overlayButton.label} control from this view`;
         remove.addEventListener("click", () => deleteButton(layer.id, overlayButton.id));
-        row.append(label.label, action.label, remove);
+        row.append(label.label, action.label, controlWidth.label, remove);
         buttonGroup.append(row);
       }
       const addControlRow = el("div", "combat-overlay-add-control");
@@ -1547,9 +1579,10 @@ export function mountCombatOverlayEditorSurface(
       const next = {
         ...layer,
         buttons: [...layer.buttons, {
-        id: uniqueId("button", layer.buttons.map((value) => value.id)),
-        label,
-        action,
+          id: uniqueId("button", layer.buttons.map((value) => value.id)),
+          label,
+          action,
+          width: defaultButtonWidth(action),
         }],
       };
       return withNormalizedSummaryLayout(next);
@@ -3399,6 +3432,13 @@ function renderSummaryRows(
           event.stopPropagation();
           options.onContextMenu?.(event, { kind: "summary_item", layerId: layer.id, field });
         });
+      } else if (control !== undefined) {
+        const fixedWidth = buttonWidthFor(control);
+        item.dataset.buttonAction = control.action;
+        if (fixedWidth > 0) {
+          item.style.flex = `0 0 ${fixedWidth}px`;
+          item.style.width = `${fixedWidth}px`;
+        }
       }
       if (options.mode === "preview") {
         item.classList.add("combat-overlay-reorder-target", "combat-overlay-summary-draggable");
@@ -3430,6 +3470,21 @@ function renderSummaryRows(
             field,
             scale,
             (width) => options.onResizeSummary?.(layer.id, field, width),
+          );
+          item.append(resize);
+        } else if (control !== undefined) {
+          const resize = text("span", "", "combat-overlay-summary-resize");
+          resize.dataset.width = `${buttonWidthFor(control)} px`;
+          resize.title = control.action === "cycle_timer"
+            ? "Drag to resize the fixed timer control."
+            : "Drag to resize this control. Set its width to 0 in the inspector for automatic sizing.";
+          resize.dataset.noWindowDrag = "true";
+          wireButtonResize(
+            resize,
+            item,
+            control,
+            scale,
+            (width) => options.onResizeButton?.(layer.id, control.id, width),
           );
           item.append(resize);
         }
@@ -3504,6 +3559,7 @@ function renderSummaryControl(
     "combat-overlay-control combat-overlay-summary-control",
   );
   controlButton.dataset.buttonId = control.id;
+  controlButton.dataset.buttonAction = control.action;
   controlButton.title = actionLabel(control.action);
   controlButton.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -4547,6 +4603,45 @@ function wireSummaryResize(
   });
 }
 
+function wireButtonResize(
+  handle: HTMLElement,
+  item: HTMLElement,
+  control: OverlayButton,
+  scale: number,
+  onResize: (width: number) => void,
+): void {
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const configuredWidth = buttonWidthFor(control);
+    const startWidth = configuredWidth > 0
+      ? configuredWidth
+      : Math.round(item.getBoundingClientRect().width / Math.max(scale, 0.01));
+    let nextWidth = startWidth;
+    let moved = false;
+    handle.classList.add("is-resizing");
+    const move = (next: PointerEvent) => {
+      nextWidth = Math.round(clamp(startWidth + (next.clientX - startX) / scale, 32, 480));
+      moved ||= Math.abs(next.clientX - startX) >= 2;
+      handle.dataset.width = `${nextWidth} px`;
+      item.style.flex = `0 0 ${nextWidth}px`;
+      item.style.width = `${nextWidth}px`;
+    };
+    const stop = () => {
+      handle.classList.remove("is-resizing");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      if (moved) onResize(nextWidth);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+    window.addEventListener("pointercancel", stop, { once: true });
+  });
+}
+
 export function parseCombatOverlaySettings(value: unknown): CombatOverlaySettings {
   if (!isRecord(value) || value.schemaVersion !== 1 || !Array.isArray(value.layers)) {
     throw new Error("The native host returned invalid Combat Overlay settings.");
@@ -4804,7 +4899,12 @@ function normalizeLayerValue(value: unknown): unknown {
     ? [...new Set(value.summaryFields.filter((field) => SUMMARY_FIELDS.includes(field as OverlaySummaryField)))]
     : [...DEFAULT_SUMMARY_FIELDS];
   const buttons = Array.isArray(value.buttons)
-    ? value.buttons.filter(isOverlayButtonValue).map((button) => ({ ...button }))
+    ? value.buttons.filter(isOverlayButtonValue).map((button) => ({
+        ...button,
+        width: Number.isInteger(button.width)
+          ? Number(button.width)
+          : defaultButtonWidth(button.action),
+      }))
     : [];
   const isLegacySummaryLayout = !Array.isArray(value.summaryItemOrder);
   const timerButton = buttons.find((button) => button.action === "cycle_timer");
@@ -4850,7 +4950,12 @@ function isOverlayButtonValue(value: unknown): value is OverlayButton {
   return isRecord(value)
     && typeof value.id === "string"
     && typeof value.label === "string"
-    && ACTIONS.includes(value.action as OverlayButtonAction);
+    && ACTIONS.includes(value.action as OverlayButtonAction)
+    && (value.width === undefined || (
+      Number.isInteger(value.width)
+      && Number(value.width) >= 0
+      && Number(value.width) <= 480
+    ));
 }
 
 function isSummaryFieldWidths(
@@ -5222,6 +5327,15 @@ function headerWidthFor(layer: OverlayLayer, field: OverlayHeaderField): number 
 
 function summaryFieldWidthFor(layer: OverlayLayer, field: OverlaySummaryField): number {
   return Math.round(clamp(layer.summaryFieldWidths?.[field] ?? 0, 0, 480));
+}
+
+export function buttonWidthFor(button: Pick<OverlayButton, "action" | "width">): number {
+  const minimum = button.action === "cycle_timer" ? 32 : 0;
+  return Math.round(clamp(button.width ?? defaultButtonWidth(button.action), minimum, 480));
+}
+
+function defaultButtonWidth(action: OverlayButtonAction): number {
+  return action === "cycle_timer" ? DEFAULT_TIMER_CONTROL_WIDTH : 0;
 }
 
 function headerWidth(
@@ -5761,7 +5875,8 @@ function installStyles(): void {
     .combat-overlay-summary-draggable { cursor:grab; touch-action:none; user-select:none; }
     .combat-overlay-summary-draggable.is-dragging { cursor:grabbing; }
     .combat-overlay-summary-stat > .combat-overlay-reorder-grip { pointer-events:none; }
-    .combat-overlay-summary-control { flex:0 0 auto; align-self:center; margin:2px 3px; }
+    .combat-overlay-summary-control { position:relative; box-sizing:border-box; min-width:0; flex:0 0 auto; align-self:center; justify-content:center; margin:2px 3px; white-space:nowrap; }
+    .combat-overlay-summary-control[data-button-action='cycle_timer'] { font-variant-numeric:tabular-nums; }
     .combat-overlay-summary-editor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
     .combat-overlay-summary-editor { display:grid; grid-template-columns:minmax(0,1fr) 76px; min-width:0; min-height:38px; gap:10px; align-items:center; padding:4px 8px; border:1px solid color-mix(in srgb,var(--line) 78%,transparent); border-radius:7px; background:color-mix(in srgb,var(--surface-soft) 72%,transparent); }
     .combat-overlay-summary-editor .combat-overlay-width-field { display:block; }
@@ -5891,7 +6006,8 @@ function installStyles(): void {
     .combat-overlay-checkbox { display:flex; min-width:0; gap:8px; align-items:center; font-size:12px; line-height:1.25; }
     .combat-overlay-checkbox input { width:16px; height:16px; flex:0 0 16px; margin:0; accent-color:#63e5d6; }
     .combat-overlay-checkbox span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .combat-overlay-button-editor { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) auto; gap:8px; align-items:end; }
+    .combat-overlay-button-editor { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) 70px auto; gap:8px; align-items:end; }
+    .combat-overlay-button-editor .combat-overlay-field:nth-child(3) input { text-align:right; }
     .combat-overlay-remove-control { min-height:36px; padding-inline:10px; }
     .combat-overlay-add-control { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:8px; align-items:end; padding-top:2px; }
     .combat-overlay-add-control > button { min-height:36px; white-space:nowrap; }

@@ -5,6 +5,7 @@ import {
   applyOverlayRdpsSkillDetail,
   availableTimerFields,
   actorName,
+  buttonWidthFor,
   describeOverlayRdpsAvailability,
   ensureMetricHeaderViews,
   formatOverlayNumber,
@@ -514,7 +515,7 @@ describe("Combat Overlay plug-in settings", () => {
     const settings = editableSummarySettings();
     const source = {
       ...settings.layers[0]!,
-      buttons: [{ id: "metric", label: "DPS", action: "cycle_metric" as const }],
+      buttons: [{ id: "metric", label: "DPS", action: "cycle_metric" as const, width: 0 }],
     };
     const views = ensureMetricHeaderViews([source]);
 
@@ -524,6 +525,25 @@ describe("Combat Overlay plug-in settings", () => {
     expect(views[3]?.headerFields).toContain("contribution_given");
     expect(nextOverlayHeaderViewId(views, views[0]!.id)).toBe(views[1]!.id);
     expect(nextOverlayHeaderViewId(views, views.at(-1)!.id)).toBe(views[0]!.id);
+  });
+
+  it("migrates the cycle timer to a fixed width without fixing other controls", () => {
+    const settings = editableSummarySettings();
+    const layer = parseCombatOverlaySettings({
+      ...settings,
+      layers: [{
+        ...settings.layers[0]!,
+        buttons: [
+          { id: "timer", label: "Encounter", action: "cycle_timer" },
+          { id: "hide", label: "Hide", action: "toggle_visibility" },
+        ],
+        summaryItemOrder: undefined,
+        summaryItemRows: undefined,
+      }],
+    }).layers[0]!;
+
+    expect(buttonWidthFor(layer.buttons[0]!)).toBe(116);
+    expect(buttonWidthFor(layer.buttons[1]!)).toBe(0);
   });
 
   it("recalculates every rate from the selected visible timer without changing totals", () => {
