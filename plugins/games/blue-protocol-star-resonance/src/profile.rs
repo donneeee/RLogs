@@ -78,9 +78,12 @@ pub struct CharacterProfilePatch {
 
 pub const CHARACTER_COMBAT_STATS_SCHEMA_VERSION: u16 = 1;
 
-/// Privacy-reviewed character-sheet values observed in one entity snapshot.
+/// Privacy-reviewed raw character-sheet values for the local character.
 ///
-/// Keys are exact BPSR fight-attribute component IDs. The final decimal digit
+/// Values come from authoritative entity snapshots plus a current-build,
+/// complete local `SyncToMeDeltaInfo.base_delta` character-sheet refresh.
+/// Ordinary combat deltas and computed values are never persisted here. Keys
+/// are exact BPSR fight-attribute component IDs. The final decimal digit
 /// identifies the game-defined component lane (`0` through `5`); presentation
 /// catalogs own localized names, units, grouping, and component labels.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

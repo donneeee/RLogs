@@ -14,7 +14,8 @@ use crate::{
     AchievementProgress, AchievementProgressProfile, BpsrWebsiteProfileError,
     CharacterCombatStatsProfile, CharacterProfilePatch, CharacterProgression, CollectionSummary,
     HandbookProgress, ProfileEventError, SeasonAchievementProgress, SeasonProfile, SocialDisplay,
-    character_id_from_entity_uuid, fight_attribute_presentation, website_profile_request,
+    character_id_from_entity_uuid, decode_known_entity_attribute_value,
+    fight_attribute_presentation, website_profile_request,
 };
 
 pub const MAXIMUM_LOCAL_PROFILE_CHARACTERS: usize = 8;
@@ -22,11 +23,21 @@ const MAXIMUM_PENDING_PUBLIC_PROFILE_CHARACTERS: usize = 64;
 const MAXIMUM_PENDING_STAT_CHARACTERS: usize = 64;
 pub const LIVE_CHARACTER_STATS_SCHEMA_VERSION: u16 = 1;
 
+/// Final character-sheet lanes emitted together by the local player's
+/// current-build `SyncToMeDeltaInfo.base_delta` refresh. Requiring the whole
+/// batch keeps ordinary combat deltas out of the persisted profile while
+/// retaining every packet value verbatim.
+const CHARACTER_SHEET_REFRESH_REQUIRED_ATTRIBUTE_IDS: [i32; 11] = [
+    11_030, 11_040, 11_320, 11_330, 11_440, 11_710, 11_720, 11_730, 11_930, 12_510, 12_530,
+];
+
 /// Current local-player stats for Overlay consumers.
 ///
-/// `snapshot_values` is the latest authoritative entity snapshot and is safe
-/// to persist on a profile. `current_values` additionally applies later
-/// packet deltas and is intentionally ephemeral. Missing IDs remain unknown.
+/// `snapshot_values` is the latest authoritative entity snapshot used to seed
+/// the Overlay. `current_values` additionally applies later packet deltas and
+/// is intentionally ephemeral. Profile persistence is separately restricted
+/// to snapshots and exact complete raw character-sheet refresh batches.
+/// Missing IDs remain unknown.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LiveCharacterStatsSnapshot {
     pub schema_version: u16,
@@ -58,6 +69,7 @@ impl Default for LiveCharacterStatsSnapshot {
 struct PendingCharacterStats {
     snapshot_values: BTreeMap<i32, i64>,
     current_values: BTreeMap<i32, i64>,
+    profile_values: BTreeMap<i32, i64>,
     last_event_sequence: Option<u64>,
     last_game_time_millis: Option<i64>,
 }
@@ -227,16 +239,20 @@ impl LiveProfileProjection {
             .pending_stats
             .remove(&patch.character.character_id)
             .unwrap_or_default();
-        if !pending.snapshot_values.is_empty() {
+        if !pending.profile_values.is_empty() {
             patch.combat_stats = Some(CharacterCombatStatsProfile::new(
-                pending.snapshot_values.clone(),
+                pending.profile_values.clone(),
             ));
         }
-        let next_snapshot_values = patch
-            .combat_stats
-            .as_ref()
-            .map(|stats| stats.snapshot_values.clone())
-            .unwrap_or_else(|| pending.snapshot_values.clone());
+        let next_snapshot_values = if pending.snapshot_values.is_empty() {
+            patch
+                .combat_stats
+                .as_ref()
+                .map(|stats| stats.snapshot_values.clone())
+                .unwrap_or_default()
+        } else {
+            pending.snapshot_values.clone()
+        };
         let next_current_values = if pending.current_values.is_empty() {
             next_snapshot_values.clone()
         } else {
@@ -274,6 +290,8 @@ impl LiveProfileProjection {
         if values.is_empty() && attributes.update_kind != EntityAttributeUpdateKind::Snapshot {
             return Ok(false);
         }
+        let is_character_sheet_refresh = attributes.update_kind == EntityAttributeUpdateKind::Delta
+            && is_complete_character_sheet_refresh(&values);
         let Some(index) = self
             .accumulators
             .iter()
@@ -290,6 +308,7 @@ impl LiveProfileProjection {
                 pending,
                 attributes.update_kind,
                 values,
+                is_character_sheet_refresh,
                 envelope.sequence,
                 envelope.time.game_time_millis,
             );
@@ -299,12 +318,16 @@ impl LiveProfileProjection {
         let active_character =
             self.live_stats.character.as_ref() == Some(&self.accumulators[index].profile.character);
         let mut next = PendingCharacterStats {
-            snapshot_values: self.accumulators[index]
-                .profile
-                .combat_stats
-                .as_ref()
-                .map(|stats| stats.snapshot_values.clone())
-                .unwrap_or_default(),
+            snapshot_values: if active_character {
+                self.live_stats.snapshot_values.clone()
+            } else {
+                self.accumulators[index]
+                    .profile
+                    .combat_stats
+                    .as_ref()
+                    .map(|stats| stats.snapshot_values.clone())
+                    .unwrap_or_default()
+            },
             current_values: if active_character {
                 self.live_stats.current_values.clone()
             } else {
@@ -315,6 +338,12 @@ impl LiveProfileProjection {
                     .map(|stats| stats.snapshot_values.clone())
                     .unwrap_or_default()
             },
+            profile_values: self.accumulators[index]
+                .profile
+                .combat_stats
+                .as_ref()
+                .map(|stats| stats.snapshot_values.clone())
+                .unwrap_or_default(),
             last_event_sequence: self.live_stats.last_event_sequence,
             last_game_time_millis: self.live_stats.last_game_time_millis,
         };
@@ -322,13 +351,13 @@ impl LiveProfileProjection {
             &mut next,
             attributes.update_kind,
             values,
+            is_character_sheet_refresh,
             envelope.sequence,
             envelope.time.game_time_millis,
         );
-        let next_profile_stats = (!next.snapshot_values.is_empty())
-            .then(|| CharacterCombatStatsProfile::new(next.snapshot_values.clone()));
-        let profile_changed = attributes.update_kind == EntityAttributeUpdateKind::Snapshot
-            && next_profile_stats.is_some()
+        let next_profile_stats = (!next.profile_values.is_empty())
+            .then(|| CharacterCombatStatsProfile::new(next.profile_values.clone()));
+        let profile_changed = next_profile_stats.is_some()
             && next_profile_stats != self.accumulators[index].profile.combat_stats;
         if profile_changed {
             self.accumulators[index].profile.combat_stats = next_profile_stats;
@@ -477,26 +506,42 @@ fn character_stat_values(
         {
             continue;
         }
-        if let Some(EntityAttributeValue::Integer(value)) = attribute.decoded {
+        let decoded = attribute.decoded.clone().or_else(|| {
+            decode_known_entity_attribute_value(attribute.attribute_id, &attribute.raw_value)
+        });
+        if let Some(EntityAttributeValue::Integer(value)) = decoded {
             values.insert(attribute.attribute_id, value);
         }
     }
     Ok(values)
 }
 
+fn is_complete_character_sheet_refresh(values: &BTreeMap<i32, i64>) -> bool {
+    CHARACTER_SHEET_REFRESH_REQUIRED_ATTRIBUTE_IDS
+        .iter()
+        .all(|attribute_id| values.contains_key(attribute_id))
+}
+
 fn apply_character_stat_update(
     state: &mut PendingCharacterStats,
     update_kind: EntityAttributeUpdateKind,
     values: BTreeMap<i32, i64>,
+    is_character_sheet_refresh: bool,
     event_sequence: u64,
     game_time_millis: Option<i64>,
 ) -> bool {
     let before = state.clone();
     if update_kind == EntityAttributeUpdateKind::Snapshot {
         state.snapshot_values.clone_from(&values);
-        state.current_values = values;
+        state.current_values.clone_from(&values);
+        if !values.is_empty() {
+            state.profile_values = values;
+        }
     } else {
-        state.current_values.extend(values);
+        state.current_values.extend(values.clone());
+        if is_character_sheet_refresh {
+            state.profile_values.extend(values);
+        }
     }
     state.last_event_sequence = Some(event_sequence);
     state.last_game_time_millis = game_time_millis.or(state.last_game_time_millis);
@@ -1145,6 +1190,90 @@ mod tests {
         assert_eq!(
             packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11010"],
             300
+        );
+    }
+
+    #[test]
+    fn complete_local_sync_batch_replaces_profile_finals_without_copying_combat_deltas() {
+        let mut projection = LiveProfileProjection::default();
+        projection
+            .observe(&envelope(1, EventSensitivity::PersonalGameplay, profile()))
+            .unwrap();
+        assert!(
+            projection
+                .observe(&stat_envelope(
+                    2,
+                    123_456,
+                    EntityAttributeUpdateKind::Snapshot,
+                    &[(11_010, 548), (11_030, 7_860), (11_320, 293_290)],
+                ))
+                .unwrap()
+        );
+        let mut refresh = stat_envelope(
+            3,
+            123_456,
+            EntityAttributeUpdateKind::Delta,
+            &[
+                (11_030, 8_032),
+                (11_040, 42_743),
+                (11_320, 319_935),
+                (11_330, 5_933),
+                (11_440, 4_825),
+                (11_710, 6_256),
+                (11_720, 4_490),
+                (11_730, 4_168),
+                (11_930, 4_168),
+                (12_510, 9_475),
+                (12_530, 4_125),
+            ],
+        );
+        refresh.sensitivity = EventSensitivity::PublicGameplay;
+        let CanonicalEvent::Timeline(timeline) = &mut refresh.event else {
+            unreachable!()
+        };
+        let TimelineEventKind::EntityAttributes(attributes) = &mut timeline.kind else {
+            unreachable!()
+        };
+        let endurance = attributes
+            .attributes
+            .iter_mut()
+            .find(|attribute| attribute.attribute_id == 11_040)
+            .unwrap();
+        endurance.decoded = None;
+        endurance.raw_value = vec![0xf7, 0xcd, 0x02];
+        assert!(projection.observe(&refresh).unwrap());
+        assert!(
+            !projection
+                .observe(&stat_envelope(
+                    4,
+                    123_456,
+                    EntityAttributeUpdateKind::Delta,
+                    &[(11_320, 348_303), (11_330, 6_074)],
+                ))
+                .unwrap()
+        );
+
+        let live = projection.live_character_stats();
+        assert_eq!(live.current_values.get(&11_320), Some(&348_303));
+        assert_eq!(live.current_values.get(&11_330), Some(&6_074));
+        let packages = projection
+            .packages("session", "build", "sha256:pack", 10)
+            .unwrap();
+        assert_eq!(
+            packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11010"],
+            548
+        );
+        assert_eq!(
+            packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11040"],
+            42_743
+        );
+        assert_eq!(
+            packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11320"],
+            319_935
+        );
+        assert_eq!(
+            packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11330"],
+            5_933
         );
     }
 

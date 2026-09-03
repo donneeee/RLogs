@@ -5870,6 +5870,7 @@ fn decode_attribute_value(id: i32, raw: &[u8]) -> Option<EntityAttributeValue> {
         11010..=11014
         | 11020..=11024
         | 11030..=11034
+        | 11040..=11044
         | ATTR_PHYSICAL_ATTACK
         | 11331..=11334
         | ATTR_MAGICAL_ATTACK
@@ -10665,14 +10666,20 @@ mod tests {
     fn rdps_primary_and_attack_component_families_decode_proven_varints() {
         // Exact old-build Harmony replay: Dexterity final and its externally
         // transferable percentage component. The same scalar representation
-        // is used by the Strength and Intelligence sibling families.
-        for attribute_id in [11010, 11020, 11030] {
+        // is used by the Strength, Intelligence, Agility, and Endurance
+        // sibling families. Current-build local-player SyncToMe evidence
+        // independently confirms Endurance final 11040 as int32.
+        for attribute_id in [11010, 11020, 11030, 11040] {
             assert_eq!(
                 decode_attribute_value(attribute_id, &[0xc1, 0x3d]),
                 Some(EntityAttributeValue::Integer(7_873))
             );
         }
-        for attribute_id in [11014, 11024, 11034] {
+        assert_eq!(
+            decode_attribute_value(11040, &[0xf7, 0xcd, 0x02]),
+            Some(EntityAttributeValue::Integer(42_743))
+        );
+        for attribute_id in [11014, 11024, 11034, 11044] {
             assert_eq!(
                 decode_attribute_value(attribute_id, &[0xc8, 0x01]),
                 Some(EntityAttributeValue::Integer(200))
