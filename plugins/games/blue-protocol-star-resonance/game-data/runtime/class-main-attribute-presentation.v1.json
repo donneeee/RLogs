@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "game_build": "24687926",
+  "locale": "en-US",
+  "source": "Exact-build BPSR Global Steam fight-attribute descriptions and reviewed class localization",
+  "source_fight_attr_table_sha256": "1cac8d894bd007b12206f0b4a290c212bbe29b343141a8f5d6bdf50c6e2db3bc",
+  "source_fight_attribute_presentation_sha256": "8ebe3ca31e9919c6cade582a64973c73cc344c239ae0e28030a6e9e4646e38b4",
+  "source_class_localization_sha256": "5f2f6607cf85ac3af9eae50718e7f805bdf8f7f0f95cbf26e38ffe839b3ca284",
+  "classes": [
+    { "class_id": 1, "class_name": "Stormblade", "main_attribute_family_id": 11030, "main_attribute_name": "Agility" },
+    { "class_id": 2, "class_name": "Frost Mage", "main_attribute_family_id": 11020, "main_attribute_name": "Intellect" },
+    { "class_id": 3, "class_name": "Twin Striker", "main_attribute_family_id": 11010, "main_attribute_name": "Strength" },
+    { "class_id": 4, "class_name": "Wind Knight", "main_attribute_family_id": 11010, "main_attribute_name": "Strength" },
+    { "class_id": 5, "class_name": "Verdant Oracle", "main_attribute_family_id": 11020, "main_attribute_name": "Intellect" },
+    { "class_id": 9, "class_name": "Heavy Guardian", "main_attribute_family_id": 11010, "main_attribute_name": "Strength" },
+    { "class_id": 11, "class_name": "Marksman", "main_attribute_family_id": 11030, "main_attribute_name": "Agility" },
+    { "class_id": 12, "class_name": "Shield Knight", "main_attribute_family_id": 11010, "main_attribute_name": "Strength" },
+    { "class_id": 13, "class_name": "Beat Performer", "main_attribute_family_id": 11020, "main_attribute_name": "Intellect" }
+  ]
+}
