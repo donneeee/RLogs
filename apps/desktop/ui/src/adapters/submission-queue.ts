@@ -32,6 +32,33 @@ export interface SubmissionQueueView {
   issues: readonly string[];
 }
 
+export type AutomaticSubmissionState =
+  | "starting"
+  | "disabled"
+  | "waiting_for_account_connection"
+  | "idle"
+  | "queued"
+  | "uploading"
+  | "retrying"
+  | "submitted";
+
+export interface AutomaticSubmissionStatusView {
+  schemaVersion: 1;
+  state: AutomaticSubmissionState;
+  pendingEligibleCount: number;
+  currentQueueId: string | null;
+  currentCaptureSessionId: string | null;
+  attemptCount: number;
+  successfulCount: number;
+  retryableFailureCount: number;
+  consecutiveFailures: number;
+  nextRetryUnixMillis: number | null;
+  lastActivityUnixMillis: number | null;
+  lastError: string | null;
+  lastReportId: string | null;
+  lastShareUrl: string | null;
+}
+
 export interface VerifiedArtifactView {
   file_byte_length: number;
   file_sha256: string;
@@ -83,6 +110,31 @@ export function parseSubmissionQueue(value: unknown): SubmissionQueueView {
     throw new Error("The local host returned an invalid submission queue.");
   }
   return value as unknown as SubmissionQueueView;
+}
+
+export function parseAutomaticSubmissionStatus(
+  value: unknown,
+): AutomaticSubmissionStatusView {
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    !isAutomaticSubmissionState(value.state) ||
+    !isSafeCount(value.pendingEligibleCount) ||
+    !isOptionalSha256(value.currentQueueId) ||
+    !isOptionalNonEmptyString(value.currentCaptureSessionId) ||
+    !isSafeCount(value.attemptCount) ||
+    !isSafeCount(value.successfulCount) ||
+    !isSafeCount(value.retryableFailureCount) ||
+    !isSafeCount(value.consecutiveFailures) ||
+    !isOptionalSafeCount(value.nextRetryUnixMillis) ||
+    !isOptionalSafeCount(value.lastActivityUnixMillis) ||
+    !isOptionalString(value.lastError) ||
+    !isOptionalNonEmptyString(value.lastReportId) ||
+    !isOptionalHttpUrl(value.lastShareUrl)
+  ) {
+    throw new Error("The local host returned an invalid automatic submission status.");
+  }
+  return value as unknown as AutomaticSubmissionStatusView;
 }
 
 export function parseSubmissionImportResult(
@@ -174,6 +226,46 @@ function isSubmissionState(value: unknown): value is SubmissionState {
 
 function isVisibility(value: unknown): value is ReportVisibility {
   return value === "private" || value === "unlisted" || value === "public";
+}
+
+function isAutomaticSubmissionState(value: unknown): value is AutomaticSubmissionState {
+  return (
+    value === "starting" ||
+    value === "disabled" ||
+    value === "waiting_for_account_connection" ||
+    value === "idle" ||
+    value === "queued" ||
+    value === "uploading" ||
+    value === "retrying" ||
+    value === "submitted"
+  );
+}
+
+function isOptionalSha256(value: unknown): boolean {
+  return value === null || isSha256(value);
+}
+
+function isOptionalNonEmptyString(value: unknown): boolean {
+  return value === null || (typeof value === "string" && value.length > 0);
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === null || typeof value === "string";
+}
+
+function isOptionalSafeCount(value: unknown): boolean {
+  return value === null || isSafeCount(value);
+}
+
+function isOptionalHttpUrl(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== "string") return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 function isSha256(value: unknown): value is string {

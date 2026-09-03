@@ -47,17 +47,24 @@ completed capture is verified once, described by exact full-file and
 canonical-event SHA-256 values, split into deterministic chunk descriptors,
 and atomically persisted as one bounded entry per artifact digest. Reference
 fixtures are not queued. The host-only `.rlog` path never enters the upload
-manifest, and no draft is transmitted until a separately enabled uploader and
-user-authorized device transport exist.
+manifest, and no draft is transmitted until the separately enabled uploader
+has a user-authorized device connection. The automatic uploader re-verifies
+the sealed artifact immediately before its resumable HTTPS upload, accepts only
+a verified server receipt, and uses a bounded exponential retry delay. A
+draft-specific failure rotates the next attempt to another eligible draft so
+one bad artifact cannot block every later completion. Its current session,
+retry deadline, last error, and last accepted report are exposed through the
+local host; the queue UI polls only that loopback endpoint and never spends
+submission-service quota.
 
 The desktop exposes Log Uploader and BPSR Profile Sync as separate first-party
 workspaces with independent, disabled-by-default policies. The policy store is
 host-owned and atomically replaced. Enabling one never grants the other.
-Before HTTP or authentication exists, Log Uploader can exercise the exact
-resumable lifecycle against a bounded in-process receiver: both sender and
-receiver are serialized and restored mid-upload, chunk acknowledgements and
-the final receipt are validated, and no external request or artifact deletion
-can occur.
+Log Uploader can also exercise the exact resumable lifecycle against a bounded
+in-process receiver: both sender and receiver are serialized and restored
+mid-upload, chunk acknowledgements and the final receipt are validated, and no
+external request or artifact deletion can occur during that developer-only
+test.
 
 Profile Sync consumes only personal-gameplay character observations produced
 during a live process-owned capture. Reference replay, offline PCAP processing,
@@ -74,7 +81,7 @@ inspection.
 For combat-log submission, existing sealed logs use the same one-pass verifier
 as newly recorded logs, so recovery does not create a weaker artifact class.
 That recovery path does not grant profile-claim authority. Re-verification is
-intentionally ephemeral: the future transport must repeat it immediately
+intentionally ephemeral: the authenticated transport repeats it immediately
 before reading upload chunks rather than trusting a saved checkbox or
 timestamp.
 

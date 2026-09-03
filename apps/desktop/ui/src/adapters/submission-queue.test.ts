@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  parseAutomaticSubmissionStatus,
   parseSubmissionImportResult,
   parseSubmissionQueue,
   parseSubmissionVerificationResult,
@@ -26,6 +27,37 @@ function queueEntry() {
 }
 
 describe("local submission queue", () => {
+  it("validates observable automatic uploader progress and retry details", () => {
+    const status = parseAutomaticSubmissionStatus({
+      schemaVersion: 1,
+      state: "retrying",
+      pendingEligibleCount: 2,
+      currentQueueId: "a".repeat(64),
+      currentCaptureSessionId: "session-1",
+      attemptCount: 3,
+      successfulCount: 1,
+      retryableFailureCount: 2,
+      consecutiveFailures: 2,
+      nextRetryUnixMillis: 1_700_000_005_000,
+      lastActivityUnixMillis: 1_700_000_000_000,
+      lastError: "server rejected the draft",
+      lastReportId: "rpt_123",
+      lastShareUrl: "https://rlogs-app.github.io/parses/?report=rpt_123",
+    });
+
+    expect(status.state).toBe("retrying");
+    expect(status.pendingEligibleCount).toBe(2);
+    expect(status.lastError).toBe("server rejected the draft");
+  });
+
+  it("rejects malformed automatic uploader status", () => {
+    expect(() => parseAutomaticSubmissionStatus({
+      schemaVersion: 1,
+      state: "retrying",
+      pendingEligibleCount: -1,
+    })).toThrow("invalid automatic submission status");
+  });
+
   it("accepts a bounded version-one draft queue", () => {
     const queue = parseSubmissionQueue({
       schema_version: 1,

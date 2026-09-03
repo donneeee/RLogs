@@ -544,6 +544,8 @@ describe("Combat Overlay plug-in settings", () => {
 
     expect(buttonWidthFor(layer.buttons[0]!)).toBe(116);
     expect(buttonWidthFor(layer.buttons[1]!)).toBe(0);
+    expect(buttonWidthFor({ action: "cycle_timer", width: 0 })).toBe(116);
+    expect(buttonWidthFor({ action: "cycle_timer", width: 72 })).toBe(116);
   });
 
   it("recalculates every rate from the selected visible timer without changing totals", () => {

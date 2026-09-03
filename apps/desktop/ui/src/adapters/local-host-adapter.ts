@@ -89,7 +89,9 @@ import { projectedRunCount } from "./run-projection";
 import { parseRunReport } from "./run-report";
 import { mountRunReportSurface } from "./run-report-surface";
 import {
+  type AutomaticSubmissionStatusView,
   type SubmissionQueueView,
+  parseAutomaticSubmissionStatus,
   parseSubmissionImportResult,
   parseSubmissionQueue,
   parseSubmissionVerificationResult,
@@ -3473,9 +3475,35 @@ function renderProfilePackageInspection(
   container.hidden = false;
 }
 
+function automaticSubmissionSummary(status: AutomaticSubmissionStatusView): string {
+  if (status.state === "disabled") {
+    return "Off. Completed parses remain local until automatic uploads are enabled.";
+  }
+  if (status.state === "waiting_for_account_connection") {
+    return "Waiting for this PC to reconnect to your rLogs account.";
+  }
+  if (status.state === "uploading") {
+    return "Uploading one verified draft now.";
+  }
+  if (status.state === "retrying") {
+    return "A draft failed. rLogs is backing off before trying the next eligible draft.";
+  }
+  if (status.state === "submitted") {
+    return "The latest draft was accepted by the verification service.";
+  }
+  if (status.state === "queued") {
+    return "Verified drafts are queued for automatic upload.";
+  }
+  if (status.state === "idle") {
+    return "All eligible completed parses are caught up.";
+  }
+  return "Starting the automatic uploader.";
+}
+
 function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
   let alive = true;
   let busy = false;
+  let refreshing = false;
   let currentPolicy: SubmissionPolicyView | null = null;
   const root = document.createElement("div");
   root.className = "plugin-surface submission-queue-surface";
@@ -3613,6 +3641,7 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
   const render = (
     queue: SubmissionQueueView,
     policy: SubmissionPolicyView,
+    uploader: AutomaticSubmissionStatusView,
   ) => {
     currentPolicy = policy;
     const metrics = document.createElement("div");
@@ -3652,7 +3681,56 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
     }
     location.append(...locationRows);
 
-    const children: HTMLElement[] = [metrics, location];
+    const uploaderPanel = document.createElement("section");
+    uploaderPanel.className = "content-card runtime-file-list";
+    const uploaderState = text(
+      "span",
+      formatIdentifier(uploader.state),
+      "state-pill",
+    );
+    uploaderState.dataset.state = uploader.state === "retrying"
+      ? "blocked"
+      : uploader.state === "uploading" || uploader.state === "submitted"
+        ? "ready"
+        : "pending";
+    const uploaderHeader = document.createElement("header");
+    uploaderHeader.append(text("strong", "Automatic uploader"), uploaderState);
+    const uploaderRows = document.createElement("div");
+    uploaderRows.className = "runtime-file-list";
+    const retryTime = uploader.nextRetryUnixMillis === null
+      ? null
+      : new Date(uploader.nextRetryUnixMillis).toLocaleTimeString();
+    uploaderRows.append(
+      fileRow("Status", automaticSubmissionSummary(uploader)),
+      fileRow(
+        "Eligible drafts",
+        uploader.pendingEligibleCount.toLocaleString(),
+      ),
+    );
+    if (uploader.currentCaptureSessionId !== null) {
+      uploaderRows.append(fileRow("Current session", uploader.currentCaptureSessionId));
+    }
+    if (retryTime !== null) {
+      uploaderRows.append(fileRow("Next retry", retryTime));
+    }
+    if (uploader.lastError !== null) {
+      const failure = fileRow("Last error", uploader.lastError);
+      failure.classList.add("error");
+      uploaderRows.append(failure);
+    }
+    if (uploader.lastShareUrl !== null && uploader.lastReportId !== null) {
+      const report = document.createElement("div");
+      const link = document.createElement("a");
+      link.href = uploader.lastShareUrl;
+      link.target = "_blank";
+      link.rel = "noreferrer noopener";
+      link.textContent = `Open ${uploader.lastReportId}`;
+      report.append(text("span", "Last accepted report"), link);
+      uploaderRows.append(report);
+    }
+    uploaderPanel.append(uploaderHeader, uploaderRows);
+
+    const children: HTMLElement[] = [metrics, location, uploaderPanel];
     if (queue.issues.length > 0) {
       const diagnostics = document.createElement("section");
       diagnostics.className = "content-card diagnostic-panel";
@@ -3774,6 +3852,10 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
           "p",
           entry.state === "submitted"
             ? "Uploaded automatically and accepted by the rLogs verification service."
+            : uploader.currentQueueId === entry.queue_id && uploader.state === "uploading"
+              ? "Uploading now. The service will independently re-verify and replay this sealed log."
+              : uploader.currentQueueId === entry.queue_id && uploader.state === "retrying"
+                ? `Upload failed and will retry${retryTime === null ? "" : ` at ${retryTime}`}: ${uploader.lastError ?? "temporary service error"}`
             : !policy.log_uploader.enabled
               ? "Automatic submission is disabled; this draft remains local."
               : policy.transport_mode !== "http"
@@ -3816,14 +3898,17 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
           body: JSON.stringify({ artifactPath: artifactPath.input.value }),
         }),
       );
-      const [queue, policy] = await Promise.all([
+      const [queue, policy, uploader] = await Promise.all([
         apiJson<unknown>("/api/submissions/queue").then(parseSubmissionQueue),
         apiJson<unknown>("/api/submissions/policy").then(
           parseSubmissionPolicy,
         ),
+        apiJson<unknown>("/api/submissions/automatic-status").then(
+          parseAutomaticSubmissionStatus,
+        ),
       ]);
       if (alive) {
-        render(queue, policy);
+        render(queue, policy, uploader);
         importMessage.textContent =
           result.outcome === "queued"
             ? `Added ${result.capture_session_id} as a verified local draft.`
@@ -3841,16 +3926,18 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
     }
   });
 
-  const refresh = async (rescan: boolean) => {
-    if (busy) {
+  const refresh = async (rescan: boolean, silent = false) => {
+    if (busy || refreshing) {
       return;
     }
-    busy = true;
-    refreshButton.disabled = true;
-    refreshMessage.classList.remove("error");
-    refreshMessage.textContent = "Reading bounded local queue metadata…";
+    refreshing = true;
+    if (!silent) {
+      refreshButton.disabled = true;
+      refreshMessage.classList.remove("error");
+      refreshMessage.textContent = "Reading bounded local queue metadata…";
+    }
     try {
-      const [queue, policy] = await Promise.all([
+      const [queue, policy, uploader] = await Promise.all([
         apiJson<unknown>(
           rescan
             ? "/api/submissions/queue/refresh"
@@ -3860,9 +3947,12 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
         apiJson<unknown>("/api/submissions/policy").then(
           parseSubmissionPolicy,
         ),
+        apiJson<unknown>("/api/submissions/automatic-status").then(
+          parseAutomaticSubmissionStatus,
+        ),
       ]);
       if (alive) {
-        render(queue, policy);
+        render(queue, policy, uploader);
       }
     } catch (error) {
       if (alive) {
@@ -3873,16 +3963,18 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
         );
       }
     } finally {
-      busy = false;
-      refreshButton.disabled = false;
+      refreshing = false;
+      if (!silent) refreshButton.disabled = false;
     }
   };
   refreshButton.addEventListener("click", () => void refresh(true));
   void refresh(false);
+  const refreshTimer = window.setInterval(() => void refresh(false, true), 5_000);
 
   return {
     dispose() {
       alive = false;
+      window.clearInterval(refreshTimer);
     },
   };
 }

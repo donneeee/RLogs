@@ -1139,7 +1139,9 @@ export function mountCombatOverlayEditorSurface(
           overlayButton.action,
         );
         const controlWidth = inputField("Width", String(buttonWidthFor(overlayButton)), "number");
-        controlWidth.input.min = overlayButton.action === "cycle_timer" ? "32" : "0";
+        controlWidth.input.min = overlayButton.action === "cycle_timer"
+          ? String(DEFAULT_TIMER_CONTROL_WIDTH)
+          : "0";
         controlWidth.input.max = "480";
         controlWidth.input.step = "1";
         controlWidth.input.title = overlayButton.action === "cycle_timer"
@@ -1165,7 +1167,7 @@ export function mountCombatOverlayEditorSurface(
             ...overlayButton,
             width: clamp(
               Number(controlWidth.input.value),
-              overlayButton.action === "cycle_timer" ? 32 : 0,
+              overlayButton.action === "cycle_timer" ? DEFAULT_TIMER_CONTROL_WIDTH : 0,
               480,
             ),
           }),
@@ -4623,7 +4625,8 @@ function wireButtonResize(
     let moved = false;
     handle.classList.add("is-resizing");
     const move = (next: PointerEvent) => {
-      nextWidth = Math.round(clamp(startWidth + (next.clientX - startX) / scale, 32, 480));
+      const minimum = control.action === "cycle_timer" ? DEFAULT_TIMER_CONTROL_WIDTH : 32;
+      nextWidth = Math.round(clamp(startWidth + (next.clientX - startX) / scale, minimum, 480));
       moved ||= Math.abs(next.clientX - startX) >= 2;
       handle.dataset.width = `${nextWidth} px`;
       item.style.flex = `0 0 ${nextWidth}px`;
@@ -5330,7 +5333,7 @@ function summaryFieldWidthFor(layer: OverlayLayer, field: OverlaySummaryField): 
 }
 
 export function buttonWidthFor(button: Pick<OverlayButton, "action" | "width">): number {
-  const minimum = button.action === "cycle_timer" ? 32 : 0;
+  const minimum = button.action === "cycle_timer" ? DEFAULT_TIMER_CONTROL_WIDTH : 0;
   return Math.round(clamp(button.width ?? defaultButtonWidth(button.action), minimum, 480));
 }
 
@@ -5912,8 +5915,12 @@ function installStyles(): void {
     .combat-overlay-control { display:inline-flex; min-height:23px; align-items:center; gap:4px; padding:2px 7px; border:1px solid #8aa0b82f; border-radius:5px; color:#bcd0e4; background:#0d1724; font:700 10px/1 system-ui; }
     .combat-overlay-control:hover { color:#63e5d6; border-color:#63e5d688; }
     .combat-overlay-view-control[data-active='true'] { color:#08141d; border-color:#63e5d6; background:#63e5d6; text-shadow:none; }
+    .combat-overlay-view-control { position:relative; }
     .combat-overlay-view-control[data-active='true'] .combat-overlay-reorder-grip { color:#17343c; }
     .combat-overlay-reorder-grip { color:#687b91; cursor:grab; touch-action:none; user-select:none; letter-spacing:-2px; }
+    .combat-overlay-canvas-preview .combat-overlay-view-control > .combat-overlay-reorder-grip,
+    .combat-overlay-canvas-preview .combat-overlay-summary-stat > .combat-overlay-reorder-grip,
+    .combat-overlay-canvas-preview .combat-overlay-summary-control > .combat-overlay-reorder-grip { position:absolute; z-index:6; left:2px; top:50%; transform:translateY(-50%); }
     .combat-overlay-reorder-grip:hover, .combat-overlay-reorder-grip.is-dragging { color:#63e5d6; cursor:grabbing; }
     .combat-overlay-row { position:relative; display:grid; align-items:center; min-height:28px; column-gap:7px; padding:0 8px; font:600 11px/1.1 system-ui; }
     .combat-overlay-row > span { position:relative; z-index:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }

@@ -57,8 +57,9 @@
 - [done] exercise artifact re-verification, chunk acknowledgement, forced
   restart recovery, and final receipts against a bounded zero-network mock
   receiver;
-- add device authorization, real resumable authenticated transport, and execute
-  successful artifact removal only after a verified server receipt;
+- [done] add device authorization and real resumable authenticated transport,
+  retain or remove successful artifacts only after a verified server receipt,
+  and expose bounded automatic-upload progress and retry errors in the desktop;
 - [done] atomically persist current BPSR character-profile packages behind the
   separate Profile Sync permission and expose bounded summaries plus lazy exact
   JSON review;

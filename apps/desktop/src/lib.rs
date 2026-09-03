@@ -123,7 +123,9 @@ use rlogs_submission::{
 use serde::{Deserialize, Serialize};
 use submission_connection::{SubmissionConnectionStore, SubmissionConnectionView};
 use submission_policy::{SubmissionPolicy, SubmissionPolicyStore, SubmissionPolicyView};
-use submission_queue::{LocalSubmissionQueue, QueueInsertOutcome, SubmissionQueueView};
+use submission_queue::{
+    LocalSubmissionQueue, QueueInsertOutcome, QueuedSubmissionView, SubmissionQueueView,
+};
 use submission_transport::{ProfilePublishResult, SubmissionTransport, SubmissionTransportResult};
 use theme_settings::{ThemeSettings, ThemeSettingsStore};
 #[cfg(windows)]
@@ -177,6 +179,32 @@ fn automatic_upload_retry_interval(consecutive_failures: u32) -> Duration {
 
 fn retry_deadline_reached(deadline: Option<Instant>) -> bool {
     deadline.is_none_or(|deadline| Instant::now() >= deadline)
+}
+
+fn next_automatic_upload_candidate(
+    entries: Vec<QueuedSubmissionView>,
+    after_queue_id: Option<&str>,
+) -> Option<QueuedSubmissionView> {
+    let candidates = entries
+        .into_iter()
+        .filter(|entry| {
+            entry.state == SubmissionState::Draft
+                && entry.artifact_exists
+                && entry.artifact_byte_length_matches
+        })
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return None;
+    }
+    let index = after_queue_id
+        .and_then(|queue_id| {
+            candidates
+                .iter()
+                .position(|entry| entry.queue_id == queue_id)
+        })
+        .map(|index| (index + 1) % candidates.len())
+        .unwrap_or(0);
+    candidates.into_iter().nth(index)
 }
 
 fn provisional_research_routes(pack: &ProtocolPack) -> BTreeSet<RouteKey> {
@@ -1617,6 +1645,142 @@ impl Default for PhotoWallPublicationStatusView {
             last_version: None,
             last_error: None,
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AutomaticSubmissionStatusView {
+    schema_version: u16,
+    state: String,
+    pending_eligible_count: usize,
+    current_queue_id: Option<String>,
+    current_capture_session_id: Option<String>,
+    attempt_count: u64,
+    successful_count: u64,
+    retryable_failure_count: u64,
+    consecutive_failures: u32,
+    next_retry_unix_millis: Option<u64>,
+    last_activity_unix_millis: Option<u64>,
+    last_error: Option<String>,
+    last_report_id: Option<String>,
+    last_share_url: Option<String>,
+}
+
+impl Default for AutomaticSubmissionStatusView {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            state: "starting".into(),
+            pending_eligible_count: 0,
+            current_queue_id: None,
+            current_capture_session_id: None,
+            attempt_count: 0,
+            successful_count: 0,
+            retryable_failure_count: 0,
+            consecutive_failures: 0,
+            next_retry_unix_millis: None,
+            last_activity_unix_millis: None,
+            last_error: None,
+            last_report_id: None,
+            last_share_url: None,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct AutomaticSubmissionStatus {
+    view: AutomaticSubmissionStatusView,
+}
+
+impl AutomaticSubmissionStatus {
+    fn configure(
+        &mut self,
+        enabled: bool,
+        automatic: bool,
+        connected: bool,
+        pending_eligible_count: usize,
+    ) {
+        self.view.pending_eligible_count = pending_eligible_count;
+        if !enabled || !automatic {
+            self.view.state = "disabled".into();
+            self.clear_retry();
+        } else if !connected {
+            self.view.state = "waiting_for_account_connection".into();
+            self.clear_retry();
+        } else if pending_eligible_count == 0 {
+            self.view.state = "idle".into();
+            self.view.current_queue_id = None;
+            self.view.current_capture_session_id = None;
+            self.clear_retry();
+        } else if self.view.state != "uploading" && self.view.state != "retrying" {
+            self.view.state = "queued".into();
+        }
+    }
+
+    fn uploading(&mut self, entry: &QueuedSubmissionView, pending_eligible_count: usize) {
+        self.view.state = "uploading".into();
+        self.view.pending_eligible_count = pending_eligible_count;
+        self.view.current_queue_id = Some(entry.queue_id.clone());
+        self.view.current_capture_session_id = Some(entry.capture_session_id.clone());
+        self.view.attempt_count = self.view.attempt_count.saturating_add(1);
+        self.view.last_activity_unix_millis = Some(unix_millis());
+        self.view.next_retry_unix_millis = None;
+        self.view.last_error = None;
+    }
+
+    fn deferred(&mut self, pending_eligible_count: usize) {
+        self.view.state = "queued".into();
+        self.view.pending_eligible_count = pending_eligible_count;
+        self.view.next_retry_unix_millis = None;
+    }
+
+    fn retryable_failure(
+        &mut self,
+        entry: &QueuedSubmissionView,
+        error: impl Into<String>,
+        delay: Duration,
+        pending_eligible_count: usize,
+    ) {
+        self.view.state = "retrying".into();
+        self.view.pending_eligible_count = pending_eligible_count;
+        self.view.current_queue_id = Some(entry.queue_id.clone());
+        self.view.current_capture_session_id = Some(entry.capture_session_id.clone());
+        self.view.retryable_failure_count = self.view.retryable_failure_count.saturating_add(1);
+        self.view.consecutive_failures = self.view.consecutive_failures.saturating_add(1);
+        self.view.next_retry_unix_millis =
+            Some(unix_millis().saturating_add(delay.as_millis().min(u64::MAX as u128) as u64));
+        self.view.last_activity_unix_millis = Some(unix_millis());
+        self.view.last_error = Some(error.into());
+    }
+
+    fn submitted(
+        &mut self,
+        entry: &QueuedSubmissionView,
+        result: &SubmissionTransportResult,
+        pending_eligible_count: usize,
+    ) {
+        self.view.state = "submitted".into();
+        self.view.pending_eligible_count = pending_eligible_count.saturating_sub(1);
+        self.view.current_queue_id = Some(entry.queue_id.clone());
+        self.view.current_capture_session_id = Some(entry.capture_session_id.clone());
+        self.view.successful_count = self.view.successful_count.saturating_add(1);
+        self.view.consecutive_failures = 0;
+        self.view.next_retry_unix_millis = None;
+        self.view.last_activity_unix_millis = Some(unix_millis());
+        self.view.last_error = None;
+        self.view.last_report_id = Some(result.report_id.clone());
+        self.view.last_share_url = Some(result.share_url.clone());
+    }
+
+    fn clear_retry(&mut self) {
+        self.view.consecutive_failures = 0;
+        self.view.next_retry_unix_millis = None;
+        self.view.last_error = None;
+    }
+
+    fn snapshot(&self) -> AutomaticSubmissionStatusView {
+        self.view.clone()
     }
 }
 
@@ -4498,6 +4662,7 @@ struct RuntimeController {
     profile_publication: Arc<Mutex<()>>,
     photo_wall_pending: Arc<Mutex<PhotoWallPendingStore>>,
     photo_wall_publication_status: Arc<Mutex<PhotoWallPublicationStatus>>,
+    automatic_submission_status: Arc<Mutex<AutomaticSubmissionStatus>>,
     submission_policy: Arc<Mutex<SubmissionPolicyStore>>,
     submission_connection: Mutex<SubmissionConnectionStore>,
     submission_connection_revision: AtomicU64,
@@ -4636,6 +4801,7 @@ impl RuntimeController {
             photo_wall_publication_status: Arc::new(Mutex::new(
                 PhotoWallPublicationStatus::default(),
             )),
+            automatic_submission_status: Arc::new(Mutex::new(AutomaticSubmissionStatus::default())),
             submission_policy: Arc::new(Mutex::new(submission_policy)),
             submission_connection: Mutex::new(submission_connection),
             submission_connection_revision: AtomicU64::new(0),
@@ -4676,6 +4842,7 @@ impl RuntimeController {
                     .load(Ordering::Acquire);
                 let mut submission_failures = 0_u32;
                 let mut submission_retry_after = None;
+                let mut last_attempted_queue_id: Option<String> = None;
                 let mut profile_failures = 0_u32;
                 let mut profile_retry_after = None;
                 loop {
@@ -4692,6 +4859,7 @@ impl RuntimeController {
                     connection_revision = current_connection_revision;
                     submission_failures = 0;
                     submission_retry_after = None;
+                    last_attempted_queue_id = None;
                     profile_failures = 0;
                     profile_retry_after = None;
                 }
@@ -4706,36 +4874,79 @@ impl RuntimeController {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .is_some();
+                let queue = controller.submission_queue();
+                let pending_eligible_count = queue
+                    .entries
+                    .iter()
+                    .filter(|entry| {
+                        entry.state == SubmissionState::Draft
+                            && entry.artifact_exists
+                            && entry.artifact_byte_length_matches
+                    })
+                    .count();
+                controller
+                    .automatic_submission_status
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .configure(
+                        policy.log_uploader.enabled,
+                        policy.log_uploader.automatic_combat_logs,
+                        connected,
+                        pending_eligible_count,
+                    );
                 if policy.log_uploader.enabled
                     && policy.log_uploader.automatic_combat_logs
                     && connected
                     && retry_deadline_reached(submission_retry_after)
                 {
-                    let next = controller
-                        .submission_queue()
-                        .entries
-                        .into_iter()
-                        .find(|entry| {
-                            entry.state == SubmissionState::Draft
-                                && entry.artifact_exists
-                                && entry.artifact_byte_length_matches
-                        });
+                    let next = next_automatic_upload_candidate(
+                        queue.entries,
+                        last_attempted_queue_id.as_deref(),
+                    );
                     if let Some(entry) = next {
+                        controller
+                            .automatic_submission_status
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .uploading(&entry, pending_eligible_count);
+                        last_attempted_queue_id = Some(entry.queue_id.clone());
                         match controller.upload_queued_submission(SubmissionUploadRequest {
-                            queue_id: entry.queue_id,
+                            queue_id: entry.queue_id.clone(),
                         }) {
-                            Ok(_) => {
+                            Ok(result) => {
+                                controller
+                                    .automatic_submission_status
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                    .submitted(&entry, &result, pending_eligible_count);
                                 submission_failures = 0;
                                 submission_retry_after = None;
+                                last_attempted_queue_id = None;
                                 continue;
                             }
                             Err(error)
                                 if error.contains("another full artifact import")
-                                    || error.contains("was not found") => {}
+                                    || error.contains("was not found") => {
+                                controller
+                                    .automatic_submission_status
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                    .deferred(pending_eligible_count);
+                            }
                             Err(error) => {
                                 submission_failures = submission_failures.saturating_add(1);
                                 let delay = automatic_upload_retry_interval(submission_failures);
                                 submission_retry_after = Some(Instant::now() + delay);
+                                controller
+                                    .automatic_submission_status
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                    .retryable_failure(
+                                        &entry,
+                                        error.clone(),
+                                        delay,
+                                        pending_eligible_count,
+                                    );
                                 eprintln!(
                                     "automatic research submission will retry in {} seconds after an error: {error}",
                                     delay.as_secs()
@@ -4745,6 +4956,7 @@ impl RuntimeController {
                     } else {
                         submission_failures = 0;
                         submission_retry_after = None;
+                        last_attempted_queue_id = None;
                     }
                 } else if !policy.log_uploader.enabled
                     || !policy.log_uploader.automatic_combat_logs
@@ -4752,6 +4964,7 @@ impl RuntimeController {
                 {
                     submission_failures = 0;
                     submission_retry_after = None;
+                    last_attempted_queue_id = None;
                 }
                 if policy.bpsr_profile_sync.enabled
                     && policy.bpsr_profile_sync.automatic_profiles
@@ -5876,6 +6089,13 @@ impl RuntimeController {
 
     fn photo_wall_publication_status(&self) -> PhotoWallPublicationStatusView {
         self.photo_wall_publication_status
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .snapshot()
+    }
+
+    fn automatic_submission_status(&self) -> AutomaticSubmissionStatusView {
+        self.automatic_submission_status
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .snapshot()
@@ -11431,6 +11651,9 @@ fn handle_connection(
         ("GET", "/api/submissions/queue") => {
             write_json(&mut stream, 200, &controller.submission_queue())?;
         }
+        ("GET", "/api/submissions/automatic-status") => {
+            write_json(&mut stream, 200, &controller.automatic_submission_status())?;
+        }
         ("GET", "/api/submissions/connection") => match controller.submission_connection() {
             Ok(connection) => write_json(&mut stream, 200, &connection)?,
             Err(error) => write_api_error(&mut stream, 409, error)?,
@@ -12054,6 +12277,79 @@ mod tests {
             automatic_upload_retry_interval(64),
             Duration::from_secs(300)
         );
+    }
+
+    fn automatic_queue_entry(queue_id: &str, state: SubmissionState) -> QueuedSubmissionView {
+        QueuedSubmissionView {
+            queue_id: queue_id.into(),
+            created_unix_millis: 1,
+            capture_session_id: format!("session-{queue_id}"),
+            local_artifact_path: format!("{queue_id}.rlog"),
+            artifact_exists: true,
+            artifact_byte_length_matches: true,
+            file_byte_length: 1,
+            canonical_content_sha256: "a".repeat(64),
+            chunk_count: 1,
+            state,
+            visibility: ReportVisibility::Unlisted,
+            game_plugin_id: BPSR_GAME_PLUGIN_ID.into(),
+            game_region: "global".into(),
+            client_build: "test-build".into(),
+        }
+    }
+
+    #[test]
+    fn automatic_upload_rotates_past_a_failing_draft() {
+        let newest = automatic_queue_entry("newest", SubmissionState::Draft);
+        let older = automatic_queue_entry("older", SubmissionState::Draft);
+        let submitted = automatic_queue_entry("submitted", SubmissionState::Submitted);
+
+        let first =
+            next_automatic_upload_candidate(vec![newest.clone(), older.clone(), submitted], None)
+                .unwrap();
+        assert_eq!(first.queue_id, "newest");
+
+        let second = next_automatic_upload_candidate(
+            vec![newest.clone(), older.clone()],
+            Some(first.queue_id.as_str()),
+        )
+        .unwrap();
+        assert_eq!(second.queue_id, "older");
+
+        let wrapped =
+            next_automatic_upload_candidate(vec![newest, older], Some(second.queue_id.as_str()))
+                .unwrap();
+        assert_eq!(wrapped.queue_id, "newest");
+    }
+
+    #[test]
+    fn automatic_submission_status_exposes_retry_without_losing_queue_context() {
+        let entry = automatic_queue_entry("queue-1", SubmissionState::Draft);
+        let mut status = AutomaticSubmissionStatus::default();
+        status.configure(true, true, true, 2);
+        assert_eq!(status.snapshot().state, "queued");
+
+        status.uploading(&entry, 2);
+        status.retryable_failure(
+            &entry,
+            "server rejected the draft",
+            Duration::from_secs(5),
+            2,
+        );
+        let failed = status.snapshot();
+        assert_eq!(failed.state, "retrying");
+        assert_eq!(failed.current_queue_id.as_deref(), Some("queue-1"));
+        assert_eq!(
+            failed.current_capture_session_id.as_deref(),
+            Some("session-queue-1")
+        );
+        assert_eq!(
+            failed.last_error.as_deref(),
+            Some("server rejected the draft")
+        );
+        assert_eq!(failed.attempt_count, 1);
+        assert_eq!(failed.retryable_failure_count, 1);
+        assert!(failed.next_retry_unix_millis.is_some());
     }
 
     #[test]
