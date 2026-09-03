@@ -52,6 +52,7 @@ function editableSummarySettings() {
       headerWidths: { name: 190, dps: 90 },
       hiddenHeaderLabels: [],
       summaryFields: ["encounter_time", "scene", "team_dps", "team_damage", "boss_health"],
+      summaryFieldWidths: { scene: 184 },
       summaryFieldRows: {
         encounter_time: 0,
         scene: 0,
@@ -67,6 +68,13 @@ function editableSummarySettings() {
 }
 
 describe("Combat Overlay plug-in settings", () => {
+  it("preserves user-owned summary widths independently from table columns", () => {
+    const settings = editableSummarySettings();
+
+    expect(settings.layers[0]?.summaryFieldWidths).toEqual({ scene: 184 });
+    expect(settings.layers[0]?.headerWidths.name).toBe(190);
+  });
+
   it("freezes elapsed presentation clocks after the global inactivity delay", () => {
     const snapshot = {
       active_combat_micros: 12_000_000,

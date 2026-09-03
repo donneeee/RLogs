@@ -8,6 +8,10 @@
   },
   "permissions": [
     "allow-combat-overlay-ready",
+    "allow-hide-combat-overlay",
+    "allow-set-combat-overlay-automatically-hidden",
+    "allow-set-combat-overlay-enabled",
+    "allow-show-combat-overlay-if-requested",
     "core:default",
     "core:window:allow-close",
     "core:window:allow-hide",

@@ -94,6 +94,7 @@ export interface OverlayLayer {
   headerWidths: Record<OverlayHeaderField, number>;
   hiddenHeaderLabels: OverlayHeaderField[];
   summaryFields: OverlaySummaryField[];
+  summaryFieldWidths?: Partial<Record<OverlaySummaryField, number>>;
   summaryFieldRows: Partial<Record<OverlaySummaryField, number>>;
   /** Unified order for summary values and action controls. */
   summaryItemOrder: string[];
@@ -476,6 +477,7 @@ interface RenderOptions {
     placement: ReorderPlacement,
   ) => void;
   onResizeHeader?: (layerId: string, field: OverlayHeaderField, width: number) => void;
+  onResizeSummary?: (layerId: string, field: OverlaySummaryField, width: number) => void;
   onContextMenu?: (event: MouseEvent, target: ContextTarget) => void;
   onRuntimeAction?: (layerId: string, action: OverlayButtonAction) => void;
   onStartWindowDrag?: () => void;
@@ -906,6 +908,12 @@ export function mountCombatOverlayEditorSurface(
           headerWidths: { ...layer.headerWidths, [field]: width },
         }));
       },
+      onResizeSummary(layerId, field, width) {
+        updateLayer(layerId, (layer) => ({
+          ...layer,
+          summaryFieldWidths: { ...layer.summaryFieldWidths, [field]: width },
+        }));
+      },
       onContextMenu: showContextMenu,
       onRuntimeAction(layerId, action) {
         if (action === "cycle_metric") {
@@ -1009,13 +1017,20 @@ export function mountCombatOverlayEditorSurface(
         text("legend", "Summary section"),
         text(
           "p",
-          "This is everything above the player table. Enable items here, then drag them in the preview to reorder them.",
+          "This is everything above the player table. Enable and reorder items, then drag a cyan divider or enter a width here. Use 0 for automatic width.",
           "combat-overlay-inspector-hint",
         ),
       );
       const summaryGrid = el("div", "combat-overlay-summary-editor-grid");
       for (const field of SUMMARY_FIELDS) {
+        const summaryRow = el("div", "combat-overlay-summary-editor");
         const option = checkbox(summaryFieldLabel(field), layer.summaryFields.includes(field));
+        const summaryWidth = inputField("Width", String(summaryFieldWidthFor(layer, field)), "number");
+        summaryWidth.label.classList.add("combat-overlay-width-field");
+        summaryWidth.label.title = "Use 0 for automatic width.";
+        summaryWidth.input.min = "0";
+        summaryWidth.input.max = "480";
+        summaryWidth.input.step = "4";
         option.input.addEventListener("change", () =>
           updateLayer(layer.id, (value) => withNormalizedSummaryLayout({
             ...value,
@@ -1024,7 +1039,17 @@ export function mountCombatOverlayEditorSurface(
               : value.summaryFields.filter((candidate) => candidate !== field),
           })),
         );
-        summaryGrid.append(option.label);
+        summaryWidth.input.addEventListener("change", () =>
+          updateLayer(layer.id, (value) => ({
+            ...value,
+            summaryFieldWidths: {
+              ...value.summaryFieldWidths,
+              [field]: clamp(Number(summaryWidth.input.value), 0, 480),
+            },
+          })),
+        );
+        summaryRow.append(option.label, summaryWidth.label);
+        summaryGrid.append(summaryRow);
       }
       summaryGroup.append(summaryGrid);
       const bossDpsOption = checkbox("Show bDPS for each boss", layer.showBossDps);
@@ -1454,6 +1479,7 @@ export function mountCombatOverlayEditorSurface(
       headerWidths: { ...(source?.headerWidths ?? DEFAULT_HEADER_WIDTHS) },
       hiddenHeaderLabels: [...(source?.hiddenHeaderLabels ?? [])],
       summaryFields: [...(source?.summaryFields ?? DEFAULT_SUMMARY_FIELDS)],
+      summaryFieldWidths: { ...(source?.summaryFieldWidths ?? {}) },
       summaryFieldRows: { ...(source?.summaryFieldRows ?? defaultSummaryFieldRows(DEFAULT_SUMMARY_FIELDS)) },
       summaryItemOrder: [...(source?.summaryItemOrder ?? [])],
       summaryItemRows: { ...(source?.summaryItemRows ?? {}) },
@@ -1479,6 +1505,7 @@ export function mountCombatOverlayEditorSurface(
       headerWidths: { ...source.headerWidths },
       hiddenHeaderLabels: [...source.hiddenHeaderLabels],
       summaryFields: [...source.summaryFields],
+      summaryFieldWidths: { ...source.summaryFieldWidths },
       summaryFieldRows: { ...source.summaryFieldRows },
       summaryItemOrder: [...source.summaryItemOrder],
       summaryItemRows: { ...source.summaryItemRows },
@@ -2099,6 +2126,7 @@ export async function mountCombatOverlayRuntimeApp(
   let visibilityTimerKey: string | null = null;
   let resizeSaveTimer: number | null = null;
   let resizeSettingsPending = false;
+  let forceResetPending = false;
   let stopResizeListener: (() => void) | null = null;
   let stopShowRequestListener: (() => void) | null = null;
   let settingsFingerprint = JSON.stringify(settings);
@@ -2297,17 +2325,22 @@ export async function mountCombatOverlayRuntimeApp(
           void appWindow.hide().catch((error) =>
             reportWindowSyncFailure("manual hide", error));
         } else if (action === "reset_encounter") {
+          if (forceResetPending) return;
           const confirmed = window.confirm(
             "Force reset the live meter? If a run is active, rLogs will mark it invalid and it cannot be submitted.",
           );
           if (!confirmed) return;
+          forceResetPending = true;
           void forceResetLiveCombat().then(() => {
             latestSnapshot = null;
             encounterPresentation = null;
             actors = [];
             selectedActorByLayer.clear();
             render();
-          }).catch((error) => reportWindowSyncFailure("force reset", error));
+          }).catch((error) => reportWindowSyncFailure("force reset", error))
+            .finally(() => {
+              forceResetPending = false;
+            });
         }
       },
     });
@@ -3147,6 +3180,7 @@ export function renderOverlayCanvas(
       projectedPresentation,
       viewControls,
       options,
+      scale,
     );
 
     if (selectedActor !== undefined) {
@@ -3259,6 +3293,7 @@ function renderEncounterSummary(
   presentation: OverlayEncounterPresentation | null | undefined,
   viewControls: HTMLElement,
   options: RenderOptions,
+  scale: number,
 ): HTMLElement {
   const summary = el("section", "combat-overlay-summary");
   summary.addEventListener("contextmenu", (event) => {
@@ -3286,6 +3321,7 @@ function renderEncounterSummary(
     presentation,
     viewControls,
     options,
+    scale,
   );
 }
 
@@ -3300,6 +3336,7 @@ function renderSummaryRows(
   presentation: OverlayEncounterPresentation | null | undefined,
   viewControls: HTMLElement,
   options: RenderOptions,
+  scale: number,
 ): HTMLElement {
   const rows = summaryLayoutRows(layer);
   const renderRow = (layoutItems: readonly string[], rowIndex: number): HTMLElement | null => {
@@ -3353,6 +3390,11 @@ function renderSummaryRows(
       item.dataset.summaryItem = layoutKey;
       if (field !== null) {
         item.dataset.summaryField = field;
+        const fixedWidth = summaryFieldWidthFor(layer, field);
+        if (fixedWidth > 0) {
+          item.style.flex = `0 0 ${fixedWidth}px`;
+          item.style.width = `${fixedWidth}px`;
+        }
         item.addEventListener("contextmenu", (event) => {
           event.stopPropagation();
           options.onContextMenu?.(event, { kind: "summary_item", layerId: layer.id, field });
@@ -3376,6 +3418,21 @@ function renderSummaryRows(
             placement,
           ),
         );
+        if (field !== null) {
+          const resize = text("span", "", "combat-overlay-summary-resize");
+          resize.dataset.width = `${summaryFieldWidthFor(layer, field)} px`;
+          resize.title = `Drag to resize ${summaryFieldLabel(field)}. Set its width to 0 for automatic sizing.`;
+          resize.dataset.noWindowDrag = "true";
+          wireSummaryResize(
+            resize,
+            item,
+            layer,
+            field,
+            scale,
+            (width) => options.onResizeSummary?.(layer.id, field, width),
+          );
+          item.append(resize);
+        }
       }
       items.append(item);
     }
@@ -4450,6 +4507,46 @@ function wireHeaderResize(
   });
 }
 
+function wireSummaryResize(
+  handle: HTMLElement,
+  item: HTMLElement,
+  layer: OverlayLayer,
+  field: OverlaySummaryField,
+  scale: number,
+  onResize: (width: number) => void,
+): void {
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const configuredWidth = summaryFieldWidthFor(layer, field);
+    const startWidth = configuredWidth > 0
+      ? configuredWidth
+      : Math.round(item.getBoundingClientRect().width / Math.max(scale, 0.01));
+    let nextWidth = startWidth;
+    let moved = false;
+    handle.classList.add("is-resizing");
+    const move = (next: PointerEvent) => {
+      nextWidth = Math.round(clamp(startWidth + (next.clientX - startX) / scale, 32, 480));
+      moved ||= Math.abs(next.clientX - startX) >= 2;
+      handle.dataset.width = `${nextWidth} px`;
+      item.style.flex = `0 0 ${nextWidth}px`;
+      item.style.width = `${nextWidth}px`;
+    };
+    const stop = () => {
+      handle.classList.remove("is-resizing");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      if (moved) onResize(nextWidth);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop, { once: true });
+    window.addEventListener("pointercancel", stop, { once: true });
+  });
+}
+
 export function parseCombatOverlaySettings(value: unknown): CombatOverlaySettings {
   if (!isRecord(value) || value.schemaVersion !== 1 || !Array.isArray(value.layers)) {
     throw new Error("The native host returned invalid Combat Overlay settings.");
@@ -4585,6 +4682,7 @@ function isLayer(value: unknown): value is OverlayLayer {
     && value.summaryFields.length <= SUMMARY_FIELDS.length
     && value.summaryFields.every((field) => SUMMARY_FIELDS.includes(field as OverlaySummaryField))
     && new Set(value.summaryFields).size === value.summaryFields.length
+    && isSummaryFieldWidths(value.summaryFieldWidths)
     && isSummaryFieldRows(value.summaryFieldRows, value.summaryFields as OverlaySummaryField[])
     && isSummaryItemLayout(value)
     && Array.isArray(value.hiddenSummaryLabels)
@@ -4613,12 +4711,13 @@ function isSummaryItemLayout(value: Record<string, unknown>): boolean {
 }
 
 export function ensureMetricHeaderViews(layers: readonly OverlayLayer[]): OverlayLayer[] {
-  let copied = layers.map((layer) => ({
+  let copied: OverlayLayer[] = layers.map((layer) => ({
     ...layer,
     headerFields: [...layer.headerFields],
     headerWidths: { ...layer.headerWidths },
     hiddenHeaderLabels: [...layer.hiddenHeaderLabels],
     summaryFields: [...layer.summaryFields],
+    summaryFieldWidths: { ...layer.summaryFieldWidths },
     summaryFieldRows: { ...layer.summaryFieldRows },
     summaryItemOrder: [...layer.summaryItemOrder],
     summaryItemRows: { ...layer.summaryItemRows },
@@ -4657,6 +4756,7 @@ export function ensureMetricHeaderViews(layers: readonly OverlayLayer[]): Overla
       headerWidths: { ...source.headerWidths },
       hiddenHeaderLabels: source.hiddenHeaderLabels.filter((field) => preset.fields.includes(field)),
       summaryFields: [...source.summaryFields],
+      summaryFieldWidths: { ...source.summaryFieldWidths },
       summaryFieldRows: { ...source.summaryFieldRows },
       summaryItemOrder: [...source.summaryItemOrder],
       summaryItemRows: { ...source.summaryItemRows },
@@ -4736,6 +4836,7 @@ function normalizeLayerValue(value: unknown): unknown {
     },
     hiddenHeaderLabels,
     summaryFields,
+    summaryFieldWidths: isRecord(value.summaryFieldWidths) ? value.summaryFieldWidths : {},
     summaryFieldRows,
     summaryItemOrder: layout.order,
     summaryItemRows: layout.rows,
@@ -4750,6 +4851,17 @@ function isOverlayButtonValue(value: unknown): value is OverlayButton {
     && typeof value.id === "string"
     && typeof value.label === "string"
     && ACTIONS.includes(value.action as OverlayButtonAction);
+}
+
+function isSummaryFieldWidths(
+  value: unknown,
+): value is Partial<Record<OverlaySummaryField, number>> {
+  if (!isRecord(value)) return false;
+  return Object.entries(value).every(([field, width]) =>
+    SUMMARY_FIELDS.includes(field as OverlaySummaryField)
+    && Number.isInteger(width)
+    && Number(width) >= 0
+    && Number(width) <= 480);
 }
 
 function isSummaryFieldRows(
@@ -5106,6 +5218,10 @@ function gridColumns(
 
 function headerWidthFor(layer: OverlayLayer, field: OverlayHeaderField): number {
   return headerWidth(layer.headerWidths, field);
+}
+
+function summaryFieldWidthFor(layer: OverlayLayer, field: OverlaySummaryField): number {
+  return Math.round(clamp(layer.summaryFieldWidths?.[field] ?? 0, 0, 480));
 }
 
 function headerWidth(
@@ -5636,7 +5752,7 @@ function installStyles(): void {
     .combat-overlay-summary-items { display:flex; min-width:0; flex:1 1 auto; flex-wrap:wrap; align-items:stretch; overflow:hidden; }
     .combat-overlay-summary-team-row { display:flex; min-height:25px; align-items:stretch; border-top:1px solid #91a4bd20; background:rgb(16 27 41 / var(--summary-opacity,.85)); padding:0 7px; }
     .combat-overlay-summary-team-items { flex:0 1 auto; }
-    .combat-overlay-summary-stat { display:flex; min-width:0; align-items:baseline; justify-content:space-between; gap:6px; padding:4px 8px; border-right:1px solid #91a4bd25; }
+    .combat-overlay-summary-stat { position:relative; display:flex; min-width:0; box-sizing:border-box; align-items:baseline; justify-content:space-between; gap:6px; padding:4px 8px; border-right:1px solid #91a4bd25; }
     .combat-overlay-summary-stat:last-child { border-right:0; }
     .combat-overlay-summary-stat small { overflow:hidden; color:#7f93aa; font-size:8px; font-weight:800; letter-spacing:.05em; text-overflow:ellipsis; text-transform:uppercase; white-space:nowrap; }
     .combat-overlay-summary-stat strong { color:#edf5ff; font-size:11px; font-variant-numeric:tabular-nums; white-space:nowrap; }
@@ -5647,6 +5763,10 @@ function installStyles(): void {
     .combat-overlay-summary-stat > .combat-overlay-reorder-grip { pointer-events:none; }
     .combat-overlay-summary-control { flex:0 0 auto; align-self:center; margin:2px 3px; }
     .combat-overlay-summary-editor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+    .combat-overlay-summary-editor { display:grid; grid-template-columns:minmax(0,1fr) 76px; min-width:0; min-height:38px; gap:10px; align-items:center; padding:4px 8px; border:1px solid color-mix(in srgb,var(--line) 78%,transparent); border-radius:7px; background:color-mix(in srgb,var(--surface-soft) 72%,transparent); }
+    .combat-overlay-summary-editor .combat-overlay-width-field { display:block; }
+    .combat-overlay-summary-editor .combat-overlay-width-field > span { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); border:0; white-space:nowrap; }
+    .combat-overlay-summary-editor .combat-overlay-field input { min-height:30px; padding:4px 7px; text-align:right; }
     .combat-overlay-boss-list { position:relative; display:grid; grid-template-rows:repeat(2,22px); flex:1 1 100%; min-width:0; width:100%; border-top:0; }
     .combat-overlay-boss-list > .combat-overlay-reorder-grip { position:absolute; z-index:2; top:50%; left:3px; transform:translateY(-50%); }
     .combat-overlay-boss-row { position:relative; isolation:isolate; display:grid; grid-template-columns:minmax(0,1fr) minmax(140px,auto); align-items:center; gap:7px; min-height:22px; padding:2px 7px 2px 20px; overflow:hidden; color:#dbe6f3; font-size:8.5px; font-variant-numeric:tabular-nums; }
@@ -5724,12 +5844,13 @@ function installStyles(): void {
     .combat-overlay-reorder-target.is-reorder-target, .combat-overlay-control.is-reorder-target { color:#63e5d6; background:#153a42; }
     .combat-overlay-reorder-target.is-reorder-target[data-reorder-placement='before'], .combat-overlay-control.is-reorder-target[data-reorder-placement='before'] { box-shadow:inset 3px 0 #63e5d6; }
     .combat-overlay-reorder-target.is-reorder-target[data-reorder-placement='after'], .combat-overlay-control.is-reorder-target[data-reorder-placement='after'] { box-shadow:inset -3px 0 #63e5d6; }
-    .combat-overlay-header-resize { position:absolute; z-index:5; inset:-5px -10px -5px auto; width:20px; cursor:ew-resize; touch-action:none; }
-    .combat-overlay-header-resize::before { content:''; position:absolute; inset:3px auto 3px 9px; width:2px; border-radius:2px; background:#63e5d6; box-shadow:0 0 0 1px #061018, 0 0 7px #63e5d688; opacity:.82; }
-    .combat-overlay-header-resize::after { content:'⋮'; position:absolute; top:50%; left:11px; color:#9af4ea; font:700 10px/1 system-ui; transform:translateY(-52%); opacity:.72; }
-    .combat-overlay-header-resize:hover::before, .combat-overlay-header-resize.is-resizing::before { width:3px; background:#d5fffa; box-shadow:0 0 0 1px #061018, 0 0 10px #63e5d6; opacity:1; }
-    .combat-overlay-header-resize:hover::after, .combat-overlay-header-resize.is-resizing::after { color:#fff; opacity:1; }
-    .combat-overlay-header-resize.is-resizing::after { content:attr(data-width); top:-15px; left:50%; min-width:42px; padding:3px 5px; border:1px solid #63e5d6; border-radius:4px; color:#eafffc; background:#07131d; box-shadow:0 5px 14px #000a; text-align:center; transform:translateX(-50%); white-space:nowrap; }
+    .combat-overlay-header-resize, .combat-overlay-summary-resize { position:absolute; z-index:5; inset:-5px -10px -5px auto; width:20px; cursor:ew-resize; touch-action:none; }
+    .combat-overlay-summary-resize { inset:0 -8px 0 auto; }
+    .combat-overlay-header-resize::before, .combat-overlay-summary-resize::before { content:''; position:absolute; inset:3px auto 3px 9px; width:2px; border-radius:2px; background:#63e5d6; box-shadow:0 0 0 1px #061018, 0 0 7px #63e5d688; opacity:.82; }
+    .combat-overlay-header-resize::after, .combat-overlay-summary-resize::after { content:'⋮'; position:absolute; top:50%; left:11px; color:#9af4ea; font:700 10px/1 system-ui; transform:translateY(-52%); opacity:.72; }
+    .combat-overlay-header-resize:hover::before, .combat-overlay-header-resize.is-resizing::before, .combat-overlay-summary-resize:hover::before, .combat-overlay-summary-resize.is-resizing::before { width:3px; background:#d5fffa; box-shadow:0 0 0 1px #061018, 0 0 10px #63e5d6; opacity:1; }
+    .combat-overlay-header-resize:hover::after, .combat-overlay-header-resize.is-resizing::after, .combat-overlay-summary-resize:hover::after, .combat-overlay-summary-resize.is-resizing::after { color:#fff; opacity:1; }
+    .combat-overlay-header-resize.is-resizing::after, .combat-overlay-summary-resize.is-resizing::after { content:attr(data-width); top:-15px; left:50%; min-width:42px; padding:3px 5px; border:1px solid #63e5d6; border-radius:4px; color:#eafffc; background:#07131d; box-shadow:0 5px 14px #000a; text-align:center; transform:translateX(-50%); white-space:nowrap; }
     .combat-overlay-actor-row { border-top:1px solid #8395ab1f; }
     .combat-overlay-actor-row::before { content:''; position:absolute; inset:0 auto 0 0; width:var(--meter-fill); background:color-mix(in srgb,var(--meter-color,#63e5d6) 55%,#0b1522); opacity:var(--bar-opacity, .25); }
     .combat-overlay-ability-grid { grid-template-columns:minmax(112px, 1fr) minmax(68px, auto) 34px !important; }

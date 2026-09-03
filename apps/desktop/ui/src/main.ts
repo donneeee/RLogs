@@ -29,7 +29,9 @@ const isEventInspectorRuntime =
 if (isCombatOverlayRuntime) {
   const appWindow = getCurrentWindow();
   try {
-    const hideOverlayWindow = async (): Promise<void> => {
+    let hideOverlayPending: Promise<void> | null = null;
+    const hideOverlayWindow = (): Promise<void> => {
+      if (hideOverlayPending !== null) return hideOverlayPending;
       // Keep the host visibility state and the physical Tauri window in sync.
       // Calling the window API directly is an intentional fallback: it avoids
       // leaving a visible WebView compositor surface if the host command is
@@ -38,8 +40,21 @@ if (isCombatOverlayRuntime) {
       // window disappears. Running these in parallel lets focus restoration
       // observe the old bit and immediately show the overlay again, which
       // made Hide require a second click.
-      await invoke("hide_combat_overlay");
-      if (await appWindow.isVisible()) await appWindow.hide();
+      hideOverlayPending = (async () => {
+        let hostFailure: unknown = null;
+        try {
+          await invoke("hide_combat_overlay");
+        } catch (error) {
+          hostFailure = error;
+        }
+        // The direct window API remains a fallback even if command dispatch
+        // fails, so Hide can never leave the visible overlay trapping clicks.
+        await appWindow.hide();
+        if (hostFailure !== null) throw hostFailure;
+      })().finally(() => {
+        hideOverlayPending = null;
+      });
+      return hideOverlayPending;
     };
     const mounted = mountCombatOverlayRuntimeApp(root, {
       // Keep the preloaded native window alive. Hiding makes the next open

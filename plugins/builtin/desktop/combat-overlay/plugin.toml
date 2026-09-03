@@ -1,7 +1,7 @@
 schema_version = 1
 id = "app.rlogs.combat-overlay"
 name = "Combat Overlay"
-version = "0.1.0"
+version = "0.1.1"
 api_version = 1
 runtime = "browser_overlay"
 entrypoint = "ui/runtime.html"

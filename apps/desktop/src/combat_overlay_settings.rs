@@ -160,6 +160,10 @@ pub struct OverlayLayer {
     pub hidden_header_labels: Vec<OverlayHeaderField>,
     #[serde(default = "default_summary_fields")]
     pub summary_fields: Vec<OverlaySummaryField>,
+    /// Optional fixed widths for summary values such as Scene. A zero or
+    /// missing value keeps the item's natural content width.
+    #[serde(default)]
+    pub summary_field_widths: BTreeMap<OverlaySummaryField, u16>,
     /// User-owned summary row placement. Missing entries use the UI's safe
     /// semantic defaults so layouts saved before row editing remain valid.
     #[serde(default)]
@@ -385,6 +389,7 @@ impl Default for CombatOverlaySettings {
                 header_widths: default_header_widths(),
                 hidden_header_labels: Vec::new(),
                 summary_fields: default_summary_fields(),
+                summary_field_widths: BTreeMap::new(),
                 summary_field_rows: default_summary_field_rows(),
                 summary_item_order: Vec::new(),
                 summary_item_rows: BTreeMap::new(),
@@ -674,6 +679,17 @@ fn validate(settings: &CombatOverlaySettings) -> Result<(), String> {
                 layer.id
             ));
         }
+        if layer.summary_field_widths.len() > MAX_SUMMARY_FIELDS
+            || layer
+                .summary_field_widths
+                .values()
+                .any(|width| *width > 480)
+        {
+            return Err(format!(
+                "Combat Overlay header view {:?} has invalid summary widths",
+                layer.id
+            ));
+        }
         if layer.summary_field_rows.len() > MAX_SUMMARY_FIELDS
             || layer
                 .summary_field_rows
@@ -823,6 +839,7 @@ mod tests {
         assert_eq!(settings.layers[0].header_fields.len(), 7);
         assert!(settings.layers[0].hidden_header_labels.is_empty());
         assert!(settings.layers[0].hidden_summary_labels.is_empty());
+        assert!(settings.layers[0].summary_field_widths.is_empty());
         assert!(settings.layers[0].show_boss_dps);
         assert_eq!(
             settings.layers[0]
@@ -860,6 +877,15 @@ mod tests {
             .header_widths
             .insert(OverlayHeaderField::Name, 0);
         validate(&settings).expect("a column may be collapsed without a minimum width");
+
+        settings.layers[0]
+            .summary_field_widths
+            .insert(OverlaySummaryField::Scene, 184);
+        validate(&settings).expect("summary items may have independent fixed widths");
+        settings.layers[0]
+            .summary_field_widths
+            .insert(OverlaySummaryField::Scene, 481);
+        assert!(validate(&settings).is_err());
     }
 
     #[test]
@@ -956,6 +982,10 @@ mod tests {
         object["layers"].as_array_mut().unwrap()[0]
             .as_object_mut()
             .unwrap()
+            .remove("summaryFieldWidths");
+        object["layers"].as_array_mut().unwrap()[0]
+            .as_object_mut()
+            .unwrap()
             .remove("summaryFieldRows");
         object["layers"].as_array_mut().unwrap()[0]
             .as_object_mut()
@@ -984,6 +1014,7 @@ mod tests {
         assert!(!settings.show_view_tabs);
         assert_eq!(settings.layers[0].header_widths, default_header_widths());
         assert!(settings.layers[0].summary_field_rows.is_empty());
+        assert!(settings.layers[0].summary_field_widths.is_empty());
         assert!(settings.layers[0].show_boss_dps);
         validate(&settings).unwrap();
     }
