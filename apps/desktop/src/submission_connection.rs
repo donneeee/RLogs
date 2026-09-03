@@ -1,4 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs::OpenOptions,
+    io::{BufWriter, Write},
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -30,6 +34,28 @@ pub struct SubmissionConnectionStore {
     settings: SubmissionConnectionSettings,
 }
 
+trait DeviceCredentialStore {
+    fn read(&self) -> Result<Option<String>, String>;
+    fn write(&self, token: &str) -> Result<(), String>;
+    fn delete(&self) -> Result<(), String>;
+}
+
+struct OsDeviceCredentialStore;
+
+impl DeviceCredentialStore for OsDeviceCredentialStore {
+    fn read(&self) -> Result<Option<String>, String> {
+        read_device_token()
+    }
+
+    fn write(&self, token: &str) -> Result<(), String> {
+        write_device_token(token)
+    }
+
+    fn delete(&self) -> Result<(), String> {
+        delete_device_token()
+    }
+}
+
 impl SubmissionConnectionStore {
     pub fn open(path: impl Into<PathBuf>) -> Result<Self, String> {
         let path = path.into();
@@ -42,7 +68,7 @@ impl SubmissionConnectionStore {
     }
 
     pub fn device_token(&self) -> Result<Option<String>, String> {
-        read_device_token()
+        OsDeviceCredentialStore.read()
     }
 
     pub fn view(&self) -> Result<SubmissionConnectionView, String> {
@@ -59,33 +85,87 @@ impl SubmissionConnectionStore {
         endpoint_url: String,
         device_token: String,
     ) -> Result<SubmissionConnectionView, String> {
+        self.update_with_credential_store(endpoint_url, device_token, &OsDeviceCredentialStore)
+    }
+
+    fn update_with_credential_store(
+        &mut self,
+        endpoint_url: String,
+        device_token: String,
+        credentials: &impl DeviceCredentialStore,
+    ) -> Result<SubmissionConnectionView, String> {
         let endpoint_url = endpoint_url.trim().to_owned();
         let device_token = device_token.trim().to_owned();
         validate_endpoint_text(&endpoint_url)?;
         validate_token(&device_token)?;
 
-        write_device_token(&device_token)?;
+        let previous_token = credentials.read()?;
+        credentials.write(&device_token)?;
         let settings = SubmissionConnectionSettings {
             schema_version: SCHEMA_VERSION,
             endpoint_url: Some(endpoint_url),
         };
         if let Err(error) = write(&self.path, &settings) {
-            let _ = delete_device_token();
-            return Err(error);
+            return Err(rollback_error(
+                error,
+                restore_device_token(credentials, previous_token.as_deref()),
+            ));
         }
         self.settings = settings;
-        self.view()
+        self.view_with_credential_store(credentials)
     }
 
     pub fn disconnect(&mut self) -> Result<SubmissionConnectionView, String> {
-        delete_device_token()?;
+        self.disconnect_with_credential_store(&OsDeviceCredentialStore)
+    }
+
+    fn disconnect_with_credential_store(
+        &mut self,
+        credentials: &impl DeviceCredentialStore,
+    ) -> Result<SubmissionConnectionView, String> {
+        let previous_token = credentials.read()?;
+        credentials.delete()?;
         let settings = SubmissionConnectionSettings {
             schema_version: SCHEMA_VERSION,
             endpoint_url: None,
         };
-        write(&self.path, &settings)?;
+        if let Err(error) = write(&self.path, &settings) {
+            return Err(rollback_error(
+                error,
+                restore_device_token(credentials, previous_token.as_deref()),
+            ));
+        }
         self.settings = settings;
-        self.view()
+        self.view_with_credential_store(credentials)
+    }
+
+    fn view_with_credential_store(
+        &self,
+        credentials: &impl DeviceCredentialStore,
+    ) -> Result<SubmissionConnectionView, String> {
+        Ok(SubmissionConnectionView {
+            schema_version: SCHEMA_VERSION,
+            endpoint_url: self.settings.endpoint_url.clone(),
+            credential_present: credentials.read()?.is_some(),
+            credential_store: credential_store_name(),
+        })
+    }
+}
+
+fn restore_device_token(
+    credentials: &impl DeviceCredentialStore,
+    previous_token: Option<&str>,
+) -> Result<(), String> {
+    match previous_token {
+        Some(token) => credentials.write(token),
+        None => credentials.delete(),
+    }
+}
+
+fn rollback_error(primary: String, rollback: Result<(), String>) -> String {
+    match rollback {
+        Ok(()) => primary,
+        Err(rollback) => format!("{primary}; credential rollback also failed: {rollback}"),
     }
 }
 
@@ -125,11 +205,99 @@ fn write(path: &Path, settings: &SubmissionConnectionSettings) -> Result<(), Str
         .ok_or_else(|| "submission connection settings path has no parent".to_owned())?;
     std::fs::create_dir_all(parent)
         .map_err(|error| format!("create submission connection settings folder: {error}"))?;
-    let mut bytes = serde_json::to_vec_pretty(settings)
-        .map_err(|error| format!("encode submission connection settings: {error}"))?;
-    bytes.push(b'\n');
-    std::fs::write(path, bytes)
-        .map_err(|error| format!("write submission connection settings: {error}"))
+    let partial = path.with_extension("json.partial");
+    match std::fs::remove_file(&partial) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "remove interrupted submission connection partial: {error}"
+            ));
+        }
+    }
+    let file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&partial)
+        .map_err(|error| format!("create submission connection partial: {error}"))?;
+    let mut writer = BufWriter::new(file);
+    if let Err(error) = serde_json::to_writer_pretty(&mut writer, settings)
+        .map_err(|error| format!("encode submission connection settings: {error}"))
+        .and_then(|_| {
+            writer
+                .write_all(b"\n")
+                .and_then(|_| writer.flush())
+                .and_then(|_| writer.get_ref().sync_all())
+                .map_err(|error| format!("sync submission connection settings: {error}"))
+        })
+    {
+        drop(writer);
+        let _ = std::fs::remove_file(&partial);
+        return Err(error);
+    }
+    drop(writer);
+    if let Err(error) = atomic_replace(&partial, path) {
+        let _ = std::fs::remove_file(&partial);
+        return Err(error);
+    }
+    sync_parent_directory(path)
+}
+
+#[cfg(windows)]
+fn atomic_replace(source: &Path, destination: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+
+    use windows_sys::Win32::Storage::FileSystem::{
+        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    };
+
+    let source = source
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let destination = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    // SAFETY: both vectors are valid nul-terminated UTF-16 paths for the
+    // duration of the call.
+    let result = unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            destination.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if result == 0 {
+        return Err(format!(
+            "atomically publish submission connection settings: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn atomic_replace(source: &Path, destination: &Path) -> Result<(), String> {
+    std::fs::rename(source, destination)
+        .map_err(|error| format!("atomically publish submission connection settings: {error}"))
+}
+
+#[cfg(unix)]
+fn sync_parent_directory(path: &Path) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "submission connection settings path has no parent".to_owned())?;
+    std::fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("sync submission connection settings directory: {error}"))
+}
+
+#[cfg(not(unix))]
+fn sync_parent_directory(_: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 fn validate_endpoint_text(endpoint: &str) -> Result<(), String> {
@@ -278,7 +446,70 @@ fn delete_device_token() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        cell::RefCell,
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
     use super::*;
+
+    static TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+    struct TemporaryDirectory(PathBuf);
+
+    impl TemporaryDirectory {
+        fn new() -> Self {
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let sequence = TEMPORARY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir()
+                .join(format!("rlogs-submission-connection-{nanos}-{sequence}"));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TemporaryDirectory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[derive(Default)]
+    struct MemoryCredentialStore {
+        token: RefCell<Option<String>>,
+    }
+
+    impl MemoryCredentialStore {
+        fn with_token(token: &str) -> Self {
+            Self {
+                token: RefCell::new(Some(token.to_owned())),
+            }
+        }
+    }
+
+    impl DeviceCredentialStore for MemoryCredentialStore {
+        fn read(&self) -> Result<Option<String>, String> {
+            Ok(self.token.borrow().clone())
+        }
+
+        fn write(&self, token: &str) -> Result<(), String> {
+            *self.token.borrow_mut() = Some(token.to_owned());
+            Ok(())
+        }
+
+        fn delete(&self) -> Result<(), String> {
+            *self.token.borrow_mut() = None;
+            Ok(())
+        }
+    }
 
     #[test]
     fn endpoint_settings_never_serialize_a_token() {
@@ -297,5 +528,93 @@ mod tests {
         assert!(validate_endpoint_text("").is_err());
         assert!(validate_token("").is_err());
         assert!(validate_token(&"x".repeat(MAXIMUM_DEVICE_TOKEN_BYTES + 1)).is_err());
+    }
+
+    #[test]
+    fn connection_update_atomically_persists_endpoint_without_serializing_token() {
+        let root = TemporaryDirectory::new();
+        let path = root.path().join("settings/connection.json");
+        let credentials = MemoryCredentialStore::default();
+        let mut store = SubmissionConnectionStore::open(&path).unwrap();
+
+        let view = store
+            .update_with_credential_store(
+                "https://receiver.example.com".into(),
+                "secret-device-token".into(),
+                &credentials,
+            )
+            .unwrap();
+
+        assert!(view.credential_present);
+        assert_eq!(
+            credentials.read().unwrap().as_deref(),
+            Some("secret-device-token")
+        );
+        let bytes = std::fs::read_to_string(&path).unwrap();
+        assert!(bytes.contains("receiver.example.com"));
+        assert!(!bytes.contains("secret-device-token"));
+        assert!(!path.with_extension("json.partial").exists());
+        assert_eq!(
+            SubmissionConnectionStore::open(path)
+                .unwrap()
+                .endpoint_url(),
+            Some("https://receiver.example.com")
+        );
+    }
+
+    #[test]
+    fn failed_endpoint_write_restores_the_previous_credential() {
+        let root = TemporaryDirectory::new();
+        let blocked_parent = root.path().join("not-a-directory");
+        std::fs::write(&blocked_parent, b"block directory creation").unwrap();
+        let credentials = MemoryCredentialStore::with_token("previous-token");
+        let mut store = SubmissionConnectionStore {
+            path: blocked_parent.join("connection.json"),
+            settings: SubmissionConnectionSettings {
+                schema_version: SCHEMA_VERSION,
+                endpoint_url: Some("https://old.example.com".into()),
+            },
+        };
+
+        let error = store
+            .update_with_credential_store(
+                "https://new.example.com".into(),
+                "replacement-token".into(),
+                &credentials,
+            )
+            .unwrap_err();
+
+        assert!(error.contains("submission connection settings folder"));
+        assert_eq!(
+            credentials.read().unwrap().as_deref(),
+            Some("previous-token")
+        );
+        assert_eq!(store.endpoint_url(), Some("https://old.example.com"));
+    }
+
+    #[test]
+    fn failed_disconnect_write_restores_the_connected_credential() {
+        let root = TemporaryDirectory::new();
+        let blocked_parent = root.path().join("not-a-directory");
+        std::fs::write(&blocked_parent, b"block directory creation").unwrap();
+        let credentials = MemoryCredentialStore::with_token("connected-token");
+        let mut store = SubmissionConnectionStore {
+            path: blocked_parent.join("connection.json"),
+            settings: SubmissionConnectionSettings {
+                schema_version: SCHEMA_VERSION,
+                endpoint_url: Some("https://receiver.example.com".into()),
+            },
+        };
+
+        let error = store
+            .disconnect_with_credential_store(&credentials)
+            .unwrap_err();
+
+        assert!(error.contains("submission connection settings folder"));
+        assert_eq!(
+            credentials.read().unwrap().as_deref(),
+            Some("connected-token")
+        );
+        assert_eq!(store.endpoint_url(), Some("https://receiver.example.com"));
     }
 }

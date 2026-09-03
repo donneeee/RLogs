@@ -17,8 +17,9 @@ workspaces by default:
 
 Profile Sync also receives a `Modules` tab contributed by a separate sample
 add-on. The ADD-ON badge makes that ownership visible. The shell stores only
-navigation preferences in browser storage; the pairing controls are inert
-until a native credential-vault adapter exists.
+navigation preferences in browser storage. In the native Windows build, the
+pairing controls validate the app token with the submission service and hand
+it to the host for transactional storage in Windows Credential Manager.
 
 Use the `Preview blank shell` button or open `/?empty=1` to verify that rLogs
 Core works with zero UI plug-ins enabled.
@@ -54,3 +55,6 @@ runtime. A packaged desktop adapter will:
 3. mount exactly one isolated package surface for the active tab;
 4. broker typed capabilities instead of exposing engine internals;
 5. store pairing secrets in the operating system credential vault.
+
+The packaged Windows adapter implements all five boundaries. Vite-only preview
+mode keeps account controls inert because it has no native credential vault.
