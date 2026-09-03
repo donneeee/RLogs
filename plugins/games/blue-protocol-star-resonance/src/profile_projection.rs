@@ -33,11 +33,12 @@ const CHARACTER_SHEET_REFRESH_REQUIRED_ATTRIBUTE_IDS: [i32; 11] = [
 
 /// Current local-player stats for Overlay consumers.
 ///
-/// `snapshot_values` is the latest authoritative entity snapshot used to seed
-/// the Overlay. `current_values` additionally applies later packet deltas and
-/// is intentionally ephemeral. Profile persistence is separately restricted
-/// to snapshots and exact complete raw character-sheet refresh batches.
-/// Missing IDs remain unknown.
+/// `snapshot_values` is the authoritative raw baseline used to seed the
+/// Overlay: the entity snapshot plus any exact complete local character-sheet
+/// refresh. `current_values` additionally applies later packet deltas and is
+/// intentionally ephemeral. Profile persistence is separately restricted to
+/// snapshots and those complete raw refresh batches. Missing IDs remain
+/// unknown.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LiveCharacterStatsSnapshot {
     pub schema_version: u16,
@@ -540,6 +541,7 @@ fn apply_character_stat_update(
     } else {
         state.current_values.extend(values.clone());
         if is_character_sheet_refresh {
+            state.snapshot_values.extend(values.clone());
             state.profile_values.extend(values);
         }
     }
@@ -1254,6 +1256,9 @@ mod tests {
         );
 
         let live = projection.live_character_stats();
+        assert_eq!(live.snapshot_values.get(&11_040), Some(&42_743));
+        assert_eq!(live.snapshot_values.get(&11_320), Some(&319_935));
+        assert_eq!(live.snapshot_values.get(&11_330), Some(&5_933));
         assert_eq!(live.current_values.get(&11_320), Some(&348_303));
         assert_eq!(live.current_values.get(&11_330), Some(&6_074));
         let packages = projection

@@ -33,10 +33,12 @@ if (isCombatOverlayRuntime) {
       // Calling the window API directly is an intentional fallback: it avoids
       // leaving a visible WebView compositor surface if the host command is
       // delayed while the overlay runtime is waking or suspending.
-      await Promise.all([
-        invoke("hide_combat_overlay"),
-        appWindow.hide(),
-      ]);
+      // The host must clear its requested-visible bit before the physical
+      // window disappears. Running these in parallel lets focus restoration
+      // observe the old bit and immediately show the overlay again, which
+      // made Hide require a second click.
+      await invoke("hide_combat_overlay");
+      if (await appWindow.isVisible()) await appWindow.hide();
     };
     const mounted = mountCombatOverlayRuntimeApp(root, {
       // Keep the preloaded native window alive. Hiding makes the next open

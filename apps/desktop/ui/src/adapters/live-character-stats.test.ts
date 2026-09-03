@@ -20,6 +20,8 @@ const CATALOG = {
     attribute(11_330, 11_330, "final", "ATK", 0, 0),
     attribute(11_331, 11_330, "total", "ATK", 0, 1),
     attribute(11_334, 11_330, "percent", "ATK", 0, 4),
+    attribute(11_930, 11_930, "final", "Haste", 1, 0),
+    attribute(11_970, 11_970, "final", "Block", 1, 0),
     { ...attribute(20_050, 20_050, "final", "AttrLevel", 0, 0), displayable: false },
   ],
 } satisfies FightAttributePresentationCatalog;
@@ -28,8 +30,20 @@ const SNAPSHOT = {
   schema_version: 1,
   revision: 4,
   character: null,
-  snapshot_values: { "11330": 10_000, "11331": 9_500, "11334": 125, "20050": 99 },
-  current_values: { "11330": 11_000, "11331": 9_500, "11334": 125, "20050": 99 },
+  snapshot_values: {
+    "11330": 10_000,
+    "11331": 9_500,
+    "11334": 125,
+    "11970": 0,
+    "20050": 99,
+  },
+  current_values: {
+    "11330": 11_000,
+    "11331": 9_500,
+    "11334": 125,
+    "11970": 0,
+    "20050": 99,
+  },
   last_event_sequence: 42,
   last_game_time_millis: 1_000,
 } satisfies LiveCharacterStatsSnapshot;
@@ -44,11 +58,14 @@ describe("live character stats", () => {
 
   it("groups exact components, hides internal attributes, and promotes temporary changes", () => {
     const families = resolveLiveCharacterStatFamilies(SNAPSHOT, CATALOG);
-    expect(families).toHaveLength(1);
-    expect(families[0]).toMatchObject({ familyId: 11_330, name: "ATK", changed: true });
-    expect(families[0]?.components.map((component) => component.presentation.component))
+    expect(families).toHaveLength(2);
+    const attack = families.find((family) => family.familyId === 11_330);
+    expect(attack).toMatchObject({ familyId: 11_330, name: "ATK", changed: true });
+    expect(attack?.components.map((component) => component.presentation.component))
       .toEqual(["final", "total", "percent"]);
-    expect(families[0]?.components[0]).toMatchObject({ snapshotValue: 10_000, currentValue: 11_000 });
+    expect(attack?.components[0]).toMatchObject({ snapshotValue: 10_000, currentValue: 11_000 });
+    expect(families.find((family) => family.familyId === 11_970)?.components[0]?.currentValue)
+      .toBe(0);
   });
 
   it("uses the same percent and time formatting rules as the website profile", () => {
@@ -60,8 +77,9 @@ describe("live character stats", () => {
 
   it("keeps the profile-summary families in their deliberate in-game order", () => {
     const families = resolveLiveCharacterStatFamilies(SNAPSHOT, CATALOG);
-    expect(selectMainCharacterStatFamilies(families).map((family) => family.familyId))
-      .toEqual([11_330]);
+    const main = selectMainCharacterStatFamilies(families, CATALOG);
+    expect(main.map((family) => family.familyId)).toEqual([11_330, 11_930, 11_970]);
+    expect(main.find((family) => family.familyId === 11_930)?.components).toEqual([]);
   });
 });
 

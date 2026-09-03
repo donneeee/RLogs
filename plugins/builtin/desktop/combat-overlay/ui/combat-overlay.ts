@@ -95,6 +95,10 @@ export interface OverlayLayer {
   hiddenHeaderLabels: OverlayHeaderField[];
   summaryFields: OverlaySummaryField[];
   summaryFieldRows: Partial<Record<OverlaySummaryField, number>>;
+  /** Unified order for summary values and action controls. */
+  summaryItemOrder: string[];
+  /** Row placement for each key in `summaryItemOrder`. */
+  summaryItemRows: Record<string, number>;
   hiddenSummaryLabels: OverlaySummaryField[];
   showBossDps: boolean;
   buttons: OverlayButton[];
@@ -125,6 +129,8 @@ export interface CombatOverlaySettings {
   refreshIntervalMillis: number;
   dynamicHeight: boolean;
   allowLiveResize: boolean;
+  /** Show the named header-view strip in addition to the Cycle metric control. */
+  showViewTabs: boolean;
   maxVisiblePlayers: number;
   scalePercent: number;
   layers: OverlayLayer[];
@@ -202,6 +208,7 @@ interface OverlayActor {
   tps: number;
   rdps: number | null;
   reported_damage?: number;
+  damage_during_combat?: number;
   effective_damage?: number;
   hp_damage?: number;
   shield_damage?: number;
@@ -463,9 +470,9 @@ interface RenderOptions {
   ) => void;
   onReorderSummary?: (
     layerId: string,
-    source: OverlaySummaryField,
+    source: string,
     targetRow: number,
-    target: OverlaySummaryField | null,
+    target: string | null,
     placement: ReorderPlacement,
   ) => void;
   onResizeHeader?: (layerId: string, field: OverlayHeaderField, width: number) => void;
@@ -640,6 +647,12 @@ const VIEW_PRESETS: Readonly<Record<string, OverlayViewPreset>> = {
   contribution: { title: "Party contribution", metric: "rdps", fields: ["rank", "class_spec", "name", "rdps_damage", "rdps", "contribution_given", "contribution_received"] },
   activity: { title: "Party activity", metric: "dps", fields: ["rank", "class_spec", "name", "hits", "critical_rate", "casts", "deaths", "revives"] },
 };
+const CYCLING_VIEW_PRESETS: readonly OverlayViewPreset[] = [
+  VIEW_PRESETS.damage!,
+  VIEW_PRESETS.healing!,
+  VIEW_PRESETS.defense!,
+  VIEW_PRESETS.contribution!,
+];
 const DEFAULT_HEADER_WIDTHS: Readonly<Record<OverlayHeaderField, number>> = {
   rank: 30,
   class_spec: 32,
@@ -885,7 +898,7 @@ export function mountCombatOverlayEditorSurface(
       },
       onReorderSummary(layerId, source, targetRow, target, placement) {
         updateLayer(layerId, (layer) =>
-          moveSummaryField(layer, source, targetRow, target, placement));
+          moveSummaryLayoutItem(layer, source, targetRow, target, placement));
       },
       onResizeHeader(layerId, field, width) {
         updateLayer(layerId, (layer) => ({
@@ -904,6 +917,7 @@ export function mountCombatOverlayEditorSurface(
             selectedTimerByLayer,
             layerId,
             SAMPLE_ENCOUNTER_PRESENTATION,
+            SAMPLE_SNAPSHOT,
           );
           render();
           return;
@@ -1003,7 +1017,7 @@ export function mountCombatOverlayEditorSurface(
       for (const field of SUMMARY_FIELDS) {
         const option = checkbox(summaryFieldLabel(field), layer.summaryFields.includes(field));
         option.input.addEventListener("change", () =>
-          updateLayer(layer.id, (value) => ({
+          updateLayer(layer.id, (value) => withNormalizedSummaryLayout({
             ...value,
             summaryFields: option.input.checked
               ? [...value.summaryFields, field]
@@ -1167,6 +1181,11 @@ export function mountCombatOverlayEditorSurface(
     );
     summaryOpacity.input.min = "0";
     summaryOpacity.input.max = "100";
+    const showViewTabs = checkbox(
+      "Show named header-view tabs",
+      settings.showViewTabs,
+    );
+    showViewTabs.label.title = "Turn this off to reclaim the space used by labels such as Party damage. Cycle metric still switches complete header views.";
     overlayOpacity.input.addEventListener("change", () => {
       settings = {
         ...settings!,
@@ -1188,7 +1207,16 @@ export function mountCombatOverlayEditorSurface(
       };
       render();
     });
-    appearanceGroup.append(overlayOpacity.label, barOpacity.label, summaryOpacity.label);
+    showViewTabs.input.addEventListener("change", () => {
+      settings = { ...settings!, showViewTabs: showViewTabs.input.checked };
+      render();
+    });
+    appearanceGroup.append(
+      overlayOpacity.label,
+      barOpacity.label,
+      summaryOpacity.label,
+      showViewTabs.label,
+    );
 
     const backgroundGroup = el("fieldset", "combat-overlay-inspector-group");
     backgroundGroup.append(text("legend", "Overlay background"));
@@ -1285,12 +1313,20 @@ export function mountCombatOverlayEditorSurface(
     }));
 
   const cycleLayerMetric = (layerId: string) => {
-    const layer = settings?.layers.find((candidate) => candidate.id === layerId);
-    if (layer === undefined) return;
-    const metric = METRICS[(METRICS.indexOf(layer.metric) + 1) % METRICS.length] ?? "dps";
-    status.textContent = `Preview action: ${metricLabel(metric)} is now the sort and percentage metric.`;
+    if (settings === null) return;
+    const nextLayerId = nextOverlayHeaderViewId(settings.layers, layerId);
+    if (nextLayerId === layerId) return;
+    copyLayerRuntimeSelections(
+      layerId,
+      nextLayerId,
+      selectedTimerByLayer,
+      selectedSegmentByLayer,
+    );
+    selectedLayerId = nextLayerId;
+    const nextLayer = settings.layers.find((candidate) => candidate.id === nextLayerId)!;
+    status.textContent = `Preview action: switched to the ${nextLayer.title} header view.`;
     status.classList.remove("error");
-    setLayerMetric(layerId, metric);
+    render();
   };
 
   const showContextMenu = (event: MouseEvent, target: ContextTarget) => {
@@ -1311,6 +1347,8 @@ export function mountCombatOverlayEditorSurface(
       .filter((entry) => entry.children.length > 0);
     const controlEntries = (layerId: string): ContextMenuEntry[] => [
       { label: "Cycle metric", action: () => addButton(layerId, "cycle_metric", "Metric") },
+      { label: "Cycle timer", action: () => addButton(layerId, "cycle_timer", "Encounter") },
+      { label: "Cycle segment", action: () => addButton(layerId, "cycle_segment", "Entire run") },
       { label: "Reset encounter", action: () => addButton(layerId, "reset_encounter", "Reset") },
       { label: "Hide overlay", action: () => addButton(layerId, "toggle_visibility", "Hide") },
       { label: "Open Combat History", action: () => addButton(layerId, "open_history", "History") },
@@ -1417,11 +1455,13 @@ export function mountCombatOverlayEditorSurface(
       hiddenHeaderLabels: [...(source?.hiddenHeaderLabels ?? [])],
       summaryFields: [...(source?.summaryFields ?? DEFAULT_SUMMARY_FIELDS)],
       summaryFieldRows: { ...(source?.summaryFieldRows ?? defaultSummaryFieldRows(DEFAULT_SUMMARY_FIELDS)) },
+      summaryItemOrder: [...(source?.summaryItemOrder ?? [])],
+      summaryItemRows: { ...(source?.summaryItemRows ?? {}) },
       hiddenSummaryLabels: [...(source?.hiddenSummaryLabels ?? [])],
       showBossDps: source?.showBossDps ?? true,
       buttons: (source?.buttons ?? []).map((value) => ({ ...value })),
     };
-    settings = { ...settings, layers: [...settings.layers, layer] };
+    settings = { ...settings, layers: [...settings.layers, withNormalizedSummaryLayout(layer)] };
     selectedLayerId = id;
     render();
   };
@@ -1440,6 +1480,8 @@ export function mountCombatOverlayEditorSurface(
       hiddenHeaderLabels: [...source.hiddenHeaderLabels],
       summaryFields: [...source.summaryFields],
       summaryFieldRows: { ...source.summaryFieldRows },
+      summaryItemOrder: [...source.summaryItemOrder],
+      summaryItemRows: { ...source.summaryItemRows },
       hiddenSummaryLabels: [...source.hiddenSummaryLabels],
       showBossDps: source.showBossDps,
       buttons: source.buttons.map((value) => ({ ...value })),
@@ -1474,25 +1516,28 @@ export function mountCombatOverlayEditorSurface(
   ) => {
     status.textContent = `${label} control added. Click it in the preview to test its configured action, then edit its label or function in the inspector.`;
     status.classList.remove("error");
-    updateLayer(layerId, (layer) => ({
-      ...layer,
-      buttons: [...layer.buttons, {
+    updateLayer(layerId, (layer) => {
+      const next = {
+        ...layer,
+        buttons: [...layer.buttons, {
         id: uniqueId("button", layer.buttons.map((value) => value.id)),
         label,
         action,
-      }],
-    }));
+        }],
+      };
+      return withNormalizedSummaryLayout(next);
+    });
   };
 
   const addHeader = (layerId: string, field: OverlayHeaderField) =>
-    updateLayer(layerId, (layer) => ({
+    updateLayer(layerId, (layer) => withNormalizedSummaryLayout({
       ...layer,
       headerFields: insertHeaderField(layer.headerFields, field),
       hiddenHeaderLabels: layer.hiddenHeaderLabels.filter((candidate) => candidate !== field),
     }));
 
   const addSummaryField = (layerId: string, field: OverlaySummaryField) =>
-    updateLayer(layerId, (layer) => ({
+    updateLayer(layerId, (layer) => withNormalizedSummaryLayout({
       ...layer,
       summaryFields: layer.summaryFields.includes(field)
         ? layer.summaryFields
@@ -1506,7 +1551,7 @@ export function mountCombatOverlayEditorSurface(
     }));
 
   const removeSummaryField = (layerId: string, field: OverlaySummaryField) =>
-    updateLayer(layerId, (layer) => ({
+    updateLayer(layerId, (layer) => withNormalizedSummaryLayout({
       ...layer,
       summaryFields: layer.summaryFields.filter((candidate) => candidate !== field),
       summaryFieldRows: Object.fromEntries(
@@ -1551,7 +1596,7 @@ export function mountCombatOverlayEditorSurface(
   };
 
   const deleteButton = (layerId: string, buttonId: string) =>
-    updateLayer(layerId, (layer) => ({
+    updateLayer(layerId, (layer) => withNormalizedSummaryLayout({
       ...layer,
       buttons: layer.buttons.filter((value) => value.id !== buttonId),
     }));
@@ -2111,11 +2156,12 @@ export async function mountCombatOverlayRuntimeApp(
     // frame immediately; CSS-hiding it would add a second WebView wake/render
     // step and briefly expose an empty transparent window.
     root.classList.remove("is-auto-hidden");
-    const nativeVisibility = appWindow.setAutomaticallyHidden(hidden);
-    const compositorVisibility = hidden
-      ? appWindow.hideTemporarily()
-      : Promise.resolve();
-    void Promise.all([nativeVisibility, compositorVisibility])
+    // Publish the host-owned state first. If the physical hide wins a race
+    // with focus restoration while the old state is still visible, Windows
+    // can immediately reveal the overlay and make Hide appear to need a
+    // second click.
+    void appWindow.setAutomaticallyHidden(hidden)
+      .then(() => hidden ? appWindow.hideTemporarily() : undefined)
       .catch((error) => reportWindowSyncFailure("native automatic visibility", error));
     // Auto-hide owns visibility only. Cursor passthrough is an explicit user
     // option and must never be enabled merely because a hide was requested.
@@ -2217,25 +2263,22 @@ export async function mountCombatOverlayRuntimeApp(
       },
       onRuntimeAction(layerId, action) {
         if (action === "cycle_metric") {
-          const metric = METRICS[(METRICS.indexOf(runtimeSettings.layers.find((layer) => layer.id === layerId)?.metric ?? "dps") + 1) % METRICS.length] ?? "dps";
-          runtimeSettings = {
-            ...runtimeSettings,
-            layers: runtimeSettings.layers.map((layer) => layer.id === layerId
-              ? {
-                  ...layer,
-                  metric,
-                  buttons: layer.buttons.map((value) => value.action === "cycle_metric"
-                    ? { ...value, label: metricLabel(metric) }
-                    : value),
-                }
-              : layer),
-          };
+          const nextLayerId = nextOverlayHeaderViewId(runtimeSettings.layers, layerId);
+          copyLayerRuntimeSelections(
+            layerId,
+            nextLayerId,
+            selectedTimerByLayer,
+            selectedSegmentByLayer,
+          );
+          activeLayerId = nextLayerId;
+          selectedActorByLayer.delete(layerId);
           render();
         } else if (action === "cycle_timer") {
           cycleSelectedTimer(
             selectedTimerByLayer,
             layerId,
             encounterPresentation,
+            latestSnapshot,
           );
           render();
         } else if (action === "cycle_segment") {
@@ -2348,6 +2391,7 @@ export async function mountCombatOverlayRuntimeApp(
         const presentations = update.actor_presentations ?? {};
         actors = (update.snapshot?.actors ?? []).map((actor) => ({
           ...actor,
+          damage_during_combat: actor.damage_during_combat ?? actor.reported_damage,
           dps: actor.run_dps ?? actor.encounter_dps ?? actor.dps,
           edps: actor.encounter_dps ?? actor.dps,
           adps: actor.active_dps ?? actor.dps,
@@ -2500,6 +2544,7 @@ function resolveProjectedOverlayState(
     snapshot: {
       ...(snapshot ?? { actors: [] }),
       active_combat_micros: view.active_combat_micros,
+      encounter_elapsed_micros: view.elapsed_micros,
       run_elapsed_micros: view.id === "all"
         ? projection.total_run_time_micros
         : view.elapsed_micros,
@@ -2833,25 +2878,101 @@ function availableSegmentViews(
   return presentation?.run_projection?.views ?? [];
 }
 
-function availableTimerFields(
+export function availableTimerFields(
   presentation: OverlayEncounterPresentation | null | undefined,
+  snapshot?: OverlaySnapshot | null,
 ): readonly OverlaySummaryField[] {
   const projection = presentation?.run_projection;
-  if (projection === null || projection === undefined) return ["encounter_time"];
   return [
-    ...(projection.total_run_time_micros == null ? [] : ["run_time" as const]),
-    ...(projection.game_time_micros == null ? [] : ["game_time" as const]),
     "encounter_time" as const,
-    ...(projection.true_time_micros == null ? [] : ["true_time" as const]),
+    ...(projection?.game_time_micros == null && snapshot?.game_time_micros == null
+      ? []
+      : ["game_time" as const]),
+    ...(projection?.true_time_micros == null && snapshot?.true_time_micros == null
+      ? []
+      : ["true_time" as const]),
+    ...(projection?.total_run_time_micros == null && snapshot?.run_elapsed_micros == null
+      ? []
+      : ["run_time" as const]),
   ];
+}
+
+function selectedTimerField(
+  selected: ReadonlyMap<string, OverlaySummaryField> | undefined,
+  layerId: string,
+  presentation: OverlayEncounterPresentation | null | undefined,
+  snapshot?: OverlaySnapshot | null,
+): OverlaySummaryField {
+  const available = availableTimerFields(presentation, snapshot);
+  const requested = selected?.get(layerId);
+  return requested !== undefined && available.includes(requested)
+    ? requested
+    : available[0] ?? "encounter_time";
+}
+
+function timerDurationMicros(
+  field: OverlaySummaryField,
+  snapshot: OverlaySnapshot | null | undefined,
+): number | null {
+  if (field === "run_time") return snapshot?.run_elapsed_micros ?? null;
+  if (field === "game_time") return snapshot?.game_time_micros ?? null;
+  if (field === "true_time") return snapshot?.true_time_micros ?? null;
+  return snapshot?.encounter_elapsed_micros ?? snapshot?.active_combat_micros ?? null;
+}
+
+function rateFromAmount(amount: number | null | undefined, durationMicros: number): number | null {
+  if (amount === null || amount === undefined) return null;
+  return Math.max(0, amount) * 1_000_000 / Math.max(1_000_000, durationMicros);
+}
+
+export function projectOverlayRatesForTimer(
+  actors: readonly OverlayActor[],
+  snapshot: OverlaySnapshot | null | undefined,
+  timer: OverlaySummaryField,
+): OverlayActor[] {
+  const duration = timerDurationMicros(timer, snapshot);
+  if (duration === null) return [...actors];
+  return actors.map((actor) => {
+    const damage = actor.reported_damage;
+    const activeDamage = actor.damage_during_combat ?? damage;
+    const rdps = rateFromAmount(actor.rdps_damage, duration);
+    const abilities = actor.abilities?.map((ability) => {
+      const received = Number(ability.rdps_received_damage ?? "0");
+      const given = Number(ability.rdps_given_damage ?? "0");
+      return {
+        ...ability,
+        rdps_received_rate: rateFromAmount(received, duration) ?? 0,
+        rdps_given_rate: rateFromAmount(given, duration) ?? 0,
+        rdps_sources: ability.rdps_sources?.map((source) => ({
+          ...source,
+          rdps: rateFromAmount(Number(source.attributed_rdps), duration) ?? 0,
+        })),
+        rdps_grants: ability.rdps_grants?.map((grant) => ({
+          ...grant,
+          rdps: rateFromAmount(Number(grant.attributed_rdps), duration) ?? 0,
+        })),
+      };
+    });
+    return {
+      ...actor,
+      dps: rateFromAmount(damage, duration) ?? actor.dps,
+      edps: rateFromAmount(damage, duration) ?? actor.edps ?? actor.dps,
+      adps: rateFromAmount(activeDamage, duration) ?? actor.adps ?? actor.dps,
+      hps: rateFromAmount(actor.reported_healing, duration) ?? actor.hps,
+      tps: rateFromAmount(actor.damage_taken, duration) ?? actor.tps,
+      rdps,
+      abilities,
+    };
+  });
 }
 
 function cycleSelectedTimer(
   selected: Map<string, OverlaySummaryField>,
   layerId: string,
   presentation: OverlayEncounterPresentation | null | undefined,
+  snapshot?: OverlaySnapshot | null,
 ): void {
-  const available = availableTimerFields(presentation);
+  const available = availableTimerFields(presentation, snapshot);
   if (available.length === 0) return;
   const current = selected.get(layerId) ?? "encounter_time";
   const currentIndex = available.indexOf(current);
@@ -2890,10 +3011,7 @@ function runtimeControlLabel(
     return views.find((view) => view.id === selectedId)?.label ?? "Live";
   }
   if (control.action === "cycle_timer") {
-    const available = availableTimerFields(presentation);
-    const field = selectedTimers?.get(layerId) ?? (
-      available.includes("encounter_time") ? "encounter_time" : available[0]
-    ) ?? "encounter_time";
+    const field = selectedTimerField(selectedTimers, layerId, presentation, snapshot);
     return `${timerFieldLabel(field)} ${summaryTimerValue(field, snapshot)}`;
   }
   return control.label;
@@ -2913,7 +3031,9 @@ function summaryTimerValue(
   if (field === "run_time") return formatOptionalOverlayTime(snapshot?.run_elapsed_micros);
   if (field === "game_time") return formatOptionalOverlayTime(snapshot?.game_time_micros);
   if (field === "true_time") return formatOptionalOverlayTime(snapshot?.true_time_micros);
-  return formatOptionalOverlayTime(snapshot?.active_combat_micros);
+  return formatOptionalOverlayTime(
+    snapshot?.encounter_elapsed_micros ?? snapshot?.active_combat_micros,
+  );
 }
 
 export function renderOverlayCanvas(
@@ -2941,7 +3061,19 @@ export function renderOverlayCanvas(
     ?? projected.snapshot?.rdps_status
     ?? null;
   const rdpsAvailability = describeOverlayRdpsAvailability(rdpsStatus);
-  const actors = maskUnavailableOverlayRdps(projected.actors, rdpsAvailability)
+  const timer = selectedLayer === undefined
+    ? "encounter_time"
+    : selectedTimerField(
+        options.selectedTimerByLayer,
+        selectedLayer.id,
+        options.encounterPresentation,
+        projected.snapshot,
+      );
+  const actors = projectOverlayRatesForTimer(
+    maskUnavailableOverlayRdps(projected.actors, rdpsAvailability),
+    projected.snapshot,
+    timer,
+  )
     .filter((actor) => metricValue(actor, "dps") + metricValue(actor, "hps") + metricValue(actor, "tps") > 0);
   const layer = selectedLayer;
   if (layer !== undefined) {
@@ -2967,9 +3099,8 @@ export function renderOverlayCanvas(
     const selectedActor = selectedActorId === undefined
       ? undefined
       : actors.find((actor) => actor.actor_id === selectedActorId);
-    const controls = el("div", "combat-overlay-layer-controls");
     const viewControls = el("div", "combat-overlay-view-controls");
-    for (const view of settings.layers) {
+    for (const view of settings.showViewTabs ? settings.layers : []) {
       const viewButton = button(view.title, "combat-overlay-control combat-overlay-view-control");
       viewButton.dataset.viewId = view.id;
       viewButton.dataset.active = String(view.id === layer.id);
@@ -2998,7 +3129,6 @@ export function renderOverlayCanvas(
       });
       viewControls.append(viewButton);
     }
-    controls.append(viewControls);
     if (selectedActor !== undefined) {
       const back = button("Back", "combat-overlay-control combat-overlay-back-control");
       back.title = `Return to ${layer.title}`;
@@ -3006,41 +3136,7 @@ export function renderOverlayCanvas(
         event.stopPropagation();
         options.onCloseActor?.(layer.id);
       });
-      controls.append(back);
-    }
-    for (const control of layer.buttons) {
-      const controlLabel = runtimeControlLabel(
-        control,
-        layer.id,
-        projected.snapshot,
-        options.encounterPresentation,
-        options.selectedTimerByLayer,
-        options.selectedSegmentByLayer,
-      );
-      const controlButton = button(controlLabel, "combat-overlay-control");
-      controlButton.dataset.buttonId = control.id;
-      controlButton.title = actionLabel(control.action);
-      if (options.mode === "preview") {
-        const grip = text("span", "⋮⋮", "combat-overlay-reorder-grip");
-        grip.title = `Drag to move ${control.label}`;
-        controlButton.prepend(grip);
-        wirePointerReorder(
-          grip,
-          layer.id,
-          control.id,
-          "buttonId",
-          (target, placement) => options.onReorderButtons?.(layer.id, control.id, target, placement),
-        );
-      }
-      controlButton.addEventListener("click", (event) => {
-        event.stopPropagation();
-        options.onRuntimeAction?.(layer.id, control.action);
-      });
-      controlButton.addEventListener("contextmenu", (event) => {
-        event.stopPropagation();
-        options.onContextMenu?.(event, { kind: "button", layerId: layer.id, buttonId: control.id });
-      });
-      controls.append(controlButton);
+      viewControls.append(back);
     }
     const summary = renderEncounterSummary(
       layer,
@@ -3049,7 +3145,7 @@ export function renderOverlayCanvas(
       selectedActor,
       projected.snapshot,
       projectedPresentation,
-      controls,
+      viewControls,
       options,
     );
 
@@ -3064,7 +3160,7 @@ export function renderOverlayCanvas(
     header.style.gridTemplateColumns = gridColumns(layer.headerFields, layer.headerWidths);
     for (const field of layer.headerFields) {
       const label = fieldLabel(field);
-      const visibleLabel = overlayHeaderLabel(field);
+      const visibleLabel = overlayHeaderLabel(field, layer.metric);
       const labelHidden = layer.hiddenHeaderLabels.includes(field);
       const cell = text("span", labelHidden ? "" : visibleLabel);
       cell.dataset.headerField = field;
@@ -3161,7 +3257,7 @@ function renderEncounterSummary(
   selectedActor: OverlayActor | undefined,
   snapshot: OverlaySnapshot | null | undefined,
   presentation: OverlayEncounterPresentation | null | undefined,
-  controls: HTMLElement,
+  viewControls: HTMLElement,
   options: RenderOptions,
 ): HTMLElement {
   const summary = el("section", "combat-overlay-summary");
@@ -3175,7 +3271,10 @@ function renderEncounterSummary(
     (total, actor) => total + Math.max(0, actor.reported_damage ?? 0),
     0,
   );
-  const teamDps = teamActors.reduce((total, actor) => total + Math.max(0, actor.dps), 0);
+  const teamDps = teamActors.reduce(
+    (total, actor) => total + Math.max(0, metricValue(actor, layer.metric)),
+    0,
+  );
   return renderSummaryRows(
     summary,
     layer,
@@ -3185,7 +3284,7 @@ function renderEncounterSummary(
     selectedActor,
     snapshot,
     presentation,
-    controls,
+    viewControls,
     options,
   );
 }
@@ -3199,11 +3298,11 @@ function renderSummaryRows(
   selectedActor: OverlayActor | undefined,
   snapshot: OverlaySnapshot | null | undefined,
   presentation: OverlayEncounterPresentation | null | undefined,
-  controls: HTMLElement,
+  viewControls: HTMLElement,
   options: RenderOptions,
 ): HTMLElement {
-  const rows = summaryRows(layer);
-  const renderRow = (fields: readonly OverlaySummaryField[], rowIndex: number): HTMLElement | null => {
+  const rows = summaryLayoutRows(layer);
+  const renderRow = (layoutItems: readonly string[], rowIndex: number): HTMLElement | null => {
     const row = el("div", "combat-overlay-summary-row");
     row.dataset.summaryRow = String(rowIndex);
     row.title = options.mode === "runtime"
@@ -3219,11 +3318,26 @@ function renderSummaryRows(
       });
     }
     const items = el("div", "combat-overlay-summary-items");
-    for (const field of fields) {
-      const item = field === "boss_health"
+    for (const layoutKey of layoutItems) {
+      const field = summaryLayoutField(layoutKey);
+      const buttonId = summaryLayoutButtonId(layoutKey);
+      const control = buttonId === null
+        ? undefined
+        : layer.buttons.find((candidate) => candidate.id === buttonId);
+      const item = field === null
+        ? control === undefined
+          ? null
+          : renderSummaryControl(
+              control,
+              layer,
+              snapshot,
+              presentation,
+              options,
+            )
+        : field === "boss_health"
         ? renderBossSummaryItem(presentation, layer.showBossDps, numberFormats)
         : overlaySummaryStat(
-          summaryFieldLabel(field),
+          field === "team_dps" ? `Team ${metricLabel(layer.metric)}` : summaryFieldLabel(field),
           summaryFieldValue(
             field,
             teamDps,
@@ -3236,24 +3350,27 @@ function renderSummaryRows(
           layer.hiddenSummaryLabels.includes(field),
         );
       if (item === null) continue;
-      item.dataset.summaryField = field;
-      item.addEventListener("contextmenu", (event) => {
-        event.stopPropagation();
-        options.onContextMenu?.(event, { kind: "summary_item", layerId: layer.id, field });
-      });
+      item.dataset.summaryItem = layoutKey;
+      if (field !== null) {
+        item.dataset.summaryField = field;
+        item.addEventListener("contextmenu", (event) => {
+          event.stopPropagation();
+          options.onContextMenu?.(event, { kind: "summary_item", layerId: layer.id, field });
+        });
+      }
       if (options.mode === "preview") {
         item.classList.add("combat-overlay-reorder-target", "combat-overlay-summary-draggable");
         const grip = text("span", "⋮⋮", "combat-overlay-reorder-grip");
-        item.title = `Drag ${summaryFieldLabel(field)} within this row or into another row`;
+        grip.title = `Drag ${field === null ? control?.label ?? "control" : summaryFieldLabel(field)} within this row or into another row`;
         grip.setAttribute("aria-hidden", "true");
         item.prepend(grip);
         wireSummaryPointerReorder(
-          item,
+          field === null ? grip : item,
           layer.id,
-          field,
+          layoutKey,
           (targetRow, target, placement) => options.onReorderSummary?.(
             layer.id,
-            field,
+            layoutKey,
             targetRow,
             target,
             placement,
@@ -3264,7 +3381,7 @@ function renderSummaryRows(
     }
     if (items.childElementCount === 0 && rowIndex !== 0 && options.mode === "runtime") return null;
     row.append(items);
-    if (rowIndex === 0) row.append(controls);
+    if (rowIndex === 0 && viewControls.childElementCount > 0) row.append(viewControls);
     return row;
   };
   const visibleBossCount = Math.min(2, presentation?.bosses.length ?? 0);
@@ -3273,12 +3390,12 @@ function renderSummaryRows(
     const nextFields = rows[rowIndex + 1];
     const canMergeBossRows =
       visibleBossCount > 0 &&
-      !fields.includes("boss_health") &&
+      !fields.includes(summaryLayoutFieldKey("boss_health")) &&
       fields.length === 2 &&
-      fields.includes("team_dps") &&
-      fields.includes("team_damage") &&
+      fields.includes(summaryLayoutFieldKey("team_dps")) &&
+      fields.includes(summaryLayoutFieldKey("team_damage")) &&
       nextFields?.length === 1 &&
-      nextFields[0] === "boss_health";
+      nextFields[0] === summaryLayoutFieldKey("boss_health");
     if (canMergeBossRows) {
       const metricRow = renderRow(fields, rowIndex);
       const bossRow = renderRow(nextFields, rowIndex + 1);
@@ -3309,6 +3426,41 @@ function renderSummaryRows(
     summary.append(dropRow);
   }
   return summary;
+}
+
+function renderSummaryControl(
+  control: OverlayButton,
+  layer: OverlayLayer,
+  snapshot: OverlaySnapshot | null | undefined,
+  presentation: OverlayEncounterPresentation | null | undefined,
+  options: RenderOptions,
+): HTMLButtonElement {
+  const controlButton = button(
+    control.action === "cycle_metric" ? metricLabel(layer.metric) : runtimeControlLabel(
+      control,
+      layer.id,
+      snapshot,
+      presentation,
+      options.selectedTimerByLayer,
+      options.selectedSegmentByLayer,
+    ),
+    "combat-overlay-control combat-overlay-summary-control",
+  );
+  controlButton.dataset.buttonId = control.id;
+  controlButton.title = actionLabel(control.action);
+  controlButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    options.onRuntimeAction?.(layer.id, control.action);
+  });
+  controlButton.addEventListener("contextmenu", (event) => {
+    event.stopPropagation();
+    options.onContextMenu?.(event, {
+      kind: "button",
+      layerId: layer.id,
+      buttonId: control.id,
+    });
+  });
+  return controlButton;
 }
 
 function renderBossSummaryItem(
@@ -3359,7 +3511,9 @@ function summaryFieldValue(
   numberFormats: OverlayNumberFormats,
 ): string {
   switch (field) {
-    case "encounter_time": return formatOptionalOverlayTime(snapshot?.active_combat_micros);
+    case "encounter_time": return formatOptionalOverlayTime(
+      snapshot?.encounter_elapsed_micros ?? snapshot?.active_combat_micros,
+    );
     case "run_time": return formatOptionalOverlayTime(snapshot?.run_elapsed_micros);
     case "game_time": return formatOptionalOverlayTime(snapshot?.game_time_micros);
     case "true_time": return formatOptionalOverlayTime(snapshot?.true_time_micros);
@@ -3864,10 +4018,10 @@ export function isOverlayRosterActor(actor: OverlayActor): boolean {
   );
 }
 
-function overlayHeaderLabel(field: OverlayHeaderField): string {
+function overlayHeaderLabel(field: OverlayHeaderField, metric: OverlayMetric): string {
   if (field === "deaths") return "💀";
   if (field === "revives") return "😇";
-  if (field === "percent") return "DMG%";
+  if (field === "percent") return `${metricLabel(metric)}%`;
   return fieldLabel(field);
 }
 
@@ -4124,10 +4278,10 @@ function wirePointerReorder(
 function wireSummaryPointerReorder(
   dragSurface: HTMLElement,
   layerId: string,
-  source: OverlaySummaryField,
+  source: string,
   onReorder: (
     targetRow: number,
-    target: OverlaySummaryField | null,
+    target: string | null,
     placement: ReorderPlacement,
   ) => void,
 ): void {
@@ -4146,7 +4300,7 @@ function wireSummaryPointerReorder(
     const startY = event.clientY;
     let moved = false;
     let targetRow: number | null = null;
-    let targetField: OverlaySummaryField | null = null;
+    let targetField: string | null = null;
     let placement: ReorderPlacement = "after";
     let targetElement: HTMLElement | null = null;
     dragSurface.classList.add("is-dragging");
@@ -4182,8 +4336,8 @@ function wireSummaryPointerReorder(
         clearTarget();
         return;
       }
-      const candidates = [...row.querySelectorAll<HTMLElement>("[data-summary-field]")]
-        .filter((candidate) => candidate.dataset.summaryField !== source)
+      const candidates = [...row.querySelectorAll<HTMLElement>("[data-summary-item]")]
+        .filter((candidate) => candidate.dataset.summaryItem !== source)
         .sort((left, right) => {
           const leftBounds = left.getBoundingClientRect();
           const rightBounds = right.getBoundingClientRect();
@@ -4222,7 +4376,7 @@ function wireSummaryPointerReorder(
         candidate = candidates.at(-1) ?? null;
         nextPlacement = "after";
       }
-      const nextField = candidate?.dataset.summaryField as OverlaySummaryField | undefined;
+      const nextField = candidate?.dataset.summaryItem;
       const nextTarget = candidate ?? row;
       if (nextTarget !== targetElement) {
         clearTarget();
@@ -4300,6 +4454,7 @@ export function parseCombatOverlaySettings(value: unknown): CombatOverlaySetting
   if (!isRecord(value) || value.schemaVersion !== 1 || !Array.isArray(value.layers)) {
     throw new Error("The native host returned invalid Combat Overlay settings.");
   }
+  const normalizedLayers = value.layers.map(normalizeLayerValue) as OverlayLayer[];
   const settings = {
     ...value,
     barOpacityPercent: value.barOpacityPercent === undefined
@@ -4333,7 +4488,10 @@ export function parseCombatOverlaySettings(value: unknown): CombatOverlaySetting
     allowLiveResize: value.allowLiveResize === undefined
       ? true
       : value.allowLiveResize,
-    layers: value.layers.map(normalizeLayerValue),
+    showViewTabs: value.showViewTabs === undefined
+      ? false
+      : value.showViewTabs,
+    layers: ensureMetricHeaderViews(normalizedLayers),
   } as unknown as CombatOverlaySettings;
   if (
     !Number.isInteger(settings.canvasWidth) ||
@@ -4376,6 +4534,7 @@ export function parseCombatOverlaySettings(value: unknown): CombatOverlaySetting
     settings.refreshIntervalMillis > 2_000 ||
     typeof settings.dynamicHeight !== "boolean" ||
     typeof settings.allowLiveResize !== "boolean" ||
+    typeof settings.showViewTabs !== "boolean" ||
     !Number.isInteger(settings.maxVisiblePlayers) ||
     settings.maxVisiblePlayers < 1 ||
     settings.maxVisiblePlayers > 20 ||
@@ -4427,15 +4586,108 @@ function isLayer(value: unknown): value is OverlayLayer {
     && value.summaryFields.every((field) => SUMMARY_FIELDS.includes(field as OverlaySummaryField))
     && new Set(value.summaryFields).size === value.summaryFields.length
     && isSummaryFieldRows(value.summaryFieldRows, value.summaryFields as OverlaySummaryField[])
+    && isSummaryItemLayout(value)
     && Array.isArray(value.hiddenSummaryLabels)
     && value.hiddenSummaryLabels.every((field) => (value.summaryFields as unknown[]).includes(field))
     && new Set(value.hiddenSummaryLabels).size === value.hiddenSummaryLabels.length
     && typeof value.showBossDps === "boolean"
     && Array.isArray(value.buttons)
-    && value.buttons.every((button) => isRecord(button)
-      && typeof button.id === "string"
-      && typeof button.label === "string"
-      && ACTIONS.includes(button.action as OverlayButtonAction));
+    && value.buttons.every(isOverlayButtonValue);
+}
+
+function isSummaryItemLayout(value: Record<string, unknown>): boolean {
+  if (!Array.isArray(value.summaryItemOrder) || !isRecord(value.summaryItemRows)) return false;
+  const fields = value.summaryFields as OverlaySummaryField[];
+  const buttons = value.buttons as OverlayButton[];
+  const expected = new Set([
+    ...fields.map(summaryLayoutFieldKey),
+    ...buttons.map((button) => summaryLayoutButtonKey(button.id)),
+  ]);
+  const order = value.summaryItemOrder;
+  return order.length === expected.size
+    && new Set(order).size === order.length
+    && order.every((key) => typeof key === "string" && expected.has(key))
+    && Object.keys(value.summaryItemRows).length === expected.size
+    && Object.entries(value.summaryItemRows).every(([key, row]) =>
+      expected.has(key) && Number.isInteger(row) && Number(row) >= 0 && Number(row) < 8);
+}
+
+export function ensureMetricHeaderViews(layers: readonly OverlayLayer[]): OverlayLayer[] {
+  let copied = layers.map((layer) => ({
+    ...layer,
+    headerFields: [...layer.headerFields],
+    headerWidths: { ...layer.headerWidths },
+    hiddenHeaderLabels: [...layer.hiddenHeaderLabels],
+    summaryFields: [...layer.summaryFields],
+    summaryFieldRows: { ...layer.summaryFieldRows },
+    summaryItemOrder: [...layer.summaryItemOrder],
+    summaryItemRows: { ...layer.summaryItemRows },
+    hiddenSummaryLabels: [...layer.hiddenSummaryLabels],
+    buttons: layer.buttons.map((button) => ({ ...button })),
+  }));
+  const cycleTemplate = copied
+    .flatMap((layer) => layer.buttons)
+    .find((button) => button.action === "cycle_metric");
+  if (cycleTemplate === undefined) return copied;
+  copied = copied.map((layer) => layer.buttons.some((button) => button.action === "cycle_metric")
+    ? layer
+    : withNormalizedSummaryLayout({
+        ...layer,
+        buttons: [...layer.buttons, {
+          ...cycleTemplate,
+          id: uniqueId("metric", layer.buttons.map((button) => button.id)),
+          label: metricLabel(layer.metric),
+        }],
+      }));
+  if (copied.length !== 1) {
+    return copied;
+  }
+  const source = copied[0]!;
+  const usedIds = [source.id];
+  for (const preset of CYCLING_VIEW_PRESETS) {
+    if (preset.metric === source.metric) continue;
+    const id = uniqueId(`metric-${preset.metric}`, usedIds);
+    usedIds.push(id);
+    copied.push({
+      ...source,
+      id,
+      title: preset.title,
+      metric: preset.metric,
+      headerFields: [...preset.fields],
+      headerWidths: { ...source.headerWidths },
+      hiddenHeaderLabels: source.hiddenHeaderLabels.filter((field) => preset.fields.includes(field)),
+      summaryFields: [...source.summaryFields],
+      summaryFieldRows: { ...source.summaryFieldRows },
+      summaryItemOrder: [...source.summaryItemOrder],
+      summaryItemRows: { ...source.summaryItemRows },
+      hiddenSummaryLabels: [...source.hiddenSummaryLabels],
+      buttons: source.buttons.map((button) => button.action === "cycle_metric"
+        ? { ...button, label: metricLabel(preset.metric) }
+        : { ...button }),
+    });
+  }
+  return copied;
+}
+
+export function nextOverlayHeaderViewId(
+  layers: readonly OverlayLayer[],
+  currentLayerId: string,
+): string {
+  if (layers.length === 0) return currentLayerId;
+  const current = layers.findIndex((layer) => layer.id === currentLayerId);
+  return layers[(current + 1 + layers.length) % layers.length]?.id ?? layers[0]!.id;
+}
+
+function copyLayerRuntimeSelections(
+  sourceLayerId: string,
+  targetLayerId: string,
+  selectedTimers: Map<string, OverlaySummaryField>,
+  selectedSegments: Map<string, string>,
+): void {
+  const timer = selectedTimers.get(sourceLayerId);
+  if (timer !== undefined) selectedTimers.set(targetLayerId, timer);
+  const segment = selectedSegments.get(sourceLayerId);
+  if (segment !== undefined) selectedSegments.set(targetLayerId, segment);
 }
 
 function normalizeLayerValue(value: unknown): unknown {
@@ -4448,13 +4700,33 @@ function normalizeLayerValue(value: unknown): unknown {
   const rawHiddenLabels = Array.isArray(value.hiddenHeaderLabels) ? value.hiddenHeaderLabels : [];
   const hiddenHeaderLabels = [...new Set(rawHiddenLabels.map((field) => field === "value" ? metric : field))]
     .filter((field) => headerFields.includes(field));
-  const summaryFields = Array.isArray(value.summaryFields)
+  let summaryFields = Array.isArray(value.summaryFields)
     ? [...new Set(value.summaryFields.filter((field) => SUMMARY_FIELDS.includes(field as OverlaySummaryField)))]
     : [...DEFAULT_SUMMARY_FIELDS];
+  const buttons = Array.isArray(value.buttons)
+    ? value.buttons.filter(isOverlayButtonValue).map((button) => ({ ...button }))
+    : [];
+  const isLegacySummaryLayout = !Array.isArray(value.summaryItemOrder);
+  const timerButton = buttons.find((button) => button.action === "cycle_timer");
+  const legacyTimerRow = isRecord(value.summaryFieldRows)
+    && Number.isInteger(value.summaryFieldRows.encounter_time)
+    ? Number(value.summaryFieldRows.encounter_time)
+    : 0;
+  if (isLegacySummaryLayout && timerButton !== undefined) {
+    summaryFields = summaryFields.filter((field) => field !== "encounter_time");
+  }
   const hiddenSummaryLabels = Array.isArray(value.hiddenSummaryLabels)
     ? [...new Set(value.hiddenSummaryLabels.filter((field) => summaryFields.includes(field)))]
     : [];
   const summaryFieldRows = normalizedSummaryFieldRows(summaryFields as OverlaySummaryField[], value.summaryFieldRows);
+  const layout = normalizedSummaryItemLayout(
+    summaryFields as OverlaySummaryField[],
+    summaryFieldRows,
+    buttons,
+    value.summaryItemOrder,
+    value.summaryItemRows,
+    timerButton === undefined ? null : { id: timerButton.id, row: legacyTimerRow },
+  );
   return {
     ...value,
     headerFields,
@@ -4465,9 +4737,19 @@ function normalizeLayerValue(value: unknown): unknown {
     hiddenHeaderLabels,
     summaryFields,
     summaryFieldRows,
+    summaryItemOrder: layout.order,
+    summaryItemRows: layout.rows,
     hiddenSummaryLabels,
     showBossDps: typeof value.showBossDps === "boolean" ? value.showBossDps : true,
+    buttons,
   };
+}
+
+function isOverlayButtonValue(value: unknown): value is OverlayButton {
+  return isRecord(value)
+    && typeof value.id === "string"
+    && typeof value.label === "string"
+    && ACTIONS.includes(value.action as OverlayButtonAction);
 }
 
 function isSummaryFieldRows(
@@ -4902,6 +5184,97 @@ function defaultSummaryFieldRows(
   return Object.fromEntries(fields.map((field) => [field, defaultSummaryRow(field)]));
 }
 
+function summaryLayoutFieldKey(field: OverlaySummaryField): string {
+  return `summary:${field}`;
+}
+
+function summaryLayoutButtonKey(buttonId: string): string {
+  return `button:${buttonId}`;
+}
+
+function summaryLayoutField(key: string): OverlaySummaryField | null {
+  if (!key.startsWith("summary:")) return null;
+  const field = key.slice("summary:".length);
+  return SUMMARY_FIELDS.includes(field as OverlaySummaryField)
+    ? field as OverlaySummaryField
+    : null;
+}
+
+function summaryLayoutButtonId(key: string): string | null {
+  return key.startsWith("button:") ? key.slice("button:".length) || null : null;
+}
+
+function normalizedSummaryItemLayout(
+  fields: readonly OverlaySummaryField[],
+  fieldRows: Readonly<Partial<Record<OverlaySummaryField, number>>>,
+  buttons: readonly OverlayButton[],
+  rawOrder: unknown,
+  rawRows: unknown,
+  migratedTimer: { id: string; row: number } | null = null,
+): { order: string[]; rows: Record<string, number> } {
+  const expected = [
+    ...fields.map(summaryLayoutFieldKey),
+    ...buttons.map((button) => summaryLayoutButtonKey(button.id)),
+  ];
+  const expectedSet = new Set(expected);
+  const candidateOrder = Array.isArray(rawOrder)
+    ? rawOrder.filter((key): key is string => typeof key === "string")
+    : [];
+  const orderIsComplete = candidateOrder.length === expected.length
+    && new Set(candidateOrder).size === candidateOrder.length
+    && candidateOrder.every((key) => expectedSet.has(key));
+  const timerKey = migratedTimer === null ? null : summaryLayoutButtonKey(migratedTimer.id);
+  const order = orderIsComplete
+    ? [...candidateOrder]
+    : [
+        ...(timerKey === null || !expectedSet.has(timerKey) ? [] : [timerKey]),
+        ...fields.map(summaryLayoutFieldKey),
+        ...buttons
+          .map((button) => summaryLayoutButtonKey(button.id))
+          .filter((key) => key !== timerKey),
+      ];
+  const candidateRows = isRecord(rawRows) ? rawRows : {};
+  const rows = Object.fromEntries(order.map((key) => {
+    const rawRow = candidateRows[key];
+    if (Number.isInteger(rawRow) && Number(rawRow) >= 0 && Number(rawRow) < 8) {
+      return [key, Number(rawRow)];
+    }
+    const field = summaryLayoutField(key);
+    if (field !== null) return [key, fieldRows[field] ?? defaultSummaryRow(field)];
+    if (key === timerKey) return [key, clamp(migratedTimer?.row ?? 0, 0, 7)];
+    return [key, 0];
+  }));
+  return compactSummaryLayoutRows(order, rows);
+}
+
+function withNormalizedSummaryLayout(layer: OverlayLayer): OverlayLayer {
+  const layout = normalizedSummaryItemLayout(
+    layer.summaryFields,
+    layer.summaryFieldRows,
+    layer.buttons,
+    layer.summaryItemOrder,
+    layer.summaryItemRows,
+  );
+  return {
+    ...layer,
+    summaryItemOrder: layout.order,
+    summaryItemRows: layout.rows,
+  };
+}
+
+function compactSummaryLayoutRows(
+  order: readonly string[],
+  rows: Readonly<Record<string, number>>,
+): { order: string[]; rows: Record<string, number> } {
+  const occupied = [...new Set(order.map((key) => rows[key] ?? 0))]
+    .sort((left, right) => left - right);
+  const compact = new Map(occupied.map((row, index) => [row, index]));
+  return {
+    order: [...order],
+    rows: Object.fromEntries(order.map((key) => [key, compact.get(rows[key] ?? 0) ?? 0])),
+  };
+}
+
 function normalizedSummaryFieldRows(
   fields: readonly OverlaySummaryField[],
   value: unknown,
@@ -4926,6 +5299,59 @@ function summaryRows(layer: OverlayLayer): OverlaySummaryField[][] {
     (rows[row] ??= []).push(field);
   }
   return rows.filter((fields) => fields.length > 0);
+}
+
+function summaryLayoutRows(layer: OverlayLayer): string[][] {
+  const normalized = normalizedSummaryItemLayout(
+    layer.summaryFields,
+    layer.summaryFieldRows,
+    layer.buttons,
+    layer.summaryItemOrder,
+    layer.summaryItemRows,
+  );
+  const rows: string[][] = [];
+  for (const key of normalized.order) {
+    const row = normalized.rows[key] ?? 0;
+    (rows[row] ??= []).push(key);
+  }
+  return rows.filter((items) => items.length > 0);
+}
+
+export function moveSummaryLayoutItem(
+  layer: OverlayLayer,
+  source: string,
+  targetRow: number,
+  target: string | null,
+  placement: ReorderPlacement,
+): OverlayLayer {
+  const rows = summaryLayoutRows(layer);
+  if (!rows.some((row) => row.includes(source))) return layer;
+  while (rows.length <= targetRow && rows.length < 8) rows.push([]);
+  if (targetRow < 0 || targetRow >= rows.length) return layer;
+  for (const row of rows) {
+    const sourceIndex = row.indexOf(source);
+    if (sourceIndex >= 0) row.splice(sourceIndex, 1);
+  }
+  const destination = rows[targetRow]!;
+  const targetIndex = target === null ? -1 : destination.indexOf(target);
+  destination.splice(
+    targetIndex < 0 ? destination.length : targetIndex + (placement === "after" ? 1 : 0),
+    0,
+    source,
+  );
+  const compacted = rows.filter((row) => row.length > 0);
+  const summaryItemOrder = compacted.flat();
+  const summaryItemRows = Object.fromEntries(
+    compacted.flatMap((row, rowIndex) => row.map((key) => [key, rowIndex])),
+  );
+  const summaryFieldRows = {
+    ...layer.summaryFieldRows,
+    ...Object.fromEntries(summaryItemOrder.flatMap((key) => {
+      const field = summaryLayoutField(key);
+      return field === null ? [] : [[field, summaryItemRows[key] ?? 0]];
+    })),
+  };
+  return { ...layer, summaryItemOrder, summaryItemRows, summaryFieldRows };
 }
 
 export function moveSummaryField(
@@ -5207,7 +5633,7 @@ function installStyles(): void {
     .combat-overlay-summary-boss-grid > .combat-overlay-summary-boss-cell .combat-overlay-summary-items { width:100%; }
     .combat-overlay-summary-boss-grid .combat-overlay-boss-list { border-top:0; }
     .combat-overlay-summary-primary { display:flex; min-height:30px; align-items:center; justify-content:space-between; gap:8px; padding:2px 6px 2px 7px; }
-    .combat-overlay-summary-items { display:flex; min-width:0; flex:1 1 auto; align-items:stretch; overflow:hidden; }
+    .combat-overlay-summary-items { display:flex; min-width:0; flex:1 1 auto; flex-wrap:wrap; align-items:stretch; overflow:hidden; }
     .combat-overlay-summary-team-row { display:flex; min-height:25px; align-items:stretch; border-top:1px solid #91a4bd20; background:rgb(16 27 41 / var(--summary-opacity,.85)); padding:0 7px; }
     .combat-overlay-summary-team-items { flex:0 1 auto; }
     .combat-overlay-summary-stat { display:flex; min-width:0; align-items:baseline; justify-content:space-between; gap:6px; padding:4px 8px; border-right:1px solid #91a4bd25; }
@@ -5218,7 +5644,8 @@ function installStyles(): void {
     .combat-overlay-summary-stat.label-hidden small { display:none; }
     .combat-overlay-summary-draggable { cursor:grab; touch-action:none; user-select:none; }
     .combat-overlay-summary-draggable.is-dragging { cursor:grabbing; }
-    .combat-overlay-summary-draggable > .combat-overlay-reorder-grip { pointer-events:none; }
+    .combat-overlay-summary-stat > .combat-overlay-reorder-grip { pointer-events:none; }
+    .combat-overlay-summary-control { flex:0 0 auto; align-self:center; margin:2px 3px; }
     .combat-overlay-summary-editor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
     .combat-overlay-boss-list { position:relative; display:grid; grid-template-rows:repeat(2,22px); flex:1 1 100%; min-width:0; width:100%; border-top:0; }
     .combat-overlay-boss-list > .combat-overlay-reorder-grip { position:absolute; z-index:2; top:50%; left:3px; transform:translateY(-50%); }

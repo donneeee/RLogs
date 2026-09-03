@@ -33,10 +33,32 @@ export const MAIN_CHARACTER_STAT_FAMILY_IDS = [
 
 export function selectMainCharacterStatFamilies(
   families: readonly LiveCharacterStatFamilyView[],
+  catalog: FightAttributePresentationCatalog,
 ): LiveCharacterStatFamilyView[] {
   const byId = new Map(families.map((family) => [family.familyId, family]));
+  const catalogByFamily = new Map<number, FightAttributePresentationCatalog["attributes"][number]>();
+  for (const attribute of catalog.attributes) {
+    if (!attribute.displayable) continue;
+    const previous = catalogByFamily.get(attribute.family_id);
+    if (previous === undefined || attribute.component === "final") {
+      catalogByFamily.set(attribute.family_id, attribute);
+    }
+  }
   return MAIN_CHARACTER_STAT_FAMILY_IDS
-    .map((familyId) => byId.get(familyId))
+    .map((familyId) => {
+      const observed = byId.get(familyId);
+      if (observed !== undefined) return observed;
+      const presentation = catalogByFamily.get(familyId);
+      return presentation === undefined
+        ? undefined
+        : {
+            familyId,
+            name: presentation.name,
+            description: presentation.description,
+            changed: false,
+            components: [],
+          };
+    })
     .filter((family): family is LiveCharacterStatFamilyView =>
       family !== undefined);
 }
@@ -150,7 +172,7 @@ export function mountOverlayStatsTrackerSurface(
   function render(): void {
     if (catalog === null || snapshot === null) return;
     const observedFamilies = resolveLiveCharacterStatFamilies(snapshot, catalog);
-    const mainFamilies = selectMainCharacterStatFamilies(observedFamilies);
+    const mainFamilies = selectMainCharacterStatFamilies(observedFamilies, catalog);
     const families = observedFamilies.filter(
       (family) =>
         searchValue === "" ||
@@ -160,9 +182,12 @@ export function mountOverlayStatsTrackerSurface(
     state.textContent = snapshot.character === null ? "WAITING" : "LIVE LOCAL";
     state.dataset.state = snapshot.character === null ? "waiting" : "live";
     const changed = observedFamilies.filter((family) => family.changed).length;
+    const observedMainCount = mainFamilies.filter((family) => family.components.length > 0).length;
     statsCopy.querySelector("h3")!.textContent = snapshot.character === null
       ? "Waiting for a complete character snapshot"
-      : `${mainFamilies.length.toLocaleString()} main stats`;
+      : observedMainCount === mainFamilies.length
+        ? `${mainFamilies.length.toLocaleString()} main stats`
+        : `${observedMainCount.toLocaleString()} of ${mainFamilies.length.toLocaleString()} main stats observed`;
     statsCopy.querySelector("p")!.textContent = snapshot.character === null
       ? "Open the game and enter a scene that publishes your character attributes."
       : `${observedFamilies.length.toLocaleString()} observed stat families · ${changed.toLocaleString()} temporarily changed`;
@@ -181,18 +206,21 @@ export function mountOverlayStatsTrackerSurface(
     for (const family of mainFamilies) {
       const primary = family.components.find(
         (component) => component.presentation.component === "final",
-      ) ?? family.components[0]!;
+      ) ?? family.components[0] ?? null;
       const row = element("article", "overlay-main-stat-row");
       row.dataset.changed = String(family.changed);
+      row.dataset.observed = String(primary !== null);
       row.append(
         text("span", family.name, "overlay-main-stat-name"),
         text(
           "strong",
-          formatFightAttributeValue(
-            primary.currentValue,
-            primary.presentation.number_type,
-            primary.presentation.format_type,
-          ),
+          primary === null
+            ? "Not observed"
+            : formatFightAttributeValue(
+                primary.currentValue,
+                primary.presentation.number_type,
+                primary.presentation.format_type,
+              ),
           "overlay-main-stat-value",
         ),
       );

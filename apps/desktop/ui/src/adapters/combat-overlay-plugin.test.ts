@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   applyOverlayTimerPause,
   applyOverlayRdpsSkillDetail,
+  availableTimerFields,
   actorName,
   describeOverlayRdpsAvailability,
+  ensureMetricHeaderViews,
   formatOverlayNumber,
   formatOverlayPercent,
   humanizeOverlayAttributionComponent,
@@ -12,11 +14,14 @@ import {
   mergeProjectedActorPresentation,
   maskUnavailableOverlayRdps,
   moveRelative,
+  moveSummaryLayoutItem,
   moveSummaryField,
+  nextOverlayHeaderViewId,
   normalizeHeaderViewGeometry,
   parseCombatOverlaySettings,
   planCombatOverlayVisibility,
   preferredOverlayDisplayName,
+  projectOverlayRatesForTimer,
   shouldIgnoreCombatOverlayCursor,
   shouldKeepCombatVisibilityTimer,
 } from "../../../../../plugins/builtin/desktop/combat-overlay/ui/combat-overlay";
@@ -470,6 +475,94 @@ describe("Combat Overlay plug-in settings", () => {
     expect(movedLeft.summaryFieldRows.encounter_time).toBe(0);
   });
 
+  it("moves action controls anywhere inside the unified summary rows", () => {
+    const settings = editableSummarySettings();
+    const base = settings.layers[0]!;
+    const layer = parseCombatOverlaySettings({
+      ...settings,
+      layers: [{
+        ...base,
+        buttons: [{ id: "timer", label: "Encounter", action: "cycle_timer" }],
+        summaryItemOrder: undefined,
+        summaryItemRows: undefined,
+      }],
+    }).layers[0]!;
+
+    expect(layer.summaryFields).not.toContain("encounter_time");
+    expect(layer.summaryItemOrder[0]).toBe("button:timer");
+    const moved = moveSummaryLayoutItem(
+      layer,
+      "button:timer",
+      1,
+      "summary:team_damage",
+      "after",
+    );
+    expect(moved.summaryItemRows["button:timer"]).toBe(1);
+    expect(moved.summaryItemOrder.indexOf("button:timer"))
+      .toBeGreaterThan(moved.summaryItemOrder.indexOf("summary:team_damage"));
+  });
+
+  it("migrates metric cycling into complete independently configurable header views", () => {
+    const settings = editableSummarySettings();
+    const source = {
+      ...settings.layers[0]!,
+      buttons: [{ id: "metric", label: "DPS", action: "cycle_metric" as const }],
+    };
+    const views = ensureMetricHeaderViews([source]);
+
+    expect(views.map((view) => view.metric)).toEqual(["dps", "hps", "tps", "rdps"]);
+    expect(views[1]?.headerFields).toContain("effective_healing");
+    expect(views[2]?.headerFields).toContain("damage_taken");
+    expect(views[3]?.headerFields).toContain("contribution_given");
+    expect(nextOverlayHeaderViewId(views, views[0]!.id)).toBe(views[1]!.id);
+    expect(nextOverlayHeaderViewId(views, views.at(-1)!.id)).toBe(views[0]!.id);
+  });
+
+  it("recalculates every rate from the selected visible timer without changing totals", () => {
+    const actors = [{
+      actor_id: "3296036",
+      display_name: "MarieRose",
+      dps: 1,
+      edps: 1,
+      adps: 1,
+      hps: 1,
+      tps: 1,
+      rdps: 1,
+      reported_damage: 12_000,
+      damage_during_combat: 9_000,
+      reported_healing: 6_000,
+      damage_taken: 3_000,
+      rdps_damage: 15_000,
+    }];
+    const snapshot = {
+      encounter_elapsed_micros: 6_000_000,
+      run_elapsed_micros: 12_000_000,
+      game_time_micros: 10_000_000,
+      true_time_micros: 8_000_000,
+      actors: [],
+    };
+
+    const encounter = projectOverlayRatesForTimer(actors, snapshot, "encounter_time")[0]!;
+    const run = projectOverlayRatesForTimer(actors, snapshot, "run_time")[0]!;
+    expect(encounter).toMatchObject({ dps: 2_000, edps: 2_000, adps: 1_500, hps: 1_000, tps: 500, rdps: 2_500 });
+    expect(run).toMatchObject({ dps: 1_000, edps: 1_000, adps: 750, hps: 500, tps: 250, rdps: 1_250 });
+    expect(run.reported_damage).toBe(12_000);
+  });
+
+  it("keeps every live timer selectable before a saved run projection exists", () => {
+    expect(availableTimerFields(null, {
+      encounter_elapsed_micros: 10_000_000,
+      game_time_micros: 11_000_000,
+      true_time_micros: 12_000_000,
+      run_elapsed_micros: 13_000_000,
+    } as Parameters<typeof availableTimerFields>[1])).toEqual([
+      "encounter_time",
+      "game_time",
+      "true_time",
+      "run_time",
+    ]);
+  });
+
   it("gives older summary layouts safe semantic rows", () => {
     const settings = editableSummarySettings();
     const legacy = JSON.parse(JSON.stringify(settings));
@@ -548,6 +641,7 @@ describe("Combat Overlay plug-in settings", () => {
     expect(settings.layers[0]?.hiddenHeaderLabels).toEqual(["name"]);
     expect(settings.scalePercent).toBe(100);
     expect(settings.layers[0]?.headerWidths.name).toBe(190);
+    expect(settings.showViewTabs).toBe(false);
     expect(settings.autoHideOutsideCombat).toBe(false);
     expect(settings.autoHideDelaySeconds).toBe(5);
     expect(settings.refreshIntervalMillis).toBe(250);

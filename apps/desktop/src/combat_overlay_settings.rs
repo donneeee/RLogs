@@ -164,6 +164,12 @@ pub struct OverlayLayer {
     /// semantic defaults so layouts saved before row editing remain valid.
     #[serde(default)]
     pub summary_field_rows: BTreeMap<OverlaySummaryField, u8>,
+    /// Unified order for summary values and action controls. Keys use the
+    /// stable `summary:<field>` and `button:<id>` forms.
+    #[serde(default)]
+    pub summary_item_order: Vec<String>,
+    #[serde(default)]
+    pub summary_item_rows: BTreeMap<String, u8>,
     #[serde(default)]
     pub hidden_summary_labels: Vec<OverlaySummaryField>,
     #[serde(default = "default_show_boss_dps")]
@@ -217,6 +223,10 @@ pub struct CombatOverlaySettings {
     /// the Overlay designer.
     #[serde(default = "default_allow_live_resize")]
     pub allow_live_resize: bool,
+    /// Whether the named header-view strip is shown above the meter. The
+    /// Cycle metric control remains available when this compact strip is off.
+    #[serde(default)]
+    pub show_view_tabs: bool,
     #[serde(default = "default_max_visible_players")]
     pub max_visible_players: u8,
     #[serde(default = "default_scale_percent")]
@@ -353,6 +363,7 @@ impl Default for CombatOverlaySettings {
             refresh_interval_millis: default_refresh_interval_millis(),
             dynamic_height: default_dynamic_height(),
             allow_live_resize: default_allow_live_resize(),
+            show_view_tabs: false,
             max_visible_players: default_max_visible_players(),
             scale_percent: default_scale_percent(),
             layers: vec![OverlayLayer {
@@ -375,6 +386,8 @@ impl Default for CombatOverlaySettings {
                 hidden_header_labels: Vec::new(),
                 summary_fields: default_summary_fields(),
                 summary_field_rows: default_summary_field_rows(),
+                summary_item_order: Vec::new(),
+                summary_item_rows: BTreeMap::new(),
                 hidden_summary_labels: Vec::new(),
                 show_boss_dps: default_show_boss_dps(),
                 buttons: vec![
@@ -710,8 +723,52 @@ fn validate(settings: &CombatOverlaySettings) -> Result<(), String> {
                 ));
             }
         }
+        if !layer.summary_item_order.is_empty() || !layer.summary_item_rows.is_empty() {
+            let expected_layout_keys = layer
+                .summary_fields
+                .iter()
+                .map(|field| format!("summary:{}", summary_field_key(*field)))
+                .chain(
+                    layer
+                        .buttons
+                        .iter()
+                        .map(|button| format!("button:{}", button.id)),
+                )
+                .collect::<std::collections::BTreeSet<_>>();
+            let ordered_layout_keys = layer
+                .summary_item_order
+                .iter()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>();
+            if ordered_layout_keys.len() != layer.summary_item_order.len()
+                || ordered_layout_keys != expected_layout_keys
+                || layer.summary_item_rows.len() != expected_layout_keys.len()
+                || layer
+                    .summary_item_rows
+                    .iter()
+                    .any(|(key, row)| !expected_layout_keys.contains(key) || *row >= 8)
+            {
+                return Err(format!(
+                    "Combat Overlay header view {:?} has an invalid unified summary layout",
+                    layer.id
+                ));
+            }
+        }
     }
     Ok(())
+}
+
+fn summary_field_key(field: OverlaySummaryField) -> &'static str {
+    match field {
+        OverlaySummaryField::EncounterTime => "encounter_time",
+        OverlaySummaryField::RunTime => "run_time",
+        OverlaySummaryField::GameTime => "game_time",
+        OverlaySummaryField::TrueTime => "true_time",
+        OverlaySummaryField::Scene => "scene",
+        OverlaySummaryField::TeamDps => "team_dps",
+        OverlaySummaryField::TeamDamage => "team_damage",
+        OverlaySummaryField::BossHealth => "boss_health",
+    }
 }
 
 fn is_hex_color(value: &str) -> bool {
@@ -781,6 +838,7 @@ mod tests {
                 .any(|button| button.action == OverlayButtonAction::ResetEncounter)
         );
         assert!(settings.dynamic_height);
+        assert!(!settings.show_view_tabs);
         assert_eq!(settings.max_visible_players, 20);
         assert_eq!(settings.scale_percent, 100);
         assert!(!settings.live_overlay_enabled);
@@ -890,6 +948,7 @@ mod tests {
         object.remove("barColorOverrides");
         object.remove("numberFormat");
         object.remove("numberFormats");
+        object.remove("showViewTabs");
         object["layers"].as_array_mut().unwrap()[0]
             .as_object_mut()
             .unwrap()
@@ -898,6 +957,14 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("summaryFieldRows");
+        object["layers"].as_array_mut().unwrap()[0]
+            .as_object_mut()
+            .unwrap()
+            .remove("summaryItemOrder");
+        object["layers"].as_array_mut().unwrap()[0]
+            .as_object_mut()
+            .unwrap()
+            .remove("summaryItemRows");
         object["layers"].as_array_mut().unwrap()[0]
             .as_object_mut()
             .unwrap()
@@ -914,10 +981,41 @@ mod tests {
         assert!(settings.bar_color_overrides.is_empty());
         assert_eq!(settings.number_format, OverlayNumberFormat::Detailed);
         assert_eq!(settings.number_formats, OverlayNumberFormats::default());
+        assert!(!settings.show_view_tabs);
         assert_eq!(settings.layers[0].header_widths, default_header_widths());
         assert!(settings.layers[0].summary_field_rows.is_empty());
         assert!(settings.layers[0].show_boss_dps);
         validate(&settings).unwrap();
+    }
+
+    #[test]
+    fn unified_summary_layout_accepts_controls_and_rejects_missing_items() {
+        let mut settings = CombatOverlaySettings::default();
+        let layer = &mut settings.layers[0];
+        layer.summary_item_order = layer
+            .summary_fields
+            .iter()
+            .map(|field| format!("summary:{}", summary_field_key(*field)))
+            .chain(
+                layer
+                    .buttons
+                    .iter()
+                    .map(|button| format!("button:{}", button.id)),
+            )
+            .collect();
+        layer.summary_item_rows = layer
+            .summary_item_order
+            .iter()
+            .map(|key| (key.clone(), 0))
+            .collect();
+        validate(&settings).unwrap();
+
+        settings.layers[0].summary_item_order.pop();
+        assert!(
+            validate(&settings)
+                .unwrap_err()
+                .contains("invalid unified summary layout")
+        );
     }
 
     #[test]

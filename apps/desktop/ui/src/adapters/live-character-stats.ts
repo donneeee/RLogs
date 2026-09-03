@@ -142,7 +142,6 @@ export function resolveLiveCharacterStatFamilies(
         components,
       };
     })
-    .filter((family) => family.components.some((component) => component.currentValue !== 0))
     .sort(
       (left, right) =>
         Number(right.changed) - Number(left.changed) ||
