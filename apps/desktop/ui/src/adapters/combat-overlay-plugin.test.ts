@@ -527,7 +527,7 @@ describe("Combat Overlay plug-in settings", () => {
     expect(nextOverlayHeaderViewId(views, views.at(-1)!.id)).toBe(views[0]!.id);
   });
 
-  it("migrates the cycle timer to a fixed width without fixing other controls", () => {
+  it("normalizes the cycle timer to one immutable width without fixing other controls", () => {
     const settings = editableSummarySettings();
     const layer = parseCombatOverlaySettings({
       ...settings,
@@ -546,6 +546,8 @@ describe("Combat Overlay plug-in settings", () => {
     expect(buttonWidthFor(layer.buttons[1]!)).toBe(0);
     expect(buttonWidthFor({ action: "cycle_timer", width: 0 })).toBe(116);
     expect(buttonWidthFor({ action: "cycle_timer", width: 72 })).toBe(116);
+    expect(buttonWidthFor({ action: "cycle_timer", width: 480 })).toBe(116);
+    expect(layer.buttons[0]?.width).toBe(116);
   });
 
   it("recalculates every rate from the selected visible timer without changing totals", () => {

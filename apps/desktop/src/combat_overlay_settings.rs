@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 const SCHEMA_VERSION: u16 = 1;
 const MAX_SETTINGS_BYTES: u64 = 128 * 1024;
+const FIXED_TIMER_CONTROL_WIDTH: u16 = 116;
 const MAX_LAYERS: usize = 24;
 const MAX_HEADER_FIELDS: usize = 32;
 const MAX_SUMMARY_FIELDS: usize = 8;
@@ -409,7 +410,7 @@ impl Default for CombatOverlaySettings {
                         id: "timer".into(),
                         label: "Encounter".into(),
                         action: OverlayButtonAction::CycleTimer,
-                        width: 116,
+                        width: FIXED_TIMER_CONTROL_WIDTH,
                     },
                     OverlayButton {
                         id: "metric".into(),
@@ -454,8 +455,9 @@ impl CombatOverlaySettingsStore {
 
     pub fn update(
         &mut self,
-        settings: CombatOverlaySettings,
+        mut settings: CombatOverlaySettings,
     ) -> Result<CombatOverlaySettings, String> {
+        ensure_live_switch_controls(&mut settings);
         validate(&settings)?;
         write(&self.path, &settings)?;
         self.settings = settings;
@@ -491,8 +493,8 @@ fn load(path: &Path) -> Result<CombatOverlaySettings, String> {
 fn ensure_live_switch_controls(settings: &mut CombatOverlaySettings) {
     for layer in &mut settings.layers {
         for button in &mut layer.buttons {
-            if button.action == OverlayButtonAction::CycleTimer && button.width == 0 {
-                button.width = 116;
+            if button.action == OverlayButtonAction::CycleTimer {
+                button.width = FIXED_TIMER_CONTROL_WIDTH;
             }
         }
         if layer.buttons.len() < 8
@@ -524,7 +526,7 @@ fn ensure_live_switch_controls(settings: &mut CombatOverlaySettings) {
                     id: unique_button_id(&layer.buttons, "timer"),
                     label: "Encounter".into(),
                     action: OverlayButtonAction::CycleTimer,
-                    width: 116,
+                    width: FIXED_TIMER_CONTROL_WIDTH,
                 },
             );
         }
@@ -756,8 +758,7 @@ fn validate(settings: &CombatOverlaySettings) -> Result<(), String> {
             }
             if button.width > 480
                 || (button.action == OverlayButtonAction::CycleTimer
-                    && button.width != 0
-                    && button.width < 32)
+                    && button.width != FIXED_TIMER_CONTROL_WIDTH)
             {
                 return Err(format!(
                     "Combat Overlay button {:?} has an invalid width",
@@ -1046,7 +1047,7 @@ mod tests {
     }
 
     #[test]
-    fn older_timer_controls_receive_a_fixed_width() {
+    fn timer_controls_are_normalized_to_one_fixed_width() {
         let mut settings = CombatOverlaySettings::default();
         let layer = &mut settings.layers[0];
         layer
@@ -1070,6 +1071,24 @@ mod tests {
             .unwrap();
         assert_eq!(timer.width, 116);
         assert_eq!(visibility.width, 0);
+        validate(&settings).unwrap();
+
+        settings.layers[0]
+            .buttons
+            .iter_mut()
+            .find(|button| button.action == OverlayButtonAction::CycleTimer)
+            .unwrap()
+            .width = 480;
+        ensure_live_switch_controls(&mut settings);
+        assert_eq!(
+            settings.layers[0]
+                .buttons
+                .iter()
+                .find(|button| button.action == OverlayButtonAction::CycleTimer)
+                .unwrap()
+                .width,
+            FIXED_TIMER_CONTROL_WIDTH,
+        );
         validate(&settings).unwrap();
     }
 

@@ -76,7 +76,10 @@ export type OverlayButtonAction =
   | "open_history";
 
 const MIN_OVERLAY_HEIGHT = 80;
-const DEFAULT_TIMER_CONTROL_WIDTH = 116;
+// The clock label changes between Encounter, Game, True, and Run while the
+// overlay is live. Keep its geometry invariant so neither the scene title nor
+// adjacent controls move when the selected clock or its digits change.
+const FIXED_TIMER_CONTROL_WIDTH = 116;
 
 export interface OverlayButton {
   id: string;
@@ -1139,13 +1142,15 @@ export function mountCombatOverlayEditorSurface(
           overlayButton.action,
         );
         const controlWidth = inputField("Width", String(buttonWidthFor(overlayButton)), "number");
-        controlWidth.input.min = overlayButton.action === "cycle_timer"
-          ? String(DEFAULT_TIMER_CONTROL_WIDTH)
+        const timerWidthIsFixed = overlayButton.action === "cycle_timer";
+        controlWidth.input.min = timerWidthIsFixed
+          ? String(FIXED_TIMER_CONTROL_WIDTH)
           : "0";
         controlWidth.input.max = "480";
         controlWidth.input.step = "1";
-        controlWidth.input.title = overlayButton.action === "cycle_timer"
-          ? "The timer keeps a fixed width so changing clocks cannot move the rest of the header."
+        controlWidth.input.disabled = timerWidthIsFixed;
+        controlWidth.input.title = timerWidthIsFixed
+          ? "The timer width is fixed so changing clocks cannot move the rest of the header."
           : "Use 0 for automatic width, or enter a fixed logical-pixel width.";
         label.input.addEventListener("change", () =>
           updateButton(layer.id, overlayButton.id, {
@@ -1157,9 +1162,11 @@ export function mountCombatOverlayEditorSurface(
           updateButton(layer.id, overlayButton.id, {
             ...overlayButton,
             action: action.select.value as OverlayButtonAction,
-            width: action.select.value === "cycle_timer" && overlayButton.width === 0
-              ? DEFAULT_TIMER_CONTROL_WIDTH
-              : overlayButton.width,
+            width: action.select.value === "cycle_timer"
+              ? FIXED_TIMER_CONTROL_WIDTH
+              : overlayButton.action === "cycle_timer"
+                ? 0
+                : overlayButton.width,
           }),
         );
         controlWidth.input.addEventListener("change", () =>
@@ -1167,7 +1174,7 @@ export function mountCombatOverlayEditorSurface(
             ...overlayButton,
             width: clamp(
               Number(controlWidth.input.value),
-              overlayButton.action === "cycle_timer" ? DEFAULT_TIMER_CONTROL_WIDTH : 0,
+              0,
               480,
             ),
           }),
@@ -3440,6 +3447,8 @@ function renderSummaryRows(
         if (fixedWidth > 0) {
           item.style.flex = `0 0 ${fixedWidth}px`;
           item.style.width = `${fixedWidth}px`;
+          item.style.minWidth = `${fixedWidth}px`;
+          item.style.maxWidth = `${fixedWidth}px`;
         }
       }
       if (options.mode === "preview") {
@@ -3474,12 +3483,10 @@ function renderSummaryRows(
             (width) => options.onResizeSummary?.(layer.id, field, width),
           );
           item.append(resize);
-        } else if (control !== undefined) {
+        } else if (control !== undefined && control.action !== "cycle_timer") {
           const resize = text("span", "", "combat-overlay-summary-resize");
           resize.dataset.width = `${buttonWidthFor(control)} px`;
-          resize.title = control.action === "cycle_timer"
-            ? "Drag to resize the fixed timer control."
-            : "Drag to resize this control. Set its width to 0 in the inspector for automatic sizing.";
+          resize.title = "Drag to resize this control. Set its width to 0 in the inspector for automatic sizing.";
           resize.dataset.noWindowDrag = "true";
           wireButtonResize(
             resize,
@@ -4625,7 +4632,7 @@ function wireButtonResize(
     let moved = false;
     handle.classList.add("is-resizing");
     const move = (next: PointerEvent) => {
-      const minimum = control.action === "cycle_timer" ? DEFAULT_TIMER_CONTROL_WIDTH : 32;
+      const minimum = control.action === "cycle_timer" ? FIXED_TIMER_CONTROL_WIDTH : 32;
       nextWidth = Math.round(clamp(startWidth + (next.clientX - startX) / scale, minimum, 480));
       moved ||= Math.abs(next.clientX - startX) >= 2;
       handle.dataset.width = `${nextWidth} px`;
@@ -4904,9 +4911,11 @@ function normalizeLayerValue(value: unknown): unknown {
   const buttons = Array.isArray(value.buttons)
     ? value.buttons.filter(isOverlayButtonValue).map((button) => ({
         ...button,
-        width: Number.isInteger(button.width)
-          ? Number(button.width)
-          : defaultButtonWidth(button.action),
+        width: button.action === "cycle_timer"
+          ? FIXED_TIMER_CONTROL_WIDTH
+          : Number.isInteger(button.width)
+            ? Number(button.width)
+            : defaultButtonWidth(button.action),
       }))
     : [];
   const isLegacySummaryLayout = !Array.isArray(value.summaryItemOrder);
@@ -5333,12 +5342,12 @@ function summaryFieldWidthFor(layer: OverlayLayer, field: OverlaySummaryField): 
 }
 
 export function buttonWidthFor(button: Pick<OverlayButton, "action" | "width">): number {
-  const minimum = button.action === "cycle_timer" ? DEFAULT_TIMER_CONTROL_WIDTH : 0;
-  return Math.round(clamp(button.width ?? defaultButtonWidth(button.action), minimum, 480));
+  if (button.action === "cycle_timer") return FIXED_TIMER_CONTROL_WIDTH;
+  return Math.round(clamp(button.width ?? defaultButtonWidth(button.action), 0, 480));
 }
 
 function defaultButtonWidth(action: OverlayButtonAction): number {
-  return action === "cycle_timer" ? DEFAULT_TIMER_CONTROL_WIDTH : 0;
+  return action === "cycle_timer" ? FIXED_TIMER_CONTROL_WIDTH : 0;
 }
 
 function headerWidth(
