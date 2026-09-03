@@ -601,7 +601,7 @@ impl SubmissionService {
 
         let report_id = report_id(&sealed_digest);
         let created_unix_millis = unix_millis()?;
-        let report = build_public_report(
+        let mut report = build_public_report(
             &assembled,
             &manifest,
             &artifact,
@@ -609,6 +609,18 @@ impl SubmissionService {
             created_unix_millis,
             owner.public_provenance(),
         )?;
+        // Account consent is evaluated only after the immutable artifact has
+        // passed privacy verification and server replay. It can promote this
+        // verified projection to public, but it never weakens those gates.
+        if let Some(submitter_id) = owner.submitter_id.as_deref() {
+            if self
+                .inner
+                .accounts
+                .publishes_verified_parses(submitter_id)?
+            {
+                report.visibility = verified_report_visibility(report.visibility, true);
+            }
+        }
 
         let artifact_path = self.artifact_path(&sealed_digest)?;
         if let Some(parent) = artifact_path.parent() {
@@ -1809,6 +1821,17 @@ impl SubmissionService {
     }
 }
 
+fn verified_report_visibility(
+    requested: ReportVisibility,
+    publish_verified_parses: bool,
+) -> ReportVisibility {
+    if publish_verified_parses {
+        ReportVisibility::Public
+    } else {
+        requested
+    }
+}
+
 pub fn router(service: SubmissionService) -> Router {
     Router::new()
         .route("/health", get(health))
@@ -1821,6 +1844,10 @@ pub fn router(service: SubmissionService) -> Router {
         )
         .route("/v1/auth/session/exchange", post(exchange_auth_code))
         .route("/v1/auth/me", get(get_account).patch(update_account))
+        .route(
+            "/v1/auth/me/parse-publication",
+            patch(update_parse_publication_preference),
+        )
         .route("/v1/auth/device", get(get_device_account))
         .route("/v1/auth/profiles", get(get_account_profiles))
         .route("/v1/auth/parses", get(get_account_parses))
@@ -1951,6 +1978,21 @@ async fn update_account(
         &request.username,
         unix_millis()?,
     )?))
+}
+
+async fn update_parse_publication_preference(
+    State(service): State<SubmissionService>,
+    headers: HeaderMap,
+    Json(request): Json<UpdateParsePublicationPreferenceRequest>,
+) -> Result<Json<AccountView>, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    Ok(Json(
+        service.inner.accounts.update_publish_verified_parses(
+            token,
+            request.publish_verified_parses,
+            unix_millis()?,
+        )?,
+    ))
 }
 
 async fn get_device_account(
@@ -2386,6 +2428,12 @@ struct LoginCodeExchangeRequest {
 #[serde(deny_unknown_fields)]
 struct UpdateAccountRequest {
     username: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateParsePublicationPreferenceRequest {
+    publish_verified_parses: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -5469,6 +5517,18 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn account_opt_in_promotes_only_verified_projection_visibility() {
+        assert_eq!(
+            verified_report_visibility(ReportVisibility::Unlisted, true),
+            ReportVisibility::Public
+        );
+        assert_eq!(
+            verified_report_visibility(ReportVisibility::Private, false),
+            ReportVisibility::Private
+        );
+    }
 
     #[test]
     fn interrupted_upload_is_bound_to_one_device_identity() {

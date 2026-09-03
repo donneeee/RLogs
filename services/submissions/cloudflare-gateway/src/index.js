@@ -6,6 +6,7 @@ const PUBLIC_ROUTES = [
   ["POST", /^\/v1\/auth\/discord\/complete$/],
   ["GET", /^\/v1\/auth\/me$/],
   ["PATCH", /^\/v1\/auth\/me$/],
+  ["PATCH", /^\/v1\/auth\/me\/parse-publication$/],
   ["GET", /^\/v1\/auth\/device$/],
   ["GET", /^\/v1\/auth\/profiles$/],
   ["GET", /^\/v1\/auth\/parses$/],

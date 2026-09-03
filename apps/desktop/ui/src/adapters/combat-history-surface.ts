@@ -218,6 +218,147 @@ function historyActorByIdentity(
   return actorIdMatches.length === 1 ? actorIdMatches[0] : undefined;
 }
 
+const ENCORE_EFFECT_ID = "55333";
+const ENCORE_DAMAGE_ACTION_IDS = new Set(["230401", "230501"]);
+
+/** Builds the skill-ownership view without changing the immutable raw totals. */
+export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSummary[] {
+  const actors = view.actors.map((actor) => ({
+    ...actor,
+    abilities: actor.abilities.map((ability) => ({
+      ...ability,
+      targets: ability.targets.map((target) => ({ ...target })),
+    })),
+  }));
+  const exactActor = (actorId: string, entityUuid: string) => actors.find(
+    (actor) => actor.actor_id === actorId && actor.entity_uuid === entityUuid,
+  );
+  type Movement = {
+    providerActorId: string;
+    providerEntityUuid: string;
+    damage: bigint;
+    events: number;
+    targets: Map<string, { actorId: string; entityUuid: string; damage: bigint; events: number }>;
+  };
+  const movements = new Map<string, Map<string, Movement>>();
+  for (const influence of view.damage_influences) {
+    if (
+      influence.effect_id !== ENCORE_EFFECT_ID ||
+      !influence.complete_effect ||
+      !influence.damage_context_complete ||
+      influence.provider_actor_id === influence.recipient_actor_id ||
+      !influence.affected_ability_id ||
+      !ENCORE_DAMAGE_ACTION_IDS.has(influence.affected_ability_id) ||
+      influence.attributed_rdps === null ||
+      !/^\d+$/u.test(influence.attributed_rdps)
+    ) continue;
+    const amount = BigInt(influence.attributed_rdps);
+    if (amount <= 0n) continue;
+    const recipientKey = [
+      influence.recipient_actor_id,
+      influence.recipient_entity_uuid,
+      influence.affected_ability_id,
+    ].join("\0");
+    const providerKey = [influence.provider_actor_id, influence.provider_entity_uuid].join("\0");
+    const providers = movements.get(recipientKey) ?? new Map<string, Movement>();
+    const movement = providers.get(providerKey) ?? {
+      providerActorId: influence.provider_actor_id,
+      providerEntityUuid: influence.provider_entity_uuid,
+      damage: 0n,
+      events: 0,
+      targets: new Map(),
+    };
+    movement.damage += amount;
+    movement.events += influence.damage_event_count;
+    if (influence.target_actor_id && influence.target_entity_uuid) {
+      const targetKey = `${influence.target_actor_id}\0${influence.target_entity_uuid}`;
+      const target = movement.targets.get(targetKey) ?? {
+        actorId: influence.target_actor_id,
+        entityUuid: influence.target_entity_uuid,
+        damage: 0n,
+        events: 0,
+      };
+      target.damage += amount;
+      target.events += influence.damage_event_count;
+      movement.targets.set(targetKey, target);
+    }
+    providers.set(providerKey, movement);
+    movements.set(recipientKey, providers);
+  }
+
+  const providerMovements = new Map<string, Movement[]>();
+  for (const [recipientKey, providers] of movements) {
+    const [recipientActorId, recipientEntityUuid, actionId] = recipientKey.split("\0");
+    if (!recipientActorId || recipientEntityUuid === undefined || !actionId) continue;
+    const recipient = exactActor(recipientActorId, recipientEntityUuid);
+    const ability = recipient?.abilities.find((candidate) => candidate.ability_id === actionId);
+    if (!ability || !Number.isSafeInteger(ability.damage)) continue;
+    const moved = [...providers.values()].reduce((sum, movement) => sum + movement.damage, 0n);
+    if (moved !== BigInt(ability.damage)) continue;
+    recipient!.abilities = recipient!.abilities.filter((candidate) => candidate !== ability);
+    for (const movement of providers.values()) {
+      const key = `${movement.providerActorId}\0${movement.providerEntityUuid}`;
+      const rows = providerMovements.get(key) ?? [];
+      rows.push(movement);
+      providerMovements.set(key, rows);
+    }
+  }
+
+  const effect = historyRdpsEffectPresentation(view, ENCORE_EFFECT_ID);
+  for (const [providerKey, rows] of providerMovements) {
+    const [providerActorId, providerEntityUuid] = providerKey.split("\0");
+    if (!providerActorId || providerEntityUuid === undefined) continue;
+    const provider = exactActor(providerActorId, providerEntityUuid);
+    if (!provider) continue;
+    const damage = rows.reduce((sum, row) => sum + row.damage, 0n);
+    const events = rows.reduce((sum, row) => sum + row.events, 0);
+    const numericDamage = Number(damage);
+    if (!Number.isSafeInteger(numericDamage)) continue;
+    const targets = new Map<string, { actorId: string; entityUuid: string; damage: bigint; events: number }>();
+    for (const row of rows) for (const [key, incoming] of row.targets) {
+      const target = targets.get(key) ?? { ...incoming, damage: 0n, events: 0 };
+      target.damage += incoming.damage;
+      target.events += incoming.events;
+      targets.set(key, target);
+    }
+    provider.abilities.push({
+      ability_id: `support-effect:${ENCORE_EFFECT_ID}`,
+      presentation_name: effect?.presentation_name ?? "Encore",
+      presentation_kind: "support-generated-damage",
+      presentation_resolution: effect?.presentation_resolution ?? "reviewed-source-name",
+      icon_asset_path: effect?.icon_asset_path ?? null,
+      presentation_recount_group_id: null,
+      presentation_recount_group_name: null,
+      casts: 0,
+      hits: events,
+      critical_hits: 0,
+      damage: numericDamage,
+      effective_damage: numericDamage,
+      healing: 0,
+      effective_healing: 0,
+      shielding: 0,
+      dps: perSecond(numericDamage, view.elapsed_micros),
+      encounter_dps: perSecond(numericDamage, view.active_combat_micros),
+      hps: 0,
+      targets: [...targets.values()].flatMap((target) => {
+        const targetDamage = Number(target.damage);
+        return Number.isSafeInteger(targetDamage) ? [{
+          actor_id: target.actorId,
+          entity_uuid: target.entityUuid,
+          damage: targetDamage,
+          effective_damage: targetDamage,
+          healing: 0,
+          effective_healing: 0,
+          shielding: 0,
+          hits: target.events,
+          critical_hits: 0,
+        }] : [];
+      }),
+    });
+  }
+  return actors;
+}
+
 export function incomingDamageSourceGroups(
   view: CombatHistoryView,
   victim: HistoryActorSummary,
@@ -1702,11 +1843,16 @@ export function mountCombatHistorySurface(
       abilitySortKey = detailMode === "healing" ? "hps" : "damage";
       abilitySortDirection = "descending";
     }
+    const skillActor = detailMode === "damage"
+      ? historyOwnedSkillActors(view).find((candidate) =>
+        candidate.actor_id === actor.actor_id && candidate.entity_uuid === actor.entity_uuid
+      ) ?? actor
+      : actor;
     const card = element("section", "content-card combat-history-skill-card");
     card.append(
       element("div", "card-heading",
         element("h2", "", detailMode === "healing" ? "Healing and shielding" : "Skills"),
-        element("span", "", targetActorId ? "Target-filtered" : `${actor.abilities.length} observed abilities`),
+        element("span", "", targetActorId ? "Target-filtered" : `${skillActor.abilities.length} owned abilities`),
       ),
     );
     const scroller = element("div", "meter-table-scroll");
@@ -1756,7 +1902,7 @@ export function mountCombatHistorySurface(
     );
     const unmappedRdps = rdpsBreakdown.receivedSkills.find((skill) => skill.abilityId === null);
     const displayedAbilities = [
-      ...actor.abilities.map((ability) => displayedAbility(
+      ...skillActor.abilities.map((ability) => displayedAbility(
         ability,
         view,
         targetActorId,

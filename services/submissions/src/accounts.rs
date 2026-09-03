@@ -81,6 +81,8 @@ pub struct AccountView {
     pub discord_username: String,
     pub discord_global_name: Option<String>,
     pub discord_avatar_url: Option<String>,
+    /// Account-level consent to publish future server-verified parse reports.
+    pub publish_verified_parses: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -125,6 +127,8 @@ struct AccountRecord {
     discord_username: String,
     discord_global_name: Option<String>,
     discord_avatar_url: Option<String>,
+    #[serde(default)]
+    publish_verified_parses: bool,
     created_unix_millis: u64,
     updated_unix_millis: u64,
 }
@@ -488,6 +492,29 @@ impl AccountStore {
         account_view(record)
     }
 
+    pub fn update_publish_verified_parses(
+        &self,
+        web_token: &str,
+        publish_verified_parses: bool,
+        now: u64,
+    ) -> Result<AccountView, AccountError> {
+        let account = self.authenticate_web(web_token, now)?;
+        let _write = self.write_guard();
+        let path = self
+            .root
+            .join("users")
+            .join(format!("{}.json", account.submitter_id));
+        let mut record: AccountRecord = read_json(&path)?.ok_or(AccountError::Unauthorized)?;
+        record.publish_verified_parses = publish_verified_parses;
+        record.updated_unix_millis = now;
+        write_json_atomic(&path, &record)?;
+        account_view(record)
+    }
+
+    pub fn publishes_verified_parses(&self, submitter_id: &str) -> Result<bool, AccountError> {
+        Ok(self.account(submitter_id)?.publish_verified_parses)
+    }
+
     pub fn public_identity(
         &self,
         account_id: u64,
@@ -551,6 +578,9 @@ impl AccountStore {
             discord_username: discord.username,
             discord_global_name: discord.global_name,
             discord_avatar_url: avatar_url,
+            publish_verified_parses: existing
+                .as_ref()
+                .is_some_and(|value| value.publish_verified_parses),
             created_unix_millis: existing
                 .as_ref()
                 .map_or(now, |value| value.created_unix_millis),
@@ -801,6 +831,7 @@ fn account_view(record: AccountRecord) -> Result<AccountView, AccountError> {
         discord_username: record.discord_username,
         discord_global_name: record.discord_global_name,
         discord_avatar_url: record.discord_avatar_url,
+        publish_verified_parses: record.publish_verified_parses,
     })
 }
 
@@ -990,6 +1021,52 @@ mod tests {
         assert!(validate_username("../private").is_err());
         assert!(validate_username("-leading").is_err());
         assert!(validate_username("ab").is_err());
+    }
+
+    #[test]
+    fn verified_parse_publication_is_explicit_and_persisted() {
+        let root = tempfile::tempdir().unwrap();
+        let store = AccountStore::open(root.path().into(), Some(configuration())).unwrap();
+        let account = store
+            .upsert_discord_user(
+                DiscordUserResponse {
+                    id: "discord-public-parses".into(),
+                    username: "parser".into(),
+                    global_name: None,
+                    avatar: None,
+                },
+                10,
+            )
+            .unwrap();
+        assert!(!account.publish_verified_parses);
+        let web_token = random_token("rlw");
+        let web_hash = token_hash(
+            "web-session",
+            &web_token,
+            &store.configuration().unwrap().token_pepper,
+        );
+        write_json_new(
+            &root
+                .path()
+                .join("web-sessions")
+                .join(format!("{web_hash}.json")),
+            &ExpiringIdentityRecord {
+                schema_version: 1,
+                submitter_id: account.submitter_id.clone(),
+                expires_unix_millis: 1_000,
+            },
+        )
+        .unwrap();
+
+        let updated = store
+            .update_publish_verified_parses(&web_token, true, 20)
+            .unwrap();
+        assert!(updated.publish_verified_parses);
+        assert!(
+            store
+                .publishes_verified_parses(&account.submitter_id)
+                .unwrap()
+        );
     }
 
     #[test]
