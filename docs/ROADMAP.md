@@ -49,6 +49,11 @@
   lookups for other characters;
 - rDPS and support contribution ledger;
 - overlays and local integrations;
+- [planned] build a modular HUD-replacement setup from movable overlay widgets,
+  including player/action controls, an authoritative target frame, controller
+  hold-to-focus scaling, a mechanics-aware map, and permissioned local chat
+  tabs; the staged evidence and delivery gates are defined in
+  [`HUD_REPLACEMENT.md`](HUD_REPLACEMENT.md);
 - [done] build verified sealed-log upload artifacts with deterministic
   resumable chunks and atomically persist real captures as local unlisted
   drafts;

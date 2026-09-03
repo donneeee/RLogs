@@ -36,6 +36,12 @@ embed or silently replace the destination's visual configuration.
 6. **Settings** — general behavior, performance, hotkeys, accessibility, and
    localization.
 
+The long-term full-HUD replacement remains part of this Overlay workspace. It
+is a Setup Profile composed from ordinary movable modules, not a separate
+fixed overlay. Its controller focus mode, target frame, mechanics map, local
+asset boundary, and chat-tab milestones are specified in
+[`HUD_REPLACEMENT.md`](HUD_REPLACEMENT.md).
+
 Combat Stats is the first working tracker. It long-polls a bounded native feed,
 shows the latest complete snapshot separately from temporary packet-observed
 changes, and exposes only localized members of the exact 906-member catalog for
