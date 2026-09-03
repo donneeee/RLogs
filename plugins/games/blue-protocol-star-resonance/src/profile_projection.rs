@@ -31,6 +31,11 @@ const CHARACTER_SHEET_REFRESH_REQUIRED_ATTRIBUTE_IDS: [i32; 11] = [
     11_030, 11_040, 11_320, 11_330, 11_440, 11_710, 11_720, 11_730, 11_930, 12_510, 12_530,
 ];
 
+/// Final lanes whose protocol-default zero is omitted by the current-build
+/// character-sheet refresh. These defaults are added only after the complete
+/// refresh signature above is present; an explicit observed value always wins.
+const CHARACTER_SHEET_SPARSE_ZERO_ATTRIBUTE_IDS: [i32; 1] = [11_970];
+
 /// Current local-player stats for Overlay consumers.
 ///
 /// `snapshot_values` is the authoritative raw baseline used to seed the
@@ -526,12 +531,17 @@ fn is_complete_character_sheet_refresh(values: &BTreeMap<i32, i64>) -> bool {
 fn apply_character_stat_update(
     state: &mut PendingCharacterStats,
     update_kind: EntityAttributeUpdateKind,
-    values: BTreeMap<i32, i64>,
+    mut values: BTreeMap<i32, i64>,
     is_character_sheet_refresh: bool,
     event_sequence: u64,
     game_time_millis: Option<i64>,
 ) -> bool {
     let before = state.clone();
+    if is_character_sheet_refresh {
+        for attribute_id in CHARACTER_SHEET_SPARSE_ZERO_ATTRIBUTE_IDS {
+            values.entry(attribute_id).or_insert(0);
+        }
+    }
     if update_kind == EntityAttributeUpdateKind::Snapshot {
         state.snapshot_values.clone_from(&values);
         state.current_values.clone_from(&values);
@@ -1259,6 +1269,7 @@ mod tests {
         assert_eq!(live.snapshot_values.get(&11_040), Some(&42_743));
         assert_eq!(live.snapshot_values.get(&11_320), Some(&319_935));
         assert_eq!(live.snapshot_values.get(&11_330), Some(&5_933));
+        assert_eq!(live.snapshot_values.get(&11_970), Some(&0));
         assert_eq!(live.current_values.get(&11_320), Some(&348_303));
         assert_eq!(live.current_values.get(&11_330), Some(&6_074));
         let packages = projection
@@ -1280,6 +1291,31 @@ mod tests {
             packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11330"],
             5_933
         );
+        assert_eq!(
+            packages[0].request.payload.body["combat_stats"]["snapshot_values"]["11970"],
+            0
+        );
+    }
+
+    #[test]
+    fn complete_local_sync_batch_preserves_an_explicit_nonzero_block_value() {
+        let mut state = PendingCharacterStats::default();
+        let mut values = CHARACTER_SHEET_REFRESH_REQUIRED_ATTRIBUTE_IDS
+            .into_iter()
+            .map(|attribute_id| (attribute_id, 1))
+            .collect::<BTreeMap<_, _>>();
+        values.insert(11_970, 375);
+
+        assert!(apply_character_stat_update(
+            &mut state,
+            EntityAttributeUpdateKind::Delta,
+            values,
+            true,
+            1,
+            Some(1),
+        ));
+        assert_eq!(state.snapshot_values.get(&11_970), Some(&375));
+        assert_eq!(state.profile_values.get(&11_970), Some(&375));
     }
 
     #[test]

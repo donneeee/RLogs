@@ -20,7 +20,10 @@ use windows_sys::Win32::{
         },
         Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW},
     },
-    UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
+    UI::{
+        Shell::ShellExecuteW,
+        WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId, SW_SHOWNORMAL},
+    },
 };
 
 use rlogs_desktop_host::{
@@ -80,6 +83,43 @@ fn quit_rlogs(app: tauri::AppHandle) {
     // slower capture finalization. Waiting here blocks the invoke thread and
     // makes the custom Close button appear to do nothing.
     app.exit(0);
+}
+
+#[tauri::command]
+fn open_release_notes(app: tauri::AppHandle) -> Result<(), String> {
+    let url = format!(
+        "https://github.com/donneeee/RLogs/releases/tag/v{}",
+        app.package_info().version
+    );
+    #[cfg(windows)]
+    {
+        let operation = "open\0".encode_utf16().collect::<Vec<_>>();
+        let target = format!("{url}\0").encode_utf16().collect::<Vec<_>>();
+        // SAFETY: Both strings are NUL-terminated and remain alive for the
+        // synchronous ShellExecuteW call. No user-controlled command is run.
+        let result = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                operation.as_ptr(),
+                target.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        if result as isize <= 32 {
+            return Err(format!(
+                "Windows could not open the release notes ({result:p})"
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        Err(format!(
+            "Opening release notes is unsupported on this platform: {url}"
+        ))
+    }
 }
 
 #[derive(Default)]
@@ -676,6 +716,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .invoke_handler(tauri::generate_handler![
             quit_rlogs,
+            open_release_notes,
             show_event_inspector,
             show_combat_overlay,
             set_combat_overlay_enabled,

@@ -3,6 +3,7 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "quit_rlogs",
+            "open_release_notes",
             "show_event_inspector",
             "show_combat_overlay",
             "set_combat_overlay_enabled",

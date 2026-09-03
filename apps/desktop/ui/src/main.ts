@@ -10,6 +10,7 @@ import { DesktopShell } from "./shell/desktop-shell";
 import { installInterfaceZoom } from "./shell/ui-zoom";
 import { mountCombatOverlayRuntimeApp } from "../../../../plugins/builtin/desktop/combat-overlay/ui/combat-overlay";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 
 const root = document.querySelector<HTMLElement>("#app");
@@ -111,6 +112,7 @@ if (isCombatOverlayRuntime) {
   installInterfaceZoom();
   const adapter =
     (await createLocalHostAdapterIfAvailable()) ?? createDevelopmentAdapter();
-  const shell = new DesktopShell(root, adapter);
+  const applicationVersion = await getVersion().catch(() => "development");
+  const shell = new DesktopShell(root, adapter, applicationVersion);
   void shell.start();
 }

@@ -66,13 +66,9 @@ jobs:
           $body = @(
             "rLogs v$version"
             ""
-            "- Captures the current-build complete raw local character-sheet refresh, including Endurance, for exact website profile totals."
-            "- Keeps later combat attribute deltas ephemeral for the live Stats overlay instead of persisting temporary changes to profiles."
-            "- Presents the eleven main raw stats first and keeps incomplete catalog-known stats visibly marked as not observed."
-            "- Makes Metric cycle switch complete DPS, HPS, TPS, and rDPS header views instead of only changing the sort column."
-            "- Makes Timer cycle recalculate displayed rates against Encounter, Game, True, or Run time while preserving exact totals."
-            "- Lets every summary value and action control share the same movable rows, with named view tabs optional and off by default."
-            "- Fixes the overlay Hide action so one click updates native visibility state before hiding the window."
+            "- Treats an omitted Block lane in a complete raw character-sheet refresh as the protocol-default 0%, while preserving any explicit nonzero value."
+            "- Shows the actual installed rLogs version in persistent app chrome and opens the matching GitHub release notes when clicked."
+            "- Shows every workspace plug-in version in the sidebar and distinguishes it from the app version."
             ""
             "Installer SHA-256: $sha256"
           ) -join [Environment]::NewLine

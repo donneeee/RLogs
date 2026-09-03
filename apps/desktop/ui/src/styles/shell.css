@@ -1402,6 +1402,25 @@ button:focus-visible,
   text-transform: uppercase;
 }
 
+.application-version {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--cyan);
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.application-version:hover,
+.application-version:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .development-badge {
   flex: 0 0 auto;
   margin-left: auto;

@@ -14,6 +14,8 @@ import {
   readWorkspaceNavigationRequest,
   WORKSPACE_NAVIGATION_EVENT,
 } from "./workspace-navigation";
+import { displayVersion, releaseNotesUrl } from "./app-version";
+import { invoke } from "@tauri-apps/api/core";
 import type {
   DesktopHostAdapter,
   EngineState,
@@ -105,6 +107,7 @@ type PointerDragState =
 export class DesktopShell {
   readonly #root: HTMLElement;
   readonly #adapter: DesktopHostAdapter;
+  readonly #applicationVersion: string;
   #workspaces = new Map<string, WorkspaceDescriptor>();
   #order: string[] = [];
   #activeWorkspaceId: string | null = null;
@@ -136,9 +139,14 @@ export class DesktopShell {
     detail: "Waiting for the native runtime.",
   };
 
-  constructor(root: HTMLElement, adapter: DesktopHostAdapter) {
+  constructor(
+    root: HTMLElement,
+    adapter: DesktopHostAdapter,
+    applicationVersion: string,
+  ) {
     this.#root = root;
     this.#adapter = adapter;
+    this.#applicationVersion = applicationVersion;
     window.addEventListener("rlogs:layout-settings-changed", (event) => {
       const preferences = (event as CustomEvent<ShellPreferences>).detail;
       this.#order = mergeWorkspaceOrder(
@@ -250,7 +258,7 @@ export class DesktopShell {
           <div class="brand-mark" aria-hidden="true">rL</div>
           <div class="brand-copy">
             <strong>rLogs</strong>
-            <span>Desktop</span>
+            <span class="brand-product-line">Desktop</span>
           </div>
           <span class="development-badge"></span>
         </div>
@@ -290,6 +298,25 @@ export class DesktopShell {
       "aria-label",
       `${this.#adapter.modeLabel}: rLogs is connected to the app running on this computer.`,
     );
+    const productLine = requireElement(shell, ".brand-product-line");
+    const version = element("button", "application-version");
+    version.type = "button";
+    version.textContent = displayVersion(this.#applicationVersion);
+    version.title = `Open release notes for rLogs ${displayVersion(this.#applicationVersion)}`;
+    version.setAttribute(
+      "aria-label",
+      `Open GitHub release notes for rLogs ${displayVersion(this.#applicationVersion)}`,
+    );
+    version.addEventListener("click", () => {
+      void invoke("open_release_notes").catch(() => {
+        window.open(
+          releaseNotesUrl(this.#applicationVersion),
+          "_blank",
+          "noopener,noreferrer",
+        );
+      });
+    });
+    productLine.append(" · ", version);
     this.#root.append(shell);
     wireNativeWindowChrome(shell);
     this.#renderEngineState();
@@ -437,8 +464,8 @@ export class DesktopShell {
       const detail = document.createElement("small");
       detail.textContent =
         workspace.tabs.length === 1
-          ? workspace.tabs[0]?.label ?? "Workspace"
-          : `${workspace.tabs.length} tabs`;
+          ? `v${workspace.version} · ${workspace.tabs[0]?.label ?? "Workspace"}`
+          : `v${workspace.version} · ${workspace.tabs.length} tabs`;
       copy.append(name, detail);
 
       const dragHandle = element("span", "drag-handle");
@@ -584,7 +611,9 @@ export class DesktopShell {
     const content = this.#prepareMain(
       workspace.name,
       workspace.description,
-      `v${workspace.version}`,
+      workspace.id === SETTINGS_WORKSPACE_ID
+        ? "Host settings"
+        : `Plug-in v${workspace.version}`,
     );
     const activeTab = this.#resolveActiveTab(workspace);
 
