@@ -44,6 +44,10 @@ pub struct RunReducerConfig {
     /// Exact-build game rules keyed by observed scene ID. Only the active
     /// scene's small rule is consulted; static game-data catalogs remain lazy.
     pub scene_rules: BTreeMap<i32, SceneRunRule>,
+    /// Game-owned monster identities whose authoritative static tier is Boss.
+    /// A non-empty scene allowlist takes precedence; this catalog is the
+    /// fallback for reviewed scenes that do not yet need a narrower list.
+    pub authoritative_boss_monster_ids: BTreeSet<i64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -531,7 +535,7 @@ impl RunSessionReducer {
                 .into_iter()
                 .flatten()
                 .filter_map(|actor| actor.monster_id)
-                .any(|monster_id| rule.boss_monster_ids.contains(&monster_id));
+                .any(|monster_id| self.is_boss_monster(&rule, monster_id));
         if !boss_involved && !hostile_pair {
             return;
         }
@@ -571,12 +575,22 @@ impl RunSessionReducer {
         };
         let boss_died = self
             .active_rule()
-            .is_some_and(|rule| rule.boss_monster_ids.contains(&monster_id));
+            .is_some_and(|rule| self.is_boss_monster(rule, monster_id));
         if boss_died
             && let Some(run) = &mut self.current
             && run.active_segment_kind() == Some(RunSegmentKind::Boss)
         {
             run.end_encounter(EncounterTerminalState::Cleared, observed_micros, false);
+        }
+    }
+
+    fn is_boss_monster(&self, rule: &SceneRunRule, monster_id: i64) -> bool {
+        if rule.boss_monster_ids.is_empty() {
+            self.config
+                .authoritative_boss_monster_ids
+                .contains(&monster_id)
+        } else {
+            rule.boss_monster_ids.contains(&monster_id)
         }
     }
 
@@ -1750,6 +1764,132 @@ mod tests {
         );
         assert_eq!(run.encounters[1].active_combat_micros, 4_000_000);
         assert_eq!(run.timing.active_combat_micros, 6_000_000);
+    }
+
+    #[test]
+    fn authoritative_monster_tier_opens_boss_phase_without_a_scene_id_allowlist() {
+        let scene_rule = SceneRunRule {
+            scene_id: 6_545,
+            runtime_enabled: true,
+            activity_kind: ActivityKind::Dungeon,
+            activity_id: "scene.6545".into(),
+            activity_family_id: Some("dungeon.6545".into()),
+            activity_localization_key: Some("scene.6545.name".into()),
+            difficulty_family: Some("master".into()),
+            difficulty_localization_key: None,
+            difficulty_tier_range: None,
+            route_id: None,
+            raid_route_kind: None,
+            partition: None,
+            candidate_dungeon_ids: [6_545].into_iter().collect(),
+            mobbing_encounter_id: Some("scene.6545.mobbing".into()),
+            boss_encounter_id: Some("scene.6545.boss".into()),
+            boss_monster_ids: BTreeSet::new(),
+            objective_rules: BTreeMap::from([(
+                6_541_003,
+                crate::DungeonObjectiveRule {
+                    role: crate::DungeonObjectiveRole::BossPhaseGate,
+                    on_complete: CompletedObjectiveAction::EnterBossSegment,
+                },
+            )]),
+            evidence: Vec::new(),
+        };
+        let mut explicitly_narrowed_rule = scene_rule.clone();
+        explicitly_narrowed_rule.boss_monster_ids.insert(33_701);
+        let narrowed_reducer = RunSessionReducer::new(RunReducerConfig {
+            authoritative_boss_monster_ids: BTreeSet::from([33_801]),
+            ..RunReducerConfig::default()
+        });
+        assert!(narrowed_reducer.is_boss_monster(&explicitly_narrowed_rule, 33_701));
+        assert!(!narrowed_reducer.is_boss_monster(&explicitly_narrowed_rule, 33_801));
+
+        let mut reducer = RunSessionReducer::new(RunReducerConfig {
+            scene_rules: BTreeMap::from([(6_545, scene_rule)]),
+            authoritative_boss_monster_ids: BTreeSet::from([33_801]),
+            ..RunReducerConfig::default()
+        });
+        let mut events = factory();
+        let player = EntityRef {
+            actor_id: ActorId(1),
+            entity_uuid: EntityUuid(100),
+        };
+        let mob = EntityRef {
+            actor_id: ActorId(2),
+            entity_uuid: EntityUuid(200),
+        };
+        let boss = EntityRef {
+            actor_id: ActorId(3),
+            entity_uuid: EntityUuid(300),
+        };
+
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(6_545)),
+                map_id: None,
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            actor(1, 100, ActorKind::Player, None),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            actor(2, 200, ActorKind::Monster, None),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            1_000_000,
+            dungeon(DungeonEventKind::Started, "mistveil"),
+        );
+        emit(&mut reducer, &mut events, 2_000_000, damage(player, mob));
+
+        let mut boss_gate = match dungeon(DungeonEventKind::ObjectiveUpdated, "mistveil") {
+            CanonicalEventDraftKind::Dungeon(event) => event,
+            _ => unreachable!(),
+        };
+        boss_gate.objective_map_key = Some(6_541_003);
+        boss_gate.objective_complete = Some(true);
+        emit(
+            &mut reducer,
+            &mut events,
+            4_000_000,
+            CanonicalEventDraftKind::Dungeon(boss_gate),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            6_000_000,
+            actor(3, 300, ActorKind::Monster, Some(33_801)),
+        );
+        emit(&mut reducer, &mut events, 8_000_000, damage(player, boss));
+        emit(
+            &mut reducer,
+            &mut events,
+            10_000_000,
+            dungeon(DungeonEventKind::Completed, "mistveil"),
+        );
+
+        let run = &reducer.finish()[0];
+        assert_eq!(run.segments.len(), 2);
+        assert_eq!(run.segments[0].kind, RunSegmentKind::Mobbing);
+        assert_eq!(run.segments[0].ended_micros, 4_000_000);
+        assert_eq!(run.segments[1].kind, RunSegmentKind::Boss);
+        assert_eq!(run.segments[1].started_micros, 8_000_000);
+        assert_eq!(
+            run.encounters[1].encounter_id.as_deref(),
+            Some("scene.6545.boss")
+        );
     }
 
     #[test]

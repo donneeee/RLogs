@@ -43,6 +43,10 @@ fn boss_monster_catalog() -> Result<&'static BossMonsterCatalog, String> {
         .map_err(Clone::clone)
 }
 
+pub(crate) fn authoritative_boss_monster_ids() -> Result<&'static [i64], String> {
+    Ok(boss_monster_catalog()?.monster_ids.as_slice())
+}
+
 fn scene_boss_monster_catalog() -> Result<&'static BTreeMap<i32, BTreeSet<i64>>, String> {
     SCENE_BOSS_MONSTER_IDS
         .get_or_init(|| {

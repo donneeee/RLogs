@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use rlogs_combat::{
-    ActivityKind, DifficultyTierRange, RaidRouteKind, RunReducerConfig, RunRuleCatalog,
-    RunRuleCatalogError, RunRuleConfidence, RunRuleEvidence, RunRuleTarget, SceneRunRule,
+    ActivityKind, CompletedObjectiveAction, DifficultyTierRange, DungeonObjectiveRole,
+    DungeonObjectiveRule, RaidRouteKind, RunReducerConfig, RunRuleCatalog, RunRuleCatalogError,
+    RunRuleConfidence, RunRuleEvidence, RunRuleTarget, SceneRunRule,
 };
 use serde::Deserialize;
 use thiserror::Error;
@@ -159,6 +160,30 @@ fn bundled_master_dungeon_catalog(
                     continue;
                 }
                 let scene_id = activity.scene_id;
+                let mut objective_rules = BTreeMap::new();
+                let mut evidence = vec![RunRuleEvidence {
+                    source: "reviewed-dungeon-season-catalog".to_owned(),
+                    reference: format!("{file_name}:scene-{scene_id}"),
+                    confidence: RunRuleConfidence::Verified,
+                }];
+                if scene_id == 6_545 {
+                    // Mistveil's static target explicitly marks completion of
+                    // spatial investigation as the gate that unlocks the boss
+                    // battle. Closing mobbing at that packet pauses Game time
+                    // until authoritative Boss-tier combat begins.
+                    objective_rules.insert(
+                        6_541_003,
+                        DungeonObjectiveRule {
+                            role: DungeonObjectiveRole::BossPhaseGate,
+                            on_complete: CompletedObjectiveAction::EnterBossSegment,
+                        },
+                    );
+                    evidence.push(RunRuleEvidence {
+                        source: "current-build-game-data".to_owned(),
+                        reference: "game-data/catalog/activity-targets/scene-6545/6541003-complete-spatial-investigation-within-9-minutes-to-unlock-the-boss-battle.json".to_owned(),
+                        confidence: RunRuleConfidence::Corroborated,
+                    });
+                }
                 let rule = SceneRunRule {
                     scene_id,
                     runtime_enabled: true,
@@ -176,15 +201,11 @@ fn bundled_master_dungeon_catalog(
                     raid_route_kind: None,
                     partition: None,
                     candidate_dungeon_ids: BTreeSet::from([i64::from(activity.dungeon_id)]),
-                    mobbing_encounter_id: None,
-                    boss_encounter_id: None,
+                    mobbing_encounter_id: Some(format!("scene.{scene_id}.mobbing")),
+                    boss_encounter_id: Some(format!("scene.{scene_id}.boss")),
                     boss_monster_ids: BTreeSet::new(),
-                    objective_rules: BTreeMap::new(),
-                    evidence: vec![RunRuleEvidence {
-                        source: "reviewed-dungeon-season-catalog".to_owned(),
-                        reference: format!("{file_name}:scene-{scene_id}"),
-                        confidence: RunRuleConfidence::Verified,
-                    }],
+                    objective_rules,
+                    evidence,
                 };
                 if let Some(existing) = scenes.get_mut(&scene_id) {
                     if !same_generated_master_identity(existing, &rule) {
@@ -256,7 +277,14 @@ struct DungeonSeasonActivity {
 
 pub fn bundled_run_reducer_config() -> Result<RunReducerConfig, BpsrRunRuleError> {
     let catalogs = bundled_run_rule_catalogs()?;
-    let mut config = RunReducerConfig::default();
+    let mut config = RunReducerConfig {
+        authoritative_boss_monster_ids: crate::boss_presentation::authoritative_boss_monster_ids()
+            .map_err(BpsrRunRuleError::BossCatalog)?
+            .iter()
+            .copied()
+            .collect(),
+        ..RunReducerConfig::default()
+    };
     for catalog in catalogs {
         if config.encounter_ruleset_id.is_none() {
             config.encounter_ruleset_id = Some(catalog.ruleset_id.clone());
@@ -309,6 +337,8 @@ pub enum BpsrRunRuleError {
     Json(#[from] serde_json::Error),
     #[error("bundled BPSR run rules are invalid: {0}")]
     Validation(#[from] RunRuleCatalogError),
+    #[error("bundled BPSR boss-tier catalog is invalid: {0}")]
+    BossCatalog(String),
     #[error("bundled BPSR run-rule files use different ruleset identities")]
     MixedRulesets,
     #[error("bundled BPSR run rules repeat scene {0}")]
@@ -557,6 +587,26 @@ mod tests {
     }
 
     #[test]
+    fn mistveil_uses_the_static_boss_gate_and_authoritative_boss_tier_catalog() {
+        let config = bundled_run_reducer_config().unwrap();
+        let rule = config.scene_rules.get(&6_545).unwrap();
+        assert_eq!(rule.activity_family_id.as_deref(), Some("dungeon.6545"));
+        assert_eq!(
+            rule.mobbing_encounter_id.as_deref(),
+            Some("scene.6545.mobbing")
+        );
+        assert_eq!(rule.boss_encounter_id.as_deref(), Some("scene.6545.boss"));
+        assert_eq!(
+            rule.objective_rules
+                .get(&6_541_003)
+                .map(|rule| rule.on_complete),
+            Some(CompletedObjectiveAction::EnterBossSegment)
+        );
+        assert!(config.authoritative_boss_monster_ids.contains(&33_801));
+        assert!(!config.authoritative_boss_monster_ids.contains(&10_008));
+    }
+
+    #[test]
     fn every_reviewed_master_dungeon_accepts_packet_tiers_one_through_twenty() {
         let config = bundled_run_reducer_config().unwrap();
         let expected_scenes = BTreeSet::from([
@@ -620,7 +670,7 @@ mod tests {
     }
 
     #[test]
-    fn cursed_radiant_tomb_uses_generated_master_identity_without_guessed_boundaries() {
+    fn cursed_radiant_tomb_uses_generated_master_identity_and_boss_tier_boundaries() {
         let config = bundled_run_reducer_config().unwrap();
         let rule = config.scene_rules.get(&6515).unwrap();
         assert_eq!(rule.activity_id, "scene.6515");
@@ -635,5 +685,10 @@ mod tests {
         );
         assert!(rule.boss_monster_ids.is_empty());
         assert!(rule.objective_rules.is_empty());
+        assert_eq!(
+            rule.mobbing_encounter_id.as_deref(),
+            Some("scene.6515.mobbing")
+        );
+        assert_eq!(rule.boss_encounter_id.as_deref(), Some("scene.6515.boss"));
     }
 }
