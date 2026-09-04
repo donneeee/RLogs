@@ -60,10 +60,20 @@ jobs:
           if (-not $installer) {
             throw "The expected NSIS installer was not produced"
           }
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $manifestPath = (Resolve-Path "apps/desktop-tauri/Cargo.toml").Path
+          $desktopPackage = $metadata.packages | Where-Object {
+            [System.IO.Path]::GetFullPath($_.manifest_path) -eq $manifestPath
+          }
+          if (-not $desktopPackage -or @($desktopPackage).Count -ne 1) {
+            throw "Could not resolve the desktop application package from Cargo metadata"
+          }
+          $applicationName = "$($desktopPackage.name).exe"
           $installDirectory = Join-Path $env:RUNNER_TEMP "rlogs-installer-smoke-$version"
           ./tools/windows/smoke-test-rlogs-installer.ps1 `
             -InstallerPath $installer.FullName `
             -ExpectedVersion $version `
+            -ApplicationName $applicationName `
             -InstallDirectory $installDirectory
 
       - name: Record the checksum and publish the release

@@ -34,6 +34,6 @@ redistribution rights.
 Tagged releases remain drafts until the generated NSIS package passes an
 isolated silent-install smoke test on the Windows release runner. The gate
 installs into a new runner-temporary directory and verifies the installed
-`rLogs.exe` is a non-empty Windows PE with matching product/file version
+Cargo package executable is a non-empty Windows PE with matching product/file version
 metadata, and that the package includes a non-empty uninstaller. Only then does
 the workflow record the installer checksum and publish the release.

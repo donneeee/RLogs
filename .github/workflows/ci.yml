@@ -48,14 +48,20 @@ jobs:
           $tokens = $null
           $errors = $null
           $scriptPath = (Resolve-Path "tools/windows/smoke-test-rlogs-installer.ps1").Path
-          [System.Management.Automation.Language.Parser]::ParseFile(
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile(
             $scriptPath,
             [ref] $tokens,
             [ref] $errors
-          ) | Out-Null
+          )
           if ($errors.Count -gt 0) {
             $errors | Format-List | Out-String | Write-Error
             throw "Windows installer smoke-test script has PowerShell syntax errors"
+          }
+          $scriptParameters = $ast.ParamBlock.Parameters.Name.VariablePath.UserPath
+          foreach ($requiredParameter in @("InstallerPath", "ExpectedVersion", "ApplicationName", "InstallDirectory")) {
+            if ($requiredParameter -notin $scriptParameters) {
+              throw "Windows installer smoke-test script is missing required parameter $requiredParameter"
+            }
           }
       - name: Build desktop UI
         working-directory: apps/desktop/ui

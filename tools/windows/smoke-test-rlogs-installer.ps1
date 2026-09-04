@@ -7,6 +7,9 @@ param(
     [string] $ExpectedVersion,
 
     [Parameter(Mandatory = $true)]
+    [string] $ApplicationName,
+
+    [Parameter(Mandatory = $true)]
     [string] $InstallDirectory
 )
 
@@ -20,6 +23,12 @@ if ($installer.PSIsContainer -or $installer.Extension -ne ".exe") {
 
 if ([string]::IsNullOrWhiteSpace($ExpectedVersion)) {
     throw "ExpectedVersion must not be empty"
+}
+
+if ([string]::IsNullOrWhiteSpace($ApplicationName) -or
+    $ApplicationName -ne [System.IO.Path]::GetFileName($ApplicationName) -or
+    [System.IO.Path]::GetExtension($ApplicationName) -ne ".exe") {
+    throw "ApplicationName must be an executable leaf filename"
 }
 
 if (-not [System.IO.Path]::IsPathFullyQualified($InstallDirectory)) {
@@ -50,9 +59,9 @@ if ($process.ExitCode -ne 0) {
     throw "Installer exited with code $($process.ExitCode)"
 }
 
-$application = Get-Item -LiteralPath (Join-Path $installRoot "rLogs.exe") -ErrorAction Stop
+$application = Get-Item -LiteralPath (Join-Path $installRoot $ApplicationName) -ErrorAction Stop
 if ($application.Length -le 0) {
-    throw "Installed rLogs.exe is empty"
+    throw "Installed $ApplicationName is empty"
 }
 
 $stream = [System.IO.File]::OpenRead($application.FullName)
@@ -64,7 +73,7 @@ finally {
     $stream.Dispose()
 }
 if ($first -ne 0x4d -or $second -ne 0x5a) {
-    throw "Installed rLogs.exe does not have a Windows PE MZ signature"
+    throw "Installed $ApplicationName does not have a Windows PE MZ signature"
 }
 
 $versionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($application.FullName)
