@@ -161,6 +161,16 @@ This is component-scoped authority: unresolved or multiple-provider state still
 fails closed. The privacy-safe receipt is
 `protocol-packs/global/steam-24687926/observations/encore-55333-provider-recipient-replay-002.json`.
 
+All retained build `24687926` observation receipts are registered in
+`protocol-packs/global/steam-24687926/observations/index.json`. The registry
+distinguishes component-scoped runtime authority, explicit negative gates, and
+owner-only non-transfer evidence. A runtime regression test requires every JSON
+receipt in that directory to appear exactly once, verifies its deployment and
+build identity, confirms positive receipts map to enabled exact effects, and
+requires every negative or non-transfer receipt to retain an explicit false
+authority gate. The registry is an audit surface, not an alternate way to
+grant runtime authority.
+
 ## Current-build exhaustive party-route census
 
 <!-- BEGIN GENERATED RDPS PROMOTION FRONTIER -->

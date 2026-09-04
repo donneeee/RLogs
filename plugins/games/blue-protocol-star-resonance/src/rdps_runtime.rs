@@ -5639,6 +5639,163 @@ mod tests {
     }
 
     #[test]
+    fn current_build_observation_index_is_complete_and_respects_runtime_boundaries() {
+        let runtime = runtime_from_value(bundled_runtime_value());
+        assert!(runtime.validate().is_ok());
+        let external_state: ExternalStateRdpsInventory = serde_json::from_str(include_str!(
+            "../game-data/runtime/external-state-rdps.v1.json"
+        ))
+        .expect("the external-state runtime inventory must remain valid JSON");
+
+        let observation_directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("protocol-packs/global/steam-24687926/observations");
+        let index_path = observation_directory.join("index.json");
+        let index: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(&index_path).expect("the current-build observation index must exist"),
+        )
+        .expect("the current-build observation index must remain valid JSON");
+
+        assert_eq!(index["schema_version"], 1);
+        assert_eq!(index["deployment_id"], "global");
+        assert_eq!(index["client_build"], "24687926");
+        for policy in [
+            "every_json_receipt_is_indexed_exactly_once",
+            "index_is_audit_registry_not_runtime_authority",
+            "runtime_authority_still_requires_pack_validation",
+            "negative_gates_must_remain_explicitly_false",
+        ] {
+            assert_eq!(index["policy"][policy], true);
+        }
+
+        let receipts = index["receipts"]
+            .as_array()
+            .expect("the observation index must contain receipt entries");
+        let mut indexed_files = std::collections::BTreeSet::new();
+        let mut observation_ids = std::collections::BTreeSet::new();
+
+        for entry in receipts {
+            let file = entry["file"]
+                .as_str()
+                .expect("every receipt entry must identify one file");
+            assert_eq!(
+                std::path::Path::new(file)
+                    .file_name()
+                    .and_then(|name| name.to_str()),
+                Some(file),
+                "receipt index paths must remain local leaf filenames"
+            );
+            assert!(
+                indexed_files.insert(file.to_owned()),
+                "duplicate receipt file {file}"
+            );
+
+            let document: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(observation_directory.join(file)).unwrap_or_else(|error| {
+                    panic!("failed to read indexed receipt {file}: {error}")
+                }),
+            )
+            .unwrap_or_else(|error| panic!("indexed receipt {file} is invalid JSON: {error}"));
+            let observation_id = entry["observation_id"]
+                .as_str()
+                .expect("every receipt entry must identify its observation");
+            assert!(
+                observation_ids.insert(observation_id.to_owned()),
+                "duplicate observation ID {observation_id}"
+            );
+            assert_eq!(document["observation_id"], observation_id);
+            let build = document["client_build"]
+                .as_str()
+                .or_else(|| document["game_build"].as_str());
+            assert_eq!(build, Some("24687926"), "wrong build in receipt {file}");
+            if let Some(deployment_id) = document["deployment_id"].as_str() {
+                assert_eq!(
+                    deployment_id, "global",
+                    "wrong deployment in receipt {file}"
+                );
+            }
+
+            let effect_ids = entry["effect_ids"]
+                .as_array()
+                .expect("every receipt entry must list exact effect IDs");
+            assert!(!effect_ids.is_empty());
+            let disposition = entry["disposition"]
+                .as_str()
+                .expect("every receipt entry must state its authority disposition");
+            match disposition {
+                "runtime-authority" => {
+                    assert!(entry.get("negative_gate_pointer").is_none());
+                    for effect_id in effect_ids {
+                        let effect_id = effect_id
+                            .as_i64()
+                            .expect("indexed effect IDs must be positive integers");
+                        assert!(effect_id > 0);
+                        assert!(
+                            runtime.effect_runtime_transfer_enabled(effect_id),
+                            "receipt {file} claims runtime authority for disabled effect {effect_id}"
+                        );
+                    }
+                }
+                "external-state-runtime-authority" => {
+                    assert!(entry.get("negative_gate_pointer").is_none());
+                    for effect_id in effect_ids {
+                        let effect_id = effect_id
+                            .as_i64()
+                            .expect("indexed effect IDs must be positive integers");
+                        assert!(effect_id > 0);
+                        assert!(
+                            external_state
+                                .rules
+                                .iter()
+                                .any(|rule| rule.effect_id == effect_id),
+                            "receipt {file} claims external-state authority for an absent effect {effect_id}"
+                        );
+                    }
+                }
+                "negative-gate" | "ownership-only-nontransfer" => {
+                    let pointer = entry["negative_gate_pointer"]
+                        .as_str()
+                        .expect("non-authoritative receipts must bind an explicit false gate");
+                    assert_eq!(
+                        document.pointer(pointer),
+                        Some(&serde_json::Value::Bool(false)),
+                        "receipt {file} no longer preserves its negative authority gate"
+                    );
+                    if disposition == "ownership-only-nontransfer" {
+                        for effect_id in effect_ids {
+                            let effect_id = effect_id
+                                .as_i64()
+                                .expect("indexed effect IDs must be positive integers");
+                            assert!(effect_id > 0);
+                            assert!(!runtime.effect_runtime_transfer_enabled(effect_id));
+                        }
+                    }
+                }
+                other => panic!("unknown receipt disposition {other}"),
+            }
+        }
+
+        let observed_files = std::fs::read_dir(&observation_directory)
+            .expect("the current-build observation directory must remain readable")
+            .map(|entry| {
+                entry
+                    .expect("observation directory entry must be readable")
+                    .path()
+            })
+            .filter(|path| {
+                path.extension().and_then(|extension| extension.to_str()) == Some("json")
+                    && path.file_name().and_then(|name| name.to_str()) != Some("index.json")
+            })
+            .map(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .expect("observation filenames must be UTF-8")
+                    .to_owned()
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(indexed_files, observed_files);
+    }
+
+    #[test]
     fn fiery_battle_will_requires_exact_local_observed_attack_authority() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());

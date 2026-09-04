@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "deployment_id": "global",
+  "client_build": "24687926",
+  "policy": {
+    "every_json_receipt_is_indexed_exactly_once": true,
+    "index_is_audit_registry_not_runtime_authority": true,
+    "runtime_authority_still_requires_pack_validation": true,
+    "negative_gates_must_remain_explicitly_false": true
+  },
+  "receipts": [
+    {
+      "file": "encore-55333-provider-recipient-replay-002.json",
+      "observation_id": "encore-55333-provider-recipient-replay-002",
+      "effect_ids": [55333],
+      "disposition": "runtime-authority"
+    },
+    {
+      "file": "highland-blood-2110125-observed-final-direct-runtime-001.json",
+      "observation_id": "highland-blood-2110125-observed-final-direct-runtime-001",
+      "effect_ids": [2110125],
+      "disposition": "runtime-authority"
+    },
+    {
+      "file": "highland-blood-2110125-strict-paired-output-gate-001.json",
+      "observation_id": "highland-blood-2110125-strict-paired-output-gate-001",
+      "effect_ids": [2110125],
+      "disposition": "negative-gate",
+      "negative_gate_pointer": "/runtime_decision/remote_paired_output_runtime_transfer_enabled"
+    },
+    {
+      "file": "inspiration-2202041-combined-event-reconciliation-001.json",
+      "observation_id": "inspiration-2202041-combined-event-reconciliation-001",
+      "effect_ids": [2202041],
+      "disposition": "negative-gate",
+      "negative_gate_pointer": "/policy/runtime_authority"
+    },
+    {
+      "file": "inspire-31602-provider-recipient-replay-001.json",
+      "observation_id": "inspire-31602-provider-recipient-replay-001",
+      "effect_ids": [31602],
+      "disposition": "runtime-authority"
+    },
+    {
+      "file": "oblivion-dream-effect-3003012-critical-family-toggle-001.json",
+      "observation_id": "oblivion-dream-effect-3003012-critical-family-toggle-001",
+      "effect_ids": [3003012],
+      "disposition": "negative-gate",
+      "negative_gate_pointer": "/policy/runtime_formula_authority"
+    },
+    {
+      "file": "spring-breeze-2404261-state-scaled-damage-runtime-001.json",
+      "observation_id": "spring-breeze-2404261-state-scaled-damage-runtime-001",
+      "effect_ids": [2404261],
+      "disposition": "external-state-runtime-authority"
+    },
+    {
+      "file": "team-luck-2302121-combined-damage-runtime-001.json",
+      "observation_id": "team-luck-2302121-combined-damage-runtime-001",
+      "effect_ids": [2302121],
+      "disposition": "runtime-authority"
+    },
+    {
+      "file": "thunderwind-power-2110138-owner-lifecycle-001.json",
+      "observation_id": "thunderwind-power-2110138-owner-lifecycle-001",
+      "effect_ids": [2110138, 2110154],
+      "disposition": "ownership-only-nontransfer",
+      "negative_gate_pointer": "/authority_boundary/provider_rdps_credit_authorized"
+    }
+  ]
+}
