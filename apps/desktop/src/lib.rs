@@ -9021,11 +9021,11 @@ fn apply_live_run_projection_clocks(
     let Some(run) = run else {
         return;
     };
-    if let Some(entire_run) = run.views.iter().find(|view| view.id == "all") {
-        snapshot.game_time_micros = run.game_time_micros.or(Some(entire_run.elapsed_micros));
-    } else {
-        snapshot.game_time_micros = run.game_time_micros;
-    }
+    // The reviewed projection publishes Game time for open runs as well as
+    // completed ones. Do not substitute the entire-run view here: that clock
+    // advances through mobbing-to-boss transitions and retry recovery, which
+    // are precisely the intervals Game time must omit.
+    snapshot.game_time_micros = run.game_time_micros;
     // The reviewed run projection owns cumulative game/eDPS and projected-best
     // clocks, but the live meter owns the current-attempt active clock. In
     // particular, a retry resets DPS, aDPS, and rDPS while cumulative eDPS
@@ -13836,6 +13836,14 @@ mod tests {
         assert_eq!(
             snapshot.active_combat_micros, 2_000_000,
             "the overlay must retain the current retry's aDPS clock"
+        );
+
+        run.game_time_micros = None;
+        run.views[0].elapsed_micros = 77_000_000;
+        apply_live_run_projection_clocks(&mut snapshot, Some(run));
+        assert_eq!(
+            snapshot.game_time_micros, None,
+            "an unavailable reviewed Game clock must never be replaced by the unpruned run view"
         );
     }
 

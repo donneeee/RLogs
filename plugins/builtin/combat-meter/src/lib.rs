@@ -2694,6 +2694,21 @@ impl CombatTimelinePlugin {
             .iter()
             .map(|(started, ended)| ended.saturating_sub(*started))
             .sum::<u64>();
+        // Live encounter snapshots close their currently open segment at the
+        // latest observed packet before this projection is built. Publishing
+        // the reviewed sum while the run is still open lets Game time pause
+        // as soon as mobbing closes, then resume only when the boss segment
+        // actually opens. Waiting for `ended_micros` made the desktop fall
+        // back to the continuously growing run clock during that transition.
+        let reviewed_game_time_micros = if run.segments.is_empty() {
+            run.timing.wall_time_micros.unwrap_or_else(|| {
+                run.timing
+                    .observed_until_micros
+                    .saturating_sub(run.timing.started_micros)
+            })
+        } else {
+            pruned_game_time_micros
+        };
         let all_intervals = if segment_intervals.is_empty() {
             vec![(
                 run.timing.started_micros,
@@ -2722,15 +2737,7 @@ impl CombatTimelinePlugin {
             kind: "all".into(),
             segment_indices: all_segments,
             intervals: all_intervals,
-            elapsed_micros: if run.segments.is_empty() {
-                run.timing.wall_time_micros.unwrap_or_else(|| {
-                    run.timing
-                        .observed_until_micros
-                        .saturating_sub(run.timing.started_micros)
-                })
-            } else {
-                pruned_game_time_micros
-            },
+            elapsed_micros: reviewed_game_time_micros,
             active_combat_micros: run.timing.active_combat_micros,
             compress_intervals: false,
         }];
@@ -2853,7 +2860,7 @@ impl CombatTimelinePlugin {
             total_run_time_micros: entered_micros
                 .zip(ended_micros)
                 .map(|(entered, ended)| ended.saturating_sub(entered)),
-            game_time_micros: ended_micros.map(|_| pruned_game_time_micros),
+            game_time_micros: Some(reviewed_game_time_micros),
             true_time_micros,
             retry_count: run.segments.iter().map(|segment| segment.retry_count).sum(),
             boss_retry_count: run
@@ -7108,5 +7115,31 @@ mod tests {
         assert_eq!(retry.active_combat_micros, 10_000_000);
         assert_eq!(true_time.elapsed_micros, 20_000_000);
         assert_eq!(history.true_time_micros, Some(20_000_000));
+
+        let mut live_transition = run.clone();
+        live_transition.terminal_state = RunTerminalState::Open;
+        live_transition.authoritative_completion = false;
+        live_transition.timing.ended_micros = None;
+        live_transition.timing.observed_until_micros = 15_000_000;
+        live_transition.timing.wall_time_micros = None;
+        live_transition.timing.noncombat_micros = None;
+        live_transition.segments.truncate(1);
+        live_transition.encounters.truncate(1);
+        live_transition.submission_disposition = RunSubmissionDisposition::NotCompleted;
+
+        let transition_history = CombatTimelinePlugin::new().build_run_history(0, &live_transition);
+        assert_eq!(transition_history.terminal_state, "open");
+        assert_eq!(transition_history.ended_micros, None);
+        assert_eq!(transition_history.game_time_micros, Some(10_000_000));
+        assert_eq!(
+            transition_history
+                .views
+                .iter()
+                .find(|view| view.id == "all")
+                .unwrap()
+                .elapsed_micros,
+            10_000_000,
+            "Game time must remain frozen after mobbing closes even as later packets advance the run"
+        );
     }
 }
