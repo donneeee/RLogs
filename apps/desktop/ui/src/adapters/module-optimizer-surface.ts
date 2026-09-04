@@ -41,6 +41,38 @@ interface StoredPreferences {
   use_gpu: boolean;
 }
 
+export interface ModuleLinkSummary {
+  attributeId: number;
+  name: string;
+  icon: string | null;
+  totalLink: number;
+}
+
+export function summarizeModuleLinks(
+  modules: readonly ModuleCandidate[],
+  catalog: OptimizerCatalog | null,
+): ModuleLinkSummary[] {
+  const attributes = new Map(
+    (catalog?.attributes ?? []).map((attribute) => [attribute.id, attribute]),
+  );
+  const totals = new Map<number, number>();
+  for (const module of modules) {
+    for (const part of module.parts) {
+      const link = part.initial_link_points ?? 0;
+      if (link > 0) totals.set(part.part_id, (totals.get(part.part_id) ?? 0) + link);
+    }
+  }
+  return [...totals.entries()]
+    .map(([attributeId, totalLink]) => ({
+      attributeId,
+      name: attributes.get(attributeId)?.name ?? `Effect ${attributeId}`,
+      icon: attributes.get(attributeId)?.icon ?? null,
+      totalLink,
+    }))
+    .sort((left, right) =>
+      right.totalLink - left.totalLink || left.name.localeCompare(right.name));
+}
+
 const GPU_PREFERENCE_KEY = "rlogs.module-optimizer.gpu";
 const PREFERENCE_KEY_PREFIX = "rlogs.module-optimizer.preferences.v1.";
 
@@ -169,8 +201,10 @@ export function mountModuleOptimizerSurface(
   );
   const currentCount = text("span", "Waiting for a snapshot", "status-pill");
   currentHeader.append(currentTitle, currentCount);
+  const currentLinkSummary = element("div", "module-loadout-link-summary");
+  currentLinkSummary.hidden = true;
   const equippedPreview = element("div", "module-equipped-preview");
-  currentCard.append(currentHeader, equippedPreview);
+  currentCard.append(currentHeader, currentLinkSummary, equippedPreview);
 
   const results = element("section", "module-optimizer-results");
   const empty = element("div", "content-card module-results-empty");
@@ -198,6 +232,8 @@ export function mountModuleOptimizerSurface(
 
   function renderCharacter(): void {
     equippedPreview.replaceChildren();
+    currentLinkSummary.replaceChildren();
+    currentLinkSummary.hidden = true;
     if (selectedCharacter === null) {
       characterName.textContent = "No module snapshot yet";
       characterMeta.textContent =
@@ -233,6 +269,7 @@ export function mountModuleOptimizerSurface(
         ),
       );
     } else {
+      renderModuleLinkSummary(currentLinkSummary, equipped, catalog);
       equippedPreview.append(
         ...equipped.map((module) => compactModuleCard(module, catalog)),
       );
@@ -597,54 +634,42 @@ function renderResults(container: HTMLElement, result: OptimizeResponse, catalog
     return;
   }
   for (const [index, solution] of result.solutions.entries()) {
-    container.append(solutionCard(`#${index + 1}`, solution, catalog, result.current_setup));
+    container.append(solutionCard(`#${index + 1}`, solution, catalog));
   }
 }
 
-function solutionCard(label: string, solution: ModuleSolution, catalog: OptimizerCatalog, baseline: ModuleSolution | null): HTMLElement {
+function solutionCard(label: string, solution: ModuleSolution, catalog: OptimizerCatalog): HTMLElement {
   const card = element("article", "content-card module-solution-card");
   const heading = element("div", "module-solution-heading");
-  const summary = element("div", "module-solution-summary");
-  summary.append(
-    text("strong", `${solution.score.toLocaleString()} power`),
-    text(
-      "span",
-      [
-        baseline ? formatDelta(solution.score - baseline.score, "vs equipped") : null,
-        `${solution.breakdown.total_link_points.toLocaleString()} total Link`,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-    ),
-  );
-  const effects = element("div", "module-solution-effects");
-  const named = new Map(catalog.attributes.map((attribute) => [attribute.id, attribute]));
-  for (const score of solution.breakdown.attributes
-    .filter((entry) => entry.total > 0)
-    .sort((left, right) => right.applied_power - left.applied_power)) {
-    const attribute = named.get(score.attribute_id);
-    const chip = element("div", "module-effect-chip");
-    chip.append(
-      image(optimizerAssetUrl(attribute?.icon ?? null), attribute?.name ?? "Unknown effect"),
-      text("span", attribute?.name ?? "Unknown effect"),
-      text(
-        "strong",
-        [
-          `${score.total} Link`,
-          `${score.applied_power.toLocaleString()} power`,
-          score.reached_threshold === null
-            ? "below first threshold"
-            : `threshold ${score.reached_threshold}`,
-        ].join(" · "),
-      ),
-    );
-    effects.append(chip);
-  }
-  heading.append(text("span", label, "module-solution-rank"), summary, effects);
+  const linkSummary = element("div", "module-loadout-link-summary");
+  renderModuleLinkSummary(linkSummary, solution.modules, catalog);
+  heading.append(text("span", label, "module-solution-rank"), linkSummary);
   const modules = element("div", "module-solution-module-strip");
   modules.append(...solution.modules.map((module) => solutionModuleTile(module, catalog)));
   card.append(heading, modules);
   return card;
+}
+
+function renderModuleLinkSummary(
+  container: HTMLElement,
+  modules: readonly ModuleCandidate[],
+  catalog: OptimizerCatalog | null,
+): void {
+  const effects = element("div", "module-solution-effects");
+  for (const score of summarizeModuleLinks(modules, catalog)) {
+    const chip = element("div", "module-effect-chip");
+    chip.append(
+      image(optimizerAssetUrl(score.icon), score.name),
+      text("span", score.name),
+      text("strong", `${score.totalLink.toLocaleString()} Link`),
+    );
+    effects.append(chip);
+  }
+  container.replaceChildren(
+    text("span", "Combined links", "module-link-summary-label"),
+    effects,
+  );
+  container.hidden = effects.childElementCount === 0;
 }
 
 function solutionModuleTile(value: ModuleCandidate, catalog: OptimizerCatalog): HTMLElement {
@@ -794,10 +819,6 @@ function moduleLinkTotal(value: ModuleCandidate): number {
 
 function shortModuleName(name: string): string {
   return name.replace(/ Module(?: - Premium)?$/u, "").replace(/^Excellent /u, "");
-}
-
-function formatDelta(delta: number, suffix: string): string {
-  return `${delta > 0 ? "+" : ""}${delta.toLocaleString()} ${suffix}`;
 }
 
 function backendLabel(result: OptimizeResponse): string {

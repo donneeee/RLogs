@@ -7,8 +7,31 @@ import {
   parseOptimizeResponse,
   parseOptimizerCatalog,
 } from "./module-optimizer";
+import { summarizeModuleLinks } from "./module-optimizer-surface";
 
 describe("local module optimizer contracts", () => {
+  it("combines effect links across a loadout without exposing power or thresholds", () => {
+    const catalog = parseOptimizerCatalog({
+      game_id: "blue-protocol-star-resonance",
+      catalog_revision: "sha256:test",
+      scoring_revision: "reviewed",
+      client_builds: ["24687926"],
+      attributes: [
+        { id: 1110, name: "Strength Boost", official_name: null, icon: null, thresholds: [4], fight_values: [1] },
+        { id: 1120, name: "Agility Boost", official_name: null, icon: null, thresholds: [4], fight_values: [1] },
+      ],
+      combination_sizes: [5],
+      default_max_solutions: 5,
+    });
+    expect(summarizeModuleLinks([
+      { instance_id: "1", config_id: 1, quality: 4, parts: [{ part_id: 1110, initial_link_points: 10 }, { part_id: 1120, initial_link_points: 4 }] },
+      { instance_id: "2", config_id: 1, quality: 4, parts: [{ part_id: 1110, initial_link_points: 5 }] },
+    ], catalog)).toEqual([
+      { attributeId: 1110, name: "Strength Boost", icon: null, totalLink: 15 },
+      { attributeId: 1120, name: "Agility Boost", icon: null, totalLink: 4 },
+    ]);
+  });
+
   it("keeps module instance IDs as strings beyond JavaScript's safe integer range", () => {
     const inventory = parseLocalModuleInventory({
       schema_version: 1,

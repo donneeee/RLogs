@@ -802,7 +802,9 @@ export function mountCombatOverlayEditorSurface(
   let settings: CombatOverlaySettings | null = null;
   let selectedLayerId: string | null = null;
   let previewVisibilityDimmed = false;
-  let previewDataMode: "live" | "example" = "live";
+  // A designer must always open with deterministic, populated rows. Live data is
+  // still available on demand, but it may legitimately be empty between fights.
+  let previewDataMode: "live" | "example" = "example";
   let previewLiveUpdate: OverlayLiveUpdate | null = null;
   let previewTimerSettings: OverlayGlobalTimerSettings = {
     pauseOverlayTimersOutsideCombat: true,
@@ -859,11 +861,12 @@ export function mountCombatOverlayEditorSurface(
   const previewData = selectField(
     "Preview data",
     [["live", "Live overlay"], ["example", "Example combat"]],
-    "live",
+    "example",
   );
   previewData.label.classList.add("combat-overlay-preview-data-control");
   const refreshPreviewData = button("Refresh", "secondary-button combat-overlay-preview-refresh");
   refreshPreviewData.title = "Reload the current live combat state";
+  refreshPreviewData.hidden = true;
   previewControls.append(previewData.label, refreshPreviewData, previewDimensions, previewScale);
   previewLabel.append(
     text("strong", "Inactive preview"),
@@ -1043,11 +1046,13 @@ export function mountCombatOverlayEditorSurface(
       if (!alive) return;
       previewLiveUpdate = update;
       previewTimerSettings = timerSettings;
-      status.textContent = update.snapshot === null
-        ? "Live preview matches the overlay's waiting state. Choose Example combat to arrange populated rows."
-        : "Live preview refreshed from the current combat overlay state.";
-      status.classList.remove("error");
-      if (previewDataMode === "live") render();
+      if (previewDataMode === "live") {
+        status.textContent = update.snapshot === null
+          ? "The live overlay is waiting for combat. Choose Example combat to arrange populated rows."
+          : "Live preview refreshed from the current combat overlay state.";
+        status.classList.remove("error");
+        render();
+      }
     } catch (error) {
       if (!alive) return;
       status.textContent = `Could not load live preview data: ${errorMessage(error)}`;
@@ -1103,20 +1108,23 @@ export function mountCombatOverlayEditorSurface(
         text("legend", "Summary section"),
         text(
           "p",
-          "This is everything above the player table. Enable and reorder items, then drag a cyan divider or enter a width here. Use 0 for automatic width.",
+          "Checked items are shown above the player table; unchecked items are hidden. Drag shown items in the preview to reorder them. Width 0 means automatic.",
           "combat-overlay-inspector-hint",
         ),
       );
       const summaryGrid = el("div", "combat-overlay-summary-editor-grid");
       for (const field of SUMMARY_FIELDS) {
         const summaryRow = el("div", "combat-overlay-summary-editor");
-        const option = checkbox(summaryFieldLabel(field), layer.summaryFields.includes(field));
+        const option = checkbox(`Show ${summaryFieldLabel(field)}`, layer.summaryFields.includes(field));
+        option.label.title = `${layer.summaryFields.includes(field) ? "Hide" : "Show"} ${summaryFieldLabel(field)} in this header view.`;
         const summaryWidth = inputField("Width", String(summaryFieldWidthFor(layer, field)), "number");
         summaryWidth.label.classList.add("combat-overlay-width-field");
         summaryWidth.label.title = "Use 0 for automatic width.";
         summaryWidth.input.min = "0";
         summaryWidth.input.max = "480";
         summaryWidth.input.step = "4";
+        summaryWidth.input.disabled = !layer.summaryFields.includes(field);
+        summaryWidth.input.setAttribute("aria-label", `${summaryFieldLabel(field)} width`);
         option.input.addEventListener("change", () =>
           updateLayer(layer.id, (value) => withNormalizedSummaryLayout({
             ...value,
@@ -1867,7 +1875,7 @@ export function mountCombatOverlayEditorSurface(
       if (!alive) return;
       settings = loaded;
       selectedLayerId = loaded.layers[0]?.id ?? null;
-      status.textContent = "Loading the current live overlay state...";
+      status.textContent = "Showing stable example combat so the layout is always visible. Choose Live overlay to inspect current combat data.";
       render();
       void loadPreviewData();
     })
@@ -5987,7 +5995,7 @@ function installStyles(): void {
     .combat-overlay-summary-stat > .combat-overlay-reorder-grip { pointer-events:none; }
     .combat-overlay-summary-control { position:relative; box-sizing:border-box; min-width:0; flex:0 0 auto; align-self:center; justify-content:center; margin:2px 3px; white-space:nowrap; }
     .combat-overlay-summary-control[data-button-action='cycle_timer'] { width:${FIXED_TIMER_CONTROL_WIDTH}px; min-width:${FIXED_TIMER_CONTROL_WIDTH}px; max-width:${FIXED_TIMER_CONTROL_WIDTH}px; flex-basis:${FIXED_TIMER_CONTROL_WIDTH}px; overflow:hidden; justify-content:center; font-variant-numeric:tabular-nums; text-overflow:ellipsis; }
-    .combat-overlay-summary-editor-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+    .combat-overlay-summary-editor-grid { display:grid; grid-template-columns:1fr; gap:7px; }
     .combat-overlay-summary-editor { display:grid; grid-template-columns:minmax(0,1fr) 76px; min-width:0; min-height:38px; gap:10px; align-items:center; padding:4px 8px; border:1px solid color-mix(in srgb,var(--line) 78%,transparent); border-radius:7px; background:color-mix(in srgb,var(--surface-soft) 72%,transparent); }
     .combat-overlay-summary-editor .combat-overlay-width-field { display:block; }
     .combat-overlay-summary-editor .combat-overlay-width-field > span { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); border:0; white-space:nowrap; }
@@ -6119,14 +6127,14 @@ function installStyles(): void {
     .combat-overlay-header-editor .combat-overlay-field input { min-height:30px; padding:4px 7px; text-align:right; }
     .combat-overlay-checkbox { display:flex; min-width:0; gap:8px; align-items:center; font-size:12px; line-height:1.25; }
     .combat-overlay-checkbox input { width:16px; height:16px; flex:0 0 16px; margin:0; accent-color:#63e5d6; }
-    .combat-overlay-checkbox span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .combat-overlay-checkbox span { min-width:0; overflow-wrap:anywhere; }
     .combat-overlay-button-editor { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) 70px auto; gap:8px; align-items:end; }
     .combat-overlay-button-editor .combat-overlay-field:nth-child(3) input { text-align:right; }
     .combat-overlay-remove-control { min-height:36px; padding-inline:10px; }
     .combat-overlay-add-control { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:8px; align-items:end; padding-top:2px; }
     .combat-overlay-add-control > button { min-height:36px; white-space:nowrap; }
     .combat-overlay-view-editor-actions { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
-    .danger-button { color:#ff9caa !important; border-color:#ff718552 !important; }
+    .danger-button { color:#ffd2d8 !important; border-color:#ff7185a6 !important; background:#5b202a8c !important; font-weight:800; opacity:1; }
     .danger-button:hover:not(:disabled) { color:#fff !important; border-color:#ff7185 !important; background:#7b2430 !important; }
     .combat-overlay-context-menu, .combat-overlay-context-submenu { z-index:2000; display:grid; min-width:190px; padding:5px; border:1px solid #53677f; border-radius:8px; background:#0c1522; box-shadow:0 16px 44px #000b; }
     .combat-overlay-context-menu { position:fixed; }

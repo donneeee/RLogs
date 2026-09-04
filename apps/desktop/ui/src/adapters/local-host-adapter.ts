@@ -1307,7 +1307,7 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
     "Connect this PC to your website account once. Log Uploader and BPSR Profile Sync share the connection; the app token is validated before it is written to Windows Credential Manager.",
   );
   const accountActions = document.createElement("div");
-  accountActions.className = "runtime-card-actions";
+  accountActions.className = "runtime-card-actions submission-connection-account-actions";
   const openAccount = document.createElement("a");
   openAccount.className = "primary-button";
   openAccount.href = "https://rlogs-app.github.io/account/";
@@ -1324,7 +1324,7 @@ function mountSubmissionConnectionSurface(container: HTMLElement): MountedSurfac
   );
   heading.append(accountActions);
   const form = document.createElement("form");
-  form.className = "content-card submission-policy-form";
+  form.className = "content-card submission-policy-form submission-connection-form";
   const token = field("App token from My Profile", "password", "", "Paste the token once");
   token.input.autocomplete = "new-password";
   const actions = document.createElement("div");

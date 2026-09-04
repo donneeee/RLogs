@@ -985,6 +985,31 @@ body {
   margin-top: 9px;
 }
 
+.module-loadout-link-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.module-current-card > .module-loadout-link-summary {
+  margin-top: 8px;
+  padding: 7px 8px;
+  border: 1px solid rgb(92 228 212 / 20%);
+  border-radius: 8px;
+  background: rgb(92 228 212 / 4%);
+}
+
+.module-link-summary-label {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .module-current-card .module-equipped-preview > .runtime-empty-result {
   grid-column: 1 / -1;
   min-height: 84px;
@@ -1060,8 +1085,8 @@ body {
 
 .module-solution-heading {
   display: grid;
-  grid-template-columns: 40px minmax(165px, 220px) minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
   gap: 9px;
 }
 
@@ -1076,21 +1101,6 @@ body {
   background: #0a111b;
   font-size: 12px;
   font-weight: 800;
-}
-
-.module-solution-summary strong,
-.module-solution-summary span {
-  display: block;
-}
-
-.module-solution-summary strong {
-  font-size: 16px;
-}
-
-.module-solution-summary span {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 10px;
 }
 
 .module-solution-module-strip {
@@ -1163,8 +1173,26 @@ body {
 
 .module-solution-effects {
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 4px;
+}
+
+.module-loadout-link-summary .module-effect-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  white-space: nowrap;
+}
+
+.module-loadout-link-summary .module-effect-chip .module-icon {
+  width: 19px;
+  height: 19px;
+}
+
+.module-loadout-link-summary .module-effect-chip strong {
+  color: var(--cyan);
+  font-size: 8.5px;
 }
 
 .module-effect-chip {
@@ -2785,6 +2813,45 @@ button:focus-visible,
 .submission-policy-form {
   display: grid;
   overflow: hidden;
+}
+
+.submission-connection-surface {
+  gap: 10px;
+}
+
+.submission-connection-account-actions {
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.submission-connection-account-actions .primary-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.submission-connection-form {
+  grid-template-columns: minmax(320px, 520px) minmax(0, 1fr);
+  gap: 12px 18px;
+  align-items: end;
+  padding: 16px 18px;
+}
+
+.submission-connection-form > .runtime-field:first-child {
+  grid-column: auto;
+  max-width: none;
+}
+
+.submission-connection-form .submission-policy-actions {
+  min-width: 0;
+  padding: 0;
+}
+
+@media (max-width: 920px) {
+  .submission-connection-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 .combat-meter-options-surface .submission-policy-form {
