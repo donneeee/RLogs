@@ -192,6 +192,10 @@ interface RuntimeSnapshot {
   decoded_event_count: number;
   saving_run: boolean;
   sealed_run_count: number;
+  recoverable_error_count?: number;
+  last_recoverable_error?: string | null;
+  last_progress_unix_millis?: number | null;
+  capture_queue_saturation_count?: number;
   last_result: RuntimeResult | null;
 }
 
@@ -1492,6 +1496,13 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
     "Section boundary",
     "A tab can only move inside the section that declared it. Moving a whole section never changes which tabs belong to it.",
   );
+  const parserHealth = document.createElement("div");
+  parserHealth.append(
+    actionCard(
+      "Parser health",
+      "Loading privacy-safe capture diagnostics from the native host…",
+    ),
+  );
   const actions = document.createElement("div");
   actions.className = "runtime-card-actions submission-policy-actions";
   const save = button("Save Core settings", "primary-button");
@@ -1515,8 +1526,26 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
     lockSections.label,
     actions,
   );
-  root.append(heading, form, boundary);
+  root.append(heading, form, parserHealth, boundary);
   container.replaceChildren(root);
+
+  const refreshParserHealth = async () => {
+    try {
+      const snapshot = await apiJson<RuntimeSnapshot>("/api/runtime/status");
+      if (alive) parserHealth.replaceChildren(parserHealthCard(snapshot));
+    } catch (error) {
+      if (alive) {
+        parserHealth.replaceChildren(
+          actionCard("Parser health unavailable", errorMessage(error)),
+        );
+      }
+    }
+  };
+  void refreshParserHealth();
+  const parserHealthInterval = window.setInterval(
+    () => void refreshParserHealth(),
+    1_000,
+  );
 
   const applyViews = (core: CoreSettings, layout: ShellPreferences) => {
     coreSettings = core;
@@ -1649,6 +1678,7 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
   return {
     dispose() {
       alive = false;
+      window.clearInterval(parserHealthInterval);
       root.remove();
     },
   };
@@ -4113,7 +4143,44 @@ async function refreshStatus(
   }
 }
 
+function parserHealthCard(snapshot: RuntimeSnapshot): HTMLElement {
+  const health = document.createElement("section");
+  health.className = "content-card runtime-file-list";
+  const healthLabel =
+    snapshot.phase === "processing" && snapshot.live_capture_can_stop
+      ? "Recording protected"
+      : snapshot.phase === "failed"
+        ? "Stopped unexpectedly"
+        : snapshot.phase === "complete"
+          ? "Stopped normally"
+          : "Ready";
+  const lastProgress = snapshot.last_progress_unix_millis ?? null;
+  health.append(
+    fileRow("Parser health", healthLabel),
+    fileRow("Captured frames", snapshot.monitored_frame_count.toLocaleString()),
+    fileRow("Decoded events", snapshot.decoded_event_count.toLocaleString()),
+    fileRow("Sealed runs", snapshot.sealed_run_count.toLocaleString()),
+    fileRow(
+      "Recovered auxiliary errors",
+      (snapshot.recoverable_error_count ?? 0).toLocaleString(),
+    ),
+    fileRow(
+      "Capture queue saturation",
+      (snapshot.capture_queue_saturation_count ?? 0).toLocaleString(),
+    ),
+    fileRow(
+      "Last parser progress",
+      lastProgress === null
+        ? "No live capture started"
+        : new Date(lastProgress).toLocaleString(),
+    ),
+    fileRow("Last recovered error", snapshot.last_recoverable_error ?? "None"),
+  );
+  return health;
+}
+
 function renderLastResult(container: HTMLElement, snapshot: RuntimeSnapshot) {
+  const health = parserHealthCard(snapshot);
   const result = snapshot.last_result;
   if (result === null) {
     container.replaceChildren(
@@ -4126,6 +4193,7 @@ function renderLastResult(container: HTMLElement, snapshot: RuntimeSnapshot) {
           : "No completed session yet. Run the safe replay or process an offline capture.",
         "runtime-empty-result",
       ),
+      health,
     );
     return;
   }
@@ -4199,7 +4267,7 @@ function renderLastResult(container: HTMLElement, snapshot: RuntimeSnapshot) {
       result.connection_evidence ?? "Not applicable",
     ),
   );
-  container.replaceChildren(metrics, files);
+  container.replaceChildren(health, metrics, files);
 }
 
 function actionCard(title: string, detail: string): HTMLElement {

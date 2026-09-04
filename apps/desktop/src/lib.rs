@@ -600,13 +600,17 @@ struct RuntimeSnapshot {
     decoded_event_count: u64,
     saving_run: bool,
     sealed_run_count: u64,
+    recoverable_error_count: u64,
+    last_recoverable_error: Option<String>,
+    last_progress_unix_millis: Option<u64>,
+    capture_queue_saturation_count: u64,
     last_result: Option<SessionResult>,
 }
 
 impl Default for RuntimeSnapshot {
     fn default() -> Self {
         Self {
-            schema_version: 2,
+            schema_version: 3,
             phase: RuntimePhase::Idle,
             active_session_id: None,
             detail: "Ready for a safe replay or offline capture.".into(),
@@ -617,9 +621,38 @@ impl Default for RuntimeSnapshot {
             decoded_event_count: 0,
             saving_run: false,
             sealed_run_count: 0,
+            recoverable_error_count: 0,
+            last_recoverable_error: None,
+            last_progress_unix_millis: None,
+            capture_queue_saturation_count: 0,
             last_result: None,
         }
     }
+}
+
+fn record_recoverable_capture_error(state: &Arc<Mutex<RuntimeSnapshot>>, error: impl Into<String>) {
+    let error = bounded_parser_health_detail(&error.into());
+    eprintln!("live parser recovered from an auxiliary failure: {error}");
+    let mut snapshot = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    snapshot.recoverable_error_count = snapshot.recoverable_error_count.saturating_add(1);
+    snapshot.last_recoverable_error = Some(error.clone());
+    snapshot.detail =
+        format!("Monitoring continues after a recoverable live-view failure: {error}");
+}
+
+fn bounded_parser_health_detail(error: &str) -> String {
+    const MAXIMUM_DETAIL_CHARS: usize = 400;
+    let normalized = error.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= MAXIMUM_DETAIL_CHARS {
+        return normalized;
+    }
+    normalized
+        .chars()
+        .take(MAXIMUM_DETAIL_CHARS.saturating_sub(1))
+        .chain(std::iter::once('…'))
+        .collect()
 }
 
 fn history_rdps_refresh_must_wait(snapshot: &RuntimeSnapshot) -> bool {
@@ -6915,6 +6948,10 @@ impl RuntimeController {
             state.decoded_event_count = 0;
             state.saving_run = false;
             state.sealed_run_count = 0;
+            state.recoverable_error_count = 0;
+            state.last_recoverable_error = None;
+            state.last_progress_unix_millis = Some(unix_millis());
+            state.capture_queue_saturation_count = 0;
         }
         self.live_combat_feed.publish(None);
         self.live_character_stats_feed
@@ -7031,7 +7068,8 @@ impl RuntimeController {
                         .map_err(|error| format!("could not load BPSR run rules: {error}"))?;
                     let mut live_encounter = EncounterRecorderPlugin::new(encounter_config);
                     live_encounter.begin_live(&live_header);
-                    let mut captured_run_projections = VecDeque::new();
+                    let mut captured_run_projections: VecDeque<Option<CapturedRunProjection>> =
+                        VecDeque::new();
                     let mut capture_time_identities = CaptureTimeCharacterIdentityStore::default();
                     let mut completed_run_identities = None;
                     let mut live_profile_projection = LiveProfileProjection::default();
@@ -7358,10 +7396,11 @@ impl RuntimeController {
                                         &terminal_identities,
                                     ) {
                                         Ok(projection) => {
-                                            captured_run_projections.push_back(projection);
+                                            captured_run_projections.push_back(Some(projection));
                                         }
                                         Err(error) => {
                                             live_snapshot_error = Some(error);
+                                            captured_run_projections.push_back(None);
                                         }
                                     }
                                     frozen_capture_time_identities = Some(terminal_identities);
@@ -7408,12 +7447,19 @@ impl RuntimeController {
                                 })?;
                                 if reset.invalidated_active_run {
                                     let terminal_identities = capture_time_identities.clone();
-                                    let projection = freeze_captured_run_projection(
+                                    match freeze_captured_run_projection(
                                         &live_meter,
                                         &live_encounter,
                                         &terminal_identities,
-                                    )?;
-                                    captured_run_projections.push_back(projection);
+                                    ) {
+                                        Ok(projection) => {
+                                            captured_run_projections.push_back(Some(projection));
+                                        }
+                                        Err(error) => {
+                                            live_snapshot_error = Some(error);
+                                            captured_run_projections.push_back(None);
+                                        }
+                                    }
                                     completed_run_identities = Some(terminal_identities);
                                 }
                             }
@@ -7424,7 +7470,11 @@ impl RuntimeController {
                                 &live_header,
                                 last_world_context_event.as_ref(),
                             )?;
-                            capture_time_identities.clear();
+                            // A forced reset invalidates and clears encounter
+                            // totals, not the live character identity ledger.
+                            // Names and UIDs remain authoritative until a real
+                            // run boundary or character observation replaces
+                            // them.
                             live_dungeon_active = false;
                             live_dungeon_scene_id = None;
                             live_run_projection = None;
@@ -7678,7 +7728,12 @@ impl RuntimeController {
                             }
                         }
                         if let Some(error) = live_snapshot_error {
-                            return Err(error);
+                            // Capture and the segmented .rlog writer are the
+                            // authoritative data path. Overlay/history/profile
+                            // projection is auxiliary and must never terminate
+                            // packet capture or discard later runs.
+                            record_recoverable_capture_error(&state, error);
+                            live_dirty = true;
                         }
                         live_event_lines.extend(
                             live_protocol_records
@@ -7762,6 +7817,9 @@ impl RuntimeController {
                             snapshot.sealed_run_count = metrics
                                 .completed_run_count
                                 .saturating_add(metrics.incomplete_run_count);
+                            snapshot.last_progress_unix_millis = Some(unix_millis());
+                            snapshot.capture_queue_saturation_count =
+                                capture_ingress_metrics.queue_saturations;
                             let provisional_prefix = worker_pack_warning
                                 .as_deref()
                                 .map(|warning| format!("{warning} "))
@@ -7793,20 +7851,26 @@ impl RuntimeController {
                             };
                         }
                         for log in sealed {
-                            let projection = captured_run_projections.pop_front().ok_or_else(|| {
-                                format!(
-                                    "sealed run {} has no capture-time history projection",
-                                    log.session_id
-                                )
-                            })?;
-                            run_postprocess_sender
-                                .send((log, projection))
-                                .map_err(|error| {
+                            let session_id = log.session_id.clone();
+                            let Some(projection) = captured_run_projections.pop_front().flatten()
+                            else {
+                                record_recoverable_capture_error(
+                                    &state,
                                     format!(
-                                        "completed-run postprocessor stopped before accepting {}",
+                                        "sealed run {session_id} was preserved on disk but its live history projection was unavailable"
+                                    ),
+                                );
+                                continue;
+                            };
+                            if let Err(error) = run_postprocess_sender.send((log, projection)) {
+                                record_recoverable_capture_error(
+                                    &state,
+                                    format!(
+                                        "sealed run {} was preserved on disk but the completed-run postprocessor was unavailable",
                                         error.0.0.session_id
-                                    )
-                                })?;
+                                    ),
+                                );
+                            }
                         }
                     }
                     let sealed = recorder
@@ -7823,29 +7887,35 @@ impl RuntimeController {
                             &mut history,
                             &capture_time_identities,
                         )?;
-                        captured_run_projections.push_back(CapturedRunProjection {
+                        captured_run_projections.push_back(Some(CapturedRunProjection {
                             combat: live_meter.live_snapshot().map_err(|error| {
                                 format!("could not freeze incomplete Combat Meter history: {error}")
                             })?,
                             history,
                             run,
-                        });
+                        }));
                     }
                     for log in sealed {
-                        let projection = captured_run_projections.pop_front().ok_or_else(|| {
-                            format!(
-                                "sealed run {} has no capture-time history projection",
-                                log.session_id
-                            )
-                        })?;
-                        run_postprocess_sender
-                            .send((log, projection))
-                            .map_err(|error| {
+                        let session_id = log.session_id.clone();
+                        let Some(projection) = captured_run_projections.pop_front().flatten()
+                        else {
+                            record_recoverable_capture_error(
+                                &state,
                                 format!(
-                                    "completed-run postprocessor stopped before accepting {}",
+                                    "sealed run {session_id} was preserved on disk but its final history projection was unavailable"
+                                ),
+                            );
+                            continue;
+                        };
+                        if let Err(error) = run_postprocess_sender.send((log, projection)) {
+                            record_recoverable_capture_error(
+                                &state,
+                                format!(
+                                    "sealed run {} was preserved on disk but the completed-run postprocessor was unavailable",
                                     error.0.0.session_id
-                                )
-                            })?;
+                                ),
+                            );
+                        }
                     }
                     drop(run_postprocess_sender);
                     run_postprocess_worker.join().map_err(|_| {
@@ -14397,6 +14467,39 @@ mod tests {
 
         snapshot.phase = RuntimePhase::Complete;
         assert!(!history_rdps_refresh_must_wait(&snapshot));
+    }
+
+    #[test]
+    fn recoverable_live_projection_failures_are_bounded_and_counted() {
+        let state = Arc::new(Mutex::new(RuntimeSnapshot {
+            phase: RuntimePhase::Processing,
+            live_capture_can_stop: true,
+            ..RuntimeSnapshot::default()
+        }));
+        let oversized = format!("  overlay   projection failed {}  ", "x".repeat(500));
+
+        record_recoverable_capture_error(&state, oversized);
+        record_recoverable_capture_error(&state, "history projection retried");
+
+        let snapshot = state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert_eq!(snapshot.phase, RuntimePhase::Processing);
+        assert!(snapshot.live_capture_can_stop);
+        assert_eq!(snapshot.recoverable_error_count, 2);
+        assert_eq!(
+            snapshot.last_recoverable_error.as_deref(),
+            Some("history projection retried")
+        );
+    }
+
+    #[test]
+    fn parser_health_details_are_whitespace_normalized_and_bounded() {
+        let detail = bounded_parser_health_detail(&format!("one\n two {}", "x".repeat(500)));
+
+        assert!(!detail.contains('\n'));
+        assert_eq!(detail.chars().count(), 400);
+        assert!(detail.ends_with('…'));
     }
 
     #[test]

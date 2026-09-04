@@ -291,16 +291,23 @@ impl RunSessionReducer {
         if event.objective_complete != Some(true) {
             return;
         }
-        let Some(objective_id) = event
-            .objective_id
-            .or_else(|| event.objective_map_key.map(i64::from))
-        else {
-            return;
-        };
         let Some(action) = self
             .active_scene_id
             .and_then(|scene_id| self.config.scene_rules.get(&scene_id))
-            .and_then(|rule| rule.objective_rules.get(&objective_id))
+            .and_then(|rule| {
+                // Current BPSR packets can carry both a transient nested
+                // objective ID and the stable objective-map key. Prefer a
+                // configured nested ID, but fall back to the map key when the
+                // nested value is unknown to this exact-build ruleset.
+                event
+                    .objective_id
+                    .and_then(|objective_id| rule.objective_rules.get(&objective_id))
+                    .or_else(|| {
+                        event.objective_map_key.and_then(|objective_map_key| {
+                            rule.objective_rules.get(&i64::from(objective_map_key))
+                        })
+                    })
+            })
             .map(|rule| rule.on_complete)
         else {
             return;
@@ -1659,10 +1666,11 @@ mod tests {
             CanonicalEventDraftKind::Dungeon(event) => event,
             _ => unreachable!(),
         };
-        // Some current-build routes expose the stable objective only as the
-        // objective-map key while leaving the nested objective ID absent.
+        // Some current-build routes carry an unrelated nested objective ID
+        // alongside the stable objective-map key. The configured map key must
+        // still end mobbing so Game time stays paused through the transition.
         mobbing_complete.objective_map_key = Some(100_178);
-        mobbing_complete.objective_id = None;
+        mobbing_complete.objective_id = Some(9_999_999);
         mobbing_complete.objective_complete = Some(true);
         emit(
             &mut reducer,
