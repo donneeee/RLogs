@@ -42,6 +42,21 @@ jobs:
           if ((Get-Item -LiteralPath $notesPath).Length -eq 0) {
             throw "Release notes at $notesPath are empty"
           }
+      - name: Verify Windows installer smoke-test script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $scriptPath = (Resolve-Path "tools/windows/smoke-test-rlogs-installer.ps1").Path
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref] $tokens,
+            [ref] $errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+            throw "Windows installer smoke-test script has PowerShell syntax errors"
+          }
       - name: Build desktop UI
         working-directory: apps/desktop/ui
         run: |

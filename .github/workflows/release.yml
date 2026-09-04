@@ -52,6 +52,20 @@ jobs:
           args: --ci
           retryAttempts: 2
 
+      - name: Smoke-test the packaged Windows installer
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/desktop-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $installer = Get-ChildItem target/release/bundle/nsis -Filter "rLogs_${version}_x64-setup.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "The expected NSIS installer was not produced"
+          }
+          $installDirectory = Join-Path $env:RUNNER_TEMP "rlogs-installer-smoke-$version"
+          ./tools/windows/smoke-test-rlogs-installer.ps1 `
+            -InstallerPath $installer.FullName `
+            -ExpectedVersion $version `
+            -InstallDirectory $installDirectory
+
       - name: Record the checksum and publish the release
         shell: pwsh
         env:

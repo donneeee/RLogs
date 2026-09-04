@@ -30,3 +30,10 @@ startup: rLogs validates the complete Packet API, pins the trusted sibling DLL
 before loading `wpcap.dll`, reports any conflict in Settings, and keeps the rest
 of the application available. Npcap's free license does not grant
 redistribution rights.
+
+Tagged releases remain drafts until the generated NSIS package passes an
+isolated silent-install smoke test on the Windows release runner. The gate
+installs into a new runner-temporary directory and verifies the installed
+`rLogs.exe` is a non-empty Windows PE with matching product/file version
+metadata, and that the package includes a non-empty uninstaller. Only then does
+the workflow record the installer checksum and publish the release.
