@@ -150,6 +150,17 @@ independent coefficients. The effect therefore remains ordinary owner damage
 and can never be reclassified as party support. The build-locked receipt is
 `protocol-packs/global/steam-24687926/observations/thunderwind-power-2110138-owner-lifecycle-001.json`.
 
+A separate sealed build `24687926` replay confirms the production Encore
+ownership path on a five-player run. Effect `55333` was sourced by one player
+and observed across four targets; the exact standalone actions `230401` and
+`230501` produced 74 externally attributed rows totaling 1,525,694 damage.
+Every row retained complete damage context, used the packet-final integer, and
+credited a provider different from its recipient. The full report conserved
+2,268,767,225 raw damage and 25,177,036 total contribution given/received.
+This is component-scoped authority: unresolved or multiple-provider state still
+fails closed. The privacy-safe receipt is
+`protocol-packs/global/steam-24687926/observations/encore-55333-provider-recipient-replay-002.json`.
+
 ## Current-build exhaustive party-route census
 
 <!-- BEGIN GENERATED RDPS PROMOTION FRONTIER -->

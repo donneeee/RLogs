@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "observation_id": "encore-55333-provider-recipient-replay-002",
+  "deployment_id": "global",
+  "client_build": "24687926",
+  "protocol_pack_digest": "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
+  "subject": "Encore 55333 provider-recipient lifecycle and exact standalone generated-output attribution",
+  "effect_identity": {
+    "effect_id": 55333,
+    "damage_action_ids": [230401, 230501],
+    "excluded_healing_action_id": 55314
+  },
+  "sealed_input": {
+    "content_sha256": "sha256:90bf91d23ef164a17c11f9abbf756f0ad92984c1f4a1e2a43ef612a829817a46",
+    "canonical_content_sha256": "sha256:28e02bae2db117e02d720fd1abcff99e2d4d7892b8849b7c2f4e97cf65d0c1b1",
+    "bytes": 5553432,
+    "canonical_events": 119376,
+    "damage_events": 24358,
+    "status_events": 45507
+  },
+  "packet_lifecycle": {
+    "selected_status_events": 32,
+    "external_recipient_status_events": 30,
+    "self_status_events": 2,
+    "external_applied_events": 15,
+    "external_removed_events": 15,
+    "unique_player_providers": 1,
+    "unique_targets": 4,
+    "duration_millis": 10000,
+    "direct_player_provider_proven_for_every_event": true,
+    "stable_player_character_id_proven_for_every_event": true,
+    "player_primary_loadout_proven_for_every_event": true
+  },
+  "production_replay": {
+    "generated_by": "rlogs-bpsr-rdps-replay-audit",
+    "proof_scope": "packet_proven_rules_only_partial_game_coverage",
+    "attribution_mode": "production_promoted_rules",
+    "content_sha256": "sha256:b27c3f62b69cd9957ae91fe9675ba9f4eadc38a6a222f751c6b4ec883ab5f64d",
+    "runtime_target_match": true,
+    "report_conserved": true,
+    "all_damage_context_complete": true,
+    "all_encore_contributions_external": true,
+    "all_encore_denominators_one": true,
+    "unique_providers": 1,
+    "unique_recipients": 4,
+    "attributed_events": 74,
+    "attributed_rdmg": 1525694,
+    "action_totals": [
+      {"action_id": 230401, "events": 39, "attributed_rdmg": 809987},
+      {"action_id": 230501, "events": 35, "attributed_rdmg": 715707}
+    ],
+    "full_report_attributed_events": 6727,
+    "full_report_attributed_bonus_damage": 25177036,
+    "full_report_raw_damage": 2268767225,
+    "full_report_rdps_damage": 2268767225,
+    "full_report_contribution_given": 25177036,
+    "full_report_contribution_received": 25177036
+  },
+  "authority_boundary": {
+    "standalone_generated_output_whole_packet_final_integer": true,
+    "same_provider_instances_coalesced": true,
+    "external_provider_only": true,
+    "healing_action_excluded": true,
+    "ordinary_damage_unchanged": true,
+    "component_scoped_authority_only": true,
+    "unresolved_or_multiple_provider_state_fails_closed": true,
+    "recipient_skill_ownership_for_encore_authorized": false,
+    "reason": "Current-build lifecycle and replay prove that Encore damage actions 230401 and 230501 belong to the one external provider of effect 55333. The recipient remains the ordinary damage actor for conservation, but the ownership drilldown must present the standalone generated output under the provider."
+  }
+}

@@ -5538,6 +5538,57 @@ mod tests {
     }
 
     #[test]
+    fn encore_55333_current_build_replay_receipt_stays_conserved_and_external() {
+        let receipt: serde_json::Value = serde_json::from_str(include_str!(
+            "../protocol-packs/global/steam-24687926/observations/encore-55333-provider-recipient-replay-002.json"
+        ))
+        .expect("the build-locked Encore replay receipt must remain valid JSON");
+
+        assert_eq!(receipt["deployment_id"], "global");
+        assert_eq!(receipt["client_build"], "24687926");
+        assert_eq!(receipt["effect_identity"]["effect_id"], 55_333);
+        assert_eq!(
+            receipt["effect_identity"]["damage_action_ids"],
+            serde_json::json!([230_401, 230_501])
+        );
+        assert_eq!(
+            receipt["effect_identity"]["excluded_healing_action_id"],
+            55_314
+        );
+        assert_eq!(receipt["packet_lifecycle"]["unique_player_providers"], 1);
+        assert_eq!(receipt["packet_lifecycle"]["unique_targets"], 4);
+        assert_eq!(receipt["production_replay"]["unique_providers"], 1);
+        assert_eq!(receipt["production_replay"]["unique_recipients"], 4);
+        assert_eq!(receipt["production_replay"]["attributed_events"], 74);
+        assert_eq!(receipt["production_replay"]["attributed_rdmg"], 1_525_694);
+        assert_eq!(
+            receipt["production_replay"]["full_report_raw_damage"],
+            receipt["production_replay"]["full_report_rdps_damage"]
+        );
+        assert_eq!(
+            receipt["production_replay"]["full_report_contribution_given"],
+            receipt["production_replay"]["full_report_contribution_received"]
+        );
+        for required in [
+            "runtime_target_match",
+            "report_conserved",
+            "all_damage_context_complete",
+            "all_encore_contributions_external",
+            "all_encore_denominators_one",
+        ] {
+            assert_eq!(receipt["production_replay"][required], true);
+        }
+        assert_eq!(
+            receipt["authority_boundary"]["recipient_skill_ownership_for_encore_authorized"],
+            false
+        );
+        assert_eq!(
+            receipt["authority_boundary"]["unresolved_or_multiple_provider_state_fails_closed"],
+            true
+        );
+    }
+
+    #[test]
     fn fiery_battle_will_requires_exact_local_observed_attack_authority() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
