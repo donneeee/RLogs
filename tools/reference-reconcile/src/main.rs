@@ -94,7 +94,47 @@ struct ReferenceManifest {
     project: String,
     revision: String,
     source_urls: Vec<String>,
+    #[serde(default)]
+    scope: Option<ReferenceScope>,
+    #[serde(default)]
+    semantic_boundaries: Vec<SemanticBoundary>,
     claims: Vec<RouteClaim>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReferenceScope {
+    deployment_id: String,
+    #[serde(default)]
+    client_build: Option<String>,
+    #[serde(default)]
+    release_tag: Option<String>,
+    authority: ReferenceAuthority,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ReferenceAuthority {
+    ExternalReferenceOnly,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SemanticBoundary {
+    domain: String,
+    numeric_id: u64,
+    reference_name: String,
+    authoritative_deployment_id: String,
+    authoritative_client_build: String,
+    authoritative_name: String,
+    authoritative_evidence: Vec<String>,
+    disposition: SemanticBoundaryDisposition,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SemanticBoundaryDisposition {
+    RejectCrossDeploymentTransfer,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -135,6 +175,7 @@ struct ReconciliationReport {
     observation_id: String,
     reference_ids: Vec<String>,
     summary: ReconciliationSummary,
+    semantic_boundaries: Vec<ReportSemanticBoundary>,
     routes: Vec<ReconciledRoute>,
 }
 
@@ -145,6 +186,17 @@ struct ReconciliationSummary {
     single_lineage: usize,
     conflicts: usize,
     unmapped: usize,
+    semantic_boundaries: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ReportSemanticBoundary {
+    reference_id: String,
+    lineage_id: String,
+    project: String,
+    revision: String,
+    reference_scope: ReferenceScope,
+    boundary: SemanticBoundary,
 }
 
 #[derive(Debug, Serialize)]
@@ -188,8 +240,21 @@ fn reconcile(
     manifests.sort_by(|left, right| left.reference_id.cmp(&right.reference_id));
     let mut reference_ids = BTreeSet::new();
     let mut claims_by_route: BTreeMap<Route, Vec<ReportClaim>> = BTreeMap::new();
+    let mut semantic_boundaries = Vec::new();
     for manifest in manifests {
         validate_manifest(&manifest, &mut reference_ids)?;
+        if let Some(scope) = &manifest.scope {
+            semantic_boundaries.extend(manifest.semantic_boundaries.iter().cloned().map(
+                |boundary| ReportSemanticBoundary {
+                    reference_id: manifest.reference_id.clone(),
+                    lineage_id: manifest.lineage_id.clone(),
+                    project: manifest.project.clone(),
+                    revision: manifest.revision.clone(),
+                    reference_scope: scope.clone(),
+                    boundary,
+                },
+            ));
+        }
         for claim in manifest.claims {
             if !observed.contains_key(&claim.route) {
                 continue;
@@ -211,6 +276,7 @@ fn reconcile(
 
     let mut summary = ReconciliationSummary {
         observed_routes: observed.len(),
+        semantic_boundaries: semantic_boundaries.len(),
         ..ReconciliationSummary::default()
     };
     let mut routes = Vec::with_capacity(observed.len());
@@ -276,6 +342,7 @@ fn reconcile(
         observation_id: observation.observation_id,
         reference_ids: reference_ids.into_iter().collect(),
         summary,
+        semantic_boundaries,
         routes,
     })
 }
@@ -303,6 +370,66 @@ fn validate_manifest(
         return Err(ReconcileError::IncompleteReference(
             manifest.reference_id.clone(),
         ));
+    }
+    if let Some(scope) = &manifest.scope {
+        if scope.deployment_id.trim().is_empty()
+            || scope
+                .client_build
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+            || scope
+                .release_tag
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+            || (scope.client_build.is_none() && scope.release_tag.is_none())
+        {
+            return Err(ReconcileError::IncompleteReferenceScope(
+                manifest.reference_id.clone(),
+            ));
+        }
+    } else if !manifest.semantic_boundaries.is_empty() {
+        return Err(ReconcileError::MissingReferenceScope(
+            manifest.reference_id.clone(),
+        ));
+    }
+    let mut semantic_keys = BTreeSet::new();
+    for boundary in &manifest.semantic_boundaries {
+        let Some(scope) = manifest.scope.as_ref() else {
+            unreachable!("non-empty semantic boundaries require a scope")
+        };
+        if boundary.domain.trim().is_empty()
+            || boundary.reference_name.trim().is_empty()
+            || boundary.authoritative_deployment_id.trim().is_empty()
+            || boundary.authoritative_client_build.trim().is_empty()
+            || boundary.authoritative_name.trim().is_empty()
+            || boundary.authoritative_evidence.is_empty()
+            || boundary
+                .authoritative_evidence
+                .iter()
+                .any(|value| value.trim().is_empty())
+        {
+            return Err(ReconcileError::IncompleteSemanticBoundary {
+                reference_id: manifest.reference_id.clone(),
+                domain: boundary.domain.clone(),
+                numeric_id: boundary.numeric_id,
+            });
+        }
+        if scope.deployment_id == boundary.authoritative_deployment_id
+            && scope.client_build.as_deref() == Some(boundary.authoritative_client_build.as_str())
+        {
+            return Err(ReconcileError::SameScopeSemanticBoundary {
+                reference_id: manifest.reference_id.clone(),
+                domain: boundary.domain.clone(),
+                numeric_id: boundary.numeric_id,
+            });
+        }
+        if !semantic_keys.insert((boundary.domain.clone(), boundary.numeric_id)) {
+            return Err(ReconcileError::DuplicateSemanticBoundary {
+                reference_id: manifest.reference_id.clone(),
+                domain: boundary.domain.clone(),
+                numeric_id: boundary.numeric_id,
+            });
+        }
     }
     let mut routes = BTreeSet::new();
     for claim in &manifest.claims {
@@ -342,13 +469,26 @@ fn service_id(service_name: &str) -> u64 {
 fn print_text(report: &ReconciliationReport) {
     println!("observation: {}", report.observation_id);
     println!(
-        "routes: {} observed, {} corroborated, {} single-lineage, {} conflict, {} unmapped",
+        "routes: {} observed, {} corroborated, {} single-lineage, {} conflict, {} unmapped; semantic boundaries: {}",
         report.summary.observed_routes,
         report.summary.corroborated,
         report.summary.single_lineage,
         report.summary.conflicts,
-        report.summary.unmapped
+        report.summary.unmapped,
+        report.summary.semantic_boundaries,
     );
+    for boundary in &report.semantic_boundaries {
+        println!(
+            "boundary: {} {}={} is {} in {}/{}; {:?}",
+            boundary.boundary.domain,
+            boundary.boundary.numeric_id,
+            boundary.boundary.reference_name,
+            boundary.boundary.authoritative_name,
+            boundary.boundary.authoritative_deployment_id,
+            boundary.boundary.authoritative_client_build,
+            boundary.boundary.disposition,
+        );
+    }
     for route in &report.routes {
         let candidate = route
             .candidate
@@ -428,6 +568,28 @@ enum ReconcileError {
     DuplicateReferenceId(String),
     #[error("reference {0} is missing lineage, project, revision, or source URL evidence")]
     IncompleteReference(String),
+    #[error("reference {0} has an incomplete deployment/build scope")]
+    IncompleteReferenceScope(String),
+    #[error("reference {0} declares semantic boundaries without a reference scope")]
+    MissingReferenceScope(String),
+    #[error("reference {reference_id} has incomplete semantic boundary {domain}/{numeric_id}")]
+    IncompleteSemanticBoundary {
+        reference_id: String,
+        domain: String,
+        numeric_id: u64,
+    },
+    #[error("reference {reference_id} declares same-scope semantic boundary {domain}/{numeric_id}")]
+    SameScopeSemanticBoundary {
+        reference_id: String,
+        domain: String,
+        numeric_id: u64,
+    },
+    #[error("reference {reference_id} repeats semantic boundary {domain}/{numeric_id}")]
+    DuplicateSemanticBoundary {
+        reference_id: String,
+        domain: String,
+        numeric_id: u64,
+    },
     #[error("observation repeats route {0:?}")]
     DuplicateObservedRoute(Route),
     #[error("reference {reference_id} repeats route {route:?}")]
@@ -487,6 +649,8 @@ mod tests {
             project: reference_id.into(),
             revision: "immutable".into(),
             source_urls: vec!["https://example.invalid/source".into()],
+            scope: None,
+            semantic_boundaries: Vec::new(),
             claims: claims
                 .iter()
                 .map(|(method_id, method_name)| RouteClaim {
@@ -558,6 +722,60 @@ mod tests {
         assert_eq!(service_id("World"), 103_198_054);
         assert_eq!(service_id("Ace"), 1_128_535);
         assert_eq!(service_id("ChitChat"), 1_321_197_368);
+    }
+
+    #[test]
+    fn cross_deployment_semantics_are_reported_without_granting_route_authority() {
+        let mut external = manifest("external", "lineage-a", &[]);
+        external.scope = Some(ReferenceScope {
+            deployment_id: "cn".into(),
+            client_build: None,
+            release_tag: Some("0.2.3".into()),
+            authority: ReferenceAuthority::ExternalReferenceOnly,
+        });
+        external.semantic_boundaries.push(SemanticBoundary {
+            domain: "entity_attribute".into(),
+            numeric_id: 51,
+            reference_name: "ATTR_DEFENSE_POWER".into(),
+            authoritative_deployment_id: "global".into(),
+            authoritative_client_build: "24687926".into(),
+            authoritative_name: "AttrTargetDir".into(),
+            authoritative_evidence: vec!["sanitized-global-proof.json".into()],
+            disposition: SemanticBoundaryDisposition::RejectCrossDeploymentTransfer,
+        });
+
+        let report = reconcile(observation(&[3]), vec![external]).unwrap();
+
+        assert_eq!(report.routes[0].status, ReconciliationStatus::Unmapped);
+        assert_eq!(report.summary.semantic_boundaries, 1);
+        assert_eq!(report.semantic_boundaries[0].boundary.numeric_id, 51);
+    }
+
+    #[test]
+    fn same_scope_semantic_boundaries_are_rejected() {
+        let mut external = manifest("external", "lineage-a", &[]);
+        external.scope = Some(ReferenceScope {
+            deployment_id: "global".into(),
+            client_build: Some("24687926".into()),
+            release_tag: None,
+            authority: ReferenceAuthority::ExternalReferenceOnly,
+        });
+        external.semantic_boundaries.push(SemanticBoundary {
+            domain: "entity_attribute".into(),
+            numeric_id: 51,
+            reference_name: "Wrong".into(),
+            authoritative_deployment_id: "global".into(),
+            authoritative_client_build: "24687926".into(),
+            authoritative_name: "AttrTargetDir".into(),
+            authoritative_evidence: vec!["sanitized-global-proof.json".into()],
+            disposition: SemanticBoundaryDisposition::RejectCrossDeploymentTransfer,
+        });
+        let mut reference_ids = BTreeSet::new();
+
+        assert!(matches!(
+            validate_manifest(&external, &mut reference_ids),
+            Err(ReconcileError::SameScopeSemanticBoundary { .. })
+        ));
     }
 
     #[test]

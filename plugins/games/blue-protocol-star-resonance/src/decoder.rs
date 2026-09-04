@@ -6347,6 +6347,17 @@ mod tests {
         );
     }
 
+    #[test]
+    fn foreign_low_attribute_labels_cannot_expand_the_global_scalar_gate() {
+        // resonance-logs-cn 0.2.3 labels 0x33 as defense power and 0x46 as
+        // base strength. Exact Global build 24687926 metadata identifies them
+        // as AttrTargetDir and AttrVelocity. Neither has a proven scalar
+        // projection in the Global decoder, and 0x35 remains position-shaped.
+        assert_eq!(decode_known_entity_attribute_value(0x33, &[1]), None);
+        assert_eq!(decode_known_entity_attribute_value(0x46, &[1]), None);
+        assert_eq!(decode_known_entity_attribute_value(0x35, &[1]), None);
+    }
+
     #[derive(Clone, PartialEq, Message)]
     struct FullNotifyEnterWorld {
         #[prost(message, optional, tag = "1")]

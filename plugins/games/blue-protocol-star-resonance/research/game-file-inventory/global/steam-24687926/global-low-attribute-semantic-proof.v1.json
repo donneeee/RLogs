@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "artifact": "global-low-attribute-semantic-proof",
+  "game": "blue-protocol-star-resonance",
+  "deployment": "global",
+  "channel": "steam",
+  "game_build": "24687926",
+  "decision": "retain exact Global low-attribute meanings and reject conflicting CN 0.2.3 labels as decoder or formula authority",
+  "native_source_identity": {
+    "global_metadata_sha256": "sha256:2e78e98d0c11b8efc1ab387fa69d6b119a92ec81e335108caf0a0ea48f85b3af",
+    "game_assembly_sha256": "sha256:4ba9e3f194bfd1769e57e3f12d192208e4d34db04374636738dfc9d5525495a4",
+    "il2cpp_dump_sha256": "sha256:643b214c913df372ca48982db2a2afbd08ea97d8c86fdd0b44b875d47c44f2e8",
+    "full_combat_surface_sha256": "sha256:427d48100cf9962f70c6c9c0c81a4fbec74a99e9ae9246e592eef21563e14bd8",
+    "enum": "Zproto.EAttrType"
+  },
+  "exact_global_enum_slice": [
+    { "id": 50, "name": "AttrDir" },
+    { "id": 51, "name": "AttrTargetDir" },
+    { "id": 52, "name": "AttrPos" },
+    { "id": 53, "name": "AttrTargetPos" },
+    { "id": 54, "name": "AttrDirX" },
+    { "id": 55, "name": "AttrDirZ" },
+    { "id": 70, "name": "AttrVelocity" },
+    { "id": 71, "name": "AttrMoveType" }
+  ],
+  "conflicting_external_reference": {
+    "project": "fudiyangjin/resonance-logs-cn",
+    "release_tag": "0.2.3",
+    "revision": "7d956e41fb37b4ba0577a9acd8ab16121906a6d0",
+    "source_url": "https://github.com/fudiyangjin/resonance-logs-cn/blob/7d956e41fb37b4ba0577a9acd8ab16121906a6d0/src-tauri/src/live/protocol/attrs.rs",
+    "conflicts": [
+      { "id": 51, "reference_name": "ATTR_DEFENSE_POWER", "global_name": "AttrTargetDir" },
+      { "id": 53, "reference_name": "ATTR_GEAR_TIER", "global_name": "AttrTargetPos" },
+      { "id": 70, "reference_name": "ATTR_BASE_STRENGTH", "global_name": "AttrVelocity" }
+    ]
+  },
+  "current_build_packet_aggregate": {
+    "source": "privacy-safe aggregate over sealed build-24687926 RLOGs; source paths and actor identities are excluded",
+    "attribute_51": {
+      "observations": 34079,
+      "actors": 1940,
+      "rlogs": 25,
+      "distinct_raw_values": 18158,
+      "signed_scalar_minimum": -5072,
+      "signed_scalar_maximum": 47324,
+      "interpretation": "high-cardinality directional state, incompatible with treating this ID as a stable defense formula input"
+    },
+    "attribute_70": {
+      "observations": 2115,
+      "actors": 52,
+      "rlogs": 19,
+      "distinct_raw_values": 26,
+      "unsigned_scalar_minimum": 121,
+      "unsigned_scalar_maximum": 800,
+      "interpretation": "movement velocity observations, not base strength"
+    },
+    "actual_global_physical_defense_family": {
+      "ids": [11350, 11351, 11352, 11353, 11354, 11355],
+      "final_observations": 44,
+      "distinct_final_actors": 1,
+      "target_monster_observations": 0,
+      "interpretation": "the retained corpus observes local-player defense only and still cannot supply event-time target defense for Blade Sweep"
+    }
+  },
+  "runtime_policy": {
+    "external_reference_authority": false,
+    "current_build_native_semantic_authority": true,
+    "packet_shape_authority_requires_current_build_replay": true,
+    "unknown_low_scalar_ids_remain_unresolved": true,
+    "target_position_53_remains_position_shaped": true,
+    "attribute_51_is_not_physical_defense": true,
+    "attribute_70_is_not_base_strength": true,
+    "formula_authority": false,
+    "rdps_runtime_authority": false
+  },
+  "remaining_blade_sweep_gate": "event-time target physical defense is still absent; do not use attribute 51 or any other cross-deployment label as a substitute"
+}

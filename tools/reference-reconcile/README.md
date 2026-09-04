@@ -7,7 +7,7 @@ reference manifests:
 cargo run -p rlogs-reference-reconcile -- \
   --observation plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24252055/observations/world-load-process-001.json \
   --json \
-  plugins/games/blue-protocol-star-resonance/protocol-references/manifests/resonance-logs-cn-0.2.0.json \
+  plugins/games/blue-protocol-star-resonance/protocol-references/manifests/resonance-logs-cn-0.2.3.json \
   plugins/games/blue-protocol-star-resonance/protocol-references/manifests/resonance-logs-global-77380ca.json \
   plugins/games/blue-protocol-star-resonance/protocol-references/manifests/zdps-0.1.7.3.json
 ```
@@ -23,6 +23,13 @@ project and its fork from creating false independent agreement. A route is:
 Reference agreement can justify a candidate route name. It cannot verify a
 current-build payload shape, grant decoder permission, or override RLogs'
 privacy policy.
+
+A manifest may also declare deployment-scoped semantic boundaries. They are
+reported alongside route results so conflicting names for the same numeric ID
+stay auditable, but they never contribute route votes or grant decoder,
+payload, or formula authority. A boundary must name the exact authoritative
+deployment/build evidence and is rejected when it claims to compare a scope
+with itself.
 
 Manifest validation also recomputes each service ID with the game's
 BKDR-131 service-name hash (`hash & 0x7fffffff`). A typo or incorrect service

@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "reference_id": "resonance-logs-cn-0.2.3",
+  "lineage_id": "resonance-logs",
+  "project": "fudiyangjin/resonance-logs-cn",
+  "revision": "7d956e41fb37b4ba0577a9acd8ab16121906a6d0",
+  "source_urls": [
+    "https://github.com/fudiyangjin/resonance-logs-cn/blob/7d956e41fb37b4ba0577a9acd8ab16121906a6d0/src-tauri/src/packets/opcodes.rs",
+    "https://github.com/fudiyangjin/resonance-logs-cn/blob/7d956e41fb37b4ba0577a9acd8ab16121906a6d0/src-tauri/src/live/protocol/decoder.rs",
+    "https://github.com/fudiyangjin/resonance-logs-cn/blob/7d956e41fb37b4ba0577a9acd8ab16121906a6d0/src-tauri/src/live/protocol/attrs.rs",
+    "https://github.com/fudiyangjin/resonance-logs-cn/blob/7d956e41fb37b4ba0577a9acd8ab16121906a6d0/CHANGELOG.md"
+  ],
+  "scope": {
+    "deployment_id": "cn",
+    "release_tag": "0.2.3",
+    "authority": "external_reference_only"
+  },
+  "semantic_boundaries": [
+    {
+      "domain": "entity_attribute",
+      "numeric_id": 51,
+      "reference_name": "ATTR_DEFENSE_POWER",
+      "authoritative_deployment_id": "global",
+      "authoritative_client_build": "24687926",
+      "authoritative_name": "AttrTargetDir",
+      "authoritative_evidence": [
+        "research/game-file-inventory/global/steam-24687926/global-low-attribute-semantic-proof.v1.json",
+        "src/decoder.rs"
+      ],
+      "disposition": "reject_cross_deployment_transfer"
+    },
+    {
+      "domain": "entity_attribute",
+      "numeric_id": 53,
+      "reference_name": "ATTR_GEAR_TIER",
+      "authoritative_deployment_id": "global",
+      "authoritative_client_build": "24687926",
+      "authoritative_name": "AttrTargetPos",
+      "authoritative_evidence": [
+        "research/game-file-inventory/global/steam-24687926/global-low-attribute-semantic-proof.v1.json",
+        "src/decoder.rs"
+      ],
+      "disposition": "reject_cross_deployment_transfer"
+    },
+    {
+      "domain": "entity_attribute",
+      "numeric_id": 70,
+      "reference_name": "ATTR_BASE_STRENGTH",
+      "authoritative_deployment_id": "global",
+      "authoritative_client_build": "24687926",
+      "authoritative_name": "AttrVelocity",
+      "authoritative_evidence": [
+        "research/game-file-inventory/global/steam-24687926/global-low-attribute-semantic-proof.v1.json",
+        "src/decoder.rs"
+      ],
+      "disposition": "reject_cross_deployment_transfer"
+    }
+  ],
+  "claims": [
+    { "route": { "direction": "client_to_server", "fragment": "call", "service_id": 103198054, "method_id": 249858 }, "service_name": "World", "method_name": "UseSlot" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 822849903, "method_id": 4 }, "service_name": "MatchNtf", "method_name": "EnterMatchResult" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 966773353, "method_id": 1 }, "service_name": "GrpcTeamNtf", "method_name": "NoticeUpdateTeamInfo" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 966773353, "method_id": 2 }, "service_name": "GrpcTeamNtf", "method_name": "NoticeUpdateTeamMemberInfo" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 966773353, "method_id": 3 }, "service_name": "GrpcTeamNtf", "method_name": "NotifyJoinTeam" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 966773353, "method_id": 4 }, "service_name": "GrpcTeamNtf", "method_name": "NotifyLeaveTeam" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 966773353, "method_id": 11 }, "service_name": "GrpcTeamNtf", "method_name": "NotifyBeTransferLeader" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 966773353, "method_id": 13 }, "service_name": "GrpcTeamNtf", "method_name": "NoticeTeamDissolve" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 966773353, "method_id": 14 }, "service_name": "GrpcTeamNtf", "method_name": "NotifyTeamActivityState" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 1 }, "service_name": "WorldNtf", "method_name": "SyncSubSceneAttrs" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 2 }, "service_name": "WorldNtf", "method_name": "NotifySwitchSceneEnd" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 3 }, "service_name": "WorldNtf", "method_name": "EnterScene" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 4 }, "service_name": "WorldNtf", "method_name": "NotifyLoadSceneEnd" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 5 }, "service_name": "WorldNtf", "method_name": "Teleport" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 6 }, "service_name": "WorldNtf", "method_name": "SyncNearEntities" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 7 }, "service_name": "WorldNtf", "method_name": "SyncSceneAttrs" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 8 }, "service_name": "WorldNtf", "method_name": "SyncSceneEvents" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 9 }, "service_name": "WorldNtf", "method_name": "SyncEntityBehaviorTree" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 10 }, "service_name": "WorldNtf", "method_name": "SyncPlayCameraAnimation" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 11 }, "service_name": "WorldNtf", "method_name": "SyncFieldOfView" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 12 }, "service_name": "WorldNtf", "method_name": "SyncLog" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 13 }, "service_name": "WorldNtf", "method_name": "SyncPathNode" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 15 }, "service_name": "WorldNtf", "method_name": "SyncServerData" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 16 }, "service_name": "WorldNtf", "method_name": "ForcedPullBack" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 17 }, "service_name": "WorldNtf", "method_name": "LineDrawing" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 20 }, "service_name": "WorldNtf", "method_name": "EnterGame" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 21 }, "service_name": "WorldNtf", "method_name": "SyncContainerData" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 22 }, "service_name": "WorldNtf", "method_name": "SyncContainerDirtyData" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 23 }, "service_name": "WorldNtf", "method_name": "SyncDungeonData" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 24 }, "service_name": "WorldNtf", "method_name": "SyncDungeonDirtyData" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 34 }, "service_name": "WorldNtf", "method_name": "SyncPersonalObject" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 35 }, "service_name": "WorldNtf", "method_name": "PersonalObjectUpdate" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 39 }, "service_name": "WorldNtf", "method_name": "NotifyReviveUser" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 43 }, "service_name": "WorldNtf", "method_name": "SyncServerTime" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 45 }, "service_name": "WorldNtf", "method_name": "SyncNearDeltaInfo" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 46 }, "service_name": "WorldNtf", "method_name": "SyncToMeDeltaInfo" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 49 }, "service_name": "WorldNtf", "method_name": "NotifyClientKickOff" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 60 }, "service_name": "WorldNtf", "method_name": "PersonalGroupObjectUpdate" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 62 }, "service_name": "WorldNtf", "method_name": "NotifyUserCloseFunction" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 63 }, "service_name": "WorldNtf", "method_name": "NotifyServerCloseFunction" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 64 }, "service_name": "WorldNtf", "method_name": "BuffInfoSync" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 66 }, "service_name": "WorldNtf", "method_name": "BounceJump" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 67 }, "service_name": "WorldNtf", "method_name": "SyncClientUseSkill" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 68 }, "service_name": "WorldNtf", "method_name": "SyncAllServerStateObject" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 70 }, "service_name": "WorldNtf", "method_name": "NotifyAllMemberReady" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 72 }, "service_name": "WorldNtf", "method_name": "NotifyTimerList" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 73 }, "service_name": "WorldNtf", "method_name": "NotifyTimerUpdate" },
+    { "route": { "direction": "server_to_client", "fragment": "notify", "service_id": 1664308034, "method_id": 12293 }, "service_name": "WorldNtf", "method_name": "SyncServerSkillEnd" }
+  ]
+}
