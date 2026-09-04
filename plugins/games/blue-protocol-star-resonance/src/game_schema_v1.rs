@@ -49,6 +49,37 @@ pub(crate) struct SyncSeason {
     pub season_id: Option<i32>,
 }
 
+/// Privacy-reviewed response containing the character's saved profession
+/// projects. Only the directory identity fields are declared below; equipment
+/// and module instance maps remain deliberately opaque here.
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct SyncProjectListReturn {
+    #[prost(message, optional, tag = "1")]
+    pub ret: Option<SyncProjectListReply>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct SyncProjectListReply {
+    #[prost(message, optional, tag = "1")]
+    pub sync_data: Option<ProfessionProjectList>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct ProfessionProjectList {
+    #[prost(map = "int32, message", tag = "1")]
+    pub projects: std::collections::HashMap<i32, ProfessionProjectCommonSyncData>,
+    #[prost(int32, optional, tag = "2")]
+    pub current_project_id: Option<i32>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub(crate) struct ProfessionProjectCommonSyncData {
+    #[prost(int32, optional, tag = "1")]
+    pub profession_id: Option<i32>,
+    #[prost(string, optional, tag = "2")]
+    pub project_name: Option<String>,
+}
+
 /// Local-only response for the character's reviewed in-game photo album.
 /// URLs decoded here are never emitted as canonical events or serialized into
 /// `.rlog` files; the desktop may consume them only under the separate Photo

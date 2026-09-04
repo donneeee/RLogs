@@ -136,6 +136,12 @@ pub struct PublicProfile {
 #[serde(deny_unknown_fields)]
 pub struct PublicProfileLoadoutSummary {
     pub project_id: i32,
+    #[serde(default)]
+    pub project_name: Option<String>,
+    #[serde(default)]
+    pub profession_id: Option<i32>,
+    #[serde(default = "default_true")]
+    pub snapshot_available: bool,
     pub updated_unix_millis: u64,
     pub source_client_build: String,
     pub class_id: Option<i32>,
@@ -163,6 +169,9 @@ impl PublicProfileLoadout {
     fn summary(&self) -> PublicProfileLoadoutSummary {
         PublicProfileLoadoutSummary {
             project_id: self.project_id,
+            project_name: None,
+            profession_id: self.class_id,
+            snapshot_available: true,
             updated_unix_millis: self.updated_unix_millis,
             source_client_build: self.source_client_build.clone(),
             class_id: self.class_id,
@@ -171,6 +180,10 @@ impl PublicProfileLoadout {
             equipped_module_count: self.equipped_module_count,
         }
     }
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -386,8 +399,35 @@ impl ProfileRegistry {
         if let Some((_, loadout)) = &loadout {
             loadouts.retain(|summary| summary.project_id != loadout.project_id);
             loadouts.push(loadout.summary());
-            loadouts.sort_by_key(|summary| summary.project_id);
         }
+        if let Some(projects) = profile.profession_projects.as_ref() {
+            for project in projects {
+                if let Some(summary) = loadouts
+                    .iter_mut()
+                    .find(|summary| summary.project_id == project.project_id)
+                {
+                    summary.project_name = Some(project.project_name.clone());
+                    summary.profession_id = project.profession_id;
+                    if summary.class_id.is_none() {
+                        summary.class_id = project.profession_id;
+                    }
+                } else {
+                    loadouts.push(PublicProfileLoadoutSummary {
+                        project_id: project.project_id,
+                        project_name: Some(project.project_name.clone()),
+                        profession_id: project.profession_id,
+                        snapshot_available: false,
+                        updated_unix_millis: accepted_unix_millis,
+                        source_client_build: package.source.client_build.clone(),
+                        class_id: project.profession_id,
+                        specialization_id: None,
+                        module_inventory_count: 0,
+                        equipped_module_count: 0,
+                    });
+                }
+            }
+        }
+        loadouts.sort_by_key(|summary| summary.project_id);
         let published = PublicProfile {
             schema_version: PUBLIC_PROFILE_SCHEMA_VERSION,
             profile_id,
@@ -1292,6 +1332,7 @@ mod tests {
             season_cultivation: None,
             reputations: None,
             current_profession_project_id: None,
+            profession_projects: None,
             social_display: None,
         };
         let request = rlogs_game_bpsr::website_profile_request(&profile).unwrap();
@@ -1378,6 +1419,18 @@ mod tests {
             ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
         let first = mutate_package(package(10, "1000001", 3), |profile| {
             profile.current_profession_project_id = Some(5);
+            profile.profession_projects = Some(vec![
+                rlogs_game_bpsr::ProfessionProjectProfile {
+                    project_id: 5,
+                    project_name: "Daily".into(),
+                    profession_id: Some(11),
+                },
+                rlogs_game_bpsr::ProfessionProjectProfile {
+                    project_id: 8,
+                    project_name: "Bossing".into(),
+                    profession_id: Some(4),
+                },
+            ]);
             profile.class_id = Some(11);
             profile.specialization_id = Some(2);
         });
@@ -1390,6 +1443,13 @@ mod tests {
                 20,
             )
             .unwrap();
+        let directory_only = registry.get(&receipt.profile_id).unwrap();
+        assert_eq!(directory_only.loadouts.len(), 2);
+        assert_eq!(
+            directory_only.loadouts[1].project_name.as_deref(),
+            Some("Bossing")
+        );
+        assert!(!directory_only.loadouts[1].snapshot_available);
         let second = mutate_package(package(30, "1000001", 7), |profile| {
             profile.current_profession_project_id = Some(8);
             profile.class_id = Some(4);
@@ -1414,6 +1474,10 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![5, 8]
         );
+        assert_eq!(public.loadouts[0].project_name.as_deref(), Some("Daily"));
+        assert!(public.loadouts[0].snapshot_available);
+        assert_eq!(public.loadouts[1].project_name.as_deref(), Some("Bossing"));
+        assert!(public.loadouts[1].snapshot_available);
         let loadout_five = registry.get_loadout(&receipt.profile_id, 5).unwrap();
         let loadout_eight = registry.get_loadout(&receipt.profile_id, 8).unwrap();
         assert_eq!(loadout_five.class_id, Some(11));

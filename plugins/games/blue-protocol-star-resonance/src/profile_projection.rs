@@ -609,6 +609,7 @@ impl CharacterProfilePatch {
             &mut self.current_profession_project_id,
             newer.current_profession_project_id,
         );
+        replace_if_some(&mut self.profession_projects, newer.profession_projects);
         merge_social_display(&mut self.social_display, newer.social_display);
         Ok(())
     }
@@ -1013,6 +1014,7 @@ mod tests {
             season_cultivation: None,
             reputations: None,
             current_profession_project_id: None,
+            profession_projects: None,
             social_display: None,
         }
     }

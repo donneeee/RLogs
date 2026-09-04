@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "artifact": "saved-loadout-directory-route-proof",
+  "game_build": "24687926",
+  "deployment": "global",
+  "channel": "steam",
+  "decision": "append a privacy-reviewed candidate decoder for the complete saved profession-project directory",
+  "route": {
+    "direction": "server_to_client",
+    "fragment": "return",
+    "service_name": "World",
+    "service_id": 103198054,
+    "method_name": "SyncProjectList",
+    "method_id": 278533,
+    "decoder": "sync_project_list_v1"
+  },
+  "sources": [
+    {
+      "kind": "independent-generated-world-method-surface",
+      "reference": "tmp-rdps-audit/external/BPSR-ZDPS/BPSR-ZDPSLib/ServiceMethods/WorldProxy.cs",
+      "sha256": "950d0bddffc2cd9ebcb6e143563197936ba54fd2d56fc9da8977d11037dca6df",
+      "proves": [
+        "SyncProjectList method ID is 278533"
+      ]
+    },
+    {
+      "kind": "reviewed-generated-protobuf-schema",
+      "reference": "proto/zproto/serv_world.proto",
+      "sha256": "a9bbfa5af578f4daa488e01c802f00bacd85a47116a06abacdbc108ccf57d03f",
+      "proves": [
+        "SyncProjectList return wraps SyncProjectListReply in field 1"
+      ]
+    },
+    {
+      "kind": "reviewed-generated-protobuf-schema",
+      "reference": "proto/zproto/stru_profession_project_common_sync_data.proto",
+      "sha256": "dac1c948a6be4277f43d25bd03eac68c29031075786932c54a5b55d8ce3cdcab",
+      "proves": [
+        "each saved project contains profession ID and player-visible project name",
+        "equipment and module instance maps are separate fields and are intentionally not decoded"
+      ]
+    },
+    {
+      "kind": "reviewed-generated-protobuf-schema",
+      "reference": "proto/zproto/stru_profession_project_list.proto",
+      "sha256": "a6d8c1359a47c16a67fe8d196d5ee4a8a838872ffeed75eea7966312b126d71f",
+      "proves": [
+        "one reply carries the complete project map and current project ID"
+      ]
+    }
+  ],
+  "privacy": {
+    "published_fields": [
+      "project_id",
+      "project_name",
+      "profession_id"
+    ],
+    "omitted_fields": [
+      "equip_info_map",
+      "mod_info_map",
+      "current_project_sync_data"
+    ],
+    "maximum_projects": 64,
+    "maximum_project_name_characters": 64,
+    "control_characters_allowed": false
+  },
+  "confidence": "candidate-until-live-current-build-return-is-retained"
+}

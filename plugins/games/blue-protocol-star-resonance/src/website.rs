@@ -134,6 +134,7 @@ mod tests {
             season_cultivation: None,
             reputations: None,
             current_profession_project_id: None,
+            profession_projects: None,
             social_display: None,
         };
 

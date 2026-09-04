@@ -930,7 +930,7 @@ mod tests {
         );
         assert_eq!(
             current.digest(),
-            "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3"
+            "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae"
         );
 
         let unchanged_route_prefix = &current.definition().routes[..48];
@@ -940,7 +940,7 @@ mod tests {
             "a5aa3fa14424969958032e7198d40fe6b95f1e359593a84129f6a59fdfa66c8e",
             "reviewed current-build combat route set must remain exact"
         );
-        assert_eq!(current.definition().routes.len(), 56);
+        assert_eq!(current.definition().routes.len(), 57);
         let profile_route_prefix = &current.definition().routes[..53];
         assert_eq!(
             format!(
@@ -982,6 +982,7 @@ mod tests {
                 (904_190_988, 4),
                 (904_190_988, 12),
                 (103_198_054, 122_986),
+                (103_198_054, 278_533),
             ]
         );
     }

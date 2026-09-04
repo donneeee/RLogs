@@ -6010,6 +6010,7 @@ const fn decoder_event_mask(decoder: DecoderKind) -> u16 {
         | DecoderKind::NotifyJoinTeamV1
         | DecoderKind::NotifyLeaveTeamV1
         | DecoderKind::NoticeTeamDissolveV1
+        | DecoderKind::SyncProjectListV1
         | DecoderKind::GetAlbumPhotosV1
         | DecoderKind::GetPhotoV1 => 0,
         DecoderKind::SyncContainerDataV1 => ACTOR | PROFILE_SELECTION | RESOURCE | COOLDOWN,
@@ -6426,6 +6427,7 @@ mod tests {
             }]),
             reputations: None,
             current_profession_project_id: None,
+            profession_projects: None,
             social_display: None,
         };
         let time = EventTime {

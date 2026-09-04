@@ -1558,6 +1558,7 @@ mod tests {
             }]),
             reputations: None,
             current_profession_project_id: None,
+            profession_projects: None,
             social_display: None,
         };
         let payload = serde_json::to_value(profile).unwrap();

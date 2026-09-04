@@ -73,7 +73,21 @@ pub struct CharacterProfilePatch {
     pub reputations: Option<Vec<ReputationProgress>>,
     #[serde(default)]
     pub current_profession_project_id: Option<i32>,
+    /// Saved in-game build directory observed from `SyncProjectList`.
+    ///
+    /// This publishes stable project IDs, user-visible names, and their class
+    /// only. Per-project item/module UUID maps remain local and are not part of
+    /// the profile contract.
+    #[serde(default)]
+    pub profession_projects: Option<Vec<ProfessionProjectProfile>>,
     pub social_display: Option<SocialDisplay>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProfessionProjectProfile {
+    pub project_id: i32,
+    pub project_name: String,
+    pub profession_id: Option<i32>,
 }
 
 pub const CHARACTER_COMBAT_STATS_SCHEMA_VERSION: u16 = 1;
@@ -689,6 +703,7 @@ mod tests {
             season_cultivation: None,
             reputations: None,
             current_profession_project_id: None,
+            profession_projects: None,
             social_display: None,
         };
 

@@ -37,8 +37,8 @@ use crate::{
     DungeonTargetProgress, EquipmentAttributeProfile, EquipmentEnchantmentProfile, EquipmentItem,
     EquipmentSuitEntryProfile, EquippedActionSlot, GameBuild, HandbookProgress,
     LifeProfessionProfile, MasterModeDungeonProgress, ModuleItemProfile, ModulePartProfile,
-    ModuleProfile, ModuleUpgradeRecord, ObjectiveCatalogResolver, ProhibitedDataClass,
-    ProtocolPack, ReputationProgress, RgbColor, SeasonAchievementProgress,
+    ModuleProfile, ModuleUpgradeRecord, ObjectiveCatalogResolver, ProfessionProjectProfile,
+    ProhibitedDataClass, ProtocolPack, ReputationProgress, RgbColor, SeasonAchievementProgress,
     SeasonCultivationProfile, SeasonMedalHole, SeasonMedalNode, SeasonMedalProfile, SeasonProfile,
     SkillLevel, SocialDisplay, TalentLevel, TalentProgressProfile, WeeklyTowerProgress,
     auxiliary_action_presentation, battle_imagine_presentation, character_id_from_entity_uuid,
@@ -160,6 +160,7 @@ pub enum DecoderKind {
     /// protocol pack may register it only after matching-build packet replay
     /// confirms the statically proven service and method route on the wire.
     WorldUseSlotV1,
+    SyncProjectListV1,
     GetAlbumPhotosV1,
     GetPhotoV1,
 }
@@ -183,7 +184,9 @@ impl DecoderKind {
             | Self::NotifyLeaveTeamV1
             | Self::NoticeTeamDissolveV1
             | Self::SyncSeasonV1 => AllowedDataDomain::CharacterProfile,
-            Self::GetAlbumPhotosV1 | Self::GetPhotoV1 => AllowedDataDomain::CharacterProfile,
+            Self::SyncProjectListV1 | Self::GetAlbumPhotosV1 | Self::GetPhotoV1 => {
+                AllowedDataDomain::CharacterProfile
+            }
             Self::SyncNearDeltaV1
             | Self::SyncToMeDeltaV1
             | Self::NotifyReviveV1
@@ -654,6 +657,8 @@ struct ProfileTracker {
     /// until the local character is known instead of dropping valid evidence.
     pending_guild_id: Option<i64>,
     pending_guild_name: Option<String>,
+    pending_profession_projects: Option<Vec<ProfessionProjectProfile>>,
+    pending_current_profession_project_id: Option<i32>,
     last_dirty_profile: Option<CharacterProfilePatch>,
     last_dirty_world: Option<WorldContext>,
     last_social_profile: Option<CharacterProfilePatch>,
@@ -1068,10 +1073,56 @@ fn decode_message(
             client_build,
             skill_action_scratch,
         ),
+        DecoderKind::SyncProjectListV1 => decode_sync_project_list(payload, metadata, profile),
         DecoderKind::GetAlbumPhotosV1 => return decode_album_photos(payload),
         DecoderKind::GetPhotoV1 => return decode_photo(payload),
     }?;
     Ok(DecodedMessage::events(drafts))
+}
+
+fn decode_sync_project_list(
+    payload: &[u8],
+    metadata: &DecodeMetadata,
+    tracker: &mut ProfileTracker,
+) -> Result<Vec<CanonicalEventDraft>, ProtocolMessageError> {
+    const MAX_SAVED_PROJECTS: usize = 64;
+
+    let message = schema::SyncProjectListReturn::decode(payload)?;
+    let Some(sync_data) = message.ret.and_then(|reply| reply.sync_data) else {
+        return Ok(Vec::new());
+    };
+    let mut projects = sync_data
+        .projects
+        .into_iter()
+        .filter(|(project_id, _)| *project_id > 0)
+        .map(|(project_id, project)| ProfessionProjectProfile {
+            project_id,
+            project_name: reviewed_project_name(project.project_name.as_deref())
+                .unwrap_or_else(|| format!("Loadout {project_id}")),
+            profession_id: positive_i32(project.profession_id),
+        })
+        .collect::<Vec<_>>();
+    projects.sort_by_key(|project| project.project_id);
+    projects.truncate(MAX_SAVED_PROJECTS);
+    let current_project_id = positive_i32(sync_data.current_project_id);
+    tracker.pending_profession_projects = Some(projects.clone());
+    tracker.pending_current_profession_project_id = current_project_id;
+
+    let Some(mut profile) = tracker.local_profile.clone() else {
+        return Ok(Vec::new());
+    };
+    profile.profession_projects = Some(projects);
+    if current_project_id.is_some() {
+        profile.current_profession_project_id = current_project_id;
+    }
+    tracker.local_profile = Some(profile.clone());
+    Ok(vec![draft(
+        metadata,
+        EventSensitivity::PersonalGameplay,
+        CanonicalEventDraftKind::CharacterProfileObserved {
+            profile: Box::new(profile.into_game_event()?),
+        },
+    )])
 }
 
 fn decode_album_photos(payload: &[u8]) -> Result<DecodedMessage, ProtocolMessageError> {
@@ -1260,6 +1311,7 @@ fn decode_sync_season(
                     season_cultivation: None,
                     reputations: None,
                     current_profession_project_id: None,
+                    profession_projects: None,
                     social_display: None,
                 }
                 .into_game_event()?,
@@ -1460,6 +1512,7 @@ fn decode_notify_social_data(
             season_cultivation: None,
             reputations: None,
             current_profession_project_id: None,
+            profession_projects: None,
             social_display,
         }
     });
@@ -1843,6 +1896,7 @@ fn decode_team_members(
             season_cultivation: None,
             reputations: None,
             current_profession_project_id: None,
+            profession_projects: None,
             social_display: None,
         };
         if tracker.last_team_profiles.get(&character_id) == Some(&profile) {
@@ -1988,6 +2042,12 @@ fn positive_i32(value: Option<i32>) -> Option<i32> {
 fn clean_text(value: Option<&str>) -> Option<String> {
     let value = value?.trim();
     (!value.is_empty()).then(|| value.to_owned())
+}
+
+fn reviewed_project_name(value: Option<&str>) -> Option<String> {
+    let value = value?.trim();
+    (!value.is_empty() && value.chars().count() <= 64 && !value.chars().any(char::is_control))
+        .then(|| value.to_owned())
 }
 
 fn reviewed_picture_url(value: Option<&str>) -> Option<String> {
@@ -2525,7 +2585,9 @@ fn decode_sync_container(
             current_profession_project_id: character
                 .current_profession_project
                 .as_ref()
-                .and_then(|project| positive_i32(project.project_id)),
+                .and_then(|project| positive_i32(project.project_id))
+                .or(tracker.pending_current_profession_project_id),
+            profession_projects: tracker.pending_profession_projects.clone(),
             social_display,
         };
         let (primary_loadout, auxiliary_loadout) = project_actor_loadouts(&profile);
@@ -4270,6 +4332,7 @@ fn decode_sync_container_dirty(
                 season_cultivation: None,
                 reputations: None,
                 current_profession_project_id: None,
+                profession_projects: None,
                 social_display: None,
             }
         });
@@ -6841,6 +6904,68 @@ mod tests {
         )));
         assert!(deduplicator.retain(&actor_draft));
         assert!(deduplicator.retain(&cooldown_draft));
+    }
+
+    #[test]
+    fn saved_project_directory_decodes_all_names_without_equipping_each_build() {
+        let payload = schema::SyncProjectListReturn {
+            ret: Some(schema::SyncProjectListReply {
+                sync_data: Some(schema::ProfessionProjectList {
+                    projects: HashMap::from([
+                        (
+                            8,
+                            schema::ProfessionProjectCommonSyncData {
+                                profession_id: Some(5),
+                                project_name: Some("Boss build".into()),
+                            },
+                        ),
+                        (
+                            3,
+                            schema::ProfessionProjectCommonSyncData {
+                                profession_id: Some(2),
+                                project_name: Some("  Daily loadout  ".into()),
+                            },
+                        ),
+                    ]),
+                    current_project_id: Some(8),
+                }),
+            }),
+        }
+        .encode_to_vec();
+        let metadata = DecodeMetadata {
+            time: EventTime {
+                observed_micros: 10,
+                game_time_millis: None,
+            },
+            provenance: EventProvenance::wire(1, 2, 3),
+            region: RegionIdentity {
+                deployment_id: "global".into(),
+                region_id: "north-america".into(),
+                realm_id: None,
+                world_id: None,
+            },
+        };
+        let mut tracker = ProfileTracker::default();
+
+        let drafts = decode_sync_project_list(&payload, &metadata, &mut tracker).unwrap();
+
+        assert!(drafts.is_empty(), "the directory waits for local identity");
+        assert_eq!(tracker.pending_current_profession_project_id, Some(8));
+        assert_eq!(
+            tracker.pending_profession_projects,
+            Some(vec![
+                ProfessionProjectProfile {
+                    project_id: 3,
+                    project_name: "Daily loadout".into(),
+                    profession_id: Some(2),
+                },
+                ProfessionProjectProfile {
+                    project_id: 8,
+                    project_name: "Boss build".into(),
+                    profession_id: Some(5),
+                },
+            ])
+        );
     }
 
     #[test]

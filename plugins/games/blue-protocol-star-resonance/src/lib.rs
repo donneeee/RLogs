@@ -208,10 +208,11 @@ pub use profile::{
     CultivationLineProfile, DungeonProgress, DungeonTargetProgress, EquipmentAttributeProfile,
     EquipmentEnchantmentProfile, EquipmentItem, EquipmentSuitEntryProfile, EquippedActionSlot,
     HandbookProgress, ImagineOwnership, LifeProfessionProfile, MasterModeDungeonProgress,
-    ModuleItemProfile, ModulePartProfile, ModuleProfile, ModuleUpgradeRecord, ProfileEventError,
-    ReputationProgress, RgbColor, SeasonAchievementProgress, SeasonCultivationProfile,
-    SeasonMedalHole, SeasonMedalNode, SeasonMedalProfile, SeasonProfile, SkillLevel, SocialDisplay,
-    TalentLevel, TalentProgressProfile, WeeklyTowerProgress,
+    ModuleItemProfile, ModulePartProfile, ModuleProfile, ModuleUpgradeRecord,
+    ProfessionProjectProfile, ProfileEventError, ReputationProgress, RgbColor,
+    SeasonAchievementProgress, SeasonCultivationProfile, SeasonMedalHole, SeasonMedalNode,
+    SeasonMedalProfile, SeasonProfile, SkillLevel, SocialDisplay, TalentLevel,
+    TalentProgressProfile, WeeklyTowerProgress,
 };
 pub use profile_projection::{
     BpsrProfileProjectionError, LIVE_CHARACTER_STATS_SCHEMA_VERSION, LiveCharacterStatsSnapshot,

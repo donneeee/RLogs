@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "pack_id": "global-steam-24687926-static-candidate-v7",
+  "pack_id": "global-steam-24687926-static-candidate-v8",
   "target": {
     "deployment_id": "global",
     "region_id": null,
@@ -1904,6 +1904,32 @@
       "disposition": "allowed",
       "domain": "character_profile",
       "decoder": "req_union_info_v1"
+    },
+    {
+      "route": {
+        "direction": "server_to_client",
+        "fragment": {
+          "kind": "return"
+        },
+        "service_id": 103198054,
+        "method_id": 278533
+      },
+      "service_name": "World",
+      "method_name": "SyncProjectList",
+      "message_name": "SyncProjectList_Ret",
+      "confidence": "candidate",
+      "provenance": [
+        {
+          "source": "exact-current-build-saved-loadout-directory-route-proof",
+          "reference": "plugins/games/blue-protocol-star-resonance/research/game-file-inventory/global/steam-24687926/saved-loadout-directory-route-proof.v1.json"
+        }
+      ],
+      "features": [
+        "character_profile"
+      ],
+      "disposition": "allowed",
+      "domain": "character_profile",
+      "decoder": "sync_project_list_v1"
     }
   ]
 }
