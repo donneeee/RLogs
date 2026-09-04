@@ -28,7 +28,7 @@ use windows_sys::Win32::{
 
 use rlogs_desktop_host::{
     COMBAT_OVERLAY_TOGGLE_ACTION_ID, EmbeddedLocalHost, HotkeyAssignmentRequest,
-    HotkeyAssignmentResult, LiveCombatActivityObserver, start_embedded_local_host,
+    HotkeyAssignmentResult, LiveCombatActivityObserver, start_embedded_local_host_with_version,
 };
 use tauri::{
     Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
@@ -696,7 +696,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         )
         .setup(|app| {
             let install_root = application_install_root(app)?;
-            let host = start_embedded_local_host(&install_root)?;
+            let host = start_embedded_local_host_with_version(
+                &install_root,
+                app.package_info().version.to_string(),
+            )?;
             let url = format!("http://{}", host.address()).parse()?;
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
                 .title("rLogs")

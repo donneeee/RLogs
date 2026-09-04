@@ -2705,6 +2705,59 @@ button:focus-visible,
   white-space: nowrap;
 }
 
+.parser-health-history {
+  padding: 11px 0;
+  border-bottom: 0;
+}
+
+.parser-health-history summary {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 14px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.parser-health-history summary strong {
+  font-size: 10px;
+}
+
+.parser-health-session-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.parser-health-session-list article {
+  display: grid;
+  gap: 5px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cyan);
+  border-radius: 9px;
+  background: #0b111b;
+}
+
+.parser-health-session-list article[data-outcome="failed"],
+.parser-health-session-list article[data-outcome="interrupted"] {
+  border-left-color: var(--danger);
+}
+
+.parser-health-session-list article > strong {
+  font-size: 11px;
+}
+
+.parser-health-session-list article > span,
+.parser-health-session-list article > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.parser-health-session-list article > code {
+  max-width: 100%;
+}
+
 .runtime-empty-result {
   min-height: 220px;
   margin: 0;

@@ -8,6 +8,7 @@ mod hotkey_settings;
 mod layout_settings;
 mod module_optimizer;
 mod native_plugin_processes;
+mod parser_health;
 mod photo_wall_pending;
 mod profile_packages;
 mod submission_connection;
@@ -43,6 +44,9 @@ pub use hotkey_settings::{
 use layout_settings::{LayoutSettings, LayoutSettingsStore};
 use module_optimizer::{LocalModuleInventoryView, load_local_module_inventories};
 use native_plugin_processes::{NativePluginLaunch, NativePluginProcesses};
+use parser_health::{
+    ParserHealthHistory, ParserHealthObservation, ParserHealthOutcome, ParserHealthStore,
+};
 use photo_wall_pending::PhotoWallPendingStore;
 use profile_packages::{
     LocalProfilePackageStore, ProfilePackageInspection, ProfilePackageStoreView,
@@ -423,12 +427,22 @@ impl Drop for EmbeddedLocalHost {
 pub fn start_embedded_local_host(
     install_root: impl AsRef<Path>,
 ) -> Result<EmbeddedLocalHost, Box<dyn std::error::Error>> {
+    start_embedded_local_host_with_version(install_root, env!("CARGO_PKG_VERSION"))
+}
+
+pub fn start_embedded_local_host_with_version(
+    install_root: impl AsRef<Path>,
+    application_version: impl Into<String>,
+) -> Result<EmbeddedLocalHost, Box<dyn std::error::Error>> {
     let install_root = std::fs::canonicalize(install_root)?;
     let ui_root = resolve_ui_root(&install_root)?;
     let listener = TcpListener::bind("127.0.0.1:0")?;
     listener.set_nonblocking(true)?;
     let address = listener.local_addr()?;
-    let controller = Arc::new(RuntimeController::new(install_root)?);
+    let controller = Arc::new(RuntimeController::new_with_application_version(
+        install_root,
+        application_version,
+    )?);
     let managed_controller = Arc::clone(&controller);
     let shutdown = Arc::new(AtomicBool::new(false));
     controller.start_automatic_monitor(Some(Arc::clone(&shutdown)))?;
@@ -630,7 +644,10 @@ impl Default for RuntimeSnapshot {
     }
 }
 
-fn record_recoverable_capture_error(state: &Arc<Mutex<RuntimeSnapshot>>, error: impl Into<String>) {
+fn record_recoverable_capture_error(
+    state: &Arc<Mutex<RuntimeSnapshot>>,
+    error: impl Into<String>,
+) -> RuntimeSnapshot {
     let error = bounded_parser_health_detail(&error.into());
     eprintln!("live parser recovered from an auxiliary failure: {error}");
     let mut snapshot = state
@@ -640,6 +657,97 @@ fn record_recoverable_capture_error(state: &Arc<Mutex<RuntimeSnapshot>>, error: 
     snapshot.last_recoverable_error = Some(error.clone());
     snapshot.detail =
         format!("Monitoring continues after a recoverable live-view failure: {error}");
+    snapshot.clone()
+}
+
+fn parser_health_observation(snapshot: &RuntimeSnapshot) -> ParserHealthObservation {
+    ParserHealthObservation {
+        monitored_frame_count: snapshot.monitored_frame_count,
+        decoded_event_count: snapshot.decoded_event_count,
+        sealed_run_count: snapshot.sealed_run_count,
+        recoverable_error_count: snapshot.recoverable_error_count,
+        capture_queue_saturation_count: snapshot.capture_queue_saturation_count,
+        last_progress_unix_millis: snapshot.last_progress_unix_millis,
+        last_recoverable_error: snapshot.last_recoverable_error.clone(),
+        detail: snapshot.detail.clone(),
+    }
+}
+
+fn checkpoint_parser_health(
+    parser_health: &Arc<Mutex<ParserHealthStore>>,
+    session_id: &str,
+    snapshot: &RuntimeSnapshot,
+    force: bool,
+) {
+    if let Err(error) = parser_health
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .checkpoint(
+            session_id,
+            unix_millis(),
+            parser_health_observation(snapshot),
+            force,
+        )
+    {
+        eprintln!("could not checkpoint parser health without stopping capture: {error}");
+    }
+}
+
+fn record_recoverable_capture_error_durably(
+    state: &Arc<Mutex<RuntimeSnapshot>>,
+    parser_health: &Arc<Mutex<ParserHealthStore>>,
+    session_id: &str,
+    error: impl Into<String>,
+) {
+    let snapshot = record_recoverable_capture_error(state, error);
+    checkpoint_parser_health(parser_health, session_id, &snapshot, true);
+}
+
+fn finish_parser_health(
+    parser_health: &Arc<Mutex<ParserHealthStore>>,
+    session_id: &str,
+    outcome: ParserHealthOutcome,
+    snapshot: &RuntimeSnapshot,
+) {
+    let completed = snapshot.completed_unix_millis.unwrap_or_else(unix_millis);
+    if let Err(error) = parser_health
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .finish(
+            session_id,
+            outcome,
+            completed,
+            parser_health_observation(snapshot),
+        )
+    {
+        eprintln!("could not finalize parser health without stopping rLogs: {error}");
+    }
+}
+
+fn panic_detail(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(detail) = payload.downcast_ref::<&str>() {
+        return bounded_parser_health_detail(detail);
+    }
+    if let Some(detail) = payload.downcast_ref::<String>() {
+        return bounded_parser_health_detail(detail);
+    }
+    "unknown panic payload".into()
+}
+
+fn mark_live_parser_panicked(state: &Arc<Mutex<RuntimeSnapshot>>, panic: &str) -> RuntimeSnapshot {
+    let mut snapshot = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    snapshot.phase = RuntimePhase::Failed;
+    snapshot.active_session_id = None;
+    snapshot.completed_unix_millis = Some(unix_millis());
+    snapshot.live_capture_can_stop = false;
+    snapshot.saving_run = false;
+    snapshot.detail = format!(
+        "Live parser worker stopped unexpectedly after an internal panic: {}",
+        bounded_parser_health_detail(panic)
+    );
+    snapshot.clone()
 }
 
 fn bounded_parser_health_detail(error: &str) -> String {
@@ -4682,7 +4790,9 @@ struct CaptureInterfaceView {
 
 struct RuntimeController {
     install_root: PathBuf,
+    application_version: String,
     state: Arc<Mutex<RuntimeSnapshot>>,
+    parser_health: Arc<Mutex<ParserHealthStore>>,
     plugins: Mutex<DesktopPluginManager>,
     native_plugin_processes: Mutex<NativePluginProcesses>,
     event_viewer: Mutex<EventViewerState>,
@@ -4738,13 +4848,41 @@ struct LiveCombatForceResetResult {
 
 impl RuntimeController {
     fn new(install_root: PathBuf) -> Result<Self, String> {
-        Self::new_with_developer_tools(install_root, cfg!(debug_assertions))
+        Self::new_with_application_version(install_root, env!("CARGO_PKG_VERSION"))
     }
 
+    fn new_with_application_version(
+        install_root: PathBuf,
+        application_version: impl Into<String>,
+    ) -> Result<Self, String> {
+        Self::new_with_developer_tools_and_application_version(
+            install_root,
+            cfg!(debug_assertions),
+            application_version,
+        )
+    }
+
+    #[cfg(test)]
     fn new_with_developer_tools(
         install_root: PathBuf,
         developer_tools_enabled: bool,
     ) -> Result<Self, String> {
+        Self::new_with_developer_tools_and_application_version(
+            install_root,
+            developer_tools_enabled,
+            env!("CARGO_PKG_VERSION"),
+        )
+    }
+
+    fn new_with_developer_tools_and_application_version(
+        install_root: PathBuf,
+        developer_tools_enabled: bool,
+        application_version: impl Into<String>,
+    ) -> Result<Self, String> {
+        let application_version = application_version.into();
+        if application_version.trim().is_empty() || application_version.len() > 128 {
+            return Err("rLogs application version is invalid".into());
+        }
         let plugins =
             DesktopPluginManager::new_with_developer_tools(&install_root, developer_tools_enabled)?;
         let mut native_plugin_processes = NativePluginProcesses::default();
@@ -4817,9 +4955,20 @@ impl RuntimeController {
         let combat_overlay_settings = CombatOverlaySettingsStore::open(
             install_root.join("runtime-data/settings/plugins/app.rlogs.combat-overlay.v1.json"),
         )?;
+        let parser_health_path =
+            install_root.join("runtime-data/diagnostics/parser-health.v1.json");
+        let parser_health = ParserHealthStore::open(parser_health_path.clone(), unix_millis())
+            .unwrap_or_else(|error| {
+                eprintln!(
+                    "could not restore parser health history; starting a fresh bounded ledger: {error}"
+                );
+                ParserHealthStore::empty(parser_health_path, unix_millis())
+            });
         Ok(Self {
             install_root,
+            application_version,
             state: Arc::new(Mutex::new(RuntimeSnapshot::default())),
+            parser_health: Arc::new(Mutex::new(parser_health)),
             plugins: Mutex::new(plugins),
             native_plugin_processes: Mutex::new(native_plugin_processes),
             event_viewer: Mutex::new(EventViewerState::default()),
@@ -5390,6 +5539,13 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
+    }
+
+    fn parser_health_history(&self) -> ParserHealthHistory {
+        self.parser_health
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .snapshot()
     }
 
     fn live_combat_snapshot(&self) -> LiveCombatUpdate {
@@ -6953,6 +7109,23 @@ impl RuntimeController {
             state.last_progress_unix_millis = Some(unix_millis());
             state.capture_queue_saturation_count = 0;
         }
+        let initial_health_snapshot = self.snapshot();
+        if let Err(error) = self
+            .parser_health
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .begin(
+                &request.session_id,
+                &self.application_version,
+                &target.build_id,
+                initial_health_snapshot
+                    .started_unix_millis
+                    .unwrap_or_else(unix_millis),
+                parser_health_observation(&initial_health_snapshot),
+            )
+        {
+            eprintln!("could not begin parser health history without stopping capture: {error}");
+        }
         self.live_combat_feed.publish(None);
         self.live_character_stats_feed
             .publish(LiveCharacterStatsSnapshot::default());
@@ -6971,6 +7144,7 @@ impl RuntimeController {
         }
 
         let state = Arc::clone(&self.state);
+        let parser_health = Arc::clone(&self.parser_health);
         let live_combat_feed = Arc::clone(&self.live_combat_feed);
         let live_character_stats_feed = Arc::clone(&self.live_character_stats_feed);
         let live_event_feed = Arc::clone(&self.live_event_feed);
@@ -7005,7 +7179,13 @@ impl RuntimeController {
         let live_stop = Arc::clone(&self.live_stop);
         let live_process_id = Arc::clone(&self.live_process_id);
         let live_combat_control = Arc::clone(&self.live_combat_control);
+        let supervisor_state = Arc::clone(&self.state);
+        let supervisor_parser_health = Arc::clone(&self.parser_health);
+        let supervisor_live_stop = Arc::clone(&self.live_stop);
+        let supervisor_live_process_id = Arc::clone(&self.live_process_id);
+        let supervisor_live_combat_control = Arc::clone(&self.live_combat_control);
         let session_id = request.session_id.clone();
+        let supervisor_session_id = session_id.clone();
         let validation_game_build = target.build_id.clone();
         let validation_manifest_build = validation_manifest_game_build;
         let research_journal_display = research_journal_path
@@ -7732,7 +7912,12 @@ impl RuntimeController {
                             // authoritative data path. Overlay/history/profile
                             // projection is auxiliary and must never terminate
                             // packet capture or discard later runs.
-                            record_recoverable_capture_error(&state, error);
+                            record_recoverable_capture_error_durably(
+                                &state,
+                                &parser_health,
+                                &session_id,
+                                error,
+                            );
                             live_dirty = true;
                         }
                         live_event_lines.extend(
@@ -7849,22 +8034,34 @@ impl RuntimeController {
                                     validation_detail,
                                 )
                             };
+                            let health_snapshot = snapshot.clone();
+                            drop(snapshot);
+                            checkpoint_parser_health(
+                                &parser_health,
+                                &session_id,
+                                &health_snapshot,
+                                phase_changed,
+                            );
                         }
                         for log in sealed {
-                            let session_id = log.session_id.clone();
+                            let sealed_session_id = log.session_id.clone();
                             let Some(projection) = captured_run_projections.pop_front().flatten()
                             else {
-                                record_recoverable_capture_error(
+                                record_recoverable_capture_error_durably(
                                     &state,
+                                    &parser_health,
+                                    &session_id,
                                     format!(
-                                        "sealed run {session_id} was preserved on disk but its live history projection was unavailable"
+                                        "sealed run {sealed_session_id} was preserved on disk but its live history projection was unavailable"
                                     ),
                                 );
                                 continue;
                             };
                             if let Err(error) = run_postprocess_sender.send((log, projection)) {
-                                record_recoverable_capture_error(
+                                record_recoverable_capture_error_durably(
                                     &state,
+                                    &parser_health,
+                                    &session_id,
                                     format!(
                                         "sealed run {} was preserved on disk but the completed-run postprocessor was unavailable",
                                         error.0.0.session_id
@@ -7896,20 +8093,24 @@ impl RuntimeController {
                         }));
                     }
                     for log in sealed {
-                        let session_id = log.session_id.clone();
+                        let sealed_session_id = log.session_id.clone();
                         let Some(projection) = captured_run_projections.pop_front().flatten()
                         else {
-                            record_recoverable_capture_error(
+                            record_recoverable_capture_error_durably(
                                 &state,
+                                &parser_health,
+                                &session_id,
                                 format!(
-                                    "sealed run {session_id} was preserved on disk but its final history projection was unavailable"
+                                    "sealed run {sealed_session_id} was preserved on disk but its final history projection was unavailable"
                                 ),
                             );
                             continue;
                         };
                         if let Err(error) = run_postprocess_sender.send((log, projection)) {
-                            record_recoverable_capture_error(
+                            record_recoverable_capture_error_durably(
                                 &state,
+                                &parser_health,
+                                &session_id,
                                 format!(
                                     "sealed run {} was preserved on disk but the completed-run postprocessor was unavailable",
                                     error.0.0.session_id
@@ -8074,32 +8275,94 @@ impl RuntimeController {
                         state.detail = error;
                     }
                 }
+                let outcome = if state.phase == RuntimePhase::Complete {
+                    ParserHealthOutcome::Complete
+                } else {
+                    ParserHealthOutcome::Failed
+                };
+                let terminal_health_snapshot = state.clone();
+                drop(state);
+                finish_parser_health(
+                    &parser_health,
+                    &session_id,
+                    outcome,
+                    &terminal_health_snapshot,
+                );
             });
-        if let Err(error) = worker {
-            let mut stop = self
-                .live_stop
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *stop = None;
-            let mut process_id = self
-                .live_process_id
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *process_id = None;
-            let mut control = self
-                .live_combat_control
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *control = None;
-            let mut state = self
-                .state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            state.phase = RuntimePhase::Failed;
-            state.active_session_id = None;
-            state.live_capture_can_stop = false;
-            state.detail = format!("could not start live session worker: {error}");
-            return Err(state.detail.clone());
+        match worker {
+            Ok(worker) => {
+                thread::Builder::new()
+                    .name(format!("rlogs-live-supervisor-{supervisor_session_id}"))
+                    .spawn(move || {
+                        let Err(payload) = worker.join() else {
+                            return;
+                        };
+                        let panic = panic_detail(payload.as_ref());
+                        {
+                            let mut stop = supervisor_live_stop
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                            *stop = None;
+                        }
+                        {
+                            let mut process_id = supervisor_live_process_id
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                            *process_id = None;
+                        }
+                        {
+                            let mut control = supervisor_live_combat_control
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                            *control = None;
+                        }
+                        let terminal_health_snapshot =
+                            mark_live_parser_panicked(&supervisor_state, &panic);
+                        finish_parser_health(
+                            &supervisor_parser_health,
+                            &supervisor_session_id,
+                            ParserHealthOutcome::Failed,
+                            &terminal_health_snapshot,
+                        );
+                    })
+                    .map_err(|error| format!("could not start live parser supervisor: {error}"))?;
+            }
+            Err(error) => {
+                let mut stop = self
+                    .live_stop
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                *stop = None;
+                let mut process_id = self
+                    .live_process_id
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                *process_id = None;
+                let mut control = self
+                    .live_combat_control
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                *control = None;
+                let terminal_health_snapshot = {
+                    let mut state = self
+                        .state
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    state.phase = RuntimePhase::Failed;
+                    state.active_session_id = None;
+                    state.completed_unix_millis = Some(unix_millis());
+                    state.live_capture_can_stop = false;
+                    state.detail = format!("could not start live session worker: {error}");
+                    state.clone()
+                };
+                finish_parser_health(
+                    &self.parser_health,
+                    &request.session_id,
+                    ParserHealthOutcome::Failed,
+                    &terminal_health_snapshot,
+                );
+                return Err(terminal_health_snapshot.detail);
+            }
         }
         Ok(())
     }
@@ -11526,6 +11789,9 @@ fn handle_connection(
         ("GET", "/api/runtime/status") => {
             write_json(&mut stream, 200, &controller.snapshot())?;
         }
+        ("GET", "/api/runtime/health-history") => {
+            write_json(&mut stream, 200, &controller.parser_health_history())?;
+        }
         ("GET", "/api/runtime/live/combat") => {
             write_json(
                 &mut stream,
@@ -14500,6 +14766,29 @@ mod tests {
         assert!(!detail.contains('\n'));
         assert_eq!(detail.chars().count(), 400);
         assert!(detail.ends_with('…'));
+    }
+
+    #[test]
+    fn parser_worker_panics_become_visible_terminal_failures() {
+        let state = Arc::new(Mutex::new(RuntimeSnapshot {
+            phase: RuntimePhase::Processing,
+            active_session_id: Some("monitor-1".into()),
+            live_capture_can_stop: true,
+            saving_run: true,
+            ..RuntimeSnapshot::default()
+        }));
+
+        let snapshot = mark_live_parser_panicked(&state, "decoder invariant\nfailed");
+
+        assert_eq!(snapshot.phase, RuntimePhase::Failed);
+        assert!(snapshot.active_session_id.is_none());
+        assert!(!snapshot.live_capture_can_stop);
+        assert!(!snapshot.saving_run);
+        assert!(snapshot.completed_unix_millis.is_some());
+        assert_eq!(
+            snapshot.detail,
+            "Live parser worker stopped unexpectedly after an internal panic: decoder invariant failed"
+        );
     }
 
     #[test]

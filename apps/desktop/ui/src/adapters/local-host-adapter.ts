@@ -199,6 +199,28 @@ interface RuntimeSnapshot {
   last_result: RuntimeResult | null;
 }
 
+interface ParserHealthHistory {
+  schema_version: number;
+  sessions: ParserHealthSession[];
+}
+
+interface ParserHealthSession {
+  session_id: string;
+  application_version: string;
+  client_build: string;
+  started_unix_millis: number;
+  completed_unix_millis: number | null;
+  outcome: "active" | "complete" | "failed" | "interrupted";
+  monitored_frame_count: number;
+  decoded_event_count: number;
+  sealed_run_count: number;
+  recoverable_error_count: number;
+  capture_queue_saturation_count: number;
+  last_progress_unix_millis: number | null;
+  last_recoverable_error: string | null;
+  detail: string;
+}
+
 interface ApiError {
   error: string;
 }
@@ -1531,8 +1553,13 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
 
   const refreshParserHealth = async () => {
     try {
-      const snapshot = await apiJson<RuntimeSnapshot>("/api/runtime/status");
-      if (alive) parserHealth.replaceChildren(parserHealthCard(snapshot));
+      const [snapshot, history] = await Promise.all([
+        apiJson<RuntimeSnapshot>("/api/runtime/status"),
+        apiJson<ParserHealthHistory>("/api/runtime/health-history"),
+      ]);
+      if (alive) {
+        parserHealth.replaceChildren(parserHealthCard(snapshot, history));
+      }
     } catch (error) {
       if (alive) {
         parserHealth.replaceChildren(
@@ -4143,18 +4170,25 @@ async function refreshStatus(
   }
 }
 
-function parserHealthCard(snapshot: RuntimeSnapshot): HTMLElement {
+function parserHealthCard(
+  snapshot: RuntimeSnapshot,
+  history?: ParserHealthHistory,
+): HTMLElement {
   const health = document.createElement("section");
   health.className = "content-card runtime-file-list";
+  const lastProgress = snapshot.last_progress_unix_millis ?? null;
+  const progressAgeMillis =
+    lastProgress === null ? null : Math.max(0, Date.now() - lastProgress);
   const healthLabel =
     snapshot.phase === "processing" && snapshot.live_capture_can_stop
-      ? "Recording protected"
+      ? progressAgeMillis !== null && progressAgeMillis >= 30_000
+        ? "Capture alive · waiting for packets"
+        : "Recording protected"
       : snapshot.phase === "failed"
         ? "Stopped unexpectedly"
         : snapshot.phase === "complete"
           ? "Stopped normally"
           : "Ready";
-  const lastProgress = snapshot.last_progress_unix_millis ?? null;
   health.append(
     fileRow("Parser health", healthLabel),
     fileRow("Captured frames", snapshot.monitored_frame_count.toLocaleString()),
@@ -4176,6 +4210,51 @@ function parserHealthCard(snapshot: RuntimeSnapshot): HTMLElement {
     ),
     fileRow("Last recovered error", snapshot.last_recoverable_error ?? "None"),
   );
+  if (history !== undefined) {
+    const recent = document.createElement("details");
+    recent.className = "parser-health-history";
+    const interrupted = history.sessions.filter(
+      (session) => session.outcome === "interrupted",
+    ).length;
+    const summary = document.createElement("summary");
+    summary.append(
+      text("strong", `Recent parser sessions (${history.sessions.length})`),
+      text(
+        "span",
+        interrupted === 0
+          ? "No unclean shutdowns retained"
+          : `${interrupted} unclean shutdown${interrupted === 1 ? "" : "s"} retained`,
+      ),
+    );
+    recent.append(summary);
+    const sessions = document.createElement("div");
+    sessions.className = "parser-health-session-list";
+    if (history.sessions.length === 0) {
+      sessions.append(
+        text("p", "No parser session has been recorded yet.", "muted-copy"),
+      );
+    } else {
+      for (const session of history.sessions.slice(0, 8)) {
+        const row = document.createElement("article");
+        row.dataset.outcome = session.outcome;
+        const title = document.createElement("strong");
+        title.textContent = `${titleCase(session.outcome)} · rLogs ${session.application_version}`;
+        const counters = text(
+          "span",
+          `${session.monitored_frame_count.toLocaleString()} frames · ${session.decoded_event_count.toLocaleString()} events · ${session.sealed_run_count.toLocaleString()} sealed · ${session.recoverable_error_count.toLocaleString()} recovered`,
+        );
+        const identity = text(
+          "code",
+          `${session.client_build} · ${session.session_id}`,
+        );
+        const detail = text("p", session.detail);
+        row.append(title, counters, identity, detail);
+        sessions.append(row);
+      }
+    }
+    recent.append(sessions);
+    health.append(recent);
+  }
   return health;
 }
 
