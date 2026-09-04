@@ -77,6 +77,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
+      # Pin the cache action to an immutable commit. This preserves the exact
+      # format, Clippy, and workspace-test gates while avoiding cold dependency
+      # rebuilds on every fresh Windows runner.
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
