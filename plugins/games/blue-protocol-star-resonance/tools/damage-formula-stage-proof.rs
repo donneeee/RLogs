@@ -11,6 +11,7 @@ use rlogs_events::{
     CanonicalEvent, EntityAttributeUpdateKind, EntityAttributeValue, RunState, StatusState,
     TimelineEventKind,
 };
+use rlogs_game_bpsr::decode_known_entity_attribute_value;
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::{Deserialize, Serialize};
 
@@ -905,8 +906,10 @@ fn formula_reports(formulas: BTreeMap<&'static str, FormulaAccumulator>) -> Vec<
 }
 
 fn decode_attribute(attribute: &rlogs_events::EntityAttribute) -> Option<i64> {
-    match &attribute.decoded {
-        Some(EntityAttributeValue::Integer(value)) => Some(*value),
+    match attribute.decoded.clone().or_else(|| {
+        decode_known_entity_attribute_value(attribute.attribute_id, &attribute.raw_value)
+    }) {
+        Some(EntityAttributeValue::Integer(value)) => Some(value),
         Some(EntityAttributeValue::Text(_)) | Some(EntityAttributeValue::Position { .. }) => None,
         None => decode_varint(&attribute.raw_value).map(|value| value as i64),
     }

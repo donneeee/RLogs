@@ -15,7 +15,8 @@ use rlogs_events::{
     StatusState, TimelineEventKind,
 };
 use rlogs_game_bpsr::{
-    PacketDamageScriptFamily, exact_external_attack_and_damage_bonus_fraction,
+    PacketDamageScriptFamily, decode_known_entity_attribute_value,
+    exact_external_attack_and_damage_bonus_fraction,
     exact_external_attack_coefficient_stage_fraction, exact_external_composite_damage_fraction,
     specialization_identity_from_observed_abilities,
 };
@@ -6988,10 +6989,14 @@ static EMPTY_STATUS_TRACKER: StatusTracker = StatusTracker {
 };
 
 fn decode_attribute(attribute: &rlogs_events::EntityAttribute) -> Option<i64> {
-    if let Some(EntityAttributeValue::Integer(value)) = attribute.decoded {
-        return Some(value);
+    let decoded = attribute.decoded.clone().or_else(|| {
+        decode_known_entity_attribute_value(attribute.attribute_id, &attribute.raw_value)
+    });
+    match decoded {
+        Some(EntityAttributeValue::Integer(value)) => Some(value),
+        Some(EntityAttributeValue::Text(_)) | Some(EntityAttributeValue::Position { .. }) => None,
+        None => decode_varint(&attribute.raw_value).and_then(|value| i64::try_from(value).ok()),
     }
-    decode_varint(&attribute.raw_value).and_then(|value| i64::try_from(value).ok())
 }
 
 fn decode_varint(bytes: &[u8]) -> Option<u64> {
@@ -7371,7 +7376,7 @@ mod tests {
         attack_reversal_required_attribute_ids, ceil_div,
         counterfactual_attack_without_provider_delta, counterfactual_interval,
         counterfactual_range_for_factor_interval, damage_attr_row_from_surface_value,
-        damage_surface_from_runtime_catalog, ensure_selected_status_lifecycle,
+        damage_surface_from_runtime_catalog, decode_attribute, ensure_selected_status_lifecycle,
         fixed_point_factor_interval, gate_effect_presence_by_effective_stat_window, mul_div_floor,
         pair_damage_stage_proof, pair_packet_input_deltas, select_stage_coefficient,
         selected_status_key_matches, semantic_damage_property, semantic_hit_event_id,
@@ -7927,6 +7932,28 @@ mod tests {
         assert_eq!(
             pair_packet_input_deltas(&inactive, &active),
             vec!["skill_effect_component_index", "target_current_hp"]
+        );
+    }
+
+    #[test]
+    fn retained_known_signed_attribute_is_redecoded_for_old_logs() {
+        let signed_raw = vec![0xb8, 0xe5, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01];
+        assert_eq!(
+            decode_attribute(&rlogs_events::EntityAttribute {
+                attribute_id: 11_334,
+                raw_value: signed_raw.clone(),
+                decoded: None,
+            }),
+            Some(-3_400)
+        );
+        assert_eq!(
+            decode_attribute(&rlogs_events::EntityAttribute {
+                attribute_id: 11_356,
+                raw_value: signed_raw,
+                decoded: None,
+            }),
+            None,
+            "an unreviewed neighboring ID must not gain signed semantics"
         );
     }
 }

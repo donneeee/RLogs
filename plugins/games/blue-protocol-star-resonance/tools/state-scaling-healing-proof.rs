@@ -13,6 +13,7 @@ use rlogs_events::{
     ActorEvent, CanonicalEvent, EntityAttributeUpdateKind, EntityAttributeValue, EvidenceSource,
     RunState, TimelineEventKind,
 };
+use rlogs_game_bpsr::decode_known_entity_attribute_value;
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -1061,8 +1062,10 @@ fn is_hp_attribute(attribute_id: i32) -> bool {
 }
 
 fn integer_attribute(attribute: &rlogs_events::EntityAttribute) -> Option<i64> {
-    match &attribute.decoded {
-        Some(EntityAttributeValue::Integer(value)) => Some(*value),
+    match attribute.decoded.clone().or_else(|| {
+        decode_known_entity_attribute_value(attribute.attribute_id, &attribute.raw_value)
+    }) {
+        Some(EntityAttributeValue::Integer(value)) => Some(value),
         Some(EntityAttributeValue::Text(_)) | Some(EntityAttributeValue::Position { .. }) => None,
         None => decode_varint(&attribute.raw_value).and_then(|value| i64::try_from(value).ok()),
     }

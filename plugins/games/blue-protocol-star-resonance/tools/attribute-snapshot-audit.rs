@@ -11,6 +11,7 @@ use rlogs_events::{
     CanonicalEvent, EntityAttribute, EntityAttributeUpdateKind, EntityAttributeValue, RunState,
     TimelineEventKind,
 };
+use rlogs_game_bpsr::decode_known_entity_attribute_value;
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::{Deserialize, Serialize};
 
@@ -341,8 +342,11 @@ fn read_session(
 }
 
 fn decode_attribute(attribute: &EntityAttribute) -> Option<i64> {
-    match attribute.decoded.as_ref() {
-        Some(EntityAttributeValue::Integer(value)) => Some(*value),
+    let decoded = attribute.decoded.clone().or_else(|| {
+        decode_known_entity_attribute_value(attribute.attribute_id, &attribute.raw_value)
+    });
+    match decoded {
+        Some(EntityAttributeValue::Integer(value)) => Some(value),
         Some(_) => None,
         None => decode_varint(&attribute.raw_value).and_then(|value| i64::try_from(value).ok()),
     }

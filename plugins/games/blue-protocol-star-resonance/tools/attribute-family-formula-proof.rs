@@ -13,6 +13,7 @@ use rlogs_events::{
     ActorState, CanonicalEvent, EntityAttributeUpdateKind, EntityAttributeValue, RunState,
     TimelineEventKind,
 };
+use rlogs_game_bpsr::decode_known_entity_attribute_value;
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::Serialize;
 
@@ -1492,10 +1493,14 @@ fn push_example(target: &mut Vec<SnapshotExample>, example: &SnapshotExample, li
 }
 
 fn decode_attribute(attribute: &rlogs_events::EntityAttribute) -> Option<i64> {
-    if let Some(EntityAttributeValue::Integer(value)) = attribute.decoded {
-        return Some(value);
+    let decoded = attribute.decoded.clone().or_else(|| {
+        decode_known_entity_attribute_value(attribute.attribute_id, &attribute.raw_value)
+    });
+    match decoded {
+        Some(EntityAttributeValue::Integer(value)) => Some(value),
+        Some(EntityAttributeValue::Text(_)) | Some(EntityAttributeValue::Position { .. }) => None,
+        None => decode_varint(&attribute.raw_value).map(|value| value as i64),
     }
-    decode_varint(&attribute.raw_value).map(|value| value as i64)
 }
 
 fn decode_varint(bytes: &[u8]) -> Option<u64> {

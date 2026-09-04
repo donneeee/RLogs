@@ -11,6 +11,7 @@ use rlogs_events::{
     CanonicalEvent, CastState, EntityAttributeValue, StatusEffectInstanceId, StatusState,
     TimelineEventKind,
 };
+use rlogs_game_bpsr::decode_known_entity_attribute_value;
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::{Deserialize, Serialize};
 
@@ -326,7 +327,13 @@ fn read_session(
                     if !RELEVANT_ATTRIBUTE_IDS.contains(&attribute.attribute_id) {
                         continue;
                     }
-                    if let Some(EntityAttributeValue::Integer(value)) = attribute.decoded {
+                    let decoded = attribute.decoded.clone().or_else(|| {
+                        decode_known_entity_attribute_value(
+                            attribute.attribute_id,
+                            &attribute.raw_value,
+                        )
+                    });
+                    if let Some(EntityAttributeValue::Integer(value)) = decoded {
                         values.insert(attribute.attribute_id, value);
                     }
                 }

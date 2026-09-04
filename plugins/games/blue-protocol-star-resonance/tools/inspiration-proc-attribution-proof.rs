@@ -13,7 +13,8 @@ use rlogs_events::{
 };
 use rlogs_game_bpsr::{
     BPSR_FIXED_POINT_SCALE, CriticalDamageFactorInterpretation,
-    exact_external_critical_chance_fraction, exact_external_lucky_chance_fraction,
+    decode_known_entity_attribute_value, exact_external_critical_chance_fraction,
+    exact_external_lucky_chance_fraction,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::{Deserialize, Serialize};
@@ -2324,10 +2325,14 @@ fn observe_attributes(
 }
 
 fn decode_attribute(attribute: &EntityAttribute) -> Option<i64> {
-    if let Some(EntityAttributeValue::Integer(value)) = attribute.decoded {
-        return Some(value);
+    let decoded = attribute.decoded.clone().or_else(|| {
+        decode_known_entity_attribute_value(attribute.attribute_id, &attribute.raw_value)
+    });
+    match decoded {
+        Some(EntityAttributeValue::Integer(value)) => Some(value),
+        Some(EntityAttributeValue::Text(_)) | Some(EntityAttributeValue::Position { .. }) => None,
+        None => decode_varint(&attribute.raw_value).and_then(|value| i64::try_from(value).ok()),
     }
-    decode_varint(&attribute.raw_value).and_then(|value| i64::try_from(value).ok())
 }
 
 fn decode_varint(bytes: &[u8]) -> Option<u64> {

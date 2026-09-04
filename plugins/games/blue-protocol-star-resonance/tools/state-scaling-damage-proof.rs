@@ -14,7 +14,8 @@ use rlogs_events::{
     EntityAttributeValue, EvidenceSource, RunState, StatusState, TimelineEventKind,
 };
 use rlogs_game_bpsr::{
-    ShieldInstanceSnapshot, ShieldListSnapshot, combat_action_presentation, decode_shield_list,
+    ShieldInstanceSnapshot, ShieldListSnapshot, combat_action_presentation,
+    decode_known_entity_attribute_value, decode_shield_list,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::{Deserialize, Serialize};
@@ -5543,8 +5544,11 @@ fn ratio_counts(counts: BTreeMap<i64, RatioAccumulator>) -> Vec<RatioCount> {
 }
 
 fn preserve_attribute(attribute: &rlogs_events::EntityAttribute) -> StateScalar {
-    let integer_varint = match &attribute.decoded {
-        Some(EntityAttributeValue::Integer(value)) => Some(*value),
+    let decoded = attribute.decoded.clone().or_else(|| {
+        decode_known_entity_attribute_value(attribute.attribute_id, &attribute.raw_value)
+    });
+    let integer_varint = match decoded {
+        Some(EntityAttributeValue::Integer(value)) => Some(value),
         Some(EntityAttributeValue::Text(_)) | Some(EntityAttributeValue::Position { .. }) => None,
         None => decode_varint(&attribute.raw_value).and_then(|value| i64::try_from(value).ok()),
     };

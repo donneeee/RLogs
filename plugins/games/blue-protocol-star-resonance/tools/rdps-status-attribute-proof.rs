@@ -13,6 +13,7 @@ use rlogs_events::{
     ActorEvent, ActorKind, CanonicalEvent, EntityAttributeValue, EntityRef, EventEnvelope,
     EvidenceSource, RunState, StatusOrigin, StatusState, TimelineEventKind,
 };
+use rlogs_game_bpsr::decode_known_entity_attribute_value;
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -4065,11 +4066,23 @@ fn wire_message_key(source: &EvidenceSource) -> Option<WireMessageKey> {
 }
 
 fn decode_attribute(attribute: &rlogs_events::EntityAttribute) -> Option<(i64, &'static str)> {
-    if let Some(EntityAttributeValue::Integer(value)) = attribute.decoded {
-        return Some((value, "canonical_decoded_integer"));
+    match attribute.decoded.as_ref() {
+        Some(EntityAttributeValue::Integer(value)) => {
+            return Some((*value, "canonical_decoded_integer"));
+        }
+        Some(EntityAttributeValue::Text(_)) | Some(EntityAttributeValue::Position { .. }) => {
+            return None;
+        }
+        None => {}
     }
-    decode_varint(&attribute.raw_value)
-        .map(|value| (value as i64, "raw_protobuf_varint_i64_bit_pattern"))
+    match decode_known_entity_attribute_value(attribute.attribute_id, &attribute.raw_value) {
+        Some(EntityAttributeValue::Integer(value)) => {
+            Some((value, "current_exact_id_gated_raw_decode"))
+        }
+        Some(EntityAttributeValue::Text(_)) | Some(EntityAttributeValue::Position { .. }) => None,
+        None => decode_varint(&attribute.raw_value)
+            .map(|value| (value as i64, "raw_protobuf_varint_i64_bit_pattern")),
+    }
 }
 
 fn decode_varint(bytes: &[u8]) -> Option<u64> {

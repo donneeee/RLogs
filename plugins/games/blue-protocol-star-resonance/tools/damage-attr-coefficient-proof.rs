@@ -17,6 +17,7 @@ use rlogs_events::{
     ActorKind, CanonicalEvent, EntityAttributeUpdateKind, EntityAttributeValue, EvidenceSource,
     RunState, StatusState, TimelineEventKind,
 };
+use rlogs_game_bpsr::decode_known_entity_attribute_value;
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::Serialize;
 use serde_json::Value;
@@ -3084,8 +3085,11 @@ fn observe_combat_result_hp_evidence(
 }
 
 fn decode_attribute(attribute: &rlogs_events::EntityAttribute) -> Option<i64> {
-    match attribute.decoded.as_ref() {
-        Some(EntityAttributeValue::Integer(value)) => Some(*value),
+    let decoded = attribute.decoded.clone().or_else(|| {
+        decode_known_entity_attribute_value(attribute.attribute_id, &attribute.raw_value)
+    });
+    match decoded {
+        Some(EntityAttributeValue::Integer(value)) => Some(value),
         Some(EntityAttributeValue::Text(_)) | Some(EntityAttributeValue::Position { .. }) => None,
         None => decode_varint(&attribute.raw_value).map(|value| value as i64),
     }
