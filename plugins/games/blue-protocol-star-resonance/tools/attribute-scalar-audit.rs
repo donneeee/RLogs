@@ -10,11 +10,12 @@ use std::{
 use rlogs_events::{
     CanonicalEvent, EntityAttributeUpdateKind, EntityAttributeValue, TimelineEventKind,
 };
+use rlogs_game_bpsr::decode_known_entity_attribute_value;
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-const SCHEMA_VERSION: u16 = 4;
+const SCHEMA_VERSION: u16 = 5;
 
 #[derive(Debug, Default, Serialize)]
 struct AttributeSummary {
@@ -57,6 +58,7 @@ struct RawValueSummary {
 struct Audit {
     schema_version: u16,
     policy: &'static str,
+    decode_policy: &'static str,
     expected_game_build: Option<String>,
     observed_game_builds: BTreeSet<String>,
     actor_filters: BTreeSet<i64>,
@@ -117,6 +119,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let audit = Audit {
         schema_version: SCHEMA_VERSION,
         policy: "build_locked_complete_packet_exact_aggregates_with_input_hashes_bounded_ordered_samples_explicit_absence_and_scalar_or_packed_field_1_varint_interpretations",
+        decode_policy: "prefer_the_canonical_recorded_value_then_apply_only_the_current_exact_id_gated_decoder_to_retained_raw_bytes; unknown_ids_remain_unresolved",
         expected_game_build: arguments.expected_game_build,
         observed_game_builds,
         actor_filters: arguments.actor_filters,
@@ -183,6 +186,11 @@ fn scan_rlog(
             let Some(summary) = attributes.get_mut(&attribute.attribute_id) else {
                 continue;
             };
+            let decoded = resolved_decoded_value(
+                attribute.attribute_id,
+                &attribute.raw_value,
+                attribute.decoded,
+            );
             record_observation(
                 summary,
                 &rlog,
@@ -192,7 +200,7 @@ fn scan_rlog(
                 attribute.attribute_id,
                 event.update_kind,
                 &attribute.raw_value,
-                attribute.decoded.as_ref(),
+                decoded.as_ref(),
                 arguments.sample_limit_per_attribute,
             );
         }
@@ -207,6 +215,14 @@ fn scan_rlog(
         entity_attribute_events_scanned,
         selected_actor_attribute_events_scanned,
     })
+}
+
+fn resolved_decoded_value(
+    attribute_id: i32,
+    raw_value: &[u8],
+    recorded: Option<EntityAttributeValue>,
+) -> Option<EntityAttributeValue> {
+    recorded.or_else(|| decode_known_entity_attribute_value(attribute_id, raw_value))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -555,5 +571,22 @@ mod tests {
         let mut trailing = bytes.to_vec();
         trailing.push(0xff);
         assert_eq!(decode_packed_field_1_varints(&trailing), None);
+    }
+
+    #[test]
+    fn current_exact_decoder_backfills_old_opaque_values_without_guessing_unknown_ids() {
+        assert_eq!(
+            resolved_decoded_value(11_350, &[0xe5, 0x2b], None),
+            Some(EntityAttributeValue::Integer(5_605))
+        );
+        assert_eq!(resolved_decoded_value(51, &[1], None), None);
+        assert_eq!(
+            resolved_decoded_value(
+                11_350,
+                &[0xe5, 0x2b],
+                Some(EntityAttributeValue::Integer(99)),
+            ),
+            Some(EntityAttributeValue::Integer(99))
+        );
     }
 }
