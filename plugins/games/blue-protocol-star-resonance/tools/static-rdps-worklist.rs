@@ -566,7 +566,11 @@ fn magnitude_proof_lifecycle_effect(
         return Err(format!("BuffTable row {effect_id} has a mismatched Id").into());
     }
     let repeat_add_rule = integer_array(row.get("RepeatAddRule"));
-    let declared_max_stacks = repeat_add_rule.get(1).copied();
+    // A zero second RepeatAddRule lane means the table does not declare a
+    // positive stack cap. Preserve the raw rule for auditability, but do not
+    // serialize zero as a maximum: the proof reader intentionally accepts
+    // only positive declared caps and treats their absence as binary uptime.
+    let declared_max_stacks = repeat_add_rule.get(1).copied().filter(|value| *value > 0);
     let proof_model = if declared_max_stacks.is_some_and(|value| value > 1) {
         "exact-stack-delta"
     } else {
@@ -1133,6 +1137,24 @@ mod tests {
         assert_eq!(lifecycle.declared_max_stacks, Some(10));
         assert_eq!(lifecycle.proof_model, "exact-stack-delta");
         assert_eq!(lifecycle.repeat_add_rule, [2, 10]);
+    }
+
+    #[test]
+    fn zero_repeat_rule_cap_is_binary_presence_without_a_declared_maximum() {
+        let rows = serde_json::json!({
+            "2205210": {
+                "Id": 2205210,
+                "Name": "Stackless effect",
+                "Icon": "",
+                "RepeatAddRule": [0, 0],
+                "DestroyParam": []
+            }
+        });
+        let lifecycle =
+            magnitude_proof_lifecycle_effect(rows.as_object().unwrap(), 2_205_210).unwrap();
+        assert_eq!(lifecycle.declared_max_stacks, None);
+        assert_eq!(lifecycle.proof_model, "exact-binary-presence");
+        assert_eq!(lifecycle.repeat_add_rule, [0, 0]);
     }
 
     #[test]

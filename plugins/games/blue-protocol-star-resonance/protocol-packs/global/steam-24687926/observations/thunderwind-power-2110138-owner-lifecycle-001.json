@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "observation_id": "thunderwind-power-2110138-owner-lifecycle-001",
+  "deployment_id": "global",
+  "client_build": "24687926",
+  "protocol_pack_digest": "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
+  "subject": "Thunderwind Power effect 2110138 exact owner-only lifecycle and combined parent-child attribute transition",
+  "effect_identity": {
+    "visible_parent_effect_id": 2110138,
+    "hidden_child_effect_id": 2110154,
+    "battle_imagine_ability_id": 3969,
+    "battle_imagine_item_id": 3000121,
+    "observed_equipped_tier": 5
+  },
+  "sealed_input": {
+    "content_sha256": "sha256:90bf91d23ef164a17c11f9abbf756f0ad92984c1f4a1e2a43ef612a829817a46",
+    "bytes": 5553432,
+    "canonical_events": 119376,
+    "actor_events": 841,
+    "attribute_events": 22727,
+    "status_events": 45507
+  },
+  "packet_lifecycle": {
+    "selected_parent_status_events": 3,
+    "applied_events": 2,
+    "removed_events": 1,
+    "distinct_proxy_sources": 2,
+    "duration_millis": 20000,
+    "stable_player_owner_proven_for_every_sourced_event": true,
+    "exact_primary_loadout_proven_for_every_player_owned_event": true,
+    "provider_is_recipient_for_every_event": true,
+    "recipient_scope": "summon-owner-only"
+  },
+  "exact_same_wire_combined_transitions": [
+    {
+      "attribute_ids": [11710, 11711, 11712],
+      "family": "critical-rate",
+      "signed_presence_terms": [
+        { "effect_id": 2110138, "delta": 1 },
+        { "effect_id": 2110154, "delta": 1 }
+      ],
+      "raw_attribute_delta": 1829,
+      "occurrences": 1
+    },
+    {
+      "attribute_ids": [12510, 12511, 12512],
+      "family": "critical-damage",
+      "signed_presence_terms": [
+        { "effect_id": 2110138, "delta": 1 },
+        { "effect_id": 2110154, "delta": 1 }
+      ],
+      "raw_attribute_delta": 242,
+      "occurrences": 1
+    }
+  ],
+  "excluded_transition_evidence": [
+    {
+      "family": "critical-damage",
+      "state": "applied",
+      "raw_attribute_delta": 502,
+      "reason": "not a same-wire transition and competing target statuses changed inside the observation window"
+    },
+    {
+      "family": "critical-damage",
+      "state": "removed",
+      "raw_attribute_delta": -1534,
+      "reason": "effect 2203292 changed in the same wire equation, so this is not the reverse coefficient"
+    }
+  ],
+  "authority_boundary": {
+    "parent_and_child_must_be_replayed_as_one_combined_family": true,
+    "parent_or_child_independent_coefficient_proven": false,
+    "formula_stage_and_integer_rounding_proven": false,
+    "provider_rdps_credit_authorized": false,
+    "ordinary_owner_damage_only": true,
+    "reason": "current-build packets prove an owner-only parent-child lifecycle and combined attribute changes; they do not separate the two effects or authorize transfer to another player"
+  }
+}

@@ -140,6 +140,16 @@ proof. It is also the data source for a human-facing "what affected this
 damage?" view. The UI should query or shard the graph rather than inventing a
 second set of relationships.
 
+The current-build Thunderwind Power receipt is intentionally a negative
+transfer proof. A sealed build `24687926` run proves effect `2110138` has a
+stable player owner, exact tier-5 primary Imagine selection, a 20-second
+lifecycle, and the same owner as its recipient. The parent and hidden child
+`2110154` change together on the wire, producing one observed critical-rate
+family delta and one critical-damage family delta. They cannot be split into
+independent coefficients. The effect therefore remains ordinary owner damage
+and can never be reclassified as party support. The build-locked receipt is
+`protocol-packs/global/steam-24687926/observations/thunderwind-power-2110138-owner-lifecycle-001.json`.
+
 ## Current-build exhaustive party-route census
 
 <!-- BEGIN GENERATED RDPS PROMOTION FRONTIER -->
