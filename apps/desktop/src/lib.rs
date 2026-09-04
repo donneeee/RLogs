@@ -13001,6 +13001,7 @@ mod tests {
             combat_started_micros: Some(1),
             combat_ended_micros: None,
             active_combat_micros: 1,
+            attempt_elapsed_micros: Some(1),
             encounter_elapsed_micros: Some(1),
             encounter_terminal_micros: None,
             run_terminal_micros: None,

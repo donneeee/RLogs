@@ -133,7 +133,7 @@
     },
     {
       "scene_id": 1633,
-      "runtime_enabled": false,
+      "runtime_enabled": true,
       "activity_kind": "dungeon",
       "activity_id": "scene.1633",
       "activity_family_id": "tina-mindrealm",
@@ -184,6 +184,11 @@
         {
           "source": "capture-operator-domain-knowledge",
           "reference": "master-tier-range:1-20",
+          "confidence": "user_confirmed"
+        },
+        {
+          "source": "capture-operator-observation",
+          "reference": "2026-09-04:mistveil-master-overlay-resolves-monster.33701-but-run-segment-omits-boss-phase",
           "confidence": "user_confirmed"
         },
         {

@@ -20,6 +20,7 @@ import {
   nextOverlayHeaderViewId,
   normalizeHeaderViewGeometry,
   overlayActorsFromLiveUpdate,
+  overlaySceneName,
   parseCombatOverlaySettings,
   planCombatOverlayVisibility,
   preferredOverlayDisplayName,
@@ -80,6 +81,7 @@ describe("Combat Overlay plug-in settings", () => {
   it("freezes elapsed presentation clocks after the global inactivity delay", () => {
     const snapshot = {
       active_combat_micros: 12_000_000,
+      attempt_elapsed_micros: 11_000_000,
       encounter_elapsed_micros: 25_000_000,
       run_elapsed_micros: 30_000_000,
       game_time_micros: 28_000_000,
@@ -94,6 +96,7 @@ describe("Combat Overlay plug-in settings", () => {
 
     expect(paused).toMatchObject({
       active_combat_micros: 12_000_000,
+      attempt_elapsed_micros: 4_000_000,
       encounter_elapsed_micros: 18_000_000,
       run_elapsed_micros: 23_000_000,
       game_time_micros: 21_000_000,
@@ -613,6 +616,7 @@ describe("Combat Overlay plug-in settings", () => {
       rdps_damage: 15_000,
     }];
     const snapshot = {
+      attempt_elapsed_micros: 3_000_000,
       encounter_elapsed_micros: 6_000_000,
       run_elapsed_micros: 12_000_000,
       game_time_micros: 10_000_000,
@@ -620,8 +624,10 @@ describe("Combat Overlay plug-in settings", () => {
       actors: [],
     };
 
+    const attempt = projectOverlayRatesForTimer(actors, snapshot, "attempt_time")[0]!;
     const encounter = projectOverlayRatesForTimer(actors, snapshot, "encounter_time")[0]!;
     const run = projectOverlayRatesForTimer(actors, snapshot, "run_time")[0]!;
+    expect(attempt).toMatchObject({ dps: 4_000, edps: 4_000, adps: 3_000, hps: 2_000, tps: 1_000, rdps: 5_000 });
     expect(encounter).toMatchObject({ dps: 2_000, edps: 2_000, adps: 1_500, hps: 1_000, tps: 500, rdps: 2_500 });
     expect(run).toMatchObject({ dps: 1_000, edps: 1_000, adps: 750, hps: 500, tps: 250, rdps: 1_250 });
     expect(run.reported_damage).toBe(12_000);
@@ -629,16 +635,38 @@ describe("Combat Overlay plug-in settings", () => {
 
   it("keeps every live timer selectable before a saved run projection exists", () => {
     expect(availableTimerFields(null, {
+      attempt_elapsed_micros: 9_000_000,
       encounter_elapsed_micros: 10_000_000,
       game_time_micros: 11_000_000,
       true_time_micros: 12_000_000,
       run_elapsed_micros: 13_000_000,
     } as Parameters<typeof availableTimerFields>[1])).toEqual([
+      "attempt_time",
       "encounter_time",
       "game_time",
       "true_time",
       "run_time",
     ]);
+  });
+
+  it("uses the already-resolved live boss entities for every dungeon header", () => {
+    expect(overlaySceneName({
+      scene_id: 1633,
+      scene_name: "Chaotic - Tina's Mindrealm",
+      timer_source: "reviewed_dungeon",
+      bosses: [
+        { actor_id: "boss", monster_id: 33701, name: "Void Tina", current_hp: 1, max_hp: 2, bdps: 3, team_damage: 4 },
+      ],
+      run_projection: null,
+    }, { scene_id: 1633, actors: [] })).toBe("Boss: Void Tina");
+
+    expect(overlaySceneName({
+      scene_id: 6525,
+      scene_name: "Chaotic - Mech Facility",
+      timer_source: "reviewed_dungeon",
+      bosses: [],
+      run_projection: null,
+    }, { scene_id: 6525, actors: [] })).toBe("Chaotic - Mech Facility");
   });
 
   it("gives older summary layouts safe semantic rows", () => {

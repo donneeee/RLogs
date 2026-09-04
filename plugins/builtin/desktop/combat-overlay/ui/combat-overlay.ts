@@ -59,6 +59,7 @@ export type OverlayHeaderField =
   | "value"
   | "percent";
 export type OverlaySummaryField =
+  | "attempt_time"
   | "encounter_time"
   | "run_time"
   | "game_time"
@@ -166,6 +167,7 @@ export function applyOverlayTimerPause(
     value == null ? value : Math.max(0, value - excess);
   return {
     ...snapshot,
+    attempt_elapsed_micros: subtract(snapshot.attempt_elapsed_micros),
     encounter_elapsed_micros: subtract(snapshot.encounter_elapsed_micros),
     run_elapsed_micros: subtract(snapshot.run_elapsed_micros),
     game_time_micros: subtract(snapshot.game_time_micros),
@@ -307,6 +309,7 @@ interface OverlaySnapshot {
   rdps_status?: string;
   scene_id?: number | null;
   combat_started_micros?: number | null;
+  attempt_elapsed_micros?: number | null;
   encounter_elapsed_micros?: number | null;
   encounter_terminal_micros?: number | null;
   run_terminal_micros?: number | null;
@@ -563,6 +566,8 @@ const SAMPLE_SNAPSHOT: OverlaySnapshot = {
   combat_active: true,
   combat_started_micros: 0,
   active_combat_micros: 187_000_000,
+  attempt_elapsed_micros: 83_000_000,
+  encounter_elapsed_micros: 187_000_000,
   run_elapsed_micros: 231_000_000,
   game_time_micros: 204_000_000,
   true_time_micros: 196_000_000,
@@ -649,6 +654,7 @@ const HEADER_FIELD_GROUPS: ReadonlyArray<readonly [string, readonly OverlayHeade
   ["Contribution", ["rdps_damage", "rdps", "contribution_given", "contribution_received"]],
 ];
 const SUMMARY_FIELDS: readonly OverlaySummaryField[] = [
+  "attempt_time",
   "encounter_time",
   "run_time",
   "game_time",
@@ -3031,6 +3037,7 @@ export function availableTimerFields(
 ): readonly OverlaySummaryField[] {
   const projection = presentation?.run_projection;
   return [
+    "attempt_time" as const,
     "encounter_time" as const,
     ...(projection?.game_time_micros == null && snapshot?.game_time_micros == null
       ? []
@@ -3061,6 +3068,7 @@ function timerDurationMicros(
   field: OverlaySummaryField,
   snapshot: OverlaySnapshot | null | undefined,
 ): number | null {
+  if (field === "attempt_time") return snapshot?.attempt_elapsed_micros ?? null;
   if (field === "run_time") return snapshot?.run_elapsed_micros ?? null;
   if (field === "game_time") return snapshot?.game_time_micros ?? null;
   if (field === "true_time") return snapshot?.true_time_micros ?? null;
@@ -3121,7 +3129,7 @@ function cycleSelectedTimer(
 ): void {
   const available = availableTimerFields(presentation, snapshot);
   if (available.length === 0) return;
-  const current = selected.get(layerId) ?? "encounter_time";
+  const current = selectedTimerField(selected, layerId, presentation, snapshot);
   const currentIndex = available.indexOf(current);
   selected.set(layerId, available[(currentIndex + 1 + available.length) % available.length]!);
 }
@@ -3165,6 +3173,7 @@ function runtimeControlLabel(
 }
 
 function timerFieldLabel(field: OverlaySummaryField): string {
+  if (field === "attempt_time") return "Attempt";
   if (field === "run_time") return "Run";
   if (field === "game_time") return "Game";
   if (field === "true_time") return "True";
@@ -3175,6 +3184,7 @@ function summaryTimerValue(
   field: OverlaySummaryField,
   snapshot: OverlaySnapshot | null | undefined,
 ): string {
+  if (field === "attempt_time") return formatOptionalOverlayTime(snapshot?.attempt_elapsed_micros);
   if (field === "run_time") return formatOptionalOverlayTime(snapshot?.run_elapsed_micros);
   if (field === "game_time") return formatOptionalOverlayTime(snapshot?.game_time_micros);
   if (field === "true_time") return formatOptionalOverlayTime(snapshot?.true_time_micros);
@@ -3709,6 +3719,7 @@ function summaryFieldValue(
   numberFormats: OverlayNumberFormats,
 ): string {
   switch (field) {
+    case "attempt_time": return formatOptionalOverlayTime(snapshot?.attempt_elapsed_micros);
     case "encounter_time": return formatOptionalOverlayTime(
       snapshot?.encounter_elapsed_micros ?? snapshot?.active_combat_micros,
     );
@@ -3733,10 +3744,16 @@ function overlaySummaryStat(label: string, value: string, labelHidden = false): 
   return stat;
 }
 
-function overlaySceneName(
+export function overlaySceneName(
   presentation: OverlayEncounterPresentation | null | undefined,
   snapshot: OverlaySnapshot | null | undefined,
 ): string {
+  const bossNames = [...new Set(
+    (presentation?.bosses ?? [])
+      .map((boss) => boss.name.trim())
+      .filter((name) => name.length > 0),
+  )];
+  if (bossNames.length > 0) return `Boss: ${bossNames.join(" + ")}`;
   if (presentation?.scene_name?.trim()) return presentation.scene_name.trim();
   const sceneId = presentation?.scene_id ?? snapshot?.scene_id;
   return sceneId === null || sceneId === undefined ? "Waiting for scene" : `Scene ${sceneId}`;
@@ -5479,6 +5496,7 @@ function fieldLabel(field: OverlayHeaderField): string {
 
 function summaryFieldLabel(field: OverlaySummaryField): string {
   return ({
+    attempt_time: "Attempt time",
     encounter_time: "Encounter time",
     run_time: "Run time",
     game_time: "Game time",

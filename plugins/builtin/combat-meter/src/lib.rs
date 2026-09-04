@@ -479,6 +479,11 @@ pub struct CombatTimelineSnapshot {
     pub combat_started_micros: Option<u64>,
     pub combat_ended_micros: Option<u64>,
     pub active_combat_micros: u64,
+    /// Elapsed wall time for only the current pull. This resets when a wipe or
+    /// forced attempt reset is observed, then starts again on the next hostile
+    /// event without changing the cumulative encounter or run clocks.
+    #[serde(default)]
+    pub attempt_elapsed_micros: Option<u64>,
     /// Cumulative elapsed-combat time across completed and current segments.
     /// Transitions and retry recovery pause this clock; a retry resumes it on
     /// the first hostile event without erasing the failed attempt.
@@ -2616,6 +2621,7 @@ impl CombatTimelinePlugin {
             combat_started_micros: self.first_combat_started,
             combat_ended_micros: self.last_combat_ended,
             active_combat_micros: duration,
+            attempt_elapsed_micros: self.first_combat_started.map(|_| attempt_duration),
             encounter_elapsed_micros: (encounter_duration > 0).then_some(encounter_duration),
             encounter_terminal_micros: self.encounter_terminal_micros,
             run_terminal_micros: self.run_terminal_micros,
@@ -4546,6 +4552,7 @@ mod tests {
         // have already reset to zero.
         plugin.last_event_micros = Some(10_000_000);
         let recovery = plugin.live_snapshot().unwrap();
+        assert_eq!(recovery.attempt_elapsed_micros, None);
         assert_eq!(recovery.encounter_elapsed_micros, Some(3_000_000));
         let actor = recovery
             .actors
@@ -4568,6 +4575,7 @@ mod tests {
         plugin.run_damage_during_combat.insert(1, 5_000);
         plugin.last_event_micros = Some(12_000_000);
         let retry = plugin.live_snapshot().unwrap();
+        assert_eq!(retry.attempt_elapsed_micros, Some(2_000_000));
         assert_eq!(retry.encounter_elapsed_micros, Some(5_000_000));
         let actor = retry
             .actors

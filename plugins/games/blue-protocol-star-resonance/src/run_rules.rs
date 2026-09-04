@@ -347,7 +347,15 @@ mod tests {
                 maximum: 20,
             })
         );
-        assert!(!master.runtime_enabled);
+        assert!(master.runtime_enabled);
+        assert_eq!(
+            master.boss_monster_ids,
+            std::collections::BTreeSet::from([33_701])
+        );
+        assert_eq!(
+            master.objective_rules.get(&100_176).map(|rule| &rule.role),
+            Some(&rlogs_combat::DungeonObjectiveRole::BossPhaseGate)
+        );
     }
 
     #[test]
