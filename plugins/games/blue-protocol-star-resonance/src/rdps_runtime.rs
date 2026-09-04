@@ -5589,6 +5589,56 @@ mod tests {
     }
 
     #[test]
+    fn inspire_31602_current_build_replay_receipt_stays_conserved_and_external() {
+        let receipt: serde_json::Value = serde_json::from_str(include_str!(
+            "../protocol-packs/global/steam-24687926/observations/inspire-31602-provider-recipient-replay-001.json"
+        ))
+        .expect("the build-locked Inspire replay receipt must remain valid JSON");
+
+        assert_eq!(receipt["deployment_id"], "global");
+        assert_eq!(receipt["client_build"], "24687926");
+        assert_eq!(receipt["effect_identity"]["effect_id"], 31_602);
+        assert_eq!(receipt["effect_identity"]["source_type_id"], 1);
+        assert_eq!(receipt["effect_identity"]["source_config_id"], 31_601);
+        assert_eq!(receipt["packet_lifecycle"]["selected_status_events"], 18);
+        assert_eq!(receipt["packet_lifecycle"]["applied_events"], 9);
+        assert_eq!(receipt["packet_lifecycle"]["removed_events"], 9);
+        assert_eq!(receipt["packet_lifecycle"]["unique_player_providers"], 1);
+        assert_eq!(receipt["production_replay"]["unique_providers"], 1);
+        assert_eq!(receipt["production_replay"]["unique_recipients"], 2);
+        assert_eq!(receipt["production_replay"]["attributed_events"], 85);
+        assert_eq!(receipt["production_replay"]["attributed_rdmg"], 242_165);
+        assert_eq!(
+            receipt["production_replay"]["recipient_attributed_rdmg"],
+            serde_json::json!([57_962, 184_203])
+        );
+        assert_eq!(
+            receipt["production_replay"]["full_report_raw_damage"],
+            receipt["production_replay"]["full_report_rdps_damage"]
+        );
+        assert_eq!(
+            receipt["production_replay"]["full_report_contribution_given"],
+            receipt["production_replay"]["full_report_contribution_received"]
+        );
+        for required in [
+            "runtime_target_match",
+            "report_conserved",
+            "all_inspire_contributions_external",
+            "all_damage_context_complete",
+        ] {
+            assert_eq!(receipt["production_replay"][required], true);
+        }
+        assert_eq!(
+            receipt["authority_boundary"]["unresolved_lifecycle_route_or_speed_state_fails_closed"],
+            true
+        );
+        assert_eq!(
+            receipt["authority_boundary"]["server_integer_counterfactual_authority"],
+            false
+        );
+    }
+
+    #[test]
     fn fiery_battle_will_requires_exact_local_observed_attack_authority() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());

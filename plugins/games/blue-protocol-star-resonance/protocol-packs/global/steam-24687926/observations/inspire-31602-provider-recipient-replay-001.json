@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "observation_id": "inspire-31602-provider-recipient-replay-001",
+  "deployment_id": "global",
+  "client_build": "24687926",
+  "protocol_pack_digest": "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
+  "subject": "Inspire 31602 provider-recipient lifecycle and packet-final action-speed attribution",
+  "effect_identity": {
+    "effect_id": 31602,
+    "source_type_id": 1,
+    "source_config_id": 31601,
+    "duration_millis": 10000
+  },
+  "sealed_input": {
+    "content_sha256": "sha256:90bf91d23ef164a17c11f9abbf756f0ad92984c1f4a1e2a43ef612a829817a46",
+    "canonical_content_sha256": "sha256:28e02bae2db117e02d720fd1abcff99e2d4d7892b8849b7c2f4e97cf65d0c1b1",
+    "bytes": 5553432,
+    "canonical_events": 119376,
+    "damage_events": 24358,
+    "status_events": 45507
+  },
+  "packet_lifecycle": {
+    "ownership_report_sha256": "sha256:822f4fdf5ee30e13eb2c394fc1396a4231f6d8d7f1bb75abfdcecdd88594c465",
+    "selected_status_events": 18,
+    "applied_events": 9,
+    "removed_events": 9,
+    "unique_player_providers": 1,
+    "unique_targets": 5,
+    "direct_player_provider_proven_for_every_event": true,
+    "stable_player_character_id_proven_for_every_event": true,
+    "player_primary_loadout_proven_for_every_event": true
+  },
+  "production_replay": {
+    "generated_by": "rlogs-bpsr-rdps-replay-audit",
+    "replay_report_sha256": "sha256:c63eb6beafa492e4733093a95be6f08dad703a8dc15f5cd11ea2caf2c79e6caf",
+    "proof_scope": "packet_proven_rules_only_partial_game_coverage",
+    "attribution_mode": "production_promoted_rules",
+    "runtime_target_match": true,
+    "report_conserved": true,
+    "missing_source_status_count": 0,
+    "all_inspire_contributions_external": true,
+    "all_damage_context_complete": true,
+    "unique_providers": 1,
+    "unique_recipients": 2,
+    "affected_action_routes": 3,
+    "attributed_events": 85,
+    "observed_damage": 7426042,
+    "attributed_rdmg": 242165,
+    "recipient_attributed_rdmg": [57962, 184203],
+    "full_report_attributed_events": 6727,
+    "full_report_attributed_bonus_damage": 25177036,
+    "full_report_raw_damage": 2268767225,
+    "full_report_rdps_damage": 2268767225,
+    "full_report_contribution_given": 25177036,
+    "full_report_contribution_received": 25177036,
+    "rational_projection_overflow_count": 0
+  },
+  "authority_boundary": {
+    "packet_final_damage_resolution_window_accounting": true,
+    "exact_reviewed_action_route_required": true,
+    "exact_recipient_speed_mode_required": true,
+    "external_provider_only": true,
+    "ordinary_damage_unchanged": true,
+    "component_scoped_authority_only": true,
+    "unresolved_lifecycle_route_or_speed_state_fails_closed": true,
+    "server_integer_counterfactual_authority": false,
+    "reason": "This capture independently confirms the promoted current-build Inspire path for exact routed damage-resolution opportunities. It does not authorize unsupported actions, recipient modes, ambiguous provider state, or a generic haste-as-damage multiplier."
+  }
+}
