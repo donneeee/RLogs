@@ -5,6 +5,7 @@ fn main() {
             "quit_rlogs",
             "open_release_notes",
             "show_event_inspector",
+            "close_event_inspector",
             "show_combat_overlay",
             "set_combat_overlay_enabled",
             "hide_combat_overlay",

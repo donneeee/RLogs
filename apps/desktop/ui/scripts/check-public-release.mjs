@@ -6,15 +6,11 @@ const distRoot = fileURLToPath(new URL("../dist/", import.meta.url));
 const forbidden = [
   "rlogs-submissions.pages.dev",
   "Receiver HTTPS URL",
-  "Session Recorder",
-  "app.rlogs.session-recorder",
-  "/api/runtime/live/events/wait",
-  "/api/runtime/events/page",
-  "/api/runtime/run-report",
-  "/api/runtime/reference-replay",
-  "/api/runtime/offline",
-  "/api/runtime/live/start",
-  "/api/runtime/live/stop",
+];
+const requiredDeveloperGateText = [
+  "Developer mode",
+  "Event Inspector is disabled",
+  "rlogs:developer-mode-changed",
 ];
 
 async function publicAssets(directory) {
@@ -32,8 +28,10 @@ async function publicAssets(directory) {
 }
 
 const leaks = [];
+let bundledText = "";
 for (const path of await publicAssets(distRoot)) {
   const content = await readFile(path, "utf8");
+  bundledText += content;
   for (const value of forbidden) {
     if (content.includes(value)) {
       leaks.push(`${value} in ${path}`);
@@ -45,4 +43,13 @@ if (leaks.length > 0) {
   throw new Error(`Public desktop build contains developer-only details:\n${leaks.join("\n")}`);
 }
 
-console.log("Public desktop release surface contains no internal service hostname or Session Recorder controls.");
+const missingGateText = requiredDeveloperGateText.filter(
+  (value) => !bundledText.includes(value),
+);
+if (missingGateText.length > 0) {
+  throw new Error(
+    `Public desktop build is missing Developer mode safeguards:\n${missingGateText.join("\n")}`,
+  );
+}
+
+console.log("Public desktop release contains no internal service hostname and includes the Developer mode safeguards.");

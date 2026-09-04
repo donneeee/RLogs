@@ -412,6 +412,9 @@ fn show_event_inspector(
     app: tauri::AppHandle,
     host: tauri::State<'_, EmbeddedLocalHost>,
 ) -> Result<(), String> {
+    if !cfg!(debug_assertions) && !host.core_settings().developer_mode {
+        return Err("Enable Developer mode in Settings before opening Event Inspector.".into());
+    }
     if let Some(window) = app.get_webview_window("event-inspector") {
         if window.is_minimized().map_err(|error| error.to_string())? {
             window.unminimize().map_err(|error| error.to_string())?;
@@ -432,6 +435,14 @@ fn show_event_inspector(
         .skip_taskbar(false)
         .build()
         .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn close_event_inspector(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("event-inspector") {
+        window.close().map_err(|error| error.to_string())?;
+    }
     Ok(())
 }
 
@@ -718,6 +729,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             quit_rlogs,
             open_release_notes,
             show_event_inspector,
+            close_event_inspector,
             show_combat_overlay,
             set_combat_overlay_enabled,
             hide_combat_overlay,

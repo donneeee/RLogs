@@ -121,7 +121,40 @@ if (isCombatOverlayRuntime) {
   await loadAndApplyThemeSettings();
   installInterfaceZoom();
   document.body.dataset.surface = "event-inspector";
-  mountStandaloneEventInspector(root);
+  const closeInspector = document.createElement("button");
+  closeInspector.type = "button";
+  closeInspector.textContent = "Close Event Inspector";
+  closeInspector.setAttribute("aria-label", "Close Event Inspector window");
+  closeInspector.style.cssText =
+    "position:fixed;z-index:10000;top:12px;right:18px;padding:8px 12px;border:1px solid #53677f;border-radius:8px;color:#e8f1fa;background:#132235;font:600 12px/1.2 system-ui;cursor:pointer";
+  closeInspector.addEventListener("click", () => {
+    void getCurrentWindow().close().catch(() => window.close());
+  });
+  document.body.append(closeInspector);
+  const catalog = await fetch("/api/plugins/catalog", { cache: "no-store" })
+    .then(async (response) => response.ok ? await response.json() as unknown : null)
+    .catch(() => null);
+  const customTriggersAvailable =
+    typeof catalog === "object" &&
+    catalog !== null &&
+    Array.isArray((catalog as { workspaces?: unknown }).workspaces) &&
+    (catalog as { workspaces: Array<{ id?: unknown }> }).workspaces.some(
+      (workspace) => workspace.id === "app.rlogs.custom-triggers",
+    );
+  if (customTriggersAvailable) {
+    mountStandaloneEventInspector(root);
+  } else {
+    const unavailable = document.createElement("main");
+    unavailable.style.cssText =
+      "box-sizing:border-box;width:100vw;min-height:100vh;padding:28px;color:#f2f6fb;background:#0b1522;font:14px/1.5 system-ui";
+    const title = document.createElement("h1");
+    title.textContent = "Event Inspector is disabled";
+    const detail = document.createElement("p");
+    detail.textContent =
+      "This unfinished feature is available only when Developer mode is enabled in rLogs Settings.";
+    unavailable.append(title, detail);
+    root.replaceChildren(unavailable);
+  }
 } else {
   await loadAndApplyThemeSettings();
   installInterfaceZoom();

@@ -143,6 +143,18 @@ use windows_sys::Win32::{
 const DEFAULT_BIND: &str = "127.0.0.1:7419";
 const PUBLIC_SUBMISSION_SERVICE_URL: &str = "https://rlogs-submissions.pages.dev";
 const SESSION_RECORDER_PLUGIN_ID: &str = "app.rlogs.session-recorder";
+const FUTURE_OVERLAY_PLUGIN_ID: &str = "app.rlogs.overlay";
+const CUSTOM_TRIGGERS_PLUGIN_ID: &str = "app.rlogs.custom-triggers";
+/// Bundled features that are not production-ready yet.
+///
+/// Removing an ID from this single registry promotes that feature back into
+/// the ordinary catalog. Do not add checks for individual unfinished features
+/// elsewhere; the registry must remain the auditable release boundary.
+const DEVELOPER_ONLY_PLUGIN_IDS: [&str; 3] = [
+    SESSION_RECORDER_PLUGIN_ID,
+    FUTURE_OVERLAY_PLUGIN_ID,
+    CUSTOM_TRIGGERS_PLUGIN_ID,
+];
 const MAX_REQUEST_HEADER_BYTES: usize = 64 * 1024;
 const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 const MAX_OVERLAY_BACKGROUND_BYTES: usize = 8 * 1024 * 1024;
@@ -167,6 +179,10 @@ fn submission_service_url(developer_tools_enabled: bool, developer_override: Opt
     } else {
         PUBLIC_SUBMISSION_SERVICE_URL
     }
+}
+
+fn is_developer_only_plugin(plugin_id: &str) -> bool {
+    DEVELOPER_ONLY_PLUGIN_IDS.contains(&plugin_id)
 }
 
 fn automatic_upload_retry_interval(consecutive_failures: u32) -> Duration {
@@ -4042,12 +4058,7 @@ impl DesktopPluginManager {
                 .difference(&disabled_bundled_plugin_ids)
                 .cloned(),
         );
-        let mut report = merge_plugin_reports(bundled, installed);
-        filter_public_plugin_catalog(
-            &mut report,
-            &mut enabled_plugin_ids,
-            developer_tools_enabled,
-        );
+        let report = merge_plugin_reports(bundled, installed);
         Ok(Self {
             installed_root,
             bundled_root,
@@ -4082,11 +4093,6 @@ impl DesktopPluginManager {
                 .cloned(),
         );
         self.report = merge_plugin_reports(bundled, installed);
-        filter_public_plugin_catalog(
-            &mut self.report,
-            &mut self.enabled_plugin_ids,
-            self.developer_tools_enabled,
-        );
         Ok(())
     }
 
@@ -4128,8 +4134,15 @@ impl DesktopPluginManager {
         Ok(())
     }
 
-    fn snapshot(&self) -> PluginCatalogView {
-        let resolution = resolve_active_plugins(&self.report.packages, &self.enabled_plugin_ids);
+    fn snapshot(&self, developer_mode: bool) -> PluginCatalogView {
+        let developer_mode = developer_mode || self.developer_tools_enabled;
+        let visible_enabled_plugin_ids = self
+            .enabled_plugin_ids
+            .iter()
+            .filter(|plugin_id| developer_mode || !is_developer_only_plugin(plugin_id))
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let resolution = resolve_active_plugins(&self.report.packages, &visible_enabled_plugin_ids);
         let installed_ids = self
             .report
             .packages
@@ -4180,9 +4193,10 @@ impl DesktopPluginManager {
             .report
             .packages
             .iter()
+            .filter(|package| developer_mode || !is_developer_only_plugin(&package.manifest().id))
             .map(|package| {
                 let manifest = package.manifest();
-                let enabled = self.enabled_plugin_ids.contains(&manifest.id);
+                let enabled = visible_enabled_plugin_ids.contains(&manifest.id);
                 let active = resolution.active_plugin_ids.contains(&manifest.id);
                 let status_detail = if active {
                     "Enabled and validated.".into()
@@ -4430,20 +4444,6 @@ fn merge_plugin_reports(
     }
     bundled.issues.append(&mut installed.issues);
     bundled
-}
-
-fn filter_public_plugin_catalog(
-    report: &mut PluginDiscoveryReport,
-    enabled_plugin_ids: &mut BTreeSet<String>,
-    developer_tools_enabled: bool,
-) {
-    if developer_tools_enabled {
-        return;
-    }
-    report
-        .packages
-        .retain(|package| package.manifest().id != SESSION_RECORDER_PLUGIN_ID);
-    enabled_plugin_ids.remove(SESSION_RECORDER_PLUGIN_ID);
 }
 
 fn resolve_active_plugins(
@@ -5610,6 +5610,10 @@ impl RuntimeController {
             .snapshot()
     }
 
+    fn developer_mode_enabled(&self) -> bool {
+        self.developer_tools_enabled || self.core_settings().developer_mode
+    }
+
     fn update_core_settings(&self, settings: CoreSettings) -> Result<CoreSettings, String> {
         self.core_settings
             .lock()
@@ -6375,6 +6379,7 @@ impl RuntimeController {
     }
 
     fn plugin_catalog(&self) -> PluginCatalogView {
+        let developer_mode = self.developer_mode_enabled();
         let plugins = self
             .plugins
             .lock()
@@ -6386,10 +6391,11 @@ impl RuntimeController {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .sync(launches);
         }
-        plugins.snapshot()
+        plugins.snapshot(developer_mode)
     }
 
     fn refresh_plugins(&self) -> Result<PluginCatalogView, String> {
+        let developer_mode = self.developer_mode_enabled();
         let mut plugins = self
             .plugins
             .lock()
@@ -6399,13 +6405,17 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .sync(plugins.active_native_launches()?)?;
-        Ok(plugins.snapshot())
+        Ok(plugins.snapshot(developer_mode))
     }
 
     fn set_plugin_enabled(
         &self,
         request: PluginEnablementRequest,
     ) -> Result<PluginCatalogView, String> {
+        let developer_mode = self.developer_mode_enabled();
+        if is_developer_only_plugin(&request.plugin_id) && !developer_mode {
+            return Err("Developer mode is required for this unfinished plug-in.".into());
+        }
         let mut plugins = self
             .plugins
             .lock()
@@ -6415,7 +6425,7 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .sync(plugins.active_native_launches()?)?;
-        Ok(plugins.snapshot())
+        Ok(plugins.snapshot(developer_mode))
     }
 
     fn plugin_surface_entrypoint(
@@ -6423,6 +6433,9 @@ impl RuntimeController {
         plugin_id: &str,
         surface_id: &str,
     ) -> Result<PathBuf, String> {
+        if is_developer_only_plugin(plugin_id) && !self.developer_mode_enabled() {
+            return Err("Developer mode is required for this unfinished plug-in.".into());
+        }
         self.plugins
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -11427,8 +11440,14 @@ fn handle_connection(
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
     let request = read_request(&mut stream)?;
-    if !controller.developer_tools_enabled
+    if !controller.developer_mode_enabled()
         && is_developer_only_route(request.method.as_str(), request.route.as_str())
+    {
+        write_api_error(&mut stream, 404, "route not found".into())?;
+        return Ok(());
+    }
+    if !controller.developer_mode_enabled()
+        && is_developer_mode_route(request.method.as_str(), request.route.as_str())
     {
         write_api_error(&mut stream, 404, "route not found".into())?;
         return Ok(());
@@ -12007,6 +12026,14 @@ fn is_developer_only_route(method: &str, route: &str) -> bool {
             | ("POST", "/api/submissions/queue/import")
             | ("POST", "/api/submissions/queue/verify")
             | ("POST", "/api/profiles/packages/inspect")
+    )
+}
+
+fn is_developer_mode_route(method: &str, route: &str) -> bool {
+    matches!(
+        (method, route),
+        ("POST", "/api/custom-triggers/event-inspector/live/wait")
+            | ("POST", "/api/custom-triggers/event-inspector/live/detail")
     )
 }
 
@@ -15750,30 +15777,81 @@ kind = "content"
     }
 
     #[test]
-    fn public_plugin_catalog_excludes_session_recorder() {
+    fn ordinary_plugin_catalog_excludes_every_developer_only_feature() {
         let root = temporary_root();
         let manager = DesktopPluginManager::new_with_developer_tools(&root, false).unwrap();
-        let catalog = manager.snapshot();
+        let catalog = manager.snapshot(false);
 
-        assert!(
-            catalog
+        for plugin_id in DEVELOPER_ONLY_PLUGIN_IDS {
+            assert!(
+                catalog
+                    .packages
+                    .iter()
+                    .all(|package| package.id != plugin_id)
+            );
+            assert!(
+                catalog
+                    .workspaces
+                    .iter()
+                    .all(|workspace| workspace.id != plugin_id)
+            );
+            assert!(
+                catalog
+                    .settings_tabs
+                    .iter()
+                    .all(|tab| tab.contributor_plugin_id != plugin_id)
+            );
+        }
+
+        let developer_catalog = manager.snapshot(true);
+        for plugin_id in DEVELOPER_ONLY_PLUGIN_IDS {
+            assert!(
+                developer_catalog
+                    .packages
+                    .iter()
+                    .any(|package| package.id == plugin_id)
+            );
+        }
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn persisted_developer_mode_controls_the_unfinished_feature_catalog() {
+        let root = temporary_root();
+        let controller = RuntimeController::new_with_developer_tools(root.clone(), false).unwrap();
+
+        let ordinary_catalog = controller.plugin_catalog();
+        assert!(DEVELOPER_ONLY_PLUGIN_IDS.iter().all(|plugin_id| {
+            ordinary_catalog
                 .packages
                 .iter()
-                .all(|package| package.id != SESSION_RECORDER_PLUGIN_ID)
-        );
-        assert!(
-            catalog
-                .workspaces
-                .iter()
-                .all(|workspace| workspace.id != SESSION_RECORDER_PLUGIN_ID)
-        );
-        assert!(
-            catalog
-                .settings_tabs
-                .iter()
-                .all(|tab| tab.contributor_plugin_id != SESSION_RECORDER_PLUGIN_ID)
-        );
+                .all(|package| package.id != *plugin_id)
+        }));
 
+        let mut settings = controller.core_settings();
+        settings.developer_mode = true;
+        controller.update_core_settings(settings).unwrap();
+        let developer_catalog = controller.plugin_catalog();
+        assert!(DEVELOPER_ONLY_PLUGIN_IDS.iter().all(|plugin_id| {
+            developer_catalog
+                .packages
+                .iter()
+                .any(|package| package.id == *plugin_id)
+        }));
+
+        let mut settings = controller.core_settings();
+        settings.developer_mode = false;
+        controller.update_core_settings(settings).unwrap();
+        let ordinary_catalog = controller.plugin_catalog();
+        assert!(DEVELOPER_ONLY_PLUGIN_IDS.iter().all(|plugin_id| {
+            ordinary_catalog
+                .packages
+                .iter()
+                .all(|package| package.id != *plugin_id)
+        }));
+
+        drop(controller);
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -15807,11 +15885,11 @@ kind = "content"
             "GET",
             "/api/profiles/photo-wall/status"
         ));
-        assert!(!is_developer_only_route(
+        assert!(is_developer_mode_route(
             "POST",
             "/api/custom-triggers/event-inspector/live/wait"
         ));
-        assert!(!is_developer_only_route(
+        assert!(is_developer_mode_route(
             "POST",
             "/api/custom-triggers/event-inspector/live/detail"
         ));

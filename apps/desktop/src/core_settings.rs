@@ -12,6 +12,14 @@ const MAX_DUMPCAP_PATH_BYTES: usize = 4 * 1024;
 pub struct CoreSettings {
     pub schema_version: u16,
     pub close_to_tray: bool,
+    /// Exposes unfinished rLogs workspaces for development and testing.
+    ///
+    /// This is deliberately opt-in and defaults off for both new and
+    /// existing settings files. Production-ready features must be removed
+    /// from the centralized developer-only registry instead of depending on
+    /// this switch indefinitely.
+    #[serde(default)]
+    pub developer_mode: bool,
     #[serde(default)]
     pub hide_overlays_when_unfocused: bool,
     /// Presentation-only clock policy shared by every overlay. Canonical run,
@@ -29,6 +37,7 @@ impl Default for CoreSettings {
         Self {
             schema_version: SCHEMA_VERSION,
             close_to_tray: false,
+            developer_mode: false,
             hide_overlays_when_unfocused: false,
             pause_overlay_timers_outside_combat: default_pause_overlay_timers_outside_combat(),
             overlay_timer_inactivity_seconds: default_overlay_timer_inactivity_seconds(),
@@ -198,6 +207,7 @@ mod tests {
         .unwrap();
         let settings = CoreSettingsStore::open(&path).unwrap().snapshot();
         assert!(settings.close_to_tray);
+        assert!(!settings.developer_mode);
         assert!(!settings.hide_overlays_when_unfocused);
         assert!(settings.pause_overlay_timers_outside_combat);
         assert_eq!(settings.overlay_timer_inactivity_seconds, 8);

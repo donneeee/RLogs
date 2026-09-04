@@ -513,11 +513,8 @@ function createLocalHostAdapter(): DesktopHostAdapter {
 
     async mountSurface(workspace, tab, container) {
       container.replaceChildren();
-      if (DEVELOPER_TOOLS_ENABLED) {
-        switch (tab.entrypoint) {
-          case `builtin://${SESSION_RECORDER_PLUGIN_ID}/session-tools`:
-            return mountSessionToolsSurface(container);
-        }
+      if (tab.entrypoint === `builtin://${SESSION_RECORDER_PLUGIN_ID}/session-tools`) {
+        return mountSessionToolsSurface(container);
       }
       switch (tab.entrypoint) {
         case `builtin://${COMBAT_METER_PLUGIN_ID}/history`:
@@ -686,6 +683,7 @@ function builtinSurfacePage(entrypoint: string): string {
 interface CoreSettings {
   schemaVersion: 1;
   closeToTray: boolean;
+  developerMode: boolean;
   hideOverlaysWhenUnfocused: boolean;
   pauseOverlayTimersOutsideCombat: boolean;
   overlayTimerInactivitySeconds: number;
@@ -1457,6 +1455,10 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
     "Close to notification area",
     "The window hides instead of ending rLogs when you press Close. Use the tray menu to reopen or quit.",
   );
+  const developerMode = checkboxOption(
+    "Developer mode",
+    "Show unfinished rLogs workspaces for development and testing. These features may be incomplete; turn this off for normal use.",
+  );
   const hideOverlaysWhenUnfocused = checkboxOption(
     "Hide overlays when the game is not active",
     "Hide every rLogs overlay while neither the active game nor rLogs is the foreground app. Each overlay returns only when its own visibility rules allow it.",
@@ -1505,6 +1507,7 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
   actions.append(save, reset, message);
   form.append(
     closeToTray.label,
+    developerMode.label,
     hideOverlaysWhenUnfocused.label,
     pauseOverlayTimers.label,
     overlayTimerDelay,
@@ -1519,6 +1522,7 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
     coreSettings = core;
     layoutSettings = layout;
     closeToTray.input.checked = core.closeToTray;
+    developerMode.input.checked = core.developerMode;
     hideOverlaysWhenUnfocused.input.checked =
       core.hideOverlaysWhenUnfocused;
     pauseOverlayTimers.input.checked = core.pauseOverlayTimersOutsideCombat;
@@ -1555,6 +1559,7 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
     message.classList.remove("error");
     message.textContent = "Saving atomically…";
     try {
+      const previousDeveloperMode = coreSettings.developerMode;
       const [core, layout] = await Promise.all([
         apiJson<unknown>("/api/settings/core", {
           method: "POST",
@@ -1562,6 +1567,7 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
           body: JSON.stringify({
             ...coreSettings,
             closeToTray: closeToTray.input.checked,
+            developerMode: developerMode.input.checked,
             hideOverlaysWhenUnfocused:
               hideOverlaysWhenUnfocused.input.checked,
             pauseOverlayTimersOutsideCombat: pauseOverlayTimers.input.checked,
@@ -1588,6 +1594,12 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
           detail: layout,
         }),
       );
+      if (core.developerMode !== previousDeveloperMode) {
+        if (!core.developerMode && window.__TAURI_INTERNALS__ !== undefined) {
+          await invoke("close_event_inspector").catch(() => undefined);
+        }
+        window.dispatchEvent(new CustomEvent("rlogs:developer-mode-changed"));
+      }
       message.textContent = "Core settings saved.";
     } catch (error) {
       if (!alive) return;
@@ -4497,6 +4509,7 @@ function parseCoreSettings(value: unknown): CoreSettings {
     !isRecord(value) ||
     value.schemaVersion !== 1 ||
     typeof value.closeToTray !== "boolean" ||
+    typeof value.developerMode !== "boolean" ||
     typeof value.hideOverlaysWhenUnfocused !== "boolean" ||
     typeof value.pauseOverlayTimersOutsideCombat !== "boolean" ||
     !Number.isInteger(value.overlayTimerInactivitySeconds) ||

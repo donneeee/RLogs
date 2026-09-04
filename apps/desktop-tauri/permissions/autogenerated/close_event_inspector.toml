@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-event-inspector"
+description = "Enables the close_event_inspector command without any pre-configured scope."
+commands.allow = ["close_event_inspector"]
+
+[[permission]]
+identifier = "deny-close-event-inspector"
+description = "Denies the close_event_inspector command without any pre-configured scope."
+commands.deny = ["close_event_inspector"]

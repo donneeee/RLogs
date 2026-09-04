@@ -162,6 +162,16 @@ export class DesktopShell {
       this.#applyLayoutPreferences(preferences);
       this.#render();
     });
+    window.addEventListener("rlogs:developer-mode-changed", () => {
+      void this.#reloadPluginCatalog("refresh", undefined, undefined, true).catch(
+        (error: unknown) => {
+          this.#setMainNotice(
+            `Developer mode changed, but the workspace catalog could not refresh: ${error instanceof Error ? error.message : String(error)}`,
+            "error",
+          );
+        },
+      );
+    });
     window.addEventListener(WORKSPACE_NAVIGATION_EVENT, (event) => {
       const request = readWorkspaceNavigationRequest(event);
       if (request === null) return;
@@ -1387,7 +1397,11 @@ export class DesktopShell {
     operation: "refresh" | "enablement",
     pluginId?: string,
     enabled?: boolean,
+    preserveCurrentView = false,
   ): Promise<void> {
+    const previousHostView = this.#activeHostView;
+    const previousWorkspaceId = this.#activeWorkspaceId;
+    const previousSettingsTab = this.#activeTabs[SETTINGS_WORKSPACE_ID];
     const catalog =
       operation === "refresh"
         ? await this.#adapter.refreshPlugins?.()
@@ -1405,9 +1419,25 @@ export class DesktopShell {
     ]);
     this.#applySnapshot(workspaces, preferences);
     this.#settingsWorkspace = settingsWorkspace(catalog.settingsTabs);
-    this.#activeHostView = "settings";
-    this.#activeTabs[SETTINGS_WORKSPACE_ID] =
-      "host.rlogs.settings:plugins";
+    if (preserveCurrentView) {
+      this.#activeHostView = previousHostView;
+      if (
+        previousWorkspaceId !== null &&
+        this.#workspaces.has(previousWorkspaceId)
+      ) {
+        this.#activeWorkspaceId = previousWorkspaceId;
+      }
+      if (
+        previousSettingsTab !== undefined &&
+        this.#settingsWorkspace.tabs.some((tab) => tab.id === previousSettingsTab)
+      ) {
+        this.#activeTabs[SETTINGS_WORKSPACE_ID] = previousSettingsTab;
+      }
+    } else {
+      this.#activeHostView = "settings";
+      this.#activeTabs[SETTINGS_WORKSPACE_ID] =
+        "host.rlogs.settings:plugins";
+    }
     this.#render();
   }
 
