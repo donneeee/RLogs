@@ -17,6 +17,7 @@ struct Arguments {
     last_sequence: u64,
     effect_id: Option<i64>,
     actor_id: Option<u64>,
+    entity_uuid: Option<i64>,
     numeric_id_prefix: Option<String>,
     data_gap_pattern: Option<String>,
 }
@@ -46,6 +47,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             &envelope.event,
             arguments.effect_id,
             arguments.actor_id,
+            arguments.entity_uuid,
             arguments.numeric_id_prefix.as_deref(),
             arguments.data_gap_pattern.as_deref(),
         ) {
@@ -62,6 +64,7 @@ fn matches_filters(
     event: &CanonicalEvent,
     effect_id: Option<i64>,
     actor_id: Option<u64>,
+    entity_uuid: Option<i64>,
     numeric_id_prefix: Option<&str>,
     data_gap_pattern: Option<&str>,
 ) -> bool {
@@ -74,7 +77,11 @@ fn matches_filters(
             TimelineEventKind::DataGap(gap) if gap.detail.contains(pattern)
         );
     }
-    if effect_id.is_none() && actor_id.is_none() && numeric_id_prefix.is_none() {
+    if effect_id.is_none()
+        && actor_id.is_none()
+        && entity_uuid.is_none()
+        && numeric_id_prefix.is_none()
+    {
         return true;
     }
     let CanonicalEvent::Timeline(timeline) = event else {
@@ -85,6 +92,7 @@ fn matches_filters(
             effect_id.is_none()
                 && numeric_id_prefix.is_none()
                 && actor_id.is_none_or(|actor_id| actor.actor.actor_id.0 == actor_id)
+                && entity_uuid.is_none_or(|entity_uuid| actor.actor.entity_uuid.0 == entity_uuid)
         }
         TimelineEventKind::Status(status) => {
             effect_id.is_none_or(|effect_id| status.effect.0 == effect_id)
@@ -99,6 +107,12 @@ fn matches_filters(
                         || status
                             .source
                             .is_some_and(|source| source.actor_id.0 == actor_id)
+                })
+                && entity_uuid.is_none_or(|entity_uuid| {
+                    status.target.entity_uuid.0 == entity_uuid
+                        || status
+                            .source
+                            .is_some_and(|source| source.entity_uuid.0 == entity_uuid)
                 })
         }
         TimelineEventKind::Damage(damage) => {
@@ -119,6 +133,10 @@ fn matches_filters(
                 && actor_id.is_none_or(|actor_id| {
                     damage.source.actor_id.0 == actor_id || damage.target.actor_id.0 == actor_id
                 })
+                && entity_uuid.is_none_or(|entity_uuid| {
+                    damage.source.entity_uuid.0 == entity_uuid
+                        || damage.target.entity_uuid.0 == entity_uuid
+                })
         }
         TimelineEventKind::Healing(healing) => {
             effect_id.is_none()
@@ -138,32 +156,46 @@ fn matches_filters(
                 && actor_id.is_none_or(|actor_id| {
                     healing.source.actor_id.0 == actor_id || healing.target.actor_id.0 == actor_id
                 })
+                && entity_uuid.is_none_or(|entity_uuid| {
+                    healing.source.entity_uuid.0 == entity_uuid
+                        || healing.target.entity_uuid.0 == entity_uuid
+                })
         }
         TimelineEventKind::EntityAttributes(attributes) => {
             effect_id.is_none()
                 && numeric_id_prefix.is_none()
                 && actor_id.is_none_or(|actor_id| attributes.actor.actor_id.0 == actor_id)
+                && entity_uuid
+                    .is_none_or(|entity_uuid| attributes.actor.entity_uuid.0 == entity_uuid)
         }
         TimelineEventKind::TemporaryAttributes(attributes) => {
             effect_id.is_none()
                 && numeric_id_prefix.is_none()
                 && actor_id.is_none_or(|actor_id| attributes.actor.actor_id.0 == actor_id)
+                && entity_uuid
+                    .is_none_or(|entity_uuid| attributes.actor.entity_uuid.0 == entity_uuid)
         }
         TimelineEventKind::Cast(cast) => {
             effect_id.is_none()
                 && numeric_id_prefix.is_none_or(|prefix| id_has_prefix(cast.ability.0, prefix))
                 && actor_id.is_none_or(|actor_id| cast.source.actor_id.0 == actor_id)
+                && entity_uuid.is_none_or(|entity_uuid| cast.source.entity_uuid.0 == entity_uuid)
         }
         TimelineEventKind::Cooldown(cooldown) => {
             effect_id.is_none()
                 && numeric_id_prefix.is_none_or(|prefix| id_has_prefix(cooldown.ability.0, prefix))
                 && actor_id.is_none_or(|actor_id| cooldown.actor.actor_id.0 == actor_id)
+                && entity_uuid.is_none_or(|entity_uuid| cooldown.actor.entity_uuid.0 == entity_uuid)
         }
         TimelineEventKind::Shield(shield) => {
             effect_id.is_none()
                 && numeric_id_prefix.is_none_or(|prefix| id_has_prefix(shield.ability.0, prefix))
                 && actor_id.is_none_or(|actor_id| {
                     shield.source.actor_id.0 == actor_id || shield.target.actor_id.0 == actor_id
+                })
+                && entity_uuid.is_none_or(|entity_uuid| {
+                    shield.source.entity_uuid.0 == entity_uuid
+                        || shield.target.entity_uuid.0 == entity_uuid
                 })
         }
         _ => false,
@@ -185,6 +217,9 @@ fn arguments() -> Result<Arguments, String> {
         .transpose()?;
     let actor_id = take_optional_value(&mut values, "--actor-id")
         .map(|value| parse_u64(value, "--actor-id"))
+        .transpose()?;
+    let entity_uuid = take_optional_value(&mut values, "--entity-uuid")
+        .map(|value| parse_i64(value, "--entity-uuid"))
         .transpose()?;
     let numeric_id_prefix = take_optional_value(&mut values, "--numeric-id-prefix")
         .map(|value| {
@@ -211,6 +246,7 @@ fn arguments() -> Result<Arguments, String> {
         last_sequence,
         effect_id,
         actor_id,
+        entity_uuid,
         numeric_id_prefix,
         data_gap_pattern,
     })
@@ -254,5 +290,5 @@ fn take_optional_value(values: &mut Vec<OsString>, flag: &str) -> Option<OsStrin
 }
 
 fn usage() -> String {
-    "usage: rlogs-bpsr-event-slice --rlog <sealed.rlog> --output <events.jsonl> --first <sequence> --last <sequence> [--effect-id <id>] [--actor-id <id>] [--numeric-id-prefix <digits>] [--data-gap-pattern <text>]".to_owned()
+    "usage: rlogs-bpsr-event-slice --rlog <sealed.rlog> --output <events.jsonl> --first <sequence> --last <sequence> [--effect-id <id>] [--actor-id <id>] [--entity-uuid <id>] [--numeric-id-prefix <digits>] [--data-gap-pattern <text>]".to_owned()
 }
