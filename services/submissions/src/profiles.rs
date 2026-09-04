@@ -127,7 +127,50 @@ pub struct PublicProfile {
     pub display_name: Option<String>,
     pub module_inventory_count: usize,
     pub equipped_module_count: usize,
+    #[serde(default)]
+    pub loadouts: Vec<PublicProfileLoadoutSummary>,
     pub envelope: WebsitePayloadEnvelope,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicProfileLoadoutSummary {
+    pub project_id: i32,
+    pub updated_unix_millis: u64,
+    pub source_client_build: String,
+    pub class_id: Option<i32>,
+    pub specialization_id: Option<i32>,
+    pub module_inventory_count: usize,
+    pub equipped_module_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicProfileLoadout {
+    pub schema_version: u16,
+    pub profile_id: String,
+    pub project_id: i32,
+    pub updated_unix_millis: u64,
+    pub source_client_build: String,
+    pub class_id: Option<i32>,
+    pub specialization_id: Option<i32>,
+    pub module_inventory_count: usize,
+    pub equipped_module_count: usize,
+    pub envelope: WebsitePayloadEnvelope,
+}
+
+impl PublicProfileLoadout {
+    fn summary(&self) -> PublicProfileLoadoutSummary {
+        PublicProfileLoadoutSummary {
+            project_id: self.project_id,
+            updated_unix_millis: self.updated_unix_millis,
+            source_client_build: self.source_client_build.clone(),
+            class_id: self.class_id,
+            specialization_id: self.specialization_id,
+            module_inventory_count: self.module_inventory_count,
+            equipped_module_count: self.equipped_module_count,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -254,26 +297,62 @@ impl ProfileRegistry {
             }
         }
         let existing_profile = read_optional_json::<PublicProfile>(&current_path)?;
+        let duplicate = existing_profile
+            .as_ref()
+            .is_some_and(|existing| existing.package_id == package.package_id);
         if let Some(existing) = &existing_profile {
-            if existing.package_id == package.package_id {
-                if package.created_unix_millis <= existing.created_unix_millis {
-                    return Ok(self.receipt(existing, true));
-                }
-                let mut refreshed = existing.clone();
-                refreshed.created_unix_millis = package.created_unix_millis;
-                refreshed.updated_unix_millis = accepted_unix_millis;
-                refreshed.source_client_build = package.source.client_build.clone();
-                refreshed.source_observation_count = package.source.observation_count;
-                refreshed.source_last_event_sequence = package.source.last_event_sequence;
-                write_json_atomic(&package_path, &package)?;
-                write_json_atomic(&current_path, &refreshed)?;
-                self.rebuild_catalog()?;
-                return Ok(self.receipt(&refreshed, true));
-            }
-            if package.created_unix_millis <= existing.created_unix_millis {
+            if !duplicate && package.created_unix_millis <= existing.created_unix_millis {
                 return Err(ProfileRegistryError::StalePackage);
             }
         }
+
+        // A project is an in-game saved loadout. Keep its verified snapshot isolated
+        // from the character-wide merge below so equipment and raw town stats from
+        // different builds can never bleed into one another.
+        let loadout = if let Some(project_id) = profile
+            .current_profession_project_id
+            .filter(|project_id| *project_id > 0)
+        {
+            let loadout_directory = directory.join("loadouts");
+            std::fs::create_dir_all(&loadout_directory)?;
+            let loadout_path = loadout_directory.join(format!("{project_id}.json"));
+            let existing_loadout = read_optional_json::<PublicProfileLoadout>(&loadout_path)?;
+            let mut loadout_profile = profile.clone();
+            if let Some(existing) = &existing_loadout {
+                let mut accumulated: CharacterProfilePatch =
+                    serde_json::from_value(existing.envelope.body.clone())?;
+                merge_profile_patches(&mut accumulated, loadout_profile).map_err(|error| {
+                    ProfileRegistryError::InvalidPackage(format!(
+                        "could not merge the newer verified loadout patch: {error}"
+                    ))
+                })?;
+                loadout_profile = accumulated;
+            }
+            let modules = loadout_profile.modules.as_ref();
+            let mut envelope = package.request.payload.clone();
+            envelope.body = website_profile_request(&loadout_profile)
+                .map_err(|error| ProfileRegistryError::InvalidPackage(error.to_string()))?
+                .payload
+                .body;
+            prefer_observed_photo_wall_identity(&package.request.payload.body, &mut envelope.body);
+            Some((
+                loadout_path,
+                PublicProfileLoadout {
+                    schema_version: PUBLIC_PROFILE_SCHEMA_VERSION,
+                    profile_id: profile_id.clone(),
+                    project_id,
+                    updated_unix_millis: accepted_unix_millis,
+                    source_client_build: package.source.client_build.clone(),
+                    class_id: loadout_profile.class_id,
+                    specialization_id: loadout_profile.specialization_id,
+                    module_inventory_count: modules.map_or(0, |value| value.inventory.len()),
+                    equipped_module_count: modules.map_or(0, |value| value.equipped_slots.len()),
+                    envelope,
+                },
+            ))
+        } else {
+            None
+        };
 
         if let Some(existing) = &existing_profile {
             let mut accumulated: CharacterProfilePatch =
@@ -301,12 +380,27 @@ impl ProfileRegistry {
             .body;
         prefer_observed_photo_wall_identity(&package.request.payload.body, &mut envelope.body);
         preserve_current_photo_assets(existing_profile.as_ref(), &mut envelope);
+        let mut loadouts = existing_profile
+            .as_ref()
+            .map_or_else(Vec::new, |existing| existing.loadouts.clone());
+        if let Some((_, loadout)) = &loadout {
+            loadouts.retain(|summary| summary.project_id != loadout.project_id);
+            loadouts.push(loadout.summary());
+            loadouts.sort_by_key(|summary| summary.project_id);
+        }
         let published = PublicProfile {
             schema_version: PUBLIC_PROFILE_SCHEMA_VERSION,
             profile_id,
             claimed: true,
             package_id: package.package_id.clone(),
-            created_unix_millis: package.created_unix_millis,
+            created_unix_millis: existing_profile.as_ref().map_or(
+                package.created_unix_millis,
+                |existing| {
+                    existing
+                        .created_unix_millis
+                        .max(package.created_unix_millis)
+                },
+            ),
             updated_unix_millis: accepted_unix_millis,
             source_client_build: package.source.client_build.clone(),
             source_observation_count: package.source.observation_count,
@@ -319,6 +413,7 @@ impl ProfileRegistry {
             display_name: profile.display_name.clone(),
             module_inventory_count: modules.map_or(0, |value| value.inventory.len()),
             equipped_module_count: modules.map_or(0, |value| value.equipped_slots.len()),
+            loadouts,
             envelope,
         };
 
@@ -329,14 +424,35 @@ impl ProfileRegistry {
             write_json_new(&claim_path, &claim)?;
         }
         write_json_atomic(&package_path, &package)?;
+        if let Some((path, loadout)) = &loadout {
+            write_json_atomic(path, loadout)?;
+        }
         write_json_atomic(&current_path, &published)?;
         self.rebuild_catalog()?;
-        Ok(self.receipt(&published, false))
+        Ok(self.receipt(&published, duplicate))
     }
 
     pub fn get(&self, profile_id: &str) -> Result<PublicProfile, ProfileRegistryError> {
         validate_profile_id(profile_id)?;
         read_json(&self.root.join(profile_id).join("public.json"))
+    }
+
+    pub fn get_loadout(
+        &self,
+        profile_id: &str,
+        project_id: i32,
+    ) -> Result<PublicProfileLoadout, ProfileRegistryError> {
+        validate_profile_id(profile_id)?;
+        if project_id <= 0 {
+            return Err(ProfileRegistryError::NotFound);
+        }
+        read_json(
+            &self
+                .root
+                .join(profile_id)
+                .join("loadouts")
+                .join(format!("{project_id}.json")),
+        )
     }
 
     pub fn publish_photo_asset(
@@ -1251,6 +1367,115 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .len(),
+            3
+        );
+    }
+
+    #[test]
+    fn verified_saved_projects_are_published_as_isolated_loadout_snapshots() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let first = mutate_package(package(10, "1000001", 3), |profile| {
+            profile.current_profession_project_id = Some(5);
+            profile.class_id = Some(11);
+            profile.specialization_id = Some(2);
+        });
+        let receipt = registry
+            .publish(
+                first,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+        let second = mutate_package(package(30, "1000001", 7), |profile| {
+            profile.current_profession_project_id = Some(8);
+            profile.class_id = Some(4);
+            profile.specialization_id = Some(1);
+        });
+        registry
+            .publish(
+                second,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                40,
+            )
+            .unwrap();
+
+        let public = registry.get(&receipt.profile_id).unwrap();
+        assert_eq!(
+            public
+                .loadouts
+                .iter()
+                .map(|loadout| loadout.project_id)
+                .collect::<Vec<_>>(),
+            vec![5, 8]
+        );
+        let loadout_five = registry.get_loadout(&receipt.profile_id, 5).unwrap();
+        let loadout_eight = registry.get_loadout(&receipt.profile_id, 8).unwrap();
+        assert_eq!(loadout_five.class_id, Some(11));
+        assert_eq!(loadout_five.specialization_id, Some(2));
+        assert_eq!(loadout_five.module_inventory_count, 3);
+        assert_eq!(
+            loadout_five.envelope.body["current_profession_project_id"],
+            5
+        );
+        assert_eq!(loadout_eight.class_id, Some(4));
+        assert_eq!(loadout_eight.specialization_id, Some(1));
+        assert_eq!(loadout_eight.module_inventory_count, 7);
+        assert_eq!(
+            loadout_eight.envelope.body["current_profession_project_id"],
+            8
+        );
+    }
+
+    #[test]
+    fn later_duplicate_sync_backfills_loadout_storage_after_server_upgrade() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let package_at = |created| {
+            mutate_package(package(created, "1000001", 3), |profile| {
+                profile.current_profession_project_id = Some(5);
+                profile.class_id = Some(11);
+                profile.specialization_id = Some(117);
+            })
+        };
+        let receipt = registry
+            .publish(
+                package_at(10),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+
+        let profile_directory = root.path().join(&receipt.profile_id);
+        std::fs::remove_file(profile_directory.join("loadouts").join("5.json")).unwrap();
+        let mut legacy_public = registry.get(&receipt.profile_id).unwrap();
+        legacy_public.loadouts.clear();
+        write_json_atomic(&profile_directory.join("public.json"), &legacy_public).unwrap();
+
+        let refreshed = registry
+            .publish(
+                package_at(30),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                40,
+            )
+            .unwrap();
+        assert!(refreshed.duplicate);
+        assert_eq!(registry.get(&receipt.profile_id).unwrap().loadouts.len(), 1);
+        assert_eq!(
+            registry
+                .get_loadout(&receipt.profile_id, 5)
+                .unwrap()
+                .module_inventory_count,
             3
         );
     }

@@ -65,7 +65,7 @@ use github_archive::{ArchiveJob, GithubArchive};
 use profiles::{
     PhotoAssetContent, PhotoAssetReceipt, PhotoCatalogQuery, PhotoLikeReceipt,
     ProfilePublishReceipt, ProfileRegistry, ProfileRegistryError, PublicPhotoCatalog,
-    PublicProfile, PublicProfileCatalog, PublicProfileCatalogEntry,
+    PublicProfile, PublicProfileCatalog, PublicProfileCatalogEntry, PublicProfileLoadout,
 };
 use rlogs_profiles::LocalProfilePackage;
 
@@ -878,6 +878,14 @@ impl SubmissionService {
 
     fn profile(&self, profile_id: &str) -> Result<PublicProfile, ServiceError> {
         Ok(self.inner.profiles.get(profile_id)?)
+    }
+
+    fn profile_loadout(
+        &self,
+        profile_id: &str,
+        project_id: i32,
+    ) -> Result<PublicProfileLoadout, ServiceError> {
+        Ok(self.inner.profiles.get_loadout(profile_id, project_id)?)
     }
 
     fn publish_profile_photo(
@@ -1877,6 +1885,10 @@ pub fn router(service: SubmissionService) -> Router {
         .route("/v1/profiles", get(list_profiles))
         .route("/v1/photos", get(list_profile_photos))
         .route("/v1/profiles/{profile_id}", get(get_profile))
+        .route(
+            "/v1/profiles/{profile_id}/loadouts/{project_id}",
+            get(get_profile_loadout),
+        )
         .route("/v1/users/{account_id}", get(get_public_account))
         .route(
             "/v1/profiles/{profile_id}/photo-wall/{photo_id}",
@@ -2229,6 +2241,13 @@ async fn get_profile(
     AxumPath(profile_id): AxumPath<String>,
 ) -> Result<Json<PublicProfile>, ApiError> {
     Ok(Json(service.profile(&profile_id)?))
+}
+
+async fn get_profile_loadout(
+    State(service): State<SubmissionService>,
+    AxumPath((profile_id, project_id)): AxumPath<(String, i32)>,
+) -> Result<Json<PublicProfileLoadout>, ApiError> {
+    Ok(Json(service.profile_loadout(&profile_id, project_id)?))
 }
 
 async fn get_profile_photo(
