@@ -19,9 +19,12 @@ The projections contain:
 - data-gap count and replay provenance.
 
 History `eDPS` divides damage by the selected encounter or segment elapsed
-time and freezes on its packet-proven clear. `aDPS` divides the same damage by
-the sum of active-combat windows, so downtime between pulls does not lower it.
-The live overlay also exposes full run `DPS`, whose clock freezes on a run
+time and freezes on its packet-proven clear. Live `eDPS` uses the cumulative
+encounter-combat clock across retries while excluding recovery and transition
+gaps. Live `aDPS` uses only the current attempt's active-combat clock and resets
+on a packet-proven wipe or forced reset. These semantic rates do not change when
+the overlay's visible timer is cycled; the selected timer instead reprojects the
+generic DPS/HPS/TPS/rDPS columns. The full-run `DPS` clock freezes on a run
 completion packet or scene departure. Gauntlet scenes keep one encounter clock
 across intermediate bosses and summoned mobs. HPS is healing per selected
 elapsed second; TPS is damage taken per selected elapsed second.

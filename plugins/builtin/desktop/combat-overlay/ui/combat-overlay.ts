@@ -3097,7 +3097,6 @@ export function projectOverlayRatesForTimer(
   if (duration === null) return [...actors];
   return actors.map((actor) => {
     const damage = actor.reported_damage;
-    const activeDamage = actor.damage_during_combat ?? damage;
     const rdps = rateFromAmount(actor.rdps_damage, duration);
     const abilities = actor.abilities?.map((ability) => {
       const received = Number(ability.rdps_received_damage ?? "0");
@@ -3119,8 +3118,14 @@ export function projectOverlayRatesForTimer(
     return {
       ...actor,
       dps: rateFromAmount(damage, duration) ?? actor.dps,
-      edps: rateFromAmount(damage, duration) ?? actor.edps ?? actor.dps,
-      adps: rateFromAmount(activeDamage, duration) ?? actor.adps ?? actor.dps,
+      // eDPS and aDPS are semantic rates with reducer-owned clocks. eDPS uses
+      // the cumulative encounter-combat clock, while aDPS uses the current
+      // attempt's active-combat clock. Reprojecting either against a selected
+      // wall-style timer makes it decay while idle and erases the distinction
+      // between the two columns. The timer selector still controls generic
+      // DPS/HPS/TPS/rDPS and their contribution drilldowns.
+      edps: actor.edps ?? actor.dps,
+      adps: actor.adps ?? actor.edps ?? actor.dps,
       hps: rateFromAmount(actor.reported_healing, duration) ?? actor.hps,
       tps: rateFromAmount(actor.damage_taken, duration) ?? actor.tps,
       rdps,

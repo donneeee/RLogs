@@ -599,13 +599,13 @@ describe("Combat Overlay plug-in settings", () => {
     });
   });
 
-  it("recalculates every rate from the selected visible timer without changing totals", () => {
+  it("recalculates timer-relative rates without redefining semantic eDPS or aDPS", () => {
     const actors = [{
       actor_id: "3296036",
       display_name: "MarieRose",
       dps: 1,
-      edps: 1,
-      adps: 1,
+      edps: 2_000,
+      adps: 3_000,
       hps: 1,
       tps: 1,
       rdps: 1,
@@ -627,10 +627,39 @@ describe("Combat Overlay plug-in settings", () => {
     const attempt = projectOverlayRatesForTimer(actors, snapshot, "attempt_time")[0]!;
     const encounter = projectOverlayRatesForTimer(actors, snapshot, "encounter_time")[0]!;
     const run = projectOverlayRatesForTimer(actors, snapshot, "run_time")[0]!;
-    expect(attempt).toMatchObject({ dps: 4_000, edps: 4_000, adps: 3_000, hps: 2_000, tps: 1_000, rdps: 5_000 });
-    expect(encounter).toMatchObject({ dps: 2_000, edps: 2_000, adps: 1_500, hps: 1_000, tps: 500, rdps: 2_500 });
-    expect(run).toMatchObject({ dps: 1_000, edps: 1_000, adps: 750, hps: 500, tps: 250, rdps: 1_250 });
+    expect(attempt).toMatchObject({ dps: 4_000, edps: 2_000, adps: 3_000, hps: 2_000, tps: 1_000, rdps: 5_000 });
+    expect(encounter).toMatchObject({ dps: 2_000, edps: 2_000, adps: 3_000, hps: 1_000, tps: 500, rdps: 2_500 });
+    expect(run).toMatchObject({ dps: 1_000, edps: 2_000, adps: 3_000, hps: 500, tps: 250, rdps: 1_250 });
     expect(run.reported_damage).toBe(12_000);
+  });
+
+  it("keeps aDPS frozen when only an idle wall timer advances", () => {
+    const actor = {
+      actor_id: "3296036",
+      display_name: "MarieRose",
+      dps: 900,
+      edps: 1_100,
+      adps: 1_300,
+      hps: 0,
+      tps: 0,
+      rdps: null,
+      reported_damage: 9_000,
+      damage_during_combat: 9_000,
+    };
+
+    const beforeIdle = projectOverlayRatesForTimer([actor], {
+      attempt_elapsed_micros: 10_000_000,
+      actors: [],
+    }, "attempt_time")[0]!;
+    const afterIdle = projectOverlayRatesForTimer([actor], {
+      attempt_elapsed_micros: 30_000_000,
+      actors: [],
+    }, "attempt_time")[0]!;
+
+    expect(beforeIdle.adps).toBe(1_300);
+    expect(afterIdle.adps).toBe(1_300);
+    expect(afterIdle.edps).toBe(1_100);
+    expect(afterIdle.dps).toBe(300);
   });
 
   it("keeps every live timer selectable before a saved run projection exists", () => {

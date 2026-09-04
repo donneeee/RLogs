@@ -1995,6 +1995,13 @@ impl CombatTimelinePlugin {
         self.rdps_status()
     }
 
+    /// Number of compact facts retained for the current reviewed run. This is
+    /// diagnostic metadata only; callers must not use it to change combat
+    /// semantics or discard exact history.
+    pub fn retained_history_fact_count(&self) -> usize {
+        self.history_facts.len()
+    }
+
     fn project_exact_contributions(&mut self, envelope: &EventEnvelope) {
         self.latest_exact_contributions.clear();
         self.latest_exact_rational_contributions.clear();
@@ -2674,6 +2681,55 @@ impl CombatTimelinePlugin {
     }
 
     fn build_run_history(&self, run_index: usize, run: &RunAnalysis) -> CombatRunHistory {
+        let (mut history, specs) = self.build_run_history_definition(run_index, run, true);
+        history.views = specs
+            .iter()
+            .map(|spec| self.build_history_view(spec))
+            .collect();
+        history
+    }
+
+    /// Refreshes clocks and run/attempt metadata without rebuilding actor,
+    /// target, ability, or rDPS history from every retained combat fact.
+    ///
+    /// Returns `false` when the run's view structure changed and the caller
+    /// must take a new full history snapshot. This keeps live presentation
+    /// refreshes bounded while preserving exact projections at phase and run
+    /// boundaries.
+    pub fn try_refresh_run_history_metadata(
+        &self,
+        history: &mut CombatRunHistory,
+        run_index: usize,
+        run: &RunAnalysis,
+    ) -> bool {
+        let (mut refreshed, specs) = self.build_run_history_definition(run_index, run, false);
+        let same_structure = history.views.len() == specs.len()
+            && history.views.iter().zip(&specs).all(|(view, spec)| {
+                view.id == spec.id
+                    && view.kind == spec.kind
+                    && view.segment_indices == spec.segment_indices
+            });
+        if !same_structure {
+            return false;
+        }
+
+        refreshed.presentation_scene_name = history.presentation_scene_name.clone();
+        refreshed.views = std::mem::take(&mut history.views);
+        for (view, spec) in refreshed.views.iter_mut().zip(specs) {
+            view.label = spec.label;
+            view.elapsed_micros = spec.elapsed_micros;
+            view.active_combat_micros = spec.active_combat_micros;
+        }
+        *history = refreshed;
+        true
+    }
+
+    fn build_run_history_definition(
+        &self,
+        run_index: usize,
+        run: &RunAnalysis,
+        infer_minimum_active_time_from_facts: bool,
+    ) -> (CombatRunHistory, Vec<HistoryViewSpec>) {
         let ended_micros = run.timing.ended_micros;
         let first_combat_micros = run
             .encounters
@@ -2836,11 +2892,17 @@ impl CombatTimelinePlugin {
         }
 
         for spec in &mut specs {
-            spec.active_combat_micros =
-                self.history_active_combat_micros(spec.active_combat_micros, &spec.intervals);
+            spec.active_combat_micros = if infer_minimum_active_time_from_facts {
+                self.history_active_combat_micros(spec.active_combat_micros, &spec.intervals)
+            } else {
+                self.history_active_combat_micros_without_facts(
+                    spec.active_combat_micros,
+                    &spec.intervals,
+                )
+            };
         }
 
-        CombatRunHistory {
+        let history = CombatRunHistory {
             run_index: run_index as u32,
             activity_id: run.identity.activity_id.clone(),
             activity_family_id: run.identity.activity_family_id.clone(),
@@ -2890,11 +2952,9 @@ impl CombatTimelinePlugin {
                 .map(|encounter| encounter_terminal_state_name(encounter.terminal_state).into()),
             rdps_status: self.rdps_status(),
             apm_status: "pending_active_action_classification".into(),
-            views: specs
-                .iter()
-                .map(|spec| self.build_history_view(spec))
-                .collect(),
-        }
+            views: Vec::new(),
+        };
+        (history, specs)
     }
 
     fn canonical_history_fact(&self, fact: &CombatFact) -> CombatFact {
@@ -3504,10 +3564,8 @@ impl CombatTimelinePlugin {
         reviewed_active_combat_micros: u64,
         intervals: &[(u64, u64)],
     ) -> u64 {
-        if reviewed_active_combat_micros > 0 {
-            return reviewed_active_combat_micros;
-        }
-        let inferred = self.inferred_active_combat_micros(intervals);
+        let inferred = self
+            .history_active_combat_micros_without_facts(reviewed_active_combat_micros, intervals);
         if inferred > 0 {
             return inferred;
         }
@@ -3518,6 +3576,18 @@ impl CombatTimelinePlugin {
             MINIMUM_PERSONAL_ACTIVE_MICROS
         } else {
             0
+        }
+    }
+
+    fn history_active_combat_micros_without_facts(
+        &self,
+        reviewed_active_combat_micros: u64,
+        intervals: &[(u64, u64)],
+    ) -> u64 {
+        if reviewed_active_combat_micros > 0 {
+            reviewed_active_combat_micros
+        } else {
+            self.inferred_active_combat_micros(intervals)
         }
     }
 
@@ -7141,5 +7211,40 @@ mod tests {
             10_000_000,
             "Game time must remain frozen after mobbing closes even as later packets advance the run"
         );
+
+        let meter = CombatTimelinePlugin::new();
+        let mut open_mobbing = live_transition.clone();
+        open_mobbing.timing.observed_until_micros = 8_000_000;
+        open_mobbing.timing.active_combat_micros = 7_000_000;
+        open_mobbing.segments[0].ended_micros = 8_000_000;
+        open_mobbing.segments[0].wall_time_micros = 8_000_000;
+        open_mobbing.segments[0].active_combat_micros = 7_000_000;
+        let mut live_history = meter.build_run_history(0, &open_mobbing);
+        live_history.presentation_scene_name = Some("Localized scene".into());
+        live_history.views[0].actors.reserve(4);
+        let retained_actor_capacity = live_history.views[0].actors.capacity();
+
+        open_mobbing.timing.observed_until_micros = 10_000_000;
+        open_mobbing.timing.active_combat_micros = 8_000_000;
+        open_mobbing.segments[0].ended_micros = 10_000_000;
+        open_mobbing.segments[0].wall_time_micros = 10_000_000;
+        open_mobbing.segments[0].active_combat_micros = 8_000_000;
+        assert!(meter.try_refresh_run_history_metadata(&mut live_history, 0, &open_mobbing));
+        assert_eq!(live_history.game_time_micros, Some(10_000_000));
+        assert_eq!(
+            live_history.presentation_scene_name.as_deref(),
+            Some("Localized scene")
+        );
+        assert_eq!(
+            live_history.views[0].actors.capacity(),
+            retained_actor_capacity
+        );
+
+        let before_structure_change = live_history.clone();
+        assert!(
+            !meter.try_refresh_run_history_metadata(&mut live_history, 0, &run),
+            "opening boss/retry views must request one new exact history projection"
+        );
+        assert_eq!(live_history, before_structure_change);
     }
 }

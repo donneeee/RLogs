@@ -2030,6 +2030,8 @@ struct LiveCaptureBurstMetrics {
     peak_decoded_events_per_frame: u64,
     peak_ordered_reduction_micros: u64,
     peak_projection_micros: u64,
+    exact_history_projection_count: u64,
+    lightweight_history_refresh_count: u64,
 }
 
 impl LiveCaptureBurstMetrics {
@@ -2044,6 +2046,15 @@ impl LiveCaptureBurstMetrics {
         self.peak_projection_micros = self
             .peak_projection_micros
             .max(duration_micros_saturating(elapsed));
+    }
+
+    fn observe_exact_history_projection(&mut self) {
+        self.exact_history_projection_count = self.exact_history_projection_count.saturating_add(1);
+    }
+
+    fn observe_lightweight_history_refresh(&mut self) {
+        self.lightweight_history_refresh_count =
+            self.lightweight_history_refresh_count.saturating_add(1);
     }
 }
 
@@ -7267,9 +7278,6 @@ impl RuntimeController {
                     let mut live_dungeon_scene_id = None;
                     let mut last_world_context_event: Option<EventEnvelope> = None;
                     let mut live_run_projection: Option<CombatRunHistory> = None;
-                    let mut last_live_projection_refresh = Instant::now()
-                        .checked_sub(Duration::from_millis(250))
-                        .unwrap_or_else(Instant::now);
                     let initial_live_refresh_interval = Duration::from_millis(u64::from(
                         live_overlay_settings
                             .lock()
@@ -7570,12 +7578,24 @@ impl RuntimeController {
                                 if terminal {
                                     freeze_history = true;
                                     let terminal_identities = capture_time_identities.clone();
+                                    burst_metrics.observe_exact_history_projection();
                                     match freeze_captured_run_projection(
                                         &live_meter,
                                         &live_encounter,
                                         &terminal_identities,
                                     ) {
                                         Ok(projection) => {
+                                            let mut terminal_live_projection =
+                                                projection.history.runs.last().cloned();
+                                            if let Some(run) = terminal_live_projection.as_mut()
+                                                && let Err(error) =
+                                                    enrich_bpsr_run_rdps_effect_presentations(
+                                                        run, "en-US",
+                                                    )
+                                            {
+                                                live_snapshot_error = Some(error);
+                                            }
+                                            live_run_projection = terminal_live_projection;
                                             captured_run_projections.push_back(Some(projection));
                                         }
                                         Err(error) => {
@@ -7627,6 +7647,7 @@ impl RuntimeController {
                                 })?;
                                 if reset.invalidated_active_run {
                                     let terminal_identities = capture_time_identities.clone();
+                                    burst_metrics.observe_exact_history_projection();
                                     match freeze_captured_run_projection(
                                         &live_meter,
                                         &live_encounter,
@@ -7745,42 +7766,68 @@ impl RuntimeController {
                         {
                             let projection_started = Instant::now();
                             let reviewed_dungeon = live_dungeon_active || freeze_history;
-                            if reviewed_dungeon
-                                && (live_boundary_changed
-                                    || last_live_projection_refresh.elapsed()
-                                        >= Duration::from_millis(250))
-                            {
-                                match live_encounter
-                                    .live_snapshot()
-                                    .and_then(|run| live_meter.history_snapshot(&run.runs))
-                                {
-                                    Ok(mut history) => {
-                                        let identities = frozen_capture_time_identities
-                                            .as_ref()
-                                            .unwrap_or(&capture_time_identities);
-                                        if let Err(error) = freeze_bpsr_history_character_state(
-                                            &mut history,
-                                            identities,
-                                        ) {
-                                            live_snapshot_error = Some(error);
-                                        } else if let Err(error) = history
-                                            .runs
-                                            .iter_mut()
-                                            .try_for_each(|run| {
-                                                enrich_bpsr_run_rdps_effect_presentations(
-                                                    run, "en-US",
-                                                )
-                                            })
-                                        {
-                                            live_snapshot_error = Some(error);
+                            if reviewed_dungeon {
+                                match live_encounter.live_snapshot() {
+                                    Ok(run_snapshot) => {
+                                        let metadata_refreshed = (!live_boundary_changed
+                                            || freeze_history)
+                                            && live_run_projection
+                                                .as_mut()
+                                                .zip(run_snapshot.runs.last())
+                                                .is_some_and(|(history, run)| {
+                                                    live_meter.try_refresh_run_history_metadata(
+                                                        history,
+                                                        run_snapshot.runs.len().saturating_sub(1),
+                                                        run,
+                                                    )
+                                                });
+                                        // Keep the exact filterable actor/rDPS cube frozen
+                                        // between structural run boundaries. The ordinary live
+                                        // snapshot below remains current on every publish; only
+                                        // reviewed view clocks and attempt metadata need this
+                                        // lightweight refresh.
+                                        if metadata_refreshed {
+                                            burst_metrics.observe_lightweight_history_refresh();
                                         } else {
-                                            live_run_projection = history.runs.last().cloned();
-                                            last_live_projection_refresh = Instant::now();
+                                            burst_metrics.observe_exact_history_projection();
+                                            match live_meter.history_snapshot(&run_snapshot.runs) {
+                                                Ok(mut history) => {
+                                                    let identities = frozen_capture_time_identities
+                                                        .as_ref()
+                                                        .unwrap_or(&capture_time_identities);
+                                                    if let Err(error) =
+                                                        freeze_bpsr_history_character_state(
+                                                            &mut history,
+                                                            identities,
+                                                        )
+                                                    {
+                                                        live_snapshot_error = Some(error);
+                                                    } else if let Err(error) = history
+                                                        .runs
+                                                        .iter_mut()
+                                                        .try_for_each(|run| {
+                                                            enrich_bpsr_run_rdps_effect_presentations(
+                                                                run, "en-US",
+                                                            )
+                                                        })
+                                                    {
+                                                        live_snapshot_error = Some(error);
+                                                    } else {
+                                                        live_run_projection =
+                                                            history.runs.last().cloned();
+                                                    }
+                                                }
+                                                Err(error) => {
+                                                    live_snapshot_error = Some(format!(
+                                                        "live reviewed projection failed: {error}"
+                                                    ));
+                                                }
+                                            }
                                         }
                                     }
                                     Err(error) => {
                                         live_snapshot_error = Some(format!(
-                                            "live reviewed projection failed: {error}"
+                                            "live reviewed run snapshot failed: {error}"
                                         ));
                                     }
                                 }
@@ -7993,6 +8040,8 @@ impl RuntimeController {
                                 "Exact rDPS attribution is active; developer proof auditing is off in this public build."
                                     .to_owned()
                             };
+                            let retained_history_fact_count =
+                                live_meter.retained_history_fact_count();
                             let mut snapshot = state
                                 .lock()
                                 .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -8011,25 +8060,31 @@ impl RuntimeController {
                                 .unwrap_or_default();
                             snapshot.detail = if saving_run {
                                 format!(
-                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; saving the active dungeon segment. {} frames and {} canonical events inspected. Burst peak: {} events/frame, {:.1} ms ordered reduction, {:.1} ms projection; ingress queue saturated {} time(s). Profile sync: {}. {}",
+                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; saving the active dungeon segment. {} frames and {} canonical events inspected. Burst peak: {} events/frame, {:.1} ms ordered reduction, {:.1} ms projection; ingress queue saturated {} time(s). History refreshes: {} exact, {} lightweight; {} compact facts retained. Profile sync: {}. {}",
                                     metrics.frame_count,
                                     metrics.decoded_event_count,
                                     burst_metrics.peak_decoded_events_per_frame,
                                     burst_metrics.peak_ordered_reduction_micros as f64 / 1_000.0,
                                     burst_metrics.peak_projection_micros as f64 / 1_000.0,
                                     capture_ingress_metrics.queue_saturations,
+                                    burst_metrics.exact_history_projection_count,
+                                    burst_metrics.lightweight_history_refresh_count,
+                                    retained_history_fact_count,
                                     live_profile_sync_status,
                                     validation_detail,
                                 )
                             } else {
                                 format!(
-                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; dungeon entry is only required to save history. {} frames and {} canonical events inspected. Burst peak: {} events/frame, {:.1} ms ordered reduction, {:.1} ms projection; ingress queue saturated {} time(s). Profile sync: {}. {}",
+                                    "{provisional_prefix}Monitoring live BPSR combat everywhere; dungeon entry is only required to save history. {} frames and {} canonical events inspected. Burst peak: {} events/frame, {:.1} ms ordered reduction, {:.1} ms projection; ingress queue saturated {} time(s). History refreshes: {} exact, {} lightweight; {} compact facts retained. Profile sync: {}. {}",
                                     metrics.frame_count,
                                     metrics.decoded_event_count,
                                     burst_metrics.peak_decoded_events_per_frame,
                                     burst_metrics.peak_ordered_reduction_micros as f64 / 1_000.0,
                                     burst_metrics.peak_projection_micros as f64 / 1_000.0,
                                     capture_ingress_metrics.queue_saturations,
+                                    burst_metrics.exact_history_projection_count,
+                                    burst_metrics.lightweight_history_refresh_count,
+                                    retained_history_fact_count,
                                     live_profile_sync_status,
                                     validation_detail,
                                 )
@@ -12722,10 +12777,15 @@ mod tests {
         metrics.observe_reduction(29, Duration::from_micros(400_000));
         metrics.observe_projection(Duration::from_micros(90_000));
         metrics.observe_projection(Duration::from_micros(12_000));
+        metrics.observe_exact_history_projection();
+        metrics.observe_lightweight_history_refresh();
+        metrics.observe_lightweight_history_refresh();
 
         assert_eq!(metrics.peak_decoded_events_per_frame, 6_086);
         assert_eq!(metrics.peak_ordered_reduction_micros, 400_000);
         assert_eq!(metrics.peak_projection_micros, 90_000);
+        assert_eq!(metrics.exact_history_projection_count, 1);
+        assert_eq!(metrics.lightweight_history_refresh_count, 2);
     }
 
     #[test]
