@@ -8,6 +8,7 @@ import {
 import { loadAndApplyThemeSettings } from "./adapters/theme-settings";
 import { DesktopShell } from "./shell/desktop-shell";
 import { installInterfaceZoom } from "./shell/ui-zoom";
+import { dispatchCombatOverlayHide } from "./shell/combat-overlay-hide";
 import { mountCombatOverlayRuntimeApp } from "../../../../plugins/builtin/desktop/combat-overlay/ui/combat-overlay";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
@@ -29,32 +30,17 @@ const isEventInspectorRuntime =
 if (isCombatOverlayRuntime) {
   const appWindow = getCurrentWindow();
   try {
-    let hideOverlayPending: Promise<void> | null = null;
     const hideOverlayWindow = (): Promise<void> => {
-      if (hideOverlayPending !== null) return hideOverlayPending;
       // Keep the host visibility state and the physical Tauri window in sync.
-      // Calling the window API directly is an intentional fallback: it avoids
-      // leaving a visible WebView compositor surface if the host command is
-      // delayed while the overlay runtime is waking or suspending.
-      // The host must clear its requested-visible bit before the physical
-      // window disappears. Running these in parallel lets focus restoration
-      // observe the old bit and immediately show the overlay again, which
-      // made Hide require a second click.
-      hideOverlayPending = (async () => {
-        let hostFailure: unknown = null;
-        try {
-          await invoke("hide_combat_overlay");
-        } catch (error) {
-          hostFailure = error;
-        }
-        // The direct window API remains a fallback even if command dispatch
-        // fails, so Hide can never leave the visible overlay trapping clicks.
-        await appWindow.hide();
-        if (hostFailure !== null) throw hostFailure;
-      })().finally(() => {
-        hideOverlayPending = null;
-      });
-      return hideOverlayPending;
+      // Do not retain/await the IPC promise here. A successful hide suspends
+      // this WebView before its promise continuation is guaranteed to run; a
+      // pending click guard would then make Hide inert after the next show.
+      dispatchCombatOverlayHide(
+        () => invoke("hide_combat_overlay"),
+        () => appWindow.hide(),
+        (operation, error) => console.error(`Combat Overlay ${operation} failed`, error),
+      );
+      return Promise.resolve();
     };
     const mounted = mountCombatOverlayRuntimeApp(root, {
       // Keep the preloaded native window alive. Hiding makes the next open
