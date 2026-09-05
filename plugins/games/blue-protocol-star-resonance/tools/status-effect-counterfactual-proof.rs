@@ -16,7 +16,7 @@ use serde::{
 use sha2::{Digest, Sha256};
 
 const SCHEMA_VERSION: u16 = 22;
-const REQUIRED_FORMULA_COHORT_SCHEMA_VERSIONS: [u16; 8] = [40, 41, 42, 43, 44, 45, 46, 47];
+const REQUIRED_FORMULA_COHORT_SCHEMA_VERSIONS: [u16; 9] = [40, 41, 42, 43, 44, 45, 46, 47, 48];
 const CURRENT_HP_ATTRIBUTE_ID: i32 = 11_310;
 const PHYSICAL_DEFENSE_ATTRIBUTE_ID: i32 = 11_350;
 const BLADE_SWEEP_EFFECT_ID: i64 = 2_110_092;
@@ -4932,7 +4932,8 @@ mod tests {
         assert!(formula_cohort_schema_is_supported(Some(45)));
         assert!(formula_cohort_schema_is_supported(Some(46)));
         assert!(formula_cohort_schema_is_supported(Some(47)));
-        assert!(!formula_cohort_schema_is_supported(Some(48)));
+        assert!(formula_cohort_schema_is_supported(Some(48)));
+        assert!(!formula_cohort_schema_is_supported(Some(49)));
     }
 
     #[test]
