@@ -271,6 +271,7 @@ impl ProfileRegistry {
             root,
             public_site_url: public_site_url.trim_end_matches('/').to_owned(),
         };
+        value.backfill_saved_loadout_directory()?;
         value.rebuild_catalog()?;
         Ok(value)
     }
@@ -938,6 +939,145 @@ impl ProfileRegistry {
                 profiles,
             },
         )
+    }
+
+    /// Repairs verified profiles written before saved-project directory
+    /// summaries became part of the public profile contract.
+    ///
+    /// The sealed package already contains the privacy-reviewed project names,
+    /// while `public.json` contains the accumulated current loadout. Reopening
+    /// the registry can therefore expose the exact directory and restore the
+    /// current loadout snapshot without requiring the desktop client to resend
+    /// an otherwise unchanged package. Unsynced projects remain directory-only:
+    /// this never invents equipment, stats, skills, or modules for a loadout the
+    /// parser has not observed as active.
+    fn backfill_saved_loadout_directory(&self) -> Result<(), ProfileRegistryError> {
+        let mut visited = 0_usize;
+        for entry in std::fs::read_dir(&self.root)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            visited = visited
+                .checked_add(1)
+                .ok_or(ProfileRegistryError::CatalogTooLarge)?;
+            if visited > MAXIMUM_PROFILE_COUNT {
+                return Err(ProfileRegistryError::CatalogTooLarge);
+            }
+
+            let directory = entry.path();
+            let public_path = directory.join("public.json");
+            let package_path = directory.join("current.profile.json");
+            if !public_path.is_file() || !package_path.is_file() {
+                continue;
+            }
+            let mut public: PublicProfile = read_json(&public_path)?;
+            let package: LocalProfilePackage = match read_json(&package_path) {
+                Ok(package) => package,
+                Err(_) => continue,
+            };
+            if package.package_id != public.package_id {
+                continue;
+            }
+            let package_profile = match validate_bpsr_package(&package) {
+                Ok(profile) if profile.character.character_id == public.character_id => profile,
+                Ok(_) | Err(_) => continue,
+            };
+            let Some(projects) = package_profile.profession_projects.as_ref() else {
+                continue;
+            };
+
+            let mut changed = false;
+            if let Some(project_id) = package_profile
+                .current_profession_project_id
+                .filter(|project_id| *project_id > 0)
+            {
+                let loadout_directory = directory.join("loadouts");
+                let loadout_path = loadout_directory.join(format!("{project_id}.json"));
+                let loadout = if loadout_path.is_file() {
+                    Some(read_json::<PublicProfileLoadout>(&loadout_path)?)
+                } else {
+                    let loadout_profile: CharacterProfilePatch =
+                        serde_json::from_value(public.envelope.body.clone())?;
+                    if loadout_profile.current_profession_project_id == Some(project_id) {
+                        std::fs::create_dir_all(&loadout_directory)?;
+                        let modules = loadout_profile.modules.as_ref();
+                        let loadout = PublicProfileLoadout {
+                            schema_version: PUBLIC_PROFILE_SCHEMA_VERSION,
+                            profile_id: public.profile_id.clone(),
+                            project_id,
+                            updated_unix_millis: public.updated_unix_millis,
+                            source_client_build: public.source_client_build.clone(),
+                            class_id: loadout_profile.class_id,
+                            specialization_id: loadout_profile.specialization_id,
+                            module_inventory_count: modules
+                                .map_or(0, |value| value.inventory.len()),
+                            equipped_module_count: modules
+                                .map_or(0, |value| value.equipped_slots.len()),
+                            envelope: public.envelope.clone(),
+                        };
+                        write_json_atomic(&loadout_path, &loadout)?;
+                        changed = true;
+                        Some(loadout)
+                    } else {
+                        None
+                    }
+                };
+                if let Some(loadout) = loadout {
+                    let summary = loadout.summary();
+                    if public
+                        .loadouts
+                        .iter()
+                        .find(|existing| existing.project_id == project_id)
+                        != Some(&summary)
+                    {
+                        public
+                            .loadouts
+                            .retain(|existing| existing.project_id != project_id);
+                        public.loadouts.push(summary);
+                        changed = true;
+                    }
+                }
+            }
+
+            for project in projects {
+                if let Some(summary) = public
+                    .loadouts
+                    .iter_mut()
+                    .find(|summary| summary.project_id == project.project_id)
+                {
+                    if summary.project_name.as_ref() != Some(&project.project_name)
+                        || summary.profession_id != project.profession_id
+                    {
+                        summary.project_name = Some(project.project_name.clone());
+                        summary.profession_id = project.profession_id;
+                        if summary.class_id.is_none() {
+                            summary.class_id = project.profession_id;
+                        }
+                        changed = true;
+                    }
+                } else {
+                    public.loadouts.push(PublicProfileLoadoutSummary {
+                        project_id: project.project_id,
+                        project_name: Some(project.project_name.clone()),
+                        profession_id: project.profession_id,
+                        snapshot_available: false,
+                        updated_unix_millis: public.updated_unix_millis,
+                        source_client_build: public.source_client_build.clone(),
+                        class_id: project.profession_id,
+                        specialization_id: None,
+                        module_inventory_count: 0,
+                        equipped_module_count: 0,
+                    });
+                    changed = true;
+                }
+            }
+            public.loadouts.sort_by_key(|summary| summary.project_id);
+            if changed {
+                write_json_atomic(&public_path, &public)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -1615,6 +1755,71 @@ mod tests {
                 .module_inventory_count,
             3
         );
+    }
+
+    #[test]
+    fn reopening_registry_backfills_saved_directory_without_client_republication() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let package = mutate_package(package(10, "1000001", 3), |profile| {
+            profile.current_profession_project_id = Some(5);
+            profile.profession_projects = Some(vec![
+                rlogs_game_bpsr::ProfessionProjectProfile {
+                    project_id: 5,
+                    project_name: "Daily".into(),
+                    profession_id: Some(11),
+                },
+                rlogs_game_bpsr::ProfessionProjectProfile {
+                    project_id: 8,
+                    project_name: "Bossing".into(),
+                    profession_id: Some(4),
+                },
+            ]);
+            profile.class_id = Some(11);
+            profile.specialization_id = Some(2);
+        });
+        let receipt = registry
+            .publish(
+                package,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+        let profile_directory = root.path().join(&receipt.profile_id);
+        std::fs::remove_dir_all(profile_directory.join("loadouts")).unwrap();
+        let mut legacy_public = registry.get(&receipt.profile_id).unwrap();
+        legacy_public.loadouts.clear();
+        write_json_atomic(&profile_directory.join("public.json"), &legacy_public).unwrap();
+        drop(registry);
+
+        let reopened =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let repaired = reopened.get(&receipt.profile_id).unwrap();
+        assert_eq!(
+            repaired
+                .loadouts
+                .iter()
+                .map(|loadout| (
+                    loadout.project_id,
+                    loadout.project_name.as_deref(),
+                    loadout.snapshot_available,
+                ))
+                .collect::<Vec<_>>(),
+            vec![(5, Some("Daily"), true), (8, Some("Bossing"), false)]
+        );
+        let active = reopened.get_loadout(&receipt.profile_id, 5).unwrap();
+        assert_eq!(active.class_id, Some(11));
+        assert_eq!(active.specialization_id, Some(2));
+        assert_eq!(active.module_inventory_count, 3);
+        assert_eq!(active.envelope.body["current_profession_project_id"], 5);
+        drop(reopened);
+
+        let reopened_again =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        assert_eq!(reopened_again.get(&receipt.profile_id).unwrap(), repaired);
     }
 
     #[test]
