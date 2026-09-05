@@ -22,7 +22,7 @@ popularity and activity are only discovery signals and will change.
 | [bpsr-logs](https://github.com/winjwinj/bpsr-logs) | `f5d01aa9ba01175528ac2bc77c862d767703571b` | Independent Rust parser/log implementation and website-facing workflows |
 | [BPSR-Meter](https://github.com/mrsnakke/BPSR-Meter) | `a393f1a9c0651ddf74ce5d64ab295c95cc116d63` | Active StarResonanceDamageCounter-derived feature lineage |
 | [BPSR-ZDPS](https://github.com/Blue-Protocol-Source/BPSR-ZDPS) | stable `v0.1.7.3` at `c0a375cc8b858562e6d381a4357e10955a80340c` | Independent C# framing, TCP reconstruction, message routing, and broad feature coverage |
-| [resonance-logs-cn](https://github.com/fudiyangjin/resonance-logs-cn) | latest behavior/protocol audit: `0.2.3` at `7d956e41fb37b4ba0577a9acd8ab16121906a6d0`; optimizer compatibility port: `0.2.0` at `ccdeef23c7806be5072f95a9e80b103794af3544` | CN-region behavior/protocol research and attributed AGPL-3.0 module-optimizer behavior, with deployment-specific semantics kept separate |
+| [resonance-logs-cn](https://github.com/fudiyangjin/resonance-logs-cn) | latest behavior/protocol audit: `0.2.3` branch head at `3579de4b36c798adf0d032d9a5f504e538635612`; optimizer compatibility port: `0.2.0` at `ccdeef23c7806be5072f95a9e80b103794af3544` | CN-region behavior/protocol research and attributed AGPL-3.0 module-optimizer behavior, with deployment-specific semantics kept separate |
 | [resonance-logs](https://github.com/resonance-logs/resonance-logs) | `f4aff36e573674e04db1bb09216c603ddf9fb7f6` | Historical native meter and character projection evidence: profile identity, level, fight power, gear/equipment structures, progression, encounter upload, and website integration |
 | [resonance-website](https://github.com/resonance-logs/resonance-website) | `0baff9e4b625a11d09c9d579af19285695d38e12` | Historical website consumer contract: game avatar/profile images, detailed character views, Discord account linking, and upload/API behavior |
 | [BPSR-Meter by Denoder](https://github.com/Denoder/BPSR-Meter) | `c8c4518c36de9145362b1cabee7652905559aa99` | StarResonanceDamageCounter-derived behavior and compatibility changes |
@@ -69,14 +69,33 @@ research profile follows the pinned CN/ZDPS Call layout, the ZDPS Return
 layout, and keeps FrameUp opaque. Full wire bytes are retained for every
 variant so a later protocol pack can reinterpret them without recapture.
 
-The latest CN `0.2.3` audit is separately pinned at
-`7d956e41fb37b4ba0577a9acd8ab16121906a6d0`. Its route names remain useful
+The latest CN `0.2.3` audit is separately pinned at branch head
+`3579de4b36c798adf0d032d9a5f504e538635612`. Its route names remain useful
 external hypotheses, but its low entity-attribute labels are not transferable
 to Global by numeric ID. In particular, CN labels IDs 51, 53, and 70 as
 Defense Power, Gear Tier, and Base Strength, while exact Global build 24687926
 metadata names them `AttrTargetDir`, `AttrTargetPos`, and `AttrVelocity`.
 Reference reconciliation reports these conflicts as rejected cross-deployment
 semantic transfers; it never grants decoder or formula authority.
+
+The same pin also independently confirms the buff ownership fields used by
+RLogs: the buff container UUID is the recipient, `BuffInfo.fire_uuid` is the
+packet-observed source/caster, and `fight_source_info.source_config_id` is the
+originating game configuration. ZDPS `v0.1.7.3` decodes the same three fields
+as recipient `EntityUuid`, provider `FireUuid`, and `SourceConfigId`. This
+agreement validates field interpretation, but not a damage formula: provider
+credit still requires a distinct observed provider/recipient pair, a proven
+effect mapping, controlled counterfactuals, and conservation.
+
+## Defect cross-reference workflow
+
+When a parser defect or missing feature is investigated, first inspect current
+sealed RLogs evidence and exact-build game data. Then compare the newest pinned
+`resonance-logs-cn` implementation and, where the domain overlaps, the
+independent ZDPS lineage. Record the immutable revisions and the precise source
+fields or behavior being compared. Upstream agreement is a discovery signal,
+not permission to copy deployment-specific IDs or to bypass RLogs' evidence,
+privacy, version, and fail-closed gates.
 
 ## RLogs Global feature baseline
 

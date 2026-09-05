@@ -3,12 +3,14 @@
   "reference_id": "resonance-logs-cn-0.2.3",
   "lineage_id": "resonance-logs",
   "project": "fudiyangjin/resonance-logs-cn",
-  "revision": "7d956e41fb37b4ba0577a9acd8ab16121906a6d0",
+  "revision": "3579de4b36c798adf0d032d9a5f504e538635612",
   "source_urls": [
-    "https://github.com/fudiyangjin/resonance-logs-cn/blob/7d956e41fb37b4ba0577a9acd8ab16121906a6d0/src-tauri/src/packets/opcodes.rs",
-    "https://github.com/fudiyangjin/resonance-logs-cn/blob/7d956e41fb37b4ba0577a9acd8ab16121906a6d0/src-tauri/src/live/protocol/decoder.rs",
-    "https://github.com/fudiyangjin/resonance-logs-cn/blob/7d956e41fb37b4ba0577a9acd8ab16121906a6d0/src-tauri/src/live/protocol/attrs.rs",
-    "https://github.com/fudiyangjin/resonance-logs-cn/blob/7d956e41fb37b4ba0577a9acd8ab16121906a6d0/CHANGELOG.md"
+    "https://github.com/fudiyangjin/resonance-logs-cn/blob/3579de4b36c798adf0d032d9a5f504e538635612/src-tauri/src/packets/opcodes.rs",
+    "https://github.com/fudiyangjin/resonance-logs-cn/blob/3579de4b36c798adf0d032d9a5f504e538635612/src-tauri/src/live/protocol/decoder.rs",
+    "https://github.com/fudiyangjin/resonance-logs-cn/blob/3579de4b36c798adf0d032d9a5f504e538635612/src-tauri/src/live/protocol/attrs.rs",
+    "https://github.com/fudiyangjin/resonance-logs-cn/blob/3579de4b36c798adf0d032d9a5f504e538635612/src-tauri/src/live/runtime/events.rs",
+    "https://github.com/fudiyangjin/resonance-logs-cn/blob/3579de4b36c798adf0d032d9a5f504e538635612/src-tauri/src/live/runtime/entity_context.rs",
+    "https://github.com/fudiyangjin/resonance-logs-cn/blob/3579de4b36c798adf0d032d9a5f504e538635612/CHANGELOG.md"
   ],
   "scope": {
     "deployment_id": "cn",

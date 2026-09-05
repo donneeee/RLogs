@@ -8,13 +8,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rlogs_events::{CanonicalEvent, EntityRef, StatusState, TimelineEventKind};
+use rlogs_events::{CanonicalEvent, EntityRef, StatusEvent, StatusState, TimelineEventKind};
 use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-const SCHEMA_VERSION: u16 = 1;
+const SCHEMA_VERSION: u16 = 2;
 const GENERATED_BY: &str = "rlogs-bpsr-sealed-rlog-candidate-manifest";
 const DEFAULT_MAXIMUM_FILES: usize = 4096;
 
@@ -30,6 +30,7 @@ struct Arguments {
     build: String,
     effect_id: i64,
     damage_relationship: DamageRelationship,
+    external_provider_only: bool,
     rlogs: Vec<PathBuf>,
     rlog_dirs: Vec<PathBuf>,
     known_artifacts: Vec<PathBuf>,
@@ -42,6 +43,7 @@ struct BatchArguments {
     build: String,
     effect_ids: BTreeSet<i64>,
     damage_relationship: DamageRelationship,
+    external_provider_only: bool,
     rlogs: Vec<PathBuf>,
     rlog_dirs: Vec<PathBuf>,
     known_artifacts: Vec<PathBuf>,
@@ -94,6 +96,7 @@ struct Report {
     game_build: String,
     effect_id: i64,
     damage_relationship: DamageRelationship,
+    selection: Selection,
     policy: Policy,
     discovery: Discovery,
     known_artifacts: Vec<FileReceipt>,
@@ -106,6 +109,12 @@ struct Report {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct Selection {
+    external_provider_only: bool,
+    qualifying_window: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Policy {
     recursive_directory_discovery_is_bounded: bool,
     partial_rlog_names_are_excluded: bool,
@@ -114,6 +123,9 @@ struct Policy {
     sealed_rlogs_are_streamed_one_event_at_a_time: bool,
     data_gaps_pauses_and_run_boundaries_cut_effect_windows: bool,
     known_candidates_are_deduplicated_by_sealed_content_sha256: bool,
+    status_source_and_target_define_provider_relationship: bool,
+    external_provider_requires_distinct_observed_entities: bool,
+    ambiguous_or_missing_status_sources_are_not_external_providers: bool,
     remote_player_cast_packets_are_required: bool,
     packet_absence_is_zero: bool,
     current_snapshots_may_rewrite_historical_runs: bool,
@@ -162,6 +174,14 @@ struct CandidateRlog {
     complete_gap_bounded_lifecycles: u64,
     complete_windows_with_damage: u64,
     damage_events_while_active: u64,
+    complete_self_provider_windows_with_damage: u64,
+    self_provider_damage_events_while_active: u64,
+    complete_external_provider_windows_with_damage: u64,
+    external_provider_damage_events_while_active: u64,
+    complete_unresolved_provider_windows_with_damage: u64,
+    unresolved_provider_damage_events_while_active: u64,
+    selected_complete_windows_with_damage: u64,
+    selected_damage_events_while_active: u64,
     data_quality_boundaries: u64,
     known_sealed_content: bool,
     new_candidate: bool,
@@ -182,6 +202,13 @@ struct Summary {
     unsealed_or_unreadable_rlogs: usize,
     exact_build_rlogs_without_selected_effect: usize,
     exact_build_effect_rlogs_without_complete_damage_window: usize,
+    exact_build_effect_rlogs_without_selected_damage_window: usize,
+    observed_complete_self_provider_windows_with_damage: u64,
+    observed_self_provider_damage_events_while_active: u64,
+    observed_complete_external_provider_windows_with_damage: u64,
+    observed_external_provider_damage_events_while_active: u64,
+    observed_complete_unresolved_provider_windows_with_damage: u64,
+    observed_unresolved_provider_damage_events_while_active: u64,
     candidate_rlogs: usize,
     known_candidate_rlogs: usize,
     new_candidate_rlogs: usize,
@@ -201,6 +228,9 @@ struct NextStage {
 #[derive(Debug, Clone, Default)]
 struct ActiveWindow {
     damage_events: u64,
+    provider: Option<EntityRef>,
+    recipient: Option<EntityRef>,
+    provider_is_ambiguous: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -210,6 +240,12 @@ struct EffectAudit {
     complete: u64,
     complete_with_damage: u64,
     damage_while_active: u64,
+    complete_self_with_damage: u64,
+    self_damage_while_active: u64,
+    complete_external_with_damage: u64,
+    external_damage_while_active: u64,
+    complete_unresolved_with_damage: u64,
+    unresolved_damage_while_active: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -221,7 +257,184 @@ struct AuditCandidate {
     complete_gap_bounded_lifecycles: u64,
     complete_windows_with_damage: u64,
     damage_events_while_active: u64,
+    complete_self_provider_windows_with_damage: u64,
+    self_provider_damage_events_while_active: u64,
+    complete_external_provider_windows_with_damage: u64,
+    external_provider_damage_events_while_active: u64,
+    complete_unresolved_provider_windows_with_damage: u64,
+    unresolved_provider_damage_events_while_active: u64,
     data_quality_boundaries: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProviderRelationship {
+    SelfProvided,
+    ExternalProvider,
+    Unresolved,
+}
+
+impl ActiveWindow {
+    fn from_status(status: &StatusEvent) -> Self {
+        Self {
+            damage_events: 0,
+            provider: status.source,
+            recipient: Some(status.target),
+            provider_is_ambiguous: false,
+        }
+    }
+
+    fn observe_status(&mut self, status: &StatusEvent) {
+        if self
+            .recipient
+            .is_some_and(|recipient| recipient.entity_uuid != status.target.entity_uuid)
+        {
+            self.provider_is_ambiguous = true;
+        }
+        if let Some(source) = status.source {
+            if self
+                .provider
+                .is_some_and(|provider| provider.entity_uuid != source.entity_uuid)
+            {
+                self.provider_is_ambiguous = true;
+            } else if self.provider.is_none() {
+                self.provider = Some(source);
+            }
+        }
+    }
+
+    fn provider_relationship(&self) -> ProviderRelationship {
+        if self.provider_is_ambiguous {
+            return ProviderRelationship::Unresolved;
+        }
+        match (self.provider, self.recipient) {
+            (Some(provider), Some(recipient)) if provider.entity_uuid == recipient.entity_uuid => {
+                ProviderRelationship::SelfProvided
+            }
+            (Some(_), Some(_)) => ProviderRelationship::ExternalProvider,
+            _ => ProviderRelationship::Unresolved,
+        }
+    }
+}
+
+impl EffectAudit {
+    fn observe_status(&mut self, status: &StatusEvent) {
+        self.status_events = self.status_events.saturating_add(1);
+        let key = (
+            status.target.actor_id.0,
+            status.target.entity_uuid.0,
+            status.instance_id.map(|value| value.0),
+        );
+        match status.state {
+            StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                self.active
+                    .entry(key)
+                    .and_modify(|window| window.observe_status(status))
+                    .or_insert_with(|| ActiveWindow::from_status(status));
+            }
+            StatusState::Consumed | StatusState::Removed => {
+                if let Some(mut window) = self.active.remove(&key) {
+                    window.observe_status(status);
+                    self.complete = self.complete.saturating_add(1);
+                    self.finish_window(window);
+                }
+            }
+        }
+    }
+
+    fn observe_damage(&mut self, endpoint: EntityRef) {
+        for ((actor_id, entity_uuid, _), window) in &mut self.active {
+            if *actor_id == endpoint.actor_id.0 && *entity_uuid == endpoint.entity_uuid.0 {
+                window.damage_events = window.damage_events.saturating_add(1);
+            }
+        }
+    }
+
+    fn finish_window(&mut self, window: ActiveWindow) {
+        if window.damage_events == 0 {
+            return;
+        }
+        self.complete_with_damage = self.complete_with_damage.saturating_add(1);
+        self.damage_while_active = self
+            .damage_while_active
+            .saturating_add(window.damage_events);
+        match window.provider_relationship() {
+            ProviderRelationship::SelfProvided => {
+                self.complete_self_with_damage = self.complete_self_with_damage.saturating_add(1);
+                self.self_damage_while_active = self
+                    .self_damage_while_active
+                    .saturating_add(window.damage_events);
+            }
+            ProviderRelationship::ExternalProvider => {
+                self.complete_external_with_damage =
+                    self.complete_external_with_damage.saturating_add(1);
+                self.external_damage_while_active = self
+                    .external_damage_while_active
+                    .saturating_add(window.damage_events);
+            }
+            ProviderRelationship::Unresolved => {
+                self.complete_unresolved_with_damage =
+                    self.complete_unresolved_with_damage.saturating_add(1);
+                self.unresolved_damage_while_active = self
+                    .unresolved_damage_while_active
+                    .saturating_add(window.damage_events);
+            }
+        }
+    }
+}
+
+fn selected_window_counts(candidate: &AuditCandidate, external_provider_only: bool) -> (u64, u64) {
+    if external_provider_only {
+        (
+            candidate.complete_external_provider_windows_with_damage,
+            candidate.external_provider_damage_events_while_active,
+        )
+    } else {
+        (
+            candidate.complete_windows_with_damage,
+            candidate.damage_events_while_active,
+        )
+    }
+}
+
+fn candidate_qualifies(candidate: &AuditCandidate, external_provider_only: bool) -> bool {
+    candidate.selected_effect_status_events > 0
+        && selected_window_counts(candidate, external_provider_only).0 > 0
+}
+
+fn candidate_row(
+    candidate: AuditCandidate,
+    known_hashes: &BTreeSet<String>,
+    external_provider_only: bool,
+) -> CandidateRlog {
+    let known = known_hashes.contains(&candidate.receipt.sealed_content_sha256);
+    let (selected_complete_windows_with_damage, selected_damage_events_while_active) =
+        selected_window_counts(&candidate, external_provider_only);
+    CandidateRlog {
+        receipt: candidate.receipt,
+        session_id: candidate.session_id,
+        protocol_pack_digest: candidate.protocol_pack_digest,
+        selected_effect_status_events: candidate.selected_effect_status_events,
+        complete_gap_bounded_lifecycles: candidate.complete_gap_bounded_lifecycles,
+        complete_windows_with_damage: candidate.complete_windows_with_damage,
+        damage_events_while_active: candidate.damage_events_while_active,
+        complete_self_provider_windows_with_damage: candidate
+            .complete_self_provider_windows_with_damage,
+        self_provider_damage_events_while_active: candidate
+            .self_provider_damage_events_while_active,
+        complete_external_provider_windows_with_damage: candidate
+            .complete_external_provider_windows_with_damage,
+        external_provider_damage_events_while_active: candidate
+            .external_provider_damage_events_while_active,
+        complete_unresolved_provider_windows_with_damage: candidate
+            .complete_unresolved_provider_windows_with_damage,
+        unresolved_provider_damage_events_while_active: candidate
+            .unresolved_provider_damage_events_while_active,
+        selected_complete_windows_with_damage,
+        selected_damage_events_while_active,
+        data_quality_boundaries: candidate.data_quality_boundaries,
+        known_sealed_content: known,
+        new_candidate: !known,
+    }
 }
 
 fn main() {
@@ -285,6 +498,13 @@ fn generate(arguments: Arguments) -> Result<(), Box<dyn Error>> {
     let mut exact_build_sealed_rlogs = 0_usize;
     let mut without_effect = 0_usize;
     let mut without_complete_damage_window = 0_usize;
+    let mut without_selected_damage_window = 0_usize;
+    let mut observed_self_windows = 0_u64;
+    let mut observed_self_damage = 0_u64;
+    let mut observed_external_windows = 0_u64;
+    let mut observed_external_damage = 0_u64;
+    let mut observed_unresolved_windows = 0_u64;
+    let mut observed_unresolved_damage = 0_u64;
     for path in &paths {
         match audit_rlog(
             path,
@@ -294,27 +514,34 @@ fn generate(arguments: Arguments) -> Result<(), Box<dyn Error>> {
         ) {
             Ok(candidate) => {
                 exact_build_sealed_rlogs += 1;
+                observed_self_windows = observed_self_windows
+                    .saturating_add(candidate.complete_self_provider_windows_with_damage);
+                observed_self_damage = observed_self_damage
+                    .saturating_add(candidate.self_provider_damage_events_while_active);
+                observed_external_windows = observed_external_windows
+                    .saturating_add(candidate.complete_external_provider_windows_with_damage);
+                observed_external_damage = observed_external_damage
+                    .saturating_add(candidate.external_provider_damage_events_while_active);
+                observed_unresolved_windows = observed_unresolved_windows
+                    .saturating_add(candidate.complete_unresolved_provider_windows_with_damage);
+                observed_unresolved_damage = observed_unresolved_damage
+                    .saturating_add(candidate.unresolved_provider_damage_events_while_active);
                 if candidate.selected_effect_status_events == 0 {
                     without_effect += 1;
                     continue;
                 }
                 if candidate.complete_windows_with_damage == 0 {
                     without_complete_damage_window += 1;
+                }
+                if !candidate_qualifies(&candidate, arguments.external_provider_only) {
+                    without_selected_damage_window += 1;
                     continue;
                 }
-                let known = known_hashes.contains(&candidate.receipt.sealed_content_sha256);
-                candidate_rlogs.push(CandidateRlog {
-                    receipt: candidate.receipt,
-                    session_id: candidate.session_id,
-                    protocol_pack_digest: candidate.protocol_pack_digest,
-                    selected_effect_status_events: candidate.selected_effect_status_events,
-                    complete_gap_bounded_lifecycles: candidate.complete_gap_bounded_lifecycles,
-                    complete_windows_with_damage: candidate.complete_windows_with_damage,
-                    damage_events_while_active: candidate.damage_events_while_active,
-                    data_quality_boundaries: candidate.data_quality_boundaries,
-                    known_sealed_content: known,
-                    new_candidate: !known,
-                });
+                candidate_rlogs.push(candidate_row(
+                    candidate,
+                    &known_hashes,
+                    arguments.external_provider_only,
+                ));
             }
             Err(rejected) => rejected_rlogs.push(rejected),
         }
@@ -338,6 +565,13 @@ fn generate(arguments: Arguments) -> Result<(), Box<dyn Error>> {
         unsealed_or_unreadable_rlogs,
         exact_build_rlogs_without_selected_effect: without_effect,
         exact_build_effect_rlogs_without_complete_damage_window: without_complete_damage_window,
+        exact_build_effect_rlogs_without_selected_damage_window: without_selected_damage_window,
+        observed_complete_self_provider_windows_with_damage: observed_self_windows,
+        observed_self_provider_damage_events_while_active: observed_self_damage,
+        observed_complete_external_provider_windows_with_damage: observed_external_windows,
+        observed_external_provider_damage_events_while_active: observed_external_damage,
+        observed_complete_unresolved_provider_windows_with_damage: observed_unresolved_windows,
+        observed_unresolved_provider_damage_events_while_active: observed_unresolved_damage,
         candidate_rlogs: candidate_rlogs.len(),
         known_candidate_rlogs: candidate_rlogs
             .iter()
@@ -348,7 +582,7 @@ fn generate(arguments: Arguments) -> Result<(), Box<dyn Error>> {
         new_candidate_damage_events_while_active: candidate_rlogs
             .iter()
             .filter(|row| row.new_candidate)
-            .map(|row| row.damage_events_while_active)
+            .map(|row| row.selected_damage_events_while_active)
             .sum(),
         formula_authority: false,
         provider_rdps_credit_allowed: false,
@@ -359,6 +593,15 @@ fn generate(arguments: Arguments) -> Result<(), Box<dyn Error>> {
         game_build: arguments.build,
         effect_id: arguments.effect_id,
         damage_relationship: arguments.damage_relationship,
+        selection: Selection {
+            external_provider_only: arguments.external_provider_only,
+            qualifying_window: if arguments.external_provider_only {
+                "complete_gap_bounded_external_provider_window_with_selected_endpoint_damage"
+                    .to_owned()
+            } else {
+                "complete_gap_bounded_window_with_selected_endpoint_damage".to_owned()
+            },
+        },
         policy: Policy {
             recursive_directory_discovery_is_bounded: true,
             partial_rlog_names_are_excluded: true,
@@ -367,6 +610,9 @@ fn generate(arguments: Arguments) -> Result<(), Box<dyn Error>> {
             sealed_rlogs_are_streamed_one_event_at_a_time: true,
             data_gaps_pauses_and_run_boundaries_cut_effect_windows: true,
             known_candidates_are_deduplicated_by_sealed_content_sha256: true,
+            status_source_and_target_define_provider_relationship: true,
+            external_provider_requires_distinct_observed_entities: true,
+            ambiguous_or_missing_status_sources_are_not_external_providers: true,
             remote_player_cast_packets_are_required: false,
             packet_absence_is_zero: false,
             current_snapshots_may_rewrite_historical_runs: false,
@@ -554,27 +800,41 @@ fn assemble_report(
                 && candidate.complete_windows_with_damage == 0
         })
         .count();
-    let mut candidate_rlogs = audited_rlogs
-        .into_iter()
+    let without_selected_damage_window = audited_rlogs
+        .iter()
         .filter(|candidate| {
             candidate.selected_effect_status_events > 0
-                && candidate.complete_windows_with_damage > 0
+                && !candidate_qualifies(candidate, arguments.external_provider_only)
         })
-        .map(|candidate| {
-            let known = known_hashes.contains(&candidate.receipt.sealed_content_sha256);
-            CandidateRlog {
-                receipt: candidate.receipt,
-                session_id: candidate.session_id,
-                protocol_pack_digest: candidate.protocol_pack_digest,
-                selected_effect_status_events: candidate.selected_effect_status_events,
-                complete_gap_bounded_lifecycles: candidate.complete_gap_bounded_lifecycles,
-                complete_windows_with_damage: candidate.complete_windows_with_damage,
-                damage_events_while_active: candidate.damage_events_while_active,
-                data_quality_boundaries: candidate.data_quality_boundaries,
-                known_sealed_content: known,
-                new_candidate: !known,
-            }
-        })
+        .count();
+    let observed_self_windows = audited_rlogs
+        .iter()
+        .map(|candidate| candidate.complete_self_provider_windows_with_damage)
+        .sum();
+    let observed_self_damage = audited_rlogs
+        .iter()
+        .map(|candidate| candidate.self_provider_damage_events_while_active)
+        .sum();
+    let observed_external_windows = audited_rlogs
+        .iter()
+        .map(|candidate| candidate.complete_external_provider_windows_with_damage)
+        .sum();
+    let observed_external_damage = audited_rlogs
+        .iter()
+        .map(|candidate| candidate.external_provider_damage_events_while_active)
+        .sum();
+    let observed_unresolved_windows = audited_rlogs
+        .iter()
+        .map(|candidate| candidate.complete_unresolved_provider_windows_with_damage)
+        .sum();
+    let observed_unresolved_damage = audited_rlogs
+        .iter()
+        .map(|candidate| candidate.unresolved_provider_damage_events_while_active)
+        .sum();
+    let mut candidate_rlogs = audited_rlogs
+        .into_iter()
+        .filter(|candidate| candidate_qualifies(candidate, arguments.external_provider_only))
+        .map(|candidate| candidate_row(candidate, known_hashes, arguments.external_provider_only))
         .collect::<Vec<_>>();
     candidate_rlogs.sort_by(|left, right| left.receipt.path.cmp(&right.receipt.path));
     rejected_rlogs.sort_by(|left, right| left.path.cmp(&right.path));
@@ -595,6 +855,13 @@ fn assemble_report(
         unsealed_or_unreadable_rlogs,
         exact_build_rlogs_without_selected_effect: without_effect,
         exact_build_effect_rlogs_without_complete_damage_window: without_complete_damage_window,
+        exact_build_effect_rlogs_without_selected_damage_window: without_selected_damage_window,
+        observed_complete_self_provider_windows_with_damage: observed_self_windows,
+        observed_self_provider_damage_events_while_active: observed_self_damage,
+        observed_complete_external_provider_windows_with_damage: observed_external_windows,
+        observed_external_provider_damage_events_while_active: observed_external_damage,
+        observed_complete_unresolved_provider_windows_with_damage: observed_unresolved_windows,
+        observed_unresolved_provider_damage_events_while_active: observed_unresolved_damage,
         candidate_rlogs: candidate_rlogs.len(),
         known_candidate_rlogs: candidate_rlogs
             .iter()
@@ -605,7 +872,7 @@ fn assemble_report(
         new_candidate_damage_events_while_active: candidate_rlogs
             .iter()
             .filter(|row| row.new_candidate)
-            .map(|row| row.damage_events_while_active)
+            .map(|row| row.selected_damage_events_while_active)
             .sum(),
         formula_authority: false,
         provider_rdps_credit_allowed: false,
@@ -616,6 +883,15 @@ fn assemble_report(
         game_build: arguments.build.clone(),
         effect_id,
         damage_relationship: arguments.damage_relationship,
+        selection: Selection {
+            external_provider_only: arguments.external_provider_only,
+            qualifying_window: if arguments.external_provider_only {
+                "complete_gap_bounded_external_provider_window_with_selected_endpoint_damage"
+                    .to_owned()
+            } else {
+                "complete_gap_bounded_window_with_selected_endpoint_damage".to_owned()
+            },
+        },
         policy: Policy {
             recursive_directory_discovery_is_bounded: true,
             partial_rlog_names_are_excluded: true,
@@ -624,6 +900,9 @@ fn assemble_report(
             sealed_rlogs_are_streamed_one_event_at_a_time: true,
             data_gaps_pauses_and_run_boundaries_cut_effect_windows: true,
             known_candidates_are_deduplicated_by_sealed_content_sha256: true,
+            status_source_and_target_define_provider_relationship: true,
+            external_provider_requires_distinct_observed_entities: true,
+            ambiguous_or_missing_status_sources_are_not_external_providers: true,
             remote_player_cast_packets_are_required: false,
             packet_absence_is_zero: false,
             current_snapshots_may_rewrite_historical_runs: false,
@@ -699,11 +978,7 @@ fn audit_rlog(
     }
     let session_id = reader.header().session_id.clone();
     let protocol_pack_digest = reader.header().region.protocol_pack_digest.clone();
-    let mut active = HashMap::<(u64, i64, Option<i64>), ActiveWindow>::new();
-    let mut status_events = 0_u64;
-    let mut complete = 0_u64;
-    let mut complete_with_damage = 0_u64;
-    let mut damage_while_active = 0_u64;
+    let mut audit = EffectAudit::default();
     let mut boundaries = 0_u64;
     loop {
         let envelope = reader.next_event().map_err(|error| {
@@ -721,38 +996,14 @@ fn audit_rlog(
             | TimelineEventKind::RecorderPause(_)
             | TimelineEventKind::RunBoundary { .. } => {
                 boundaries = boundaries.saturating_add(1);
-                active.clear();
+                audit.active.clear();
             }
             TimelineEventKind::Status(status) if status.effect.0 == effect_id => {
-                status_events = status_events.saturating_add(1);
-                let key = (
-                    status.target.actor_id.0,
-                    status.target.entity_uuid.0,
-                    status.instance_id.map(|value| value.0),
-                );
-                match status.state {
-                    StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
-                        active.entry(key).or_default();
-                    }
-                    StatusState::Consumed | StatusState::Removed => {
-                        if let Some(window) = active.remove(&key) {
-                            complete = complete.saturating_add(1);
-                            if window.damage_events > 0 {
-                                complete_with_damage = complete_with_damage.saturating_add(1);
-                                damage_while_active =
-                                    damage_while_active.saturating_add(window.damage_events);
-                            }
-                        }
-                    }
-                }
+                audit.observe_status(status);
             }
             TimelineEventKind::Damage(damage) => {
                 let endpoint = damage_relationship.endpoint(damage.source, damage.target);
-                for ((actor_id, entity_uuid, _), window) in &mut active {
-                    if *actor_id == endpoint.actor_id.0 && *entity_uuid == endpoint.entity_uuid.0 {
-                        window.damage_events = window.damage_events.saturating_add(1);
-                    }
-                }
+                audit.observe_damage(endpoint);
             }
             _ => {}
         }
@@ -776,10 +1027,16 @@ fn audit_rlog(
         },
         session_id,
         protocol_pack_digest,
-        selected_effect_status_events: status_events,
-        complete_gap_bounded_lifecycles: complete,
-        complete_windows_with_damage: complete_with_damage,
-        damage_events_while_active: damage_while_active,
+        selected_effect_status_events: audit.status_events,
+        complete_gap_bounded_lifecycles: audit.complete,
+        complete_windows_with_damage: audit.complete_with_damage,
+        damage_events_while_active: audit.damage_while_active,
+        complete_self_provider_windows_with_damage: audit.complete_self_with_damage,
+        self_provider_damage_events_while_active: audit.self_damage_while_active,
+        complete_external_provider_windows_with_damage: audit.complete_external_with_damage,
+        external_provider_damage_events_while_active: audit.external_damage_while_active,
+        complete_unresolved_provider_windows_with_damage: audit.complete_unresolved_with_damage,
+        unresolved_provider_damage_events_while_active: audit.unresolved_damage_while_active,
         data_quality_boundaries: boundaries,
     })
 }
@@ -836,40 +1093,12 @@ fn audit_rlog_batch(
                 let Some(audit) = audits.get_mut(&status.effect.0) else {
                     continue;
                 };
-                audit.status_events = audit.status_events.saturating_add(1);
-                let key = (
-                    status.target.actor_id.0,
-                    status.target.entity_uuid.0,
-                    status.instance_id.map(|value| value.0),
-                );
-                match status.state {
-                    StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
-                        audit.active.entry(key).or_default();
-                    }
-                    StatusState::Consumed | StatusState::Removed => {
-                        if let Some(window) = audit.active.remove(&key) {
-                            audit.complete = audit.complete.saturating_add(1);
-                            if window.damage_events > 0 {
-                                audit.complete_with_damage =
-                                    audit.complete_with_damage.saturating_add(1);
-                                audit.damage_while_active = audit
-                                    .damage_while_active
-                                    .saturating_add(window.damage_events);
-                            }
-                        }
-                    }
-                }
+                audit.observe_status(status);
             }
             TimelineEventKind::Damage(damage) => {
                 let endpoint = damage_relationship.endpoint(damage.source, damage.target);
                 for audit in audits.values_mut() {
-                    for ((actor_id, entity_uuid, _), window) in &mut audit.active {
-                        if *actor_id == endpoint.actor_id.0
-                            && *entity_uuid == endpoint.entity_uuid.0
-                        {
-                            window.damage_events = window.damage_events.saturating_add(1);
-                        }
-                    }
+                    audit.observe_damage(endpoint);
                 }
             }
             _ => {}
@@ -904,6 +1133,16 @@ fn audit_rlog_batch(
                     complete_gap_bounded_lifecycles: audit.complete,
                     complete_windows_with_damage: audit.complete_with_damage,
                     damage_events_while_active: audit.damage_while_active,
+                    complete_self_provider_windows_with_damage: audit.complete_self_with_damage,
+                    self_provider_damage_events_while_active: audit.self_damage_while_active,
+                    complete_external_provider_windows_with_damage: audit
+                        .complete_external_with_damage,
+                    external_provider_damage_events_while_active: audit
+                        .external_damage_while_active,
+                    complete_unresolved_provider_windows_with_damage: audit
+                        .complete_unresolved_with_damage,
+                    unresolved_provider_damage_events_while_active: audit
+                        .unresolved_damage_while_active,
                     data_quality_boundaries: boundaries,
                 },
             )
@@ -1004,6 +1243,36 @@ fn verify_report(report: &Report) -> Result<(), Box<dyn Error>> {
         .filter(|row| row.new_candidate)
         .map(|row| &row.receipt.path)
         .collect::<BTreeSet<_>>();
+    let expected_qualifying_window = if report.selection.external_provider_only {
+        "complete_gap_bounded_external_provider_window_with_selected_endpoint_damage"
+    } else {
+        "complete_gap_bounded_window_with_selected_endpoint_damage"
+    };
+    let candidate_counts_are_consistent = report.candidate_rlogs.iter().all(|row| {
+        let selected_windows = if report.selection.external_provider_only {
+            row.complete_external_provider_windows_with_damage
+        } else {
+            row.complete_windows_with_damage
+        };
+        let selected_damage = if report.selection.external_provider_only {
+            row.external_provider_damage_events_while_active
+        } else {
+            row.damage_events_while_active
+        };
+        row.complete_self_provider_windows_with_damage
+            .saturating_add(row.complete_external_provider_windows_with_damage)
+            .saturating_add(row.complete_unresolved_provider_windows_with_damage)
+            == row.complete_windows_with_damage
+            && row
+                .self_provider_damage_events_while_active
+                .saturating_add(row.external_provider_damage_events_while_active)
+                .saturating_add(row.unresolved_provider_damage_events_while_active)
+                == row.damage_events_while_active
+            && row.selected_complete_windows_with_damage == selected_windows
+            && row.selected_damage_events_while_active == selected_damage
+            && selected_windows > 0
+            && selected_damage > 0
+    });
     if report.schema_version != SCHEMA_VERSION
         || report.generated_by != GENERATED_BY
         || report.game_build.is_empty()
@@ -1019,6 +1288,15 @@ fn verify_report(report: &Report) -> Result<(), Box<dyn Error>> {
         || !report
             .policy
             .known_candidates_are_deduplicated_by_sealed_content_sha256
+        || !report
+            .policy
+            .status_source_and_target_define_provider_relationship
+        || !report
+            .policy
+            .external_provider_requires_distinct_observed_entities
+        || !report
+            .policy
+            .ambiguous_or_missing_status_sources_are_not_external_providers
         || report.policy.remote_player_cast_packets_are_required
         || report.policy.packet_absence_is_zero
         || report.policy.current_snapshots_may_rewrite_historical_runs
@@ -1028,21 +1306,90 @@ fn verify_report(report: &Report) -> Result<(), Box<dyn Error>> {
         || report.policy.ui_display_authority
         || report.policy.provider_rdps_credit_allowed
         || report.damage_relationship.endpoint_role().is_empty()
+        || report.selection.qualifying_window != expected_qualifying_window
         || report.summary.discovered_sealed_name_candidates
             != report.discovery.discovered_sealed_name_candidates
         || report.summary.candidate_rlogs != report.candidate_rlogs.len()
         || report.summary.known_candidate_rlogs != known_candidates
         || report.summary.new_candidate_rlogs != new_candidates
+        || report.summary.candidate_rlogs
+            + report
+                .summary
+                .exact_build_effect_rlogs_without_selected_damage_window
+            != report
+                .summary
+                .exact_build_sealed_rlogs
+                .saturating_sub(report.summary.exact_build_rlogs_without_selected_effect)
+        || report
+            .summary
+            .exact_build_effect_rlogs_without_complete_damage_window
+            > report
+                .summary
+                .exact_build_effect_rlogs_without_selected_damage_window
+        || (!report.selection.external_provider_only
+            && report
+                .summary
+                .exact_build_effect_rlogs_without_complete_damage_window
+                != report
+                    .summary
+                    .exact_build_effect_rlogs_without_selected_damage_window)
+        || report
+            .summary
+            .observed_complete_self_provider_windows_with_damage
+            < report
+                .candidate_rlogs
+                .iter()
+                .map(|row| row.complete_self_provider_windows_with_damage)
+                .sum()
+        || report
+            .summary
+            .observed_self_provider_damage_events_while_active
+            < report
+                .candidate_rlogs
+                .iter()
+                .map(|row| row.self_provider_damage_events_while_active)
+                .sum()
+        || report
+            .summary
+            .observed_complete_external_provider_windows_with_damage
+            < report
+                .candidate_rlogs
+                .iter()
+                .map(|row| row.complete_external_provider_windows_with_damage)
+                .sum()
+        || report
+            .summary
+            .observed_external_provider_damage_events_while_active
+            < report
+                .candidate_rlogs
+                .iter()
+                .map(|row| row.external_provider_damage_events_while_active)
+                .sum()
+        || report
+            .summary
+            .observed_complete_unresolved_provider_windows_with_damage
+            < report
+                .candidate_rlogs
+                .iter()
+                .map(|row| row.complete_unresolved_provider_windows_with_damage)
+                .sum()
+        || report
+            .summary
+            .observed_unresolved_provider_damage_events_while_active
+            < report
+                .candidate_rlogs
+                .iter()
+                .map(|row| row.unresolved_provider_damage_events_while_active)
+                .sum()
         || report.summary.formula_authority
         || report.summary.provider_rdps_credit_allowed
         || report.next_stage.refresh_required != (new_candidates > 0)
         || report.next_stage.source_manifest_json_pointer != "/inputs/rlogs"
         || input_paths != expected_input_paths
         || report.candidate_rlogs.iter().any(|row| {
-            row.new_candidate == row.known_sealed_content
-                || row.selected_effect_status_events == 0
-                || row.complete_windows_with_damage == 0
+            row.new_candidate == row.known_sealed_content || row.selected_effect_status_events == 0
         })
+        || !candidate_counts_are_consistent
         || report.content_sha256 != report_digest(report)?
     {
         return Err("sealed RLOG candidate manifest is unsafe or inconsistent".into());
@@ -1101,6 +1448,7 @@ fn arguments() -> Result<Command, String> {
     let damage_relationship = DamageRelationship::parse(
         &take_value(&mut values, "--damage-relationship")?.to_string_lossy(),
     )?;
+    let external_provider_only = take_flag(&mut values, "--external-provider-only")?;
     let maximum_files = take_optional_value(&mut values, "--maximum-files")?
         .map(|value| value.to_string_lossy().parse().map_err(|_| usage()))
         .transpose()?
@@ -1133,6 +1481,7 @@ fn arguments() -> Result<Command, String> {
             build,
             effect_ids,
             damage_relationship,
+            external_provider_only,
             rlogs,
             rlog_dirs,
             known_artifacts,
@@ -1152,6 +1501,7 @@ fn arguments() -> Result<Command, String> {
         build,
         effect_id,
         damage_relationship,
+        external_provider_only,
         rlogs,
         rlog_dirs,
         known_artifacts,
@@ -1193,8 +1543,25 @@ fn take_repeatable(values: &mut Vec<OsString>, flag: &str) -> Vec<OsString> {
     output
 }
 
+fn take_flag(values: &mut Vec<OsString>, flag: &str) -> Result<bool, String> {
+    let positions = values
+        .iter()
+        .enumerate()
+        .filter_map(|(index, value)| (value == flag).then_some(index))
+        .collect::<Vec<_>>();
+    if positions.len() > 1 {
+        return Err(format!("{flag} may be specified only once"));
+    }
+    if let Some(position) = positions.first().copied() {
+        values.remove(position);
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
 fn usage() -> String {
-    "usage:\n  rlogs-bpsr-sealed-rlog-candidate-manifest generate --build <id> --effect-id <id> --damage-relationship <source|target> (--rlog <sealed.rlog> | --rlog-dir <directory>)... [--known-artifact <json> ...] [--maximum-files <count>] --output <json>\n  rlogs-bpsr-sealed-rlog-candidate-manifest generate-batch --build <id> --effect-id <id> [--effect-id <id> ...] --damage-relationship <source|target> (--rlog <sealed.rlog> | --rlog-dir <directory>)... [--known-artifact <json> ...] [--maximum-files <count>] --output-directory <directory>\n  rlogs-bpsr-sealed-rlog-candidate-manifest verify --input <json>".to_owned()
+    "usage:\n  rlogs-bpsr-sealed-rlog-candidate-manifest generate --build <id> --effect-id <id> --damage-relationship <source|target> [--external-provider-only] (--rlog <sealed.rlog> | --rlog-dir <directory>)... [--known-artifact <json> ...] [--maximum-files <count>] --output <json>\n  rlogs-bpsr-sealed-rlog-candidate-manifest generate-batch --build <id> --effect-id <id> [--effect-id <id> ...] --damage-relationship <source|target> [--external-provider-only] (--rlog <sealed.rlog> | --rlog-dir <directory>)... [--known-artifact <json> ...] [--maximum-files <count>] --output-directory <directory>\n  rlogs-bpsr-sealed-rlog-candidate-manifest verify --input <json>".to_owned()
 }
 
 #[cfg(test)]
@@ -1241,6 +1608,7 @@ mod tests {
             build: "24687926".to_owned(),
             effect_ids: BTreeSet::from([3_003_012, 3_003_014]),
             damage_relationship: DamageRelationship::Source,
+            external_provider_only: false,
             rlogs: vec![PathBuf::from("fixture.rlog")],
             rlog_dirs: Vec::new(),
             known_artifacts: Vec::new(),
@@ -1265,6 +1633,12 @@ mod tests {
                 complete_gap_bounded_lifecycles: 1,
                 complete_windows_with_damage: 1,
                 damage_events_while_active: 7,
+                complete_self_provider_windows_with_damage: 1,
+                self_provider_damage_events_while_active: 7,
+                complete_external_provider_windows_with_damage: 0,
+                external_provider_damage_events_while_active: 0,
+                complete_unresolved_provider_windows_with_damage: 0,
+                unresolved_provider_damage_events_while_active: 0,
                 data_quality_boundaries: 1,
             }],
             Vec::new(),
@@ -1281,5 +1655,109 @@ mod tests {
         assert_eq!(report.summary.new_candidate_damage_events_while_active, 7);
         assert!(report.next_stage.refresh_required);
         verify_report(&report).expect("batch report must remain independently verifiable");
+    }
+
+    fn entity(actor_id: u64, entity_uuid: i64) -> EntityRef {
+        EntityRef {
+            actor_id: rlogs_events::ActorId(actor_id),
+            entity_uuid: rlogs_events::EntityUuid(entity_uuid),
+        }
+    }
+
+    fn audited_candidate(self_windows: u64, external_windows: u64) -> AuditCandidate {
+        AuditCandidate {
+            receipt: RlogReceipt {
+                path: "fixture.rlog".to_owned(),
+                bytes: 10,
+                sha256: "sha256:file".to_owned(),
+                sealed_content_sha256: "sha256:sealed".to_owned(),
+                event_count: 25,
+            },
+            session_id: "session".to_owned(),
+            protocol_pack_digest: "sha256:pack".to_owned(),
+            selected_effect_status_events: 2,
+            complete_gap_bounded_lifecycles: self_windows.saturating_add(external_windows),
+            complete_windows_with_damage: self_windows.saturating_add(external_windows),
+            damage_events_while_active: self_windows
+                .saturating_mul(7)
+                .saturating_add(external_windows.saturating_mul(11)),
+            complete_self_provider_windows_with_damage: self_windows,
+            self_provider_damage_events_while_active: self_windows.saturating_mul(7),
+            complete_external_provider_windows_with_damage: external_windows,
+            external_provider_damage_events_while_active: external_windows.saturating_mul(11),
+            complete_unresolved_provider_windows_with_damage: 0,
+            unresolved_provider_damage_events_while_active: 0,
+            data_quality_boundaries: 0,
+        }
+    }
+
+    #[test]
+    fn provider_relationship_requires_distinct_observed_entities() {
+        let recipient = entity(1, 10);
+        assert_eq!(
+            ActiveWindow {
+                provider: Some(recipient),
+                recipient: Some(recipient),
+                ..ActiveWindow::default()
+            }
+            .provider_relationship(),
+            ProviderRelationship::SelfProvided
+        );
+        assert_eq!(
+            ActiveWindow {
+                provider: Some(entity(99, 10)),
+                recipient: Some(recipient),
+                ..ActiveWindow::default()
+            }
+            .provider_relationship(),
+            ProviderRelationship::SelfProvided
+        );
+        assert_eq!(
+            ActiveWindow {
+                provider: Some(entity(2, 20)),
+                recipient: Some(recipient),
+                ..ActiveWindow::default()
+            }
+            .provider_relationship(),
+            ProviderRelationship::ExternalProvider
+        );
+        assert_eq!(
+            ActiveWindow {
+                provider: None,
+                recipient: Some(recipient),
+                ..ActiveWindow::default()
+            }
+            .provider_relationship(),
+            ProviderRelationship::Unresolved
+        );
+    }
+
+    #[test]
+    fn external_provider_selection_excludes_self_only_windows() {
+        let self_only = audited_candidate(1, 0);
+        assert!(candidate_qualifies(&self_only, false));
+        assert!(!candidate_qualifies(&self_only, true));
+
+        let external = audited_candidate(0, 1);
+        assert!(candidate_qualifies(&external, false));
+        assert!(candidate_qualifies(&external, true));
+        assert_eq!(selected_window_counts(&external, true), (1, 11));
+    }
+
+    #[test]
+    fn ambiguous_provider_observations_fail_closed() {
+        let recipient = entity(1, 10);
+        let mut window = ActiveWindow {
+            damage_events: 5,
+            provider: Some(entity(2, 20)),
+            recipient: Some(recipient),
+            provider_is_ambiguous: false,
+        };
+        window.provider_is_ambiguous = true;
+        let mut audit = EffectAudit::default();
+        audit.finish_window(window);
+        assert_eq!(audit.complete_unresolved_with_damage, 1);
+        assert_eq!(audit.unresolved_damage_while_active, 5);
+        assert_eq!(audit.complete_external_with_damage, 0);
     }
 }
