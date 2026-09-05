@@ -90,7 +90,7 @@ use rlogs_game_bpsr::{
     localized_scene_name, localized_specialization_identities, localized_status_effect_name,
     project_local_profile_packages, proven_state_damage_contribution_effect_ids,
     rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
-    resolve_actor_combat_presentation, resolve_live_steam_protocol_pack, scene_boss_monster_ids,
+    resolve_actor_combat_presentation, resolve_live_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
     status_effect_presentation, stimen_floor_encounter_kind, weapon_level_presentation,
     weapon_presentation,
@@ -6876,24 +6876,42 @@ impl RuntimeController {
         let plugin_root = self
             .install_root
             .join("plugins/games/blue-protocol-star-resonance");
-        let automatic_selection = resolve_live_steam_protocol_pack(&plugin_root, &executable_path)
-            .map_err(|error| format!("could not select an exact BPSR live pack: {error}"))?;
+        let automatic_selection = resolve_live_protocol_pack(&plugin_root, &executable_path)
+            .map_err(|error| format!("could not select a BPSR live pack: {error}"))?;
         let (pack_kind, pack_source_build, pack) = match &request.pack_path {
             Some(path) if !path.trim().is_empty() => {
                 let path = existing_file(path, "protocol pack")?;
                 let promoted_root = std::fs::canonicalize(plugin_root.join("protocol-packs"))
                     .map_err(|error| format!("BPSR promoted pack root is unavailable: {error}"))?;
-                let kind = if path.starts_with(promoted_root) {
+                let kind = if automatic_selection.kind == LiveProtocolPackKind::ClientBootstrap {
+                    LiveProtocolPackKind::ClientBootstrap
+                } else if path.starts_with(promoted_root) {
                     LiveProtocolPackKind::Promoted
                 } else {
                     LiveProtocolPackKind::ResearchCandidate
                 };
-                let pack = ProtocolPack::from_json(
+                let source_pack = ProtocolPack::from_json(
                     &std::fs::read(&path)
                         .map_err(|error| format!("could not read protocol pack: {error}"))?,
                 )
                 .map_err(|error| format!("protocol pack is invalid: {error}"))?;
-                let source_build = pack.definition().target.build_id.clone();
+                let source_build = source_pack.definition().target.build_id.clone();
+                let pack = if kind == LiveProtocolPackKind::ClientBootstrap {
+                    rlogs_game_bpsr::LiveProtocolPackSelection {
+                        path,
+                        build_id: automatic_selection.build_id.clone(),
+                        pack_build_id: source_build.clone(),
+                        deployment_id: automatic_selection.deployment_id.clone(),
+                        channel: automatic_selection.channel.clone(),
+                        kind,
+                    }
+                    .load_pack()
+                    .map_err(|error| {
+                        format!("could not bootstrap the selected BPSR pack: {error}")
+                    })?
+                } else {
+                    source_pack
+                };
                 (kind, source_build, pack)
             }
             _ => {
@@ -6908,13 +6926,18 @@ impl RuntimeController {
             }
         };
         let target = &pack.definition().target;
-        if target.deployment_id != "global"
-            || target.channel != "steam"
+        if target.deployment_id != automatic_selection.deployment_id
+            || target.channel != automatic_selection.channel
             || target.build_id != automatic_selection.build_id
         {
             return Err(format!(
-                "live pack targets {}/{}/{}, but the running client is global/steam/{}",
-                target.deployment_id, target.channel, target.build_id, automatic_selection.build_id
+                "live pack targets {}/{}/{}, but client discovery selected {}/{}/{}",
+                target.deployment_id,
+                target.channel,
+                target.build_id,
+                automatic_selection.deployment_id,
+                automatic_selection.channel,
+                automatic_selection.build_id,
             ));
         }
         let provisional_pack = pack_kind != LiveProtocolPackKind::Promoted;
@@ -6928,13 +6951,21 @@ impl RuntimeController {
                 "PROVISIONAL BPSR compatibility decode using pack build {} on client build {}. History, overlay, submissions, and rDPS remain active; results may be affected by changed routes and every unresolved protocol record is retained.",
                 pack_source_build, target.build_id,
             )),
+            LiveProtocolPackKind::ClientBootstrap => Some(format!(
+                "PROVISIONAL {} client bootstrap using available pack build {} because this launcher supplied no trusted build receipt. Local capture, history, and overlay remain active, but automatic log submission is disabled until an exact client build is known. Region remains unresolved until NotifyEnterWorld.scene_ip is captured.",
+                target.channel, pack_source_build,
+            )),
         };
         let research_routes = provisional_pack.then(|| provisional_research_routes(&pack));
-        let region_id = request
-            .region_id
-            .clone()
-            .or_else(|| target.region_id.clone())
-            .unwrap_or_else(|| target.deployment_id.clone());
+        let region_id = if pack_kind == LiveProtocolPackKind::ClientBootstrap {
+            "unknown".to_owned()
+        } else {
+            request
+                .region_id
+                .clone()
+                .or_else(|| target.region_id.clone())
+                .unwrap_or_else(|| target.deployment_id.clone())
+        };
         let region = RegionIdentity {
             deployment_id: target.deployment_id.clone(),
             region_id: region_id.clone(),
@@ -6958,12 +6989,15 @@ impl RuntimeController {
             .map_err(|error| format!("could not create log output directory: {error}"))?;
         let output_directory = std::fs::canonicalize(output_directory)
             .map_err(|error| format!("could not resolve log output directory: {error}"))?;
+        let capture_label = target
+            .channel
+            .replace(|character: char| !character.is_ascii_alphanumeric(), "-");
         let research_journal_path = provisional_pack.then(|| {
             self.install_root
                 .join("private-research/live-journals")
                 .join(format!(
-                    "{}-steam-{}.protocol.jsonl",
-                    request.session_id, target.build_id
+                    "{}-{}-{}.protocol.jsonl",
+                    request.session_id, capture_label, target.build_id
                 ))
         });
         let validation_preflight_analyzer = RdpsValidationAnalyzer::bundled()
@@ -6983,32 +7017,36 @@ impl RuntimeController {
         let validation_build_mismatch = validation_manifest_game_build != target.build_id;
         let validation_report_name = if validation_build_mismatch {
             format!(
-                "{}-observed-steam-{}-manifest-steam-{}.provisional.v{}.validation.json",
+                "{}-observed-{}-{}-manifest-steam-{}.provisional.v{}.validation.json",
                 request.session_id,
+                capture_label,
                 target.build_id,
                 validation_manifest_game_build,
                 RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
             )
         } else {
             format!(
-                "{}-steam-{}.v{}.validation.json",
+                "{}-{}-{}.v{}.validation.json",
                 request.session_id,
+                capture_label,
                 validation_manifest_game_build,
                 RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
             )
         };
         let validation_checkpoint_name = if validation_build_mismatch {
             format!(
-                "{}-observed-steam-{}-manifest-steam-{}.provisional.v{}.checkpoint.validation.json",
+                "{}-observed-{}-{}-manifest-steam-{}.provisional.v{}.checkpoint.validation.json",
                 request.session_id,
+                capture_label,
                 target.build_id,
                 validation_manifest_game_build,
                 RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
             )
         } else {
             format!(
-                "{}-steam-{}.v{}.checkpoint.validation.json",
+                "{}-{}-{}.v{}.checkpoint.validation.json",
                 request.session_id,
+                capture_label,
                 validation_manifest_game_build,
                 RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
             )
@@ -7025,8 +7063,10 @@ impl RuntimeController {
             .install_root
             .join("runtime-data/research/rdps/live-validation")
             .join(format!(
-                "steam-{}.v{}.cumulative.validation.json",
-                validation_manifest_game_build, RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
+                "{}-{}.v{}.cumulative.validation.json",
+                capture_label,
+                validation_manifest_game_build,
+                RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
             ));
         if let Some(parent) = rdps_validation_report_path.parent() {
             std::fs::create_dir_all(parent).map_err(|error| {
@@ -7177,8 +7217,9 @@ impl RuntimeController {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .policy()
             .clone();
-        let automatic_submissions =
-            policy.log_uploader.enabled && policy.log_uploader.automatic_combat_logs;
+        let automatic_submissions = policy.log_uploader.enabled
+            && policy.log_uploader.automatic_combat_logs
+            && pack_kind != LiveProtocolPackKind::ClientBootstrap;
         let default_visibility = policy.log_uploader.default_visibility;
         let profile_sync = policy.bpsr_profile_sync;
         let submission_transport = self
@@ -7229,7 +7270,7 @@ impl RuntimeController {
                         kind: RegionEvidenceKind::ReplayManifest,
                         reference: format!("continuous-region:{region_id}"),
                     }];
-                    let live_header = RlogHeader::new(
+                    let mut live_header = RlogHeader::new(
                         session_id.clone(),
                         RegionContext {
                             identity: region.clone(),
@@ -7432,6 +7473,14 @@ impl RuntimeController {
                         let ordered_reduction_started = Instant::now();
                         let mut sealed = recorder
                             .process_frame_with_inspection(frame, |event| {
+                                // Region identity is established from the
+                                // early world-entry packet stream, before a
+                                // dungeon segment is opened. Keep the shared
+                                // live header synchronized so any later
+                                // reducer reset inherits that packet evidence.
+                                if live_header.region != event.region {
+                                    live_header.region = event.region.clone();
+                                }
                                 if matches!(
                                     &event.event,
                                     CanonicalEvent::Timeline(timeline)
@@ -7634,6 +7683,9 @@ impl RuntimeController {
                                 }
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
+                        if live_header.region != *recorder.region_context() {
+                            live_header.region = recorder.region_context().clone();
+                        }
                         if let Some(command) = forced_reset_request {
                             let reset = recorder
                                 .force_reset(command.requested_after_micros)

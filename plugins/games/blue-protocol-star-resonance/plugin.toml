@@ -2,7 +2,7 @@ schema_version = 1
 id = "app.rlogs.game.blue-protocol-star-resonance"
 game_id = "blue-protocol-star-resonance"
 name = "Blue Protocol: Star Resonance"
-version = "0.1.5"
+version = "0.1.6"
 api_version = 1
 runtime = "trusted_native"
 capabilities = [
@@ -17,8 +17,28 @@ capabilities = [
 ]
 
 [process_selector]
-windows_executable_names = ["BPSR_STEAM.exe"]
-linux_process_names = ["BPSR_STEAM.exe", "BPSR_STEAM"]
+windows_executable_names = [
+  "BPSR.exe",
+  "BPSR_STEAM.exe",
+  "BPSR_EPIC.exe",
+  "StarSEA.exe",
+  "StarASIA.exe",
+  "StarSEA_STEAM.exe",
+  "StarASIA_STEAM.exe",
+  "StartTW.exe",
+  "Star.exe",
+]
+linux_process_names = [
+  "BPSR",
+  "BPSR_STEAM",
+  "BPSR_EPIC",
+  "StarSEA",
+  "StarASIA",
+  "StarSEA_STEAM",
+  "StarASIA_STEAM",
+  "StartTW",
+  "Star",
+]
 
 [resources]
 protocol_packs = "protocol-packs"

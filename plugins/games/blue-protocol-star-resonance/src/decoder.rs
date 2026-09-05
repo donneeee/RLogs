@@ -254,6 +254,27 @@ pub struct AnnouncedServerEndpoint {
     pub port: Option<u16>,
 }
 
+/// Resolves the authoritative deployment region announced by the game during
+/// world entry. These exact host values are shared with the BPTimer service;
+/// unknown hosts deliberately remain unresolved instead of being guessed from
+/// an executable or the user's locale.
+pub fn region_identity_for_scene_host(host: &str) -> Option<RegionIdentity> {
+    let region_id = match host.trim().to_ascii_lowercase().as_str() {
+        "gamesvr.playbpsr.com" => "north-america",
+        "gamesvr-eu.playbpsr.com" => "europe",
+        "bpm-sea-gamesvra.haoplay.net" => "southeast-asia",
+        "bpm-jp-gamesvra.xdg.com" => "japan",
+        "bpm-kr-gamesvra.xdg.com" => "korea",
+        _ => return None,
+    };
+    Some(RegionIdentity {
+        deployment_id: "global".into(),
+        region_id: region_id.into(),
+        realm_id: None,
+        world_id: None,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerClockObservation {
     pub client_milliseconds: Option<i64>,
@@ -500,6 +521,23 @@ impl<'a> ProtocolRuntime<'a> {
         status: ProtocolDecodeStatus,
         decoded: DecodedMessage,
     ) -> Result<ProtocolDecodeBatch, ProtocolRuntimeError> {
+        if let Some(endpoint) = decoded.announced_server.as_ref()
+            && let Some(identity) = region_identity_for_scene_host(&endpoint.host)
+        {
+            let current = self.envelopes.region();
+            let mut evidence = current.evidence.clone();
+            evidence.retain(|entry| entry.kind != RegionEvidenceKind::AuthoritativeMessage);
+            evidence.push(RegionEvidence {
+                kind: RegionEvidenceKind::AuthoritativeMessage,
+                reference: format!("NotifyEnterWorld.scene_ip:{}", endpoint.host),
+            });
+            self.envelopes.set_region(RegionContext {
+                identity,
+                client_build: current.client_build.clone(),
+                protocol_pack_digest: current.protocol_pack_digest.clone(),
+                evidence,
+            });
+        }
         if decoded.drafts.len() > self.config.max_events_per_packet {
             return Err(ProtocolRuntimeError::EventLimitExceeded {
                 count: decoded.drafts.len(),
@@ -7079,6 +7117,110 @@ mod tests {
         assert!(!json.contains("token"));
         assert!(!json.contains("private-account-value"));
         assert!(!json.contains("private-login-token"));
+
+        let resolved = runtime.region_context();
+        assert_eq!(resolved.identity.deployment_id, "global");
+        assert_eq!(resolved.identity.region_id, "north-america");
+        assert!(resolved.evidence.iter().any(|evidence| {
+            evidence.kind == RegionEvidenceKind::AuthoritativeMessage
+                && evidence.reference == "NotifyEnterWorld.scene_ip:gamesvr.playbpsr.com"
+        }));
+
+        let scene = runtime
+            .process(&record(
+                11,
+                3,
+                encode(schema::EnterScene {
+                    enter_scene_info: Some(schema::EnterSceneInfo {
+                        scene_attrs: None,
+                        player_entity: None,
+                        scene_instance_id: Some("packet-resolved-scene".into()),
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert!(!scene.events.is_empty());
+        assert!(scene.events.iter().all(|event| {
+            event.region.identity.deployment_id == "global"
+                && event.region.identity.region_id == "north-america"
+        }));
+    }
+
+    #[test]
+    fn scene_host_region_resolution_is_exact_case_insensitive_and_fail_closed() {
+        for (host, expected) in [
+            ("gamesvr.playbpsr.com", "north-america"),
+            ("gamesvr-eu.playbpsr.com", "europe"),
+            ("bpm-sea-gamesvra.haoplay.net", "southeast-asia"),
+            ("bpm-jp-gamesvra.xdg.com", "japan"),
+            ("bpm-kr-gamesvra.xdg.com", "korea"),
+        ] {
+            let identity = region_identity_for_scene_host(&host.to_ascii_uppercase()).unwrap();
+            assert_eq!(identity.deployment_id, "global");
+            assert_eq!(identity.region_id, expected);
+        }
+        assert!(region_identity_for_scene_host("unknown.example").is_none());
+        assert!(region_identity_for_scene_host("").is_none());
+    }
+
+    #[test]
+    fn early_world_entry_replaces_an_unresolved_bootstrap_identity() {
+        let mut definition = pack().definition().clone();
+        definition.pack_id = "bootstrap-test".into();
+        definition.target.deployment_id = "unknown".into();
+        definition.target.region_id = None;
+        definition.target.channel = "standalone".into();
+        definition.target.build_id = "unverified".into();
+        let pack = ProtocolPack::build(definition).unwrap();
+        let build = GameBuild {
+            deployment_id: "unknown".into(),
+            region_id: None,
+            channel: "standalone".into(),
+            build_id: "unverified".into(),
+            executable_version: None,
+        };
+        let mut runtime = ProtocolRuntime::new(
+            &pack,
+            "bootstrap-capture",
+            &build,
+            RegionIdentity {
+                deployment_id: "unknown".into(),
+                region_id: "unknown".into(),
+                realm_id: None,
+                world_id: None,
+            },
+            Vec::new(),
+            ProtocolRuntimeConfig::default(),
+        )
+        .unwrap();
+
+        let batch = runtime
+            .process(&record_for(
+                WORLD_LOGIN_SERVICE,
+                1,
+                3,
+                encode(FullNotifyEnterWorld {
+                    request: Some(FullNotifyEnterWorldRequest {
+                        account_id: Some("private-account-value".into()),
+                        token: Some("private-login-token".into()),
+                        scene_host: Some("bpm-sea-gamesvra.haoplay.net".into()),
+                        scene_port: Some(10_099),
+                    }),
+                }),
+            ))
+            .unwrap();
+
+        assert!(batch.events.is_empty());
+        assert_eq!(runtime.region_context().identity.deployment_id, "global");
+        assert_eq!(
+            runtime.region_context().identity.region_id,
+            "southeast-asia"
+        );
+        assert_eq!(runtime.region_context().client_build, "unverified");
+        assert!(runtime.region_context().evidence.iter().any(|evidence| {
+            evidence.kind == RegionEvidenceKind::AuthoritativeMessage
+                && evidence.reference == "NotifyEnterWorld.scene_ip:bpm-sea-gamesvra.haoplay.net"
+        }));
     }
 
     #[test]

@@ -168,7 +168,7 @@ pub use framing::{
 };
 pub use install::{
     BPSR_STEAM_APP_ID, LiveProtocolPackKind, LiveProtocolPackSelection,
-    LiveProtocolPackSelectionError, resolve_live_steam_protocol_pack,
+    LiveProtocolPackSelectionError, resolve_live_protocol_pack, resolve_live_steam_protocol_pack,
     steam_manifest_for_executable,
 };
 pub use journal::{CaptureSession, GameBuild, JournalError, ProtocolJournal};
@@ -352,6 +352,24 @@ mod manifest_tests {
             manifest
                 .capabilities
                 .contains(&GamePluginCapability::WebsiteProfiles)
+        );
+        let selector = manifest
+            .process_selector
+            .as_ref()
+            .expect("BPSR declares supported client processes");
+        assert_eq!(
+            selector.windows_executable_names,
+            [
+                "BPSR.exe",
+                "BPSR_STEAM.exe",
+                "BPSR_EPIC.exe",
+                "StarSEA.exe",
+                "StarASIA.exe",
+                "StarSEA_STEAM.exe",
+                "StarASIA_STEAM.exe",
+                "StartTW.exe",
+                "Star.exe",
+            ]
         );
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         for resource in [

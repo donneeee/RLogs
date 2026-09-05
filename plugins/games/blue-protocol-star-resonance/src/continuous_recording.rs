@@ -160,6 +160,13 @@ impl<'a> ContinuousBpsrRecorder<'a> {
         &self.metrics
     }
 
+    /// Latest packet-resolved session identity. This can advance before a
+    /// dungeon segment exists (for example on NotifyEnterWorld.scene_ip), so
+    /// live consumers can prepare the eventual log header immediately.
+    pub fn region_context(&self) -> &RegionContext {
+        self.runtime.region_context()
+    }
+
     pub fn is_saving_run(&self) -> bool {
         self.segments
             .as_ref()

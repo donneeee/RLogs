@@ -2311,7 +2311,7 @@ function mountControlSurface(container: HTMLElement): MountedSurface {
 
   const live = actionCard(
     "Continuous process-owned monitoring",
-    "rLogs automatically monitors exact TCP flows owned by BPSR_STEAM. The BPSR plug-in decodes continuously in memory, opens a dungeon log on an entry packet, seals it on completion, and immediately waits for the next entry.",
+    "rLogs automatically monitors exact TCP flows owned by supported Global, SEA, Asia, Taiwan, and CN client processes. Packet evidence resolves the server region; the BPSR plug-in opens a dungeon log on an entry packet, seals it on completion, and immediately waits for the next entry.",
   );
   const liveForm = document.createElement("form");
   liveForm.className = "runtime-form";
@@ -2322,7 +2322,7 @@ function mountControlSurface(container: HTMLElement): MountedSurface {
     "use a new ID for every capture",
   );
   const processId = field(
-    "BPSR_STEAM process ID",
+    "BPSR game process ID",
     "number",
     "",
     "Task Manager PID",
@@ -2445,7 +2445,7 @@ function mountControlSurface(container: HTMLElement): MountedSurface {
       }
       const processDetail =
         process === undefined
-          ? "BPSR_STEAM is not currently detected"
+          ? "No supported BPSR client is currently detected"
           : environment.game_processes.length === 1
             ? `detected ${process.executable_name} PID ${process.process_id}`
             : `detected ${environment.game_processes.length} matching processes; using PID ${process.process_id}`;

@@ -228,6 +228,13 @@ impl EventEnvelopeFactory {
     pub fn region(&self) -> &RegionContext {
         &self.region
     }
+
+    /// Replaces the session location context before subsequent drafts are
+    /// enveloped. Game decoders use this when an authoritative world-entry
+    /// message arrives after capture has already started.
+    pub fn set_region(&mut self, region: RegionContext) {
+        self.region = region;
+    }
 }
 
 impl From<TimelineEventDraft> for CanonicalEventDraft {
@@ -350,5 +357,63 @@ mod tests {
             panic!("expected timeline event");
         };
         assert_eq!(timeline.sequence, 1);
+    }
+
+    #[test]
+    fn authoritative_region_replacement_applies_only_to_subsequent_events() {
+        let initial = RegionContext {
+            identity: RegionIdentity {
+                deployment_id: "unknown".into(),
+                region_id: "unknown".into(),
+                realm_id: None,
+                world_id: None,
+            },
+            client_build: "unverified".into(),
+            protocol_pack_digest: "sha256:test".into(),
+            evidence: Vec::new(),
+        };
+        let mut factory = EventEnvelopeFactory::new("capture", initial);
+        let first = factory
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: 1,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(1, 1, 1),
+                sensitivity: EventSensitivity::PublicGameplay,
+                kind: CanonicalEventDraftKind::WorldChanged(WorldContext {
+                    scene_id: None,
+                    map_id: None,
+                    line_id: None,
+                    scene_instance_id: None,
+                    dungeon_instance_id: None,
+                }),
+            })
+            .unwrap();
+        let mut resolved = factory.region().clone();
+        resolved.identity.deployment_id = "global".into();
+        resolved.identity.region_id = "sea".into();
+        factory.set_region(resolved);
+        let second = factory
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: 2,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(2, 1, 1),
+                sensitivity: EventSensitivity::PublicGameplay,
+                kind: CanonicalEventDraftKind::WorldChanged(WorldContext {
+                    scene_id: None,
+                    map_id: None,
+                    line_id: None,
+                    scene_instance_id: None,
+                    dungeon_instance_id: None,
+                }),
+            })
+            .unwrap();
+
+        assert_eq!(first.region.identity.deployment_id, "unknown");
+        assert_eq!(second.region.identity.deployment_id, "global");
+        assert_eq!(second.region.identity.region_id, "sea");
     }
 }

@@ -15,15 +15,26 @@ pub enum LiveProtocolPackKind {
     Promoted,
     ResearchCandidate,
     CompatibilityFallback,
+    /// A reviewed pack is being used only to bootstrap capture for a client
+    /// whose exact build cannot yet be established locally. This is never an
+    /// exact-build claim and must remain ineligible for automatic submission.
+    ClientBootstrap,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveProtocolPackSelection {
     pub path: PathBuf,
-    /// Build reported by the running Steam client.
+    /// Exact build reported by the launcher, or `unverified` when the client
+    /// exposes no trusted local build receipt.
     pub build_id: String,
     /// Build for which the selected on-disk pack was generated.
     pub pack_build_id: String,
+    /// Initial deployment identity. Bootstrap selections remain unknown until
+    /// an authoritative world-entry message resolves the actual region.
+    pub deployment_id: String,
+    /// Distribution/process family used for capture discovery. This is not
+    /// used as authoritative geographic region evidence.
+    pub channel: String,
     pub kind: LiveProtocolPackKind,
 }
 
@@ -45,21 +56,34 @@ impl LiveProtocolPackSelection {
                 source,
             }
         })?;
-        if self.kind != LiveProtocolPackKind::CompatibilityFallback {
+        if !matches!(
+            self.kind,
+            LiveProtocolPackKind::CompatibilityFallback | LiveProtocolPackKind::ClientBootstrap
+        ) {
             return Ok(pack);
         }
 
         let mut definition = pack.definition().clone();
-        definition.pack_id = format!(
-            "{}-compatibility-fallback-{}",
-            definition.pack_id, self.build_id
-        );
+        let derivation = match self.kind {
+            LiveProtocolPackKind::CompatibilityFallback => "compatibility-fallback",
+            LiveProtocolPackKind::ClientBootstrap => "client-bootstrap",
+            LiveProtocolPackKind::Promoted | LiveProtocolPackKind::ResearchCandidate => {
+                unreachable!("exact packs returned before provisional retargeting")
+            }
+        };
+        definition.pack_id = format!("{}-{derivation}-{}", definition.pack_id, self.channel);
+        definition
+            .target
+            .deployment_id
+            .clone_from(&self.deployment_id);
+        definition.target.region_id = None;
+        definition.target.channel.clone_from(&self.channel);
         definition.target.build_id.clone_from(&self.build_id);
         definition.provenance.push(MappingProvenance {
-            source: "provisional-compatible-build-fallback".to_owned(),
+            source: format!("provisional-{derivation}"),
             reference: format!(
-                "pack_build={};observed_build={}",
-                self.pack_build_id, self.build_id
+                "pack_build={};client_deployment={};client_channel={};client_build={}",
+                self.pack_build_id, self.deployment_id, self.channel, self.build_id
             ),
         });
         ProtocolPack::build(definition).map_err(|source| {
@@ -68,6 +92,66 @@ impl LiveProtocolPackSelection {
                 source,
             }
         })
+    }
+}
+
+/// Resolves a live pack for every supported BPSR executable family.
+///
+/// Steam supplies an authoritative local build receipt, so it retains exact
+/// selection. Other distributions can start capture from the newest available
+/// pack, but are explicitly marked as unverified until packet evidence and an
+/// exact-build pack are available. The executable name identifies only the
+/// process/distribution channel; it never decides geographic region.
+pub fn resolve_live_protocol_pack(
+    plugin_root: &Path,
+    executable_path: &Path,
+) -> Result<LiveProtocolPackSelection, LiveProtocolPackSelectionError> {
+    let executable_stem = executable_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            LiveProtocolPackSelectionError::UnsupportedExecutable(executable_path.to_path_buf())
+        })?;
+
+    if executable_stem.eq_ignore_ascii_case("BPSR_STEAM") {
+        return resolve_live_steam_protocol_pack(plugin_root, executable_path);
+    }
+
+    let channel = supported_bootstrap_channel(executable_stem).ok_or_else(|| {
+        LiveProtocolPackSelectionError::UnsupportedExecutable(executable_path.to_path_buf())
+    })?;
+    let Some((path, pack_build_id)) = latest_bootstrap_pack(plugin_root)? else {
+        return Err(LiveProtocolPackSelectionError::NoBootstrapPack);
+    };
+    Ok(LiveProtocolPackSelection {
+        path,
+        build_id: "unverified".to_owned(),
+        pack_build_id,
+        deployment_id: "unknown".to_owned(),
+        channel: channel.to_owned(),
+        kind: LiveProtocolPackKind::ClientBootstrap,
+    })
+}
+
+fn supported_bootstrap_channel(executable_stem: &str) -> Option<&'static str> {
+    if executable_stem.eq_ignore_ascii_case("BPSR") {
+        Some("standalone")
+    } else if executable_stem.eq_ignore_ascii_case("BPSR_EPIC") {
+        Some("epic")
+    } else if executable_stem.eq_ignore_ascii_case("StarSEA") {
+        Some("starsea")
+    } else if executable_stem.eq_ignore_ascii_case("StarASIA") {
+        Some("starasia")
+    } else if executable_stem.eq_ignore_ascii_case("StarSEA_STEAM") {
+        Some("starsea-steam")
+    } else if executable_stem.eq_ignore_ascii_case("StarASIA_STEAM") {
+        Some("starasia-steam")
+    } else if executable_stem.eq_ignore_ascii_case("StartTW") {
+        Some("starttw")
+    } else if executable_stem.eq_ignore_ascii_case("Star") {
+        Some("star")
+    } else {
+        None
     }
 }
 
@@ -117,6 +201,8 @@ pub fn resolve_live_steam_protocol_pack(
         return Ok(LiveProtocolPackSelection {
             path: promoted,
             pack_build_id: build_id.clone(),
+            deployment_id: "global".to_owned(),
+            channel: "steam".to_owned(),
             build_id,
             kind: LiveProtocolPackKind::Promoted,
         });
@@ -131,6 +217,8 @@ pub fn resolve_live_steam_protocol_pack(
         return Ok(LiveProtocolPackSelection {
             path: candidate,
             pack_build_id: build_id.clone(),
+            deployment_id: "global".to_owned(),
+            channel: "steam".to_owned(),
             build_id,
             kind: LiveProtocolPackKind::ResearchCandidate,
         });
@@ -141,6 +229,8 @@ pub fn resolve_live_steam_protocol_pack(
             path,
             build_id,
             pack_build_id,
+            deployment_id: "global".to_owned(),
+            channel: "steam".to_owned(),
             kind: LiveProtocolPackKind::CompatibilityFallback,
         });
     }
@@ -150,6 +240,64 @@ pub fn resolve_live_steam_protocol_pack(
         promoted,
         candidate,
     })
+}
+
+fn latest_bootstrap_pack(
+    plugin_root: &Path,
+) -> Result<Option<(PathBuf, String)>, LiveProtocolPackSelectionError> {
+    let roots = [
+        (
+            plugin_root.join("protocol-packs/global"),
+            PathBuf::from("pack.json"),
+            1_u8,
+        ),
+        (
+            plugin_root.join("research/game-file-inventory/global"),
+            PathBuf::from("protocol-pack-static-candidate.v2.json"),
+            0_u8,
+        ),
+    ];
+    let mut candidates = Vec::new();
+    for (root, filename, promoted_priority) in roots {
+        let entries = match std::fs::read_dir(&root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(source) => {
+                return Err(LiveProtocolPackSelectionError::ReadPackDirectory {
+                    path: root,
+                    source,
+                });
+            }
+        };
+        for entry in entries {
+            let entry =
+                entry.map_err(|source| LiveProtocolPackSelectionError::ReadPackDirectory {
+                    path: root.clone(),
+                    source,
+                })?;
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            let Some(value) = name.strip_prefix("steam-") else {
+                continue;
+            };
+            let Ok(numeric_build) = value.parse::<u64>() else {
+                continue;
+            };
+            let path = entry.path().join(&filename);
+            if path.is_file() {
+                candidates.push((numeric_build, promoted_priority, path, value.to_owned()));
+            }
+        }
+    }
+    candidates.sort_by_key(|(build, priority, _, _)| {
+        (std::cmp::Reverse(*build), std::cmp::Reverse(*priority))
+    });
+    let Some((_, _, path, pack_build_id)) = candidates.into_iter().next() else {
+        return Ok(None);
+    };
+    validate_exact_pack(&path, &pack_build_id)?;
+    Ok(Some((path, pack_build_id)))
 }
 
 fn latest_compatible_pack(
@@ -286,6 +434,12 @@ fn validate_build_id(value: &str) -> Result<(), LiveProtocolPackSelectionError> 
 
 #[derive(Debug, Error)]
 pub enum LiveProtocolPackSelectionError {
+    #[error("unsupported BPSR client executable {0}")]
+    UnsupportedExecutable(PathBuf),
+
+    #[error("no compatible BPSR protocol pack is available to bootstrap this client")]
+    NoBootstrapPack,
+
     #[error("could not locate the Steam app manifest from game executable {0}")]
     NoSteamManifest(PathBuf),
 
@@ -465,10 +619,55 @@ mod tests {
                 .contains("compatibility-fallback")
         );
         assert!(loaded.definition().provenance.iter().any(|entry| {
-            entry.source == "provisional-compatible-build-fallback"
-                && entry.reference == "pack_build=24687926;observed_build=24699999"
+            entry.source == "provisional-compatibility-fallback"
+                && entry.reference
+                    == "pack_build=24687926;client_deployment=global;client_channel=steam;client_build=24699999"
         }));
 
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn every_non_global_client_name_bootstraps_without_claiming_a_region_or_build() {
+        let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        for (name, expected_channel) in [
+            ("BPSR.exe", "standalone"),
+            ("BPSR_EPIC.exe", "epic"),
+            ("StarSEA.exe", "starsea"),
+            ("StarASIA.exe", "starasia"),
+            ("StarSEA_STEAM.exe", "starsea-steam"),
+            ("StarASIA_STEAM.exe", "starasia-steam"),
+            ("StartTW.exe", "starttw"),
+            ("Star.exe", "star"),
+        ] {
+            let selected = resolve_live_protocol_pack(plugin_root, Path::new(name)).unwrap();
+            assert_eq!(selected.kind, LiveProtocolPackKind::ClientBootstrap);
+            assert_eq!(selected.deployment_id, "unknown");
+            assert_eq!(selected.channel, expected_channel);
+            assert_eq!(selected.build_id, "unverified");
+
+            let pack = selected.load_pack().unwrap();
+            assert_eq!(pack.definition().target.deployment_id, "unknown");
+            assert_eq!(pack.definition().target.region_id, None);
+            assert_eq!(pack.definition().target.channel, expected_channel);
+            assert_eq!(pack.definition().target.build_id, "unverified");
+            assert!(pack.definition().provenance.iter().any(|entry| {
+                entry.source == "provisional-client-bootstrap"
+                    && entry.reference.contains("client_deployment=unknown")
+            }));
+        }
+    }
+
+    #[test]
+    fn unknown_executables_are_not_silently_treated_as_game_clients() {
+        let error = resolve_live_protocol_pack(
+            Path::new(env!("CARGO_MANIFEST_DIR")),
+            Path::new("SomethingElse.exe"),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            LiveProtocolPackSelectionError::UnsupportedExecutable(_)
+        ));
     }
 }
