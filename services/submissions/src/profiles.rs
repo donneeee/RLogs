@@ -990,10 +990,13 @@ impl ProfileRegistry {
                     None => continue,
                 },
             };
+            let public_profile: CharacterProfilePatch =
+                serde_json::from_value(public.envelope.body.clone())?;
 
             let mut changed = false;
             if let Some(project_id) = package_profile
                 .current_profession_project_id
+                .or(public_profile.current_profession_project_id)
                 .filter(|project_id| *project_id > 0)
             {
                 let loadout_directory = directory.join("loadouts");
@@ -1001,19 +1004,17 @@ impl ProfileRegistry {
                 let loadout = if loadout_path.is_file() {
                     Some(read_json::<PublicProfileLoadout>(&loadout_path)?)
                 } else {
-                    let loadout_profile: CharacterProfilePatch =
-                        serde_json::from_value(public.envelope.body.clone())?;
-                    if loadout_profile.current_profession_project_id == Some(project_id) {
+                    if public_profile.current_profession_project_id == Some(project_id) {
                         std::fs::create_dir_all(&loadout_directory)?;
-                        let modules = loadout_profile.modules.as_ref();
+                        let modules = public_profile.modules.as_ref();
                         let loadout = PublicProfileLoadout {
                             schema_version: PUBLIC_PROFILE_SCHEMA_VERSION,
                             profile_id: public.profile_id.clone(),
                             project_id,
                             updated_unix_millis: public.updated_unix_millis,
                             source_client_build: public.source_client_build.clone(),
-                            class_id: loadout_profile.class_id,
-                            specialization_id: loadout_profile.specialization_id,
+                            class_id: public_profile.class_id,
+                            specialization_id: public_profile.specialization_id,
                             module_inventory_count: modules
                                 .map_or(0, |value| value.inventory.len()),
                             equipped_module_count: modules
@@ -1962,6 +1963,13 @@ mod tests {
         canonical_public.module_inventory_count = 7;
         canonical_public.loadouts.clear();
         canonical_public.envelope = canonical_package.request.payload.clone();
+        let mut accumulated_profile: CharacterProfilePatch =
+            serde_json::from_value(canonical_public.envelope.body.clone()).unwrap();
+        accumulated_profile.current_profession_project_id = Some(5);
+        canonical_public.envelope.body = website_profile_request(&accumulated_profile)
+            .unwrap()
+            .payload
+            .body;
         write_json_atomic(&canonical_directory.join("public.json"), &canonical_public).unwrap();
         write_json_atomic(
             &canonical_directory.join("current.profile.json"),
