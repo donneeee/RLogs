@@ -6,6 +6,7 @@ mod combat_overlay_settings;
 mod core_settings;
 mod hotkey_settings;
 mod layout_settings;
+mod mechanics_map;
 mod module_optimizer;
 mod native_plugin_processes;
 mod parser_health;
@@ -42,6 +43,9 @@ pub use hotkey_settings::{
     HotkeySettingsView,
 };
 use layout_settings::{LayoutSettings, LayoutSettingsStore};
+use mechanics_map::{
+    MechanicsMapFeed, MechanicsMapProjector, MechanicsMapUpdate, MechanicsMapWaitRequest,
+};
 use module_optimizer::{LocalModuleInventoryView, load_local_module_inventories};
 use native_plugin_processes::{NativePluginLaunch, NativePluginProcesses};
 use parser_health::{
@@ -5147,6 +5151,7 @@ struct RuntimeController {
     profile_projection: Mutex<()>,
     live_combat_feed: Arc<LiveCombatFeed>,
     live_character_stats_feed: Arc<LiveCharacterStatsFeed>,
+    live_mechanics_map_feed: Arc<MechanicsMapFeed>,
     live_event_feed: Arc<LiveEventFeed>,
     combat_history_feed: Arc<CombatHistoryRevisionFeed>,
     history_rdps_backfill: Arc<HistoryRdpsBackfillQueue>,
@@ -5325,6 +5330,7 @@ impl RuntimeController {
             profile_projection: Mutex::new(()),
             live_combat_feed: Arc::new(LiveCombatFeed::default()),
             live_character_stats_feed: Arc::new(LiveCharacterStatsFeed::default()),
+            live_mechanics_map_feed: Arc::new(MechanicsMapFeed::default()),
             live_event_feed: Arc::new(LiveEventFeed::default()),
             combat_history_feed: Arc::new(CombatHistoryRevisionFeed::default()),
             history_rdps_backfill: Arc::new(history_rdps_backfill),
@@ -5966,6 +5972,16 @@ impl RuntimeController {
                 .clamp(1, MAXIMUM_LIVE_CHARACTER_STATS_WAIT_MILLIS),
         );
         self.live_character_stats_feed
+            .wait_after(request.after_revision, timeout)
+    }
+
+    fn live_mechanics_map_snapshot(&self) -> MechanicsMapUpdate {
+        self.live_mechanics_map_feed.current()
+    }
+
+    fn wait_for_live_mechanics_map(&self, request: MechanicsMapWaitRequest) -> MechanicsMapUpdate {
+        let timeout = Duration::from_millis(request.timeout_millis.clamp(1, 30_000));
+        self.live_mechanics_map_feed
             .wait_after(request.after_revision, timeout)
     }
 
@@ -7496,6 +7512,7 @@ impl RuntimeController {
         self.live_combat_feed.publish(None);
         self.live_character_stats_feed
             .publish(LiveCharacterStatsSnapshot::default());
+        self.live_mechanics_map_feed.reset();
         self.live_event_feed.reset(request.session_id.clone());
 
         // UI controls cross into the ordered capture worker through a small,
@@ -7514,6 +7531,7 @@ impl RuntimeController {
         let parser_health = Arc::clone(&self.parser_health);
         let live_combat_feed = Arc::clone(&self.live_combat_feed);
         let live_character_stats_feed = Arc::clone(&self.live_character_stats_feed);
+        let live_mechanics_map_feed = Arc::clone(&self.live_mechanics_map_feed);
         let live_event_feed = Arc::clone(&self.live_event_feed);
         let submission_queue = Arc::clone(&self.submission_queue);
         let combat_history = Arc::clone(&self.combat_history);
@@ -7621,6 +7639,8 @@ impl RuntimeController {
                     let mut capture_time_identities = CaptureTimeCharacterIdentityStore::default();
                     let mut completed_run_identities = None;
                     let mut live_profile_projection = LiveProfileProjection::default();
+                    let mut live_mechanics_map = MechanicsMapProjector::default();
+                    live_mechanics_map.reset(&session_id, &live_header.region.client_build);
                     let live_profile_client_build = live_header.region.client_build.clone();
                     let live_profile_pack_digest = live_header.region.protocol_pack_digest.clone();
                     let mut last_live_profile_created_unix_millis = 0_u64;
@@ -7785,10 +7805,12 @@ impl RuntimeController {
                         let mut live_protocol_records = Vec::new();
                         let mut live_damage_activity = Vec::new();
                         let mut local_photo_assets = Vec::new();
+                        let mut mechanics_map_dirty = false;
                         let decoded_events_before = recorder.metrics().decoded_event_count;
                         let ordered_reduction_started = Instant::now();
                         let mut sealed = recorder
                             .process_frame_with_inspection(frame, |event| {
+                                mechanics_map_dirty |= live_mechanics_map.observe(event);
                                 // Region identity is established from the
                                 // early world-entry packet stream, before a
                                 // dungeon segment is opened. Keep the shared
@@ -8256,6 +8278,9 @@ impl RuntimeController {
                             burst_metrics.observe_projection(projection_started.elapsed());
                         }
                         live_combat_feed.signal_damage_batch(&live_damage_activity);
+                        if mechanics_map_dirty {
+                            live_mechanics_map_feed.publish(live_mechanics_map.snapshot());
+                        }
                         let current_photo_wall_publication_enabled =
                             live_photo_wall_publication_enabled(&live_submission_policy);
                         let current_photo_wall_transport_connected = submission_transport_store
@@ -12284,6 +12309,23 @@ fn handle_connection(
                 &controller.wait_for_live_character_stats(request),
             )?;
         }
+        ("GET", "/api/runtime/live/mechanics-map") => {
+            write_json(&mut stream, 200, &controller.live_mechanics_map_snapshot())?;
+        }
+        ("POST", "/api/runtime/live/mechanics-map/wait") => {
+            let request: MechanicsMapWaitRequest = match serde_json::from_slice(&request.body) {
+                Ok(request) => request,
+                Err(error) => {
+                    write_api_error(&mut stream, 400, format!("invalid request: {error}"))?;
+                    return Ok(());
+                }
+            };
+            write_json(
+                &mut stream,
+                200,
+                &controller.wait_for_live_mechanics_map(request),
+            )?;
+        }
         ("POST", "/api/runtime/live/events/wait") => {
             let request: LiveEventWaitRequest = match serde_json::from_slice(&request.body) {
                 Ok(request) => request,
@@ -12771,7 +12813,20 @@ fn handle_connection(
             Err(error) => write_api_error(&mut stream, 409, error)?,
         },
         ("GET", route) if route.starts_with("/game-assets/") => {
-            write_game_asset(&mut stream, &controller.install_root.join("assets"), route)?;
+            write_image_asset(
+                &mut stream,
+                &controller.install_root.join("assets"),
+                "/game-assets/",
+                route,
+            )?;
+        }
+        ("GET", route) if route.starts_with("/local-game-assets/") => {
+            write_image_asset(
+                &mut stream,
+                &controller.install_root.join("runtime-data/game-assets"),
+                "/local-game-assets/",
+                route,
+            )?;
         }
         ("GET", route) if !route.starts_with("/api/") => {
             write_static(&mut stream, ui_root, route)?;
@@ -12813,12 +12868,13 @@ fn is_safe_plugin_route_identifier(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
 }
 
-fn write_game_asset(
+fn write_image_asset(
     stream: &mut TcpStream,
     asset_root: &Path,
+    route_prefix: &str,
     route: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let relative = Path::new(route.trim_start_matches("/game-assets/"));
+    let relative = Path::new(route.trim_start_matches(route_prefix));
     if relative
         .components()
         .any(|component| !matches!(component, Component::Normal(_)))

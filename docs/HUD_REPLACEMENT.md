@@ -108,6 +108,34 @@ reference. Its source, license, event assumptions, and build compatibility
 must be audited before code or data is adapted; rLogs keeps its own canonical
 events, localization, permissions, and setup format.
 
+The first live milestone uses the game's current-build `MiniMapSizeScale=140`
+contract as a player-relative radar. It does not invent a world origin for
+dungeon scenes whose game tables omit one. The host projects exact actor,
+party, position, facing, life, cast, status, map-marker, scene, and data-gap
+events into a bounded `/api/runtime/live/mechanics-map` feed. Scene changes
+clear all scene-scoped state; positions older than five seconds are visibly
+stale. Encounter signals are limited to exact numeric identities selected by a
+matching reviewed scene pack. A matching pack never implies safe-area geometry
+unless that geometry receives its own current-build evidence.
+
+The official `ui/textures/map/dungeon_map_bg` texture can be compiled locally
+from an installed game without committing or uploading it:
+
+```powershell
+python tools/bpsr-local-map-asset.py `
+  --container "C:\Program Files (x86)\Steam\steamapps\common\Blue Protocol Star Resonance\bpsr\BPSR_STEAM_Data\StreamingAssets\container" `
+  --runtime-root runtime-data/game-assets `
+  --build global/steam-24687926
+```
+
+The compiler requires one exact address row, one exact Unity bundle entry, and
+one `Texture2D` object. It writes a local catalog with the build, package,
+bundle hash, dimensions, and SHA-256 digest. If that asset is missing or the
+build differs, the live map remains usable with the redistributable rLogs radar
+theme. The independent implementation was behaviorally cross-checked against
+Resonance Logs CN v0.2.3; no AGPL source code or hard-coded arena transform is
+copied into rLogs.
+
 ## Chat tabs
 
 The first chat milestone is a local display surface with reorderable tabs,

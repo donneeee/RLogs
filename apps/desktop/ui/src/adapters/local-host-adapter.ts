@@ -79,6 +79,8 @@ import {
   parseLiveCharacterStatsSnapshot,
 } from "./live-character-stats";
 import { mountOverlayStatsTrackerSurface } from "./overlay-stats-tracker-surface";
+import { parseMechanicsMapUpdate } from "./mechanics-map";
+import { mountMechanicsMapSurface } from "./mechanics-map-surface";
 import {
   PHOTO_WALL_CAPTURE_STEPS,
   type PhotoWallPublicationStatus,
@@ -649,12 +651,28 @@ function createLocalHostAdapter(): DesktopHostAdapter {
         case `builtin://${OVERLAY_PLUGIN_ID}/overview`:
         case `builtin://${OVERLAY_PLUGIN_ID}/setups`:
         case `builtin://${OVERLAY_PLUGIN_ID}/editor`:
-        case `builtin://${OVERLAY_PLUGIN_ID}/mechanics-map`:
         case `builtin://${OVERLAY_PLUGIN_ID}/settings`:
           return mountOverlayWorkspaceSurface(
             container,
             builtinSurfacePage(tab.entrypoint) as OverlayWorkspacePage,
           );
+        case `builtin://${OVERLAY_PLUGIN_ID}/mechanics-map`:
+          return mountMechanicsMapSurface(container, {
+            async loadSnapshot() {
+              return parseMechanicsMapUpdate(
+                await apiJson<unknown>("/api/runtime/live/mechanics-map"),
+              );
+            },
+            async waitForSnapshot(afterRevision) {
+              return parseMechanicsMapUpdate(
+                await apiJson<unknown>("/api/runtime/live/mechanics-map/wait", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ after_revision: afterRevision, timeout_millis: 30_000 }),
+                }),
+              );
+            },
+          });
         case `builtin://${OVERLAY_PLUGIN_ID}/trackers`:
           return mountOverlayStatsTrackerSurface(container, {
             async loadCatalog() {
