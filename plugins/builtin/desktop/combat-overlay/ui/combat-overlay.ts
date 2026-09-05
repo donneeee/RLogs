@@ -2491,10 +2491,18 @@ export async function mountCombatOverlayRuntimeApp(
         }
       },
     });
+    // Dynamic sizing depends on real layout metrics (`scrollHeight`). Detached
+    // elements report zero here in WebView2, which collapses the native window
+    // to the minimum height and clips every actor row below the header. Keep the
+    // last good frame visible while the completed replacement participates in
+    // layout invisibly, then swap only after it has been measured.
+    nextCanvas.style.visibility = "hidden";
+    canvas.after(nextCanvas);
     const desiredHeight = resolvedOverlayHeight(nextCanvas, runtimeSettings);
     const desiredWidth = Math.round(runtimeSettings.canvasWidth * scale);
     nextCanvas.style.height = `${desiredHeight}px`;
-    canvas.replaceWith(nextCanvas);
+    nextCanvas.style.removeProperty("visibility");
+    canvas.remove();
     canvas = nextCanvas;
     if (desiredWidth !== lastWindowWidth || desiredHeight !== lastWindowHeight) {
       lastWindowWidth = desiredWidth;
