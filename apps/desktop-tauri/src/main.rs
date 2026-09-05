@@ -13,7 +13,7 @@ use std::{
 
 #[cfg(windows)]
 use windows_sys::Win32::{
-    Foundation::CloseHandle,
+    Foundation::{CloseHandle, HWND},
     System::{
         Diagnostics::Debug::{
             GetErrorMode, SEM_FAILCRITICALERRORS, SEM_NOOPENFILEERRORBOX, SetErrorMode,
@@ -22,8 +22,18 @@ use windows_sys::Win32::{
     },
     UI::{
         Shell::ShellExecuteW,
-        WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId, SW_SHOWNORMAL},
+        WindowsAndMessaging::{
+            GWL_EXSTYLE, GetForegroundWindow, GetWindowLongPtrW, GetWindowThreadProcessId, SW_HIDE,
+            SW_SHOWNOACTIVATE, SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+            SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+            WS_EX_NOACTIVATE,
+        },
     },
+};
+
+#[cfg(all(test, windows))]
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    CreateWindowExW, DestroyWindow, IsWindowVisible, WS_POPUP,
 };
 
 use rlogs_desktop_host::{
@@ -218,10 +228,10 @@ fn set_combat_overlay_enabled(
         .get_webview_window("combat-overlay")
         .ok_or_else(|| "Combat Overlay window is unavailable; restart rLogs".to_owned())?;
     if !enabled {
-        return window.hide().map_err(|error| error.to_string());
+        return hide_combat_overlay_window(&window);
     }
     if automatically_hidden || !focus_state.allows_visibility() {
-        return window.hide().map_err(|error| error.to_string());
+        return hide_combat_overlay_window(&window);
     }
     if state.ready.load(Ordering::Acquire) {
         show_combat_overlay_without_activation(&window)?;
@@ -244,7 +254,7 @@ fn hide_combat_overlay(
     let window = app
         .get_webview_window("combat-overlay")
         .ok_or_else(|| "Combat Overlay window is unavailable; restart rLogs".to_owned())?;
-    window.hide().map_err(|error| error.to_string())
+    hide_combat_overlay_window(&window)
 }
 
 #[tauri::command]
@@ -279,7 +289,7 @@ fn set_combat_overlay_automatically_hidden(
         .get_webview_window("combat-overlay")
         .ok_or_else(|| "Combat Overlay window is unavailable; restart rLogs".to_owned())?;
     if hidden {
-        return window.hide().map_err(|error| error.to_string());
+        return hide_combat_overlay_window(&window);
     }
     if combat_overlay_should_be_visible(
         state.requested.load(Ordering::Acquire),
@@ -323,7 +333,7 @@ fn toggle_combat_overlay(app: &tauri::AppHandle) -> Result<(), String> {
         && window.is_visible().map_err(|error| error.to_string())?;
     if visibly_requested {
         state.requested.store(false, Ordering::Release);
-        window.hide().map_err(|error| error.to_string())?;
+        hide_combat_overlay_window(&window)?;
     } else {
         state.requested.store(true, Ordering::Release);
         state.automatically_hidden.store(false, Ordering::Release);
@@ -425,6 +435,7 @@ fn build_combat_overlay_window(
         // WS_EX_NOACTIVATE, so showing it or reloading WebView2 cannot take
         // keyboard/controller focus away from the game.
         .focusable(COMBAT_OVERLAY_FOCUSABLE)
+        .focused(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .inner_size(460.0, 520.0)
@@ -487,7 +498,7 @@ fn combat_overlay_ready(
         let window = app
             .get_webview_window("combat-overlay")
             .ok_or_else(|| "Combat Overlay window no longer exists".to_owned())?;
-        window.hide().map_err(|error| error.to_string())?;
+        hide_combat_overlay_window(&window)?;
         return Ok(());
     }
     if combat_overlay_should_be_visible(
@@ -511,7 +522,67 @@ fn show_combat_overlay_without_activation(window: &tauri::WebviewWindow) -> Resu
     window
         .set_focusable(COMBAT_OVERLAY_FOCUSABLE)
         .map_err(|error| error.to_string())?;
-    window.show().map_err(|error| error.to_string())
+    #[cfg(windows)]
+    {
+        let hwnd = window.hwnd().map_err(|error| error.to_string())?.0;
+        show_native_combat_overlay_without_activation(hwnd)
+    }
+    #[cfg(not(windows))]
+    {
+        window.show().map_err(|error| error.to_string())
+    }
+}
+
+#[cfg(windows)]
+fn show_native_combat_overlay_without_activation(hwnd: HWND) -> Result<(), String> {
+    // Tauri's generic `show` operation ultimately uses SW_SHOW after the first
+    // reveal. That operation is allowed to activate a window even when the
+    // builder originally requested no focus. The overlay is frequently
+    // hidden/revealed and may also be reloaded by the renderer watchdog, so
+    // enforce the native contract on every reveal.
+    unsafe {
+        let extended_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        SetWindowLongPtrW(
+            hwnd,
+            GWL_EXSTYLE,
+            extended_style | WS_EX_NOACTIVATE as isize,
+        );
+        if SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+            0,
+            SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER,
+        ) == 0
+        {
+            return Err(format!(
+                "Windows could not apply the non-activating overlay style: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+    }
+    Ok(())
+}
+
+fn hide_combat_overlay_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let hwnd = window.hwnd().map_err(|error| error.to_string())?.0;
+        // Keep native visibility paired with the native no-activate reveal.
+        // Mixing this with Tauri's cached visibility flag can make a later
+        // generic show use SW_SHOW and take focus from the game.
+        unsafe {
+            ShowWindow(hwnd, SW_HIDE);
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        window.hide().map_err(|error| error.to_string())
+    }
 }
 
 #[tauri::command]
@@ -630,13 +701,8 @@ fn combat_overlay_health(
     }
 }
 
-fn combat_overlay_renderer_is_stale(
-    now: u64,
-    last_heartbeat: u64,
-    last_live_update: u64,
-    last_reload: u64,
-) -> bool {
-    (now.saturating_sub(last_heartbeat) >= 15_000 || now.saturating_sub(last_live_update) >= 15_000)
+fn combat_overlay_renderer_is_stale(now: u64, last_heartbeat: u64, last_reload: u64) -> bool {
+    now.saturating_sub(last_heartbeat) >= 15_000
         && (last_reload == 0 || now.saturating_sub(last_reload) >= 30_000)
 }
 
@@ -661,22 +727,21 @@ fn monitor_combat_overlay_renderer(app: tauri::AppHandle) -> std::io::Result<()>
                 }
                 let now = unix_millis();
                 let last_heartbeat = state.last_heartbeat_unix_millis.load(Ordering::Acquire);
-                let last_live_update = state.last_live_update_unix_millis.load(Ordering::Acquire);
                 let last_reload = state.last_reload_unix_millis.load(Ordering::Acquire);
-                if !combat_overlay_renderer_is_stale(
-                    now,
-                    last_heartbeat,
-                    last_live_update,
-                    last_reload,
-                ) {
+                if !combat_overlay_renderer_is_stale(now, last_heartbeat, last_reload) {
                     continue;
                 }
                 state.last_reload_unix_millis.store(now, Ordering::Release);
                 state.ready.store(false, Ordering::Release);
+                // A WebView2 navigation can transiently activate its child
+                // surface. Reload it while the native overlay is hidden, then
+                // let `combat_overlay_ready` reveal it with SW_SHOWNOACTIVATE.
+                let _ = hide_combat_overlay_window(&window);
                 if window.reload().is_err() {
                     // A failed reload must not permanently suppress the otherwise
                     // live window; the next watchdog interval may try again.
                     state.ready.store(true, Ordering::Release);
+                    let _ = show_combat_overlay_without_activation(&window);
                 } else {
                     state
                         .automatic_recovery_count
@@ -774,7 +839,11 @@ fn set_overlay_windows_hidden_by_focus(app: &tauri::AppHandle, hidden: bool) {
             }
             if window.is_visible().unwrap_or(false) {
                 restore_labels.insert(label);
-                let _ = window.hide();
+                if window.label() == "combat-overlay" {
+                    let _ = hide_combat_overlay_window(&window);
+                } else {
+                    let _ = window.hide();
+                }
             }
         }
         return;
@@ -995,11 +1064,62 @@ mod tests {
 
     #[test]
     fn visible_overlay_renderer_recovers_after_a_bounded_stall() {
-        assert!(!combat_overlay_renderer_is_stale(14_999, 0, 0, 0));
-        assert!(combat_overlay_renderer_is_stale(15_000, 0, 0, 0));
-        assert!(!combat_overlay_renderer_is_stale(44_999, 0, 0, 30_000));
-        assert!(combat_overlay_renderer_is_stale(60_000, 0, 0, 30_000));
-        assert!(combat_overlay_renderer_is_stale(20_000, 19_000, 0, 0));
+        assert!(!combat_overlay_renderer_is_stale(14_999, 0, 0));
+        assert!(combat_overlay_renderer_is_stale(15_000, 0, 0));
+        assert!(!combat_overlay_renderer_is_stale(44_999, 0, 30_000));
+        assert!(combat_overlay_renderer_is_stale(60_000, 0, 30_000));
+        assert!(!combat_overlay_renderer_is_stale(20_000, 19_000, 0));
+    }
+
+    #[test]
+    fn live_feed_silence_does_not_trigger_renderer_recovery() {
+        // The feed's age is deliberately absent from the renderer predicate.
+        // A healthy HUD must remain loaded while the player is out of combat.
+        assert!(!combat_overlay_renderer_is_stale(86_400_000, 86_399_000, 0));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn native_overlay_reveal_is_visible_but_never_foreground() {
+        use super::{
+            CreateWindowExW, DestroyWindow, GWL_EXSTYLE, GetForegroundWindow, GetWindowLongPtrW,
+            IsWindowVisible, WS_EX_NOACTIVATE, WS_POPUP,
+            show_native_combat_overlay_without_activation,
+        };
+
+        let class_name = "STATIC\0".encode_utf16().collect::<Vec<_>>();
+        let window_name = "rLogs non-activating overlay test\0"
+            .encode_utf16()
+            .collect::<Vec<_>>();
+        let hwnd = unsafe {
+            CreateWindowExW(
+                0,
+                class_name.as_ptr(),
+                window_name.as_ptr(),
+                WS_POPUP,
+                0,
+                0,
+                1,
+                1,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            )
+        };
+        assert!(!hwnd.is_null(), "the native test window must be created");
+
+        show_native_combat_overlay_without_activation(hwnd).unwrap();
+        assert_ne!(unsafe { IsWindowVisible(hwnd) }, 0);
+        assert_ne!(unsafe { GetForegroundWindow() }, hwnd);
+        assert_ne!(
+            unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } & WS_EX_NOACTIVATE as isize,
+            0
+        );
+
+        unsafe {
+            DestroyWindow(hwnd);
+        }
     }
 
     #[test]
