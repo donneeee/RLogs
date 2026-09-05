@@ -21,7 +21,7 @@ use rlogs_log_format::{RlogLimits, RlogReader};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-const SCHEMA_VERSION: u16 = 47;
+const SCHEMA_VERSION: u16 = 48;
 const MAX_INLINE_RAW_BYTES: usize = 64;
 const CURRENT_HP_ATTRIBUTE_ID: i32 = 11310;
 const MAX_HP_ATTRIBUTE_ID: i32 = 11320;
@@ -120,6 +120,7 @@ struct Arguments {
     formula_sample_limit: usize,
     formula_target_effects: BTreeSet<i64>,
     formula_effect_locus: FormulaEffectLocus,
+    formula_external_provider_only: bool,
     formula_gap_window_audit: Option<PathBuf>,
     formula_transition_seeds: Option<PathBuf>,
     formula_transition_window_micros: u64,
@@ -597,6 +598,8 @@ struct FormulaSelectionReceipt {
     source_effect_ids: Vec<i64>,
     target_effect_ids: Vec<i64>,
     effect_locus: FormulaEffectLocus,
+    external_provider_only: bool,
+    provider_scope: &'static str,
     target_effect_scope: &'static str,
     target_effect_timing: &'static str,
     gap_policy: &'static str,
@@ -2227,6 +2230,12 @@ fn formula_selection_receipt(args: &Arguments) -> FormulaSelectionReceipt {
             Vec::new()
         },
         effect_locus: args.formula_effect_locus,
+        external_provider_only: args.formula_external_provider_only,
+        provider_scope: if args.formula_external_provider_only {
+            "the selected active status must retain an exact non-missing provider entity UUID different from the status-bearing damage endpoint"
+        } else {
+            "self-applied, externally provided, and provider-missing selected statuses remain eligible"
+        },
         target_effect_scope: match args.formula_effect_locus {
             FormulaEffectLocus::Source => {
                 "exact numeric effect ID must be active on the canonical damage actor; provider identity, localized name, and remote-player action packets are not selection inputs"
@@ -2986,6 +2995,8 @@ fn scan_rlog(
                             .or_else(|| statuses.get(&formula_effect_key)),
                         &args.formula_target_effects,
                         envelope.time.observed_micros,
+                        formula_effect_entity_uuid,
+                        args.formula_external_provider_only,
                     );
                 let formula_gap_window_selected = match formula_gap_window_filter.as_deref_mut() {
                     Some(filter) => filter.matches(
@@ -3365,11 +3376,16 @@ fn has_active_selected_effect(
     active: Option<&BTreeMap<ActiveStatusKey, ActiveStatusMetadata>>,
     selected_effects: &BTreeSet<i64>,
     observed_micros: u64,
+    effect_bearer_entity_uuid: i64,
+    external_provider_only: bool,
 ) -> bool {
     active.is_some_and(|entries| {
         entries.iter().any(|(key, metadata)| {
             selected_effects.contains(&key.effect_id)
                 && status_is_active_at(metadata, observed_micros)
+                && (!external_provider_only
+                    || (key.source_entity_uuid != i64::MIN
+                        && key.source_entity_uuid != effect_bearer_entity_uuid))
         })
     })
 }
@@ -7999,6 +8015,7 @@ where
     let mut formula_sample_limit = 100_000_usize;
     let mut formula_target_effects = BTreeSet::new();
     let mut formula_source_effects = BTreeSet::new();
+    let mut formula_external_provider_only = false;
     let mut formula_gap_window_audit = None;
     let mut formula_transition_seeds = None;
     let mut formula_transition_window_micros = 2_000_000_u64;
@@ -8047,6 +8064,7 @@ where
             "--formula-source-effect" => {
                 formula_source_effects.insert(next_i64(&mut arguments, "--formula-source-effect")?);
             }
+            "--formula-external-provider-only" => formula_external_provider_only = true,
             "--formula-gap-window-audit" => {
                 formula_gap_window_audit =
                     Some(next_path(&mut arguments, "--formula-gap-window-audit")?);
@@ -8114,6 +8132,12 @@ where
                 .to_owned(),
         );
     }
+    if formula_external_provider_only && formula_target_effects.is_empty() {
+        return Err(
+            "--formula-external-provider-only requires --formula-target-effect or --formula-source-effect"
+                .to_owned(),
+        );
+    }
     if formula_gap_window_audit.is_some() && formula_target_effects.len() != 1 {
         return Err(
             "--formula-gap-window-audit requires exactly one --formula-target-effect or --formula-source-effect".to_owned(),
@@ -8136,6 +8160,7 @@ where
         formula_sample_limit,
         formula_target_effects,
         formula_effect_locus,
+        formula_external_provider_only,
         formula_gap_window_audit,
         formula_transition_seeds,
         formula_transition_window_micros,
@@ -8192,7 +8217,7 @@ where
 }
 
 fn usage() -> String {
-    "usage: rlogs-bpsr-state-scaling-damage-proof --rlog <current-decoder.rlog> [--rlog ...] [--all-abilities | --ability <packet-ability-id> ...] [--sequence <canonical-sequence> ...] [--source-entity <talent-or-factor-id> ...] [--effect <runtime-buff-id> ...] [--output <proof.json> | --proof-only] [--inventory-output <compact-inventory.json>] [--effect-ability-inventory-output <compact-effect-abilities.json>] [--formula-cohort-output <compact-wire-start-samples.json>] [--formula-proof-output <strict-controlled-pair-report.json>] [--formula-target-effect <exact-target-effect-id> ... | --formula-source-effect <exact-source-effect-id> ...] [--formula-gap-window-audit <exact-build-gap-windows.json>] [--formula-transition-seeds <complete-single-term-transition-seeds.json>] [--formula-transition-window-micros <count>] [--formula-sample-limit <count>] [--example-limit <count>]".to_owned()
+    "usage: rlogs-bpsr-state-scaling-damage-proof --rlog <current-decoder.rlog> [--rlog ...] [--all-abilities | --ability <packet-ability-id> ...] [--sequence <canonical-sequence> ...] [--source-entity <talent-or-factor-id> ...] [--effect <runtime-buff-id> ...] [--output <proof.json> | --proof-only] [--inventory-output <compact-inventory.json>] [--effect-ability-inventory-output <compact-effect-abilities.json>] [--formula-cohort-output <compact-wire-start-samples.json>] [--formula-proof-output <strict-controlled-pair-report.json>] [--formula-target-effect <exact-target-effect-id> ... | --formula-source-effect <exact-source-effect-id> ...] [--formula-external-provider-only] [--formula-gap-window-audit <exact-build-gap-windows.json>] [--formula-transition-seeds <complete-single-term-transition-seeds.json>] [--formula-transition-window-micros <count>] [--formula-sample-limit <count>] [--example-limit <count>]".to_owned()
 }
 
 #[cfg(test)]
@@ -8306,6 +8331,45 @@ mod tests {
                 .target_effect_scope
                 .contains("canonical damage actor")
         );
+        assert!(!receipt.external_provider_only);
+    }
+
+    #[test]
+    fn formula_external_provider_only_is_explicit_and_requires_an_effect_selector() {
+        let args = parse_arguments(
+            [
+                "--rlog",
+                "one.rlog",
+                "--formula-source-effect",
+                "3003052",
+                "--formula-external-provider-only",
+                "--proof-only",
+                "--formula-proof-output",
+                "proof.json",
+            ]
+            .into_iter()
+            .map(OsString::from),
+        )
+        .expect("an external-provider formula selection should parse");
+        let receipt = formula_selection_receipt(&args);
+        assert!(receipt.external_provider_only);
+        assert!(receipt.provider_scope.contains("different"));
+
+        let error = parse_arguments(
+            [
+                "--rlog",
+                "one.rlog",
+                "--all-abilities",
+                "--formula-external-provider-only",
+                "--proof-only",
+                "--formula-proof-output",
+                "proof.json",
+            ]
+            .into_iter()
+            .map(OsString::from),
+        )
+        .expect_err("external-provider selection without an effect must fail closed");
+        assert!(error.contains("requires --formula-target-effect or --formula-source-effect"));
     }
 
     #[test]
@@ -8438,9 +8502,81 @@ mod tests {
         .into_iter()
         .collect();
 
-        assert!(has_active_selected_effect(Some(&active), &selected, 2_000));
-        assert!(!has_active_selected_effect(Some(&active), &selected, 2_001));
-        assert!(!has_active_selected_effect(None, &selected, 1_000));
+        assert!(has_active_selected_effect(
+            Some(&active),
+            &selected,
+            2_000,
+            42,
+            false
+        ));
+        assert!(!has_active_selected_effect(
+            Some(&active),
+            &selected,
+            2_001,
+            42,
+            false
+        ));
+        assert!(!has_active_selected_effect(
+            None, &selected, 1_000, 42, false
+        ));
+    }
+
+    #[test]
+    fn formula_external_provider_selection_rejects_self_and_missing_sources() {
+        let selected = [3_003_052].into_iter().collect();
+        let metadata = ActiveStatusMetadata::default();
+        let external = [(
+            ActiveStatusKey {
+                effect_id: 3_003_052,
+                instance_id: 1,
+                source_entity_uuid: 41,
+            },
+            metadata,
+        )]
+        .into_iter()
+        .collect();
+        let self_applied = [(
+            ActiveStatusKey {
+                effect_id: 3_003_052,
+                instance_id: 1,
+                source_entity_uuid: 42,
+            },
+            metadata,
+        )]
+        .into_iter()
+        .collect();
+        let missing = [(
+            ActiveStatusKey {
+                effect_id: 3_003_052,
+                instance_id: 1,
+                source_entity_uuid: i64::MIN,
+            },
+            metadata,
+        )]
+        .into_iter()
+        .collect();
+
+        assert!(has_active_selected_effect(
+            Some(&external),
+            &selected,
+            1_000,
+            42,
+            true
+        ));
+        assert!(!has_active_selected_effect(
+            Some(&self_applied),
+            &selected,
+            1_000,
+            42,
+            true
+        ));
+        assert!(!has_active_selected_effect(
+            Some(&missing),
+            &selected,
+            1_000,
+            42,
+            true
+        ));
     }
 
     #[test]
