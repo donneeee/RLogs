@@ -478,6 +478,29 @@ mod tests {
     }
 
     #[test]
+    fn field_of_forgotten_illusions_is_a_packet_selected_raid() {
+        let config = bundled_run_reducer_config().unwrap();
+        for scene_id in 13_021..=13_023 {
+            let rule = config.scene_rules.get(&scene_id).unwrap();
+            assert_eq!(rule.activity_kind, ActivityKind::Raid);
+            assert_eq!(rule.route_id.as_deref(), Some("packet-selected"));
+            assert_eq!(rule.raid_route_kind, Some(RaidRouteKind::Unknown));
+            assert_eq!(
+                rule.boss_monster_ids,
+                BTreeSet::from([103_108, 103_208, 103_309])
+            );
+            for objective_id in 1_302_101..=1_302_104 {
+                assert_eq!(
+                    rule.objective_rules
+                        .get(&objective_id)
+                        .map(|objective| objective.on_complete),
+                    Some(rlogs_combat::CompletedObjectiveAction::FinalObjective)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn all_current_stimen_vault_floors_are_explicitly_difficulty_less() {
         let config = bundled_run_reducer_config().unwrap();
         let floors = (32_101..=32_160)

@@ -294,7 +294,9 @@ impl ProfileRegistry {
             ));
         }
         let mut profile = validate_bpsr_package(&package)?;
-        let profile_id = profile_id(&package.request.payload);
+        let profile_id = self
+            .existing_profile_id_for_character(&profile.character.character_id, submitter_id)?
+            .unwrap_or_else(|| profile_id(&package.request.payload));
         let directory = self.root.join(&profile_id);
         std::fs::create_dir_all(&directory)?;
         let claim_path = directory.join("claim.json");
@@ -334,6 +336,7 @@ impl ProfileRegistry {
             if let Some(existing) = &existing_loadout {
                 let mut accumulated: CharacterProfilePatch =
                     serde_json::from_value(existing.envelope.body.clone())?;
+                refine_profile_routing_identity(&mut accumulated, &loadout_profile)?;
                 merge_profile_patches(&mut accumulated, loadout_profile).map_err(|error| {
                     ProfileRegistryError::InvalidPackage(format!(
                         "could not merge the newer verified loadout patch: {error}"
@@ -370,6 +373,7 @@ impl ProfileRegistry {
         if let Some(existing) = &existing_profile {
             let mut accumulated: CharacterProfilePatch =
                 serde_json::from_value(existing.envelope.body.clone())?;
+            refine_profile_routing_identity(&mut accumulated, &profile)?;
             merge_profile_patches(&mut accumulated, profile).map_err(|error| {
                 ProfileRegistryError::InvalidPackage(format!(
                     "could not merge the newer verified profile patch: {error}"
@@ -841,6 +845,45 @@ impl ProfileRegistry {
         Ok(catalog)
     }
 
+    /// Returns the newest already-claimed profile directory for a stable game
+    /// character UID. Geographic region is mutable routing metadata learned
+    /// from packets; it must not fork a second claimed character when an early
+    /// capture was still labelled `global`/`unknown`.
+    fn existing_profile_id_for_character(
+        &self,
+        character_id: &str,
+        submitter_id: &str,
+    ) -> Result<Option<String>, ProfileRegistryError> {
+        let mut candidates = Vec::new();
+        for entry in std::fs::read_dir(&self.root)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let public_path = entry.path().join("public.json");
+            let claim_path = entry.path().join("claim.json");
+            if !public_path.is_file() || !claim_path.is_file() {
+                continue;
+            }
+            let public: PublicProfile = read_json(&public_path)?;
+            if public.character_id != character_id {
+                continue;
+            }
+            let claim: ProfileClaim = read_json(&claim_path)?;
+            if claim.character_id != character_id || claim.submitter_id != submitter_id {
+                return Err(ProfileRegistryError::ClaimConflict {
+                    character_id: character_id.to_owned(),
+                });
+            }
+            candidates.push((public.updated_unix_millis, public.profile_id));
+        }
+        candidates.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+        Ok(candidates
+            .into_iter()
+            .next()
+            .map(|(_, profile_id)| profile_id))
+    }
+
     fn receipt(&self, profile: &PublicProfile, duplicate: bool) -> ProfilePublishReceipt {
         ProfilePublishReceipt {
             schema_version: 1,
@@ -859,13 +902,13 @@ impl ProfileRegistry {
     }
 
     fn rebuild_catalog(&self) -> Result<(), ProfileRegistryError> {
-        let mut profiles = Vec::new();
+        let mut profiles_by_character = std::collections::BTreeMap::new();
         for entry in std::fs::read_dir(&self.root)? {
             let entry = entry?;
             if !entry.file_type()?.is_dir() {
                 continue;
             }
-            if profiles.len() >= MAXIMUM_PROFILE_COUNT {
+            if profiles_by_character.len() >= MAXIMUM_PROFILE_COUNT {
                 return Err(ProfileRegistryError::CatalogTooLarge);
             }
             let path = entry.path().join("public.json");
@@ -873,8 +916,15 @@ impl ProfileRegistry {
                 continue;
             }
             let profile: PublicProfile = read_json(&path)?;
-            profiles.push(catalog_entry(profile));
+            let candidate = catalog_entry(profile);
+            match profiles_by_character.get(&candidate.character_id) {
+                Some(existing) if profile_catalog_entry_precedes(existing, &candidate) => {}
+                _ => {
+                    profiles_by_character.insert(candidate.character_id.clone(), candidate);
+                }
+            }
         }
+        let mut profiles = profiles_by_character.into_values().collect::<Vec<_>>();
         profiles.sort_by(|left, right| {
             right
                 .updated_unix_millis
@@ -889,6 +939,15 @@ impl ProfileRegistry {
             },
         )
     }
+}
+
+fn profile_catalog_entry_precedes(
+    left: &PublicProfileCatalogEntry,
+    right: &PublicProfileCatalogEntry,
+) -> bool {
+    left.updated_unix_millis > right.updated_unix_millis
+        || (left.updated_unix_millis == right.updated_unix_millis
+            && left.profile_id <= right.profile_id)
 }
 
 fn validate_bpsr_package(
@@ -918,6 +977,22 @@ fn validate_bpsr_package(
         ));
     }
     Ok(profile)
+}
+
+fn refine_profile_routing_identity(
+    accumulated: &mut CharacterProfilePatch,
+    newer: &CharacterProfilePatch,
+) -> Result<(), ProfileRegistryError> {
+    if accumulated.character.character_id != newer.character.character_id {
+        return Err(ProfileRegistryError::InvalidPackage(
+            "one profile accumulator received two character UIDs".into(),
+        ));
+    }
+    // Region/realm/world are routing observations rather than character
+    // identity. A later live, device-bound profile may refine them without
+    // discarding the previously accumulated character facts.
+    accumulated.character = newer.character.clone();
+    Ok(())
 }
 
 fn preserve_current_photo_assets(
@@ -1128,15 +1203,13 @@ fn stored_photo_file_name_is_safe(stored: &StoredPhotoAsset) -> bool {
 
 fn profile_id(envelope: &WebsitePayloadEnvelope) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(b"rlogs-profile-identity-v1\0");
-    for key in ["deployment", "region", "realm", "world", "character-id"] {
-        hasher.update(key.as_bytes());
-        hasher.update(b"\0");
-        if let Some(value) = envelope.routing.get(key) {
-            hasher.update(value.as_bytes());
-        }
-        hasher.update(b"\0");
-    }
+    hasher.update(b"rlogs-profile-character-identity-v2\0");
+    hasher.update(
+        envelope
+            .routing
+            .get("character-id")
+            .map_or(&[][..], String::as_bytes),
+    );
     format!("prf_{:x}", hasher.finalize())[..36].to_owned()
 }
 
@@ -1643,6 +1716,40 @@ mod tests {
         let public = registry.get(&refreshed.profile_id).unwrap();
         assert_eq!(public.created_unix_millis, 30);
         assert_eq!(public.updated_unix_millis, 40);
+    }
+
+    #[test]
+    fn packet_resolved_region_refines_one_stable_claim_instead_of_forking_it() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let initially_unresolved = mutate_package(package(10, "1000001", 1), |profile| {
+            profile.character.region.region_id = "global".into();
+            profile.character.region.realm_id = None;
+        });
+        let first = registry
+            .publish(
+                initially_unresolved,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+        let refined = registry
+            .publish(
+                package(30, "1000001", 2),
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                40,
+            )
+            .unwrap();
+
+        assert_eq!(first.profile_id, refined.profile_id);
+        let catalog = registry.catalog(None).unwrap();
+        assert_eq!(catalog.profiles.len(), 1);
+        assert_eq!(catalog.profiles[0].region, "north-america");
     }
 
     #[test]

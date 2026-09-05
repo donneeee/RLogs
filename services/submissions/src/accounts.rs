@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs::{File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -22,6 +23,10 @@ pub struct DiscordConfiguration {
     pub website_url: String,
     pub callback_url: String,
     pub token_pepper: String,
+    /// Discord user IDs allowed to opt into unfinished website surfaces.
+    /// This is server-owned authorization; the browser cannot grant itself
+    /// developer access by changing local storage or a request body.
+    pub developer_discord_user_ids: BTreeSet<String>,
 }
 
 impl DiscordConfiguration {
@@ -31,6 +36,10 @@ impl DiscordConfiguration {
         let public_api_url = environment("RLOGS_PUBLIC_API_URL")?;
         let callback_url = environment("RLOGS_DISCORD_CALLBACK_URL")?;
         let token_pepper = environment("RLOGS_AUTH_TOKEN_PEPPER")?;
+        let developer_discord_user_ids = environment("RLOGS_DEVELOPER_DISCORD_USER_IDS")?
+            .map(|value| parse_discord_user_id_set(&value))
+            .transpose()?
+            .unwrap_or_default();
         let configured = [
             client_id.is_some(),
             client_secret.is_some(),
@@ -64,6 +73,7 @@ impl DiscordConfiguration {
             website_url,
             callback_url,
             token_pepper,
+            developer_discord_user_ids,
         }))
     }
 
@@ -83,6 +93,8 @@ pub struct AccountView {
     pub discord_avatar_url: Option<String>,
     /// Account-level consent to publish future server-verified parse reports.
     pub publish_verified_parses: bool,
+    /// Server-authorized access to optional development-only site surfaces.
+    pub developer: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -460,7 +472,7 @@ impl AccountStore {
             .join(format!("{}.json", account.submitter_id));
         let mut record: AccountRecord = read_json(&path)?.ok_or(AccountError::Unauthorized)?;
         if record.username.as_deref() == Some(username.as_str()) {
-            return account_view(record);
+            return self.account_view(record);
         }
         let index_path = self
             .root
@@ -489,7 +501,7 @@ impl AccountStore {
                 std::fs::remove_file(previous_path)?;
             }
         }
-        account_view(record)
+        self.account_view(record)
     }
 
     pub fn update_publish_verified_parses(
@@ -508,7 +520,7 @@ impl AccountStore {
         record.publish_verified_parses = publish_verified_parses;
         record.updated_unix_millis = now;
         write_json_atomic(&path, &record)?;
-        account_view(record)
+        self.account_view(record)
     }
 
     pub fn publishes_verified_parses(&self, submitter_id: &str) -> Result<bool, AccountError> {
@@ -596,7 +608,16 @@ impl AccountStore {
     }
 
     fn account(&self, submitter_id: &str) -> Result<AccountView, AccountError> {
-        account_view(self.ensure_public_identity(submitter_id)?)
+        self.account_view(self.ensure_public_identity(submitter_id)?)
+    }
+
+    fn account_view(&self, record: AccountRecord) -> Result<AccountView, AccountError> {
+        let developer = self.configuration.as_ref().is_some_and(|configuration| {
+            configuration
+                .developer_discord_user_ids
+                .contains(&record.discord_user_id)
+        });
+        account_view(record, developer)
     }
 
     fn ensure_public_identity(&self, submitter_id: &str) -> Result<AccountRecord, AccountError> {
@@ -816,7 +837,7 @@ fn truncate_username(value: &str, maximum: usize) -> String {
         .to_owned()
 }
 
-fn account_view(record: AccountRecord) -> Result<AccountView, AccountError> {
+fn account_view(record: AccountRecord, developer: bool) -> Result<AccountView, AccountError> {
     let account_id = record.account_id.ok_or_else(|| {
         AccountError::InvalidConfiguration("account is missing its public account ID".into())
     })?;
@@ -832,7 +853,26 @@ fn account_view(record: AccountRecord) -> Result<AccountView, AccountError> {
         discord_global_name: record.discord_global_name,
         discord_avatar_url: record.discord_avatar_url,
         publish_verified_parses: record.publish_verified_parses,
+        developer,
     })
+}
+
+fn parse_discord_user_id_set(value: &str) -> Result<BTreeSet<String>, AccountError> {
+    let mut ids = BTreeSet::new();
+    for raw in value.split(',') {
+        let id = raw.trim();
+        if id.is_empty() {
+            continue;
+        }
+        if id.len() > 24 || !id.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(AccountError::InvalidConfiguration(
+                "RLOGS_DEVELOPER_DISCORD_USER_IDS must be a comma-separated list of numeric Discord user IDs"
+                    .into(),
+            ));
+        }
+        ids.insert(id.to_owned());
+    }
+    Ok(ids)
 }
 
 fn token_hash(domain: &str, token: &str, pepper: &str) -> String {
@@ -895,6 +935,7 @@ mod tests {
             website_url: "https://site.example.test".into(),
             callback_url: "https://site.example.test/account/".into(),
             token_pepper: "0123456789abcdef0123456789abcdef".into(),
+            developer_discord_user_ids: BTreeSet::new(),
         }
     }
 
@@ -961,6 +1002,33 @@ mod tests {
     }
 
     #[test]
+    fn developer_access_is_server_authorized_by_discord_user_id() {
+        let root = tempfile::tempdir().unwrap();
+        let mut configured = configuration();
+        configured
+            .developer_discord_user_ids
+            .insert("123456789".into());
+        let store = AccountStore::open(root.path().into(), Some(configured)).unwrap();
+        let record = store
+            .upsert_discord_user(
+                DiscordUserResponse {
+                    id: "123456789".into(),
+                    username: "developer".into(),
+                    global_name: None,
+                    avatar: None,
+                },
+                10,
+            )
+            .unwrap();
+        assert!(store.account_view(record).unwrap().developer);
+        assert_eq!(
+            parse_discord_user_id_set("123, 456,123").unwrap(),
+            BTreeSet::from(["123".into(), "456".into()])
+        );
+        assert!(parse_discord_user_id_set("123,user").is_err());
+    }
+
+    #[test]
     fn public_account_identity_is_stable_and_username_is_editable() {
         let root = tempfile::tempdir().unwrap();
         let store = AccountStore::open(root.path().into(), Some(configuration())).unwrap();
@@ -975,9 +1043,10 @@ mod tests {
                 10,
             )
             .unwrap();
-        let original = account_view(record).unwrap();
+        let original = account_view(record, false).unwrap();
         assert!((100_000_000_000..=999_999_999_999).contains(&original.account_id));
         assert_eq!(original.username, "initial-name");
+        assert!(!original.developer);
 
         let public = store.public_identity(original.account_id).unwrap().unwrap();
         assert_eq!(public.0, original.submitter_id);

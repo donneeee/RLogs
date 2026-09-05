@@ -281,8 +281,12 @@ impl RunSessionReducer {
             DungeonEventKind::ObjectiveUpdated => self.apply_objective_rule(observed_micros, event),
             DungeonEventKind::Started => self.start_run(session_id, observed_micros, true)?,
             DungeonEventKind::BossEngaged => {
+                let segment = self
+                    .active_rule()
+                    .map(boss_segment_kind)
+                    .unwrap_or(RunSegmentKind::Boss);
                 if let Some(run) = &mut self.current {
-                    run.switch_segment(RunSegmentKind::Boss, observed_micros, false);
+                    run.switch_segment(segment, observed_micros, false);
                 }
             }
             DungeonEventKind::BossDefeated => {
@@ -558,20 +562,21 @@ impl RunSessionReducer {
         let Some(run) = &mut self.current else {
             return;
         };
+        let boss_segment = boss_segment_kind(&rule);
         if boss_involved || run.boss_phase_armed {
-            run.switch_segment(RunSegmentKind::Boss, observed_micros, false);
+            run.switch_segment(boss_segment, observed_micros, false);
             run.ensure_encounter(
                 rule.boss_encounter_id.clone(),
                 observed_micros,
                 &self.config,
             );
-        } else if run.active_segment_kind() == Some(RunSegmentKind::Boss) {
+        } else if run.active_segment_kind() == Some(boss_segment) {
             run.ensure_encounter(
                 rule.boss_encounter_id.clone(),
                 observed_micros,
                 &self.config,
             );
-        } else if run.active_segment_kind() != Some(RunSegmentKind::Boss) {
+        } else if run.active_segment_kind() != Some(boss_segment) {
             run.ensure_encounter(
                 rule.mobbing_encounter_id.clone(),
                 observed_micros,
@@ -592,9 +597,10 @@ impl RunSessionReducer {
         let boss_died = self
             .active_rule()
             .is_some_and(|rule| self.is_boss_monster(rule, monster_id));
+        let boss_segment = self.active_rule().map(boss_segment_kind);
         if boss_died
             && let Some(run) = &mut self.current
-            && run.active_segment_kind() == Some(RunSegmentKind::Boss)
+            && run.active_segment_kind() == boss_segment
         {
             run.end_encounter(EncounterTerminalState::Cleared, observed_micros, false);
         }
@@ -706,6 +712,22 @@ impl RunSessionReducer {
                 .push(run.finish(state, ended_micros, authoritative, &self.config));
         }
     }
+}
+
+fn boss_segment_kind(rule: &SceneRunRule) -> RunSegmentKind {
+    rule.boss_encounter_id
+        .as_deref()
+        .and_then(|encounter_id| rule.encounter_segment(encounter_id))
+        .unwrap_or(match rule.activity_kind {
+            ActivityKind::Dungeon => RunSegmentKind::Boss,
+            ActivityKind::Raid => match rule.raid_route_kind {
+                Some(RaidRouteKind::Gauntlet) => RunSegmentKind::Gauntlet,
+                Some(RaidRouteKind::SingleBoss | RaidRouteKind::Unknown) | None => {
+                    RunSegmentKind::RaidBoss
+                }
+            },
+            ActivityKind::Unknown => RunSegmentKind::Unknown,
+        })
 }
 
 #[derive(Debug, Clone)]

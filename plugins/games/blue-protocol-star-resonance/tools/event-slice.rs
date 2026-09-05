@@ -20,6 +20,78 @@ struct Arguments {
     entity_uuid: Option<i64>,
     numeric_id_prefix: Option<String>,
     data_gap_pattern: Option<String>,
+    event_kind: Option<EventKindFilter>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EventKindFilter {
+    Dungeon,
+    RunBoundary,
+    EncounterBoundary,
+    CombatBoundary,
+    Actor,
+    EntityAttributes,
+    Life,
+    Damage,
+    Cast,
+    Cooldown,
+    DataGap,
+}
+
+impl EventKindFilter {
+    fn parse(value: OsString) -> Result<Self, String> {
+        match value.to_string_lossy().as_ref() {
+            "dungeon" => Ok(Self::Dungeon),
+            "run_boundary" => Ok(Self::RunBoundary),
+            "encounter_boundary" => Ok(Self::EncounterBoundary),
+            "combat_boundary" => Ok(Self::CombatBoundary),
+            "actor" => Ok(Self::Actor),
+            "entity_attributes" => Ok(Self::EntityAttributes),
+            "life" => Ok(Self::Life),
+            "damage" => Ok(Self::Damage),
+            "cast" => Ok(Self::Cast),
+            "cooldown" => Ok(Self::Cooldown),
+            "data_gap" => Ok(Self::DataGap),
+            _ => Err("--event-kind must be dungeon, run_boundary, encounter_boundary, combat_boundary, actor, entity_attributes, life, damage, cast, cooldown, or data_gap".to_owned()),
+        }
+    }
+
+    fn matches(self, event: &CanonicalEvent) -> bool {
+        match (self, event) {
+            (Self::Dungeon, CanonicalEvent::Dungeon(_)) => true,
+            (Self::RunBoundary, CanonicalEvent::Timeline(timeline)) => {
+                matches!(timeline.kind, TimelineEventKind::RunBoundary { .. })
+            }
+            (Self::EncounterBoundary, CanonicalEvent::Timeline(timeline)) => {
+                matches!(timeline.kind, TimelineEventKind::EncounterBoundary { .. })
+            }
+            (Self::CombatBoundary, CanonicalEvent::Timeline(timeline)) => {
+                matches!(timeline.kind, TimelineEventKind::CombatBoundary { .. })
+            }
+            (Self::Actor, CanonicalEvent::Timeline(timeline)) => {
+                matches!(timeline.kind, TimelineEventKind::Actor(_))
+            }
+            (Self::EntityAttributes, CanonicalEvent::Timeline(timeline)) => {
+                matches!(timeline.kind, TimelineEventKind::EntityAttributes(_))
+            }
+            (Self::Life, CanonicalEvent::Timeline(timeline)) => {
+                matches!(timeline.kind, TimelineEventKind::Life { .. })
+            }
+            (Self::Damage, CanonicalEvent::Timeline(timeline)) => {
+                matches!(timeline.kind, TimelineEventKind::Damage(_))
+            }
+            (Self::Cast, CanonicalEvent::Timeline(timeline)) => {
+                matches!(timeline.kind, TimelineEventKind::Cast(_))
+            }
+            (Self::Cooldown, CanonicalEvent::Timeline(timeline)) => {
+                matches!(timeline.kind, TimelineEventKind::Cooldown(_))
+            }
+            (Self::DataGap, CanonicalEvent::Timeline(timeline)) => {
+                matches!(timeline.kind, TimelineEventKind::DataGap(_))
+            }
+            _ => false,
+        }
+    }
 }
 
 fn main() {
@@ -45,6 +117,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         if !matches_filters(
             &envelope.event,
+            arguments.event_kind,
             arguments.effect_id,
             arguments.actor_id,
             arguments.entity_uuid,
@@ -62,12 +135,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 fn matches_filters(
     event: &CanonicalEvent,
+    event_kind: Option<EventKindFilter>,
     effect_id: Option<i64>,
     actor_id: Option<u64>,
     entity_uuid: Option<i64>,
     numeric_id_prefix: Option<&str>,
     data_gap_pattern: Option<&str>,
 ) -> bool {
+    if event_kind.is_some_and(|kind| !kind.matches(event)) {
+        return false;
+    }
+    if effect_id.is_none()
+        && actor_id.is_none()
+        && entity_uuid.is_none()
+        && numeric_id_prefix.is_none()
+        && data_gap_pattern.is_none()
+    {
+        return true;
+    }
     if let Some(pattern) = data_gap_pattern {
         let CanonicalEvent::Timeline(timeline) = event else {
             return false;
@@ -233,6 +318,9 @@ fn arguments() -> Result<Arguments, String> {
         .transpose()?;
     let data_gap_pattern = take_optional_value(&mut values, "--data-gap-pattern")
         .map(|value| value.to_string_lossy().into_owned());
+    let event_kind = take_optional_value(&mut values, "--event-kind")
+        .map(EventKindFilter::parse)
+        .transpose()?;
     if first_sequence > last_sequence {
         return Err("--first must be less than or equal to --last".to_owned());
     }
@@ -249,6 +337,7 @@ fn arguments() -> Result<Arguments, String> {
         entity_uuid,
         numeric_id_prefix,
         data_gap_pattern,
+        event_kind,
     })
 }
 
@@ -290,5 +379,5 @@ fn take_optional_value(values: &mut Vec<OsString>, flag: &str) -> Option<OsStrin
 }
 
 fn usage() -> String {
-    "usage: rlogs-bpsr-event-slice --rlog <sealed.rlog> --output <events.jsonl> --first <sequence> --last <sequence> [--effect-id <id>] [--actor-id <id>] [--entity-uuid <id>] [--numeric-id-prefix <digits>] [--data-gap-pattern <text>]".to_owned()
+    "usage: rlogs-bpsr-event-slice --rlog <sealed.rlog> --output <events.jsonl> --first <sequence> --last <sequence> [--event-kind <kind>] [--effect-id <id>] [--actor-id <id>] [--entity-uuid <id>] [--numeric-id-prefix <digits>] [--data-gap-pattern <text>]".to_owned()
 }

@@ -7,8 +7,8 @@
 use std::collections::BTreeMap;
 
 use rlogs_events::{
-    CanonicalEvent, DungeonEvent, DungeonEventKind, EventEnvelope, EventTime, RunState,
-    TimelineEventKind,
+    BoundaryReason, CanonicalEvent, DungeonEvent, DungeonEventKind, EventEnvelope, EventTime,
+    RunState, TimelineEvent, TimelineEventKind,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,12 +49,13 @@ pub enum DungeonSegmentAction {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 struct ActiveDungeonSegment {
     instance_id: Option<String>,
     scene_id: Option<i32>,
     last_time: EventTime,
     completion_pending: bool,
+    inferred_completion_source: Option<EventEnvelope>,
 }
 
 /// Converts canonical BPSR dungeon events into persistence actions.
@@ -128,6 +129,7 @@ impl DungeonRunSegmenter {
                         scene_id: self.current_world_scene_id,
                         last_time: event.time,
                         completion_pending: false,
+                        inferred_completion_source: None,
                     });
                     actions.push(DungeonSegmentAction::Open {
                         reason,
@@ -152,10 +154,47 @@ impl DungeonRunSegmenter {
                     }
                     if dungeon.kind == DungeonEventKind::Completed {
                         active.completion_pending = true;
+                    } else if dungeon.kind == DungeonEventKind::ObjectiveUpdated
+                        && is_field_of_forgotten_illusions_boss_objective(
+                            active.scene_id,
+                            dungeon_objective_id(dungeon),
+                        )
+                    {
+                        if dungeon.objective_complete == Some(true) {
+                            active.inferred_completion_source = Some(event.clone());
+                        } else if dungeon.objective_complete == Some(false) {
+                            // In Gauntlet mode the next boss objective follows
+                            // in a later packet. That successor cancels the
+                            // prior boss's pending run completion while leaving
+                            // its encounter clear.
+                            active.inferred_completion_source = None;
+                        }
                     }
                 }
+                let terminal_reason = terminal.map(|reason| {
+                    if self.active.as_ref().is_some_and(|active| {
+                        active.completion_pending || active.inferred_completion_source.is_some()
+                    }) {
+                        DungeonSegmentEndReason::Completed
+                    } else {
+                        reason
+                    }
+                });
+                if terminal_reason == Some(DungeonSegmentEndReason::Completed)
+                    && let Some(source) = self
+                        .active
+                        .as_mut()
+                        .and_then(|active| active.inferred_completion_source.take())
+                {
+                    // The synthetic boundary keeps the exact objective packet
+                    // time and must precede the scene/exit event so reducers
+                    // close this run as completed rather than departed.
+                    actions.push(DungeonSegmentAction::Record(inferred_completion_boundary(
+                        source,
+                    )));
+                }
                 actions.push(DungeonSegmentAction::Record(event));
-                if let Some(reason) = terminal {
+                if let Some(reason) = terminal_reason {
                     self.seal_active(reason, event_time, &mut actions);
                 }
                 if let Some(world) = departed_world {
@@ -283,6 +322,33 @@ impl DungeonRunSegmenter {
     }
 }
 
+fn dungeon_objective_id(dungeon: &DungeonEvent) -> Option<i64> {
+    dungeon
+        .objective_id
+        .or_else(|| dungeon.objective_map_key.map(i64::from))
+}
+
+fn is_field_of_forgotten_illusions_boss_objective(
+    scene_id: Option<i32>,
+    objective_id: Option<i64>,
+) -> bool {
+    matches!(scene_id, Some(13_021..=13_023)) && matches!(objective_id, Some(1_302_101..=1_302_104))
+}
+
+fn inferred_completion_boundary(mut source: EventEnvelope) -> EventEnvelope {
+    source.event = CanonicalEvent::Timeline(TimelineEvent {
+        sequence: 0,
+        time: source.time,
+        provenance: source.provenance.clone(),
+        kind: TimelineEventKind::RunBoundary {
+            state: RunState::Completed,
+            scene_id: None,
+            reason: BoundaryReason::AuthoritativePacket,
+        },
+    });
+    source
+}
+
 fn opening_boundary(dungeon: &DungeonEvent) -> Option<(DungeonSegmentStartReason, Option<String>)> {
     let reason = match dungeon.kind {
         DungeonEventKind::Entered => DungeonSegmentStartReason::Entered,
@@ -400,6 +466,27 @@ mod tests {
                 }),
             })
             .unwrap()
+    }
+
+    fn objective(
+        factory: &mut EventEnvelopeFactory,
+        sequence: u64,
+        objective_id: i64,
+        complete: bool,
+    ) -> EventEnvelope {
+        let mut event = dungeon(
+            factory,
+            sequence,
+            DungeonEventKind::ObjectiveUpdated,
+            "run-1",
+        );
+        let CanonicalEvent::Dungeon(dungeon) = &mut event.event else {
+            unreachable!("helper always creates a dungeon event")
+        };
+        dungeon.objective_map_key = i32::try_from(objective_id).ok();
+        dungeon.objective_id = Some(objective_id);
+        dungeon.objective_complete = Some(complete);
+        event
     }
 
     fn world(factory: &mut EventEnvelopeFactory, sequence: u64, scene_id: i32) -> EventEnvelope {
@@ -603,6 +690,89 @@ mod tests {
             })
         ));
         assert!(!segmenter.is_recording());
+    }
+
+    #[test]
+    fn nightmare_boss_objective_completes_when_the_run_departs_without_a_successor() {
+        let mut factory = factory();
+        let mut segmenter = DungeonRunSegmenter::default();
+        segmenter.observe_batch([world(&mut factory, 1, 13_023)]);
+        segmenter.observe_batch([dungeon(&mut factory, 2, DungeonEventKind::Entered, "run-1")]);
+
+        let objective_actions =
+            segmenter.observe_batch([objective(&mut factory, 3, 1_302_101, true)]);
+        assert_eq!(objective_actions.len(), 1);
+        assert!(segmenter.is_recording());
+
+        let actions = segmenter.observe_batch([world(&mut factory, 4, 8)]);
+
+        assert!(matches!(
+            actions.as_slice(),
+            [
+                DungeonSegmentAction::Record(EventEnvelope {
+                    event: CanonicalEvent::Timeline(TimelineEvent {
+                        kind: TimelineEventKind::RunBoundary {
+                            state: RunState::Completed,
+                            reason: BoundaryReason::AuthoritativePacket,
+                            ..
+                        },
+                        ..
+                    }),
+                    ..
+                }),
+                DungeonSegmentAction::Record(EventEnvelope {
+                    event: CanonicalEvent::WorldChanged(_),
+                    ..
+                }),
+                DungeonSegmentAction::Seal {
+                    reason: DungeonSegmentEndReason::Completed,
+                    ..
+                }
+            ]
+        ));
+        assert!(!segmenter.is_recording());
+    }
+
+    #[test]
+    fn gauntlet_successor_objective_keeps_the_same_run_open() {
+        let mut factory = factory();
+        let mut segmenter = DungeonRunSegmenter::default();
+        segmenter.observe_batch([world(&mut factory, 1, 13_023)]);
+        segmenter.observe_batch([dungeon(&mut factory, 2, DungeonEventKind::Entered, "run-1")]);
+
+        let completed_origin = objective(&mut factory, 3, 1_302_101, true);
+        let opened_continuation = objective(&mut factory, 4, 1_302_103, false);
+        let actions = segmenter.observe_batch([completed_origin, opened_continuation]);
+
+        assert_eq!(
+            actions
+                .iter()
+                .filter(|action| matches!(action, DungeonSegmentAction::Record(_)))
+                .count(),
+            2
+        );
+        assert!(
+            !actions
+                .iter()
+                .any(|action| matches!(action, DungeonSegmentAction::Seal { .. }))
+        );
+        assert!(segmenter.is_recording());
+    }
+
+    #[test]
+    fn lobby_selection_objective_never_completes_a_raid() {
+        let mut factory = factory();
+        let mut segmenter = DungeonRunSegmenter::default();
+        segmenter.observe_batch([world(&mut factory, 1, 13_023)]);
+        segmenter.observe_batch([dungeon(&mut factory, 2, DungeonEventKind::Entered, "run-1")]);
+
+        let actions = segmenter.observe_batch([objective(&mut factory, 3, 1_301_101, true)]);
+        assert!(
+            !actions
+                .iter()
+                .any(|action| matches!(action, DungeonSegmentAction::Seal { .. }))
+        );
+        assert!(segmenter.is_recording());
     }
 
     #[test]

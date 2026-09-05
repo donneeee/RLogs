@@ -6,6 +6,7 @@ param(
     [string]$CallbackUrl = 'https://rlogs-app.github.io/account/',
     [string]$PublicSiteUrl = 'https://rlogs-app.github.io',
     [string]$ListenAddress = '127.0.0.1:8788',
+    [string]$DeveloperDiscordUserIds = '51782792098349056',
     [string]$DataRoot = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'RLogs\runtime-data\submission-service'),
     [string]$ClientSecretPath = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'RLogs\runtime-data\submission-auth\discord-client-secret.dpapi'),
     [string]$TokenPepperPath = (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'RLogs\runtime-data\submission-auth\auth-token-pepper.dpapi')
@@ -65,6 +66,7 @@ $receiverEnvironment = [ordered]@{
     RLOGS_PUBLIC_SITE_URL = $PublicSiteUrl
     RLOGS_SUBMISSION_LISTEN = $ListenAddress
     RLOGS_SUBMISSION_DATA = $DataRoot
+    RLOGS_DEVELOPER_DISCORD_USER_IDS = $DeveloperDiscordUserIds
 }
 $previousEnvironment = @{}
 

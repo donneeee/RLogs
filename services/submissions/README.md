@@ -72,9 +72,13 @@ $env:RLOGS_DISCORD_CLIENT_SECRET = "Discord application client secret"
 $env:RLOGS_PUBLIC_API_URL = "https://rlogs-submissions.example.workers.dev"
 $env:RLOGS_DISCORD_CALLBACK_URL = "https://rlogs-app.github.io/account/"
 $env:RLOGS_AUTH_TOKEN_PEPPER = "at least 32 random characters"
+$env:RLOGS_DEVELOPER_DISCORD_USER_IDS = "comma-separated Discord user IDs allowed to enable site developer mode"
 ```
 
 Set the Discord application's redirect URI to `RLOGS_DISCORD_CALLBACK_URL`.
+Developer access is derived by the receiver from
+`RLOGS_DEVELOPER_DISCORD_USER_IDS`; a browser preference never grants that
+role. Leave the value empty in deployments with no website developers.
 When it is omitted, the receiver uses the legacy stable API origin followed by
 `/v1/auth/discord/callback`. The website callback keeps the internal API
 hostname out of the browser's address bar and completes the exchange through
