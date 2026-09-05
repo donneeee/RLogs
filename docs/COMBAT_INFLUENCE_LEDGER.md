@@ -171,6 +171,18 @@ requires every negative or non-transfer receipt to retain an explicit false
 authority gate. The registry is an audit surface, not an alternate way to
 grant runtime authority.
 
+The current-build production allowlist also has a compact cross-run
+conservation receipt. It replays 26 independently sealed logs containing
+6,411,565 canonical events and 734,040 damage events. Across 381,992 attributed
+damage events, 1,430,745,419 damage is transferred between exact providers and
+recipients; every report preserves equality between contribution given and
+received and conserves the full raw party total. The receipt is self-hashed,
+contains neither source paths nor packet payloads, and is retained as
+`protocol-packs/global/steam-24687926/observations/canonical-replay-conservation-24687926-001.json`.
+This closes the current build's `canonical-replay-conservation` promotion
+blocker without promoting any candidate rule. The independent
+`party-support-formula-frontier` blocker remains open.
+
 ## Current-build exhaustive party-route census
 
 <!-- BEGIN GENERATED RDPS PROMOTION FRONTIER -->

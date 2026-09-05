@@ -23063,10 +23063,7 @@ mod tests {
         assert_eq!(projector.status(), "partial_packet_proven_rules");
         assert_eq!(
             runtime().promotion_blockers(),
-            [
-                "canonical-replay-conservation",
-                "party-support-formula-frontier",
-            ]
+            ["party-support-formula-frontier"]
         );
     }
 

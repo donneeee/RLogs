@@ -10,6 +10,17 @@
   },
   "receipts": [
     {
+      "file": "canonical-replay-conservation-24687926-001.json",
+      "observation_id": "canonical-replay-conservation-24687926-001",
+      "effect_ids": [
+        31602, 55228, 55333, 997511, 997513, 997515, 997518, 997534,
+        997538, 997570, 998542, 2100154, 2110034, 2110065, 2110096,
+        2110099, 2110125, 2110140, 2110143, 2110167, 2202041, 2204471,
+        2207252, 2302121, 2302421, 2404261, 2404271, 3003052, 3003411
+      ],
+      "disposition": "conservation-authority"
+    },
+    {
       "file": "encore-55333-provider-recipient-replay-002.json",
       "observation_id": "encore-55333-provider-recipient-replay-002",
       "effect_ids": [55333],

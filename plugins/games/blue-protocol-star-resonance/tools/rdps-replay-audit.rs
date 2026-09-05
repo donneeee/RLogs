@@ -63,6 +63,8 @@ struct ReplayAuditBundle {
 struct CompactReplayReceiptBundle {
     schema_version: u16,
     generated_by: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    observation_id: Option<String>,
     proof_scope: &'static str,
     attribution_mode: &'static str,
     runtime_rule_deployment: &'static str,
@@ -2120,6 +2122,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     if arguments.compact {
         let mut receipt = compact_replay_receipt(
+            arguments.observation_id.clone(),
             attribution_mode,
             state_damage_contribution_deployment_id()?,
             state_damage_contribution_game_build()?,
@@ -2594,6 +2597,7 @@ fn observe(reducer: &mut DamageContributionReducer, event: &CanonicalEvent, obse
 }
 
 fn compact_replay_receipt(
+    observation_id: Option<String>,
     attribution_mode: &'static str,
     runtime_rule_deployment: &'static str,
     runtime_rule_build: &'static str,
@@ -2643,6 +2647,7 @@ fn compact_replay_receipt(
     CompactReplayReceiptBundle {
         schema_version: COMPACT_REPLAY_RECEIPT_SCHEMA_VERSION,
         generated_by: "rlogs-bpsr-rdps-replay-audit",
+        observation_id,
         proof_scope: "packet_proven_rules_only_partial_game_coverage",
         attribution_mode,
         runtime_rule_deployment,
@@ -2699,6 +2704,7 @@ fn compact_receipt_digest(
 struct Arguments {
     rlogs: Vec<PathBuf>,
     output: PathBuf,
+    observation_id: Option<String>,
     inspiration_combined_authority: Option<PathBuf>,
     summary_only: bool,
     compact: bool,
@@ -2712,6 +2718,13 @@ struct Arguments {
 fn arguments() -> Result<Arguments, String> {
     let mut values = env::args_os().skip(1).collect::<Vec<_>>();
     let output = take_value(&mut values, "--output")?;
+    let observation_id = take_optional_value(&mut values, "--observation-id")?
+        .map(|value| {
+            value
+                .into_string()
+                .map_err(|_| "--observation-id must be valid UTF-8".to_owned())
+        })
+        .transpose()?;
     let inspiration_combined_authority =
         take_optional_value(&mut values, "--inspiration-combined-authority")?;
     let compact = take_switch(&mut values, "--compact");
@@ -2752,6 +2765,17 @@ fn arguments() -> Result<Arguments, String> {
     {
         return Err("--compact is limited to production-promoted-rule replay receipts".into());
     }
+    if observation_id.is_some() && !compact {
+        return Err("--observation-id is only valid with --compact".into());
+    }
+    if observation_id.as_deref().is_some_and(|value| {
+        value.is_empty()
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    }) {
+        return Err("--observation-id must contain only ASCII letters, digits, and hyphens".into());
+    }
     let mut rlogs = BTreeSet::new();
     while let Some(position) = values.iter().position(|value| value == "--rlog") {
         if position + 1 >= values.len() {
@@ -2773,6 +2797,7 @@ fn arguments() -> Result<Arguments, String> {
     Ok(Arguments {
         rlogs: rlogs.into_iter().collect(),
         output: output.into(),
+        observation_id,
         inspiration_combined_authority: inspiration_combined_authority.map(PathBuf::from),
         summary_only,
         compact,
@@ -2846,7 +2871,7 @@ fn take_optional_value(values: &mut Vec<OsString>, flag: &str) -> Result<Option<
 }
 
 fn usage() -> String {
-    "usage: rlogs-bpsr-rdps-replay-audit ((--rlog <sealed.rlog> | --rlog-dir <directory>)... | --inspiration-combined-authority <v19.json>) [--summary-only | --compact] [--audit-enable-inspiration-candidate | --audit-enable-harmony-grace-candidate | --audit-enable-mechanical-power-candidate | --audit-enable-mechanical-power-tier0-candidate | --audit-enable-target-vulnerability-candidate] --output <report.json>".into()
+    "usage: rlogs-bpsr-rdps-replay-audit ((--rlog <sealed.rlog> | --rlog-dir <directory>)... | --inspiration-combined-authority <v19.json>) [--summary-only | --compact [--observation-id <id>]] [--audit-enable-inspiration-candidate | --audit-enable-harmony-grace-candidate | --audit-enable-mechanical-power-candidate | --audit-enable-mechanical-power-tier0-candidate | --audit-enable-target-vulnerability-candidate] --output <report.json>".into()
 }
 
 #[cfg(test)]
@@ -3106,6 +3131,7 @@ mod tests {
         let mut receipt = CompactReplayReceiptBundle {
             schema_version: COMPACT_REPLAY_RECEIPT_SCHEMA_VERSION,
             generated_by: "rlogs-bpsr-rdps-replay-audit",
+            observation_id: Some("canonical-replay-conservation-test-001".into()),
             proof_scope: "packet_proven_rules_only_partial_game_coverage",
             attribution_mode: "production_promoted_rules",
             runtime_rule_deployment: "global",

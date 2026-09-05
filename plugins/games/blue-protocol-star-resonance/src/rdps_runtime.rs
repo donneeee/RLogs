@@ -4184,10 +4184,7 @@ mod tests {
         assert!(current.validate().is_ok());
         assert_eq!(
             current.promotion_blockers(),
-            [
-                "canonical-replay-conservation",
-                "party-support-formula-frontier",
-            ]
+            ["party-support-formula-frontier"]
         );
 
         let mut duplicate = base.clone();
@@ -4195,7 +4192,7 @@ mod tests {
             .as_array_mut()
             .expect("promotion blockers should be an array")
             .push(serde_json::Value::String(
-                "canonical-replay-conservation".into(),
+                "party-support-formula-frontier".into(),
             ));
         assert!(runtime_from_value(duplicate).validate().is_err());
 
@@ -5727,9 +5724,13 @@ mod tests {
             assert_eq!(document["observation_id"], observation_id);
             let build = document["client_build"]
                 .as_str()
-                .or_else(|| document["game_build"].as_str());
+                .or_else(|| document["game_build"].as_str())
+                .or_else(|| document["runtime_rule_build"].as_str());
             assert_eq!(build, Some("24687926"), "wrong build in receipt {file}");
-            if let Some(deployment_id) = document["deployment_id"].as_str() {
+            if let Some(deployment_id) = document["deployment_id"]
+                .as_str()
+                .or_else(|| document["runtime_rule_deployment"].as_str())
+            {
                 assert_eq!(
                     deployment_id, "global",
                     "wrong deployment in receipt {file}"
@@ -5772,6 +5773,75 @@ mod tests {
                             "receipt {file} claims external-state authority for an absent effect {effect_id}"
                         );
                     }
+                }
+                "conservation-authority" => {
+                    assert!(entry.get("negative_gate_pointer").is_none());
+                    assert_eq!(document["generated_by"], "rlogs-bpsr-rdps-replay-audit");
+                    assert_eq!(document["attribution_mode"], "production_promoted_rules");
+                    assert_eq!(document["all_runtime_targets_match"], true);
+                    assert_eq!(document["all_reports_conserved"], true);
+                    assert_eq!(
+                        document["policy"]["canonical_integrity_seal_required"],
+                        true
+                    );
+                    assert_eq!(document["policy"]["exact_runtime_identity_required"], true);
+                    assert_eq!(document["policy"]["production_promoted_rules_only"], true);
+                    assert_eq!(
+                        document["policy"]["exact_party_conservation_required"],
+                        true
+                    );
+                    assert_eq!(document["policy"]["raw_packet_payloads_included"], false);
+                    assert_eq!(document["policy"]["source_paths_included"], false);
+                    assert_eq!(document["policy"]["runtime_authority_changed"], false);
+                    assert!(document["reports"].as_array().is_some_and(|reports| {
+                        reports.len() >= 2
+                            && reports.iter().all(|report| {
+                                report["runtime_target_match"] == true
+                                    && report["conserved"] == true
+                                    && report["contribution_given"]
+                                        == report["contribution_received"]
+                            })
+                    }));
+                    assert!(
+                        document["total_attributed_damage_events"]
+                            .as_u64()
+                            .is_some_and(|count| count > 0)
+                    );
+                    assert_eq!(
+                        document["rule_effect_ids"]
+                            .as_array()
+                            .expect("conservation receipt rule IDs must be an array"),
+                        effect_ids
+                    );
+                    for effect_id in effect_ids {
+                        let effect_id = effect_id
+                            .as_i64()
+                            .expect("indexed effect IDs must be positive integers");
+                        assert!(
+                            runtime.effect_runtime_transfer_enabled(effect_id)
+                                || external_state
+                                    .rules
+                                    .iter()
+                                    .any(|rule| rule.effect_id == effect_id),
+                            "conservation receipt includes non-production effect {effect_id}"
+                        );
+                    }
+                    let expected_digest = document["content_sha256"]
+                        .as_str()
+                        .expect("conservation receipts must be self-hashed");
+                    let mut digest_input = document.clone();
+                    digest_input
+                        .as_object_mut()
+                        .expect("conservation receipt must be an object")
+                        .remove("content_sha256");
+                    let actual_digest = format!(
+                        "sha256:{:x}",
+                        Sha256::digest(
+                            serde_json::to_vec(&digest_input)
+                                .expect("conservation receipt must serialize")
+                        )
+                    );
+                    assert_eq!(actual_digest, expected_digest);
                 }
                 "negative-gate" | "ownership-only-nontransfer" => {
                     let pointer = entry["negative_gate_pointer"]

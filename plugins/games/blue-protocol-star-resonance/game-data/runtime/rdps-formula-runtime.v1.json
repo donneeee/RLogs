@@ -5,7 +5,6 @@
   "protocol_pack_digest": "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
   "promotion_state": "blocked-current-build-proof-gates-open",
   "promotion_blockers": [
-    "canonical-replay-conservation",
     "party-support-formula-frontier"
   ],
   "policy": {
