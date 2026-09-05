@@ -983,8 +983,12 @@ impl ProfileRegistry {
                 Ok(profile) if profile.character.character_id == public.character_id => profile,
                 Ok(_) | Err(_) => continue,
             };
-            let Some(projects) = package_profile.profession_projects.as_ref() else {
-                continue;
+            let projects = match package_profile.profession_projects.as_ref() {
+                Some(projects) if !projects.is_empty() => projects.clone(),
+                _ => match self.saved_projects_from_owned_sibling(&directory, &public)? {
+                    Some(projects) => projects,
+                    None => continue,
+                },
             };
 
             let mut changed = false;
@@ -1040,7 +1044,7 @@ impl ProfileRegistry {
                 }
             }
 
-            for project in projects {
+            for project in &projects {
                 if let Some(summary) = public
                     .loadouts
                     .iter_mut()
@@ -1078,6 +1082,90 @@ impl ProfileRegistry {
             }
         }
         Ok(())
+    }
+
+    /// Finds an older directory-only observation for the same claimed
+    /// character. Early server builds could fork a profile when region routing
+    /// was refined; both the character UID and authenticated owner must match
+    /// before any saved-project names are reused. The newest compatible source
+    /// wins, and no stats or equipment are copied by this repair.
+    fn saved_projects_from_owned_sibling(
+        &self,
+        target_directory: &Path,
+        target_public: &PublicProfile,
+    ) -> Result<Option<Vec<rlogs_game_bpsr::ProfessionProjectProfile>>, ProfileRegistryError> {
+        let target_claim_path = target_directory.join("claim.json");
+        if !target_claim_path.is_file() {
+            return Ok(None);
+        }
+        let target_claim: ProfileClaim = read_json(&target_claim_path)?;
+        if target_claim.character_id != target_public.character_id {
+            return Ok(None);
+        }
+
+        let mut best = None;
+        for entry in std::fs::read_dir(&self.root)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() || entry.path() == target_directory {
+                continue;
+            }
+            let directory = entry.path();
+            let public_path = directory.join("public.json");
+            let claim_path = directory.join("claim.json");
+            let package_path = directory.join("current.profile.json");
+            if !public_path.is_file() || !claim_path.is_file() || !package_path.is_file() {
+                continue;
+            }
+            let sibling_public: PublicProfile = match read_json(&public_path) {
+                Ok(public) => public,
+                Err(_) => continue,
+            };
+            if sibling_public.character_id != target_public.character_id {
+                continue;
+            }
+            let sibling_claim: ProfileClaim = match read_json(&claim_path) {
+                Ok(claim) => claim,
+                Err(_) => continue,
+            };
+            if sibling_claim.character_id != target_claim.character_id
+                || sibling_claim.submitter_id != target_claim.submitter_id
+            {
+                continue;
+            }
+            let sibling_package: LocalProfilePackage = match read_json(&package_path) {
+                Ok(package) => package,
+                Err(_) => continue,
+            };
+            if sibling_package.package_id != sibling_public.package_id {
+                continue;
+            }
+            let sibling_profile = match validate_bpsr_package(&sibling_package) {
+                Ok(profile) if profile.character.character_id == target_public.character_id => {
+                    profile
+                }
+                Ok(_) | Err(_) => continue,
+            };
+            let Some(projects) = sibling_profile
+                .profession_projects
+                .filter(|projects| !projects.is_empty())
+            else {
+                continue;
+            };
+            let candidate = (
+                sibling_public.updated_unix_millis,
+                sibling_public.profile_id,
+                projects,
+            );
+            if best
+                .as_ref()
+                .is_none_or(|(updated, profile_id, _): &(u64, String, Vec<_>)| {
+                    candidate.0 > *updated || (candidate.0 == *updated && candidate.1 < *profile_id)
+                })
+            {
+                best = Some(candidate);
+            }
+        }
+        Ok(best.map(|(_, _, projects)| projects))
     }
 }
 
@@ -1820,6 +1908,99 @@ mod tests {
         let reopened_again =
             ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
         assert_eq!(reopened_again.get(&receipt.profile_id).unwrap(), repaired);
+    }
+
+    #[test]
+    fn reopening_registry_repairs_canonical_profile_from_owned_legacy_sibling() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let directory_package = mutate_package(package(10, "1000001", 3), |profile| {
+            profile.current_profession_project_id = Some(5);
+            profile.profession_projects = Some(vec![
+                rlogs_game_bpsr::ProfessionProjectProfile {
+                    project_id: 5,
+                    project_name: "Daily".into(),
+                    profession_id: Some(11),
+                },
+                rlogs_game_bpsr::ProfessionProjectProfile {
+                    project_id: 8,
+                    project_name: "Bossing".into(),
+                    profession_id: Some(4),
+                },
+            ]);
+            profile.class_id = Some(11);
+            profile.specialization_id = Some(2);
+        });
+        let legacy = registry
+            .publish(
+                directory_package,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+
+        // Reproduce the legacy region-refinement fork: the newer canonical
+        // directory has a complete current snapshot but no saved-project list.
+        let canonical_id = format!("prf_{}", "b".repeat(32));
+        let canonical_directory = root.path().join(&canonical_id);
+        std::fs::create_dir_all(&canonical_directory).unwrap();
+        let canonical_package = mutate_package(package(30, "1000001", 7), |profile| {
+            profile.current_profession_project_id = Some(5);
+            profile.class_id = Some(11);
+            profile.specialization_id = Some(2);
+        });
+        let mut canonical_public = registry.get(&legacy.profile_id).unwrap();
+        canonical_public.profile_id.clone_from(&canonical_id);
+        canonical_public
+            .package_id
+            .clone_from(&canonical_package.package_id);
+        canonical_public.created_unix_millis = 30;
+        canonical_public.updated_unix_millis = 40;
+        canonical_public.module_inventory_count = 7;
+        canonical_public.loadouts.clear();
+        canonical_public.envelope = canonical_package.request.payload.clone();
+        write_json_atomic(&canonical_directory.join("public.json"), &canonical_public).unwrap();
+        write_json_atomic(
+            &canonical_directory.join("current.profile.json"),
+            &canonical_package,
+        )
+        .unwrap();
+        write_json_atomic(
+            &canonical_directory.join("claim.json"),
+            &ProfileClaim {
+                schema_version: PROFILE_CLAIM_SCHEMA_VERSION,
+                profile_id: canonical_id.clone(),
+                submitter_id: "user-one".into(),
+                character_id: "1000001".into(),
+                claimed_unix_millis: 40,
+            },
+        )
+        .unwrap();
+        drop(registry);
+
+        let reopened =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let repaired = reopened.get(&canonical_id).unwrap();
+        assert_eq!(
+            repaired
+                .loadouts
+                .iter()
+                .map(|loadout| (
+                    loadout.project_id,
+                    loadout.project_name.as_deref(),
+                    loadout.snapshot_available,
+                ))
+                .collect::<Vec<_>>(),
+            vec![(5, Some("Daily"), true), (8, Some("Bossing"), false)]
+        );
+        assert_eq!(repaired.module_inventory_count, 7);
+        assert_eq!(
+            reopened.catalog(None).unwrap().profiles[0].profile_id,
+            canonical_id
+        );
     }
 
     #[test]
