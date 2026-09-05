@@ -5888,6 +5888,53 @@ mod tests {
     }
 
     #[test]
+    fn inspiration_external_lifecycle_receipt_remains_formula_fail_closed() {
+        let receipt: serde_json::Value = serde_json::from_str(include_str!(
+            "../protocol-packs/global/steam-24687926/observations/inspiration-2202041-external-lifecycle-counterfactual-002.json"
+        ))
+        .expect("the Inspiration external-lifecycle receipt must remain valid JSON");
+
+        assert_eq!(receipt["client_build"], "24687926");
+        assert_eq!(receipt["effect_id"], 2_202_041);
+        assert_eq!(
+            receipt["external_lifecycle"]["external_provider_recipient_lifecycle_observed"],
+            true
+        );
+        assert_eq!(
+            receipt["external_lifecycle"]["complete_gap_bounded_lifecycles"],
+            34
+        );
+        assert_eq!(
+            receipt["external_lifecycle"]["complete_windows_with_recipient_damage"],
+            8
+        );
+        assert_eq!(
+            receipt["external_lifecycle"]["all_damage_windows_have_distinct_provider_and_recipient"],
+            true
+        );
+        assert_eq!(
+            receipt["counterfactual_diagnostic"]["configured_endpoint_transition_pairs"],
+            174
+        );
+        assert_eq!(
+            receipt["counterfactual_diagnostic"]["strict_controlled_counterfactual_pairs"],
+            0
+        );
+        assert_eq!(receipt["authority"]["recipient_scope_authority"], true);
+        assert_eq!(receipt["authority"]["lifecycle_authority"], true);
+        assert_eq!(receipt["authority"]["formula_authority"], false);
+        assert_eq!(receipt["authority"]["runtime_authority"], false);
+        assert_eq!(
+            receipt["authority"]["provider_rdps_credit_authorized"],
+            false
+        );
+
+        let runtime = runtime_from_value(bundled_runtime_value());
+        assert!(runtime.validate().is_ok());
+        assert!(runtime.effect_runtime_transfer_enabled(2_202_041));
+    }
+
+    #[test]
     fn fiery_battle_will_requires_exact_local_observed_attack_authority() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());

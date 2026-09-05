@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "observation_id": "inspiration-2202041-external-lifecycle-counterfactual-002",
+  "deployment_id": "global",
+  "client_build": "24687926",
+  "effect_id": 2202041,
+  "origin": {
+    "source_type_id": 1,
+    "source_config_id": 2202040,
+    "source_rule_id": "mrs:b68d0137c643",
+    "source_id": "talent:502"
+  },
+  "sealed_evidence": {
+    "candidate_manifest_sha256": "4907dc8589d21a93f5464477334538cd2ee38ba684797ae9aea76f551bb0a6b3",
+    "candidate_manifest_bytes": 10664,
+    "gap_window_audit_sha256": "44db94cde73254aa185da16acf55273d364acefe04451746b2cafbcfa7d511fc",
+    "gap_window_audit_bytes": 986751,
+    "transition_counterfactual_audit_sha256": "a354dcad07a15c1d437c8367bb38a3b90899f734c53c0e59ea07d7b8990b0ad4",
+    "transition_counterfactual_audit_bytes": 237264,
+    "bounded_formula_cohort_sha256": "c0f2f02f95db1c9c7c2721e55c646f57cc8e803c44db3b3f592d15d2ae92c8e3",
+    "bounded_formula_cohort_bytes": 272777,
+    "sealed_rlogs": 6,
+    "source_rlog_bytes": 106506418,
+    "canonical_events": 2378110
+  },
+  "external_lifecycle": {
+    "selected_effect_status_events": 14303,
+    "applications": 385,
+    "terminal_events": 348,
+    "complete_gap_bounded_lifecycles": 34,
+    "complete_windows_with_recipient_damage": 8,
+    "recipient_damage_events_inside_complete_windows": 115,
+    "provider_entity_uuid": 12616631321216,
+    "distinct_recipient_entity_uuids": [
+      70063620736,
+      216009015936,
+      337444864640
+    ],
+    "all_damage_windows_have_distinct_provider_and_recipient": true,
+    "all_damage_windows_terminate_with_observed_remove": true,
+    "external_provider_recipient_lifecycle_observed": true
+  },
+  "counterfactual_diagnostic": {
+    "damage_events": 422755,
+    "effect_present_damage_events": 207606,
+    "effect_absent_damage_events": 215149,
+    "same_normalized_damage_context_pairs": 1889,
+    "configured_endpoint_transition_pairs": 174,
+    "observed_transition_families": [
+      "Strength",
+      "Intelligence",
+      "Dexterity",
+      "Vitality",
+      "Attack",
+      "Critical chance",
+      "Haste",
+      "Luck",
+      "Mastery",
+      "Versatility"
+    ],
+    "exact_observed_input_candidate_pairs": 0,
+    "strict_controlled_counterfactual_pairs": 0,
+    "minimum_residual_dimensions_among_endpoint_transition_pairs": 11,
+    "data_gaps": 3084,
+    "lifecycles_cut_by_data_quality_boundary": 328,
+    "selected_attribute_transition_observed": true,
+    "controlled_formula_pair_observed": false
+  },
+  "authority": {
+    "recipient_scope_authority": true,
+    "lifecycle_authority": true,
+    "exact_damage_projection_proven": false,
+    "exact_operation_order_proven": false,
+    "exact_integer_rounding_proven": false,
+    "packet_conservation_proven": false,
+    "formula_authority": false,
+    "runtime_authority": false,
+    "ui_display_authority": false,
+    "provider_rdps_credit_authorized": false,
+    "ordinary_damage_is_immutable": true,
+    "unresolved_evidence_is_preserved": true
+  },
+  "required_next_capture": {
+    "pattern": "A/B/A before, during, and after one complete 2202041 lifecycle",
+    "requirements": [
+      "same build, run, scene, source, direct source, target, ability, hit identity, flags, and normalized packet formula inputs",
+      "same non-candidate source and target statuses and same status-provider attribute states",
+      "only the selected 2202041 status and its packet-observed endpoint attribute transition may differ",
+      "complete source and target attribute snapshots on both sides of every comparison",
+      "repeat enough structurally identical hits to distinguish deterministic integer rounding from damage-roll variation"
+    ],
+    "reason": "the current cohort proves external ownership and lifecycle, but every endpoint-transition comparison still changes at least eleven additional observed state dimensions"
+  }
+}

@@ -47,6 +47,13 @@
       "negative_gate_pointer": "/policy/runtime_authority"
     },
     {
+      "file": "inspiration-2202041-external-lifecycle-counterfactual-002.json",
+      "observation_id": "inspiration-2202041-external-lifecycle-counterfactual-002",
+      "effect_ids": [2202041],
+      "disposition": "negative-gate",
+      "negative_gate_pointer": "/authority/runtime_authority"
+    },
+    {
       "file": "inspire-31602-provider-recipient-replay-001.json",
       "observation_id": "inspire-31602-provider-recipient-replay-001",
       "effect_ids": [31602],
