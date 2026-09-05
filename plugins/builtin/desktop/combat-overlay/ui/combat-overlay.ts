@@ -167,9 +167,15 @@ export function applyOverlayTimerPause(
     value == null ? value : Math.max(0, value - excess);
   return {
     ...snapshot,
-    attempt_elapsed_micros: subtract(snapshot.attempt_elapsed_micros),
-    encounter_elapsed_micros: subtract(snapshot.encounter_elapsed_micros),
-    run_elapsed_micros: subtract(snapshot.run_elapsed_micros),
+    attempt_elapsed_micros: snapshot.encounter_terminal_micros == null
+      ? subtract(snapshot.attempt_elapsed_micros)
+      : snapshot.attempt_elapsed_micros,
+    encounter_elapsed_micros: snapshot.encounter_terminal_micros == null
+      ? subtract(snapshot.encounter_elapsed_micros)
+      : snapshot.encounter_elapsed_micros,
+    run_elapsed_micros: snapshot.run_terminal_micros == null
+      ? subtract(snapshot.run_elapsed_micros)
+      : snapshot.run_elapsed_micros,
     game_time_micros: subtract(snapshot.game_time_micros),
     true_time_micros: subtract(snapshot.true_time_micros),
   };
@@ -3761,12 +3767,6 @@ export function overlaySceneName(
   presentation: OverlayEncounterPresentation | null | undefined,
   snapshot: OverlaySnapshot | null | undefined,
 ): string {
-  const bossNames = [...new Set(
-    (presentation?.bosses ?? [])
-      .map((boss) => boss.name.trim())
-      .filter((name) => name.length > 0),
-  )];
-  if (bossNames.length > 0) return `Boss: ${bossNames.join(" + ")}`;
   if (presentation?.scene_name?.trim()) return presentation.scene_name.trim();
   const sceneId = presentation?.scene_id ?? snapshot?.scene_id;
   return sceneId === null || sceneId === undefined ? "Waiting for scene" : `Scene ${sceneId}`;

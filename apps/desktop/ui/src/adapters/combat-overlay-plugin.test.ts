@@ -105,6 +105,27 @@ describe("Combat Overlay plug-in settings", () => {
     expect(snapshot!.run_elapsed_micros).toBe(30_000_000);
   });
 
+  it("never subtracts inactivity from clocks already frozen by packet boundaries", () => {
+    const paused = applyOverlayTimerPause({
+      attempt_elapsed_micros: 11_000_000,
+      encounter_elapsed_micros: 25_000_000,
+      encounter_terminal_micros: 15_000_000,
+      run_elapsed_micros: 30_000_000,
+      run_terminal_micros: 15_000_000,
+      last_hostile_micros: 10_000_000,
+      latest_event_micros: 20_000_000,
+    } as Parameters<typeof applyOverlayTimerPause>[0], {
+      pauseOverlayTimersOutsideCombat: true,
+      overlayTimerInactivitySeconds: 3,
+    });
+
+    expect(paused).toMatchObject({
+      attempt_elapsed_micros: 11_000_000,
+      encounter_elapsed_micros: 25_000_000,
+      run_elapsed_micros: 30_000_000,
+    });
+  });
+
   it("keeps internal combat identifiers out of attribution labels", () => {
     expect(humanizeOverlayAttributionComponent(
       "Encore (55333) standalone-generated-damage (Actions 230401/230501)",
@@ -678,7 +699,7 @@ describe("Combat Overlay plug-in settings", () => {
     ]);
   });
 
-  it("uses the already-resolved live boss entities for every dungeon header", () => {
+  it("keeps the scene title stable while boss health uses its own summary row", () => {
     expect(overlaySceneName({
       scene_id: 1633,
       scene_name: "Chaotic - Tina's Mindrealm",
@@ -687,7 +708,7 @@ describe("Combat Overlay plug-in settings", () => {
         { actor_id: "boss", monster_id: 33701, name: "Void Tina", current_hp: 1, max_hp: 2, bdps: 3, team_damage: 4 },
       ],
       run_projection: null,
-    }, { scene_id: 1633, actors: [] })).toBe("Boss: Void Tina");
+    }, { scene_id: 1633, actors: [] })).toBe("Chaotic - Tina's Mindrealm");
 
     expect(overlaySceneName({
       scene_id: 6525,

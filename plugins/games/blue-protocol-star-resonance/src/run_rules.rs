@@ -313,6 +313,22 @@ pub fn bundled_gauntlet_scene_ids() -> Result<BTreeSet<i32>, BpsrRunRuleError> {
         .collect())
 }
 
+/// Scenes where a game-file Boss-tier death is the visible dungeon finish
+/// line. Settlement packets still own authoritative completion and submission
+/// eligibility; this catalog only freezes the live clock at the actual kill.
+pub fn bundled_terminal_boss_scene_ids() -> Result<BTreeSet<i32>, BpsrRunRuleError> {
+    Ok(bundled_run_reducer_config()?
+        .scene_rules
+        .into_iter()
+        .filter_map(|(scene_id, rule)| {
+            (rule.activity_kind == ActivityKind::Dungeon
+                && rule.boss_encounter_id.is_some()
+                && rule.boss_monster_ids.len() <= 1)
+                .then_some(scene_id)
+        })
+        .collect())
+}
+
 pub fn bundled_scene_run_identities()
 -> Result<BTreeMap<i32, BpsrSceneRunIdentity>, BpsrRunRuleError> {
     Ok(bundled_run_reducer_config()?
@@ -405,6 +421,16 @@ mod tests {
         assert!(config.scene_rules.contains_key(&32_160));
         assert!(config.scene_rules.contains_key(&1633));
         assert!(config.scene_rules.contains_key(&6515));
+    }
+
+    #[test]
+    fn visible_finish_catalog_includes_single_boss_dungeons_but_excludes_multi_boss_activities() {
+        let scenes = bundled_terminal_boss_scene_ids().unwrap();
+        assert!(scenes.contains(&6_525));
+        assert!(scenes.contains(&6_565));
+        assert!(scenes.contains(&6_515));
+        assert!(scenes.contains(&32_105));
+        assert!(!scenes.contains(&12_023));
     }
 
     #[test]

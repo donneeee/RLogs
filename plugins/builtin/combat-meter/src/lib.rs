@@ -499,8 +499,9 @@ pub struct CombatTimelineSnapshot {
     /// value means the current encounter remains open.
     #[serde(default)]
     pub encounter_terminal_micros: Option<u64>,
-    /// Packet timestamp that froze the full run clock. Scene departure and
-    /// authoritative run completion set this; ordinary boss clears do not.
+    /// Packet timestamp that froze the visible full-run clock. A reviewed
+    /// dungeon Boss-tier death may set this before settlement; the separate
+    /// run analyzer remains authoritative for submission completion.
     #[serde(default)]
     pub run_terminal_micros: Option<u64>,
     /// Elapsed wall time from the latest packet-derived dungeon entry through
@@ -1141,6 +1142,13 @@ pub struct CombatTimelinePlugin {
     /// continuous Gauntlet encounter. The game catalog, not boss-count
     /// heuristics, owns this classification.
     continuous_encounter_scene_ids: BTreeSet<i32>,
+    /// Game-owned boss classification used only for packet-derived live phase
+    /// boundaries. The generic combat reducer never guesses boss identity
+    /// from health, names, or damage totals.
+    boss_monster_resolver: Option<BossMonsterResolver>,
+    /// Dungeon scenes where an observed Boss-tier death freezes the visible
+    /// run clock. Authoritative completion remains separate for submission.
+    terminal_boss_scene_ids: BTreeSet<i32>,
     health_attributes: Option<LiveHealthAttributeMapping>,
     active_combat_started: Option<u64>,
     first_combat_started: Option<u64>,
@@ -1206,9 +1214,13 @@ pub struct CombatTimelinePlugin {
     live_attribution: DamageContributionReducer,
     live_damage_influences: BTreeMap<HistoryDamageInfluenceKey, HistoryDamageInfluenceAccumulator>,
     live_damage_influences_truncated: bool,
-    /// Latest objective-complete phase boundary. A packet-proven wipe restores
-    /// this baseline instead of retaining the failed boss pull.
+    /// Latest packet-proven mobbing-to-boss boundary. A packet-proven wipe
+    /// restores this baseline instead of retaining the failed boss pull.
     live_phase_checkpoint: Option<LivePhaseCheckpoint>,
+    /// True after player damage has been observed against non-boss enemies in
+    /// the current run. The first later Boss-tier hit becomes the exact phase
+    /// boundary, retaining transition damage without a guessed delay.
+    mobbing_damage_observed: bool,
     event_count: u64,
     data_gap_count: u64,
     closed_at_log_end: bool,
@@ -1227,6 +1239,10 @@ pub struct LiveHealthAttributeMapping {
 /// of game IDs and make replay deterministic and reset-safe.
 pub type AbilityBreakdownResolver =
     fn(raw_ability_id: i64, hit_event_id: Option<i32>, damage_source: Option<i32>) -> Option<i64>;
+
+/// Pure game-owned Boss-tier lookup. Scene-aware exact identities may take
+/// precedence before falling back to the game's static monster tier catalog.
+pub type BossMonsterResolver = fn(scene_id: Option<i32>, monster_id: i64) -> bool;
 
 impl CombatTimelinePlugin {
     pub fn new() -> Self {
@@ -1271,11 +1287,24 @@ impl CombatTimelinePlugin {
         self
     }
 
+    pub fn with_boss_monster_resolver(mut self, resolver: BossMonsterResolver) -> Self {
+        self.boss_monster_resolver = Some(resolver);
+        self
+    }
+
+    pub fn with_terminal_boss_scenes(mut self, scene_ids: impl IntoIterator<Item = i32>) -> Self {
+        self.terminal_boss_scene_ids = scene_ids.into_iter().collect();
+        self
+    }
+
     /// Starts an incremental live projection without invoking the replay host.
     pub fn begin_live(&mut self, header: &RlogHeader) {
         let contribution_rules = self.contribution_rules.clone();
         let health_attributes = self.health_attributes;
         let ability_breakdown_resolver = self.ability_breakdown_resolver;
+        let continuous_encounter_scene_ids = self.continuous_encounter_scene_ids.clone();
+        let boss_monster_resolver = self.boss_monster_resolver;
+        let terminal_boss_scene_ids = self.terminal_boss_scene_ids.clone();
         let mut exact_contribution_projector = self.exact_contribution_projector.take();
         if let Some(projector) = exact_contribution_projector.as_mut() {
             projector.reset();
@@ -1287,6 +1316,9 @@ impl CombatTimelinePlugin {
         .expect("previously validated rDPS rules remain valid");
         self.health_attributes = health_attributes;
         self.ability_breakdown_resolver = ability_breakdown_resolver;
+        self.continuous_encounter_scene_ids = continuous_encounter_scene_ids;
+        self.boss_monster_resolver = boss_monster_resolver;
+        self.terminal_boss_scene_ids = terminal_boss_scene_ids;
         self.header = Some(header.clone());
     }
 
@@ -1333,12 +1365,65 @@ impl CombatTimelinePlugin {
         self.live_phase_checkpoint = None;
         self.encounter_terminal_micros = None;
         self.run_terminal_micros = None;
+        self.mobbing_damage_observed = false;
     }
 
     fn mark_run_terminal(&mut self, observed_micros: u64) {
         self.run_terminal_micros.get_or_insert(observed_micros);
         self.close_encounter_clock(observed_micros);
         self.end_combat(observed_micros);
+    }
+
+    fn actor_is_boss(&self, actor_id: u64) -> bool {
+        let actor_id = self.canonical_actor_id(actor_id);
+        self.actors
+            .get(&actor_id)
+            .and_then(|actor| actor.monster_id)
+            .zip(self.boss_monster_resolver)
+            .is_some_and(|(monster_id, resolver)| resolver(self.scene_id, monster_id))
+    }
+
+    fn should_use_boss_phase_boundary(&self) -> bool {
+        self.scene_id
+            .is_none_or(|scene_id| !self.continuous_encounter_scene_ids.contains(&scene_id))
+    }
+
+    fn checkpoint_before_boss_damage(&mut self, observed_micros: u64) {
+        if !self.mobbing_damage_observed
+            || self.live_phase_checkpoint.is_some()
+            || !self.should_use_boss_phase_boundary()
+        {
+            return;
+        }
+        // Preserve delayed damage from the final mob kill, then cap the
+        // transition at the same reviewed inactivity window used by every
+        // other live combat boundary. A long boss intro cannot dilute the
+        // saved mobbing rates merely because its first hit arrives later.
+        let checkpoint_micros = self.last_hostile_micros.map_or_else(
+            || {
+                self.last_combat_ended
+                    .unwrap_or(observed_micros)
+                    .min(observed_micros)
+            },
+            |last_hostile| {
+                observed_micros.min(last_hostile.saturating_add(COMBAT_INACTIVITY_TIMEOUT_MICROS))
+            },
+        );
+        self.finish_encounter(checkpoint_micros);
+        self.capture_live_phase_checkpoint(checkpoint_micros);
+    }
+
+    fn observe_terminal_boss_death(&mut self, observed_micros: u64, actor_id: u64) {
+        let terminal_scene = self
+            .scene_id
+            .is_some_and(|scene_id| self.terminal_boss_scene_ids.contains(&scene_id));
+        if terminal_scene && self.actor_is_boss(actor_id) {
+            self.run_terminal_micros = Some(
+                self.run_terminal_micros
+                    .map_or(observed_micros, |terminal| terminal.min(observed_micros)),
+            );
+            self.finish_encounter(observed_micros);
+        }
     }
 
     fn current_attempt_damage_elapsed_micros(&self) -> u64 {
@@ -1530,6 +1615,7 @@ impl CombatTimelinePlugin {
         self.attempt_elapsed_micros = 0;
         self.attempt_damage_elapsed_micros = 0;
         self.encounter_terminal_micros = None;
+        self.mobbing_damage_observed = false;
         self.attempt_damage_started_micros = None;
         self.attempt_last_damage_micros = None;
         self.projected_contributions.clear();
@@ -1553,6 +1639,8 @@ impl CombatTimelinePlugin {
     /// while retaining packet-proven player identity for the next pull.
     pub fn force_reset_live_attempt(&mut self, observed_micros: u64) {
         self.live_phase_checkpoint = None;
+        self.run_terminal_micros = None;
+        self.mobbing_damage_observed = false;
         self.reset_live_attempt(observed_micros);
     }
 
@@ -1591,16 +1679,7 @@ impl CombatTimelinePlugin {
             if let Some(connection_id) = wire_connection_id(&envelope.provenance) {
                 self.relevant_connection_ids.insert(connection_id);
             }
-            if dungeon.kind == DungeonEventKind::ObjectiveUpdated
-                && dungeon.objective_complete == Some(true)
-            {
-                // Objective completion can be an intermediate dungeon segment
-                // (mobbing -> boss), not necessarily the whole run. Freeze its
-                // live checkpoint here. Boss activity is added to that
-                // baseline, and every packet-proven retry returns to it.
-                self.finish_encounter(envelope.time.observed_micros);
-                self.capture_live_phase_checkpoint(envelope.time.observed_micros);
-            } else if matches!(
+            if matches!(
                 dungeon.kind,
                 DungeonEventKind::Completed
                     | DungeonEventKind::Failed
@@ -1816,20 +1895,30 @@ impl CombatTimelinePlugin {
                 let target = self
                     .actor_ancestry
                     .resolve_entity_at(damage.target, envelope.time.observed_micros);
+                let source_actor_id = self.canonical_actor_id(source.actor_id.0);
+                let source_is_player = self
+                    .actors
+                    .get(&source_actor_id)
+                    .is_some_and(ActorAccumulator::has_player_identity_evidence);
+                let target_is_boss = self.actor_is_boss(target.actor_id.0);
+                let reported = nonnegative(damage.amount);
+                if reported > 0 && source_is_player && target_is_boss {
+                    // The first actual Boss-tier hit is a stronger boundary
+                    // than objective completion: any delayed mob damage before
+                    // it remains in the mobbing result and retry baseline.
+                    self.checkpoint_before_boss_damage(envelope.time.observed_micros);
+                }
                 if let Some(connection_id) = wire_connection_id(&envelope.provenance) {
                     self.relevant_connection_ids.insert(connection_id);
                 }
                 self.begin_combat(envelope.time.observed_micros);
                 self.last_hostile_micros = Some(envelope.time.observed_micros);
                 let during_combat = self.active_combat_started.is_some();
-                let reported = nonnegative(damage.amount);
-                let source_actor_id = self.canonical_actor_id(source.actor_id.0);
-                let source_is_player = self
-                    .actors
-                    .get(&source_actor_id)
-                    .is_some_and(ActorAccumulator::has_player_identity_evidence);
                 if reported > 0 && source_is_player {
                     self.observe_player_damage_clock(envelope.time.observed_micros);
+                    if !target_is_boss {
+                        self.mobbing_damage_observed = true;
+                    }
                 }
                 let effective = nonnegative(
                     damage
@@ -1975,6 +2064,12 @@ impl CombatTimelinePlugin {
                 let actor = self
                     .actor_ancestry
                     .resolve_entity_at(*actor, envelope.time.observed_micros);
+                if *state == LifeState::Died {
+                    self.observe_terminal_boss_death(
+                        envelope.time.observed_micros,
+                        actor.actor_id.0,
+                    );
+                }
                 let accumulator = self.actor_mut(actor.actor_id.0, actor.entity_uuid.0);
                 match state {
                     LifeState::Died => accumulator.deaths = accumulator.deaths.saturating_add(1),
@@ -6883,7 +6978,7 @@ mod tests {
     }
 
     #[test]
-    fn damage_and_dungeon_objectives_bound_live_combat_without_a_second_pass() {
+    fn objective_completion_does_not_clear_late_transition_damage() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../tests/fixtures/replay/reference-combat.rlog");
         let reader = RlogReader::new(
@@ -6963,9 +7058,9 @@ mod tests {
         }
 
         let snapshot = plugin.live_snapshot().unwrap();
-        assert_eq!(snapshot.combat_window_count, 2);
-        assert_eq!(snapshot.active_combat_micros, 11_000_000);
-        assert_eq!(snapshot.combat_started_micros, Some(5_000_000));
+        assert_eq!(snapshot.combat_window_count, 1);
+        assert_eq!(snapshot.active_combat_micros, 12_000_000);
+        assert_eq!(snapshot.combat_started_micros, Some(1_000_000));
         assert_eq!(snapshot.combat_ended_micros, Some(13_000_000));
         assert!(!snapshot.closed_at_log_end);
         let player = snapshot
@@ -6974,9 +7069,180 @@ mod tests {
             .find(|actor| actor.actor_id == "1")
             .unwrap();
         assert_eq!(player.damage_during_combat, 12_000);
-        assert!((player.run_dps - 1_000.0).abs() < 0.001);
-        assert!((player.active_dps - 6_000_000.0).abs() < 0.001);
-        assert!((player.encounter_dps - (12_000.0 / 11.0)).abs() < 0.001);
+        assert!(plugin.live_phase_checkpoint.is_none());
+        assert!((player.run_dps - (12_000.0 / 13.0)).abs() < 0.001);
+        assert!((player.encounter_dps - 1_000.0).abs() < 0.001);
+    }
+
+    fn test_boss_resolver(_scene_id: Option<i32>, monster_id: i64) -> bool {
+        monster_id == 9_001
+    }
+
+    #[test]
+    fn first_boss_hit_checkpoints_all_late_mobbing_damage_for_retry() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/replay/reference-combat.rlog");
+        let reader = RlogReader::new(
+            BufReader::new(File::open(fixture).unwrap()),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let mut header = reader.header().clone();
+        header.session_id = "boss-phase-checkpoint".into();
+        let mut factory =
+            EventEnvelopeFactory::new(header.session_id.clone(), header.region.clone());
+        let mut plugin = CombatTimelinePlugin::new()
+            .with_boss_monster_resolver(test_boss_resolver)
+            .with_terminal_boss_scenes([6_565]);
+        plugin.begin_live(&header);
+        plugin.scene_id = Some(6_565);
+        plugin.record_run_entry(0);
+        plugin.actor_mut(1, 100).actor_kind = Some("player".into());
+        let mob = plugin.actor_mut(2, 200);
+        mob.actor_kind = Some("monster".into());
+        mob.monster_id = Some(8_001);
+        let boss = plugin.actor_mut(3, 300);
+        boss.actor_kind = Some("monster".into());
+        boss.monster_id = Some(9_001);
+
+        let player = EntityRef {
+            actor_id: ActorId(1),
+            entity_uuid: EntityUuid(100),
+        };
+        let damage = |target, amount| {
+            CanonicalEventDraftKind::Timeline(TimelineEventKind::Damage(DamageEvent {
+                source: player,
+                direct_source: None,
+                target,
+                ability: Some(AbilityId(55)),
+                amount,
+                actual_amount: Some(amount),
+                hp_loss: Some(amount),
+                shield_loss: None,
+                hit_event_id: None,
+                damage_source: None,
+                damage_type: None,
+                flags: DamageFlags::default(),
+                packet: Default::default(),
+            }))
+        };
+        {
+            let mut emit = |observed_micros, kind| {
+                let envelope = factory
+                    .emit(CanonicalEventDraft {
+                        time: EventTime {
+                            observed_micros,
+                            game_time_millis: None,
+                        },
+                        provenance: EventProvenance::wire(observed_micros, 1, observed_micros),
+                        sensitivity: EventSensitivity::PublicGameplay,
+                        kind,
+                    })
+                    .unwrap();
+                plugin.observe_live(&envelope);
+            };
+
+            emit(
+                1_000_000,
+                damage(
+                    EntityRef {
+                        actor_id: ActorId(2),
+                        entity_uuid: EntityUuid(200),
+                    },
+                    1_000,
+                ),
+            );
+            emit(
+                2_000_000,
+                CanonicalEventDraftKind::Dungeon(DungeonEvent {
+                    kind: DungeonEventKind::ObjectiveUpdated,
+                    dungeon_id: None,
+                    instance_id: Some("run-1".into()),
+                    difficulty_id: None,
+                    objective_map_key: None,
+                    objective_id: Some(6_561_003),
+                    objective_value: Some(100),
+                    objective_complete: Some(true),
+                    objective_catalog: None,
+                    flow: None,
+                }),
+            );
+            emit(
+                3_000_000,
+                damage(
+                    EntityRef {
+                        actor_id: ActorId(2),
+                        entity_uuid: EntityUuid(200),
+                    },
+                    500,
+                ),
+            );
+            emit(
+                20_000_000,
+                damage(
+                    EntityRef {
+                        actor_id: ActorId(3),
+                        entity_uuid: EntityUuid(300),
+                    },
+                    250,
+                ),
+            );
+        }
+
+        let during_boss = plugin.live_snapshot().unwrap();
+        let player = during_boss
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(player.reported_damage, 1_750);
+        assert!(plugin.live_phase_checkpoint.is_some());
+        assert_eq!(
+            plugin
+                .live_phase_checkpoint
+                .as_ref()
+                .unwrap()
+                .attempt_elapsed_micros,
+            10_000_000,
+            "the long boss transition must stop at the post-mob inactivity boundary",
+        );
+
+        plugin.reset_live_attempt(22_000_000);
+        let after_retry = plugin.live_snapshot().unwrap();
+        let player = after_retry
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(player.reported_damage, 1_500);
+        assert_eq!(player.damage_during_combat, 1_500);
+    }
+
+    #[test]
+    fn boss_death_freezes_visible_run_clock_before_settlement() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/replay/reference-combat.rlog");
+        let reader = RlogReader::new(
+            BufReader::new(File::open(fixture).unwrap()),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let mut plugin = CombatTimelinePlugin::new()
+            .with_boss_monster_resolver(test_boss_resolver)
+            .with_terminal_boss_scenes([6_565]);
+        plugin.begin_live(reader.header());
+        plugin.scene_id = Some(6_565);
+        plugin.record_run_entry(1_000_000);
+        let boss = plugin.actor_mut(3, 300);
+        boss.actor_kind = Some("monster".into());
+        boss.monster_id = Some(9_001);
+        plugin.observe_terminal_boss_death(11_000_000, 3);
+        plugin.last_event_micros = Some(30_000_000);
+
+        let snapshot = plugin.live_snapshot().unwrap();
+        assert_eq!(snapshot.run_elapsed_micros, Some(10_000_000));
+        assert_eq!(snapshot.run_terminal_micros, Some(11_000_000));
+        assert_eq!(snapshot.encounter_terminal_micros, Some(11_000_000));
     }
 
     #[test]

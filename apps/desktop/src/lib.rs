@@ -82,18 +82,18 @@ use rlogs_game_bpsr::{
     RdpsValidationAnalyzer, RdpsValidationProgress, RdpsValidationReport, RegionResolverError,
     ResolvedRegion, RouteKey, SealedDungeonRunLog, ServerRealmCatalog,
     auxiliary_action_presentation, battle_imagine_presentation, bundled_gauntlet_scene_ids,
-    bundled_run_reducer_config, bundled_scene_run_identities, character_id_from_entity_uuid,
-    combat_action_presentation, combat_breakdown_ability_id, confirmed_damage_contribution_rules,
-    fight_attribute_presentation_catalog, is_boss_monster, is_localized_class_name,
-    localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
-    localized_combat_action_name, localized_monster_name, localized_recount_group_name,
-    localized_scene_name, localized_specialization_identities, localized_status_effect_name,
-    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
-    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
-    resolve_actor_combat_presentation, resolve_live_protocol_pack, scene_boss_monster_ids,
-    state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
-    status_effect_presentation, stimen_floor_encounter_kind, weapon_level_presentation,
-    weapon_presentation,
+    bundled_run_reducer_config, bundled_scene_run_identities, bundled_terminal_boss_scene_ids,
+    character_id_from_entity_uuid, combat_action_presentation, combat_breakdown_ability_id,
+    confirmed_damage_contribution_rules, fight_attribute_presentation_catalog, is_boss_monster,
+    is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
+    localized_class_identities, localized_combat_action_name, localized_monster_name,
+    localized_recount_group_name, localized_scene_name, localized_specialization_identities,
+    localized_status_effect_name, project_local_profile_packages,
+    proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
+    record_offline_capture, resolve_actor_combat_identity, resolve_actor_combat_presentation,
+    resolve_live_protocol_pack, scene_boss_monster_ids, state_damage_contribution_formula_identity,
+    state_damage_contribution_target_matches, status_effect_presentation,
+    stimen_floor_encounter_kind, weapon_level_presentation, weapon_presentation,
 };
 use rlogs_log_format::{RlogHeader, RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_api::{PluginCapability, PluginDependency, PluginRuntime, PluginWorkspaceTabKind};
@@ -10122,6 +10122,10 @@ fn bpsr_combat_timeline_plugin_with_remote_factors(
         Some(Box::new(projector)),
     )?
     .with_ability_breakdown_resolver(combat_breakdown_ability_id)
+    .with_boss_monster_resolver(bpsr_live_boss_monster)
+    .with_terminal_boss_scenes(
+        bundled_terminal_boss_scene_ids().map_err(|error| error.to_string())?,
+    )
     .with_live_health_attributes(LiveHealthAttributeMapping {
         current_hp: 11_310,
         max_hp: 11_320,
@@ -10129,6 +10133,13 @@ fn bpsr_combat_timeline_plugin_with_remote_factors(
     .with_continuous_encounter_scenes(
         bundled_gauntlet_scene_ids().map_err(|error| error.to_string())?,
     ))
+}
+
+fn bpsr_live_boss_monster(scene_id: Option<i32>, monster_id: i64) -> bool {
+    scene_id
+        .and_then(|scene_id| scene_boss_monster_ids(scene_id).ok().flatten())
+        .map(|ids| ids.contains(&monster_id))
+        .unwrap_or_else(|| is_boss_monster(monster_id).unwrap_or(false))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
