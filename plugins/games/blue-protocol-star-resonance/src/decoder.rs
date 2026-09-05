@@ -10912,6 +10912,57 @@ mod tests {
     }
 
     #[test]
+    fn current_build_client_use_slot_emits_cast_without_optional_action_timing() {
+        const TEST_CLIENT_WORLD_SERVICE: u64 = 0x00b5_b5b5;
+        let pack = current_build_use_slot_pack(TEST_CLIENT_WORLD_SERVICE);
+        let mut runtime = current_build_runtime(&pack);
+        let self_delta = runtime
+            .process(&record(
+                1,
+                0x2e,
+                encode(schema::SyncToMeDeltaInfo {
+                    delta: Some(schema::AoiSyncToMeDelta {
+                        base_delta: None,
+                        hate_ids: Vec::new(),
+                        cooldowns: Vec::new(),
+                        fight_resource_cooldowns: Vec::new(),
+                        uuid: Some(216_009_015_936),
+                    }),
+                }),
+            ))
+            .unwrap();
+        assert_eq!(self_delta.status, ProtocolDecodeStatus::Decoded);
+
+        let route = RouteKey::new(
+            PacketDirection::ClientToServer,
+            FragmentKind::Call,
+            TEST_CLIENT_WORLD_SERVICE,
+            0x3d002,
+        );
+        let batch = runtime
+            .process(&record_for_route(
+                2,
+                route,
+                crate::use_skill_attr::tests::world_skill_use_payload_without_attributes(),
+            ))
+            .unwrap();
+        assert_eq!(batch.status, ProtocolDecodeStatus::Decoded);
+        let cast = batch.events.iter().find_map(|event| match &event.event {
+            rlogs_events::CanonicalEvent::Timeline(timeline) => match &timeline.kind {
+                TimelineEventKind::Cast(cast) => Some(cast),
+                _ => None,
+            },
+            _ => None,
+        });
+        let cast = cast.expect("canonical current-build UseSlot cast without field 4");
+        assert_eq!(cast.source.entity_uuid.0, 216_009_015_936);
+        assert_eq!(cast.target.unwrap().entity_uuid.0, 216_009_015_936);
+        assert_eq!(cast.ability.0, 2_233);
+        assert_eq!(cast.state, CastState::Started);
+        assert_eq!(cast.action_timing, None);
+    }
+
+    #[test]
     fn hp_and_resource_formula_attributes_are_decoded_without_changing_their_ids() {
         assert_eq!(
             decode_attribute_value(ATTR_CURRENT_HP, &[]),

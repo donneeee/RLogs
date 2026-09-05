@@ -92,7 +92,7 @@ pub struct UseSkillParamSnapshot {
 pub struct UseSkillActionSnapshot {
     pub slot_id: i32,
     pub param: UseSkillParamSnapshot,
-    pub attributes: UseSkillAttributes,
+    pub attributes: Option<UseSkillAttributes>,
 }
 
 impl UseSkillActionSnapshot {
@@ -101,21 +101,22 @@ impl UseSkillActionSnapshot {
     ///
     /// This conversion does not authorize the client route or infer a server
     /// cast. It only preserves already decoded gameplay values without loss.
-    pub fn canonical_action_timing(self) -> ActionTimingSnapshot {
-        ActionTimingSnapshot {
+    pub fn canonical_action_timing(self) -> Option<ActionTimingSnapshot> {
+        let attributes = self.attributes?;
+        Some(ActionTimingSnapshot {
             action_instance_id: i64::from(self.param.skill_uuid),
             base_ability: AbilityId(i64::from(self.param.skill_id)),
             ability_level: self.param.skill_level,
             slot_id: self.slot_id,
-            client_timestamp_raw: self.attributes.timestamp,
+            client_timestamp_raw: attributes.timestamp,
             begin_time_raw: self.param.begin_time,
-            attack_speed_basis_points: self.attributes.attack_speed_pct,
-            cast_speed_basis_points: self.attributes.cast_speed_pct,
-            charge_speed_basis_points: self.attributes.charge_speed_pct,
+            attack_speed_basis_points: attributes.attack_speed_pct,
+            cast_speed_basis_points: attributes.cast_speed_pct,
+            charge_speed_basis_points: attributes.charge_speed_pct,
             passive: self.param.is_passive,
             activated_roulette: self.param.is_activate_roulette,
             target_part_id: self.param.target_part_id,
-        }
+        })
     }
 
     /// Builds the canonical local action-start event once the caller has
@@ -143,7 +144,7 @@ impl UseSkillActionSnapshot {
             ability: AbilityId(i64::from(self.param.skill_id)),
             target,
             state: CastState::Started,
-            action_timing: Some(self.canonical_action_timing()),
+            action_timing: self.canonical_action_timing(),
         })
     }
 }
@@ -302,7 +303,7 @@ pub fn decode_use_skill_attr_into(
 
 /// Strictly decodes the current-build `World.Types.UseSlot` request and, when
 /// it represents a skill use, returns the exact action identity, target, and
-/// authenticated action-time speed snapshot.
+/// optional authenticated action-time speed snapshot.
 ///
 /// Other `UseSlotType` values share the RPC and return `Ok(None)`. The borrowed
 /// protobuf slices and reusable decrypt scratch keep this boundary allocation
@@ -330,17 +331,15 @@ pub fn decode_world_use_slot_skill_action_into(
             message: "Zproto.UseSlotRequest",
             field: 3,
         })?;
-    let attr_data = request
-        .attr_data
-        .ok_or(UseSkillActionDecodeError::MissingField {
-            message: "Zproto.UseSlotRequest",
-            field: 4,
-        })?;
+    let attributes = match request.attr_data {
+        Some(attr_data) => Some(decode_use_skill_attr_into(game_build, attr_data, scratch)?),
+        None => None,
+    };
 
     Ok(Some(UseSkillActionSnapshot {
         slot_id: request.slot_id,
         param: decode_use_skill_param(extra_data)?,
-        attributes: decode_use_skill_attr_into(game_build, attr_data, scratch)?,
+        attributes,
     }))
 }
 
@@ -1004,7 +1003,7 @@ pub(crate) mod tests {
         envelope
     }
 
-    pub(crate) fn world_skill_use_payload() -> Vec<u8> {
+    fn world_skill_use_payload_with_attributes(attr_data: Option<&[u8]>) -> Vec<u8> {
         let target_position = UseSkillPosition {
             x: 12.5,
             y: -4.0,
@@ -1040,15 +1039,25 @@ pub(crate) mod tests {
         encode_length_delimited(0x4a, &encode_position(target_part_position), &mut param);
         param.extend_from_slice(&[0x50, 0x01, 0x58, 0x01]);
 
-        let attr_data = envelope(&exact_plaintext());
         let mut request = Vec::new();
         request.extend_from_slice(&[0x08, 0x15, 0x10, 0x01]);
         encode_length_delimited(0x1a, &param, &mut request);
-        encode_length_delimited(0x22, &attr_data, &mut request);
+        if let Some(attr_data) = attr_data {
+            encode_length_delimited(0x22, attr_data, &mut request);
+        }
 
         let mut outer = Vec::new();
         encode_length_delimited(0x0a, &request, &mut outer);
         outer
+    }
+
+    pub(crate) fn world_skill_use_payload() -> Vec<u8> {
+        let attr_data = envelope(&exact_plaintext());
+        world_skill_use_payload_with_attributes(Some(&attr_data))
+    }
+
+    pub(crate) fn world_skill_use_payload_without_attributes() -> Vec<u8> {
+        world_skill_use_payload_with_attributes(None)
     }
 
     #[test]
@@ -1098,10 +1107,15 @@ pub(crate) mod tests {
         assert_eq!(decoded.param.target_position.x, 12.5);
         assert_eq!(decoded.param.current_position.direction_radians, -0.5);
         assert_eq!(decoded.param.target_part_position.z, 82.0);
-        assert_eq!(decoded.attributes.attack_speed_pct, 230);
-        assert_eq!(decoded.attributes.cast_speed_pct, 382);
-        assert_eq!(decoded.attributes.charge_speed_pct, 145);
-        let canonical = decoded.canonical_action_timing();
+        let attributes = decoded
+            .attributes
+            .expect("authenticated action-speed snapshot");
+        assert_eq!(attributes.attack_speed_pct, 230);
+        assert_eq!(attributes.cast_speed_pct, 382);
+        assert_eq!(attributes.charge_speed_pct, 145);
+        let canonical = decoded
+            .canonical_action_timing()
+            .expect("authenticated canonical action timing");
         assert_eq!(canonical.action_instance_id, 9_001);
         assert_eq!(canonical.base_ability, AbilityId(2_233));
         assert_eq!(canonical.ability_level, 5);
@@ -1143,6 +1157,61 @@ pub(crate) mod tests {
                 .is_none()
         );
         assert!(scratch.is_empty());
+    }
+
+    #[test]
+    fn decodes_skill_identity_when_optional_action_speed_attributes_are_absent() {
+        let mut scratch = vec![0xaa; 16];
+        let decoded = decode_world_use_slot_skill_action_into(
+            BPSR_CURRENT_USE_SKILL_ATTR_BUILD,
+            &world_skill_use_payload_without_attributes(),
+            &mut scratch,
+        )
+        .unwrap()
+        .expect("UseSlotType Skill should produce an action without field 4");
+
+        assert_eq!(decoded.slot_id, 21);
+        assert_eq!(decoded.param.skill_uuid, 9_001);
+        assert_eq!(decoded.param.skill_id, 2_233);
+        assert_eq!(decoded.param.target_uuid, 216_009_015_936);
+        assert_eq!(decoded.attributes, None);
+        assert_eq!(decoded.canonical_action_timing(), None);
+
+        let source = EntityRef {
+            actor_id: ActorId(7),
+            entity_uuid: EntityUuid(3_296_036),
+        };
+        let target = EntityRef {
+            actor_id: ActorId(8),
+            entity_uuid: EntityUuid(216_009_015_936),
+        };
+        let cast = decoded
+            .canonical_cast_started(source, Some(target))
+            .expect("exact packet identity should convert without timing metadata");
+        assert_eq!(cast.ability, AbilityId(2_233));
+        assert_eq!(cast.state, CastState::Started);
+        assert_eq!(cast.action_timing, None);
+        assert_eq!(scratch, vec![0xaa; 16]);
+    }
+
+    #[test]
+    fn malformed_present_action_speed_attributes_still_fail_closed() {
+        let payload = world_skill_use_payload_with_attributes(Some(&[0x01, 0x02, 0x03]));
+        let mut scratch = vec![0xaa; 16];
+        let error = decode_world_use_slot_skill_action_into(
+            BPSR_CURRENT_USE_SKILL_ATTR_BUILD,
+            &payload,
+            &mut scratch,
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            UseSkillActionDecodeError::AttributeEnvelope(
+                UseSkillAttrDecodeError::EnvelopeTooShort { actual: 3 }
+            )
+        );
+        assert_eq!(scratch, vec![0xaa; 16]);
     }
 
     #[test]
