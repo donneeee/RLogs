@@ -932,6 +932,14 @@ mod tests {
             current.digest(),
             "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae"
         );
+        let current_formula = crate::rdps_runtime::rdps_runtime_config_for_identity(
+            "global",
+            "24687926",
+            current.digest(),
+        )
+        .unwrap()
+        .expect("the bundled current protocol pack must have an exact formula identity");
+        assert_eq!(current_formula.protocol_pack_digest, current.digest());
 
         let unchanged_route_prefix = &current.definition().routes[..48];
         let unchanged_route_prefix_bytes = serde_json::to_vec(unchanged_route_prefix).unwrap();

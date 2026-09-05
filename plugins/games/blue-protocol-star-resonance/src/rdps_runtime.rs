@@ -2520,6 +2520,8 @@ impl RdpsRuntimeConfig {
                     "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                     "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
                     "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
+                    "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3",
+                    "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
                 ]
             && team_luck
                 .critical_damage_authorized_protocol_pack_digests
@@ -2544,6 +2546,8 @@ impl RdpsRuntimeConfig {
                     "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                     "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
                     "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
+                    "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3",
+                    "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
                 ]
             && team_luck
                 .lucky_damage_authorized_protocol_pack_digests
@@ -2913,6 +2917,8 @@ impl RdpsRuntimeConfig {
                     "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                     "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
                     "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
+                    "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3",
+                    "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
                 ]
             && inspiration
                 .authorized_protocol_pack_digests
@@ -4310,6 +4316,8 @@ mod tests {
                 "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                 "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
                 "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
+                "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3",
+                "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
             ]
         );
         assert!(
@@ -4342,6 +4350,8 @@ mod tests {
                 "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
                 "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
                 "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
+                "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3",
+                "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
             ]
         );
         assert!(!current.team_luck.server_integer_counterfactual_authority);
@@ -5100,17 +5110,24 @@ mod tests {
     fn registry_keeps_same_build_protocol_identities_separate() {
         let prior_digest =
             "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b";
-        let current_digest =
-            "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395";
-        let current = rdps_runtime_config_for_identity("global", "24687926", current_digest)
+        let base_digest = "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395";
+        let latest_digest =
+            "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+        let base = rdps_runtime_config_for_identity("global", "24687926", base_digest)
             .unwrap()
-            .expect("current protocol identity should be registered");
+            .expect("base formula protocol identity should be registered");
+        let latest = rdps_runtime_config_for_identity("global", "24687926", latest_digest)
+            .unwrap()
+            .expect("latest exact protocol identity should be registered");
         let prior = rdps_runtime_config_for_identity("global", "24687926", prior_digest)
             .unwrap()
             .expect("current-build history protocol identity should be registered");
-        assert_eq!(current.game_build, prior.game_build);
-        assert_ne!(current.protocol_pack_digest, prior.protocol_pack_digest);
-        assert!(current.effect_runtime_transfer_enabled(current.team_luck.effect_id));
+        assert_eq!(base.game_build, prior.game_build);
+        assert_eq!(latest.game_build, prior.game_build);
+        assert_ne!(base.protocol_pack_digest, prior.protocol_pack_digest);
+        assert_ne!(latest.protocol_pack_digest, base.protocol_pack_digest);
+        assert!(base.effect_runtime_transfer_enabled(base.team_luck.effect_id));
+        assert!(latest.effect_runtime_transfer_enabled(latest.team_luck.effect_id));
         assert!(prior.effect_runtime_transfer_enabled(prior.team_luck.effect_id));
         assert!(
             rdps_runtime_config_for_identity(
@@ -5126,7 +5143,7 @@ mod tests {
                 .unwrap()
                 .expect("build-default identity should remain available")
                 .protocol_pack_digest,
-            current_digest,
+            base_digest,
         );
     }
 
@@ -5144,14 +5161,19 @@ mod tests {
         assert!(current.effect_runtime_transfer_enabled(current.highland_blood.effect_id));
 
         let registry = rdps_runtime_registry().expect("bundled identities should validate");
-        assert!(registry.by_identity.len() >= 3);
+        assert!(registry.by_identity.len() >= 8);
         for digest in [
             "sha256:f3a07130e33ea9f9ba3360920879ffc0a3def59ae0d31a9997f17cb99a218395",
             "sha256:c5902c7f1de05308abb9b3b2c34969ece9a38d8fb989ab5b5dd464b37e4e306b",
+            "sha256:f975b4acade288bc87392bfeaae464873f7af1d3060be56023ff69d176905a3e",
+            "sha256:f4eb9db52ee232ecc7845119cb7fd909fb0f2c2d4fee33fe587b4235b656773c",
+            "sha256:58c849d0264261efe8220b7dd5ce50fd7e3f8fa31980941e823a18306f30c7d1",
+            "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3",
+            "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae",
         ] {
             let runtime = rdps_runtime_config_for_identity("global", "24687926", digest)
                 .expect("registry lookup should succeed")
-                .expect("both exact current-build decoder identities must remain replayable");
+                .expect("every exact current-build decoder identity must remain replayable");
             assert!(runtime.validate().is_ok());
             assert!(runtime.highland_blood.runtime_transfer_enabled);
             assert!(

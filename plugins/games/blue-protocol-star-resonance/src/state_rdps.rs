@@ -23020,6 +23020,29 @@ mod tests {
             owned_titles_guild_pack_runtime.protocol_pack_digest,
             owned_titles_guild_pack_digest
         );
+        let exact_action_pack_digest =
+            "sha256:9de9c7eccc5309686ad4e982968aef67c1d6cf6f59e71762c457ce8ce8f23ac3";
+        assert!(
+            state_damage_contribution_target_matches(
+                "global",
+                "24687926",
+                exact_action_pack_digest,
+            )
+            .unwrap(),
+            "the exact client action-route migration must retain combat formula authority"
+        );
+        let latest_pack_digest =
+            "sha256:4372050d9d549808b229b16de315080f9bac427efe9602dabd9b93c4502dbbae";
+        assert!(
+            state_damage_contribution_target_matches("global", "24687926", latest_pack_digest,)
+                .unwrap(),
+            "the saved-loadout profile route append must retain combat formula authority"
+        );
+        let latest_pack_runtime =
+            rdps_runtime_config_for_identity("global", "24687926", latest_pack_digest)
+                .unwrap()
+                .expect("the latest exact decoder identity should be replayable");
+        assert_eq!(latest_pack_runtime.protocol_pack_digest, latest_pack_digest);
         assert!(
             !state_damage_contribution_formula_target_matches(
                 "global",
