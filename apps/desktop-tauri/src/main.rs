@@ -30,6 +30,7 @@ use rlogs_desktop_host::{
     COMBAT_OVERLAY_TOGGLE_ACTION_ID, EmbeddedLocalHost, HotkeyAssignmentRequest,
     HotkeyAssignmentResult, LiveCombatActivityObserver, start_embedded_local_host_with_version,
 };
+use serde::Serialize;
 use tauri::{
     Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
     menu::{Menu, MenuItem},
@@ -129,6 +130,8 @@ struct CombatOverlayWindowState {
     automatically_hidden: AtomicBool,
     last_heartbeat_unix_millis: AtomicU64,
     last_reload_unix_millis: AtomicU64,
+    automatic_recovery_count: AtomicU64,
+    consecutive_runtime_failures: AtomicU64,
 }
 
 #[derive(Default)]
@@ -151,6 +154,8 @@ impl CombatOverlayWindowState {
             automatically_hidden: AtomicBool::new(!enabled || auto_hide_outside_combat),
             last_heartbeat_unix_millis: AtomicU64::new(unix_millis()),
             last_reload_unix_millis: AtomicU64::new(0),
+            automatic_recovery_count: AtomicU64::new(0),
+            consecutive_runtime_failures: AtomicU64::new(0),
         }
     }
 }
@@ -490,10 +495,104 @@ fn combat_overlay_ready(
 }
 
 #[tauri::command]
-fn combat_overlay_heartbeat(state: tauri::State<'_, CombatOverlayWindowState>) {
+fn combat_overlay_heartbeat(
+    state: tauri::State<'_, CombatOverlayWindowState>,
+    consecutive_failures: u64,
+) {
     state
         .last_heartbeat_unix_millis
         .store(unix_millis(), Ordering::Release);
+    state
+        .consecutive_runtime_failures
+        .store(consecutive_failures, Ordering::Release);
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CombatOverlayHealth {
+    status: &'static str,
+    requested: bool,
+    ready: bool,
+    visible: bool,
+    automatically_hidden: bool,
+    hidden_by_focus_policy: bool,
+    last_heartbeat_unix_millis: u64,
+    heartbeat_age_millis: u64,
+    consecutive_runtime_failures: u64,
+    automatic_recovery_count: u64,
+    last_recovery_unix_millis: Option<u64>,
+}
+
+fn combat_overlay_health_status(
+    requested: bool,
+    ready: bool,
+    visible: bool,
+    automatically_hidden: bool,
+    hidden_by_focus_policy: bool,
+    heartbeat_age_millis: u64,
+    consecutive_runtime_failures: u64,
+) -> &'static str {
+    if !requested {
+        "disabled"
+    } else if automatically_hidden {
+        "auto_hidden"
+    } else if hidden_by_focus_policy {
+        "focus_hidden"
+    } else if !ready {
+        "starting"
+    } else if consecutive_runtime_failures > 0 {
+        "reconnecting"
+    } else if heartbeat_age_millis >= 15_000 {
+        "stalled"
+    } else if visible {
+        "healthy"
+    } else {
+        "window_hidden"
+    }
+}
+
+#[tauri::command]
+fn combat_overlay_health(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, CombatOverlayWindowState>,
+    focus_state: tauri::State<'_, OverlayFocusWindowState>,
+) -> CombatOverlayHealth {
+    let now = unix_millis();
+    let requested = state.requested.load(Ordering::Acquire);
+    let ready = state.ready.load(Ordering::Acquire);
+    let automatically_hidden = state.automatically_hidden.load(Ordering::Acquire);
+    let hidden_by_focus_policy = !focus_state.allows_visibility();
+    let visible = app
+        .get_webview_window("combat-overlay")
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false);
+    let last_heartbeat_unix_millis = state.last_heartbeat_unix_millis.load(Ordering::Acquire);
+    let heartbeat_age_millis = now.saturating_sub(last_heartbeat_unix_millis);
+    let consecutive_runtime_failures = state.consecutive_runtime_failures.load(Ordering::Acquire);
+    let automatic_recovery_count = state.automatic_recovery_count.load(Ordering::Acquire);
+    let last_recovery = state.last_reload_unix_millis.load(Ordering::Acquire);
+    let status = combat_overlay_health_status(
+        requested,
+        ready,
+        visible,
+        automatically_hidden,
+        hidden_by_focus_policy,
+        heartbeat_age_millis,
+        consecutive_runtime_failures,
+    );
+    CombatOverlayHealth {
+        status,
+        requested,
+        ready,
+        visible,
+        automatically_hidden,
+        hidden_by_focus_policy,
+        last_heartbeat_unix_millis,
+        heartbeat_age_millis,
+        consecutive_runtime_failures,
+        automatic_recovery_count,
+        last_recovery_unix_millis: (last_recovery > 0).then_some(last_recovery),
+    }
 }
 
 fn combat_overlay_renderer_is_stale(now: u64, last_heartbeat: u64, last_reload: u64) -> bool {
@@ -532,6 +631,10 @@ fn monitor_combat_overlay_renderer(app: tauri::AppHandle) -> std::io::Result<()>
                     // A failed reload must not permanently suppress the otherwise
                     // live window; the next watchdog interval may try again.
                     state.ready.store(true, Ordering::Release);
+                } else {
+                    state
+                        .automatic_recovery_count
+                        .fetch_add(1, Ordering::AcqRel);
                 }
             }
         })
@@ -802,6 +905,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             set_combat_overlay_automatically_hidden,
             combat_overlay_ready,
             combat_overlay_heartbeat,
+            combat_overlay_health,
             assign_hotkey
         ])
         .run(tauri::generate_context!())?;
@@ -812,9 +916,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
-        combat_overlay_damage_started, combat_overlay_hostile_activity_started,
-        combat_overlay_renderer_is_stale, combat_overlay_should_be_visible,
-        is_overlay_window_label,
+        combat_overlay_damage_started, combat_overlay_health_status,
+        combat_overlay_hostile_activity_started, combat_overlay_renderer_is_stale,
+        combat_overlay_should_be_visible, is_overlay_window_label,
     };
 
     #[test]
@@ -849,6 +953,30 @@ mod tests {
         assert!(combat_overlay_renderer_is_stale(15_000, 0, 0));
         assert!(!combat_overlay_renderer_is_stale(44_999, 0, 30_000));
         assert!(combat_overlay_renderer_is_stale(60_000, 0, 30_000));
+    }
+
+    #[test]
+    fn overlay_health_distinguishes_intentional_hiding_from_failures() {
+        assert_eq!(
+            combat_overlay_health_status(false, true, false, false, false, 0, 0),
+            "disabled"
+        );
+        assert_eq!(
+            combat_overlay_health_status(true, true, false, true, false, 60_000, 0),
+            "auto_hidden"
+        );
+        assert_eq!(
+            combat_overlay_health_status(true, true, true, false, false, 0, 2),
+            "reconnecting"
+        );
+        assert_eq!(
+            combat_overlay_health_status(true, true, true, false, false, 15_000, 0),
+            "stalled"
+        );
+        assert_eq!(
+            combat_overlay_health_status(true, true, true, false, false, 1_000, 0),
+            "healthy"
+        );
     }
 
     #[test]

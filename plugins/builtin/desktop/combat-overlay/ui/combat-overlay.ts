@@ -475,7 +475,7 @@ export interface CombatOverlayRuntimeWindow {
   setIgnoreCursorEvents(value: boolean): Promise<void>;
   startDragging(): Promise<void>;
   startResizeDragging(direction: OverlayResizeDirection): Promise<void>;
-  heartbeat(): Promise<void>;
+  heartbeat(consecutiveFailures: number): Promise<void>;
   onShowRequested(handler: () => void): Promise<() => void>;
   onResized(handler: (width: number, height: number) => void): Promise<() => void>;
 }
@@ -2548,10 +2548,10 @@ export async function mountCombatOverlayRuntimeApp(
 
   let consecutiveRuntimeFailures = 0;
   const heartbeatTimer = window.setInterval(() => {
-    void appWindow.heartbeat().catch((error) =>
+    void appWindow.heartbeat(consecutiveRuntimeFailures).catch((error) =>
       reportWindowSyncFailure("renderer heartbeat", error));
   }, 2_000);
-  void appWindow.heartbeat().catch((error) =>
+  void appWindow.heartbeat(consecutiveRuntimeFailures).catch((error) =>
     reportWindowSyncFailure("initial renderer heartbeat", error));
   const run = async () => {
     while (active) {

@@ -221,6 +221,28 @@ interface ParserHealthSession {
   detail: string;
 }
 
+interface CombatOverlayHealth {
+  status:
+    | "disabled"
+    | "auto_hidden"
+    | "focus_hidden"
+    | "starting"
+    | "reconnecting"
+    | "stalled"
+    | "healthy"
+    | "window_hidden";
+  requested: boolean;
+  ready: boolean;
+  visible: boolean;
+  automaticallyHidden: boolean;
+  hiddenByFocusPolicy: boolean;
+  lastHeartbeatUnixMillis: number;
+  heartbeatAgeMillis: number;
+  consecutiveRuntimeFailures: number;
+  automaticRecoveryCount: number;
+  lastRecoveryUnixMillis: number | null;
+}
+
 interface ApiError {
   error: string;
 }
@@ -1553,12 +1575,15 @@ function mountCoreSettingsSurface(container: HTMLElement): MountedSurface {
 
   const refreshParserHealth = async () => {
     try {
-      const [snapshot, history] = await Promise.all([
+      const [snapshot, history, overlayHealth] = await Promise.all([
         apiJson<RuntimeSnapshot>("/api/runtime/status"),
         apiJson<ParserHealthHistory>("/api/runtime/health-history"),
+        window.__TAURI_INTERNALS__ === undefined
+          ? Promise.resolve(null)
+          : invoke<CombatOverlayHealth>("combat_overlay_health").catch(() => null),
       ]);
       if (alive) {
-        parserHealth.replaceChildren(parserHealthCard(snapshot, history));
+        parserHealth.replaceChildren(parserHealthCard(snapshot, history, overlayHealth));
       }
     } catch (error) {
       if (alive) {
@@ -4173,6 +4198,7 @@ async function refreshStatus(
 function parserHealthCard(
   snapshot: RuntimeSnapshot,
   history?: ParserHealthHistory,
+  overlayHealth?: CombatOverlayHealth | null,
 ): HTMLElement {
   const health = document.createElement("section");
   health.className = "content-card runtime-file-list";
@@ -4210,6 +4236,39 @@ function parserHealthCard(
     ),
     fileRow("Last recovered error", snapshot.last_recoverable_error ?? "None"),
   );
+  if (overlayHealth != null) {
+    const overlayStatus = {
+      disabled: "Disabled by user",
+      auto_hidden: "Healthy · hidden outside combat",
+      focus_hidden: "Healthy · hidden while game is unfocused",
+      starting: "Starting renderer",
+      reconnecting: "Reconnecting to live feed",
+      stalled: "Renderer heartbeat stalled",
+      healthy: "Visible and healthy",
+      window_hidden: "Enabled · native window hidden",
+    }[overlayHealth.status];
+    health.append(
+      fileRow("Combat Overlay", overlayStatus),
+      fileRow(
+        "Overlay heartbeat",
+        `${Math.round(overlayHealth.heartbeatAgeMillis / 1_000)}s ago`,
+      ),
+      fileRow(
+        "Overlay feed failures",
+        overlayHealth.consecutiveRuntimeFailures.toLocaleString(),
+      ),
+      fileRow(
+        "Overlay automatic recoveries",
+        overlayHealth.automaticRecoveryCount.toLocaleString(),
+      ),
+      fileRow(
+        "Last overlay recovery",
+        overlayHealth.lastRecoveryUnixMillis === null
+          ? "None"
+          : new Date(overlayHealth.lastRecoveryUnixMillis).toLocaleString(),
+      ),
+    );
+  }
   if (history !== undefined) {
     const recent = document.createElement("details");
     recent.className = "parser-health-history";

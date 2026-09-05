@@ -3085,6 +3085,7 @@ version = "0.1.0"
 dependencies = [
  "ico",
  "rlogs-desktop-host",
+ "serde",
  "tauri",
  "tauri-build",
  "tauri-plugin-global-shortcut",

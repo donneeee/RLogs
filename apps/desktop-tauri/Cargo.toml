@@ -12,6 +12,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 rlogs-desktop-host = { path = "../desktop" }
+serde = { workspace = true }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2.3.2"
 
