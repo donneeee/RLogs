@@ -186,11 +186,13 @@ impl DungeonRunSegmenter {
                         .as_mut()
                         .and_then(|active| active.inferred_completion_source.take())
                 {
-                    // The synthetic boundary keeps the exact objective packet
-                    // time and must precede the scene/exit event so reducers
+                    // The objective packet proves completion, while the
+                    // terminal packet supplies the monotonic timestamp at
+                    // which the segment can safely be sealed. Keeping the
+                    // boundary before the scene/exit event makes reducers
                     // close this run as completed rather than departed.
                     actions.push(DungeonSegmentAction::Record(inferred_completion_boundary(
-                        source,
+                        source, event_time,
                     )));
                 }
                 actions.push(DungeonSegmentAction::Record(event));
@@ -335,10 +337,14 @@ fn is_field_of_forgotten_illusions_boss_objective(
     matches!(scene_id, Some(13_021..=13_023)) && matches!(objective_id, Some(1_302_101..=1_302_104))
 }
 
-fn inferred_completion_boundary(mut source: EventEnvelope) -> EventEnvelope {
+fn inferred_completion_boundary(
+    mut source: EventEnvelope,
+    terminal_time: EventTime,
+) -> EventEnvelope {
+    source.time = terminal_time;
     source.event = CanonicalEvent::Timeline(TimelineEvent {
         sequence: 0,
-        time: source.time,
+        time: terminal_time,
         provenance: source.provenance.clone(),
         kind: TimelineEventKind::RunBoundary {
             state: RunState::Completed,
@@ -704,7 +710,13 @@ mod tests {
         assert_eq!(objective_actions.len(), 1);
         assert!(segmenter.is_recording());
 
-        let actions = segmenter.observe_batch([world(&mut factory, 4, 8)]);
+        let post_completion = profile(&mut factory, 4, "1000001");
+        let post_completion_time = post_completion.time;
+        assert_eq!(segmenter.observe_batch([post_completion]).len(), 1);
+
+        let departure = world(&mut factory, 5, 8);
+        let departure_time = departure.time;
+        let actions = segmenter.observe_batch([departure]);
 
         assert!(matches!(
             actions.as_slice(),
@@ -730,6 +742,11 @@ mod tests {
                 }
             ]
         ));
+        let DungeonSegmentAction::Record(boundary) = &actions[0] else {
+            unreachable!("the first action is the inferred completion boundary")
+        };
+        assert!(boundary.time.observed_micros >= post_completion_time.observed_micros);
+        assert_eq!(boundary.time, departure_time);
         assert!(!segmenter.is_recording());
     }
 
