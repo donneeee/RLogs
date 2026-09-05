@@ -795,7 +795,7 @@ struct LiveCombatUpdate {
 struct PresentedLiveCombatUpdate {
     schema_version: u16,
     revision: u64,
-    snapshot: Option<CombatTimelineSnapshot>,
+    snapshot: Option<serde_json::Value>,
     actor_presentations: BTreeMap<String, LiveOverlayActorPresentation>,
     encounter_presentation: LiveOverlayEncounterPresentation,
 }
@@ -806,7 +806,11 @@ struct LiveOverlayEncounterPresentation {
     scene_name: Option<String>,
     bosses: Vec<LiveOverlayBossPresentation>,
     timer_source: String,
-    run_projection: Option<CombatRunHistory>,
+    /// Browser-specific, bounded projection. The canonical history model also
+    /// contains targets, time series, effects, and audit fields that the live
+    /// overlay never reads. Sending those collections on every long poll made
+    /// large dungeon runs progressively overload WebView2.
+    run_projection: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -959,6 +963,311 @@ fn live_overlay_primary_imagine_badge(slot: &ActorLoadoutSlot) -> LiveOverlayBad
     }
 }
 
+fn retain_json_object_keys(value: &mut serde_json::Value, keys: &[&str]) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    object.retain(|key, _| keys.contains(&key.as_str()));
+}
+
+fn compact_overlay_damage_influences(value: &mut serde_json::Value) {
+    let Some(rows) = value.as_array_mut() else {
+        return;
+    };
+    let mut grouped = BTreeMap::<String, (serde_json::Value, u64, Option<i128>)>::new();
+    for mut row in std::mem::take(rows) {
+        retain_json_object_keys(
+            &mut row,
+            &[
+                "effect_id",
+                "attribution_component",
+                "provider_actor_id",
+                "recipient_actor_id",
+                "affected_ability_id",
+                "damage_event_count",
+                "attributed_rdps",
+                "damage_context_complete",
+            ],
+        );
+        let Some(object) = row.as_object() else {
+            continue;
+        };
+        let amount = object
+            .get("attributed_rdps")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|value| value.parse::<i128>().ok());
+        // Invalid/legacy decimal evidence stays separate and visible instead
+        // of being silently coerced into a number.
+        let key = serde_json::to_string(&(
+            object.get("effect_id"),
+            object.get("attribution_component"),
+            object.get("provider_actor_id"),
+            object.get("recipient_actor_id"),
+            object.get("affected_ability_id"),
+            object.get("damage_context_complete"),
+            amount.is_none().then(|| object.get("attributed_rdps")),
+        ))
+        .unwrap_or_default();
+        let event_count = object
+            .get("damage_event_count")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        let entry = grouped.entry(key).or_insert((row, 0, amount.map(|_| 0)));
+        entry.1 = entry.1.saturating_add(event_count);
+        if let (Some(total), Some(amount)) = (entry.2.as_mut(), amount) {
+            *total = total.saturating_add(amount);
+        }
+    }
+    *rows = grouped
+        .into_values()
+        .map(|(mut row, event_count, amount)| {
+            if let Some(object) = row.as_object_mut() {
+                object.insert("damage_event_count".into(), event_count.into());
+                if let Some(amount) = amount {
+                    object.insert("attributed_rdps".into(), amount.to_string().into());
+                }
+            }
+            row
+        })
+        .collect();
+}
+
+fn compact_live_overlay_run_projection(run: &CombatRunHistory) -> serde_json::Value {
+    let mut value = serde_json::to_value(run).unwrap_or(serde_json::Value::Null);
+    retain_json_object_keys(
+        &mut value,
+        &[
+            "rdps_status",
+            "total_run_time_micros",
+            "game_time_micros",
+            "true_time_micros",
+            "views",
+        ],
+    );
+    let Some(views) = value
+        .get_mut("views")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return value;
+    };
+    for view in views {
+        retain_json_object_keys(
+            view,
+            &[
+                "id",
+                "label",
+                "kind",
+                "elapsed_micros",
+                "active_combat_micros",
+                "actors",
+                "damage_influences",
+                "rdps_effect_presentations",
+            ],
+        );
+        if let Some(actors) = view
+            .get_mut("actors")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for actor in actors {
+                retain_json_object_keys(
+                    actor,
+                    &[
+                        "actor_id",
+                        "entity_uuid",
+                        "monster_id",
+                        "character_id",
+                        "display_name",
+                        "presentation_name",
+                        "actor_kind",
+                        "class_id",
+                        "specialization_id",
+                        "presentation_class_name",
+                        "presentation_specialization_name",
+                        "icon_asset_path",
+                        "weapon_icon_asset_path",
+                        "presentation_role",
+                        "presentation_accent",
+                        "weapon_item_id",
+                        "weapon_presentation_name",
+                        "weapon_level",
+                        "weapon_level_min",
+                        "weapon_level_max",
+                        "weapon_badge_kind",
+                        "primary_loadout",
+                        "damage",
+                        "effective_damage",
+                        "damage_taken",
+                        "healing",
+                        "effective_healing",
+                        "shielding",
+                        "hits",
+                        "critical_hits",
+                        "deaths",
+                        "dps",
+                        "encounter_dps",
+                        "hps",
+                        "tps",
+                        "rdps",
+                        "rdps_damage",
+                        "rdps_contribution_given",
+                        "rdps_contribution_received",
+                        "observed_cast_events",
+                        "abilities",
+                    ],
+                );
+                if let Some(abilities) = actor
+                    .get_mut("abilities")
+                    .and_then(serde_json::Value::as_array_mut)
+                {
+                    for ability in abilities {
+                        retain_json_object_keys(
+                            ability,
+                            &[
+                                "ability_id",
+                                "presentation_name",
+                                "icon_asset_path",
+                                "casts",
+                                "hits",
+                                "critical_hits",
+                                "damage",
+                                "effective_damage",
+                                "healing",
+                                "effective_healing",
+                                "shielding",
+                            ],
+                        );
+                    }
+                }
+            }
+        }
+        if let Some(influences) = view.get_mut("damage_influences") {
+            compact_overlay_damage_influences(influences);
+        }
+        if let Some(effects) = view
+            .get_mut("rdps_effect_presentations")
+            .and_then(serde_json::Value::as_array_mut)
+        {
+            for effect in effects {
+                retain_json_object_keys(effect, &["effect_id", "presentation_name"]);
+            }
+        }
+    }
+    value
+}
+
+fn compact_live_overlay_snapshot(snapshot: &CombatTimelineSnapshot) -> serde_json::Value {
+    let mut value = serde_json::to_value(snapshot).unwrap_or(serde_json::Value::Null);
+    retain_json_object_keys(
+        &mut value,
+        &[
+            "rdps_status",
+            "scene_id",
+            "combat_started_micros",
+            "attempt_elapsed_micros",
+            "attempt_damage_elapsed_micros",
+            "encounter_elapsed_micros",
+            "encounter_terminal_micros",
+            "run_terminal_micros",
+            "active_combat_micros",
+            "run_elapsed_micros",
+            "game_time_micros",
+            "true_time_micros",
+            "combat_active",
+            "last_hostile_micros",
+            "latest_event_micros",
+            "combat_inactivity_timeout_micros",
+            "rdps_damage_influences",
+            "rdps_damage_influences_truncated",
+            "rdps_effect_presentations",
+            "actors",
+        ],
+    );
+    if let Some(actors) = value
+        .get_mut("actors")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        actors.retain(|actor| {
+            matches!(
+                actor.get("actor_kind").and_then(serde_json::Value::as_str),
+                Some("player" | "npc")
+            )
+        });
+        for actor in actors {
+            retain_json_object_keys(
+                actor,
+                &[
+                    "actor_id",
+                    "entity_uuid",
+                    "display_name",
+                    "actor_kind",
+                    "monster_id",
+                    "current_hp",
+                    "max_hp",
+                    "reported_damage",
+                    "damage_during_combat",
+                    "effective_damage",
+                    "hp_damage",
+                    "shield_damage",
+                    "damage_taken",
+                    "dps",
+                    "run_dps",
+                    "encounter_dps",
+                    "active_dps",
+                    "hps",
+                    "tps",
+                    "rdps",
+                    "rdps_damage",
+                    "rdps_contribution_given",
+                    "rdps_contribution_received",
+                    "reported_healing",
+                    "effective_healing",
+                    "overheal",
+                    "shielding",
+                    "casts",
+                    "hits",
+                    "critical_hits",
+                    "deaths",
+                    "revives",
+                    "abilities",
+                ],
+            );
+            if let Some(abilities) = actor
+                .get_mut("abilities")
+                .and_then(serde_json::Value::as_array_mut)
+            {
+                for ability in abilities {
+                    retain_json_object_keys(
+                        ability,
+                        &[
+                            "ability_id",
+                            "casts",
+                            "hits",
+                            "critical_hits",
+                            "reported_damage",
+                            "effective_damage",
+                            "reported_healing",
+                            "effective_healing",
+                            "shielding",
+                        ],
+                    );
+                }
+            }
+        }
+    }
+    if let Some(influences) = value.get_mut("rdps_damage_influences") {
+        compact_overlay_damage_influences(influences);
+    }
+    if let Some(effects) = value
+        .get_mut("rdps_effect_presentations")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for effect in effects {
+            retain_json_object_keys(effect, &["effect_id", "presentation_name"]);
+        }
+    }
+    value
+}
+
 fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUpdate {
     let timer_source = if update.run_projection.is_some() {
         "reviewed_dungeon"
@@ -1024,12 +1333,18 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
                 }),
                 bosses,
                 timer_source: timer_source.into(),
-                run_projection: update.run_projection.clone(),
+                run_projection: update
+                    .run_projection
+                    .as_ref()
+                    .map(compact_live_overlay_run_projection),
             }
         })
         .unwrap_or_else(|| LiveOverlayEncounterPresentation {
             timer_source: timer_source.into(),
-            run_projection: update.run_projection.clone(),
+            run_projection: update
+                .run_projection
+                .as_ref()
+                .map(compact_live_overlay_run_projection),
             ..LiveOverlayEncounterPresentation::default()
         });
     let actor_presentations = update
@@ -1039,6 +1354,7 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
             snapshot
                 .actors
                 .iter()
+                .filter(|actor| matches!(actor.actor_kind.as_deref(), Some("player" | "npc")))
                 .map(|actor| {
                     let ability_ids = actor
                         .abilities
@@ -1118,7 +1434,7 @@ fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUp
     PresentedLiveCombatUpdate {
         schema_version: update.schema_version,
         revision: update.revision,
-        snapshot: update.snapshot,
+        snapshot: update.snapshot.as_ref().map(compact_live_overlay_snapshot),
         actor_presentations,
         encounter_presentation,
     }
@@ -12733,6 +13049,50 @@ mod tests {
             version: Some(7),
             source_url: "https://game.example.test/photo-1".into(),
         }
+    }
+
+    #[test]
+    fn live_overlay_influences_are_compact_and_preserve_exact_totals() {
+        let mut rows = serde_json::json!([
+            {
+                "effect_id": "9001",
+                "attribution_component": "amplification",
+                "provider_actor_id": "10",
+                "provider_entity_uuid": "provider-spawn",
+                "recipient_actor_id": "20",
+                "recipient_entity_uuid": "recipient-spawn",
+                "affected_ability_id": "30",
+                "target_actor_id": "100",
+                "damage_event_count": 2,
+                "attributed_rdps": "7",
+                "damage_context_complete": true,
+                "observed_damage": "700"
+            },
+            {
+                "effect_id": "9001",
+                "attribution_component": "amplification",
+                "provider_actor_id": "10",
+                "provider_entity_uuid": "provider-spawn",
+                "recipient_actor_id": "20",
+                "recipient_entity_uuid": "recipient-spawn",
+                "affected_ability_id": "30",
+                "target_actor_id": "101",
+                "damage_event_count": 3,
+                "attributed_rdps": "5",
+                "damage_context_complete": true,
+                "observed_damage": "500"
+            }
+        ]);
+
+        compact_overlay_damage_influences(&mut rows);
+
+        let rows = rows.as_array().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["damage_event_count"], 5);
+        assert_eq!(rows[0]["attributed_rdps"], "12");
+        assert!(rows[0].get("target_actor_id").is_none());
+        assert!(rows[0].get("observed_damage").is_none());
+        assert!(rows[0].get("provider_entity_uuid").is_none());
     }
 
     #[test]

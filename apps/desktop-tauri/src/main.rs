@@ -5,10 +5,10 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 #[cfg(windows)]
@@ -127,6 +127,8 @@ struct CombatOverlayWindowState {
     ready: AtomicBool,
     requested: AtomicBool,
     automatically_hidden: AtomicBool,
+    last_heartbeat_unix_millis: AtomicU64,
+    last_reload_unix_millis: AtomicU64,
 }
 
 #[derive(Default)]
@@ -147,8 +149,18 @@ impl CombatOverlayWindowState {
             ready: AtomicBool::new(false),
             requested: AtomicBool::new(enabled),
             automatically_hidden: AtomicBool::new(!enabled || auto_hide_outside_combat),
+            last_heartbeat_unix_millis: AtomicU64::new(unix_millis()),
+            last_reload_unix_millis: AtomicU64::new(0),
         }
     }
+}
+
+fn unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64
 }
 
 #[derive(Default)]
@@ -477,6 +489,55 @@ fn combat_overlay_ready(
     Ok(())
 }
 
+#[tauri::command]
+fn combat_overlay_heartbeat(state: tauri::State<'_, CombatOverlayWindowState>) {
+    state
+        .last_heartbeat_unix_millis
+        .store(unix_millis(), Ordering::Release);
+}
+
+fn combat_overlay_renderer_is_stale(now: u64, last_heartbeat: u64, last_reload: u64) -> bool {
+    now.saturating_sub(last_heartbeat) >= 15_000
+        && (last_reload == 0 || now.saturating_sub(last_reload) >= 30_000)
+}
+
+fn monitor_combat_overlay_renderer(app: tauri::AppHandle) -> std::io::Result<()> {
+    thread::Builder::new()
+        .name("rlogs-overlay-renderer".into())
+        .spawn(move || {
+            loop {
+                thread::sleep(Duration::from_secs(5));
+                let state = app.state::<CombatOverlayWindowState>();
+                if !state.requested.load(Ordering::Acquire)
+                    || state.automatically_hidden.load(Ordering::Acquire)
+                    || !state.ready.load(Ordering::Acquire)
+                {
+                    continue;
+                }
+                let Some(window) = app.get_webview_window("combat-overlay") else {
+                    continue;
+                };
+                if !window.is_visible().unwrap_or(false) {
+                    continue;
+                }
+                let now = unix_millis();
+                let last_heartbeat = state.last_heartbeat_unix_millis.load(Ordering::Acquire);
+                let last_reload = state.last_reload_unix_millis.load(Ordering::Acquire);
+                if !combat_overlay_renderer_is_stale(now, last_heartbeat, last_reload) {
+                    continue;
+                }
+                state.last_reload_unix_millis.store(now, Ordering::Release);
+                state.ready.store(false, Ordering::Release);
+                if window.reload().is_err() {
+                    // A failed reload must not permanently suppress the otherwise
+                    // live window; the next watchdog interval may try again.
+                    state.ready.store(true, Ordering::Release);
+                }
+            }
+        })
+        .map(|_| ())
+}
+
 fn monitor_combat_overlay_activity(
     app: tauri::AppHandle,
     observer: LiveCombatActivityObserver,
@@ -721,6 +782,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             app.manage(host);
             monitor_combat_overlay_activity(app.handle().clone(), combat_observer)?;
             monitor_overlay_focus_policy(app.handle().clone(), game_process_names)?;
+            monitor_combat_overlay_renderer(app.handle().clone())?;
             install_global_hotkeys(
                 app.handle(),
                 &app.state::<EmbeddedLocalHost>().hotkey_settings().bindings,
@@ -739,6 +801,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             show_combat_overlay_if_requested,
             set_combat_overlay_automatically_hidden,
             combat_overlay_ready,
+            combat_overlay_heartbeat,
             assign_hotkey
         ])
         .run(tauri::generate_context!())?;
@@ -750,7 +813,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 mod tests {
     use super::{
         combat_overlay_damage_started, combat_overlay_hostile_activity_started,
-        combat_overlay_should_be_visible, is_overlay_window_label,
+        combat_overlay_renderer_is_stale, combat_overlay_should_be_visible,
+        is_overlay_window_label,
     };
 
     #[test]
@@ -777,6 +841,14 @@ mod tests {
         assert!(combat_overlay_damage_started(20, 21));
         assert!(!combat_overlay_damage_started(20, 20));
         assert!(!combat_overlay_damage_started(20, 0));
+    }
+
+    #[test]
+    fn visible_overlay_renderer_recovers_after_a_bounded_stall() {
+        assert!(!combat_overlay_renderer_is_stale(14_999, 0, 0));
+        assert!(combat_overlay_renderer_is_stale(15_000, 0, 0));
+        assert!(!combat_overlay_renderer_is_stale(44_999, 0, 30_000));
+        assert!(combat_overlay_renderer_is_stale(60_000, 0, 30_000));
     }
 
     #[test]

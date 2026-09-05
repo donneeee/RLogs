@@ -475,6 +475,7 @@ export interface CombatOverlayRuntimeWindow {
   setIgnoreCursorEvents(value: boolean): Promise<void>;
   startDragging(): Promise<void>;
   startResizeDragging(direction: OverlayResizeDirection): Promise<void>;
+  heartbeat(): Promise<void>;
   onShowRequested(handler: () => void): Promise<() => void>;
   onResized(handler: (width: number, height: number) => void): Promise<() => void>;
 }
@@ -2240,7 +2241,7 @@ export async function mountCombatOverlayRuntimeApp(
 ): Promise<void> {
   installStyles();
   const root = el("main", "combat-overlay-runtime");
-  const canvas = el("div", "combat-overlay-canvas combat-overlay-canvas-runtime");
+  let canvas = el("div", "combat-overlay-canvas combat-overlay-canvas-runtime");
   canvas.append(text("p", "Loading live overlay…", "combat-overlay-runtime-loading"));
   const resizeEast = runtimeResizeHandle("East", appWindow);
   const resizeSouth = runtimeResizeHandle("South", appWindow);
@@ -2403,12 +2404,15 @@ export async function mountCombatOverlayRuntimeApp(
     resizeEast.hidden = !runtimeSettings.allowLiveResize;
     resizeSouth.hidden = !runtimeSettings.allowLiveResize || runtimeSettings.dynamicHeight;
     resizeSouthEast.hidden = !runtimeSettings.allowLiveResize || runtimeSettings.dynamicHeight;
-    canvas.style.width = `${Math.round(runtimeSettings.canvasWidth * scale)}px`;
-    canvas.style.height = `${Math.round(runtimeSettings.canvasHeight * scale)}px`;
-    canvas.style.setProperty("--overlay-opacity", String(runtimeSettings.opacityPercent / 100));
-    canvas.style.setProperty("--bar-opacity", String(runtimeSettings.barOpacityPercent / 100));
-    canvas.style.setProperty("--summary-opacity", String(runtimeSettings.summaryOpacityPercent / 100));
-    renderOverlayCanvas(canvas, runtimeSettings, actors, {
+    // Build the next frame off-DOM. A malformed/oversized update must never
+    // clear the last good overlay and leave a permanently transparent WebView.
+    const nextCanvas = el("div", "combat-overlay-canvas combat-overlay-canvas-runtime");
+    nextCanvas.style.width = `${Math.round(runtimeSettings.canvasWidth * scale)}px`;
+    nextCanvas.style.height = `${Math.round(runtimeSettings.canvasHeight * scale)}px`;
+    nextCanvas.style.setProperty("--overlay-opacity", String(runtimeSettings.opacityPercent / 100));
+    nextCanvas.style.setProperty("--bar-opacity", String(runtimeSettings.barOpacityPercent / 100));
+    nextCanvas.style.setProperty("--summary-opacity", String(runtimeSettings.summaryOpacityPercent / 100));
+    renderOverlayCanvas(nextCanvas, runtimeSettings, actors, {
       mode: "runtime",
       snapshot: applyOverlayTimerPause(latestSnapshot, timerSettings),
       encounterPresentation,
@@ -2487,9 +2491,11 @@ export async function mountCombatOverlayRuntimeApp(
         }
       },
     });
-    const desiredHeight = resolvedOverlayHeight(canvas, runtimeSettings);
+    const desiredHeight = resolvedOverlayHeight(nextCanvas, runtimeSettings);
     const desiredWidth = Math.round(runtimeSettings.canvasWidth * scale);
-    canvas.style.height = `${desiredHeight}px`;
+    nextCanvas.style.height = `${desiredHeight}px`;
+    canvas.replaceWith(nextCanvas);
+    canvas = nextCanvas;
     if (desiredWidth !== lastWindowWidth || desiredHeight !== lastWindowHeight) {
       lastWindowWidth = desiredWidth;
       lastWindowHeight = desiredHeight;
@@ -2540,6 +2546,13 @@ export async function mountCombatOverlayRuntimeApp(
     stopResizeListener = unlisten;
   }).catch((error) => reportWindowSyncFailure("resize tracking", error));
 
+  let consecutiveRuntimeFailures = 0;
+  const heartbeatTimer = window.setInterval(() => {
+    void appWindow.heartbeat().catch((error) =>
+      reportWindowSyncFailure("renderer heartbeat", error));
+  }, 2_000);
+  void appWindow.heartbeat().catch((error) =>
+    reportWindowSyncFailure("initial renderer heartbeat", error));
   const run = async () => {
     while (active) {
       try {
@@ -2611,8 +2624,26 @@ export async function mountCombatOverlayRuntimeApp(
         }
         syncCombatVisibility();
         render();
-      } catch {
-        await new Promise((resolve) => window.setTimeout(resolve, 250));
+        consecutiveRuntimeFailures = 0;
+        delete root.dataset.runtimeError;
+      } catch (error) {
+        consecutiveRuntimeFailures += 1;
+        root.dataset.runtimeError = String(consecutiveRuntimeFailures);
+        root.title = `Live overlay update failed: ${errorMessage(error)}`;
+        if (canvas.querySelector(".combat-overlay-layer") === null) {
+          canvas.replaceChildren(
+            text(
+              "p",
+              "Live overlay is reconnecting…",
+              "combat-overlay-runtime-loading combat-overlay-runtime-error",
+            ),
+          );
+        }
+        const retryMillis = Math.min(
+          5_000,
+          250 * (2 ** Math.min(4, consecutiveRuntimeFailures - 1)),
+        );
+        await new Promise((resolve) => window.setTimeout(resolve, retryMillis));
       }
     }
   };
@@ -2620,6 +2651,7 @@ export async function mountCombatOverlayRuntimeApp(
     active = false;
     clearVisibilityTimer();
     if (resizeSaveTimer !== null) window.clearTimeout(resizeSaveTimer);
+    window.clearInterval(heartbeatTimer);
     stopResizeListener?.();
     stopShowRequestListener?.();
   }, { once: true });
