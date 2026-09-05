@@ -15,7 +15,7 @@ use serde::{
 };
 use sha2::{Digest, Sha256};
 
-const SCHEMA_VERSION: u16 = 22;
+const SCHEMA_VERSION: u16 = 23;
 const REQUIRED_FORMULA_COHORT_SCHEMA_VERSIONS: [u16; 9] = [40, 41, 42, 43, 44, 45, 46, 47, 48];
 const CURRENT_HP_ATTRIBUTE_ID: i32 = 11_310;
 const PHYSICAL_DEFENSE_ATTRIBUTE_ID: i32 = 11_350;
@@ -977,6 +977,22 @@ struct Summary {
 }
 
 #[derive(Debug, Serialize)]
+struct AcquisitionGapDiagnostic {
+    state: &'static str,
+    selected_source_attribute_ids: Vec<i32>,
+    review_band_pairs: u64,
+    review_band_pairs_without_source_attribute_transition: u64,
+    review_band_pairs_with_unselected_source_attribute_transition: u64,
+    review_band_pairs_with_selected_source_attribute_transition: u64,
+    review_band_pairs_with_selected_source_attribute_and_target_status_transition_within_limit: u64,
+    required_next_evidence: &'static str,
+    formula_authority: bool,
+    runtime_authority: bool,
+    ui_display_authority: bool,
+    provider_rdps_credit_allowed: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct Output {
     schema_version: u16,
     generated_by: &'static str,
@@ -985,6 +1001,7 @@ struct Output {
     processing: Processing,
     input: InputEvidence,
     summary: Summary,
+    acquisition_gap_diagnostic: Option<AcquisitionGapDiagnostic>,
     effects: Vec<EffectReport>,
     near_controlled_target_diagnostic: Vec<NearTargetEffectReport>,
     near_controlled_source_attribute_diagnostic: Vec<NearSourceEffectReport>,
@@ -1400,6 +1417,78 @@ fn source_entity_matches(source_entity_uuid: i64, selected_entity_uuids: &BTreeS
     selected_entity_uuids.is_empty() || selected_entity_uuids.contains(&source_entity_uuid)
 }
 
+fn acquisition_gap_state(
+    review_band_pairs: u64,
+    without_source_transition: u64,
+    with_unselected_source_transition: u64,
+    with_selected_source_transition: u64,
+    with_selected_source_and_target_status_within_limit: u64,
+) -> &'static str {
+    if without_source_transition == review_band_pairs {
+        "source_attribute_transition_not_observed"
+    } else if with_selected_source_transition == 0 && with_unselected_source_transition > 0 {
+        "only_unselected_source_attribute_transitions_observed"
+    } else if with_selected_source_transition > 0
+        && with_selected_source_and_target_status_within_limit == 0
+    {
+        "target_status_co_transition_limit_not_satisfied"
+    } else {
+        "source_status_co_transition_limit_not_satisfied"
+    }
+}
+
+fn acquisition_gap_diagnostic(
+    summary: &Summary,
+    selected_source_attribute_ids: &BTreeSet<i32>,
+    cross_entity_diagnostic_enabled: bool,
+) -> Option<AcquisitionGapDiagnostic> {
+    let review_band_pairs = summary
+        .cross_entity_source_transition_target_current_hp_excluded_source_status_review_band_pairs;
+    if !cross_entity_diagnostic_enabled
+        || selected_source_attribute_ids.is_empty()
+        || review_band_pairs == 0
+        || summary
+            .cross_entity_source_transition_target_current_hp_excluded_source_and_target_status_transition_controlled_pairs
+            > 0
+    {
+        return None;
+    }
+
+    let without_source_transition = summary
+        .cross_entity_source_transition_target_current_hp_excluded_source_status_review_band_pairs_without_source_attribute_transition;
+    let with_unselected_source_transition = summary
+        .cross_entity_source_transition_target_current_hp_excluded_source_status_review_band_pairs_with_unselected_source_attribute_transition;
+    let with_selected_source_transition = summary
+        .cross_entity_source_transition_target_current_hp_excluded_source_status_review_band_pairs_with_selected_source_attribute_transition;
+    let with_selected_source_and_target_status_within_limit = summary
+        .cross_entity_source_transition_target_current_hp_excluded_source_status_review_band_pairs_with_selected_source_attribute_and_target_status_transition_within_limit;
+    let state = acquisition_gap_state(
+        review_band_pairs,
+        without_source_transition,
+        with_unselected_source_transition,
+        with_selected_source_transition,
+        with_selected_source_and_target_status_within_limit,
+    );
+
+    Some(AcquisitionGapDiagnostic {
+        state,
+        selected_source_attribute_ids: selected_source_attribute_ids.iter().copied().collect(),
+        review_band_pairs,
+        review_band_pairs_without_source_attribute_transition: without_source_transition,
+        review_band_pairs_with_unselected_source_attribute_transition:
+            with_unselected_source_transition,
+        review_band_pairs_with_selected_source_attribute_transition:
+            with_selected_source_transition,
+        review_band_pairs_with_selected_source_attribute_and_target_status_transition_within_limit:
+            with_selected_source_and_target_status_within_limit,
+        required_next_evidence: "capture the same exact build, structural source, direct source, target, ability and hit identity before, during, and after one selected effect lifecycle; the selected source attributes must transition in packet state while non-candidate source and target statuses, geometry, critical/lucky flags, and normalized packet formula inputs remain unchanged; repeated A/B/A observations are required before formula or provider-credit promotion",
+        formula_authority: false,
+        runtime_authority: false,
+        ui_display_authority: false,
+        provider_rdps_credit_allowed: false,
+    })
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args()?;
     enforce_memory_limit_bytes(
@@ -1668,6 +1757,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|variant| variant.source_status_transition_review_band_pairs_with_selected_source_attribute_and_target_status_transition_within_limit)
                 .sum(),
     };
+    let acquisition_gap_diagnostic = acquisition_gap_diagnostic(
+        &summary,
+        &args.source_transition_attribute_ids,
+        args.cross_entity_formula_state_diagnostic,
+    );
     enforce_memory_limit(&cohort, "final output assembly")?;
     let measured_peak_working_set_bytes = observed_max_working_set_bytes();
     let configured_memory_limit_bytes = memory_limit_bytes(args.memory_limit_mib);
@@ -1742,6 +1836,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             source_inputs: cohort.source_inputs.clone(),
         },
         summary,
+        acquisition_gap_diagnostic,
         effects,
         near_controlled_target_diagnostic,
         near_controlled_source_attribute_diagnostic,
@@ -4934,6 +5029,26 @@ mod tests {
         assert!(formula_cohort_schema_is_supported(Some(47)));
         assert!(formula_cohort_schema_is_supported(Some(48)));
         assert!(!formula_cohort_schema_is_supported(Some(49)));
+    }
+
+    #[test]
+    fn acquisition_gap_state_identifies_the_first_unmet_control_gate() {
+        assert_eq!(
+            acquisition_gap_state(55, 55, 0, 0, 0),
+            "source_attribute_transition_not_observed"
+        );
+        assert_eq!(
+            acquisition_gap_state(55, 20, 35, 0, 0),
+            "only_unselected_source_attribute_transitions_observed"
+        );
+        assert_eq!(
+            acquisition_gap_state(55, 20, 10, 25, 0),
+            "target_status_co_transition_limit_not_satisfied"
+        );
+        assert_eq!(
+            acquisition_gap_state(55, 20, 10, 25, 5),
+            "source_status_co_transition_limit_not_satisfied"
+        );
     }
 
     #[test]
