@@ -121,10 +121,14 @@ impl RunSessionReducer {
         if self.active_scene_id != next_scene_id {
             self.rule_actors.clear();
         }
-        self.active_scene_id = next_scene_id;
-        self.pending_identity.scene_id = next_scene_id;
+        self.apply_scene_identity(next_scene_id);
+    }
 
-        let Some(rule) = next_scene_id.and_then(|scene_id| self.config.scene_rules.get(&scene_id))
+    fn apply_scene_identity(&mut self, scene_id: Option<i32>) {
+        self.active_scene_id = scene_id;
+        self.pending_identity.scene_id = scene_id;
+
+        let Some(rule) = scene_id.and_then(|scene_id| self.config.scene_rules.get(&scene_id))
         else {
             return;
         };
@@ -159,6 +163,18 @@ impl RunSessionReducer {
             }
         }
         self.config.partition = rule.partition.clone();
+    }
+
+    fn unique_scene_for_dungeon_event(&self, event: &DungeonEvent) -> Option<i32> {
+        let dungeon_id = event.dungeon_id?.0;
+        let mut matching_scenes = self
+            .config
+            .scene_rules
+            .values()
+            .filter(|rule| rule.runtime_enabled && rule.candidate_dungeon_ids.contains(&dungeon_id))
+            .map(|rule| rule.scene_id);
+        let scene_id = matching_scenes.next()?;
+        matching_scenes.next().is_none().then_some(scene_id)
     }
 
     /// Records host evidence for a user-requested recorder pause. The interval
@@ -600,6 +616,18 @@ impl RunSessionReducer {
     }
 
     fn update_dungeon_identity(&mut self, event: &DungeonEvent) {
+        // Dungeon entry can arrive even when a load-screen world packet was
+        // missed. A unique exact-build dungeon-ID match is authoritative
+        // enough to replace a stale non-dungeon scene (commonly the town the
+        // player queued from); ambiguous IDs remain unresolved.
+        if self.active_rule().is_none()
+            && let Some(scene_id) = self.unique_scene_for_dungeon_event(event)
+        {
+            if self.active_scene_id != Some(scene_id) {
+                self.rule_actors.clear();
+            }
+            self.apply_scene_identity(Some(scene_id));
+        }
         if self.pending_identity.activity_kind == ActivityKind::Unknown {
             self.pending_identity.activity_kind = ActivityKind::Dungeon;
         }
@@ -1579,6 +1607,69 @@ mod tests {
             runs[0].submission_disposition,
             RunSubmissionDisposition::RankCandidate
         );
+    }
+
+    #[test]
+    fn unique_dungeon_id_replaces_a_stale_town_scene() {
+        let scene_rule = SceneRunRule {
+            scene_id: 6_565,
+            runtime_enabled: true,
+            activity_kind: ActivityKind::Dungeon,
+            activity_id: "scene.6565".into(),
+            activity_family_id: Some("mistveil".into()),
+            activity_localization_key: Some("scene.6565.name".into()),
+            difficulty_family: Some("challenge".into()),
+            difficulty_localization_key: None,
+            difficulty_tier_range: None,
+            route_id: None,
+            raid_route_kind: None,
+            partition: None,
+            candidate_dungeon_ids: [7_001].into_iter().collect(),
+            mobbing_encounter_id: Some("scene.6565.mobbing".into()),
+            boss_encounter_id: Some("scene.6565.boss".into()),
+            boss_monster_ids: BTreeSet::new(),
+            objective_rules: BTreeMap::new(),
+            evidence: Vec::new(),
+        };
+        let mut reducer = RunSessionReducer::new(RunReducerConfig {
+            scene_rules: BTreeMap::from([(scene_rule.scene_id, scene_rule)]),
+            ..RunReducerConfig::default()
+        });
+        let mut events = factory();
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(8)),
+                map_id: Some(8),
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            1_000_000,
+            dungeon(DungeonEventKind::Started, "mistveil-instance"),
+        );
+        emit(
+            &mut reducer,
+            &mut events,
+            9_000_000,
+            dungeon(DungeonEventKind::Completed, "mistveil-instance"),
+        );
+
+        let runs = reducer.finish();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].identity.scene_id, Some(6_565));
+        assert_eq!(runs[0].identity.activity_id.as_deref(), Some("scene.6565"));
+        assert_eq!(
+            runs[0].identity.activity_family_id.as_deref(),
+            Some("mistveil")
+        );
+        assert_eq!(runs[0].terminal_state, RunTerminalState::Completed);
     }
 
     #[test]

@@ -129,6 +129,7 @@ struct CombatOverlayWindowState {
     requested: AtomicBool,
     automatically_hidden: AtomicBool,
     last_heartbeat_unix_millis: AtomicU64,
+    last_live_update_unix_millis: AtomicU64,
     last_reload_unix_millis: AtomicU64,
     automatic_recovery_count: AtomicU64,
     consecutive_runtime_failures: AtomicU64,
@@ -140,6 +141,11 @@ struct OverlayFocusWindowState {
     restore_labels: Mutex<BTreeSet<String>>,
 }
 
+// The combat overlay is a non-activating HUD. Pointer events still reach the
+// WebView, but Windows must keep game input on the current foreground window.
+const COMBAT_OVERLAY_FOCUSABLE: bool = false;
+const _: () = assert!(!COMBAT_OVERLAY_FOCUSABLE);
+
 impl OverlayFocusWindowState {
     fn allows_visibility(&self) -> bool {
         !self.hidden.load(Ordering::Acquire)
@@ -148,11 +154,13 @@ impl OverlayFocusWindowState {
 
 impl CombatOverlayWindowState {
     fn from_saved_settings(enabled: bool, auto_hide_outside_combat: bool) -> Self {
+        let now = unix_millis();
         Self {
             ready: AtomicBool::new(false),
             requested: AtomicBool::new(enabled),
             automatically_hidden: AtomicBool::new(!enabled || auto_hide_outside_combat),
-            last_heartbeat_unix_millis: AtomicU64::new(unix_millis()),
+            last_heartbeat_unix_millis: AtomicU64::new(now),
+            last_live_update_unix_millis: AtomicU64::new(now),
             last_reload_unix_millis: AtomicU64::new(0),
             automatic_recovery_count: AtomicU64::new(0),
             consecutive_runtime_failures: AtomicU64::new(0),
@@ -186,8 +194,7 @@ fn show_combat_overlay(
         let window = app
             .get_webview_window("combat-overlay")
             .ok_or_else(|| "Combat Overlay window is unavailable; restart rLogs".to_owned())?;
-        window.show().map_err(|error| error.to_string())?;
-        window.set_focus().map_err(|error| error.to_string())?;
+        show_combat_overlay_without_activation(&window)?;
         window
             .emit("combat-overlay-show-requested", ())
             .map_err(|error| error.to_string())?;
@@ -217,7 +224,7 @@ fn set_combat_overlay_enabled(
         return window.hide().map_err(|error| error.to_string());
     }
     if state.ready.load(Ordering::Acquire) {
-        window.show().map_err(|error| error.to_string())?;
+        show_combat_overlay_without_activation(&window)?;
         window
             .emit("combat-overlay-show-requested", ())
             .map_err(|error| error.to_string())?;
@@ -257,7 +264,7 @@ fn show_combat_overlay_if_requested(
     let window = app
         .get_webview_window("combat-overlay")
         .ok_or_else(|| "Combat Overlay window is unavailable; restart rLogs".to_owned())?;
-    window.show().map_err(|error| error.to_string())
+    show_combat_overlay_without_activation(&window)
 }
 
 #[tauri::command]
@@ -280,7 +287,7 @@ fn set_combat_overlay_automatically_hidden(
         false,
         !focus_state.allows_visibility(),
     ) {
-        window.show().map_err(|error| error.to_string())?;
+        show_combat_overlay_without_activation(&window)?;
     }
     Ok(())
 }
@@ -321,7 +328,7 @@ fn toggle_combat_overlay(app: &tauri::AppHandle) -> Result<(), String> {
         state.requested.store(true, Ordering::Release);
         state.automatically_hidden.store(false, Ordering::Release);
         if state.ready.load(Ordering::Acquire) && focus_state.allows_visibility() {
-            window.show().map_err(|error| error.to_string())?;
+            show_combat_overlay_without_activation(&window)?;
             window
                 .emit("combat-overlay-show-requested", ())
                 .map_err(|error| error.to_string())?;
@@ -414,6 +421,10 @@ fn build_combat_overlay_window(
         // Keep that surface hidden until the runtime confirms that its first
         // frame exists, otherwise Windows exposes a large white rectangle.
         .visible(false)
+        // The live meter is a heads-up display. On Windows this adds
+        // WS_EX_NOACTIVATE, so showing it or reloading WebView2 cannot take
+        // keyboard/controller focus away from the game.
+        .focusable(COMBAT_OVERLAY_FOCUSABLE)
         .always_on_top(true)
         .skip_taskbar(true)
         .inner_size(460.0, 520.0)
@@ -488,20 +499,35 @@ fn combat_overlay_ready(
         let window = app
             .get_webview_window("combat-overlay")
             .ok_or_else(|| "Combat Overlay window no longer exists".to_owned())?;
-        window.show().map_err(|error| error.to_string())?;
-        window.set_focus().map_err(|error| error.to_string())?;
+        show_combat_overlay_without_activation(&window)?;
     }
     Ok(())
+}
+
+fn show_combat_overlay_without_activation(window: &tauri::WebviewWindow) -> Result<(), String> {
+    // Re-assert the invariant at runtime as well as in the builder. A WebView2
+    // renderer reload must never turn the combat HUD into an activatable
+    // window before its ready callback reveals it again.
+    window
+        .set_focusable(COMBAT_OVERLAY_FOCUSABLE)
+        .map_err(|error| error.to_string())?;
+    window.show().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn combat_overlay_heartbeat(
     state: tauri::State<'_, CombatOverlayWindowState>,
     consecutive_failures: u64,
+    last_successful_update_unix_millis: u64,
 ) {
+    let now = unix_millis();
     state
         .last_heartbeat_unix_millis
-        .store(unix_millis(), Ordering::Release);
+        .store(now, Ordering::Release);
+    state.last_live_update_unix_millis.store(
+        last_successful_update_unix_millis.min(now),
+        Ordering::Release,
+    );
     state
         .consecutive_runtime_failures
         .store(consecutive_failures, Ordering::Release);
@@ -518,6 +544,8 @@ struct CombatOverlayHealth {
     hidden_by_focus_policy: bool,
     last_heartbeat_unix_millis: u64,
     heartbeat_age_millis: u64,
+    last_live_update_unix_millis: u64,
+    live_update_age_millis: u64,
     consecutive_runtime_failures: u64,
     automatic_recovery_count: u64,
     last_recovery_unix_millis: Option<u64>,
@@ -529,9 +557,10 @@ fn combat_overlay_health_status(
     visible: bool,
     automatically_hidden: bool,
     hidden_by_focus_policy: bool,
-    heartbeat_age_millis: u64,
+    liveness_ages_millis: (u64, u64),
     consecutive_runtime_failures: u64,
 ) -> &'static str {
+    let (heartbeat_age_millis, live_update_age_millis) = liveness_ages_millis;
     if !requested {
         "disabled"
     } else if automatically_hidden {
@@ -544,6 +573,8 @@ fn combat_overlay_health_status(
         "reconnecting"
     } else if heartbeat_age_millis >= 15_000 {
         "stalled"
+    } else if live_update_age_millis >= 15_000 {
+        "feed_stalled"
     } else if visible {
         "healthy"
     } else {
@@ -568,6 +599,8 @@ fn combat_overlay_health(
         .unwrap_or(false);
     let last_heartbeat_unix_millis = state.last_heartbeat_unix_millis.load(Ordering::Acquire);
     let heartbeat_age_millis = now.saturating_sub(last_heartbeat_unix_millis);
+    let last_live_update_unix_millis = state.last_live_update_unix_millis.load(Ordering::Acquire);
+    let live_update_age_millis = now.saturating_sub(last_live_update_unix_millis);
     let consecutive_runtime_failures = state.consecutive_runtime_failures.load(Ordering::Acquire);
     let automatic_recovery_count = state.automatic_recovery_count.load(Ordering::Acquire);
     let last_recovery = state.last_reload_unix_millis.load(Ordering::Acquire);
@@ -577,7 +610,7 @@ fn combat_overlay_health(
         visible,
         automatically_hidden,
         hidden_by_focus_policy,
-        heartbeat_age_millis,
+        (heartbeat_age_millis, live_update_age_millis),
         consecutive_runtime_failures,
     );
     CombatOverlayHealth {
@@ -589,14 +622,21 @@ fn combat_overlay_health(
         hidden_by_focus_policy,
         last_heartbeat_unix_millis,
         heartbeat_age_millis,
+        last_live_update_unix_millis,
+        live_update_age_millis,
         consecutive_runtime_failures,
         automatic_recovery_count,
         last_recovery_unix_millis: (last_recovery > 0).then_some(last_recovery),
     }
 }
 
-fn combat_overlay_renderer_is_stale(now: u64, last_heartbeat: u64, last_reload: u64) -> bool {
-    now.saturating_sub(last_heartbeat) >= 15_000
+fn combat_overlay_renderer_is_stale(
+    now: u64,
+    last_heartbeat: u64,
+    last_live_update: u64,
+    last_reload: u64,
+) -> bool {
+    (now.saturating_sub(last_heartbeat) >= 15_000 || now.saturating_sub(last_live_update) >= 15_000)
         && (last_reload == 0 || now.saturating_sub(last_reload) >= 30_000)
 }
 
@@ -621,8 +661,14 @@ fn monitor_combat_overlay_renderer(app: tauri::AppHandle) -> std::io::Result<()>
                 }
                 let now = unix_millis();
                 let last_heartbeat = state.last_heartbeat_unix_millis.load(Ordering::Acquire);
+                let last_live_update = state.last_live_update_unix_millis.load(Ordering::Acquire);
                 let last_reload = state.last_reload_unix_millis.load(Ordering::Acquire);
-                if !combat_overlay_renderer_is_stale(now, last_heartbeat, last_reload) {
+                if !combat_overlay_renderer_is_stale(
+                    now,
+                    last_heartbeat,
+                    last_live_update,
+                    last_reload,
+                ) {
                     continue;
                 }
                 state.last_reload_unix_millis.store(now, Ordering::Release);
@@ -697,7 +743,7 @@ fn monitor_combat_overlay_activity(
                 // Do not steal focus when combat begins. Revealing the
                 // always-on-top overlay is sufficient and keeps game input in
                 // the game.
-                let _ = window.show();
+                let _ = show_combat_overlay_without_activation(&window);
                 // The WebView root is hidden separately from its native
                 // window. Reconcile both states after waking so the native
                 // surface cannot be shown with transparent content.
@@ -759,7 +805,7 @@ fn set_overlay_windows_hidden_by_focus(app: &tauri::AppHandle, hidden: bool) {
         false,
     ) && let Some(window) = app.get_webview_window("combat-overlay")
     {
-        let _ = window.show();
+        let _ = show_combat_overlay_without_activation(&window);
         let _ = window.emit("combat-overlay-show-requested", ());
     }
 }
@@ -949,33 +995,38 @@ mod tests {
 
     #[test]
     fn visible_overlay_renderer_recovers_after_a_bounded_stall() {
-        assert!(!combat_overlay_renderer_is_stale(14_999, 0, 0));
-        assert!(combat_overlay_renderer_is_stale(15_000, 0, 0));
-        assert!(!combat_overlay_renderer_is_stale(44_999, 0, 30_000));
-        assert!(combat_overlay_renderer_is_stale(60_000, 0, 30_000));
+        assert!(!combat_overlay_renderer_is_stale(14_999, 0, 0, 0));
+        assert!(combat_overlay_renderer_is_stale(15_000, 0, 0, 0));
+        assert!(!combat_overlay_renderer_is_stale(44_999, 0, 0, 30_000));
+        assert!(combat_overlay_renderer_is_stale(60_000, 0, 0, 30_000));
+        assert!(combat_overlay_renderer_is_stale(20_000, 19_000, 0, 0));
     }
 
     #[test]
     fn overlay_health_distinguishes_intentional_hiding_from_failures() {
         assert_eq!(
-            combat_overlay_health_status(false, true, false, false, false, 0, 0),
+            combat_overlay_health_status(false, true, false, false, false, (0, 0), 0),
             "disabled"
         );
         assert_eq!(
-            combat_overlay_health_status(true, true, false, true, false, 60_000, 0),
+            combat_overlay_health_status(true, true, false, true, false, (60_000, 60_000), 0),
             "auto_hidden"
         );
         assert_eq!(
-            combat_overlay_health_status(true, true, true, false, false, 0, 2),
+            combat_overlay_health_status(true, true, true, false, false, (0, 0), 2),
             "reconnecting"
         );
         assert_eq!(
-            combat_overlay_health_status(true, true, true, false, false, 15_000, 0),
+            combat_overlay_health_status(true, true, true, false, false, (15_000, 0), 0),
             "stalled"
         );
         assert_eq!(
-            combat_overlay_health_status(true, true, true, false, false, 1_000, 0),
+            combat_overlay_health_status(true, true, true, false, false, (1_000, 1_000), 0),
             "healthy"
+        );
+        assert_eq!(
+            combat_overlay_health_status(true, true, true, false, false, (1_000, 15_000), 0),
+            "feed_stalled"
         );
     }
 

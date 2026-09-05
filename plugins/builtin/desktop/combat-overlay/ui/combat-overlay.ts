@@ -475,7 +475,7 @@ export interface CombatOverlayRuntimeWindow {
   setIgnoreCursorEvents(value: boolean): Promise<void>;
   startDragging(): Promise<void>;
   startResizeDragging(direction: OverlayResizeDirection): Promise<void>;
-  heartbeat(consecutiveFailures: number): Promise<void>;
+  heartbeat(consecutiveFailures: number, lastSuccessfulUpdateUnixMillis: number): Promise<void>;
   onShowRequested(handler: () => void): Promise<() => void>;
   onResized(handler: (width: number, height: number) => void): Promise<() => void>;
 }
@@ -2547,11 +2547,12 @@ export async function mountCombatOverlayRuntimeApp(
   }).catch((error) => reportWindowSyncFailure("resize tracking", error));
 
   let consecutiveRuntimeFailures = 0;
+  let lastSuccessfulUpdateUnixMillis = Date.now();
   const heartbeatTimer = window.setInterval(() => {
-    void appWindow.heartbeat(consecutiveRuntimeFailures).catch((error) =>
+    void appWindow.heartbeat(consecutiveRuntimeFailures, lastSuccessfulUpdateUnixMillis).catch((error) =>
       reportWindowSyncFailure("renderer heartbeat", error));
   }, 2_000);
-  void appWindow.heartbeat(consecutiveRuntimeFailures).catch((error) =>
+  void appWindow.heartbeat(consecutiveRuntimeFailures, lastSuccessfulUpdateUnixMillis).catch((error) =>
     reportWindowSyncFailure("initial renderer heartbeat", error));
   const run = async () => {
     while (active) {
@@ -2563,8 +2564,10 @@ export async function mountCombatOverlayRuntimeApp(
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ after_revision: revision, timeout_millis: 1_000 }),
           },
+          5_000,
         );
         if (!active) return;
+        lastSuccessfulUpdateUnixMillis = Date.now();
         revision = Math.max(revision, update.revision);
         latestSnapshot = update.snapshot;
         encounterPresentation = update.encounter_presentation ?? null;
@@ -5293,13 +5296,31 @@ function applyOverlayBackground(
   );
 }
 
-async function apiJson<T>(route: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(route, { cache: "no-store", headers: { Accept: "application/json", ...init?.headers }, ...init });
-  const value: unknown = await response.json();
-  if (!response.ok) {
-    throw new Error(isRecord(value) && typeof value.error === "string" ? value.error : `HTTP ${response.status}`);
+export async function apiJson<T>(route: string, init?: RequestInit, timeoutMillis?: number): Promise<T> {
+  const controller = timeoutMillis === undefined ? null : new AbortController();
+  const timeout = controller === null
+    ? null
+    : globalThis.setTimeout(() => controller.abort(), timeoutMillis);
+  try {
+    const response = await fetch(route, {
+      cache: "no-store",
+      headers: { Accept: "application/json", ...init?.headers },
+      ...init,
+      ...(controller === null ? {} : { signal: controller.signal }),
+    });
+    const value: unknown = await response.json();
+    if (!response.ok) {
+      throw new Error(isRecord(value) && typeof value.error === "string" ? value.error : `HTTP ${response.status}`);
+    }
+    return value as T;
+  } catch (error) {
+    if (controller?.signal.aborted) {
+      throw new Error(`Live overlay request timed out after ${timeoutMillis} ms`, { cause: error });
+    }
+    throw error;
+  } finally {
+    if (timeout !== null) globalThis.clearTimeout(timeout);
   }
-  return value as T;
 }
 
 function metricValue(actor: OverlayActor, metric: OverlayMetric): number {

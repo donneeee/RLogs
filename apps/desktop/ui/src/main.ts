@@ -67,9 +67,9 @@ if (isCombatOverlayRuntime) {
       setIgnoreCursorEvents: (value) => appWindow.setIgnoreCursorEvents(value),
       startDragging: () => appWindow.startDragging(),
       startResizeDragging: (direction) => appWindow.startResizeDragging(direction),
-      heartbeat: (consecutiveFailures) => invoke(
+      heartbeat: (consecutiveFailures, lastSuccessfulUpdateUnixMillis) => invoke(
         "combat_overlay_heartbeat",
-        { consecutiveFailures },
+        { consecutiveFailures, lastSuccessfulUpdateUnixMillis },
       ),
       onShowRequested: async (handler) => appWindow.listen(
         "combat-overlay-show-requested",

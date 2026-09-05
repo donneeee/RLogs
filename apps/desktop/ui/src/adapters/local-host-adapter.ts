@@ -229,6 +229,7 @@ interface CombatOverlayHealth {
     | "starting"
     | "reconnecting"
     | "stalled"
+    | "feed_stalled"
     | "healthy"
     | "window_hidden";
   requested: boolean;
@@ -238,6 +239,8 @@ interface CombatOverlayHealth {
   hiddenByFocusPolicy: boolean;
   lastHeartbeatUnixMillis: number;
   heartbeatAgeMillis: number;
+  lastLiveUpdateUnixMillis: number;
+  liveUpdateAgeMillis: number;
   consecutiveRuntimeFailures: number;
   automaticRecoveryCount: number;
   lastRecoveryUnixMillis: number | null;
@@ -4244,6 +4247,7 @@ function parserHealthCard(
       starting: "Starting renderer",
       reconnecting: "Reconnecting to live feed",
       stalled: "Renderer heartbeat stalled",
+      feed_stalled: "Live feed stopped responding",
       healthy: "Visible and healthy",
       window_hidden: "Enabled · native window hidden",
     }[overlayHealth.status];
@@ -4252,6 +4256,10 @@ function parserHealthCard(
       fileRow(
         "Overlay heartbeat",
         `${Math.round(overlayHealth.heartbeatAgeMillis / 1_000)}s ago`,
+      ),
+      fileRow(
+        "Overlay live feed",
+        `${Math.round(overlayHealth.liveUpdateAgeMillis / 1_000)}s ago`,
       ),
       fileRow(
         "Overlay feed failures",

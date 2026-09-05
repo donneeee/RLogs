@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyOverlayTimerPause,
   applyOverlayRdpsSkillDetail,
+  apiJson,
   availableTimerFields,
   actorName,
   buttonWidthFor,
@@ -900,6 +901,25 @@ describe("Combat Overlay plug-in settings", () => {
     expect(shouldIgnoreCombatOverlayCursor(true, true)).toBe(true);
     expect(shouldIgnoreCombatOverlayCursor(false, true)).toBe(true);
     expect(shouldIgnoreCombatOverlayCursor(false, false)).toBe(false);
+  });
+
+  it("aborts a live-feed request that outlives its client deadline", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new Error("aborted by test transport")),
+          { once: true },
+        );
+      })) as typeof fetch;
+    try {
+      await expect(apiJson("/api/test/stalled", undefined, 5)).rejects.toThrow(
+        "Live overlay request timed out after 5 ms",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("makes the visible overlay surface fill the configured window geometry", () => {

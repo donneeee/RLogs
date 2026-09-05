@@ -4640,10 +4640,10 @@ fn decode_sync_client_use_skill(
     profile: &ProfileTracker,
 ) -> Result<Vec<CanonicalEventDraft>, ProtocolMessageError> {
     let message = schema::SyncClientUseSkill::decode(payload)?;
-    let Some(source_uuid) = profile.local_entity_uuid else {
+    let Some(source_uuid) = local_profile_entity_uuid(profile) else {
         // The notification does not carry its source because it is implicitly
-        // the local player. Refuse to guess until SyncToMeDelta has established
-        // that exact scene entity.
+        // the local player. Refuse to guess until either SyncToMeDelta or the
+        // authenticated character profile establishes that exact entity.
         return Ok(Vec::new());
     };
     let Some(skill_level_id) = message.skill_level_id.filter(|value| *value > 0) else {
@@ -4679,9 +4679,10 @@ fn decode_world_use_slot_skill_action(
     else {
         return Ok(Vec::new());
     };
-    let Some(source_uuid) = profile.local_entity_uuid else {
+    let Some(source_uuid) = local_profile_entity_uuid(profile) else {
         // UseSlot carries an implicit local source. Keep the route decoded but
-        // emit nothing until an exact SyncToMeDelta entity establishes it.
+        // emit nothing until an exact self-entity packet or authenticated
+        // character profile establishes it.
         return Ok(Vec::new());
     };
     let source = entities.resolve(source_uuid, Some(ENTITY_PLAYER))?.identity;
@@ -4696,6 +4697,16 @@ fn decode_world_use_slot_skill_action(
         metadata,
         TimelineEventKind::Cast(cast),
     )])
+}
+
+fn local_profile_entity_uuid(profile: &ProfileTracker) -> Option<i64> {
+    profile.local_entity_uuid.or_else(|| {
+        profile
+            .local_character
+            .as_ref()
+            .and_then(|character| character.character_id.parse::<i64>().ok())
+            .and_then(character_entity_uuid)
+    })
 }
 
 fn decode_revive(
@@ -10814,6 +10825,27 @@ mod tests {
         assert_eq!(cast.target.unwrap().entity_uuid.0, 1_310_784);
         assert_eq!(cast.ability.0, 152_501);
         assert_eq!(cast.state, CastState::Started);
+    }
+
+    #[test]
+    fn authenticated_profile_is_an_exact_cast_source_fallback() {
+        let profile = ProfileTracker {
+            local_character: Some(CharacterIdentity {
+                region: RegionIdentity {
+                    deployment_id: "global".into(),
+                    region_id: "global".into(),
+                    realm_id: None,
+                    world_id: None,
+                },
+                character_id: "3296036".into(),
+            }),
+            ..ProfileTracker::default()
+        };
+
+        assert_eq!(
+            local_profile_entity_uuid(&profile),
+            character_entity_uuid(3_296_036)
+        );
     }
 
     #[test]
