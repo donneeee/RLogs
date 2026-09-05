@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     env,
     error::Error,
     ffi::OsString,
@@ -21,6 +21,7 @@ const DEFAULT_MAXIMUM_FILES: usize = 4096;
 #[derive(Debug)]
 enum Command {
     Generate(Arguments),
+    GenerateBatch(BatchArguments),
     Verify { input: PathBuf },
 }
 
@@ -34,6 +35,18 @@ struct Arguments {
     known_artifacts: Vec<PathBuf>,
     maximum_files: usize,
     output: PathBuf,
+}
+
+#[derive(Debug)]
+struct BatchArguments {
+    build: String,
+    effect_ids: BTreeSet<i64>,
+    damage_relationship: DamageRelationship,
+    rlogs: Vec<PathBuf>,
+    rlog_dirs: Vec<PathBuf>,
+    known_artifacts: Vec<PathBuf>,
+    maximum_files: usize,
+    output_directory: PathBuf,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +76,13 @@ impl DamageRelationship {
         match self {
             Self::Source => "damage_actor",
             Self::Target => "damage_target",
+        }
+    }
+
+    fn file_token(self) -> &'static str {
+        match self {
+            Self::Source => "source",
+            Self::Target => "target",
         }
     }
 }
@@ -183,6 +203,15 @@ struct ActiveWindow {
     damage_events: u64,
 }
 
+#[derive(Debug, Clone, Default)]
+struct EffectAudit {
+    active: HashMap<(u64, i64, Option<i64>), ActiveWindow>,
+    status_events: u64,
+    complete: u64,
+    complete_with_damage: u64,
+    damage_while_active: u64,
+}
+
 #[derive(Debug, Clone)]
 struct AuditCandidate {
     receipt: RlogReceipt,
@@ -205,6 +234,7 @@ fn main() {
 fn run() -> Result<(), Box<dyn Error>> {
     match arguments()? {
         Command::Generate(arguments) => generate(arguments),
+        Command::GenerateBatch(arguments) => generate_batch(arguments),
         Command::Verify { input } => {
             let report: Report = serde_json::from_reader(BufReader::new(File::open(input)?))?;
             verify_report(&report)?;
@@ -396,6 +426,256 @@ fn generate(arguments: Arguments) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn generate_batch(arguments: BatchArguments) -> Result<(), Box<dyn Error>> {
+    if arguments.build.is_empty()
+        || !arguments.build.bytes().all(|value| value.is_ascii_digit())
+        || arguments.effect_ids.is_empty()
+        || arguments.effect_ids.iter().any(|effect_id| *effect_id <= 0)
+        || arguments.maximum_files == 0
+    {
+        return Err("build, effect IDs, or maximum file count is invalid".into());
+    }
+    let mut paths = BTreeSet::new();
+    for path in &arguments.rlogs {
+        if is_sealed_name_candidate(path) {
+            paths.insert(path.clone());
+        }
+    }
+    for directory in &arguments.rlog_dirs {
+        collect_rlogs(directory, &mut paths, arguments.maximum_files)?;
+    }
+    if paths.is_empty() {
+        return Err("no sealed-name RLOG candidates were discovered".into());
+    }
+    if paths.len() > arguments.maximum_files {
+        return Err(format!(
+            "discovered {} RLOGs, exceeding --maximum-files {}",
+            paths.len(),
+            arguments.maximum_files
+        )
+        .into());
+    }
+
+    let (known_hashes, known_artifacts) = load_known_hashes(&arguments.known_artifacts)?;
+    let mut candidates_by_effect = arguments
+        .effect_ids
+        .iter()
+        .map(|effect_id| (*effect_id, Vec::new()))
+        .collect::<BTreeMap<_, Vec<AuditCandidate>>>();
+    let mut rejected_rlogs = Vec::new();
+    for path in &paths {
+        match audit_rlog_batch(
+            path,
+            &arguments.build,
+            &arguments.effect_ids,
+            arguments.damage_relationship,
+        ) {
+            Ok(candidates) => {
+                for (effect_id, candidate) in candidates {
+                    candidates_by_effect
+                        .get_mut(&effect_id)
+                        .expect("selected effect must have an audit bucket")
+                        .push(candidate);
+                }
+            }
+            Err(rejected) => rejected_rlogs.push(rejected),
+        }
+    }
+
+    let output_paths = arguments
+        .effect_ids
+        .iter()
+        .map(|effect_id| {
+            (
+                *effect_id,
+                arguments.output_directory.join(format!(
+                    "effect-{effect_id}.{}.candidate-manifest.json",
+                    arguments.damage_relationship.file_token()
+                )),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    if let Some(output) = output_paths.values().find(|output| output.exists()) {
+        return Err(format!("refusing to overwrite {}", output.display()).into());
+    }
+    fs::create_dir_all(&arguments.output_directory)?;
+    let mut total_candidates = 0_usize;
+    let mut total_new_candidates = 0_usize;
+    for effect_id in &arguments.effect_ids {
+        let output = output_paths
+            .get(effect_id)
+            .expect("selected effect must have an output path");
+        let report = assemble_report(
+            &arguments,
+            *effect_id,
+            candidates_by_effect.remove(effect_id).unwrap_or_default(),
+            rejected_rlogs.clone(),
+            &known_hashes,
+            known_artifacts.clone(),
+            paths.len(),
+        )?;
+        total_candidates = total_candidates.saturating_add(report.summary.candidate_rlogs);
+        total_new_candidates =
+            total_new_candidates.saturating_add(report.summary.new_candidate_rlogs);
+        write_report(output, &report)?;
+    }
+    println!(
+        "Discovered {} sealed-name RLOGs once for {} effects: {} effect/log candidates, {} new; formula authority=false.",
+        paths.len(),
+        arguments.effect_ids.len(),
+        total_candidates,
+        total_new_candidates
+    );
+    println!(
+        "wrote manifests under {}",
+        arguments.output_directory.display()
+    );
+    Ok(())
+}
+
+fn assemble_report(
+    arguments: &BatchArguments,
+    effect_id: i64,
+    audited_rlogs: Vec<AuditCandidate>,
+    mut rejected_rlogs: Vec<RejectedRlog>,
+    known_hashes: &BTreeSet<String>,
+    known_artifacts: Vec<FileReceipt>,
+    discovered_rlogs: usize,
+) -> Result<Report, Box<dyn Error>> {
+    let exact_build_sealed_rlogs = audited_rlogs.len();
+    let without_effect = audited_rlogs
+        .iter()
+        .filter(|candidate| candidate.selected_effect_status_events == 0)
+        .count();
+    let without_complete_damage_window = audited_rlogs
+        .iter()
+        .filter(|candidate| {
+            candidate.selected_effect_status_events > 0
+                && candidate.complete_windows_with_damage == 0
+        })
+        .count();
+    let mut candidate_rlogs = audited_rlogs
+        .into_iter()
+        .filter(|candidate| {
+            candidate.selected_effect_status_events > 0
+                && candidate.complete_windows_with_damage > 0
+        })
+        .map(|candidate| {
+            let known = known_hashes.contains(&candidate.receipt.sealed_content_sha256);
+            CandidateRlog {
+                receipt: candidate.receipt,
+                session_id: candidate.session_id,
+                protocol_pack_digest: candidate.protocol_pack_digest,
+                selected_effect_status_events: candidate.selected_effect_status_events,
+                complete_gap_bounded_lifecycles: candidate.complete_gap_bounded_lifecycles,
+                complete_windows_with_damage: candidate.complete_windows_with_damage,
+                damage_events_while_active: candidate.damage_events_while_active,
+                data_quality_boundaries: candidate.data_quality_boundaries,
+                known_sealed_content: known,
+                new_candidate: !known,
+            }
+        })
+        .collect::<Vec<_>>();
+    candidate_rlogs.sort_by(|left, right| left.receipt.path.cmp(&right.receipt.path));
+    rejected_rlogs.sort_by(|left, right| left.path.cmp(&right.path));
+    let new_receipts = candidate_rlogs
+        .iter()
+        .filter(|candidate| candidate.new_candidate)
+        .map(|candidate| candidate.receipt.clone())
+        .collect::<Vec<_>>();
+    let wrong_build_rlogs = rejected_rlogs
+        .iter()
+        .filter(|row| row.reason == "wrong-build")
+        .count();
+    let unsealed_or_unreadable_rlogs = rejected_rlogs.len() - wrong_build_rlogs;
+    let summary = Summary {
+        discovered_sealed_name_candidates: discovered_rlogs,
+        exact_build_sealed_rlogs,
+        wrong_build_rlogs,
+        unsealed_or_unreadable_rlogs,
+        exact_build_rlogs_without_selected_effect: without_effect,
+        exact_build_effect_rlogs_without_complete_damage_window: without_complete_damage_window,
+        candidate_rlogs: candidate_rlogs.len(),
+        known_candidate_rlogs: candidate_rlogs
+            .iter()
+            .filter(|row| !row.new_candidate)
+            .count(),
+        new_candidate_rlogs: new_receipts.len(),
+        new_candidate_canonical_events: new_receipts.iter().map(|row| row.event_count).sum(),
+        new_candidate_damage_events_while_active: candidate_rlogs
+            .iter()
+            .filter(|row| row.new_candidate)
+            .map(|row| row.damage_events_while_active)
+            .sum(),
+        formula_authority: false,
+        provider_rdps_credit_allowed: false,
+    };
+    let mut report = Report {
+        schema_version: SCHEMA_VERSION,
+        generated_by: GENERATED_BY.to_owned(),
+        game_build: arguments.build.clone(),
+        effect_id,
+        damage_relationship: arguments.damage_relationship,
+        policy: Policy {
+            recursive_directory_discovery_is_bounded: true,
+            partial_rlog_names_are_excluded: true,
+            exact_build_header_is_required: true,
+            canonical_seal_replay_is_required: true,
+            sealed_rlogs_are_streamed_one_event_at_a_time: true,
+            data_gaps_pauses_and_run_boundaries_cut_effect_windows: true,
+            known_candidates_are_deduplicated_by_sealed_content_sha256: true,
+            remote_player_cast_packets_are_required: false,
+            packet_absence_is_zero: false,
+            current_snapshots_may_rewrite_historical_runs: false,
+            candidate_manifest_is_controlled_pair_proof: false,
+            formula_authority: false,
+            runtime_authority: false,
+            ui_display_authority: false,
+            provider_rdps_credit_allowed: false,
+        },
+        discovery: Discovery {
+            explicit_rlogs: arguments.rlogs.iter().map(|path| display_path(path)).collect(),
+            recursive_rlog_directories: arguments
+                .rlog_dirs
+                .iter()
+                .map(|path| display_path(path))
+                .collect(),
+            maximum_files: arguments.maximum_files,
+            discovered_sealed_name_candidates: discovered_rlogs,
+        },
+        known_artifacts,
+        inputs: ManifestInputs {
+            rlogs: new_receipts,
+        },
+        candidate_rlogs,
+        rejected_rlogs,
+        summary,
+        next_stage: NextStage {
+            refresh_required: false,
+            source_manifest_json_pointer: "/inputs/rlogs".to_owned(),
+            required_pipeline: vec![
+                "rlogs-bpsr-rlog-gap-window-audit generate with the same build, effect, and damage relationship".to_owned(),
+                "rlogs-bpsr-rlog-transition-counterfactual-audit generate over the resulting gap-window receipt".to_owned(),
+                "run the exact integer candidate evaluator only if new comparison candidates survive".to_owned(),
+                "retain formula, runtime, UI, and provider-credit gates until order, rounding, stacking, and conservation are proven".to_owned(),
+            ],
+        },
+        content_sha256: String::new(),
+    };
+    report.next_stage.refresh_required = report.summary.new_candidate_rlogs > 0;
+    report.content_sha256 = report_digest(&report)?;
+    verify_report(&report)?;
+    Ok(report)
+}
+
+fn write_report(output: &Path, report: &Report) -> Result<(), Box<dyn Error>> {
+    let mut writer = BufWriter::new(File::create(output)?);
+    serde_json::to_writer_pretty(&mut writer, report)?;
+    writer.write_all(b"\n")?;
+    writer.flush()?;
+    Ok(())
+}
+
 fn audit_rlog(
     path: &Path,
     expected_build: &str,
@@ -502,6 +782,133 @@ fn audit_rlog(
         damage_events_while_active: damage_while_active,
         data_quality_boundaries: boundaries,
     })
+}
+
+fn audit_rlog_batch(
+    path: &Path,
+    expected_build: &str,
+    effect_ids: &BTreeSet<i64>,
+    damage_relationship: DamageRelationship,
+) -> Result<BTreeMap<i64, AuditCandidate>, RejectedRlog> {
+    let reject = |reason: String, observed_build: Option<String>| RejectedRlog {
+        path: display_path(path),
+        reason,
+        observed_build,
+    };
+    let bytes = fs::metadata(path)
+        .map_err(|error| reject(format!("metadata-error:{error}"), None))?
+        .len();
+    let file = File::open(path).map_err(|error| reject(format!("open-error:{error}"), None))?;
+    let mut reader = RlogReader::new(BufReader::new(file), RlogLimits::default())
+        .map_err(|error| reject(format!("header-error:{error}"), None))?;
+    let observed_build = reader.header().region.client_build.clone();
+    if observed_build != expected_build {
+        return Err(reject("wrong-build".to_owned(), Some(observed_build)));
+    }
+    let session_id = reader.header().session_id.clone();
+    let protocol_pack_digest = reader.header().region.protocol_pack_digest.clone();
+    let mut audits = effect_ids
+        .iter()
+        .map(|effect_id| (*effect_id, EffectAudit::default()))
+        .collect::<BTreeMap<_, _>>();
+    let mut boundaries = 0_u64;
+    loop {
+        let envelope = reader.next_event().map_err(|error| {
+            reject(
+                format!("replay-error:{error}"),
+                Some(observed_build.clone()),
+            )
+        })?;
+        let Some(envelope) = envelope else { break };
+        let CanonicalEvent::Timeline(timeline) = &envelope.event else {
+            continue;
+        };
+        match &timeline.kind {
+            TimelineEventKind::DataGap(_)
+            | TimelineEventKind::RecorderPause(_)
+            | TimelineEventKind::RunBoundary { .. } => {
+                boundaries = boundaries.saturating_add(1);
+                for audit in audits.values_mut() {
+                    audit.active.clear();
+                }
+            }
+            TimelineEventKind::Status(status) => {
+                let Some(audit) = audits.get_mut(&status.effect.0) else {
+                    continue;
+                };
+                audit.status_events = audit.status_events.saturating_add(1);
+                let key = (
+                    status.target.actor_id.0,
+                    status.target.entity_uuid.0,
+                    status.instance_id.map(|value| value.0),
+                );
+                match status.state {
+                    StatusState::Applied | StatusState::Refreshed | StatusState::Stacked => {
+                        audit.active.entry(key).or_default();
+                    }
+                    StatusState::Consumed | StatusState::Removed => {
+                        if let Some(window) = audit.active.remove(&key) {
+                            audit.complete = audit.complete.saturating_add(1);
+                            if window.damage_events > 0 {
+                                audit.complete_with_damage =
+                                    audit.complete_with_damage.saturating_add(1);
+                                audit.damage_while_active = audit
+                                    .damage_while_active
+                                    .saturating_add(window.damage_events);
+                            }
+                        }
+                    }
+                }
+            }
+            TimelineEventKind::Damage(damage) => {
+                let endpoint = damage_relationship.endpoint(damage.source, damage.target);
+                for audit in audits.values_mut() {
+                    for ((actor_id, entity_uuid, _), window) in &mut audit.active {
+                        if *actor_id == endpoint.actor_id.0
+                            && *entity_uuid == endpoint.entity_uuid.0
+                        {
+                            window.damage_events = window.damage_events.saturating_add(1);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let replay = reader
+        .summary()
+        .ok_or_else(|| reject("missing-canonical-seal".to_owned(), Some(observed_build)))?;
+    let sha256 = sha256_file(path).map_err(|error| {
+        reject(
+            format!("hash-error:{error}"),
+            Some(expected_build.to_owned()),
+        )
+    })?;
+    let receipt = RlogReceipt {
+        path: display_path(path),
+        bytes,
+        sha256,
+        sealed_content_sha256: replay.content_sha256.clone(),
+        event_count: replay.event_count,
+    };
+    Ok(audits
+        .into_iter()
+        .map(|(effect_id, audit)| {
+            (
+                effect_id,
+                AuditCandidate {
+                    receipt: receipt.clone(),
+                    session_id: session_id.clone(),
+                    protocol_pack_digest: protocol_pack_digest.clone(),
+                    selected_effect_status_events: audit.status_events,
+                    complete_gap_bounded_lifecycles: audit.complete,
+                    complete_windows_with_damage: audit.complete_with_damage,
+                    damage_events_while_active: audit.damage_while_active,
+                    data_quality_boundaries: boundaries,
+                },
+            )
+        })
+        .collect())
 }
 
 fn collect_rlogs(
@@ -685,20 +1092,15 @@ fn arguments() -> Result<Command, String> {
             input: PathBuf::from(input),
         });
     }
-    if command != "generate" {
+    if command != "generate" && command != "generate-batch" {
         return Err(usage());
     }
     let build = take_value(&mut values, "--build")?
         .into_string()
         .map_err(|_| usage())?;
-    let effect_id = take_value(&mut values, "--effect-id")?
-        .to_string_lossy()
-        .parse()
-        .map_err(|_| usage())?;
     let damage_relationship = DamageRelationship::parse(
         &take_value(&mut values, "--damage-relationship")?.to_string_lossy(),
     )?;
-    let output = PathBuf::from(take_value(&mut values, "--output")?);
     let maximum_files = take_optional_value(&mut values, "--maximum-files")?
         .map(|value| value.to_string_lossy().parse().map_err(|_| usage()))
         .transpose()?
@@ -715,7 +1117,35 @@ fn arguments() -> Result<Command, String> {
         .into_iter()
         .map(PathBuf::from)
         .collect::<Vec<_>>();
-    if (!values.is_empty()) || (rlogs.is_empty() && rlog_dirs.is_empty()) {
+    if rlogs.is_empty() && rlog_dirs.is_empty() {
+        return Err(usage());
+    }
+    if command == "generate-batch" {
+        let effect_ids = take_repeatable(&mut values, "--effect-id")
+            .into_iter()
+            .map(|value| value.to_string_lossy().parse().map_err(|_| usage()))
+            .collect::<Result<BTreeSet<i64>, _>>()?;
+        let output_directory = PathBuf::from(take_value(&mut values, "--output-directory")?);
+        if !values.is_empty() || effect_ids.is_empty() {
+            return Err(usage());
+        }
+        return Ok(Command::GenerateBatch(BatchArguments {
+            build,
+            effect_ids,
+            damage_relationship,
+            rlogs,
+            rlog_dirs,
+            known_artifacts,
+            maximum_files,
+            output_directory,
+        }));
+    }
+    let effect_id = take_value(&mut values, "--effect-id")?
+        .to_string_lossy()
+        .parse()
+        .map_err(|_| usage())?;
+    let output = PathBuf::from(take_value(&mut values, "--output")?);
+    if !values.is_empty() {
         return Err(usage());
     }
     Ok(Command::Generate(Arguments {
@@ -764,7 +1194,7 @@ fn take_repeatable(values: &mut Vec<OsString>, flag: &str) -> Vec<OsString> {
 }
 
 fn usage() -> String {
-    "usage:\n  rlogs-bpsr-sealed-rlog-candidate-manifest generate --build <id> --effect-id <id> --damage-relationship <source|target> (--rlog <sealed.rlog> | --rlog-dir <directory>)... [--known-artifact <json> ...] [--maximum-files <count>] --output <json>\n  rlogs-bpsr-sealed-rlog-candidate-manifest verify --input <json>".to_owned()
+    "usage:\n  rlogs-bpsr-sealed-rlog-candidate-manifest generate --build <id> --effect-id <id> --damage-relationship <source|target> (--rlog <sealed.rlog> | --rlog-dir <directory>)... [--known-artifact <json> ...] [--maximum-files <count>] --output <json>\n  rlogs-bpsr-sealed-rlog-candidate-manifest generate-batch --build <id> --effect-id <id> [--effect-id <id> ...] --damage-relationship <source|target> (--rlog <sealed.rlog> | --rlog-dir <directory>)... [--known-artifact <json> ...] [--maximum-files <count>] --output-directory <directory>\n  rlogs-bpsr-sealed-rlog-candidate-manifest verify --input <json>".to_owned()
 }
 
 #[cfg(test)]
@@ -801,5 +1231,55 @@ mod tests {
         };
         assert_eq!(DamageRelationship::Source.endpoint(source, target), source);
         assert_eq!(DamageRelationship::Target.endpoint(source, target), target);
+        assert_eq!(DamageRelationship::Source.file_token(), "source");
+        assert_eq!(DamageRelationship::Target.file_token(), "target");
+    }
+
+    #[test]
+    fn batch_report_retains_legacy_per_effect_contract() {
+        let arguments = BatchArguments {
+            build: "24687926".to_owned(),
+            effect_ids: BTreeSet::from([3_003_012, 3_003_014]),
+            damage_relationship: DamageRelationship::Source,
+            rlogs: vec![PathBuf::from("fixture.rlog")],
+            rlog_dirs: Vec::new(),
+            known_artifacts: Vec::new(),
+            maximum_files: 10,
+            output_directory: PathBuf::from("unused"),
+        };
+        let receipt = RlogReceipt {
+            path: "fixture.rlog".to_owned(),
+            bytes: 10,
+            sha256: "sha256:file".to_owned(),
+            sealed_content_sha256: "sha256:sealed".to_owned(),
+            event_count: 25,
+        };
+        let report = assemble_report(
+            &arguments,
+            3_003_012,
+            vec![AuditCandidate {
+                receipt,
+                session_id: "session".to_owned(),
+                protocol_pack_digest: "sha256:pack".to_owned(),
+                selected_effect_status_events: 2,
+                complete_gap_bounded_lifecycles: 1,
+                complete_windows_with_damage: 1,
+                damage_events_while_active: 7,
+                data_quality_boundaries: 1,
+            }],
+            Vec::new(),
+            &BTreeSet::new(),
+            Vec::new(),
+            1,
+        )
+        .expect("batch report should satisfy the legacy verifier");
+
+        assert_eq!(report.effect_id, 3_003_012);
+        assert_eq!(report.summary.candidate_rlogs, 1);
+        assert_eq!(report.summary.new_candidate_rlogs, 1);
+        assert_eq!(report.summary.new_candidate_canonical_events, 25);
+        assert_eq!(report.summary.new_candidate_damage_events_while_active, 7);
+        assert!(report.next_stage.refresh_required);
+        verify_report(&report).expect("batch report must remain independently verifiable");
     }
 }
