@@ -9081,12 +9081,11 @@ fn apply_live_run_projection_clocks(
     // advances through mobbing-to-boss transitions and retry recovery, which
     // are precisely the intervals Game time must omit.
     snapshot.game_time_micros = run.game_time_micros;
-    // The reviewed run projection owns cumulative game/eDPS and projected-best
-    // clocks, but the live meter owns the current-attempt active clock. In
-    // particular, a retry resets DPS, aDPS, and rDPS while cumulative eDPS
-    // remains banked and paused until the next hostile event. Replacing the
-    // live clock with the entire-run active time made the overlay look as if
-    // aDPS had not reset even though its numerator and rate had reset.
+    // The reviewed run projection owns cumulative game and projected-best
+    // clocks, but the live meter owns the current encounter checkpoint. A
+    // retry restores DPS, eDPS, aDPS, and rDPS to the boss-entry snapshot;
+    // replacing that clock with entire-run active time would leak the failed
+    // pull back into the live overlay even though history already retained it.
     snapshot.true_time_micros = run.true_time_micros;
 }
 
@@ -13062,6 +13061,7 @@ mod tests {
             combat_ended_micros: None,
             active_combat_micros: 1,
             attempt_elapsed_micros: Some(1),
+            attempt_damage_elapsed_micros: Some(1),
             encounter_elapsed_micros: Some(1),
             encounter_terminal_micros: None,
             run_terminal_micros: None,

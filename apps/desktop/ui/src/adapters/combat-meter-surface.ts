@@ -138,8 +138,14 @@ export function mountCombatMeterSurface(
     summary.className = "metric-grid combat-meter-summary";
     summary.append(
       metric("Run clock / DPS", optionalDuration(snapshot.run_elapsed_micros)),
-      metric("Encounter / eDPS", optionalDuration(snapshot.encounter_elapsed_micros)),
-      metric("Active combat / aDPS", formatDuration(snapshot.active_combat_micros)),
+      metric(
+        "Encounter combat / eDPS",
+        optionalDuration(snapshot.encounter_elapsed_micros),
+      ),
+      metric(
+        "Attempt damage / aDPS",
+        optionalDuration(snapshot.attempt_damage_elapsed_micros),
+      ),
       metric("Players", INTEGER_FORMAT.format(playerCount)),
       metric("Combat windows", INTEGER_FORMAT.format(snapshot.combat_window_count)),
       metric(

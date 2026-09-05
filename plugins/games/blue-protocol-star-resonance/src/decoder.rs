@@ -6918,6 +6918,75 @@ mod tests {
     }
 
     #[test]
+    fn local_wipe_recovery_effect_emits_the_authoritative_retry_boundary() {
+        let pack = pack();
+        let mut runtime = runtime(&pack);
+        runtime.dungeon.state = Some(DUNGEON_STATE_PLAYING);
+        runtime.profile.local_entity_uuid = Some(70);
+        let metadata = DecodeMetadata {
+            time: EventTime {
+                observed_micros: 10,
+                game_time_millis: Some(20),
+            },
+            provenance: EventProvenance::wire(1, 2, 3),
+            region: RegionIdentity {
+                deployment_id: "global".into(),
+                region_id: "north-america".into(),
+                realm_id: None,
+                world_id: None,
+            },
+        };
+        let local_actor = EntityRef {
+            actor_id: ActorId(7),
+            entity_uuid: EntityUuid(70),
+        };
+        let mut drafts = vec![timeline_draft(
+            &metadata,
+            TimelineEventKind::Status(StatusEvent {
+                source: None,
+                target: local_actor,
+                effect: StatusEffectId(DUNGEON_WIPE_RECOVERY_EFFECT_ID),
+                instance_id: Some(StatusEffectInstanceId(42)),
+                origin: None,
+                state: StatusState::Applied,
+                stacks: Some(1),
+                duration_millis: None,
+                level: None,
+                part_id: None,
+                count: None,
+                created_at_millis: None,
+            }),
+        )];
+
+        runtime.append_dungeon_wipe_boundary(&mut drafts);
+
+        assert_eq!(drafts.len(), 2);
+        assert!(matches!(
+            drafts[1].kind,
+            CanonicalEventDraftKind::Timeline(TimelineEventKind::EncounterBoundary {
+                state: EncounterState::Wiped,
+                encounter_id: None,
+                reason: BoundaryReason::Wipe,
+            })
+        ));
+
+        let mut nonlocal = drafts[..1].to_vec();
+        let CanonicalEventDraftKind::Timeline(TimelineEventKind::Status(status)) =
+            &mut nonlocal[0].kind
+        else {
+            unreachable!();
+        };
+        status.target.entity_uuid = EntityUuid(71);
+        runtime.append_dungeon_wipe_boundary(&mut nonlocal);
+        assert_eq!(nonlocal.len(), 1);
+
+        runtime.dungeon.state = Some(DUNGEON_STATE_READY);
+        let mut outside_attempt = drafts[..1].to_vec();
+        runtime.append_dungeon_wipe_boundary(&mut outside_attempt);
+        assert_eq!(outside_attempt.len(), 1);
+    }
+
+    #[test]
     fn saved_project_directory_decodes_all_names_without_equipping_each_build() {
         let payload = schema::SyncProjectListReturn {
             ret: Some(schema::SyncProjectListReply {

@@ -310,6 +310,7 @@ interface OverlaySnapshot {
   scene_id?: number | null;
   combat_started_micros?: number | null;
   attempt_elapsed_micros?: number | null;
+  attempt_damage_elapsed_micros?: number | null;
   encounter_elapsed_micros?: number | null;
   encounter_terminal_micros?: number | null;
   run_terminal_micros?: number | null;
@@ -3119,11 +3120,10 @@ export function projectOverlayRatesForTimer(
       ...actor,
       dps: rateFromAmount(damage, duration) ?? actor.dps,
       // eDPS and aDPS are semantic rates with reducer-owned clocks. eDPS uses
-      // the cumulative encounter-combat clock, while aDPS uses the current
-      // attempt's active-combat clock. Reprojecting either against a selected
-      // wall-style timer makes it decay while idle and erases the distinction
-      // between the two columns. The timer selector still controls generic
-      // DPS/HPS/TPS/rDPS and their contribution drilldowns.
+      // the paused current-phase combat clock; aDPS freezes at the latest
+      // accepted player-damage event. Both restore their boss-entry checkpoint
+      // on a retry. The timer selector still controls generic DPS/HPS/TPS/rDPS
+      // and their drilldowns.
       edps: actor.edps ?? actor.dps,
       adps: actor.adps ?? actor.edps ?? actor.dps,
       hps: rateFromAmount(actor.reported_healing, duration) ?? actor.hps,

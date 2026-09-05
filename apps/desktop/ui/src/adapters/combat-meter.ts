@@ -4,7 +4,7 @@ import type {
   HistoryRdpsEffectPresentation,
 } from "./combat-history";
 
-export const COMBAT_SNAPSHOT_SCHEMA_VERSION = 5;
+export const COMBAT_SNAPSHOT_SCHEMA_VERSION = 6;
 
 export interface CombatAbilitySummary {
   ability_id: string;
@@ -76,6 +76,7 @@ export interface CombatTimelineSnapshot {
   combat_ended_micros: number | null;
   active_combat_micros: number;
   attempt_elapsed_micros: number | null;
+  attempt_damage_elapsed_micros: number | null;
   encounter_elapsed_micros: number | null;
   encounter_terminal_micros: number | null;
   run_terminal_micros: number | null;
@@ -127,6 +128,8 @@ export function parseCombatTimelineSnapshot(
     !isSafeCounter(value.active_combat_micros) ||
     (value.attempt_elapsed_micros !== undefined &&
       !isOptionalCounter(value.attempt_elapsed_micros)) ||
+    (value.attempt_damage_elapsed_micros !== undefined &&
+      !isOptionalCounter(value.attempt_damage_elapsed_micros)) ||
     (value.encounter_elapsed_micros !== undefined &&
       !isOptionalCounter(value.encounter_elapsed_micros)) ||
     (value.encounter_terminal_micros !== undefined &&
@@ -177,6 +180,7 @@ export function parseCombatTimelineSnapshot(
       rdps_incomplete: actor.rdps_incomplete === true,
     })),
     attempt_elapsed_micros: value.attempt_elapsed_micros ?? null,
+    attempt_damage_elapsed_micros: value.attempt_damage_elapsed_micros ?? null,
     encounter_elapsed_micros: value.encounter_elapsed_micros ?? null,
     encounter_terminal_micros: value.encounter_terminal_micros ?? null,
     run_terminal_micros: value.run_terminal_micros ?? null,

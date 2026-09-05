@@ -126,7 +126,7 @@ describe("Combat Meter snapshot contract", () => {
 
 function fixture() {
   return {
-    schema_version: 5,
+    schema_version: 6,
     session_id: "fixture",
     deployment_id: "global",
     region_id: "global",

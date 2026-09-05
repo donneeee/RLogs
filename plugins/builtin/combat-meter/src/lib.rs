@@ -25,10 +25,15 @@ use serde::{Deserialize, Serialize};
 
 pub const COMBAT_METER_PLUGIN_ID: &str = "app.rlogs.combat-meter";
 pub const COMBAT_SNAPSHOT_SCHEMA_ID: &str = "app.rlogs.combat-meter.snapshot";
-pub const COMBAT_SNAPSHOT_SCHEMA_VERSION: u16 = 5;
+pub const COMBAT_SNAPSHOT_SCHEMA_VERSION: u16 = 6;
 pub const COMBAT_HISTORY_SCHEMA_VERSION: u16 = 1;
 const COMBAT_INACTIVITY_TIMEOUT_MICROS: u64 = 8_000_000;
 const MINIMUM_PERSONAL_ACTIVE_MICROS: u64 = 1_000_000;
+/// Resonance's damage clock is inclusive at millisecond precision: the first
+/// accepted player-damage event owns one millisecond instead of a zero-length
+/// denominator. Canonical rLogs timestamps are microseconds, so retain the
+/// same observable quantum here.
+const DAMAGE_CLOCK_QUANTUM_MICROS: u64 = 1_000;
 const MAXIMUM_RUN_ENTRY_BOUNDARIES: usize = 256;
 /// Live hover/drilldown data is derived state and must stay bounded even when a
 /// capture runs for hours. History keeps its existing complete projection from
@@ -479,14 +484,15 @@ pub struct CombatTimelineSnapshot {
     pub combat_started_micros: Option<u64>,
     pub combat_ended_micros: Option<u64>,
     pub active_combat_micros: u64,
-    /// Elapsed wall time for only the current pull. This resets when a wipe or
-    /// forced attempt reset is observed, then starts again on the next hostile
-    /// event without changing the cumulative encounter or run clocks.
+    /// Retained wall time through the current pull. A phase checkpoint banks
+    /// completed time; a wipe restores it and a forced reset clears it.
     #[serde(default)]
     pub attempt_elapsed_micros: Option<u64>,
-    /// Cumulative elapsed-combat time across completed and current segments.
-    /// Transitions and retry recovery pause this clock; a retry resumes it on
-    /// the first hostile event without erasing the failed attempt.
+    /// Current-attempt first-to-latest player-damage span used by aDPS.
+    #[serde(default)]
+    pub attempt_damage_elapsed_micros: Option<u64>,
+    /// Paused combat time for the current encounter phase. A phase transition
+    /// or retry restores this live clock to the phase-entry checkpoint.
     #[serde(default)]
     pub encounter_elapsed_micros: Option<u64>,
     /// Packet timestamp that froze the current encounter clock. A missing
@@ -567,14 +573,17 @@ pub struct ActorCombatSummary {
     pub damage_taken: i64,
     /// Legacy live active-combat rate retained for snapshot compatibility.
     pub dps: f64,
-    /// Damage divided by the current attempt wall clock. Wipes reset it.
+    /// Damage divided by retained attempt wall time. Wipes restore the latest
+    /// phase checkpoint and forced resets clear it.
     #[serde(default)]
     pub run_dps: f64,
-    /// Full-run damage divided by the sum of completed/open segment clocks.
-    /// Transitions pause it; wipes do not erase failed-attempt damage.
+    /// Current encounter damage divided by its paused combat clock. Segment
+    /// transitions and wipes restore the live encounter checkpoint.
     #[serde(default)]
     pub encounter_dps: f64,
-    /// Damage divided by the sum of actual active-combat windows.
+    /// Retained damage divided by its banked plus current first-to-latest
+    /// player-damage spans. Wipes restore the latest phase checkpoint and idle
+    /// packets do not advance it.
     #[serde(default)]
     pub active_dps: f64,
     pub hps: f64,
@@ -1100,6 +1109,23 @@ struct HistorySeriesAccumulator {
     damage_taken: i64,
 }
 
+/// Restorable live presentation state captured at an authoritative phase
+/// boundary. Canonical history is intentionally absent: failed pulls remain
+/// available to reviewed history even when the overlay returns to this point.
+#[derive(Debug, Clone)]
+struct LivePhaseCheckpoint {
+    actors: BTreeMap<u64, ActorAccumulator>,
+    attempt_elapsed_micros: u64,
+    attempt_damage_elapsed_micros: u64,
+    active_combat_micros: u64,
+    combat_windows: Vec<(u64, u64)>,
+    combat_window_count: u32,
+    encounter_elapsed_micros: u64,
+    live_attribution: DamageContributionReducer,
+    live_damage_influences: BTreeMap<HistoryDamageInfluenceKey, HistoryDamageInfluenceAccumulator>,
+    live_damage_influences_truncated: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct CombatTimelinePlugin {
     header: Option<RlogHeader>,
@@ -1122,18 +1148,26 @@ pub struct CombatTimelinePlugin {
     /// between independently cleared raid bosses and across retry recovery,
     /// but not inside a game-owned boss-rush encounter.
     encounter_combat_started: Option<u64>,
-    /// Completed mobbing/boss/failed-attempt time already banked into live
-    /// eDPS. Transition and retry-recovery gaps are excluded.
+    /// Completed combat windows in the current live encounter phase. Idle
+    /// recovery is excluded; phase transitions and retries reset the clock.
     encounter_elapsed_micros: u64,
+    /// Completed wall-clock portions retained at a phase checkpoint. The open
+    /// portion begins at `first_combat_started`; failed retry time is never
+    /// added to this accumulator.
+    attempt_elapsed_micros: u64,
+    /// Completed player-damage clock retained at a phase checkpoint. The open
+    /// portion remains the first-to-latest damage span below.
+    attempt_damage_elapsed_micros: u64,
+    /// First and latest accepted player-owned damage timestamps for the
+    /// current attempt. Phase transitions and wipes clear it for aDPS.
+    attempt_damage_started_micros: Option<u64>,
+    attempt_last_damage_micros: Option<u64>,
     last_combat_ended: Option<u64>,
     /// Freezes the live encounter-rate denominator on authoritative run
     /// completion. Encounter clears do not set this because raids can contain
     /// several bosses in separate realms under one scene ID.
     encounter_terminal_micros: Option<u64>,
     run_terminal_micros: Option<u64>,
-    /// Full-run damage numerator for eDPS. Per-attempt actor accumulators can
-    /// reset on wipes without erasing failed-attempt damage from this map.
-    run_damage_during_combat: BTreeMap<u64, i64>,
     active_combat_micros: u64,
     /// Damage-driven combat windows retained independently from the
     /// game-specific run analyzer. Reviewed encounter rules remain
@@ -1172,6 +1206,9 @@ pub struct CombatTimelinePlugin {
     live_attribution: DamageContributionReducer,
     live_damage_influences: BTreeMap<HistoryDamageInfluenceKey, HistoryDamageInfluenceAccumulator>,
     live_damage_influences_truncated: bool,
+    /// Latest objective-complete phase boundary. A packet-proven wipe restores
+    /// this baseline instead of retaining the failed boss pull.
+    live_phase_checkpoint: Option<LivePhaseCheckpoint>,
     event_count: u64,
     data_gap_count: u64,
     closed_at_log_end: bool,
@@ -1289,15 +1326,37 @@ impl CombatTimelinePlugin {
         self.run_entered_micros.push(observed_micros);
         self.encounter_combat_started = None;
         self.encounter_elapsed_micros = 0;
+        self.attempt_elapsed_micros = 0;
+        self.attempt_damage_elapsed_micros = 0;
+        self.attempt_damage_started_micros = None;
+        self.attempt_last_damage_micros = None;
+        self.live_phase_checkpoint = None;
         self.encounter_terminal_micros = None;
         self.run_terminal_micros = None;
-        self.run_damage_during_combat.clear();
     }
 
     fn mark_run_terminal(&mut self, observed_micros: u64) {
         self.run_terminal_micros.get_or_insert(observed_micros);
         self.close_encounter_clock(observed_micros);
         self.end_combat(observed_micros);
+    }
+
+    fn current_attempt_damage_elapsed_micros(&self) -> u64 {
+        self.attempt_damage_elapsed_micros.saturating_add(
+            self.attempt_damage_started_micros
+                .zip(self.attempt_last_damage_micros)
+                .map_or(0, |(started, latest)| {
+                    latest
+                        .saturating_sub(started)
+                        .saturating_add(DAMAGE_CLOCK_QUANTUM_MICROS)
+                }),
+        )
+    }
+
+    fn observe_player_damage_clock(&mut self, observed_micros: u64) {
+        self.attempt_damage_started_micros
+            .get_or_insert(observed_micros);
+        self.attempt_last_damage_micros = Some(observed_micros);
     }
 
     fn begin_encounter(&mut self, observed_micros: u64) {
@@ -1310,12 +1369,16 @@ impl CombatTimelinePlugin {
         self.encounter_terminal_micros = None;
     }
 
-    fn close_encounter_clock(&mut self, observed_micros: u64) {
+    fn pause_encounter_clock(&mut self, observed_micros: u64) {
         if let Some(started) = self.encounter_combat_started.take() {
             self.encounter_elapsed_micros = self
                 .encounter_elapsed_micros
                 .saturating_add(observed_micros.saturating_sub(started));
         }
+    }
+
+    fn close_encounter_clock(&mut self, observed_micros: u64) {
+        self.pause_encounter_clock(observed_micros);
         self.encounter_terminal_micros
             .get_or_insert(observed_micros);
     }
@@ -1330,7 +1393,7 @@ impl CombatTimelinePlugin {
             .scene_id
             .is_some_and(|scene_id| self.continuous_encounter_scene_ids.contains(&scene_id))
         {
-            self.end_combat(observed_micros);
+            self.end_combat_window(observed_micros);
         } else {
             self.mark_encounter_terminal(observed_micros);
         }
@@ -1344,18 +1407,110 @@ impl CombatTimelinePlugin {
             .find(|entered_micros| *entered_micros <= started_micros)
     }
 
+    fn current_attempt_elapsed_micros(&self, observed_micros: u64) -> u64 {
+        self.attempt_elapsed_micros.saturating_add(
+            self.first_combat_started
+                .map_or(0, |started| observed_micros.saturating_sub(started)),
+        )
+    }
+
+    fn capture_live_phase_checkpoint(&mut self, observed_micros: u64) {
+        let checkpoint = LivePhaseCheckpoint {
+            actors: self
+                .actors
+                .iter()
+                .filter(|(_, actor)| actor.has_player_identity_evidence())
+                .map(|(actor_id, actor)| (*actor_id, actor.clone()))
+                .collect(),
+            attempt_elapsed_micros: self.current_attempt_elapsed_micros(observed_micros),
+            attempt_damage_elapsed_micros: self.current_attempt_damage_elapsed_micros(),
+            active_combat_micros: self.active_combat_micros,
+            combat_windows: self.combat_windows.clone(),
+            combat_window_count: self.combat_window_count,
+            encounter_elapsed_micros: self.encounter_elapsed_micros,
+            live_attribution: self.live_attribution.clone(),
+            live_damage_influences: self.live_damage_influences.clone(),
+            live_damage_influences_truncated: self.live_damage_influences_truncated,
+        };
+        self.live_phase_checkpoint = Some(checkpoint);
+        self.restore_live_phase_checkpoint(observed_micros, false);
+    }
+
+    fn restore_live_phase_checkpoint(
+        &mut self,
+        observed_micros: u64,
+        reset_transient_state: bool,
+    ) -> bool {
+        let Some(checkpoint) = self.live_phase_checkpoint.clone() else {
+            return false;
+        };
+        let latest_player_identities = self
+            .actors
+            .iter()
+            .filter(|(_, actor)| actor.has_player_identity_evidence())
+            .map(|(actor_id, actor)| (*actor_id, actor.identity_only()))
+            .collect::<BTreeMap<_, _>>();
+        self.actors = checkpoint.actors;
+        for (actor_id, identity) in latest_player_identities {
+            self.actors
+                .entry(actor_id)
+                .or_default()
+                .merge_from(identity);
+        }
+        self.attempt_elapsed_micros = checkpoint.attempt_elapsed_micros;
+        self.attempt_damage_elapsed_micros = checkpoint.attempt_damage_elapsed_micros;
+        self.active_combat_micros = checkpoint.active_combat_micros;
+        self.combat_windows = checkpoint.combat_windows;
+        self.combat_window_count = checkpoint.combat_window_count;
+        self.encounter_elapsed_micros = checkpoint.encounter_elapsed_micros;
+        self.live_attribution = checkpoint.live_attribution;
+        if reset_transient_state {
+            // Retry packets restore cooldowns and combat statuses. Preserve
+            // the checkpoint's accumulated rDPS totals, but require fresh
+            // status evidence before attributing the next pull.
+            self.live_attribution.reset_statuses();
+        }
+        for actor_id in self.actors.keys().copied() {
+            self.live_attribution.set_provider_eligible(actor_id, true);
+        }
+        self.live_damage_influences = checkpoint.live_damage_influences;
+        self.live_damage_influences_truncated = checkpoint.live_damage_influences_truncated;
+        self.active_combat_started = None;
+        self.first_combat_started = None;
+        self.encounter_combat_started = None;
+        self.attempt_damage_started_micros = None;
+        self.attempt_last_damage_micros = None;
+        self.last_hostile_micros = None;
+        self.last_combat_ended = Some(observed_micros);
+        self.encounter_terminal_micros = None;
+        self.projected_contributions.clear();
+        self.projected_rational_contributions.clear();
+        self.latest_exact_contributions.clear();
+        self.latest_exact_rational_contributions.clear();
+        if reset_transient_state && let Some(projector) = self.exact_contribution_projector.as_mut()
+        {
+            projector.reset();
+        }
+        true
+    }
+
     /// Clears only the current live attempt after a packet-proven wipe.
     /// Completed attempt facts remain available to history and the run reducer;
     /// stable player presentation survives so the next pull does not regress to
     /// anonymous actor labels while waiting for another AOI update.
     fn reset_live_attempt(&mut self, observed_micros: u64) {
-        // A wipe pauses cumulative eDPS. Its failed-attempt damage and elapsed
-        // segment stay banked, while recovery time before the next hostile
-        // event is excluded. DPS, aDPS, and rDPS reset below.
+        // History retains the failed attempt before this live-state reset. The
+        // overlay then returns to the phase-entry checkpoint: failed damage,
+        // encounter time, aDPS, eDPS, and rDPS cannot leak into the retry.
         self.close_encounter_clock(observed_micros);
         self.end_combat(observed_micros);
         self.actor_ancestry
             .end_active_ownership_intervals(observed_micros);
+        if self.restore_live_phase_checkpoint(observed_micros, true) {
+            self.encounter_id = None;
+            self.encounter_state = Some("wiped".into());
+            return;
+        }
         self.actors
             .retain(|_, actor| actor.has_player_identity_evidence());
         for actor in self.actors.values_mut() {
@@ -1370,6 +1525,13 @@ impl CombatTimelinePlugin {
         self.combat_windows.clear();
         self.combat_window_count = 0;
         self.last_hostile_micros = None;
+        self.encounter_combat_started = None;
+        self.encounter_elapsed_micros = 0;
+        self.attempt_elapsed_micros = 0;
+        self.attempt_damage_elapsed_micros = 0;
+        self.encounter_terminal_micros = None;
+        self.attempt_damage_started_micros = None;
+        self.attempt_last_damage_micros = None;
         self.projected_contributions.clear();
         self.projected_rational_contributions.clear();
         self.latest_exact_contributions.clear();
@@ -1390,6 +1552,7 @@ impl CombatTimelinePlugin {
     /// boundary when a run is active; this method only clears the live attempt
     /// while retaining packet-proven player identity for the next pull.
     pub fn force_reset_live_attempt(&mut self, observed_micros: u64) {
+        self.live_phase_checkpoint = None;
         self.reset_live_attempt(observed_micros);
     }
 
@@ -1432,10 +1595,11 @@ impl CombatTimelinePlugin {
                 && dungeon.objective_complete == Some(true)
             {
                 // Objective completion can be an intermediate dungeon segment
-                // (mobbing -> boss), not necessarily the whole run. Close and
-                // bank eDPS here; only authoritative run-terminal events freeze
-                // the run clock.
+                // (mobbing -> boss), not necessarily the whole run. Freeze its
+                // live checkpoint here. Boss activity is added to that
+                // baseline, and every packet-proven retry returns to it.
                 self.finish_encounter(envelope.time.observed_micros);
+                self.capture_live_phase_checkpoint(envelope.time.observed_micros);
             } else if matches!(
                 dungeon.kind,
                 DungeonEventKind::Completed
@@ -1659,6 +1823,14 @@ impl CombatTimelinePlugin {
                 self.last_hostile_micros = Some(envelope.time.observed_micros);
                 let during_combat = self.active_combat_started.is_some();
                 let reported = nonnegative(damage.amount);
+                let source_actor_id = self.canonical_actor_id(source.actor_id.0);
+                let source_is_player = self
+                    .actors
+                    .get(&source_actor_id)
+                    .is_some_and(ActorAccumulator::has_player_identity_evidence);
+                if reported > 0 && source_is_player {
+                    self.observe_player_damage_clock(envelope.time.observed_micros);
+                }
                 let effective = nonnegative(
                     damage
                         .actual_amount
@@ -1708,14 +1880,6 @@ impl CombatTimelinePlugin {
                         ability.critical_hits = ability.critical_hits.saturating_add(1);
                     }
                 }
-                if during_combat {
-                    let source_actor_id = self.canonical_actor_id(source.actor_id.0);
-                    let run_damage = self
-                        .run_damage_during_combat
-                        .entry(source_actor_id)
-                        .or_default();
-                    *run_damage = run_damage.saturating_add(reported);
-                }
                 self.push_history_fact(CombatFact {
                     observed_micros: envelope.time.observed_micros,
                     source_actor_id: damage.source.actor_id.0,
@@ -1729,7 +1893,6 @@ impl CombatTimelinePlugin {
                         critical: damage.flags.critical == Some(true),
                     },
                 });
-                let source_actor_id = self.canonical_actor_id(source.actor_id.0);
                 let target_actor_id = self.canonical_actor_id(target.actor_id.0);
                 self.live_attribution
                     .observe_damage(ContributionDamageEvent {
@@ -2313,10 +2476,6 @@ impl CombatTimelinePlugin {
             if let Some(other) = self.actors.remove(&raw_canonical) {
                 self.actors.entry(canonical).or_default().merge_from(other);
             }
-            if let Some(other_damage) = self.run_damage_during_combat.remove(&raw_canonical) {
-                let canonical_damage = self.run_damage_during_combat.entry(canonical).or_default();
-                *canonical_damage = canonical_damage.saturating_add(other_damage);
-            }
             if let Some(mut versions) = self.history_identities.remove(&raw_canonical) {
                 let canonical_versions = self.history_identities.entry(canonical).or_default();
                 canonical_versions.append(&mut versions);
@@ -2389,7 +2548,7 @@ impl CombatTimelinePlugin {
         }
     }
 
-    fn end_combat(&mut self, observed_micros: u64) {
+    fn end_combat_window(&mut self, observed_micros: u64) {
         if let Some(started) = self.active_combat_started.take() {
             if observed_micros > started {
                 self.combat_windows.push((started, observed_micros));
@@ -2400,6 +2559,11 @@ impl CombatTimelinePlugin {
             self.last_combat_ended = Some(observed_micros);
         }
         self.last_hostile_micros = None;
+    }
+
+    fn end_combat(&mut self, observed_micros: u64) {
+        self.end_combat_window(observed_micros);
+        self.pause_encounter_clock(observed_micros);
     }
 
     fn close_inactive_combat(&mut self, observed_micros: u64) {
@@ -2449,20 +2613,24 @@ impl CombatTimelinePlugin {
                 .zip(self.last_event_micros)
                 .map_or(0, |(started, ended)| ended.saturating_sub(started)),
         );
-        let encounter_rate_duration = if encounter_duration > 0 {
-            encounter_duration.max(MINIMUM_PERSONAL_ACTIVE_MICROS)
-        } else {
-            0
-        };
-        let attempt_duration = self
-            .first_combat_started
-            .zip(self.encounter_terminal_micros.or(self.last_event_micros))
-            .map_or(0, |(started, ended)| ended.saturating_sub(started));
-        let attempt_rate_duration = if self.first_combat_started.is_some() {
-            attempt_duration.max(MINIMUM_PERSONAL_ACTIVE_MICROS)
-        } else {
-            0
-        };
+        let attempt_damage_rate_duration = self.current_attempt_damage_elapsed_micros();
+        let encounter_rate_duration =
+            if encounter_duration > 0 || self.encounter_combat_started.is_some() {
+                encounter_duration.max(MINIMUM_PERSONAL_ACTIVE_MICROS)
+            } else {
+                0
+            };
+        let attempt_duration = self.attempt_elapsed_micros.saturating_add(
+            self.first_combat_started
+                .zip(self.encounter_terminal_micros.or(self.last_event_micros))
+                .map_or(0, |(started, ended)| ended.saturating_sub(started)),
+        );
+        let attempt_rate_duration =
+            if self.attempt_elapsed_micros > 0 || self.first_combat_started.is_some() {
+                attempt_duration.max(MINIMUM_PERSONAL_ACTIVE_MICROS)
+            } else {
+                0
+            };
         let contribution_summary = self.live_attribution.summary();
         let mut rdps_damage_influences = finish_history_damage_influences(
             self.live_damage_influences.clone(),
@@ -2497,11 +2665,6 @@ impl CombatTimelinePlugin {
                         })
             })
             .map(|(actor_id, actor)| {
-                let run_damage = self
-                    .run_damage_during_combat
-                    .get(actor_id)
-                    .copied()
-                    .unwrap_or(actor.damage_during_combat);
                 let contribution = contribution_summary.actors.get(actor_id);
                 let rdps_incomplete = incomplete_rdps_actor_ids.contains(actor_id);
                 ActorCombatSummary {
@@ -2542,12 +2705,14 @@ impl CombatTimelinePlugin {
                     encounter_dps: if encounter_rate_duration == 0 {
                         0.0
                     } else {
-                        run_damage as f64 * 1_000_000.0 / encounter_rate_duration as f64
+                        actor.damage_during_combat as f64 * 1_000_000.0
+                            / encounter_rate_duration as f64
                     },
-                    active_dps: if rate_duration == 0 {
+                    active_dps: if attempt_damage_rate_duration == 0 {
                         0.0
                     } else {
-                        actor.damage_during_combat as f64 * 1_000_000.0 / rate_duration as f64
+                        actor.damage_during_combat as f64 * 1_000_000.0
+                            / attempt_damage_rate_duration as f64
                     },
                     hps: if rate_duration == 0 {
                         0.0
@@ -2628,8 +2793,14 @@ impl CombatTimelinePlugin {
             combat_started_micros: self.first_combat_started,
             combat_ended_micros: self.last_combat_ended,
             active_combat_micros: duration,
-            attempt_elapsed_micros: self.first_combat_started.map(|_| attempt_duration),
-            encounter_elapsed_micros: (encounter_duration > 0).then_some(encounter_duration),
+            attempt_elapsed_micros: (self.attempt_elapsed_micros > 0
+                || self.first_combat_started.is_some())
+            .then_some(attempt_duration),
+            attempt_damage_elapsed_micros: (attempt_damage_rate_duration > 0)
+                .then_some(attempt_damage_rate_duration),
+            encounter_elapsed_micros: (encounter_duration > 0
+                || self.encounter_combat_started.is_some())
+            .then_some(encounter_duration),
             encounter_terminal_micros: self.encounter_terminal_micros,
             run_terminal_micros: self.run_terminal_micros,
             run_elapsed_micros: self
@@ -4563,6 +4734,8 @@ mod tests {
         let actor = plugin.actor_mut(1, 100);
         actor.reported_damage = 9_000;
         actor.damage_during_combat = 9_000;
+        plugin.attempt_damage_started_micros = Some(5_000_000);
+        plugin.attempt_last_damage_micros = Some(9_999_000);
         plugin.last_event_micros = Some(10_000_000);
         plugin.finish_encounter(10_000_000);
         plugin.mark_run_terminal(12_000_000);
@@ -4602,7 +4775,7 @@ mod tests {
     }
 
     #[test]
-    fn retry_resets_attempt_rates_but_pauses_and_resumes_cumulative_edps() {
+    fn retry_restores_the_live_encounter_checkpoint_without_erasing_history() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../tests/fixtures/replay/reference-combat.rlog");
         let reader = RlogReader::new(
@@ -4621,47 +4794,161 @@ mod tests {
             actor.reported_damage = 3_000;
             actor.damage_during_combat = 3_000;
         }
-        plugin.run_damage_during_combat.insert(1, 3_000);
+        plugin.attempt_damage_started_micros = Some(1_000_000);
+        plugin.attempt_last_damage_micros = Some(3_999_000);
         plugin.last_event_micros = Some(4_000_000);
-        plugin.reset_live_attempt(4_000_000);
+        plugin.finish_encounter(4_000_000);
+        plugin.capture_live_phase_checkpoint(4_000_000);
 
-        // Recovery packets do not advance eDPS, while attempt-scoped rates
-        // have already reset to zero.
-        plugin.last_event_micros = Some(10_000_000);
+        // A failed boss pull advances every live total and clock away from the
+        // completed mobbing baseline.
+        plugin.begin_combat(10_000_000);
+        {
+            let actor = plugin.actor_mut(1, 100);
+            actor.reported_damage = actor.reported_damage.saturating_add(2_000);
+            actor.damage_during_combat = actor.damage_during_combat.saturating_add(2_000);
+        }
+        plugin.attempt_damage_started_micros = Some(10_000_000);
+        plugin.attempt_last_damage_micros = Some(11_999_000);
+        plugin.history_facts.push(CombatFact {
+            observed_micros: 11_000_000,
+            source_actor_id: 1,
+            source_entity_uuid: 100,
+            target: Some((2, 200)),
+            breakdown_ability_id: Some(55),
+            ability_id: Some(55),
+            kind: CombatFactKind::Damage {
+                reported: 2_000,
+                effective: 2_000,
+                critical: false,
+            },
+        });
+        plugin.last_event_micros = Some(12_000_000);
+        plugin.reset_live_attempt(12_000_000);
+
+        // The failed pull remains in history facts, while every live rate and
+        // encounter clock returns to the phase-entry checkpoint.
+        plugin.last_event_micros = Some(20_000_000);
         let recovery = plugin.live_snapshot().unwrap();
-        assert_eq!(recovery.attempt_elapsed_micros, None);
+        assert_eq!(recovery.attempt_elapsed_micros, Some(3_000_000));
+        assert_eq!(recovery.attempt_damage_elapsed_micros, Some(3_000_000));
         assert_eq!(recovery.encounter_elapsed_micros, Some(3_000_000));
+        assert!(!plugin.history_facts.is_empty());
         let actor = recovery
             .actors
             .iter()
             .find(|actor| actor.actor_id == "1")
             .unwrap();
-        assert_eq!(actor.run_dps, 0.0);
-        assert_eq!(actor.active_dps, 0.0);
+        assert_eq!(actor.damage_during_combat, 3_000);
+        assert!((actor.run_dps - 1_000.0).abs() < 0.001);
+        assert!((actor.active_dps - 1_000.0).abs() < 0.001);
         assert!((actor.encounter_dps - 1_000.0).abs() < 0.001);
 
-        // The retry's first hostile event resumes the cumulative clock. New
-        // attempt DPS/aDPS use only the retry, while eDPS includes both pulls.
-        plugin.begin_combat(10_000_000);
+        // The retry starts fresh from that same checkpoint.
+        plugin.begin_combat(20_000_000);
+        {
+            let actor = plugin.actor_mut(1, 100);
+            actor.reported_damage = actor.reported_damage.saturating_add(1_000);
+            actor.damage_during_combat = actor.damage_during_combat.saturating_add(1_000);
+        }
+        plugin.attempt_damage_started_micros = Some(20_000_000);
+        plugin.attempt_last_damage_micros = Some(20_999_000);
+        plugin.last_event_micros = Some(21_000_000);
+        let retry = plugin.live_snapshot().unwrap();
+        assert_eq!(retry.attempt_elapsed_micros, Some(4_000_000));
+        assert_eq!(retry.attempt_damage_elapsed_micros, Some(4_000_000));
+        assert_eq!(retry.encounter_elapsed_micros, Some(4_000_000));
+        let actor = retry
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(actor.damage_during_combat, 4_000);
+        assert!((actor.run_dps - 1_000.0).abs() < 0.001);
+        assert!((actor.active_dps - 1_000.0).abs() < 0.001);
+        assert!((actor.encounter_dps - 1_000.0).abs() < 0.001);
+
+        // A user-forced reset is deliberately different from a retry: it
+        // invalidates the active run and clears the saved phase checkpoint,
+        // while still retaining stable player identity.
+        plugin.force_reset_live_attempt(22_000_000);
+        plugin.last_event_micros = Some(22_000_000);
+        let forced = plugin.live_snapshot().unwrap();
+        assert_eq!(forced.attempt_elapsed_micros, None);
+        assert_eq!(forced.attempt_damage_elapsed_micros, None);
+        assert_eq!(forced.encounter_elapsed_micros, None);
+        let actor = forced
+            .actors
+            .iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(actor.actor_kind.as_deref(), Some("player"));
+        assert_eq!(actor.damage_during_combat, 0);
+    }
+
+    #[test]
+    fn attempt_damage_rate_freezes_while_idle_and_includes_gap_when_damage_resumes() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../tests/fixtures/replay/reference-combat.rlog");
+        let reader = RlogReader::new(
+            BufReader::new(File::open(fixture).unwrap()),
+            RlogLimits::default(),
+        )
+        .unwrap();
+        let mut plugin = CombatTimelinePlugin::new();
+        plugin.begin_live(reader.header());
+        plugin.begin_combat(1_000_000);
+        plugin.observe_player_damage_clock(1_000_000);
+        plugin.observe_player_damage_clock(2_000_000);
         {
             let actor = plugin.actor_mut(1, 100);
             actor.actor_kind = Some("player".into());
             actor.reported_damage = 2_000;
             actor.damage_during_combat = 2_000;
         }
-        plugin.run_damage_during_combat.insert(1, 5_000);
-        plugin.last_event_micros = Some(12_000_000);
-        let retry = plugin.live_snapshot().unwrap();
-        assert_eq!(retry.attempt_elapsed_micros, Some(2_000_000));
-        assert_eq!(retry.encounter_elapsed_micros, Some(5_000_000));
-        let actor = retry
+        plugin.last_event_micros = Some(2_000_000);
+        plugin.last_hostile_micros = Some(2_000_000);
+
+        let before_idle = plugin
+            .live_snapshot()
+            .unwrap()
             .actors
-            .iter()
+            .into_iter()
             .find(|actor| actor.actor_id == "1")
             .unwrap();
-        assert!((actor.run_dps - 1_000.0).abs() < 0.001);
-        assert!((actor.active_dps - 1_000.0).abs() < 0.001);
-        assert!((actor.encounter_dps - 1_000.0).abs() < 0.001);
+        assert!((before_idle.active_dps - (2_000.0 / 1.001)).abs() < 0.001);
+
+        // Position, status, and other non-damage packets may continue while
+        // the party is idle. They must not make aDPS count down; eDPS closes
+        // at the reviewed combat inactivity boundary and then freezes.
+        plugin.last_event_micros = Some(20_000_000);
+        plugin.close_inactive_combat(20_000_000);
+        let while_idle = plugin
+            .live_snapshot()
+            .unwrap()
+            .actors
+            .into_iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert_eq!(while_idle.active_dps, before_idle.active_dps);
+        assert!((while_idle.encounter_dps - (2_000.0 / 9.0)).abs() < 0.001);
+
+        // When combat resumes in the same attempt, the mechanic gap belongs
+        // to ordinary damage elapsed time. This is Resonance's DPS behavior;
+        // its separate True DPS clock is the one that excludes long gaps.
+        plugin.begin_combat(20_000_000);
+        plugin.observe_player_damage_clock(20_000_000);
+        plugin.actor_mut(1, 100).damage_during_combat = 3_000;
+        plugin.actor_mut(1, 100).reported_damage = 3_000;
+        let resumed = plugin
+            .live_snapshot()
+            .unwrap()
+            .actors
+            .into_iter()
+            .find(|actor| actor.actor_id == "1")
+            .unwrap();
+        assert!((resumed.active_dps - (3_000.0 / 19.001)).abs() < 0.001);
+        assert!((resumed.encounter_dps - (3_000.0 / 9.0)).abs() < 0.001);
     }
 
     #[test]
@@ -5347,6 +5634,7 @@ mod tests {
             EventEnvelopeFactory::new(header.session_id.clone(), header.region.clone());
         let mut plugin = CombatTimelinePlugin::new();
         plugin.begin_live(&header);
+        plugin.actor_mut(1, 100).actor_kind = Some("player".into());
         let envelope = factory
             .emit(CanonicalEventDraft {
                 time: EventTime {
@@ -6609,6 +6897,7 @@ mod tests {
             EventEnvelopeFactory::new(header.session_id.clone(), header.region.clone());
         let mut plugin = CombatTimelinePlugin::new();
         plugin.begin_live(&header);
+        plugin.actor_mut(1, 100).actor_kind = Some("player".into());
         let player = EntityRef {
             actor_id: ActorId(1),
             entity_uuid: EntityUuid(100),
@@ -6674,8 +6963,8 @@ mod tests {
         }
 
         let snapshot = plugin.live_snapshot().unwrap();
-        assert_eq!(snapshot.combat_window_count, 1);
-        assert_eq!(snapshot.active_combat_micros, 8_000_000);
+        assert_eq!(snapshot.combat_window_count, 2);
+        assert_eq!(snapshot.active_combat_micros, 11_000_000);
         assert_eq!(snapshot.combat_started_micros, Some(5_000_000));
         assert_eq!(snapshot.combat_ended_micros, Some(13_000_000));
         assert!(!snapshot.closed_at_log_end);
@@ -6684,10 +6973,10 @@ mod tests {
             .iter()
             .find(|actor| actor.actor_id == "1")
             .unwrap();
-        assert_eq!(player.damage_during_combat, 3_000);
-        assert!((player.run_dps - (3_000.0 / 9.0)).abs() < 0.001);
-        assert!((player.active_dps - (3_000.0 / 8.0)).abs() < 0.001);
-        assert!((player.encounter_dps - (12_000.0 / 12.0)).abs() < 0.001);
+        assert_eq!(player.damage_during_combat, 12_000);
+        assert!((player.run_dps - 1_000.0).abs() < 0.001);
+        assert!((player.active_dps - 6_000_000.0).abs() < 0.001);
+        assert!((player.encounter_dps - (12_000.0 / 11.0)).abs() < 0.001);
     }
 
     #[test]

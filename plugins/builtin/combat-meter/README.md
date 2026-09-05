@@ -19,11 +19,17 @@ The projections contain:
 - data-gap count and replay provenance.
 
 History `eDPS` divides damage by the selected encounter or segment elapsed
-time and freezes on its packet-proven clear. Live `eDPS` uses the cumulative
-encounter-combat clock across retries while excluding recovery and transition
-gaps. Live `aDPS` uses only the current attempt's active-combat clock and resets
-on a packet-proven wipe or forced reset. These semantic rates do not change when
-the overlay's visible timer is cycled; the selected timer instead reprojects the
+time and freezes on its packet-proven clear. Live `aDPS` matches Resonance's
+ordinary damage-clock behavior: it runs from the first accepted player-owned
+damage event through the latest, freezes while only non-damage packets arrive,
+and includes an intervening mechanic gap if damage later resumes. A completed
+phase banks that span in the live checkpoint. Live `eDPS` divides retained run
+damage by a combat clock that pauses outside combat. Entering the boss phase
+establishes a checkpoint containing the completed mobbing totals and clocks; a
+packet-proven wipe retains the failed pull in history and restores every
+overlay value to that checkpoint for the retry. A forced reset clears the
+checkpoint and starts over. These semantic rates do not change when the
+overlay's visible timer is cycled; the selected timer instead reprojects the
 generic DPS/HPS/TPS/rDPS columns. The full-run `DPS` clock freezes on a run
 completion packet or scene departure. Gauntlet scenes keep one encounter clock
 across intermediate bosses and summoned mobs. HPS is healing per selected
