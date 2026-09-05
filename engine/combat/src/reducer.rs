@@ -177,6 +177,17 @@ impl RunSessionReducer {
         matching_scenes.next().is_none().then_some(scene_id)
     }
 
+    fn unique_scene_for_objective_event(&self, event: &DungeonEvent) -> Option<i32> {
+        let mut matching_scenes = self
+            .config
+            .scene_rules
+            .values()
+            .filter(|rule| rule.runtime_enabled && rule_matches_objective_event(rule, event))
+            .map(|rule| rule.scene_id);
+        let scene_id = matching_scenes.next()?;
+        matching_scenes.next().is_none().then_some(scene_id)
+    }
+
     /// Records host evidence for a user-requested recorder pause. The interval
     /// remains inside wall-clock run time and requires server review.
     ///
@@ -286,11 +297,13 @@ impl RunSessionReducer {
                     .map(boss_segment_kind)
                     .unwrap_or(RunSegmentKind::Boss);
                 if let Some(run) = &mut self.current {
+                    run.boss_segment_cleared = false;
                     run.switch_segment(segment, observed_micros, false);
                 }
             }
             DungeonEventKind::BossDefeated => {
                 if let Some(run) = &mut self.current {
+                    run.mark_single_boss_segment_cleared();
                     run.end_encounter(EncounterTerminalState::Cleared, observed_micros, false);
                 }
             }
@@ -423,9 +436,11 @@ impl RunSessionReducer {
                 }
                 match state {
                     EncounterState::Started => {
+                        run.boss_segment_cleared = false;
                         run.start_encounter(encounter_id.clone(), observed_micros, &self.config)
                     }
                     EncounterState::Cleared => {
+                        run.mark_single_boss_segment_cleared();
                         run.end_encounter(EncounterTerminalState::Cleared, observed_micros, false)
                     }
                     EncounterState::Wiped => {
@@ -563,6 +578,18 @@ impl RunSessionReducer {
             return;
         };
         let boss_segment = boss_segment_kind(&rule);
+        if run.boss_segment_cleared
+            && run.active_segment_kind() == Some(boss_segment)
+            && rule.raid_route_kind != Some(RaidRouteKind::Gauntlet)
+        {
+            // A single-boss kill freezes the successful attempt. Some bosses
+            // continue emitting hostile packets during their 0%-HP outro;
+            // those packets are not a retry and must not restart Game time.
+            // Gauntlets remain open for the next distinct boss, while an
+            // explicit EncounterStarted/BossEngaged packet can authoritatively
+            // reopen a non-gauntlet encounter.
+            return;
+        }
         if boss_involved || run.boss_phase_armed {
             run.switch_segment(boss_segment, observed_micros, false);
             run.ensure_encounter(
@@ -602,6 +629,7 @@ impl RunSessionReducer {
             && let Some(run) = &mut self.current
             && run.active_segment_kind() == boss_segment
         {
+            run.mark_single_boss_segment_cleared();
             run.end_encounter(EncounterTerminalState::Cleared, observed_micros, false);
         }
     }
@@ -626,9 +654,19 @@ impl RunSessionReducer {
         // missed. A unique exact-build dungeon-ID match is authoritative
         // enough to replace a stale non-dungeon scene (commonly the town the
         // player queued from); ambiguous IDs remain unresolved.
-        if self.active_rule().is_none()
-            && let Some(scene_id) = self.unique_scene_for_dungeon_event(event)
-        {
+        let active_rule_recognizes_objective = self
+            .active_rule()
+            .is_some_and(|rule| rule_matches_objective_event(rule, event));
+        let scene_from_objective = (event.kind == DungeonEventKind::ObjectiveUpdated
+            && !active_rule_recognizes_objective)
+            .then(|| self.unique_scene_for_objective_event(event))
+            .flatten();
+        let scene_from_dungeon_id = self
+            .active_rule()
+            .is_none()
+            .then(|| self.unique_scene_for_dungeon_event(event))
+            .flatten();
+        if let Some(scene_id) = scene_from_objective.or(scene_from_dungeon_id) {
             if self.active_scene_id != Some(scene_id) {
                 self.rule_actors.clear();
             }
@@ -714,6 +752,16 @@ impl RunSessionReducer {
     }
 }
 
+fn rule_matches_objective_event(rule: &SceneRunRule, event: &DungeonEvent) -> bool {
+    event
+        .objective_id
+        .is_some_and(|objective_id| rule.objective_rules.contains_key(&objective_id))
+        || event.objective_map_key.is_some_and(|objective_map_key| {
+            rule.objective_rules
+                .contains_key(&i64::from(objective_map_key))
+        })
+}
+
 fn boss_segment_kind(rule: &SceneRunRule) -> RunSegmentKind {
     rule.boss_encounter_id
         .as_deref()
@@ -749,6 +797,7 @@ struct RunAccumulator {
     manual_boundary: bool,
     mobbing_cleared: bool,
     boss_phase_armed: bool,
+    boss_segment_cleared: bool,
 }
 
 impl RunAccumulator {
@@ -783,6 +832,7 @@ impl RunAccumulator {
             manual_boundary: false,
             mobbing_cleared: false,
             boss_phase_armed: false,
+            boss_segment_cleared: false,
         };
         run.switch_segment(initial_segment, started_micros, false);
         Ok(run)
@@ -806,7 +856,15 @@ impl RunAccumulator {
         ) {
             self.mobbing_cleared = false;
             self.boss_phase_armed = false;
+            self.boss_segment_cleared = false;
         }
+    }
+
+    fn mark_single_boss_segment_cleared(&mut self) {
+        self.boss_segment_cleared = matches!(
+            self.active_segment_kind(),
+            Some(RunSegmentKind::Boss | RunSegmentKind::RaidBoss)
+        );
     }
 
     fn close_active_segment(&mut self, observed_micros: u64, at_run_end: bool) {
@@ -1448,6 +1506,55 @@ mod tests {
         }
     }
 
+    fn tina_mindrealm_rule(
+        scene_id: i32,
+        mobbing_objective_map_key: i64,
+        difficulty_family: &str,
+    ) -> SceneRunRule {
+        SceneRunRule {
+            scene_id,
+            runtime_enabled: true,
+            activity_kind: ActivityKind::Dungeon,
+            activity_id: format!("scene.{scene_id}"),
+            activity_family_id: Some("tina-mindrealm".into()),
+            activity_localization_key: Some(format!("scene.{scene_id}.name")),
+            difficulty_family: Some(difficulty_family.into()),
+            difficulty_localization_key: None,
+            difficulty_tier_range: None,
+            route_id: None,
+            raid_route_kind: None,
+            partition: None,
+            candidate_dungeon_ids: BTreeSet::new(),
+            mobbing_encounter_id: Some(format!("scene.{scene_id}.mobbing")),
+            boss_encounter_id: Some("monster.33701".into()),
+            boss_monster_ids: [33_701].into_iter().collect(),
+            objective_rules: BTreeMap::from([
+                (
+                    mobbing_objective_map_key,
+                    crate::DungeonObjectiveRule {
+                        role: crate::DungeonObjectiveRole::MobbingCompletion,
+                        on_complete: CompletedObjectiveAction::ClearMobbing,
+                    },
+                ),
+                (
+                    100_176,
+                    crate::DungeonObjectiveRule {
+                        role: crate::DungeonObjectiveRole::BossPhaseGate,
+                        on_complete: CompletedObjectiveAction::EnterBossSegment,
+                    },
+                ),
+                (
+                    100_164,
+                    crate::DungeonObjectiveRule {
+                        role: crate::DungeonObjectiveRole::RunCompletion,
+                        on_complete: CompletedObjectiveAction::FinalObjective,
+                    },
+                ),
+            ]),
+            evidence: Vec::new(),
+        }
+    }
+
     #[test]
     fn completed_dungeon_is_one_run_with_mobbing_and_boss_projections() {
         let mut reducer = RunSessionReducer::new(dungeon_config());
@@ -1692,6 +1799,192 @@ mod tests {
             Some("mistveil")
         );
         assert_eq!(runs[0].terminal_state, RunTerminalState::Completed);
+    }
+
+    #[test]
+    fn unique_objective_key_recovers_a_dungeon_hidden_behind_the_town_scene() {
+        let normal = tina_mindrealm_rule(1_631, 100_178, "normal");
+        let master = tina_mindrealm_rule(1_633, 100_180, "master");
+        let mut reducer = RunSessionReducer::new(RunReducerConfig {
+            scene_rules: BTreeMap::from([(normal.scene_id, normal), (master.scene_id, master)]),
+            ..RunReducerConfig::default()
+        });
+        let mut events = factory();
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(8)),
+                map_id: Some(8),
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        );
+        let mut started = match dungeon(DungeonEventKind::Started, "objective-only-instance") {
+            CanonicalEventDraftKind::Dungeon(event) => event,
+            _ => unreachable!(),
+        };
+        started.dungeon_id = None;
+        started.difficulty_id = None;
+        emit(
+            &mut reducer,
+            &mut events,
+            1_000_000,
+            CanonicalEventDraftKind::Dungeon(started),
+        );
+
+        let mut mobbing_complete = match dungeon(
+            DungeonEventKind::ObjectiveUpdated,
+            "objective-only-instance",
+        ) {
+            CanonicalEventDraftKind::Dungeon(event) => event,
+            _ => unreachable!(),
+        };
+        mobbing_complete.dungeon_id = None;
+        mobbing_complete.difficulty_id = None;
+        mobbing_complete.objective_id = Some(9_999_999);
+        mobbing_complete.objective_map_key = Some(100_180);
+        mobbing_complete.objective_complete = Some(true);
+        emit(
+            &mut reducer,
+            &mut events,
+            4_000_000,
+            CanonicalEventDraftKind::Dungeon(mobbing_complete),
+        );
+
+        let mut boss_gate = match dungeon(
+            DungeonEventKind::ObjectiveUpdated,
+            "objective-only-instance",
+        ) {
+            CanonicalEventDraftKind::Dungeon(event) => event,
+            _ => unreachable!(),
+        };
+        boss_gate.dungeon_id = None;
+        boss_gate.difficulty_id = None;
+        boss_gate.objective_map_key = Some(100_176);
+        boss_gate.objective_complete = Some(true);
+        emit(
+            &mut reducer,
+            &mut events,
+            6_000_000,
+            CanonicalEventDraftKind::Dungeon(boss_gate),
+        );
+        let player = EntityRef {
+            actor_id: ActorId(1),
+            entity_uuid: EntityUuid(100),
+        };
+        let boss = EntityRef {
+            actor_id: ActorId(3),
+            entity_uuid: EntityUuid(300),
+        };
+        emit(
+            &mut reducer,
+            &mut events,
+            6_000_000,
+            actor(3, 300, ActorKind::Monster, Some(33_701)),
+        );
+        emit(&mut reducer, &mut events, 8_000_000, damage(player, boss));
+        emit(
+            &mut reducer,
+            &mut events,
+            10_000_000,
+            CanonicalEventDraftKind::Timeline(TimelineEventKind::Life {
+                actor: boss,
+                state: rlogs_events::LifeState::Died,
+            }),
+        );
+        // The live client can keep emitting hostile packets during the dead
+        // boss's outro. They must not manufacture a retry or restart Game time.
+        emit(&mut reducer, &mut events, 11_000_000, damage(player, boss));
+
+        let mut completed = match dungeon(DungeonEventKind::Completed, "objective-only-instance") {
+            CanonicalEventDraftKind::Dungeon(event) => event,
+            _ => unreachable!(),
+        };
+        completed.dungeon_id = None;
+        completed.difficulty_id = None;
+        emit(
+            &mut reducer,
+            &mut events,
+            12_000_000,
+            CanonicalEventDraftKind::Dungeon(completed),
+        );
+
+        let runs = reducer.finish();
+        let run = &runs[0];
+        assert_eq!(run.identity.scene_id, Some(1_633));
+        assert_eq!(
+            run.identity.activity_family_id.as_deref(),
+            Some("tina-mindrealm")
+        );
+        assert_eq!(run.identity.difficulty_family.as_deref(), Some("master"));
+        assert_eq!(run.segments.len(), 2);
+        assert_eq!(run.segments[0].kind, RunSegmentKind::Mobbing);
+        assert_eq!(run.segments[0].ended_micros, 4_000_000);
+        assert_eq!(run.segments[1].kind, RunSegmentKind::Boss);
+        assert_eq!(run.segments[1].started_micros, 8_000_000);
+        assert_eq!(run.segments[1].attempt_count, 1);
+        assert_eq!(run.segments[1].retry_count, 0);
+        assert_eq!(run.segments[1].active_combat_micros, 2_000_000);
+        assert_eq!(run.encounters.len(), 1);
+        assert_eq!(
+            run.encounters[0].terminal_state,
+            EncounterTerminalState::Cleared
+        );
+        assert_eq!(run.encounters[0].ended_micros, 10_000_000);
+    }
+
+    #[test]
+    fn shared_objective_key_does_not_guess_between_dungeon_scenes() {
+        let normal = tina_mindrealm_rule(1_631, 100_178, "normal");
+        let master = tina_mindrealm_rule(1_633, 100_180, "master");
+        let mut reducer = RunSessionReducer::new(RunReducerConfig {
+            scene_rules: BTreeMap::from([(normal.scene_id, normal), (master.scene_id, master)]),
+            ..RunReducerConfig::default()
+        });
+        let mut events = factory();
+        emit(
+            &mut reducer,
+            &mut events,
+            0,
+            CanonicalEventDraftKind::WorldChanged(WorldContext {
+                scene_id: Some(SceneId(8)),
+                map_id: Some(8),
+                line_id: None,
+                scene_instance_id: None,
+                dungeon_instance_id: None,
+            }),
+        );
+        let mut started = match dungeon(DungeonEventKind::Started, "ambiguous-instance") {
+            CanonicalEventDraftKind::Dungeon(event) => event,
+            _ => unreachable!(),
+        };
+        started.dungeon_id = None;
+        emit(
+            &mut reducer,
+            &mut events,
+            1_000_000,
+            CanonicalEventDraftKind::Dungeon(started),
+        );
+        let mut shared = match dungeon(DungeonEventKind::ObjectiveUpdated, "ambiguous-instance") {
+            CanonicalEventDraftKind::Dungeon(event) => event,
+            _ => unreachable!(),
+        };
+        shared.dungeon_id = None;
+        shared.objective_map_key = Some(100_176);
+        shared.objective_complete = Some(true);
+        emit(
+            &mut reducer,
+            &mut events,
+            4_000_000,
+            CanonicalEventDraftKind::Dungeon(shared),
+        );
+
+        let run = &reducer.finish()[0];
+        assert_eq!(run.identity.scene_id, Some(8));
+        assert_eq!(run.identity.activity_id, None);
     }
 
     #[test]
