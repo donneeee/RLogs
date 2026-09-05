@@ -243,6 +243,17 @@ Exactly 4 offensive candidates remain deliberately fail-closed:
 - `2110078` — Stunt! Blink Ambush — Shock Defense Break: Reconstruct the defense-affected ATK or MATK subtotal, event-time target defense and source penetration overlap, combat-stage placement, integer rounding, and conserved marginal for the equipped-tier 2/4/6/8/10% Armor reduction.
 - `2110092` — Stunt! Blade Sweep / Arcane! Goblin March — Target Armor Reduction: Packet-owned provider selection is proven across 314 current-build lifecycle events; equipped tier is proven for 8 events from one reviewed provider. Two exact ability-2031104 lucky_value controls leave hidden physical-defense candidate envelopes 3850-3892 under the exact client 6500 simple curve and 13062-13107 under the exact current-season 22000 transformed curve. Event-time actor replay covers all four control actions and finds active target state but no numeric monster/config ID, character ID, level, or physical defense, so installed static target stats cannot be joined. The controls select neither curve, floor/ceil/round-half-up, nor the nonstandard AttackLucky pre-defense base formula. Prove the upstream Lucky base, event-time target defense through a different exact evidence route, penetration overlap, combat-stage placement, stacking arbitration, exact rounding, equipped tier for every provider, and conserved marginal for the 1.3/2.6/3.9/5.2/6.5% Armor reduction.
 
+A candidate rescan of 23 independently sealed exact-build logs found none of
+the four selected frontier effect IDs under either source-damage or
+target-damage correlation. The scan required distinct packet-observed provider
+and recipient entities and found zero self, external, or unresolved complete
+damage windows because the exact effects themselves were absent. This is a
+corpus-scoped negative result, not evidence that the effects never occur. The
+privacy-safe receipt
+`protocol-packs/global/steam-24687926/observations/party-offensive-frontier-corpus-census-001.json`
+locks the eight manifest digests and the minimum next-capture requirements, so
+the same corpus is not repeatedly mistaken for formula evidence.
+
 Life Wave (`2302421`) is included in the production allowlist. For current-build
 joint replay, rLogs requires the exact HP/max-HP trigger owner, a verified module
 profile, the recipient's adjacent attribute transition that selects the affected

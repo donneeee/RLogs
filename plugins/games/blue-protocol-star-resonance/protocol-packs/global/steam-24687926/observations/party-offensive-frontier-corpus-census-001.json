@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "observation_id": "party-offensive-frontier-corpus-census-001",
+  "deployment_id": "global",
+  "client_build": "24687926",
+  "effect_ids": [997520, 2110060, 2110078, 2110092],
+  "sealed_evidence": {
+    "generated_by": "rlogs-bpsr-sealed-rlog-candidate-manifest",
+    "candidate_manifest_schema_version": 2,
+    "external_provider_only": true,
+    "discovered_sealed_name_rlogs": 23,
+    "exact_build_sealed_rlogs": 23,
+    "wrong_build_rlogs": 0,
+    "unsealed_or_unreadable_rlogs": 0,
+    "source_paths_included": false,
+    "packet_payloads_included": false,
+    "manifests": [
+      {
+        "effect_id": 997520,
+        "damage_relationship": "source",
+        "bytes": 3313,
+        "content_sha256": "sha256:efc49b399cc6ef41451b7db22ed146a7f29d7a895512149a58284ba149765fc9"
+      },
+      {
+        "effect_id": 997520,
+        "damage_relationship": "target",
+        "bytes": 3313,
+        "content_sha256": "sha256:7e4667642e0c5cfd2b1737a42ffa97836a0838774171cc20f0e5ba5430dc098e"
+      },
+      {
+        "effect_id": 2110060,
+        "damage_relationship": "source",
+        "bytes": 3314,
+        "content_sha256": "sha256:55ddfc7bb65e98f677f3a3b777343343f0f4a30a1cd7e897a935e281c4749df3"
+      },
+      {
+        "effect_id": 2110060,
+        "damage_relationship": "target",
+        "bytes": 3314,
+        "content_sha256": "sha256:278f0c69547849b3714d702850e347856c8fc9351519c5042b952326566d4761"
+      },
+      {
+        "effect_id": 2110078,
+        "damage_relationship": "source",
+        "bytes": 3314,
+        "content_sha256": "sha256:acbe21e0575ebc6d9730ba0c11645f355d89c9b76276005950c07de20cb80015"
+      },
+      {
+        "effect_id": 2110078,
+        "damage_relationship": "target",
+        "bytes": 3314,
+        "content_sha256": "sha256:a742462eeb2a7c15e55f105200650fd9e4d56d2eb19b5b8f2e46148c8d864a9a"
+      },
+      {
+        "effect_id": 2110092,
+        "damage_relationship": "source",
+        "bytes": 3314,
+        "content_sha256": "sha256:37e0d916a75eeddaa01a87814245ecfcd1b1861b0cc12b29ca58bd5cbeda87fc"
+      },
+      {
+        "effect_id": 2110092,
+        "damage_relationship": "target",
+        "bytes": 3314,
+        "content_sha256": "sha256:6c8983b8235139076e63b1377f6409417c47552006ed195a23883fe37332b55f"
+      }
+    ]
+  },
+  "census": {
+    "damage_relationships_tested": ["source", "target"],
+    "each_effect_relationship_pair_scanned_the_same_exact_build_corpus": true,
+    "exact_build_rlogs_without_each_selected_effect": 23,
+    "selected_effect_status_events_observed": 0,
+    "complete_self_provider_windows_with_damage": 0,
+    "complete_external_provider_windows_with_damage": 0,
+    "complete_unresolved_provider_windows_with_damage": 0,
+    "candidate_rlogs": 0,
+    "selected_exact_effects_absent_from_current_corpus": true
+  },
+  "authority": {
+    "corpus_coverage_authority": true,
+    "effect_absence_outside_this_exact_corpus_is_claimed": false,
+    "formula_authority": false,
+    "runtime_authority": false,
+    "ui_display_authority": false,
+    "provider_rdps_credit_authorized": false,
+    "ordinary_damage_is_immutable": true,
+    "unresolved_evidence_is_preserved": true
+  },
+  "required_next_capture": {
+    "shared_requirements": [
+      "capture the exact effect ID on an externally provided status lifecycle",
+      "retain a complete gap-bounded apply or refresh through remove or consume lifecycle",
+      "retain packet-observed provider and recipient entity UUIDs",
+      "retain the effect-specific resource, attribute, target-defense, and damage context needed by its existing proof obligation",
+      "repeat controlled before, during, and after states without changing unrelated formula inputs"
+    ],
+    "per_effect": [
+      {
+        "effect_id": 997520,
+        "minimum_additional_evidence": "resource gain, cap, overcap, spend, and downstream extra-action timing during the 15-second external lifecycle"
+      },
+      {
+        "effect_id": 2110060,
+        "minimum_additional_evidence": "the external Ally Haste lifecycle, its exact packet attribute transition, field-to-linger boundary, and downstream action timing"
+      },
+      {
+        "effect_id": 2110078,
+        "minimum_additional_evidence": "the external target debuff, event-time target physical defense, source penetration, equipped tier, and controlled matching damage"
+      },
+      {
+        "effect_id": 2110092,
+        "minimum_additional_evidence": "the external target debuff, event-time target physical defense, source penetration, equipped tier, and controlled matching damage"
+      }
+    ]
+  }
+}

@@ -67,6 +67,13 @@
       "negative_gate_pointer": "/policy/runtime_formula_authority"
     },
     {
+      "file": "party-offensive-frontier-corpus-census-001.json",
+      "observation_id": "party-offensive-frontier-corpus-census-001",
+      "effect_ids": [997520, 2110060, 2110078, 2110092],
+      "disposition": "negative-gate",
+      "negative_gate_pointer": "/authority/runtime_authority"
+    },
+    {
       "file": "spring-breeze-2404261-state-scaled-damage-runtime-001.json",
       "observation_id": "spring-breeze-2404261-state-scaled-damage-runtime-001",
       "effect_ids": [2404261],

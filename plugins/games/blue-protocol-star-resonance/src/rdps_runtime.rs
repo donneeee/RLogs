@@ -5935,6 +5935,55 @@ mod tests {
     }
 
     #[test]
+    fn party_offensive_frontier_census_requires_new_effect_observations() {
+        let receipt: serde_json::Value = serde_json::from_str(include_str!(
+            "../protocol-packs/global/steam-24687926/observations/party-offensive-frontier-corpus-census-001.json"
+        ))
+        .expect("the party-offensive frontier corpus receipt must remain valid JSON");
+
+        assert_eq!(receipt["client_build"], "24687926");
+        assert_eq!(
+            receipt["effect_ids"],
+            serde_json::json!([997520, 2110060, 2110078, 2110092])
+        );
+        assert_eq!(receipt["sealed_evidence"]["exact_build_sealed_rlogs"], 23);
+        assert_eq!(
+            receipt["sealed_evidence"]["manifests"]
+                .as_array()
+                .map(Vec::len),
+            Some(8)
+        );
+        assert_eq!(
+            receipt["census"]["exact_build_rlogs_without_each_selected_effect"],
+            23
+        );
+        assert_eq!(
+            receipt["census"]["selected_effect_status_events_observed"],
+            0
+        );
+        assert_eq!(receipt["census"]["candidate_rlogs"], 0);
+        assert_eq!(
+            receipt["census"]["selected_exact_effects_absent_from_current_corpus"],
+            true
+        );
+        assert_eq!(receipt["authority"]["runtime_authority"], false);
+        assert_eq!(
+            receipt["authority"]["provider_rdps_credit_authorized"],
+            false
+        );
+        assert_eq!(
+            receipt["authority"]["effect_absence_outside_this_exact_corpus_is_claimed"],
+            false
+        );
+        assert_eq!(
+            receipt["required_next_capture"]["per_effect"]
+                .as_array()
+                .map(Vec::len),
+            Some(4)
+        );
+    }
+
+    #[test]
     fn fiery_battle_will_requires_exact_local_observed_attack_authority() {
         let base = bundled_runtime_value();
         let current = runtime_from_value(base.clone());
