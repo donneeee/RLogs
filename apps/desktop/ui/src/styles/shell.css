@@ -987,10 +987,20 @@ body {
 
 .module-loadout-link-summary {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
   min-width: 0;
+}
+
+.module-score-summary {
+  padding: 4px 7px;
+  border: 1px solid rgb(92 228 212 / 28%);
+  border-radius: 6px;
+  color: var(--cyan);
+  background: rgb(92 228 212 / 6%);
+  font-size: 9px;
+  white-space: nowrap;
 }
 
 .module-current-card > .module-loadout-link-summary {

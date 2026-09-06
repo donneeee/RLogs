@@ -73,6 +73,13 @@ export function summarizeModuleLinks(
       right.totalLink - left.totalLink || left.name.localeCompare(right.name));
 }
 
+export function moduleSolutionScoreSummary(solution: ModuleSolution): string {
+  const score = solution.score.toLocaleString();
+  return solution.ranking_score === solution.score
+    ? `Score ${score}`
+    : `Score ${score} · Priority ${solution.ranking_score.toLocaleString()}`;
+}
+
 const GPU_PREFERENCE_KEY = "rlogs.module-optimizer.gpu";
 const PREFERENCE_KEY_PREFIX = "rlogs.module-optimizer.preferences.v1.";
 
@@ -535,6 +542,14 @@ export function mountModuleOptimizerSurface(
       });
       if (!alive) return;
       renderResults(results, result, catalog);
+      if (result.current_setup) {
+        renderModuleLinkSummary(
+          currentLinkSummary,
+          result.current_setup.modules,
+          catalog,
+          result.current_setup,
+        );
+      }
       const elapsed = Math.max(0, performance.now() - started);
       status.textContent = `${result.solutions.length} recommendation${result.solutions.length === 1 ? "" : "s"} · ${result.search.evaluated_states.toLocaleString()} states · ${result.search.exact ? "exact" : "guided search"} · ${backendLabel(result)} · ${formatElapsed(elapsed)}`;
       if (result.search.accelerator_fallback) status.textContent += ` · ${result.search.accelerator_fallback}`;
@@ -642,7 +657,7 @@ function solutionCard(label: string, solution: ModuleSolution, catalog: Optimize
   const card = element("article", "content-card module-solution-card");
   const heading = element("div", "module-solution-heading");
   const linkSummary = element("div", "module-loadout-link-summary");
-  renderModuleLinkSummary(linkSummary, solution.modules, catalog);
+  renderModuleLinkSummary(linkSummary, solution.modules, catalog, solution);
   heading.append(text("span", label, "module-solution-rank"), linkSummary);
   const modules = element("div", "module-solution-module-strip");
   modules.append(...solution.modules.map((module) => solutionModuleTile(module, catalog)));
@@ -654,6 +669,7 @@ function renderModuleLinkSummary(
   container: HTMLElement,
   modules: readonly ModuleCandidate[],
   catalog: OptimizerCatalog | null,
+  solution: ModuleSolution | null = null,
 ): void {
   const effects = element("div", "module-solution-effects");
   for (const score of summarizeModuleLinks(modules, catalog)) {
@@ -665,11 +681,21 @@ function renderModuleLinkSummary(
     );
     effects.append(chip);
   }
-  container.replaceChildren(
+  const children: HTMLElement[] = [
     text("span", "Combined links", "module-link-summary-label"),
     effects,
-  );
-  container.hidden = effects.childElementCount === 0;
+  ];
+  if (solution) {
+    children.push(
+      text(
+        "strong",
+        moduleSolutionScoreSummary(solution),
+        "module-score-summary",
+      ),
+    );
+  }
+  container.replaceChildren(...children);
+  container.hidden = effects.childElementCount === 0 && solution === null;
 }
 
 function solutionModuleTile(value: ModuleCandidate, catalog: OptimizerCatalog): HTMLElement {

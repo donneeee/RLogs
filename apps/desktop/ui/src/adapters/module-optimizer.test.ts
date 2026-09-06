@@ -7,9 +7,29 @@ import {
   parseOptimizeResponse,
   parseOptimizerCatalog,
 } from "./module-optimizer";
-import { summarizeModuleLinks } from "./module-optimizer-surface";
+import { moduleSolutionScoreSummary, summarizeModuleLinks } from "./module-optimizer-surface";
 
 describe("local module optimizer contracts", () => {
+  it("shows the score and only adds a priority score when preferences change ranking", () => {
+    const solution = {
+      instance_ids: [],
+      modules: [],
+      score: 420,
+      ranking_score: 420,
+      breakdown: {
+        threshold_power: 0,
+        ranking_threshold_power: 0,
+        total_link_points: 0,
+        total_link_power: 0,
+        attributes: [],
+      },
+    };
+    expect(moduleSolutionScoreSummary(solution)).toBe("Score 420");
+    expect(moduleSolutionScoreSummary({ ...solution, ranking_score: 460 })).toBe(
+      "Score 420 · Priority 460",
+    );
+  });
+
   it("combines effect links across a loadout without exposing power or thresholds", () => {
     const catalog = parseOptimizerCatalog({
       game_id: "blue-protocol-star-resonance",
