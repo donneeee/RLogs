@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { accountView, RLogsAuthState, tokenHash } from "../src/auth.js";
-import { canonicalJson, liveCaptureProof } from "../src/profile.js";
+import { canonicalJson, liveCaptureProof, reconcileCatalog } from "../src/profile.js";
 
 function authFixture() {
   const durable = new Map();
@@ -73,6 +73,39 @@ test("profile package digest and live-capture proof match the Rust implementatio
     await liveCaptureProof(packageValue, "dev_device", "rld_device-secret"),
     "hmac-sha256:55c4ebc91d72d6ba25909fbc7c6ac3c4d15a28dcecf1c47b422e1c9e4a98983a",
   );
+});
+
+test("profile catalog reconciliation collapses legacy IDs for the same observed UID", () => {
+  const canonical = {
+    profile_id: `prf_${"a".repeat(32)}`,
+    claimed: true,
+    package_id: "new-package",
+    updated_unix_millis: 30,
+    source_client_build: "24687926",
+    deployment: "global",
+    region: "north-america",
+    realm: null,
+    world: null,
+    character_id: "3296036",
+    display_name: "MarieRose",
+    module_inventory_count: 10,
+    equipped_module_count: 5,
+  };
+  const catalog = {
+    schema_version: 1,
+    profiles: [
+      { ...canonical, profile_id: `prf_${"b".repeat(32)}`, package_id: "legacy-package", updated_unix_millis: 10, region: "global" },
+      { ...canonical, profile_id: `prf_${"c".repeat(32)}`, package_id: "other-package", character_id: "77212533", display_name: "moonglowkokomi", updated_unix_millis: 20 },
+      { ...canonical, package_id: "stale-canonical", updated_unix_millis: 5, region: "global" },
+    ],
+  };
+
+  reconcileCatalog(catalog, canonical);
+
+  assert.equal(catalog.profiles.length, 2);
+  assert.deepEqual(catalog.profiles.map((entry) => entry.character_id), ["3296036", "77212533"]);
+  assert.equal(catalog.profiles[0].profile_id, canonical.profile_id);
+  assert.equal(catalog.profiles[0].region, "north-america");
 });
 
 test("account projection does not expose Discord IDs", () => {

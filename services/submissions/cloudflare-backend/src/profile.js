@@ -100,9 +100,7 @@ export async function publishProfilePackage(env, packageValue, identity, deviceT
   await env.RLOGS_DATA.put(`${prefix}/current.profile.json`, JSON.stringify(packageValue));
   if (loadout) await env.RLOGS_DATA.put(`${prefix}/loadouts/${projectId}.json`, JSON.stringify(loadout));
   await env.RLOGS_DATA.put(`${prefix}/public.json`, JSON.stringify(published));
-  catalog.profiles = catalog.profiles.filter((entry) => entry.profile_id !== profileId);
-  catalog.profiles.push(catalogEntry(published));
-  catalog.profiles.sort((left, right) => right.updated_unix_millis - left.updated_unix_millis || left.profile_id.localeCompare(right.profile_id));
+  reconcileCatalog(catalog, published);
   await env.RLOGS_DATA.put("fs:profiles/catalog.v1.json", JSON.stringify(catalog));
   return {
     value: {
@@ -149,9 +147,7 @@ export async function publishProfilePhoto(env, profileId, photoId, bytes, identi
   await env.RLOGS_DATA.put(`${prefix}/public.json`, JSON.stringify(profile));
   const catalog = await env.RLOGS_DATA.get("fs:profiles/catalog.v1.json", "json");
   if (Array.isArray(catalog?.profiles)) {
-    catalog.profiles = catalog.profiles.filter((entry) => entry.profile_id !== profileId);
-    catalog.profiles.push(catalogEntry(profile));
-    catalog.profiles.sort((left, right) => right.updated_unix_millis - left.updated_unix_millis || left.profile_id.localeCompare(right.profile_id));
+    reconcileCatalog(catalog, profile);
     await env.RLOGS_DATA.put("fs:profiles/catalog.v1.json", JSON.stringify(catalog));
   }
   return { value: { ...metadata, file_name: undefined } };
@@ -333,6 +329,18 @@ function catalogEntry(profile) {
     character_id, display_name, module_inventory_count, equipped_module_count };
 }
 
+function reconcileCatalog(catalog, profile) {
+  const profileId = String(profile.profile_id);
+  const characterId = String(profile.character_id);
+  catalog.profiles = catalog.profiles.filter((entry) =>
+    String(entry.profile_id) !== profileId && String(entry.character_id) !== characterId
+  );
+  catalog.profiles.push(catalogEntry(profile));
+  catalog.profiles.sort((left, right) =>
+    right.updated_unix_millis - left.updated_unix_millis || left.profile_id.localeCompare(right.profile_id)
+  );
+}
+
 async function newProfileId(characterId) {
   return `prf_${(await sha256Hex(`rlogs-profile-character-identity-v2\0${characterId}`)).slice(0, 32)}`;
 }
@@ -394,4 +402,4 @@ function reviewedImageFormat(bytes) {
 function equalBytes(bytes, expected) { return bytes.length === expected.length && expected.every((value, index) => bytes[index] === value); }
 function text(bytes) { return new TextDecoder().decode(bytes); }
 
-export { canonicalJson, liveCaptureProof, mergeProfileBodies, reviewedImageFormat, validatePackage };
+export { canonicalJson, liveCaptureProof, mergeProfileBodies, reconcileCatalog, reviewedImageFormat, validatePackage };
