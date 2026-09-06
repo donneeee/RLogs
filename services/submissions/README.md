@@ -359,23 +359,26 @@ The container listens on `0.0.0.0:8787`, stores all mutable state below
 platform probes. A persistent volume is required: ephemeral container storage
 would discard private artifacts and the rebuildable catalog on redeploy.
 
-## Small-sample Cloudflare gateway
+## Local-only Cloudflare gateway bridge
 
 GitHub Pages cannot safely receive uploads: a static page has nowhere to run
 the replay service, and embedding a GitHub token would give every visitor the
-archive credential. For a small invited test, GitHub remains the private
-evidence archive while the independent Pages project in `cloudflare-gateway/`
-provides a stable, rLogs-namespaced HTTPS API origin in front of this receiver.
-It does not share Aniipedia's public Worker namespace or branding.
+archive credential. The independent Pages project in `cloudflare-gateway/`
+was used temporarily as a narrow bridge to a developer workstation receiver.
+It is not a production hosting architecture and must never be described or
+released as one.
 
 The gateway is deliberately a narrow streaming reverse proxy. It exposes only
 the documented health, ingest, parse, and reconciliation routes; it cannot
 serve the private artifact store. The receiver still owns authentication,
 privacy validation, deterministic replay, persistence, and GitHub archiving.
-The receiver host must remain online during this initial test phase.
+This bridge is for local development only. A quick tunnel has a changing
+hostname, no uptime guarantee, and depends on the workstation process staying
+online. The public rLogs service must not depend on it. Production must use the
+Cloudflare-hosted architecture in `docs/architecture/cloudflare-hosting.md`.
 
-Start a Cloudflare quick tunnel to the loopback receiver and copy its HTTPS
-origin. Then create the independent Pages project, store that changing origin
+For a short-lived local integration test only, start a Cloudflare quick tunnel
+to the loopback receiver and copy its HTTPS origin. Store that changing origin
 as a project secret rather than committing it, and deploy the gateway:
 
 ```powershell
@@ -384,14 +387,17 @@ Set-Location services/submissions/cloudflare-gateway
 npm.cmd install
 npx.cmd wrangler pages project create rlogs-submissions --production-branch main
 "https://generated-name.trycloudflare.com" | npx.cmd wrangler pages secret put ORIGIN_BASE_URL --project-name rlogs-submissions
+"true" | npx.cmd wrangler pages secret put ALLOW_DEVELOPMENT_ORIGIN --project-name rlogs-submissions
 npm.cmd run deploy:pages
 ```
 
+Use a separate development Pages project for this test. The production project
+must never set `ALLOW_DEVELOPMENT_ORIGIN`.
+
 Set the `RLOGS_API_BASE_URL` GitHub Actions repository variable in
 `donneeee/rlogs-website` to the deployed `rlogs-submissions.pages.dev` origin and rerun its
-Pages workflow. The desktop submission URL is that same origin. Quick tunnels
-have no uptime guarantee; replace the origin with a named tunnel or a hosted
-receiver when testing expands beyond the initial invited sample.
+Pages workflow. The desktop submission URL is that same origin only during the
+local test. Never ship a quick-tunnel origin as the production service.
 
 ## Storage layout
 

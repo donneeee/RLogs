@@ -58,7 +58,7 @@ function routeAllowed(method, pathname) {
   );
 }
 
-function configuredOrigin(value) {
+function configuredOrigin(value, { allowDevelopmentOrigin = false } = {}) {
   const origin = new URL(String(value ?? ""));
   if (
     origin.protocol !== "https:" ||
@@ -69,6 +69,15 @@ function configuredOrigin(value) {
     origin.hash
   ) {
     throw new Error("ORIGIN_BASE_URL must be an HTTPS origin without credentials or a path");
+  }
+  const hostname = origin.hostname.toLowerCase();
+  const developmentOrigin =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname.endsWith(".trycloudflare.com");
+  if (developmentOrigin && !allowDevelopmentOrigin) {
+    throw new Error("ORIGIN_BASE_URL cannot target a workstation or quick tunnel in production");
   }
   return origin;
 }
@@ -103,7 +112,9 @@ export default {
 
     let origin;
     try {
-      origin = configuredOrigin(env.ORIGIN_BASE_URL);
+      origin = configuredOrigin(env.ORIGIN_BASE_URL, {
+        allowDevelopmentOrigin: env.ALLOW_DEVELOPMENT_ORIGIN === "true",
+      });
     } catch {
       return Response.json(
         { error: "submission origin is not configured" },

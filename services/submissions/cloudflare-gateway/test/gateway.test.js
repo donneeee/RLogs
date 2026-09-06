@@ -145,6 +145,30 @@ test("the upstream must be one pathless HTTPS origin", () => {
   assert.throws(() => configuredOrigin("https://example.com/private"));
   assert.throws(() => configuredOrigin("https://example.com/?target=other"));
   assert.throws(() => configuredOrigin("https://user:password@example.com"));
+  assert.throws(() => configuredOrigin("https://temporary-name.trycloudflare.com"));
+  assert.equal(
+    configuredOrigin("https://temporary-name.trycloudflare.com", {
+      allowDevelopmentOrigin: true,
+    }).origin,
+    "https://temporary-name.trycloudflare.com",
+  );
+});
+
+test("a production gateway never contacts a configured quick tunnel", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("production gateway contacted a development origin");
+  };
+  try {
+    const response = await gateway.fetch(
+      new Request("https://gateway.example/health"),
+      { ORIGIN_BASE_URL: "https://temporary-name.trycloudflare.com" },
+    );
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: "submission origin is not configured" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("gateway removes permissive upstream CORS for other sites", async () => {
