@@ -15,6 +15,12 @@ function environment(values = {}) {
         return value;
       },
     },
+    AUTH_STATE: {
+      idFromName(name) { return name; },
+      get() {
+        return { async fetch() { return Response.json({ ok: true }); } };
+      },
+    },
   };
 }
 
@@ -79,4 +85,12 @@ test("write routes fail closed until hosted verification is enabled", async () =
   );
   assert.equal(response.status, 503);
   assert.equal(response.headers.get("Retry-After"), "30");
+});
+
+test("authentication is delegated to strongly consistent state", async () => {
+  const response = await backend.fetch(
+    new Request("https://backend/v1/auth/me", { headers: { Authorization: "Bearer rlw_test" } }),
+    environment(),
+  );
+  assert.deepEqual(await response.json(), { ok: true });
 });

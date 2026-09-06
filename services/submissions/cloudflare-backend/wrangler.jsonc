@@ -4,10 +4,30 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-31",
   "workers_dev": false,
+  "vars": {
+    "DISCORD_CLIENT_ID": "1544125568461709353",
+    "DISCORD_CALLBACK_URL": "https://rlogs-app.github.io/account/",
+    "WEBSITE_URL": "https://rlogs-app.github.io",
+    "DEVELOPER_DISCORD_USER_IDS": "51782792098349056"
+  },
   "kv_namespaces": [
     {
       "binding": "RLOGS_DATA",
       "id": "1a2a4d10731e4c7ebe31d568c87fe1c2"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "AUTH_STATE",
+        "class_name": "RLogsAuthState"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RLogsAuthState"]
     }
   ]
 }

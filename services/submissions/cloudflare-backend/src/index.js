@@ -103,6 +103,17 @@ async function publicAccount(env, accountId) {
 async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
+  if (path === "/v1/auth/config") {
+    return json({
+      schema_version: 1,
+      discord_enabled: Boolean(env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET && env.AUTH_TOKEN_PEPPER),
+      desktop_authentication: "bearer_app_token",
+    });
+  }
+  if (path.startsWith("/v1/auth/")) {
+    const id = env.AUTH_STATE.idFromName("global");
+    return env.AUTH_STATE.get(id).fetch(request);
+  }
   if (request.method !== "GET") {
     return json(
       { error: "hosted write service is not enabled yet", retryable: true },
@@ -119,13 +130,6 @@ async function route(request, env) {
       storage: "cloudflare-kv",
       public_profile_count: Array.isArray(catalog?.profiles) ? catalog.profiles.length : 0,
     }, catalog ? 200 : 503);
-  }
-  if (path === "/v1/auth/config") {
-    return json({
-      schema_version: 1,
-      discord_enabled: false,
-      desktop_authentication: "bearer_app_token",
-    });
   }
   if (path === "/v1/profiles") return profileCatalog(env, url);
   if (path === "/v1/parses") return parseCatalog(env, url);
@@ -150,3 +154,4 @@ async function route(request, env) {
 
 export default { fetch: route };
 export { route };
+export { RLogsAuthState } from "./auth.js";
