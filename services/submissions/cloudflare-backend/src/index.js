@@ -138,6 +138,7 @@ async function route(request, env) {
       status: catalog ? "ok" : "degraded",
       service: "rlogs-cloudflare-backend",
       schema_version: 1,
+      release: env.BACKEND_RELEASE ?? "local",
       storage: "cloudflare-kv",
       public_profile_count: Array.isArray(catalog?.profiles) ? catalog.profiles.length : 0,
     }, catalog ? 200 : 503);

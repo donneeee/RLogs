@@ -6,6 +6,7 @@ import backend from "../src/index.js";
 function environment(values = {}) {
   const store = new Map(Object.entries(values));
   return {
+    BACKEND_RELEASE: "test-release",
     RLOGS_DATA: {
       async get(key, type) {
         const value = store.get(key);
@@ -39,6 +40,7 @@ test("health proves that Cloudflare storage is populated", async () => {
     status: "ok",
     service: "rlogs-cloudflare-backend",
     schema_version: 1,
+    release: "test-release",
     storage: "cloudflare-kv",
     public_profile_count: 1,
   });
