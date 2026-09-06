@@ -1,9 +1,16 @@
 import type { MountedSurface } from "../shell/types";
-import { projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, type MechanicsMapUpdate } from "./mechanics-map";
+import { projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
 
 export interface MechanicsMapDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
   waitForSnapshot(afterRevision: number): Promise<MechanicsMapUpdate>;
+  prepareLocalMaps(): Promise<LocalMapPreparationResult>;
+}
+
+export interface LocalMapPreparationResult {
+  clientBuild: string;
+  preparedAssets: number;
+  message: string;
 }
 
 export function mountMechanicsMapSurface(container: HTMLElement, dependencies: MechanicsMapDependencies): MountedSurface {
@@ -13,6 +20,13 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   let showMonsters = true;
   let mapAssetUrl: string | null = null;
   let mapAssetState: "none" | "loading" | "ready" | "missing" = "none";
+  let preparingMaps = false;
+  let preparationMessage: string | null = null;
+  let preparationError = false;
+  let mapScale = 1;
+  let mapPanX = 0;
+  let mapPanY = 0;
+  let dragging: { pointerId: number; x: number; y: number } | null = null;
 
   const root = el("div", "plugin-surface overlay-workspace-surface mechanics-map-surface");
   const header = el("section", "content-card overlay-workspace-intro");
@@ -30,20 +44,34 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   const controls = el("div", "mechanics-map-controls");
   const rotate = check("Rotate with player", true, (checked) => { rotateWithPlayer = checked; render(); });
   const monsters = check("Monsters", true, (checked) => { showMonsters = checked; render(); });
-  controls.append(rotate, monsters);
+  const resetView = text("button", "Reset view", "quiet-button mechanics-map-reset-view");
+  resetView.type = "button";
+  resetView.addEventListener("click", resetMapView);
+  controls.append(rotate, monsters, resetView);
   mapHeading.append(mapCopy, controls);
   const radar = el("div", "mechanics-radar");
   radar.setAttribute("role", "img");
   radar.setAttribute("aria-label", "Live player-relative mechanics map");
   const fallback = el("div", "mechanics-radar-fallback");
   fallback.append(el("span", "mechanics-ring ring-one"), el("span", "mechanics-ring ring-two"), el("span", "mechanics-crosshair"));
+  const arena = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  arena.classList.add("mechanics-map-arena");
+  arena.setAttribute("viewBox", "0 0 100 100");
+  arena.setAttribute("aria-hidden", "true");
   const regions = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   regions.classList.add("mechanics-map-regions");
   regions.setAttribute("viewBox", "0 0 100 100");
   regions.setAttribute("aria-hidden", "true");
   const points = el("div", "mechanics-radar-points");
+  const plane = el("div", "mechanics-map-plane");
   const empty = text("p", "Waiting for a local player position.", "mechanics-map-empty");
-  radar.append(fallback, regions, points, empty);
+  plane.append(fallback, arena, regions, points);
+  radar.append(plane, empty);
+  radar.addEventListener("wheel", zoomMap, { passive: false });
+  radar.addEventListener("pointerdown", beginPan);
+  radar.addEventListener("pointermove", continuePan);
+  radar.addEventListener("pointerup", endPan);
+  radar.addEventListener("pointercancel", endPan);
   mapCard.append(mapHeading, radar);
 
   const signalCard = el("article", "content-card mechanics-signal-card");
@@ -83,10 +111,13 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     mapTitle.textContent = snapshot.scene_name ?? (snapshot.scene_id === null ? "Waiting for scene" : `Scene ${snapshot.scene_id}`);
     mapMeta.textContent = [snapshot.map_id === null ? null : `Map ${snapshot.map_id}`, snapshot.encounter_pack ?? "No reviewed encounter pack", sceneMap ? "Game scene map" : `${snapshot.world_radius}u radius`].filter(Boolean).join(" · ");
     radar.dataset.model = snapshot.map_model;
+    radar.dataset.layout = snapshot.map_layout ?? "none";
     rotate.hidden = sceneMap;
+    renderArenaLayout(arena, snapshot.map_layout);
     prepareMapAsset(snapshot.background_asset_url);
     radar.dataset.assetState = mapAssetState;
-    radar.style.setProperty("--mechanics-map-background", mapAssetState === "ready" && mapAssetUrl !== null ? `url(${JSON.stringify(mapAssetUrl)})` : "none");
+    plane.style.setProperty("--mechanics-map-background", mapAssetState === "ready" && mapAssetUrl !== null ? `url(${JSON.stringify(mapAssetUrl)})` : "none");
+    applyMapTransform();
     regions.replaceChildren();
     if (sceneMap) {
       for (const signal of snapshot.mechanics) {
@@ -127,7 +158,15 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     empty.hidden = snapshot.local_position_observed;
     signals.replaceChildren();
     if (snapshot.data_gap !== null) signals.append(notice("Data gap", snapshot.data_gap, "error"));
-    if (sceneMap && mapAssetState === "missing") signals.append(notice("Game map asset", "The exact local texture has not been compiled for this build. Packet positions remain available on the coordinate canvas.", "waiting"));
+    if (sceneMap && mapAssetState === "missing") {
+      const assetNotice = notice("Game map asset", preparationMessage ?? "The exact reviewed texture is available in the installed game but has not been prepared locally. Packet positions remain available on the coordinate canvas.", preparationError ? "error" : "waiting");
+      const prepare = text("button", preparingMaps ? "Preparing…" : "Prepare local maps", "quiet-button");
+      prepare.type = "button";
+      prepare.disabled = preparingMaps;
+      prepare.addEventListener("click", () => { void prepareReviewedMaps(); });
+      assetNotice.append(prepare);
+      signals.append(assetNotice);
+    }
     if (!snapshot.encounter_pack_reviewed) signals.append(notice("Encounter pack", "No reviewed pack matches this exact scene. Positions remain exact; guidance stays disabled.", "waiting"));
     else signals.append(notice(snapshot.encounter_pack ?? "Encounter pack", "Current-build effect identities are enabled. No safe-area geometry is inferred.", "live"));
     for (const signal of snapshot.mechanics) {
@@ -138,6 +177,53 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
       signals.append(row);
     }
     if (snapshot.mechanics.length === 0 && snapshot.data_gap === null) signals.append(text("p", "No active reviewed mechanic effects or targeted casts.", "runtime-empty-result"));
+  }
+
+  function zoomMap(event: WheelEvent): void {
+    event.preventDefault();
+    const rect = radar.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const cursorX = event.clientX - rect.left - rect.width / 2;
+    const cursorY = event.clientY - rect.top - rect.height / 2;
+    const next = zoomMechanicsMapAt({ scale: mapScale, panX: mapPanX, panY: mapPanY }, cursorX, cursorY, event.deltaY);
+    mapScale = next.scale;
+    mapPanX = next.panX;
+    mapPanY = next.panY;
+    applyMapTransform();
+  }
+
+  function beginPan(event: PointerEvent): void {
+    if (event.button !== 0) return;
+    dragging = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    radar.setPointerCapture(event.pointerId);
+    radar.dataset.dragging = "true";
+  }
+
+  function continuePan(event: PointerEvent): void {
+    if (dragging?.pointerId !== event.pointerId) return;
+    mapPanX += event.clientX - dragging.x;
+    mapPanY += event.clientY - dragging.y;
+    dragging = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    applyMapTransform();
+  }
+
+  function endPan(event: PointerEvent): void {
+    if (dragging?.pointerId !== event.pointerId) return;
+    dragging = null;
+    delete radar.dataset.dragging;
+    if (radar.hasPointerCapture(event.pointerId)) radar.releasePointerCapture(event.pointerId);
+  }
+
+  function resetMapView(): void {
+    mapScale = 1;
+    mapPanX = 0;
+    mapPanY = 0;
+    applyMapTransform();
+  }
+
+  function applyMapTransform(): void {
+    plane.style.transform = `translate(${mapPanX}px, ${mapPanY}px) scale(${mapScale})`;
+    radar.setAttribute("aria-description", `Map zoom ${formatZoom(mapScale)}. Drag to pan and use the mouse wheel to zoom without a fixed limit.`);
   }
 
   function prepareMapAsset(url: string | null): void {
@@ -160,6 +246,30 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
       render();
     };
     image.src = url;
+  }
+
+  async function prepareReviewedMaps(): Promise<void> {
+    if (preparingMaps) return;
+    preparingMaps = true;
+    preparationMessage = null;
+    preparationError = false;
+    render();
+    try {
+      const result = await dependencies.prepareLocalMaps();
+      if (!alive) return;
+      preparationMessage = result.message;
+      mapAssetUrl = null;
+      mapAssetState = "none";
+      render();
+    } catch (error) {
+      if (!alive) return;
+      preparationMessage = error instanceof Error ? error.message : String(error);
+      preparationError = true;
+      render();
+    } finally {
+      preparingMaps = false;
+      if (alive) render();
+    }
   }
 
   return { dispose() { alive = false; mapAssetUrl = null; root.remove(); } };
@@ -188,6 +298,28 @@ function mechanicKindLabel(kind: string | null): string | null {
   };
   return labels[kind] ?? null;
 }
+function renderArenaLayout(arena: SVGSVGElement, layout: MechanicsMapUpdate["snapshot"]["map_layout"]): void {
+  arena.replaceChildren();
+  if (layout === "raid_ring") {
+    const outer = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    outer.setAttribute("cx", "50"); outer.setAttribute("cy", "50"); outer.setAttribute("r", "44");
+    const inner = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    inner.setAttribute("cx", "50"); inner.setAttribute("cy", "50"); inner.setAttribute("r", "17");
+    arena.append(outer, inner);
+  } else if (layout === "raid_grid") {
+    const boundary = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    boundary.setAttribute("x", "7"); boundary.setAttribute("y", "7"); boundary.setAttribute("width", "86"); boundary.setAttribute("height", "86"); boundary.setAttribute("rx", "3");
+    arena.append(boundary);
+    for (const offset of [28.5, 50, 71.5]) {
+      const vertical = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      vertical.setAttribute("x1", String(offset)); vertical.setAttribute("x2", String(offset)); vertical.setAttribute("y1", "7"); vertical.setAttribute("y2", "93");
+      const horizontal = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      horizontal.setAttribute("x1", "7"); horizontal.setAttribute("x2", "93"); horizontal.setAttribute("y1", String(offset)); horizontal.setAttribute("y2", String(offset));
+      arena.append(vertical, horizontal);
+    }
+  }
+}
+function formatZoom(scale: number): string { return `${Math.round(scale * 100)}%`; }
 function check(label: string, checked: boolean, changed: (checked: boolean) => void): HTMLLabelElement { const wrapper = el("label", "mechanics-map-check") as HTMLLabelElement; const input = document.createElement("input"); input.type = "checkbox"; input.checked = checked; input.addEventListener("change", () => changed(input.checked)); wrapper.append(input, document.createTextNode(label)); return wrapper; }
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] { const value = document.createElement(tag); if (className !== undefined) value.className = className; return value; }
 function text<K extends keyof HTMLElementTagNameMap>(tag: K, value: string, className?: string): HTMLElementTagNameMap[K] { const node = el(tag, className); node.textContent = value; return node; }

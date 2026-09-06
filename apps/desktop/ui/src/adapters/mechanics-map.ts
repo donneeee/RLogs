@@ -38,6 +38,7 @@ export interface MechanicsMapSnapshot {
   map_id: number | null;
   scene_name: string | null;
   map_model: "player_relative_radar" | "absolute_scene_map";
+  map_layout: "raid_ring" | "raid_grid" | null;
   world_radius: number;
   map_origin_x: number | null;
   map_origin_z: number | null;
@@ -78,6 +79,29 @@ export interface MechanicsMapViewPoint {
   mapX: number;
   mapY: number;
   visible: boolean;
+}
+
+export interface MechanicsMapTransform {
+  scale: number;
+  panX: number;
+  panY: number;
+}
+
+export function zoomMechanicsMapAt(
+  current: MechanicsMapTransform,
+  cursorX: number,
+  cursorY: number,
+  wheelDeltaY: number,
+): MechanicsMapTransform {
+  const factor = Math.exp(-wheelDeltaY * 0.0015);
+  const scale = current.scale * factor;
+  if (!Number.isFinite(scale) || scale <= 0) return current;
+  const ratio = scale / current.scale;
+  return {
+    scale,
+    panX: cursorX - (cursorX - current.panX) * ratio,
+    panY: cursorY - (cursorY - current.panY) * ratio,
+  };
 }
 
 const CURSED_TOMB_ARENA = [
@@ -168,6 +192,7 @@ function snapshot(value: unknown): value is MechanicsMapSnapshot {
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
     ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
+    (value.map_layout === null || ["raid_ring", "raid_grid"].includes(String(value.map_layout))) &&
     nullableFinite(value.map_origin_x) && nullableFinite(value.map_origin_z) &&
     nullablePositive(value.map_span_x) && nullablePositive(value.map_span_z) &&
     nullableString(value.background_asset_url) && nullableInteger(value.local_actor_id) &&

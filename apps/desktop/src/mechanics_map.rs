@@ -27,6 +27,7 @@ pub struct MechanicsMapSnapshot {
     pub map_id: Option<u32>,
     pub scene_name: Option<String>,
     pub map_model: &'static str,
+    pub map_layout: Option<&'static str>,
     pub world_radius: f32,
     pub map_origin_x: Option<f32>,
     pub map_origin_z: Option<f32>,
@@ -56,6 +57,7 @@ impl Default for MechanicsMapSnapshot {
             map_id: None,
             scene_name: None,
             map_model: "player_relative_radar",
+            map_layout: None,
             world_radius: MINIMAP_WORLD_RADIUS,
             map_origin_x: None,
             map_origin_z: None,
@@ -572,6 +574,14 @@ impl MechanicsMapProjector {
         mechanics.truncate(MAX_MECHANICS);
         let pack = encounter_pack(self.client_build.as_deref(), self.scene_id);
         let scene_map = scene_map_spec(self.client_build.as_deref(), self.scene_id);
+        let local_y = local_actor_id.and_then(|actor_id| {
+            entities
+                .iter()
+                .find(|entity| entity.actor_id == actor_id)
+                .map(|entity| entity.y)
+        });
+        let raid_arena = raid_arena_spec(self.client_build.as_deref(), self.scene_id, local_y);
+        let absolute_map = scene_map.or(raid_arena);
         MechanicsMapSnapshot {
             schema_version: MECHANICS_MAP_SCHEMA_VERSION,
             revision: self.revision,
@@ -585,24 +595,22 @@ impl MechanicsMapProjector {
                     .flatten()
                     .map(str::to_owned)
             }),
-            map_model: if scene_map.is_some() {
+            map_model: if absolute_map.is_some() {
                 "absolute_scene_map"
             } else {
                 "player_relative_radar"
             },
+            map_layout: absolute_map.and_then(|spec| spec.layout),
             world_radius: MINIMAP_WORLD_RADIUS,
-            map_origin_x: scene_map.map(|spec| spec.origin_x),
-            map_origin_z: scene_map.map(|spec| spec.origin_z),
-            map_span_x: scene_map.map(|spec| spec.span_x),
-            map_span_z: scene_map.map(|spec| spec.span_z),
+            map_origin_x: absolute_map.map(|spec| spec.origin_x),
+            map_origin_z: absolute_map.map(|spec| spec.origin_z),
+            map_span_x: absolute_map.map(|spec| spec.span_x),
+            map_span_z: absolute_map.map(|spec| spec.span_z),
             background_asset_url: match (self.client_build.as_ref(), scene_map) {
-                (Some(build), Some(spec)) => {
-                    Some(format!("/local-game-assets/{build}/{}", spec.asset_file))
-                }
-                (Some(build), None) => {
-                    Some(format!("/local-game-assets/{build}/dungeon_map_bg.png"))
-                }
-                (None, _) => None,
+                (Some(build), Some(spec)) => spec
+                    .asset_file
+                    .map(|asset| format!("/local-game-assets/{build}/{asset}")),
+                _ => None,
             },
             local_actor_id,
             local_position_observed,
@@ -695,11 +703,41 @@ impl MechanicsMapProjector {
 
 #[derive(Debug, Clone, Copy)]
 struct SceneMapSpec {
-    asset_file: &'static str,
+    asset_file: Option<&'static str>,
+    layout: Option<&'static str>,
     origin_x: f32,
     origin_z: f32,
     span_x: f32,
     span_z: f32,
+}
+
+fn raid_arena_spec(
+    build: Option<&str>,
+    scene_id: Option<i32>,
+    local_y: Option<f32>,
+) -> Option<SceneMapSpec> {
+    if build != Some("global/steam-24687926") || !matches!(scene_id, Some(13021..=13023)) {
+        return None;
+    }
+    Some(if local_y.is_some_and(|y| y >= 275.0) {
+        SceneMapSpec {
+            asset_file: None,
+            layout: Some("raid_grid"),
+            origin_x: -30.0,
+            origin_z: -27.0,
+            span_x: 60.0,
+            span_z: 54.0,
+        }
+    } else {
+        SceneMapSpec {
+            asset_file: None,
+            layout: Some("raid_ring"),
+            origin_x: -55.0,
+            origin_z: -55.0,
+            span_x: 110.0,
+            span_z: 110.0,
+        }
+    })
 }
 
 fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMapSpec> {
@@ -710,7 +748,8 @@ fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMap
         // SceneTable -> SceneResource 1150 resolves this exact S3 tower file.
         // Its paired region_data provides the non-rounded world transform.
         1150..=1152 => Some(SceneMapSpec {
-            asset_file: "scene-1150-towering-ruin.png",
+            asset_file: Some("scene-1150-towering-ruin.png"),
+            layout: None,
             origin_x: -275.674,
             origin_z: -472.974,
             span_x: 297.348,
@@ -719,7 +758,8 @@ fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMap
         // Exact texture: dng_main_1001_tina. The paired game-owned region_data
         // stores the lower-left world origin and 800 x 800 span.
         1631..=1633 => Some(SceneMapSpec {
-            asset_file: "scene-1631-tina-mindrealm.png",
+            asset_file: Some("scene-1631-tina-mindrealm.png"),
+            layout: None,
             origin_x: -640.0,
             origin_z: -523.0,
             span_x: 800.0,
@@ -728,7 +768,8 @@ fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMap
         // Exact texture: dng_branch_6561_coral. Its paired region_data stores
         // the lower-left world origin and 1000 x 1000 span.
         6563..=6565 => Some(SceneMapSpec {
-            asset_file: "scene-6563-coral-sea.png",
+            asset_file: Some("scene-6563-coral-sea.png"),
+            layout: None,
             origin_x: -600.0,
             origin_z: -500.0,
             span_x: 1000.0,
@@ -737,7 +778,8 @@ fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMap
         // Exact texture: dng_branch_6501_godvault. The paired game-owned
         // region_data stores the lower-left world origin and 450 x 450 span.
         6513..=6515 => Some(SceneMapSpec {
-            asset_file: "scene-6513-cursed-tomb.png",
+            asset_file: Some("scene-6513-cursed-tomb.png"),
+            layout: None,
             origin_x: -149.0,
             origin_z: -377.0,
             span_x: 450.0,
@@ -1022,29 +1064,47 @@ mod tests {
     fn full_scene_map_is_exact_build_and_scene_scoped() {
         let tower = scene_map_spec(Some("global/steam-24687926"), Some(1151))
             .expect("reviewed Towering Ruin map");
-        assert_eq!(tower.asset_file, "scene-1150-towering-ruin.png");
+        assert_eq!(tower.asset_file, Some("scene-1150-towering-ruin.png"));
         assert_eq!((tower.origin_x, tower.origin_z), (-275.674, -472.974));
         assert_eq!((tower.span_x, tower.span_z), (297.348, 297.348));
 
         let tina = scene_map_spec(Some("global/steam-24687926"), Some(1632))
             .expect("reviewed Tina Mindrealm map");
-        assert_eq!(tina.asset_file, "scene-1631-tina-mindrealm.png");
+        assert_eq!(tina.asset_file, Some("scene-1631-tina-mindrealm.png"));
         assert_eq!((tina.origin_x, tina.origin_z), (-640.0, -523.0));
         assert_eq!((tina.span_x, tina.span_z), (800.0, 800.0));
 
         let coral = scene_map_spec(Some("global/steam-24687926"), Some(6565))
             .expect("reviewed Coral Sea map");
-        assert_eq!(coral.asset_file, "scene-6563-coral-sea.png");
+        assert_eq!(coral.asset_file, Some("scene-6563-coral-sea.png"));
         assert_eq!((coral.origin_x, coral.origin_z), (-600.0, -500.0));
         assert_eq!((coral.span_x, coral.span_z), (1000.0, 1000.0));
 
         let map = scene_map_spec(Some("global/steam-24687926"), Some(6513))
             .expect("reviewed Cursed Tomb map");
-        assert_eq!(map.asset_file, "scene-6513-cursed-tomb.png");
+        assert_eq!(map.asset_file, Some("scene-6513-cursed-tomb.png"));
         assert_eq!((map.origin_x, map.origin_z), (-149.0, -377.0));
         assert_eq!((map.span_x, map.span_z), (450.0, 450.0));
         assert!(scene_map_spec(Some("global/steam-newer"), Some(6513)).is_none());
         assert!(scene_map_spec(Some("global/steam-24687926"), Some(6615)).is_none());
+    }
+
+    #[test]
+    fn season_three_raid_uses_packet_height_to_select_its_verified_arena() {
+        let ring = raid_arena_spec(Some("global/steam-24687926"), Some(13021), Some(150.0))
+            .expect("raid ring arena");
+        assert_eq!(ring.layout, Some("raid_ring"));
+        assert_eq!((ring.origin_x, ring.origin_z), (-55.0, -55.0));
+        assert_eq!((ring.span_x, ring.span_z), (110.0, 110.0));
+
+        let grid = raid_arena_spec(Some("global/steam-24687926"), Some(13023), Some(400.0))
+            .expect("raid grid arena");
+        assert_eq!(grid.layout, Some("raid_grid"));
+        assert_eq!((grid.origin_x, grid.origin_z), (-30.0, -27.0));
+        assert_eq!((grid.span_x, grid.span_z), (60.0, 54.0));
+
+        assert!(raid_arena_spec(Some("global/steam-newer"), Some(13021), Some(150.0)).is_none());
+        assert!(raid_arena_spec(Some("global/steam-24687926"), Some(6615), Some(150.0)).is_none());
     }
 
     #[test]
@@ -1067,7 +1127,7 @@ mod tests {
                     Some(scene_id.as_i64().expect("numeric scene ID") as i32),
                 )
                 .expect("manifest scene has a runtime map spec");
-                assert_eq!(spec.asset_file, asset);
+                assert_eq!(spec.asset_file, Some(asset));
                 for (observed, key) in [
                     (spec.origin_x, "origin_x"),
                     (spec.origin_z, "origin_z"),

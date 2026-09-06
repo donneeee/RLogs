@@ -5703,11 +5703,17 @@ body {
 .mechanics-map-heading .card-copy { margin: 0; }
 .mechanics-map-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .mechanics-map-check { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--surface-soft); font-size: 10px; font-weight: 750; }
-.mechanics-radar { --mechanics-map-background: none; position: relative; width: min(100%, 620px); aspect-ratio: 1; margin-inline: auto; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 50%; background: linear-gradient(rgb(3 11 19 / 45%), rgb(3 11 19 / 45%)), var(--mechanics-map-background) center / cover no-repeat, radial-gradient(circle, rgb(49 84 96 / 30%), rgb(5 13 23 / 96%) 72%); box-shadow: inset 0 0 44px rgb(0 0 0 / 66%), 0 0 30px rgb(92 228 212 / 7%); }
-.mechanics-radar[data-model="absolute_scene_map"] { border-radius: 14px; background: linear-gradient(rgb(3 11 19 / 16%), rgb(3 11 19 / 16%)), var(--mechanics-map-background) center / contain no-repeat, rgb(5 13 23 / 96%); }
+.mechanics-radar { position: relative; width: min(100%, 720px); aspect-ratio: 4 / 3; margin-inline: auto; overflow: hidden; touch-action: none; cursor: grab; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 14px; background: rgb(5 13 23 / 96%); box-shadow: inset 0 0 44px rgb(0 0 0 / 66%), 0 0 30px rgb(92 228 212 / 7%); }
+.mechanics-radar[data-dragging="true"] { cursor: grabbing; }
+.mechanics-map-plane { --mechanics-map-background: none; position: absolute; inset: 0; transform-origin: center; will-change: transform; background: linear-gradient(rgb(3 11 19 / 45%), rgb(3 11 19 / 45%)), var(--mechanics-map-background) center / cover no-repeat, radial-gradient(circle, rgb(49 84 96 / 30%), rgb(5 13 23 / 96%) 72%); }
+.mechanics-radar[data-model="absolute_scene_map"] .mechanics-map-plane { background: linear-gradient(rgb(3 11 19 / 16%), rgb(3 11 19 / 16%)), var(--mechanics-map-background) center / contain no-repeat, rgb(5 13 23 / 96%); }
 .mechanics-radar[data-model="absolute_scene_map"][data-asset-state="ready"] .mechanics-radar-fallback { display: none; }
 .mechanics-radar[data-model="absolute_scene_map"]:not([data-asset-state="ready"]) .mechanics-ring { border-radius: 10px; }
-.mechanics-radar-fallback, .mechanics-map-regions, .mechanics-radar-points { position: absolute; inset: 0; }
+.mechanics-radar-fallback, .mechanics-map-arena, .mechanics-map-regions, .mechanics-radar-points { position: absolute; inset: 0; }
+.mechanics-map-arena { width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.mechanics-map-arena circle, .mechanics-map-arena rect, .mechanics-map-arena line { fill: none; stroke: rgb(92 228 212 / 48%); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.mechanics-map-arena circle + circle { stroke: rgb(179 138 255 / 46%); stroke-dasharray: 3 2; }
+.mechanics-radar[data-layout="raid_ring"] .mechanics-map-plane, .mechanics-radar[data-layout="raid_grid"] .mechanics-map-plane { background: radial-gradient(circle at center, rgb(31 76 91 / 42%), rgb(5 13 23 / 97%) 72%); }
 .mechanics-map-regions { width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .mechanics-map-regions polygon { fill: rgb(255 91 111 / 23%); stroke: rgb(255 111 131 / 82%); stroke-width: 0.55; vector-effect: non-scaling-stroke; }
 .mechanics-map-regions polygon[data-side="right"] { fill: rgb(179 138 255 / 23%); stroke: rgb(197 167 255 / 84%); }
@@ -5739,6 +5745,7 @@ body {
 .mechanics-signal-row[data-state="error"] { border-color: rgb(255 111 131 / 40%); }
 .mechanics-signal-row strong { color: var(--text); font-size: 11px; }
 .mechanics-signal-row span { color: var(--muted); font-size: 10px; line-height: 1.45; }
+.mechanics-signal-row > button { justify-self: start; margin-top: 4px; }
 
 @media (max-width: 820px) {
   .mechanics-map-layout { grid-template-columns: 1fr; }

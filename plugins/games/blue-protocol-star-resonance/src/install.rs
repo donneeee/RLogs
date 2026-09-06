@@ -10,6 +10,35 @@ use crate::{MappingProvenance, ProtocolPack, ProtocolPackError};
 
 pub const BPSR_STEAM_APP_ID: &str = "3681810";
 
+/// Resolves the Unity container beside a supported client executable.
+///
+/// This locates user-owned files only. It does not infer deployment, region,
+/// channel, or build identity; those remain packet/receipt-derived gates.
+pub fn installed_container_for_executable(executable_path: &Path) -> Result<PathBuf, String> {
+    let stem = executable_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "BPSR executable has no valid file stem".to_owned())?;
+    let parent = executable_path
+        .parent()
+        .ok_or_else(|| "BPSR executable has no parent folder".to_owned())?;
+    let container = parent
+        .join(format!("{stem}_Data"))
+        .join("StreamingAssets/container");
+    if !container.join("m0.pkg").is_file() || !container.join("meta.pkg").is_file() {
+        return Err(format!(
+            "BPSR game container was not found beside {}",
+            executable_path.display()
+        ));
+    }
+    std::fs::canonicalize(&container).map_err(|error| {
+        format!(
+            "could not resolve BPSR game container {}: {error}",
+            container.display()
+        )
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LiveProtocolPackKind {
     Promoted,
@@ -678,6 +707,41 @@ mod tests {
                     && entry.reference.contains("client_deployment=unknown")
             }));
         }
+    }
+
+    #[test]
+    fn installed_container_location_supports_every_client_filename_without_inferring_identity() {
+        let root = std::env::temp_dir().join(format!(
+            "rlogs-bpsr-client-container-location-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        for name in [
+            "BPSR.exe",
+            "BPSR_STEAM.exe",
+            "BPSR_EPIC.exe",
+            "StarSEA.exe",
+            "StarASIA.exe",
+            "StarSEA_STEAM.exe",
+            "StarASIA_STEAM.exe",
+            "StartTW.exe",
+            "Star.exe",
+        ] {
+            let executable = root.join(name);
+            let stem = executable.file_stem().unwrap().to_str().unwrap();
+            let container = root.join(format!("{stem}_Data/StreamingAssets/container"));
+            std::fs::create_dir_all(&container).unwrap();
+            std::fs::write(container.join("m0.pkg"), b"catalog").unwrap();
+            std::fs::write(container.join("meta.pkg"), b"meta").unwrap();
+            assert_eq!(
+                installed_container_for_executable(&executable).unwrap(),
+                std::fs::canonicalize(container).unwrap()
+            );
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -89,14 +89,14 @@ use rlogs_game_bpsr::{
     bundled_run_reducer_config, bundled_scene_run_identities, bundled_terminal_boss_scene_ids,
     character_id_from_entity_uuid, classify_bpsr_tcp_payload, combat_action_presentation,
     combat_breakdown_ability_id, combat_recount_group_id, confirmed_damage_contribution_rules,
-    fight_attribute_presentation_catalog, is_boss_monster, is_localized_class_name,
-    localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
-    localized_combat_action_name, localized_monster_name, localized_recount_group_name,
-    localized_scene_name, localized_specialization_identities, localized_status_effect_name,
-    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
-    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
-    resolve_actor_combat_presentation, resolve_live_protocol_pack,
-    resolve_packet_detected_protocol_pack, scene_boss_monster_ids,
+    fight_attribute_presentation_catalog, installed_container_for_executable, is_boss_monster,
+    is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
+    localized_class_identities, localized_combat_action_name, localized_monster_name,
+    localized_recount_group_name, localized_scene_name, localized_specialization_identities,
+    localized_status_effect_name, project_local_profile_packages,
+    proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
+    record_offline_capture, resolve_actor_combat_identity, resolve_actor_combat_presentation,
+    resolve_live_protocol_pack, resolve_packet_detected_protocol_pack, scene_boss_monster_ids,
     state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
     status_effect_presentation, stimen_floor_encounter_kind, weapon_level_presentation,
     weapon_presentation,
@@ -5235,6 +5235,20 @@ struct LiveCombatForceResetResult {
     message: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalMapPreparationResult {
+    client_build: String,
+    prepared_assets: usize,
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReviewedMapAssetManifest {
+    schema_version: u16,
+    builds: BTreeMap<String, Vec<serde_json::Value>>,
+}
+
 impl RuntimeController {
     fn new(install_root: PathBuf) -> Result<Self, String> {
         Self::new_with_application_version(install_root, env!("CARGO_PKG_VERSION"))
@@ -6044,6 +6058,108 @@ impl RuntimeController {
 
     fn live_mechanics_map_snapshot(&self) -> MechanicsMapUpdate {
         self.live_mechanics_map_feed.current()
+    }
+
+    #[cfg(windows)]
+    fn prepare_local_game_maps(&self) -> Result<LocalMapPreparationResult, String> {
+        use std::os::windows::process::CommandExt;
+
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let snapshot = self.live_mechanics_map_feed.current().snapshot;
+        let client_build = snapshot.client_build.ok_or_else(|| {
+            "No packet-observed client build is available yet. Start live capture and wait for the game header before preparing maps.".to_owned()
+        })?;
+        let process_id = self
+            .live_process_id
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .ok_or_else(|| "No supported running game process is attached.".to_owned())?;
+        let executable_path = process_executable_path(process_id)?;
+        let container = installed_container_for_executable(&executable_path)?;
+
+        let packaged_root = self.install_root.join("resources/map-compiler");
+        let development_root = self
+            .install_root
+            .join("apps/desktop-tauri/resources/map-compiler");
+        let manifest_path = if packaged_root.join("reviewed-map-assets.v1.json").is_file() {
+            packaged_root.join("reviewed-map-assets.v1.json")
+        } else {
+            development_root.join("reviewed-map-assets.v1.json")
+        };
+        let manifest: ReviewedMapAssetManifest =
+            serde_json::from_slice(&std::fs::read(&manifest_path).map_err(|error| {
+                format!(
+                    "could not read reviewed map manifest {}: {error}",
+                    manifest_path.display()
+                )
+            })?)
+            .map_err(|error| format!("reviewed map manifest is invalid: {error}"))?;
+        if manifest.schema_version != 1 {
+            return Err(format!(
+                "reviewed map manifest schema {} is unsupported",
+                manifest.schema_version
+            ));
+        }
+        let prepared_assets = manifest
+            .builds
+            .get(&client_build)
+            .map(Vec::len)
+            .ok_or_else(|| {
+                format!(
+                    "No reviewed game maps are approved for packet-observed build {client_build}."
+                )
+            })?;
+
+        let runtime_root = self.install_root.join("runtime-data/game-assets");
+        std::fs::create_dir_all(&runtime_root).map_err(|error| {
+            format!(
+                "could not create local game asset directory {}: {error}",
+                runtime_root.display()
+            )
+        })?;
+        let packaged_helper = packaged_root.join("rlogs-bpsr-map-compiler.exe");
+        let mut command = if packaged_helper.is_file() {
+            std::process::Command::new(packaged_helper)
+        } else if self.developer_tools_enabled {
+            let script = self.install_root.join("tools/bpsr-local-map-asset.py");
+            if !script.is_file() {
+                return Err("The local map compiler is not installed.".to_owned());
+            }
+            let mut command = std::process::Command::new("python");
+            command.arg(script);
+            command
+        } else {
+            return Err("The local map compiler is not installed.".to_owned());
+        };
+        command
+            .creation_flags(CREATE_NO_WINDOW)
+            .arg("--container")
+            .arg(&container)
+            .arg("--runtime-root")
+            .arg(&runtime_root)
+            .arg("--build")
+            .arg(&client_build)
+            .arg("--reviewed-manifest")
+            .arg(&manifest_path);
+        let output = run_process_with_timeout(command, Duration::from_secs(120))
+            .map_err(|error| format!("Local map compiler could not complete: {error}"))?;
+        if !output.status.success() {
+            let detail = bounded_process_output(&output.stderr, &output.stdout);
+            return Err(format!("Local map preparation failed. {detail}"));
+        }
+        Ok(LocalMapPreparationResult {
+            client_build,
+            prepared_assets,
+            message: format!(
+                "Prepared {prepared_assets} reviewed game map{} from local game files.",
+                if prepared_assets == 1 { "" } else { "s" }
+            ),
+        })
+    }
+
+    #[cfg(not(windows))]
+    fn prepare_local_game_maps(&self) -> Result<LocalMapPreparationResult, String> {
+        Err("Local game map preparation is currently available on Windows only.".to_owned())
     }
 
     fn wait_for_live_mechanics_map(&self, request: MechanicsMapWaitRequest) -> MechanicsMapUpdate {
@@ -12412,6 +12528,12 @@ fn handle_connection(
                 &controller.wait_for_live_mechanics_map(request),
             )?;
         }
+        ("POST", "/api/runtime/local-game-assets/prepare") => {
+            match controller.prepare_local_game_maps() {
+                Ok(result) => write_json(&mut stream, 200, &result)?,
+                Err(error) => write_api_error(&mut stream, 400, error)?,
+            }
+        }
         ("POST", "/api/runtime/live/events/wait") => {
             let request: LiveEventWaitRequest = match serde_json::from_slice(&request.body) {
                 Ok(request) => request,
@@ -12944,7 +13066,54 @@ fn is_developer_mode_route(method: &str, route: &str) -> bool {
         (method, route),
         ("POST", "/api/custom-triggers/event-inspector/live/wait")
             | ("POST", "/api/custom-triggers/event-inspector/live/detail")
+            | ("POST", "/api/runtime/local-game-assets/prepare")
     )
+}
+
+fn bounded_process_output(primary: &[u8], fallback: &[u8]) -> String {
+    const LIMIT: usize = 4_096;
+    let selected = if primary.is_empty() {
+        fallback
+    } else {
+        primary
+    };
+    let end = selected.len().min(LIMIT);
+    let value = String::from_utf8_lossy(&selected[..end]).trim().to_owned();
+    if value.is_empty() {
+        "The compiler did not provide an error message.".to_owned()
+    } else if selected.len() > LIMIT {
+        format!("{value}…")
+    } else {
+        value
+    }
+}
+
+fn run_process_with_timeout(
+    mut command: std::process::Command,
+    timeout: Duration,
+) -> Result<std::process::Output, String> {
+    command
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command.spawn().map_err(|error| error.to_string())?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait().map_err(|error| error.to_string())? {
+            Some(_) => return child.wait_with_output().map_err(|error| error.to_string()),
+            None if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let output = child
+                    .wait_with_output()
+                    .map_err(|error| error.to_string())?;
+                let detail = bounded_process_output(&output.stderr, &output.stdout);
+                return Err(format!(
+                    "the process exceeded {} seconds and was stopped. {detail}",
+                    timeout.as_secs()
+                ));
+            }
+            None => thread::sleep(Duration::from_millis(50)),
+        }
+    }
 }
 
 fn is_safe_plugin_route_identifier(value: &str) -> bool {
@@ -17032,6 +17201,21 @@ developer_only = true
             "POST",
             "/api/custom-triggers/event-inspector/live/detail"
         ));
+        assert!(is_developer_mode_route(
+            "POST",
+            "/api/runtime/local-game-assets/prepare"
+        ));
+        assert!(!is_developer_mode_route(
+            "GET",
+            "/api/runtime/local-game-assets/prepare"
+        ));
+    }
+
+    #[test]
+    fn process_output_is_bounded_and_prefers_stderr() {
+        assert_eq!(bounded_process_output(b"failure", b"success"), "failure");
+        assert_eq!(bounded_process_output(b"", b"success"), "success");
+        assert!(bounded_process_output(&vec![b'x'; 5_000], b"").ends_with('\u{2026}'));
     }
 
     #[test]

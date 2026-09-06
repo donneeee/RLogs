@@ -672,6 +672,11 @@ function createLocalHostAdapter(): DesktopHostAdapter {
                 }),
               );
             },
+            async prepareLocalMaps() {
+              return apiJson("/api/runtime/local-game-assets/prepare", {
+                method: "POST",
+              });
+            },
           });
         case `builtin://${OVERLAY_PLUGIN_ID}/trackers`:
           return mountOverlayStatsTrackerSurface(container, {

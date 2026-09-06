@@ -170,8 +170,9 @@ pub use framing::{
 };
 pub use install::{
     BPSR_STEAM_APP_ID, LiveProtocolPackKind, LiveProtocolPackSelection,
-    LiveProtocolPackSelectionError, resolve_live_protocol_pack, resolve_live_steam_protocol_pack,
-    resolve_packet_detected_protocol_pack, steam_manifest_for_executable,
+    LiveProtocolPackSelectionError, installed_container_for_executable, resolve_live_protocol_pack,
+    resolve_live_steam_protocol_pack, resolve_packet_detected_protocol_pack,
+    steam_manifest_for_executable,
 };
 pub use journal::{CaptureSession, GameBuild, JournalError, ProtocolJournal};
 pub use loadout::{normalize_auxiliary_imagine_tier, project_actor_loadouts};
