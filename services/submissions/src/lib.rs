@@ -633,6 +633,7 @@ impl SubmissionService {
             std::fs::remove_file(&assembled)?;
         }
         let membership = build_private_parse_membership(&artifact_path, &report)?;
+        self.restore_submitter_name(&artifact_path, &mut report)?;
         write_json_atomic(&self.membership_path(&report_id)?, &membership)?;
         write_json_atomic(&self.projection_path(&report_id)?, &report)?;
         self.enqueue_github_archive_locked(&report)?;
@@ -692,7 +693,32 @@ impl SubmissionService {
         report: PublicParseReport,
     ) -> Result<PublicParseReport, ServiceError> {
         if report.schema_version >= PUBLIC_PARSE_SCHEMA_VERSION {
-            return Ok(report);
+            if !report
+                .runs
+                .iter()
+                .flat_map(|run| &run.participants)
+                .any(|p| {
+                    p.display_name
+                        .as_deref()
+                        .is_none_or(|name| name.trim().is_empty())
+                })
+            {
+                return Ok(report);
+            }
+            let _write = self.write_guard();
+            let mut current: PublicParseReport =
+                read_json(&self.projection_path(&report.report_id)?)?;
+            let Some(submitter) = current.submission_provenance.submitter_id.as_deref() else {
+                return Ok(current);
+            };
+            if self.owned_profile_catalog(submitter)?.profiles.is_empty() {
+                return Ok(current);
+            }
+            let digest = Sha256Digest::parse(current.verification.artifact_sha256.clone())?;
+            if self.restore_submitter_name(&self.artifact_path(&digest)?, &mut current)? {
+                write_json_atomic(&self.projection_path(&current.report_id)?, &current)?;
+            }
+            return Ok(current);
         }
         let _write = self.write_guard();
         let current: PublicParseReport = read_json(&self.projection_path(&report.report_id)?)?;
@@ -739,7 +765,7 @@ impl SubmissionService {
             chunks: Vec::new(),
             sealed_log_digest: Some(artifact_digest),
         };
-        let refreshed = build_public_report(
+        let mut refreshed = build_public_report(
             &artifact_path,
             &manifest,
             &artifact,
@@ -748,9 +774,45 @@ impl SubmissionService {
             report.submission_provenance,
         )?;
         let membership = build_private_parse_membership(&artifact_path, &refreshed)?;
+        self.restore_submitter_name(&artifact_path, &mut refreshed)?;
         write_json_atomic(&self.membership_path(&refreshed.report_id)?, &membership)?;
         write_json_atomic(&self.projection_path(&refreshed.report_id)?, &refreshed)?;
         Ok(refreshed)
+    }
+
+    /// Resolve a missing label using the sealed actor-to-UID join and the
+    /// submitter's verified profile. Actor numbers alone never identify users.
+    fn restore_submitter_name(
+        &self,
+        artifact_path: &Path,
+        report: &mut PublicParseReport,
+    ) -> Result<bool, ServiceError> {
+        if !report
+            .runs
+            .iter()
+            .flat_map(|run| &run.participants)
+            .any(|participant| {
+                participant
+                    .display_name
+                    .as_deref()
+                    .is_none_or(|name| name.trim().is_empty())
+            })
+        {
+            return Ok(false);
+        }
+        let Some(submitter) = report.submission_provenance.submitter_id.as_deref() else {
+            return Ok(false);
+        };
+        let profiles = self.owned_profile_catalog(submitter)?;
+        if profiles.profiles.is_empty() {
+            return Ok(false);
+        }
+        let identities = sealed_character_identities(artifact_path)?;
+        Ok(restore_verified_names(
+            report,
+            &identities,
+            &profiles.profiles,
+        ))
     }
 
     fn update_report_visibility(
@@ -5049,6 +5111,13 @@ fn build_private_parse_membership(
     artifact_path: &Path,
     report: &PublicParseReport,
 ) -> Result<PrivateParseMembership, ServiceError> {
+    let character_by_actor = sealed_character_identities(artifact_path)?;
+    private_parse_membership(report, &character_by_actor)
+}
+
+fn sealed_character_identities(
+    artifact_path: &Path,
+) -> Result<BTreeMap<String, String>, ServiceError> {
     let file = File::open(artifact_path)?;
     let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
     let mut character_by_actor = BTreeMap::<String, String>::new();
@@ -5094,6 +5163,59 @@ fn build_private_parse_membership(
         Ok(())
     })?;
 
+    Ok(character_by_actor)
+}
+
+fn restore_verified_names(
+    report: &mut PublicParseReport,
+    identities: &BTreeMap<String, String>,
+    profiles: &[PublicProfileCatalogEntry],
+) -> bool {
+    let mut changed = false;
+    for participant in report.runs.iter_mut().flat_map(|run| &mut run.participants) {
+        if participant
+            .display_name
+            .as_deref()
+            .is_some_and(|name| !name.trim().is_empty())
+        {
+            continue;
+        }
+        let Some(uid) = identities.get(&participant.actor_id) else {
+            continue;
+        };
+        if participant
+            .character_id
+            .as_ref()
+            .is_some_and(|id| id != uid)
+        {
+            continue;
+        }
+        let names = profiles
+            .iter()
+            .filter(|profile| {
+                profile.claimed
+                    && profile.character_id == *uid
+                    && profile.deployment == report.deployment_id
+                    && (profile.region == report.region_id
+                        || report.region_id == "global"
+                        || report.region_id == "unknown")
+            })
+            .filter_map(|profile| profile.display_name.as_deref())
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .collect::<BTreeSet<_>>();
+        if names.len() == 1 {
+            participant.display_name = names.first().map(|name| (*name).to_owned());
+            changed = true;
+        }
+    }
+    changed
+}
+
+fn private_parse_membership(
+    report: &PublicParseReport,
+    character_by_actor: &BTreeMap<String, String>,
+) -> Result<PrivateParseMembership, ServiceError> {
     let runs = report
         .runs
         .iter()
@@ -7438,6 +7560,62 @@ mod tests {
                 .unwrap()
                 .visibility,
             ReportVisibility::Private
+        );
+    }
+
+    #[test]
+    fn missing_name_uses_sealed_uid_and_verified_owner_profile() {
+        let mut report = fixture_public_report("identity", "5", 0);
+        report.region_id = "global".into();
+        report.runs[0].participants.truncate(1);
+        report.runs[0].participants[0].actor_id = "5".into();
+        report.runs[0].participants[0].character_id = None;
+        let identities = BTreeMap::from([("5".into(), "3296036".into())]);
+        let mut profile = PublicProfileCatalogEntry {
+            profile_id: "profile".into(),
+            claimed: true,
+            package_id: "package".into(),
+            updated_unix_millis: 1,
+            source_client_build: "build".into(),
+            deployment: "global".into(),
+            region: "north-america".into(),
+            realm: None,
+            world: None,
+            character_id: "999".into(),
+            display_name: Some("MarieRose".into()),
+            module_inventory_count: 0,
+            equipped_module_count: 0,
+        };
+        assert!(!restore_verified_names(
+            &mut report,
+            &identities,
+            &[profile.clone()]
+        ));
+        profile.character_id = "3296036".into();
+        let mut conflicting = profile.clone();
+        conflicting.display_name = Some("Another name".into());
+        assert!(!restore_verified_names(
+            &mut report,
+            &identities,
+            &[profile.clone(), conflicting]
+        ));
+        assert!(restore_verified_names(
+            &mut report,
+            &identities,
+            &[profile.clone()]
+        ));
+        let participant = &report.runs[0].participants[0];
+        assert_eq!(participant.display_name.as_deref(), Some("MarieRose"));
+        assert_eq!(participant.character_id, None);
+        profile.display_name = Some("Newer name".into());
+        assert!(!restore_verified_names(
+            &mut report,
+            &identities,
+            &[profile]
+        ));
+        assert_eq!(
+            report.runs[0].participants[0].display_name.as_deref(),
+            Some("MarieRose")
         );
     }
 
