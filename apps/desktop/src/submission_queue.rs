@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 
 use rlogs_submission::{
     QUEUED_SUBMISSION_SCHEMA_VERSION, QueuedSubmission, ReportVisibility, ServerReportReceipt,
-    SubmissionState,
+    Sha256Digest, SubmissionState,
 };
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 const QUEUE_VIEW_SCHEMA_VERSION: u16 = 1;
 const QUEUE_FILE_SUFFIX: &str = ".submission.json";
@@ -74,8 +75,11 @@ impl LocalSubmissionQueue {
         }
         for (name, path) in candidates {
             match load_entry(&path, &name) {
-                Ok(entry) => {
+                Ok(mut entry) => {
                     let queue_id = entry.queue_id.to_string();
+                    if let Err(error) = rebind_moved_artifact(&self.directory, &mut entry) {
+                        issues.push(format!("{name}: {error}"));
+                    }
                     if entries.insert(queue_id.clone(), entry).is_some() {
                         issues.push(format!(
                             "Duplicate submission queue ID {queue_id} was ignored."
@@ -244,6 +248,72 @@ impl LocalSubmissionQueue {
             .unwrap_or(&self.directory)
             .join("artifacts")
     }
+}
+
+fn rebind_moved_artifact(
+    queue_directory: &Path,
+    entry: &mut QueuedSubmission,
+) -> Result<(), String> {
+    if std::fs::metadata(&entry.local_artifact_path)
+        .is_ok_and(|metadata| metadata.is_file() && metadata.len() == entry.file_byte_length)
+    {
+        return Ok(());
+    }
+    let candidate = queue_directory
+        .parent()
+        .unwrap_or(queue_directory)
+        .join("artifacts")
+        .join(format!("{}.rlog", entry.queue_id));
+    let metadata = match std::fs::metadata(&candidate) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "could not inspect relocated artifact {}: {error}",
+                candidate.display()
+            ));
+        }
+    };
+    if !metadata.is_file() || metadata.len() != entry.file_byte_length {
+        return Err(format!(
+            "relocated artifact {} does not match the queued file length",
+            candidate.display()
+        ));
+    }
+    let digest = file_sha256(&candidate)?;
+    if digest != entry.queue_id {
+        return Err(format!(
+            "relocated artifact {} does not match the queued SHA-256",
+            candidate.display()
+        ));
+    }
+    let previous_path = entry.local_artifact_path.clone();
+    entry.local_artifact_path = candidate.display().to_string();
+    if let Err(error) = persist_replacement(queue_directory, entry) {
+        entry.local_artifact_path = previous_path;
+        return Err(format!(
+            "could not persist relocated artifact path: {error}"
+        ));
+    }
+    Ok(())
+}
+
+fn file_sha256(path: &Path) -> Result<Sha256Digest, String> {
+    let mut file = File::open(path)
+        .map_err(|error| format!("could not open relocated artifact for hashing: {error}"))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 1024 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("could not hash relocated artifact: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Sha256Digest::parse(format!("{:x}", hasher.finalize()))
+        .map_err(|error| format!("could not encode relocated artifact digest: {error}"))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -481,6 +551,10 @@ mod tests {
     }
 
     fn queued_submission(path: &Path) -> QueuedSubmission {
+        queued_submission_with_digest(path, digest("c"))
+    }
+
+    fn queued_submission_with_digest(path: &Path, file_sha256: Sha256Digest) -> QueuedSubmission {
         let artifact = LocalLogArtifact {
             header: RlogHeader {
                 schema_version: RLOG_SCHEMA_VERSION,
@@ -506,7 +580,7 @@ mod tests {
                 content_sha256: format!("sha256:{}", "b".repeat(64)),
             },
             file_byte_length: 12,
-            file_sha256: digest("c"),
+            file_sha256,
             chunks: vec![
                 LogChunkDescriptor::new(0, 0, 8, digest("d")),
                 LogChunkDescriptor::new(1, 8, 4, digest("e")),
@@ -564,6 +638,73 @@ mod tests {
         assert!(snapshot.entries[0].artifact_exists);
         assert!(snapshot.issues.is_empty());
 
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn reload_rebinds_a_moved_artifact_only_after_digest_verification() {
+        let root = temporary_directory();
+        let queue_path = root.join("queue");
+        let original_path = root.join("old-location").join("capture.rlog");
+        std::fs::create_dir_all(original_path.parent().unwrap()).unwrap();
+        let bytes = b"twelve-bytes";
+        assert_eq!(bytes.len(), 12);
+        std::fs::write(&original_path, bytes).unwrap();
+        let file_digest = file_sha256(&original_path).unwrap();
+        let entry = queued_submission_with_digest(&original_path, file_digest);
+        let queue_id = entry.queue_id.to_string();
+        let mut queue = LocalSubmissionQueue::open(queue_path.clone()).unwrap();
+        queue.enqueue(entry).unwrap();
+
+        let relocated = root.join("artifacts").join(format!("{queue_id}.rlog"));
+        std::fs::create_dir_all(relocated.parent().unwrap()).unwrap();
+        std::fs::rename(&original_path, &relocated).unwrap();
+
+        let restored = LocalSubmissionQueue::open(queue_path.clone()).unwrap();
+        let restored_entry = restored.entry(&queue_id).unwrap();
+        assert_eq!(
+            restored_entry.local_artifact_path,
+            relocated.display().to_string()
+        );
+        assert!(restored.snapshot().entries[0].artifact_exists);
+
+        let persisted = LocalSubmissionQueue::open(queue_path).unwrap();
+        assert_eq!(
+            persisted.entry(&queue_id).unwrap().local_artifact_path,
+            relocated.display().to_string()
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn reload_rejects_a_relocated_artifact_with_the_wrong_digest() {
+        let root = temporary_directory();
+        let queue_path = root.join("queue");
+        let original_path = root.join("old-location").join("capture.rlog");
+        std::fs::create_dir_all(original_path.parent().unwrap()).unwrap();
+        std::fs::write(&original_path, b"twelve-bytes").unwrap();
+        let entry = queued_submission(&original_path);
+        let queue_id = entry.queue_id.to_string();
+        let mut queue = LocalSubmissionQueue::open(queue_path.clone()).unwrap();
+        queue.enqueue(entry).unwrap();
+
+        let relocated = root.join("artifacts").join(format!("{queue_id}.rlog"));
+        std::fs::create_dir_all(relocated.parent().unwrap()).unwrap();
+        std::fs::rename(&original_path, &relocated).unwrap();
+
+        let restored = LocalSubmissionQueue::open(queue_path).unwrap();
+        let snapshot = restored.snapshot();
+        assert!(!snapshot.entries[0].artifact_exists);
+        assert!(
+            snapshot
+                .issues
+                .iter()
+                .any(|issue| issue.contains("does not match the queued SHA-256"))
+        );
+        assert_eq!(
+            restored.entry(&queue_id).unwrap().local_artifact_path,
+            original_path.display().to_string()
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
