@@ -16,6 +16,13 @@
       "id": "1a2a4d10731e4c7ebe31d568c87fe1c2"
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "RLOGS_DB",
+      "database_name": "rlogs-production",
+      "database_id": "e957a66e-5ca9-4fc9-a1e2-9c004d23cdb6"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {

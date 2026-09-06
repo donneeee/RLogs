@@ -105,19 +105,23 @@ Wrangler.
 
 As of 2026-09-06, `rlogs-submissions` is a Cloudflare Pages API gateway with an
 authoritative service binding to the private `rlogs-backend` Worker. Production
-contains no loopback or `trycloudflare.com` origin. Cloudflare KV contains the
-digest-audited public read model, profile/loadout/photo assets, account hashes,
-UID claims, memberships, projections, and reconciliation records migrated from
-the former receiver. A SQLite-backed Durable Object owns Discord OAuth, new web
-sessions and app tokens, account updates, parse visibility, and serialized
-profile publication. Profile publication reproduces the Rust package digest
-and device-bound HMAC contracts before updating a UID claim.
+contains no loopback or `trycloudflare.com` origin. The migration-managed
+`rlogs-production` D1 database is bound as `RLOGS_DB`; its health marker and 16
+production metadata tables must be present before the service reports healthy.
+Cloudflare KV temporarily retains the digest-audited public read model and
+migrated profile/loadout/photo assets while records are moved into D1 and R2.
+A SQLite-backed Durable Object owns Discord OAuth, new web sessions and app
+tokens, account updates, parse visibility, photo likes, and serialized profile
+publication. Profile publication reproduces the Rust package digest and
+device-bound HMAC contracts before updating a UID claim.
 
 Parse upload creation, chunk ingestion, and finalization remain fail-closed with
-HTTP 503. They must not be enabled until a hosted pinned Rust replay succeeds
-end-to-end. The current Cloudflare account is on Workers Free; Containers are a
-Workers Paid feature, and R2 has not been enabled. Enabling those account
-capabilities (or approving an equivalent hosted verifier) is therefore a
-deployment prerequisite for the remaining parse-write path. The local receiver
-remains a development fixture and migration source only, never a production
-dependency.
+HTTP 503. They must not be enabled until private artifact storage and a hosted
+pinned Rust replay succeed end-to-end. R2 is not enabled on the current account,
+so the Worker cannot yet durably assemble the retained `.rlog` artifacts. The
+account is also on Workers Free, whose ordinary Worker CPU allowance is not a
+safe execution budget for replaying a multi-megabyte sealed log. Enabling R2 and
+Workers Paid/Containers (or approving and validating an equivalent hosted
+verifier) is therefore the remaining account-level prerequisite. The local
+receiver remains a development fixture and migration source only, never a
+production dependency.

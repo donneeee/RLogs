@@ -30,7 +30,8 @@ async function json(path, expectedStatus = 200) {
 const health = await json("/health");
 assert.equal(health.status, "ok");
 assert.equal(health.service, "rlogs-cloudflare-backend");
-assert.equal(health.storage, "cloudflare-kv");
+assert.equal(health.storage, "cloudflare-kv+d1");
+assert.equal(health.metadata_schema_version, 1, "production D1 migration must be live");
 assert.ok(Number.isSafeInteger(health.public_profile_count));
 assert.ok(health.public_profile_count > 0, "production profile storage must not be empty");
 if (expectedRelease) assert.equal(health.release, expectedRelease, "the requested backend revision is not live");

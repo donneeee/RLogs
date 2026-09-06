@@ -28,6 +28,17 @@ function environment(values = {}) {
         return { async fetch() { return Response.json({ ok: true }); } };
       },
     },
+    RLOGS_DB: {
+      prepare(query) {
+        assert.match(query, /service_metadata/u);
+        return {
+          bind(component) {
+            assert.equal(component, "production-metadata");
+            return { async first() { return { schema_version: 1 }; } };
+          },
+        };
+      },
+    },
   };
 }
 
@@ -41,8 +52,29 @@ test("health proves that Cloudflare storage is populated", async () => {
     service: "rlogs-cloudflare-backend",
     schema_version: 1,
     release: "test-release",
-    storage: "cloudflare-kv",
+    storage: "cloudflare-kv+d1",
+    metadata_schema_version: 1,
     public_profile_count: 1,
+  });
+});
+
+test("health fails closed when the production metadata schema is unavailable", async () => {
+  const env = environment({
+    "fs:profiles/catalog.v1.json": JSON.stringify({ schema_version: 1, profiles: [] }),
+  });
+  env.RLOGS_DB.prepare = () => ({
+    bind() { return { async first() { throw new Error("missing migration"); } }; },
+  });
+  const response = await backend.fetch(new Request("https://backend/health"), env);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    status: "degraded",
+    service: "rlogs-cloudflare-backend",
+    schema_version: 1,
+    release: "test-release",
+    storage: "cloudflare-kv+d1",
+    metadata_schema_version: null,
+    public_profile_count: 0,
   });
 });
 

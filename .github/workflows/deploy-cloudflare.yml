@@ -48,6 +48,7 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm test
+          npm run db:migrate:remote
           npx wrangler deploy --var "BACKEND_RELEASE:${{ github.sha }}"
 
       - name: Test and deploy the public Pages gateway

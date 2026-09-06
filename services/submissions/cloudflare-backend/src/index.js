@@ -53,6 +53,22 @@ async function storedPhoto(env, profileId, photoId) {
   });
 }
 
+async function metadataDatabaseHealth(env) {
+  if (!env.RLOGS_DB) return { ready: false, schemaVersion: null };
+  try {
+    const row = await env.RLOGS_DB.prepare(
+      "SELECT schema_version FROM service_metadata WHERE component = ?1",
+    ).bind("production-metadata").first();
+    const schemaVersion = Number(row?.schema_version);
+    return {
+      ready: Number.isSafeInteger(schemaVersion) && schemaVersion > 0,
+      schemaVersion: Number.isSafeInteger(schemaVersion) ? schemaVersion : null,
+    };
+  } catch {
+    return { ready: false, schemaVersion: null };
+  }
+}
+
 async function profileCatalog(env, url) {
   const catalog = await env.RLOGS_DATA.get("fs:profiles/catalog.v1.json", "json");
   if (!catalog || !Array.isArray(catalog.profiles)) return notFound();
@@ -133,15 +149,20 @@ async function route(request, env) {
     );
   }
   if (path === "/health") {
-    const catalog = await env.RLOGS_DATA.get("fs:profiles/catalog.v1.json", "json");
+    const [catalog, metadata] = await Promise.all([
+      env.RLOGS_DATA.get("fs:profiles/catalog.v1.json", "json"),
+      metadataDatabaseHealth(env),
+    ]);
+    const ready = Boolean(catalog) && metadata.ready;
     return json({
-      status: catalog ? "ok" : "degraded",
+      status: ready ? "ok" : "degraded",
       service: "rlogs-cloudflare-backend",
       schema_version: 1,
       release: env.BACKEND_RELEASE ?? "local",
-      storage: "cloudflare-kv",
+      storage: "cloudflare-kv+d1",
+      metadata_schema_version: metadata.schemaVersion,
       public_profile_count: Array.isArray(catalog?.profiles) ? catalog.profiles.length : 0,
-    }, catalog ? 200 : 503);
+    }, ready ? 200 : 503);
   }
   if (path === "/v1/profiles") return profileCatalog(env, url);
   if (path === "/v1/parses") return parseCatalog(env, url);

@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "db:migrate:local": "wrangler d1 migrations apply rlogs-production --local",
+    "db:migrate:remote": "wrangler d1 migrations apply rlogs-production --remote",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
