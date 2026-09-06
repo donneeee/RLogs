@@ -1,4 +1,4 @@
-# Cloudflare-hosted rLogs production architecture
+# GitHub Pages site with a Cloudflare-hosted rLogs backend
 
 ## Non-negotiable ownership boundary
 
@@ -6,13 +6,18 @@ No public rLogs service may depend on a user's or developer's PC. The desktop
 application captures, seals, verifies locally, and uploads evidence. It is not
 the website, API, database, artifact store, or public verification server.
 
-GitHub is the source-control and deployment trigger. Cloudflare owns the
-deployed public runtime:
+GitHub is the source-control host and serves the static website through GitHub
+Pages. Cloudflare owns the API, database, private objects, and verification
+runtime:
 
 ```text
-GitHub repository push
+GitHub website repository push
   -> required tests and build
-  -> Cloudflare deployment
+  -> GitHub Pages static website
+
+GitHub application repository push
+  -> required tests and build
+  -> Cloudflare backend deployment
 
 rLogs desktop
   -> Cloudflare API
@@ -23,15 +28,15 @@ rLogs desktop
   -> immutable receipt
 
 Browser
-  -> Cloudflare-hosted site
+  -> GitHub Pages site
   -> Cloudflare API
 ```
 
 ## Required production components
 
-1. **Site:** Cloudflare Pages or Workers Assets builds the website repository
-   from GitHub and serves the generated static site. GitHub Pages may remain a
-   temporary compatibility URL, but it is not the production host.
+1. **Site:** GitHub Actions builds the website repository and GitHub Pages
+   serves the generated static site. The site contains no submission data,
+   database credentials, server secrets, or authoritative verification state.
 2. **API edge:** a Cloudflare Worker owns routing, CORS, authentication,
    request limits, idempotency, and stable public URLs. It never proxies to a
    workstation or a `trycloudflare.com` hostname.
@@ -70,7 +75,7 @@ Browser
 
 ## Deployment gates
 
-Production deployment is blocked unless all of the following are true:
+Backend production deployment is blocked unless all of the following are true:
 
 - the site and API revisions identify the same compatible contract version;
 - D1 migrations are applied and backward-compatible with the active clients;
@@ -91,5 +96,6 @@ response is outage containment only; it is not the hosted backend.
 The migration order is: enable durable storage, provision isolated rLogs
 resources, port the API/storage contracts, deploy hosted verification, migrate
 the existing reviewed records with digest reconciliation, run a canary upload,
-then point the website and released desktop client at the hosted API. The local
-receiver remains a development fixture and import/migration tool only.
+then point the GitHub Pages website and released desktop client at the hosted
+API. The local receiver remains a development fixture and import/migration
+tool only.

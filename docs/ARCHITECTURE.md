@@ -41,8 +41,9 @@ same reconstruction, decode, event, and reducer interfaces as live capture.
 The sealed canonical event stream is also the authoritative combat submission;
 clients may preview calculations, but the service replays the evidence and
 owns ranked results. See [Canonical timeline](CANONICAL_TIMELINE.md).
-The production service is hosted independently of every desktop client; see
-[Cloudflare-hosted production architecture](architecture/cloudflare-hosting.md).
+The production backend is hosted independently of every desktop client while
+GitHub Pages serves the static site; see
+[GitHub Pages and Cloudflare production architecture](architecture/cloudflare-hosting.md).
 
 The local draft queue is host infrastructure, not a network client. A real
 completed capture is verified once, described by exact full-file and
