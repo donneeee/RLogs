@@ -12,6 +12,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  wasm-verifier-portability:
+    name: WASM verifier portability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Check the portable submission and replay crates
+        run: |
+          cargo check -p rlogs-submission --target wasm32-unknown-unknown
+          cargo check -p rlogs-game-bpsr --target wasm32-unknown-unknown
+          cargo check -p rlogs-plugin-combat-meter --target wasm32-unknown-unknown
+          cargo check -p rlogs-plugin-encounter-recorder --target wasm32-unknown-unknown
+
   rust:
     runs-on: windows-latest
     steps:
