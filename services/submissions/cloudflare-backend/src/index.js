@@ -194,6 +194,7 @@ async function route(request, env) {
     }, ready ? 200 : 503);
   }
   if (path === "/v1/profiles") return profileCatalog(env, url);
+  if (path === "/v1/characters") return storedJson(env, "characters/catalog.v1.json");
   if (path === "/v1/parses") return parseCatalog(env, url);
   if (path === "/v1/activity/milestones") {
     return storedJson(env, "community-milestones.v1.json");

@@ -131,6 +131,19 @@ test("profiles come only from bound Cloudflare storage", async () => {
   assert.deepEqual((await response.json()).profiles, [{ profile_id: "prf_b", character_id: "2" }]);
 });
 
+test("observed character directory comes only from its materialized Cloudflare catalog", async () => {
+  const catalog = {
+    schema_version: 1,
+    characters: [{ observed_character_key: "chr_example", display_name: "MarieRose" }],
+  };
+  const response = await backend.fetch(
+    new Request("https://backend/v1/characters"),
+    environment({ "fs:characters/catalog.v1.json": JSON.stringify(catalog) }),
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), catalog);
+});
+
 test("parse catalog applies public filters and pagination", async () => {
   const response = await backend.fetch(
     new Request("https://backend/v1/parses?region=north-america&limit=1"),
