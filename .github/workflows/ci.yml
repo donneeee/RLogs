@@ -74,6 +74,12 @@ jobs:
           npm ci --ignore-scripts
           npm test
           npx wrangler pages functions build functions --outdir "${{ runner.temp }}/rlogs-pages-functions" --build-output-directory public
+      - name: Test Cloudflare submission backend
+        working-directory: services/submissions/cloudflare-backend
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npx wrangler deploy --dry-run
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy,rustfmt
