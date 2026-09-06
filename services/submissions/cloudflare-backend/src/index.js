@@ -124,12 +124,24 @@ async function parseCatalog(env, url) {
     ? Math.min(250, Math.max(1, requestedLimit))
     : 250;
   const page = entries.slice(offset, offset + limit);
+  const submitterIds = [...new Set(page.map((entry) => entry.submitter_id).filter(Boolean))];
+  const submitterNames = new Map(await Promise.all(submitterIds.map(async (submitterId) => {
+    const account = await env.RLOGS_DATA.get(`fs:accounts/users/${submitterId}.json`, "json");
+    const name = account?.discord_global_name || account?.username || null;
+    return [submitterId, name];
+  })));
+  const presentedPage = page.map((entry) => ({
+    ...entry,
+    ...(entry.submitter_id && submitterNames.get(entry.submitter_id)
+      ? { submitter_name: submitterNames.get(entry.submitter_id) }
+      : {}),
+  }));
   return json({
     ...catalog,
     total_entries: entries.length,
     offset,
     next_offset: offset + page.length < entries.length ? offset + page.length : null,
-    entries: page,
+    entries: presentedPage,
   });
 }
 

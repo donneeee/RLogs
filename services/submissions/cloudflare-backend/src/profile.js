@@ -55,6 +55,9 @@ export async function publishProfilePackage(env, packageValue, identity, deviceT
     return { error: "profile package is older than the currently published profile", status: 409 };
   }
 
+  const sourceRouting = packageValue.request.payload.routing;
+  const routing = reconcilePublishedRouting(existing, sourceRouting);
+  normalizeProjectedCharacterRegion(body, routing);
   let currentBody = body;
   const projectId = positiveInteger(body.current_profession_project_id);
   let loadout = null;
@@ -69,7 +72,6 @@ export async function publishProfilePackage(env, packageValue, identity, deviceT
   accumulatedBody = preservePhotoAssets(existing?.envelope?.body, accumulatedBody);
   const modules = accumulatedBody.modules;
   const loadouts = mergeLoadoutSummaries(existing?.loadouts, loadout, accumulatedBody.profession_projects, packageValue, now);
-  const routing = packageValue.request.payload.routing;
   const published = {
     schema_version: 1,
     profile_id: profileId,
@@ -90,7 +92,11 @@ export async function publishProfilePackage(env, packageValue, identity, deviceT
     equipped_module_count: modules?.equipped_slots && typeof modules.equipped_slots === "object"
       ? Object.keys(modules.equipped_slots).length : 0,
     loadouts,
-    envelope: { ...structuredClone(packageValue.request.payload), body: accumulatedBody },
+    envelope: {
+      ...structuredClone(packageValue.request.payload),
+      routing: { ...structuredClone(sourceRouting), ...routing },
+      body: accumulatedBody,
+    },
   };
   const claim = existingClaim ?? {
     schema_version: 1, profile_id: profileId, submitter_id: identity.submitter_id,
@@ -111,6 +117,28 @@ export async function publishProfilePackage(env, packageValue, identity, deviceT
       profile_url: `${String(env.WEBSITE_URL).replace(/\/$/, "")}/profiles/${encodeURIComponent(characterId)}/`,
     },
   };
+}
+
+export function reconcilePublishedRouting(existing, incoming) {
+  const routing = structuredClone(incoming);
+  if (!existing || existing.deployment !== routing.deployment) return routing;
+  const incomingRegion = String(routing.region ?? "").trim();
+  const existingRegion = String(existing.region ?? "").trim();
+  const incomingIsDeploymentFallback = incomingRegion === routing.deployment || incomingRegion === "unknown";
+  const existingIsSpecific = existingRegion && existingRegion !== existing.deployment && existingRegion !== "unknown";
+  if (!incomingIsDeploymentFallback || !existingIsSpecific) return routing;
+  routing.region = existingRegion;
+  routing.realm = existing.realm ?? routing.realm ?? null;
+  routing.world = existing.world ?? routing.world ?? null;
+  return routing;
+}
+
+function normalizeProjectedCharacterRegion(body, routing) {
+  if (!isObject(body?.character?.region)) return;
+  body.character.region.deployment_id = routing.deployment;
+  body.character.region.region_id = routing.region;
+  body.character.region.realm_id = routing.realm ?? null;
+  body.character.region.world_id = routing.world ?? null;
 }
 
 export async function publishProfilePhoto(env, profileId, photoId, bytes, identity, now) {

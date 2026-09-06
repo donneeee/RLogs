@@ -141,18 +141,27 @@ test("parse catalog applies public filters and pagination", async () => {
         offset: 0,
         next_offset: null,
         entries: [
-          { report_id: "rpt_a", region_id: "north-america" },
+          { report_id: "rpt_a", region_id: "north-america", submitter_id: "usr_owner" },
           { report_id: "rpt_b", region_id: "north-america" },
           { report_id: "rpt_c", region_id: "global" },
         ],
         facets: {},
+      }),
+      "fs:accounts/users/usr_owner.json": JSON.stringify({
+        username: "donne",
+        discord_global_name: "Donne",
       }),
     }),
   );
   const value = await response.json();
   assert.equal(value.total_entries, 2);
   assert.equal(value.next_offset, 1);
-  assert.deepEqual(value.entries, [{ report_id: "rpt_a", region_id: "north-america" }]);
+  assert.deepEqual(value.entries, [{
+    report_id: "rpt_a",
+    region_id: "north-america",
+    submitter_id: "usr_owner",
+    submitter_name: "Donne",
+  }]);
 });
 
 test("private visibility overrides disappear from public catalogs and reports", async () => {

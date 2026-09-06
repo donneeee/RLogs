@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { accountView, RLogsAuthState, tokenHash } from "../src/auth.js";
-import { canonicalJson, liveCaptureProof, reconcileCatalog } from "../src/profile.js";
+import { canonicalJson, liveCaptureProof, reconcileCatalog, reconcilePublishedRouting } from "../src/profile.js";
 
 function authFixture() {
   const durable = new Map();
@@ -106,6 +106,39 @@ test("profile catalog reconciliation collapses legacy IDs for the same observed 
   assert.deepEqual(catalog.profiles.map((entry) => entry.character_id), ["3296036", "77212533"]);
   assert.equal(catalog.profiles[0].profile_id, canonical.profile_id);
   assert.equal(catalog.profiles[0].region, "north-america");
+});
+
+test("a deployment fallback cannot erase a previously observed specific region", () => {
+  const existing = {
+    deployment: "global",
+    region: "north-america",
+    realm: "na-realm",
+    world: "7",
+  };
+
+  assert.deepEqual(
+    reconcilePublishedRouting(existing, {
+      deployment: "global",
+      region: "global",
+      realm: null,
+      world: null,
+    }),
+    {
+      deployment: "global",
+      region: "north-america",
+      realm: "na-realm",
+      world: "7",
+    },
+  );
+  assert.equal(
+    reconcilePublishedRouting(existing, {
+      deployment: "global",
+      region: "europe",
+      realm: null,
+      world: null,
+    }).region,
+    "europe",
+  );
 });
 
 test("account projection does not expose Discord IDs", () => {
