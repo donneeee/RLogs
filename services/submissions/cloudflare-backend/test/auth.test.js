@@ -248,6 +248,22 @@ test("photo likes are idempotent and feed counts are viewer-aware", async () => 
   });
 });
 
+test("public account pages resolve current Durable Object identity and claimed profiles", async () => {
+  const { auth, durable, kv } = authFixture();
+  const accountId = "556457510583";
+  const profileId = `prf_${"c".repeat(32)}`;
+  durable.set(`index:account:${accountId}`, "usr_owner");
+  durable.set("user:usr_owner", { submitter_id: "usr_owner", account_id: Number(accountId), username: "whoisaqua" });
+  kv.set("fs:profiles/catalog.v1.json", { profiles: [{ profile_id: profileId, character_id: "256017" }] });
+  kv.set(`fs:profiles/${profileId}/claim.json`, { submitter_id: "usr_owner" });
+  const response = await auth.publicAccount(accountId);
+  assert.deepEqual(await response.json(), {
+    schema_version: 1,
+    account: { schema_version: 1, account_id: Number(accountId), username: "whoisaqua" },
+    profiles: [{ profile_id: profileId, character_id: "256017" }],
+  });
+});
+
 function reportFixture(reportId, visibility, submitterId, createdUnixMillis) {
   return {
     schema_version: 12,

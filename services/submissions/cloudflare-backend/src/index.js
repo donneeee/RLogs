@@ -101,20 +101,6 @@ async function parseCatalog(env, url) {
   });
 }
 
-async function photoCatalog(env, url, request) {
-  const sort = url.searchParams.get("sort") === "popular" ? "popular" : "newest";
-  const limit = Math.min(100, Math.max(1, Number.parseInt(url.searchParams.get("limit") ?? "20", 10) || 20));
-  const viewer = request.headers.get("Authorization") ? "authenticated" : "anonymous";
-  return storedJson(env, `snapshots/photos-${sort}-${limit}-${viewer}.json`)
-    .then(async (response) => response.status === 404
-      ? storedJson(env, `snapshots/photos-${sort}-${limit}-anonymous.json`)
-      : response);
-}
-
-async function publicAccount(env, accountId) {
-  return storedJson(env, `snapshots/users/${accountId}.json`);
-}
-
 async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -132,6 +118,7 @@ async function route(request, env) {
   if (
     path === "/v1/games/blue-protocol-star-resonance/profiles" ||
     path === "/v1/photos" ||
+    /^\/v1\/users\/[1-9][0-9]{11}$/.test(path) ||
     /^\/v1\/games\/blue-protocol-star-resonance\/profiles\/prf_[a-z0-9_]{32}\/photo-wall\/[1-9][0-9]*$/.test(path) ||
     /^\/v1\/profiles\/prf_[a-z0-9_]{32}\/photo-wall\/[1-9][0-9]*\/like$/.test(path)
   ) {
@@ -170,8 +157,6 @@ async function route(request, env) {
   if (match) return storedJson(env, `profiles/${match[1]}/loadouts/${match[2]}.json`);
   match = /^\/v1\/profiles\/(prf_[a-z0-9_]+)\/photo-wall\/([1-9][0-9]*)$/.exec(path);
   if (match) return storedPhoto(env, match[1], match[2]);
-  match = /^\/v1\/users\/([1-9][0-9]{11})$/.exec(path);
-  if (match) return publicAccount(env, match[1]);
   return notFound();
 }
 

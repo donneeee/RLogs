@@ -137,6 +137,10 @@ export class RLogsAuthState {
     if (request.method === "GET" && path === "/v1/photos") {
       return this.photoCatalog(request, now, url);
     }
+    match = /^\/v1\/users\/([1-9][0-9]{11})$/.exec(path);
+    if (request.method === "GET" && match) {
+      return this.publicAccount(match[1]);
+    }
     match = /^\/v1\/profiles\/(prf_[a-z0-9_]{32})\/photo-wall\/([1-9][0-9]*)\/like$/.exec(path);
     if ((request.method === "PUT" || request.method === "DELETE") && match) {
       return this.setPhotoLike(request, now, match[1], Number(match[2]), request.method === "PUT");
@@ -373,6 +377,24 @@ export class RLogsAuthState {
       viewerLiked = current.has(`${prefix}${digest}`) || legacy.includes(`${legacyPrefix}${digest}.json`);
     }
     return { count: current.size + legacy.length, viewerLiked };
+  }
+
+  async publicAccount(accountId) {
+    const submitterId = await this.index("account", accountId);
+    if (!submitterId) return error("not found", 404);
+    const account = await this.account(submitterId);
+    if (!account) return error("not found", 404);
+    const catalog = await this.env.RLOGS_DATA.get("fs:profiles/catalog.v1.json", "json");
+    const profiles = [];
+    for (const profile of catalog?.profiles ?? []) {
+      const claim = await this.env.RLOGS_DATA.get(`fs:profiles/${profile.profile_id}/claim.json`, "json");
+      if (claim?.submitter_id === submitterId) profiles.push(profile);
+    }
+    return json({
+      schema_version: 1,
+      account: { schema_version: 1, account_id: account.account_id, username: account.username },
+      profiles,
+    });
   }
 
   async myParses(request, now, url) {
