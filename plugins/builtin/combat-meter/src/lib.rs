@@ -1445,13 +1445,11 @@ impl CombatTimelinePlugin {
             self.attempt_last_damage_micros,
         ) && observed_micros.saturating_sub(latest) >= COMBAT_INACTIVITY_TIMEOUT_MICROS
         {
-            self.attempt_damage_elapsed_micros = self
-                .attempt_damage_elapsed_micros
-                .saturating_add(
-                    latest
-                        .saturating_sub(started)
-                        .saturating_add(DAMAGE_CLOCK_QUANTUM_MICROS),
-                );
+            self.attempt_damage_elapsed_micros = self.attempt_damage_elapsed_micros.saturating_add(
+                latest
+                    .saturating_sub(started)
+                    .saturating_add(DAMAGE_CLOCK_QUANTUM_MICROS),
+            );
             self.attempt_damage_started_micros = Some(observed_micros);
         }
         self.attempt_damage_started_micros
