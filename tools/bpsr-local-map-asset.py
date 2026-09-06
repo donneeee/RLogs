@@ -11,22 +11,34 @@ import struct
 from pathlib import Path
 
 import UnityPy  # type: ignore
+from PIL import __version__ as pillow_version  # type: ignore
 
 DEFAULT_ADDRESS = "ui/textures/map/dungeon_map_bg"
 DEFAULT_OBJECT_NAME = "dungeon_map_bg"
+COMPILER_VERSION = "1"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--container", type=Path, required=True)
-    parser.add_argument("--runtime-root", type=Path, required=True)
-    parser.add_argument("--build", required=True)
+    parser.add_argument("--version", action="store_true")
+    parser.add_argument("--self-check", action="store_true")
+    parser.add_argument("--container", type=Path)
+    parser.add_argument("--runtime-root", type=Path)
+    parser.add_argument("--build")
     parser.add_argument("--address", default=DEFAULT_ADDRESS)
     parser.add_argument("--object-name", default=DEFAULT_OBJECT_NAME)
     parser.add_argument("--asset", default="dungeon_map_bg.png")
     parser.add_argument("--region-address")
     args = parser.parse_args()
-    if not re.fullmatch(r"[A-Za-z0-9._/-]{1,128}", args.build) or ".." in args.build:
+    if args.version:
+        print(f"rLogs BPSR map compiler {COMPILER_VERSION}")
+        return
+    if args.self_check:
+        run_self_check()
+        return
+    if args.container is None or args.runtime_root is None or args.build is None:
+        parser.error("--container, --runtime-root, and --build are required for extraction")
+    if not is_safe_relative_identity(args.build, 128):
         raise SystemExit("build must be a safe exact client-build identity")
     if not re.fullmatch(r"[A-Za-z0-9._/-]{1,240}", args.address) or ".." in args.address:
         raise SystemExit("address must be a safe exact game-asset address")
@@ -71,7 +83,12 @@ def main() -> None:
             f"expected one Texture2D named {args.object_name}, observed {len(matches)}"
         )
 
-    output = args.runtime_root / args.build / args.asset
+    runtime_root = args.runtime_root.resolve()
+    output = (runtime_root / args.build / args.asset).resolve()
+    try:
+        output.relative_to(runtime_root)
+    except ValueError:
+        raise SystemExit("output must remain inside the local runtime root")
     output.parent.mkdir(parents=True, exist_ok=True)
     matches[0].image.save(output)
     digest = hashlib.sha256(output.read_bytes()).hexdigest()
@@ -123,6 +140,40 @@ def main() -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"{args.address} ({package.name}/{bundle_hash}) -> {output}")
     print(f"local catalog -> {manifest_path}")
+
+
+def run_self_check() -> None:
+    """Exercise packaged imports and the binary parser without reading game files."""
+    fixture = bytearray()
+    fixture.extend(struct.pack("<iii", 1, 2, 3))
+    fixture.extend(b"\0" * 8)
+    fixture.extend(struct.pack("<I", 4))
+    fixture.extend(struct.pack("<H", 0))
+    fixture.extend(struct.pack("<i", 1))
+    fixture.extend(struct.pack("<IBHii", 1234, 0, 7, 89, 144))
+    fixture.extend(struct.pack("<i", 0))
+    expected = [(1234, 7, 89, 144)]
+    observed = read_meta_entries(bytes(fixture))
+    if observed != expected:
+        raise SystemExit(f"self-check meta parser mismatch: {observed!r}")
+    if not is_safe_relative_identity("global/steam-24687926", 128):
+        raise SystemExit("self-check rejected a valid client-build identity")
+    for unsafe in ("/absolute", "../escape", "global//build", "global/./build"):
+        if is_safe_relative_identity(unsafe, 128):
+            raise SystemExit(f"self-check accepted unsafe build identity: {unsafe}")
+    unitypy_version = getattr(UnityPy, "__version__", "unknown")
+    print(
+        "self-check passed: "
+        f"compiler={COMPILER_VERSION} UnityPy={unitypy_version} Pillow={pillow_version}"
+    )
+
+
+def is_safe_relative_identity(value: str, maximum_length: int) -> bool:
+    if not re.fullmatch(rf"[A-Za-z0-9._/-]{{1,{maximum_length}}}", value):
+        return False
+    if value.startswith("/") or value.endswith("/"):
+        return False
+    return all(part not in ("", ".", "..") for part in value.split("/"))
 
 
 def read_address_bundle(container: Path, address: str) -> tuple[int, Path, bytes]:

@@ -28,6 +28,10 @@ runtime-data/
 /apps/desktop/target_probe_check/
 /apps/desktop/ui/target-overlay-reshow-fix/
 
+# Generated only in the Windows release job. Game-derived map images remain
+# local runtime data and are never bundled with this executable.
+/apps/desktop-tauri/resources/map-compiler/*.exe
+
 # Rebuildable game-table extracts and local developer reports. Reviewed,
 # versioned evidence belongs under the plugin research/catalog directories.
 /Excels/

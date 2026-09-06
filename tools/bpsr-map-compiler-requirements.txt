@@ -1,0 +1,23 @@
+# Exact Windows helper build environment. Keep every runtime dependency pinned so
+# release rebuilds do not silently change the game-container parser.
+UnityPy==1.25.3
+Pillow==12.3.0
+lz4==4.4.5
+brotli==1.2.0
+texture2ddecoder==1.0.6
+etcpak==0.9.15
+astc-encoder-py==0.1.12
+fmod-toolkit==0.1.3
+fsspec==2026.7.0
+attrs==26.1.0
+tpk-ar==0.2.4
+
+# Build-only dependencies are pinned as well because they determine the bundled
+# executable and its Windows loader.
+PyInstaller==6.22.2
+pyinstaller-hooks-contrib==2026.7
+altgraph==0.17.5
+packaging==26.3
+pefile==2024.8.26
+pywin32-ctypes==0.2.3
+setuptools==84.0.0

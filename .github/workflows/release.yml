@@ -24,6 +24,18 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/ui/package-lock.json
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: tools/bpsr-map-compiler-requirements.txt
+
+      - name: Build the local game-map compiler
+        shell: pwsh
+        run: |
+          ./tools/windows/build-bpsr-map-compiler.ps1 `
+            -OutputDirectory apps/desktop-tauri/resources/map-compiler
+
       - name: Install desktop UI dependencies
         working-directory: apps/desktop/ui
         run: npm ci --ignore-scripts

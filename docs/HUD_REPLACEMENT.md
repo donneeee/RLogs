@@ -162,6 +162,16 @@ alongside the texture. The independent implementation was behaviorally
 cross-checked against the newest locally audited Resonance Logs CN source; no
 AGPL source is copied into rLogs.
 
+Windows release builds compile that same reviewed script into
+`resources/map-compiler/rlogs-bpsr-map-compiler.exe`. CI builds and runs the
+packaged helper's synthetic binary-parser/import self-check on every change,
+using the exact dependency versions in
+`tools/bpsr-map-compiler-requirements.txt`; the release workflow repeats that
+gate before constructing the installer. The installer contains the compiler,
+not game assets. Automatic discovery/invocation remains disabled while this
+workspace is developer-only, so an installed-client location and exact
+packet-observed build identity cannot be guessed or silently crossed.
+
 ## Chat tabs
 
 The first chat milestone is a local display surface with reorderable tabs,

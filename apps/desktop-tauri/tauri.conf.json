@@ -19,6 +19,7 @@
     "icon": ["icons/icon.ico"],
     "resources": {
       "../desktop/ui/dist": "apps/desktop/ui/dist",
+      "resources/map-compiler": "resources/map-compiler",
       "../../assets": "assets",
       "../../plugins/builtin/desktop/bpsr-profile-sync": "plugins/builtin/desktop/bpsr-profile-sync",
       "../../plugins/builtin/desktop/combat-meter": "plugins/builtin/desktop/combat-meter",
