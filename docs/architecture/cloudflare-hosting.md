@@ -85,6 +85,22 @@ Backend production deployment is blocked unless all of the following are true:
   returning a process-level success response;
 - rollback preserves immutable artifacts, claims, and report receipts.
 
+The repository workflow `.github/workflows/deploy-cloudflare.yml` is the
+production deployment path. It tests and deploys the private Worker first,
+deploys the Pages gateway second, and then runs
+`tools/smoke-test-cloudflare-production.mjs` against the public hostname. The
+Worker health response includes the deployed Git commit, so a successful
+workflow proves that traffic reached the requested revision rather than an
+older healthy deployment.
+
+Automatic deploys require two GitHub Actions repository secrets,
+`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`, plus the repository variable
+`CLOUDFLARE_DEPLOY_ENABLED=true`. Without that explicit variable a push safely
+skips production deployment; a maintainer can still invoke the workflow
+manually, where missing credentials fail before any deployment starts. The API
+token should be scoped only to the rLogs Workers and Pages resources needed by
+Wrangler.
+
 ## Current migration state
 
 As of 2026-09-06, `rlogs-submissions` is a Cloudflare Pages API gateway with an
