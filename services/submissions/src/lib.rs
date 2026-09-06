@@ -3,7 +3,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fs::{File, OpenOptions},
-    io::{BufReader, BufWriter, Read, Write},
+    io::{BufRead, BufReader, BufWriter, Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
@@ -3256,14 +3256,43 @@ fn build_public_report(
     created_unix_millis: u64,
     submission_provenance: PublicSubmissionProvenance,
 ) -> Result<PublicParseReport, ServiceError> {
+    let first_pass_file = File::open(path)?;
+    let replay_file = File::open(path)?;
+    build_public_report_from_readers(
+        BufReader::new(first_pass_file),
+        BufReader::new(replay_file),
+        manifest,
+        artifact,
+        report_id,
+        created_unix_millis,
+        submission_provenance,
+    )
+}
+
+/// Reconstructs the authoritative public report from two independent reads of
+/// the same sealed artifact. The first pass learns remote attribution factors;
+/// the second performs the complete combat and encounter replay. Keeping this
+/// boundary free of filesystem access lets hosted verifiers supply immutable
+/// object-storage bytes without trusting a client-produced projection.
+pub fn build_public_report_from_readers<FirstPass, ReplayPass>(
+    first_pass: FirstPass,
+    replay_pass: ReplayPass,
+    manifest: &UploadManifest,
+    artifact: &LocalLogArtifact,
+    report_id: &str,
+    created_unix_millis: u64,
+    submission_provenance: PublicSubmissionProvenance,
+) -> Result<PublicParseReport, ServiceError>
+where
+    FirstPass: BufRead,
+    ReplayPass: BufRead,
+{
     if manifest.metadata.game_plugin_id != BPSR_GAME_PLUGIN_ID {
         return Err(ServiceError::UnsupportedGamePlugin(
             manifest.metadata.game_plugin_id.clone(),
         ));
     }
-    let first_pass_file = File::open(path)?;
-    let first_pass_reader =
-        RlogReader::new(BufReader::new(first_pass_file), RlogLimits::default())?;
+    let first_pass_reader = RlogReader::new(first_pass, RlogLimits::default())?;
     let mut remote_factor_learner = BpsrRemoteFactorLearner::new().map_err(ServiceError::Replay)?;
     first_pass_reader.replay(|event| {
         remote_factor_learner.observe(event);
@@ -3283,8 +3312,7 @@ fn build_public_report(
     let mut encounter = EncounterRecorderPlugin::new(
         bundled_run_reducer_config().map_err(|error| ServiceError::Replay(error.to_string()))?,
     );
-    let file = File::open(path)?;
-    let reader = RlogReader::new(BufReader::new(file), RlogLimits::default())?;
+    let reader = RlogReader::new(replay_pass, RlogLimits::default())?;
     let header = reader.header().clone();
     meter.begin_live(&header);
     encounter.begin_live(&header);
