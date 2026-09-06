@@ -3,6 +3,7 @@ use std::{
     io::{BufReader, BufWriter, Write, sink},
     net::{IpAddr, SocketAddr},
     path::PathBuf,
+    time::Instant,
 };
 
 use rlogs_game_bpsr::BPSR_GAME_PLUGIN_ID;
@@ -12,7 +13,10 @@ use rlogs_submission::{
     build_privacy_verified_submission_artifact, submission_privacy_policy_digest,
     write_privacy_filtered_submission_log,
 };
-use rlogs_submission_service::{SubmissionAuthentication, SubmissionService, router};
+use rlogs_submission_service::{
+    PublicSubmissionProvenance, SubmissionAuthentication, SubmissionService,
+    build_public_report_from_readers, router,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
@@ -88,6 +92,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         return Ok(());
     }
+    if let Some(index) = arguments
+        .iter()
+        .position(|argument| argument == "--benchmark-replay")
+    {
+        let path = arguments
+            .get(index + 1)
+            .map(PathBuf::from)
+            .ok_or("--benchmark-replay requires a sealed .rlog path")?;
+        if arguments.len() != 2 || index != 0 {
+            return Err("usage: rlogs-submission-service --benchmark-replay <sealed.rlog>".into());
+        }
+        benchmark_replay(&path)?;
+        return Ok(());
+    }
     if !arguments.is_empty() {
         return Err("unknown command-line argument".into());
     }
@@ -139,6 +157,76 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
     drop(runtime);
     drop(service);
+    Ok(())
+}
+
+fn benchmark_replay(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let artifact = build_privacy_verified_submission_artifact(
+        File::open(path)?,
+        ArtifactBuildLimits::default(),
+        RlogLimits::default(),
+    )?;
+    let protocol_pack_digest = artifact
+        .header
+        .region
+        .protocol_pack_digest
+        .strip_prefix("sha256:")
+        .ok_or("artifact protocol-pack digest is missing the sha256: prefix")?;
+    let metadata = SubmissionMetadata::new(
+        BPSR_GAME_PLUGIN_ID,
+        artifact.file_sha256.to_string(),
+        artifact.header.schema_version,
+        artifact.header.session_id.clone(),
+        artifact.header.region.identity.region_id.clone(),
+        artifact.header.region.client_build.clone(),
+        Sha256Digest::parse(protocol_pack_digest)?,
+        submission_privacy_policy_digest(),
+        ReportVisibility::Unlisted,
+    );
+    let manifest = SubmissionSession::new_post_run_artifact(metadata, &artifact)?.manifest();
+    let started = Instant::now();
+    let replay = build_public_report_from_readers(
+        BufReader::new(File::open(path)?),
+        BufReader::new(File::open(path)?),
+        &manifest,
+        &artifact,
+        "rpt_00000000000000000000000000000000",
+        0,
+        PublicSubmissionProvenance {
+            submitter_id: None,
+            authentication: "local_benchmark".into(),
+        },
+    );
+    let elapsed = started.elapsed();
+    let report = match replay {
+        Ok(report) => report,
+        Err(error) => {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "artifact_bytes": artifact.file_byte_length,
+                    "canonical_events": artifact.rlog.event_count,
+                    "elapsed_millis": elapsed.as_millis(),
+                    "error": error.to_string(),
+                    "status": "rejected",
+                })
+            );
+            return Err(error.into());
+        }
+    };
+    let encoded = serde_json::to_vec(&report)?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "artifact_bytes": artifact.file_byte_length,
+            "canonical_events": artifact.rlog.event_count,
+            "elapsed_millis": elapsed.as_millis(),
+            "output_bytes": encoded.len(),
+            "runs": report.runs.len(),
+            "schema_version": report.schema_version,
+            "verification_tier": "replayed",
+        })
+    );
     Ok(())
 }
 
