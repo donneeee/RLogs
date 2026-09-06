@@ -2,6 +2,9 @@ const encoder = new TextEncoder();
 const WEB_SESSION_LIFETIME_MILLIS = 30 * 24 * 60 * 60 * 1000;
 const OAUTH_STATE_LIFETIME_MILLIS = 10 * 60 * 1000;
 const LOGIN_CODE_LIFETIME_MILLIS = 5 * 60 * 1000;
+const MAXIMUM_QUERY_LIMIT = 250;
+const REPORT_ID_PATTERN = /^rpt_[a-f0-9]{32}$/;
+const VISIBILITIES = new Set(["public", "unlisted", "private"]);
 
 function json(value, status = 200) {
   return Response.json(value, {
@@ -121,6 +124,20 @@ export class RLogsAuthState {
     }
     if (request.method === "GET" && path === "/v1/auth/profiles") {
       return this.ownedProfiles(request, now);
+    }
+    if (request.method === "GET" && path === "/v1/auth/parses") {
+      return this.myParses(request, now, url);
+    }
+    let match = /^\/v1\/auth\/parses\/(rpt_[a-f0-9]{32})$/.exec(path);
+    if (request.method === "GET" && match) {
+      return this.accountParse(request, now, match[1]);
+    }
+    match = /^\/v1\/auth\/parses\/(rpt_[a-f0-9]{32})\/visibility$/.exec(path);
+    if (request.method === "PATCH" && match) {
+      return this.updateParseVisibility(request, now, match[1]);
+    }
+    if (request.method === "GET" && path === "/internal/visibility-overrides") {
+      return json(await this.visibilityOverrides());
     }
     return error("route not found", 404);
   }
@@ -265,6 +282,137 @@ export class RLogsAuthState {
     return json({ schema_version: 1, profiles });
   }
 
+  async myParses(request, now, url) {
+    const account = await this.authenticateWeb(request, now);
+    if (!account) return error("account authentication failed", 401);
+    const claimedCharacterIds = await this.claimedCharacterIds(account.submitter_id);
+    const baseCatalog = await this.env.RLOGS_DATA.get("fs:catalog.v1.json", "json");
+    const catalogEntries = Array.isArray(baseCatalog?.entries) ? baseCatalog.entries : [];
+    const byRun = new Map(catalogEntries.map((entry) => [`${entry.report_id}:${entry.run_index}`, entry]));
+    const entries = [];
+    for (const key of await this.listKvKeys("fs:projections/")) {
+      if (!key.endsWith(".json")) continue;
+      const report = await this.env.RLOGS_DATA.get(key, "json");
+      if (!report || !REPORT_ID_PATTERN.test(report.report_id) || !Array.isArray(report.runs)) continue;
+      const visibility = await this.reportVisibility(report);
+      const submittedByYou = report.submission_provenance?.submitter_id === account.submitter_id;
+      if (visibility === "private" && !submittedByYou) continue;
+      const membership = await this.env.RLOGS_DATA.get(`fs:memberships/${report.report_id}.json`, "json");
+      for (const run of report.runs) {
+        const runMembership = Array.isArray(membership?.runs)
+          ? membership.runs.find((candidate) => candidate.run_index === run.run_index)
+          : null;
+        const matchedCharacterIds = (runMembership?.character_ids ?? [])
+          .filter((characterId) => claimedCharacterIds.has(String(characterId)))
+          .map(String);
+        if (!submittedByYou && matchedCharacterIds.length === 0) continue;
+        const parse = byRun.get(`${report.report_id}:${run.run_index}`) ?? catalogEntry(report, run);
+        entries.push({ ...parse, visibility, submitted_by_you: submittedByYou, matched_character_ids: matchedCharacterIds });
+      }
+    }
+    entries.sort((left, right) =>
+      right.created_unix_millis - left.created_unix_millis ||
+      left.report_id.localeCompare(right.report_id) ||
+      left.run_index - right.run_index,
+    );
+    const requestedOffset = Number.parseInt(url.searchParams.get("offset") ?? "0", 10);
+    const requestedLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
+    const offset = Number.isSafeInteger(requestedOffset) && requestedOffset > 0
+      ? Math.min(requestedOffset, entries.length)
+      : 0;
+    const limit = Number.isSafeInteger(requestedLimit)
+      ? Math.min(MAXIMUM_QUERY_LIMIT, Math.max(1, requestedLimit))
+      : 100;
+    const page = entries.slice(offset, offset + limit);
+    return json({
+      schema_version: 1,
+      total_entries: entries.length,
+      offset,
+      next_offset: offset + page.length < entries.length ? offset + page.length : null,
+      claimed_character_ids: [...claimedCharacterIds].sort(),
+      entries: page,
+    });
+  }
+
+  async accountParse(request, now, reportId) {
+    const account = await this.authenticateWeb(request, now);
+    if (!account) return error("account authentication failed", 401);
+    const report = await this.env.RLOGS_DATA.get(`fs:projections/${reportId}.json`, "json");
+    if (!report) return error("not found", 404);
+    const visibility = await this.reportVisibility(report);
+    const submittedByYou = report.submission_provenance?.submitter_id === account.submitter_id;
+    if (!submittedByYou) {
+      if (visibility === "private") return error("not found", 404);
+      const claimedCharacterIds = await this.claimedCharacterIds(account.submitter_id);
+      const membership = await this.env.RLOGS_DATA.get(`fs:memberships/${reportId}.json`, "json");
+      const participates = (membership?.runs ?? []).some((run) =>
+        (run.character_ids ?? []).some((characterId) => claimedCharacterIds.has(String(characterId))),
+      );
+      if (!participates) return error("not found", 404);
+    }
+    return json({ ...report, visibility });
+  }
+
+  async updateParseVisibility(request, now, reportId) {
+    const account = await this.authenticateWeb(request, now);
+    if (!account) return error("account authentication failed", 401);
+    const report = await this.env.RLOGS_DATA.get(`fs:projections/${reportId}.json`, "json");
+    if (!report || report.submission_provenance?.submitter_id !== account.submitter_id) {
+      return error("not found", 404);
+    }
+    const body = await parseBody(request);
+    if (!body || Object.keys(body).length !== 1 || !VISIBILITIES.has(body.visibility)) {
+      return error("invalid visibility", 400);
+    }
+    await this.storage.put(`visibility:${reportId}`, body.visibility);
+    return json({
+      schema_version: 1,
+      report_id: reportId,
+      visibility: body.visibility,
+      share_url: body.visibility === "private"
+        ? null
+        : `${String(this.env.WEBSITE_URL).replace(/\/$/, "")}/parses/?parse=${reportId}#parse`,
+    });
+  }
+
+  async claimedCharacterIds(submitterId) {
+    const catalog = await this.env.RLOGS_DATA.get("fs:profiles/catalog.v1.json", "json");
+    const claimed = new Set();
+    for (const profile of catalog?.profiles ?? []) {
+      const claim = await this.env.RLOGS_DATA.get(`fs:profiles/${profile.profile_id}/claim.json`, "json");
+      if (claim?.submitter_id === submitterId) claimed.add(String(profile.character_id));
+    }
+    return claimed;
+  }
+
+  async reportVisibility(report) {
+    return await this.storage.get(`visibility:${report.report_id}`) ?? report.visibility;
+  }
+
+  async visibilityOverrides() {
+    const overrides = {};
+    for (const key of await this.listDoKeys("visibility:")) {
+      overrides[key.slice("visibility:".length)] = await this.storage.get(key);
+    }
+    return overrides;
+  }
+
+  async listDoKeys(prefix) {
+    const values = await this.storage.list({ prefix });
+    return [...values.keys()];
+  }
+
+  async listKvKeys(prefix) {
+    const keys = [];
+    let cursor;
+    do {
+      const page = await this.env.RLOGS_DATA.list({ prefix, cursor });
+      keys.push(...page.keys.map((entry) => entry.name));
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor);
+    return keys;
+  }
+
   async authenticateWeb(request, now) {
     const token = bearer(request);
     if (!token.startsWith("rlw_")) return null;
@@ -376,4 +524,30 @@ function parseStringJson(value) {
   }
 }
 
-export { accountView, tokenHash };
+function catalogEntry(report, run) {
+  return {
+    report_id: report.report_id,
+    report_ids: [report.report_id],
+    run_index: run.run_index,
+    run_group_id: run.run_group_id || `legacy_${report.report_id}_${run.run_index}`,
+    contribution_count: 1,
+    distinct_submitter_count: report.submission_provenance?.submitter_id ? 1 : 0,
+    local_profile_witness_character_count: run.local_profile_character_ids?.length ?? 0,
+    attribution_reconciliation_status: "single_vantage",
+    created_unix_millis: report.created_unix_millis,
+    deployment_id: report.deployment_id,
+    region_id: report.region_id,
+    activity_id: run.activity_id,
+    activity_family_id: run.activity_family_id,
+    activity_category_id: run.activity_category_id,
+    scene_id: run.scene_id ?? null,
+    scene_name: run.scene_name ?? null,
+    difficulty_family: run.difficulty_family,
+    difficulty_tier: run.difficulty_tier ?? null,
+    terminal_state: run.terminal_state,
+    total_run_time_micros: run.total_run_time_micros ?? null,
+    participant_count: run.participants?.length ?? 0,
+  };
+}
+
+export { accountView, catalogEntry, tokenHash };

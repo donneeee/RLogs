@@ -22,6 +22,20 @@ async function storedJson(env, key) {
     : new Response(value, { headers: JSON_HEADERS });
 }
 
+async function visibilityOverrides(env) {
+  const id = env.AUTH_STATE.idFromName("global");
+  const response = await env.AUTH_STATE.get(id).fetch("https://auth.internal/internal/visibility-overrides");
+  return response.ok ? response.json() : {};
+}
+
+async function publicReport(env, reportId) {
+  const report = await env.RLOGS_DATA.get(`fs:projections/${reportId}.json`, "json");
+  if (!report) return notFound();
+  const overrides = await visibilityOverrides(env);
+  const visibility = overrides[reportId] ?? report.visibility;
+  return visibility === "private" ? notFound() : json({ ...report, visibility });
+}
+
 async function storedPhoto(env, profileId, photoId) {
   const metadataKey = `fs:profiles/${profileId}/photo-wall/photo-${photoId}.json`;
   const metadata = await env.RLOGS_DATA.get(metadataKey, "json");
@@ -52,19 +66,20 @@ async function profileCatalog(env, url) {
 async function parseCatalog(env, url) {
   const catalog = await env.RLOGS_DATA.get("fs:catalog.v1.json", "json");
   if (!catalog || !Array.isArray(catalog.entries)) return notFound();
-  let entries = catalog.entries;
+  const overrides = await visibilityOverrides(env);
+  let entries = catalog.entries.filter((entry) => overrides[entry.report_id] !== "private");
   const scalarFilters = [
-    ["deployment", "deployment"],
-    ["region", "region"],
-    ["activity", "activity"],
-    ["difficulty", "difficulty"],
-    ["terminal_state", "terminal_state"],
+    ["deployment", "deployment_id"],
+    ["region", "region_id"],
+    ["activity", "activity_id"],
+    ["difficulty", "difficulty_family"],
+    ["terminal", "terminal_state"],
   ];
   for (const [queryName, field] of scalarFilters) {
     const expected = url.searchParams.get(queryName);
     if (expected) entries = entries.filter((entry) => String(entry[field] ?? "") === expected);
   }
-  const scene = url.searchParams.get("scene_id");
+  const scene = url.searchParams.get("scene");
   if (scene) entries = entries.filter((entry) => String(entry.scene_id ?? "") === scene);
   const search = url.searchParams.get("search")?.trim().toLocaleLowerCase();
   if (search) {
@@ -138,7 +153,7 @@ async function route(request, env) {
     return storedJson(env, "community-milestones.v1.json");
   }
   let match = /^\/v1\/parses\/(rpt_[A-Za-z0-9_-]+)$/.exec(path);
-  if (match) return storedJson(env, `projections/${match[1]}.json`);
+  if (match) return publicReport(env, match[1]);
   match = /^\/v1\/run-groups\/([A-Za-z0-9_-]+)\/reconciliation$/.exec(path);
   if (match) return storedJson(env, `reconciliations/${match[1]}.json`);
   match = /^\/v1\/profiles\/(prf_[a-z0-9_]+)$/.exec(path);

@@ -14,6 +14,12 @@ function environment(values = {}) {
         if (type === "arrayBuffer") return new TextEncoder().encode(value).buffer;
         return value;
       },
+      async list({ prefix }) {
+        return {
+          keys: [...store.keys()].filter((key) => key.startsWith(prefix)).map((name) => ({ name })),
+          list_complete: true,
+        };
+      },
     },
     AUTH_STATE: {
       idFromName(name) { return name; },
@@ -64,9 +70,9 @@ test("parse catalog applies public filters and pagination", async () => {
         offset: 0,
         next_offset: null,
         entries: [
-          { report_id: "rpt_a", region: "north-america" },
-          { report_id: "rpt_b", region: "north-america" },
-          { report_id: "rpt_c", region: "global" },
+          { report_id: "rpt_a", region_id: "north-america" },
+          { report_id: "rpt_b", region_id: "north-america" },
+          { report_id: "rpt_c", region_id: "global" },
         ],
         facets: {},
       }),
@@ -75,7 +81,22 @@ test("parse catalog applies public filters and pagination", async () => {
   const value = await response.json();
   assert.equal(value.total_entries, 2);
   assert.equal(value.next_offset, 1);
-  assert.deepEqual(value.entries, [{ report_id: "rpt_a", region: "north-america" }]);
+  assert.deepEqual(value.entries, [{ report_id: "rpt_a", region_id: "north-america" }]);
+});
+
+test("private visibility overrides disappear from public catalogs and reports", async () => {
+  const reportId = `rpt_${"a".repeat(32)}`;
+  const env = environment({
+    "fs:catalog.v1.json": JSON.stringify({ schema_version: 6, entries: [{ report_id: reportId }], facets: {} }),
+    [`fs:projections/${reportId}.json`]: JSON.stringify({ report_id: reportId, visibility: "public" }),
+  });
+  env.AUTH_STATE.get = () => ({
+    async fetch() { return Response.json({ [reportId]: "private" }); },
+  });
+  const catalogResponse = await backend.fetch(new Request("https://backend/v1/parses"), env);
+  assert.deepEqual((await catalogResponse.json()).entries, []);
+  const reportResponse = await backend.fetch(new Request(`https://backend/v1/parses/${reportId}`), env);
+  assert.equal(reportResponse.status, 404);
 });
 
 test("write routes fail closed until hosted verification is enabled", async () => {
