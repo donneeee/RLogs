@@ -603,6 +603,13 @@ impl SubmissionService {
         }
         let membership = build_private_parse_membership(&artifact_path, &report)?;
         write_json_atomic(&self.membership_path(&report_id)?, &membership)?;
+        apply_verified_character_ids(
+            &mut report,
+            membership
+                .character_by_actor
+                .as_ref()
+                .expect("new memberships always include sealed actor identities"),
+        )?;
         self.restore_submitter_name(&artifact_path, &mut report)?;
         write_json_atomic(&self.projection_path(&report_id)?, &report)?;
         self.rebuild_catalog_locked()?;
@@ -743,6 +750,13 @@ impl SubmissionService {
         )?;
         let membership = build_private_parse_membership(&artifact_path, &refreshed)?;
         write_json_atomic(&self.membership_path(&refreshed.report_id)?, &membership)?;
+        apply_verified_character_ids(
+            &mut refreshed,
+            membership
+                .character_by_actor
+                .as_ref()
+                .expect("new memberships always include sealed actor identities"),
+        )?;
         self.restore_submitter_name(&artifact_path, &mut refreshed)?;
         write_json_atomic(&self.projection_path(&refreshed.report_id)?, &refreshed)?;
         Ok(refreshed)
@@ -5116,6 +5130,32 @@ fn restore_verified_names(
     changed
 }
 
+fn apply_verified_character_ids(
+    report: &mut PublicParseReport,
+    identities: &BTreeMap<String, String>,
+) -> Result<bool, ServiceError> {
+    let mut changed = false;
+    for participant in report.runs.iter_mut().flat_map(|run| &mut run.participants) {
+        let Some(sealed_uid) = identities.get(&participant.actor_id) else {
+            continue;
+        };
+        match participant.character_id.as_deref() {
+            Some(public_uid) if public_uid != sealed_uid => {
+                return Err(ServiceError::Replay(format!(
+                    "report participant {} character UID {public_uid} disagrees with sealed actor UID {sealed_uid}",
+                    participant.actor_id
+                )));
+            }
+            Some(_) => {}
+            None => {
+                participant.character_id = Some(sealed_uid.clone());
+                changed = true;
+            }
+        }
+    }
+    Ok(changed)
+}
+
 fn private_parse_membership(
     report: &PublicParseReport,
     character_by_actor: &BTreeMap<String, String>,
@@ -7525,6 +7565,36 @@ mod tests {
             report.runs[0].participants[0].display_name.as_deref(),
             Some("MarieRose")
         );
+    }
+
+    #[test]
+    fn sealed_actor_identity_is_published_with_the_participant() {
+        let mut report = fixture_public_report("identity", "3296036", 0);
+        report.runs[0].participants.truncate(1);
+        report.runs[0].participants[0].actor_id = "5".into();
+        report.runs[0].participants[0].character_id = None;
+        let identities = BTreeMap::from([("5".into(), "3296036".into())]);
+
+        assert!(apply_verified_character_ids(&mut report, &identities).unwrap());
+        assert_eq!(
+            report.runs[0].participants[0].character_id.as_deref(),
+            Some("3296036")
+        );
+        assert!(!apply_verified_character_ids(&mut report, &identities).unwrap());
+    }
+
+    #[test]
+    fn conflicting_public_and_sealed_character_ids_fail_closed() {
+        let mut report = fixture_public_report("identity-conflict", "3296036", 0);
+        report.runs[0].participants.truncate(1);
+        report.runs[0].participants[0].actor_id = "5".into();
+        report.runs[0].participants[0].character_id = Some("not-marie".into());
+        let identities = BTreeMap::from([("5".into(), "3296036".into())]);
+
+        assert!(matches!(
+            apply_verified_character_ids(&mut report, &identities),
+            Err(ServiceError::Replay(_))
+        ));
     }
 
     fn fixture_public_report(
