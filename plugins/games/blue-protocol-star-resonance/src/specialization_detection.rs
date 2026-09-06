@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 const BUNDLED_SPECIALIZATION_DETECTION: &str =
     include_str!("../game-data/runtime/specialization-detection.v2.json");
-const SPECIALIZATION_DETECTION_GAME_BUILD: &str = "24687926";
+pub const SPECIALIZATION_DETECTION_GAME_BUILD: &str = "24687926";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]

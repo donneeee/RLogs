@@ -6,8 +6,8 @@ use std::{
 
 use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BPSR_PROFILE_ENDPOINT, BPSR_PROFILE_SCHEMA_ID,
-    BPSR_PROFILE_SCHEMA_VERSION, CharacterProfilePatch, merge_profile_patches,
-    website_profile_request,
+    BPSR_PROFILE_SCHEMA_VERSION, CharacterProfilePatch, SPECIALIZATION_DETECTION_GAME_BUILD,
+    merge_profile_patches, resolve_actor_profile_identity, website_profile_request,
 };
 use rlogs_profiles::LocalProfilePackage;
 use rlogs_submission::WebsitePayloadEnvelope;
@@ -272,6 +272,7 @@ impl ProfileRegistry {
             public_site_url: public_site_url.trim_end_matches('/').to_owned(),
         };
         value.backfill_saved_loadout_directory()?;
+        value.repair_current_build_from_saved_loadout()?;
         value.rebuild_catalog()?;
         Ok(value)
     }
@@ -345,6 +346,7 @@ impl ProfileRegistry {
                 })?;
                 loadout_profile = accumulated;
             }
+            resolve_saved_loadout_identity(&mut loadout_profile, &package.source.client_build);
             let modules = loadout_profile.modules.as_ref();
             let mut envelope = package.request.payload.clone();
             envelope.body = website_profile_request(&loadout_profile)
@@ -366,6 +368,7 @@ impl ProfileRegistry {
                     equipped_module_count: modules.map_or(0, |value| value.equipped_slots.len()),
                     envelope,
                 },
+                loadout_profile,
             ))
         } else {
             None
@@ -381,6 +384,9 @@ impl ProfileRegistry {
                 ))
             })?;
             profile = accumulated;
+        }
+        if let Some((_, _, current_loadout)) = &loadout {
+            replace_current_build_fields(&mut profile, current_loadout);
         }
 
         let claim = existing_claim.unwrap_or(ProfileClaim {
@@ -401,7 +407,7 @@ impl ProfileRegistry {
         let mut loadouts = existing_profile
             .as_ref()
             .map_or_else(Vec::new, |existing| existing.loadouts.clone());
-        if let Some((_, loadout)) = &loadout {
+        if let Some((_, loadout, _)) = &loadout {
             loadouts.retain(|summary| summary.project_id != loadout.project_id);
             loadouts.push(loadout.summary());
         }
@@ -469,7 +475,7 @@ impl ProfileRegistry {
             write_json_new(&claim_path, &claim)?;
         }
         write_json_atomic(&package_path, &package)?;
-        if let Some((path, loadout)) = &loadout {
+        if let Some((path, loadout, _)) = &loadout {
             write_json_atomic(path, loadout)?;
         }
         write_json_atomic(&current_path, &published)?;
@@ -1002,7 +1008,12 @@ impl ProfileRegistry {
                 let loadout_directory = directory.join("loadouts");
                 let loadout_path = loadout_directory.join(format!("{project_id}.json"));
                 let loadout = if loadout_path.is_file() {
-                    Some(read_json::<PublicProfileLoadout>(&loadout_path)?)
+                    let mut loadout = read_json::<PublicProfileLoadout>(&loadout_path)?;
+                    if repair_saved_loadout_identity(&mut loadout)? {
+                        write_json_atomic(&loadout_path, &loadout)?;
+                        changed = true;
+                    }
+                    Some(loadout)
                 } else {
                     if public_profile.current_profession_project_id == Some(project_id) {
                         std::fs::create_dir_all(&loadout_directory)?;
@@ -1078,6 +1089,117 @@ impl ProfileRegistry {
                 }
             }
             public.loadouts.sort_by_key(|summary| summary.project_id);
+            if changed {
+                write_json_atomic(&public_path, &public)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Repairs the character-facing current build from its isolated saved-loadout
+    /// snapshot.
+    ///
+    /// Early multi-loadout publishing accumulated sparse profile patches in one
+    /// character-wide body. When a class or specialization changed, an omitted
+    /// current-build field could therefore survive from the previously selected
+    /// loadout. The per-project snapshot is the authoritative boundary for these
+    /// fields, so registry startup can repair existing data without asking the
+    /// player to switch builds or republish it.
+    fn repair_current_build_from_saved_loadout(&self) -> Result<(), ProfileRegistryError> {
+        let mut visited = 0_usize;
+        for entry in std::fs::read_dir(&self.root)? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            visited = visited
+                .checked_add(1)
+                .ok_or(ProfileRegistryError::CatalogTooLarge)?;
+            if visited > MAXIMUM_PROFILE_COUNT {
+                return Err(ProfileRegistryError::CatalogTooLarge);
+            }
+
+            let directory = entry.path();
+            let public_path = directory.join("public.json");
+            if !public_path.is_file() {
+                continue;
+            }
+            let mut public: PublicProfile = read_json(&public_path)?;
+            let mut changed = false;
+            let snapshot_project_ids = public
+                .loadouts
+                .iter()
+                .filter(|summary| summary.snapshot_available)
+                .map(|summary| summary.project_id)
+                .collect::<Vec<_>>();
+            for project_id in snapshot_project_ids {
+                let loadout_path = directory
+                    .join("loadouts")
+                    .join(format!("{project_id}.json"));
+                if !loadout_path.is_file() {
+                    continue;
+                }
+                let mut loadout: PublicProfileLoadout = read_json(&loadout_path)?;
+                if loadout.profile_id != public.profile_id || loadout.project_id != project_id {
+                    continue;
+                }
+                if repair_saved_loadout_identity(&mut loadout)? {
+                    write_json_atomic(&loadout_path, &loadout)?;
+                    changed = true;
+                }
+                if let Some(summary) = public
+                    .loadouts
+                    .iter_mut()
+                    .find(|summary| summary.project_id == project_id)
+                {
+                    let mut repaired_summary = loadout.summary();
+                    repaired_summary
+                        .project_name
+                        .clone_from(&summary.project_name);
+                    repaired_summary.profession_id = summary.profession_id.or(loadout.class_id);
+                    if *summary != repaired_summary {
+                        *summary = repaired_summary;
+                        changed = true;
+                    }
+                }
+            }
+            let current_project_id = public
+                .envelope
+                .body
+                .get("current_profession_project_id")
+                .and_then(serde_json::Value::as_i64)
+                .and_then(|value| i32::try_from(value).ok())
+                .filter(|value| *value > 0);
+            let Some(current_project_id) = current_project_id else {
+                if changed {
+                    write_json_atomic(&public_path, &public)?;
+                }
+                continue;
+            };
+            let loadout_path = directory
+                .join("loadouts")
+                .join(format!("{current_project_id}.json"));
+            if !loadout_path.is_file() {
+                if changed {
+                    write_json_atomic(&public_path, &public)?;
+                }
+                continue;
+            }
+            let loadout: PublicProfileLoadout = read_json(&loadout_path)?;
+            if loadout.profile_id != public.profile_id || loadout.project_id != current_project_id {
+                if changed {
+                    write_json_atomic(&public_path, &public)?;
+                }
+                continue;
+            }
+
+            let before = public.envelope.body.clone();
+            replace_current_build_body_fields(&mut public.envelope.body, &loadout.envelope.body);
+            if public.envelope.body != before {
+                changed = true;
+            }
+            public.module_inventory_count = loadout.module_inventory_count;
+            public.equipped_module_count = loadout.equipped_module_count;
             if changed {
                 write_json_atomic(&public_path, &public)?;
             }
@@ -1167,6 +1289,121 @@ impl ProfileRegistry {
             }
         }
         Ok(best.map(|(_, _, projects)| projects))
+    }
+}
+
+const CURRENT_BUILD_BODY_FIELDS: [&str; 14] = [
+    "class_id",
+    "specialization_id",
+    "combat_power",
+    "combat_power_breakdown",
+    "combat_stats",
+    "season_strength",
+    "equipment",
+    "equipment_suit_entries",
+    "modules",
+    "battle_imagine_skills",
+    "equipped_action_slots",
+    "active_skills",
+    "talents",
+    "talent_progress",
+];
+
+fn replace_current_build_fields(
+    target: &mut CharacterProfilePatch,
+    current: &CharacterProfilePatch,
+) {
+    target.class_id = current.class_id;
+    target.specialization_id = current.specialization_id;
+    target.combat_power = current.combat_power;
+    target.combat_power_breakdown = current.combat_power_breakdown.clone();
+    target.combat_stats = current.combat_stats.clone();
+    target.season_strength = current.season_strength;
+    target.equipment.clone_from(&current.equipment);
+    target
+        .equipment_suit_entries
+        .clone_from(&current.equipment_suit_entries);
+    target.modules.clone_from(&current.modules);
+    target
+        .battle_imagine_skills
+        .clone_from(&current.battle_imagine_skills);
+    target
+        .equipped_action_slots
+        .clone_from(&current.equipped_action_slots);
+    target.active_skills.clone_from(&current.active_skills);
+    target.talents.clone_from(&current.talents);
+    target.talent_progress.clone_from(&current.talent_progress);
+    target.current_profession_project_id = current.current_profession_project_id;
+}
+
+fn source_build_matches_specialization_catalog(source_client_build: &str) -> bool {
+    source_client_build == SPECIALIZATION_DETECTION_GAME_BUILD
+        || source_client_build
+            .rsplit_once('-')
+            .is_some_and(|(_, build)| build == SPECIALIZATION_DETECTION_GAME_BUILD)
+}
+
+fn resolve_saved_loadout_identity(profile: &mut CharacterProfilePatch, source_client_build: &str) {
+    if !source_build_matches_specialization_catalog(source_client_build) {
+        return;
+    }
+    let ability_ids = profile
+        .active_skills
+        .iter()
+        .flatten()
+        .map(|skill| skill.skill_id);
+    let talent_root_ids = profile
+        .talents
+        .iter()
+        .flatten()
+        .map(|talent| talent.talent_id);
+    let Ok(identity) = resolve_actor_profile_identity(
+        profile.class_id,
+        profile.specialization_id,
+        ability_ids,
+        talent_root_ids,
+    ) else {
+        return;
+    };
+    profile.class_id = identity.class_id;
+    profile.specialization_id = identity.specialization_id;
+}
+
+fn repair_saved_loadout_identity(
+    loadout: &mut PublicProfileLoadout,
+) -> Result<bool, ProfileRegistryError> {
+    let mut profile: CharacterProfilePatch = serde_json::from_value(loadout.envelope.body.clone())?;
+    let before = (profile.class_id, profile.specialization_id);
+    resolve_saved_loadout_identity(&mut profile, &loadout.source_client_build);
+    let after = (profile.class_id, profile.specialization_id);
+    if after == before
+        && loadout.class_id == profile.class_id
+        && loadout.specialization_id == profile.specialization_id
+    {
+        return Ok(false);
+    }
+    loadout.class_id = profile.class_id;
+    loadout.specialization_id = profile.specialization_id;
+    loadout.envelope.body = website_profile_request(&profile)
+        .map_err(|error| ProfileRegistryError::InvalidPackage(error.to_string()))?
+        .payload
+        .body;
+    Ok(true)
+}
+
+fn replace_current_build_body_fields(target: &mut serde_json::Value, current: &serde_json::Value) {
+    let (Some(target), Some(current)) = (target.as_object_mut(), current.as_object()) else {
+        return;
+    };
+    for key in CURRENT_BUILD_BODY_FIELDS {
+        if let Some(value) = current.get(key) {
+            target.insert(key.to_owned(), value.clone());
+        } else {
+            target.remove(key);
+        }
+    }
+    if let Some(value) = current.get("current_profession_project_id") {
+        target.insert("current_profession_project_id".into(), value.clone());
     }
 }
 
@@ -1734,7 +1971,7 @@ mod tests {
                 },
             ]);
             profile.class_id = Some(11);
-            profile.specialization_id = Some(2);
+            profile.specialization_id = Some(117);
         });
         let receipt = registry
             .publish(
@@ -1755,7 +1992,7 @@ mod tests {
         let second = mutate_package(package(30, "1000001", 7), |profile| {
             profile.current_profession_project_id = Some(8);
             profile.class_id = Some(4);
-            profile.specialization_id = Some(1);
+            profile.specialization_id = Some(107);
         });
         registry
             .publish(
@@ -1783,19 +2020,218 @@ mod tests {
         let loadout_five = registry.get_loadout(&receipt.profile_id, 5).unwrap();
         let loadout_eight = registry.get_loadout(&receipt.profile_id, 8).unwrap();
         assert_eq!(loadout_five.class_id, Some(11));
-        assert_eq!(loadout_five.specialization_id, Some(2));
+        assert_eq!(loadout_five.specialization_id, Some(117));
         assert_eq!(loadout_five.module_inventory_count, 3);
         assert_eq!(
             loadout_five.envelope.body["current_profession_project_id"],
             5
         );
         assert_eq!(loadout_eight.class_id, Some(4));
-        assert_eq!(loadout_eight.specialization_id, Some(1));
+        assert_eq!(loadout_eight.specialization_id, Some(107));
         assert_eq!(loadout_eight.module_inventory_count, 7);
         assert_eq!(
             loadout_eight.envelope.body["current_profession_project_id"],
             8
         );
+    }
+
+    #[test]
+    fn current_public_build_never_retains_fields_from_another_saved_loadout() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let project_five = mutate_package(package(10, "1000001", 3), |profile| {
+            profile.current_profession_project_id = Some(5);
+            profile.class_id = Some(11);
+            profile.specialization_id = None;
+            profile.combat_power = Some(500);
+            profile.active_skills = Some(vec![
+                rlogs_game_bpsr::SkillLevel {
+                    skill_id: 2_220,
+                    base_skill_id: None,
+                    level: Some(1),
+                    remodel_level: None,
+                    skin_id: None,
+                    replacement_skill_ids: Vec::new(),
+                    unlocked_skin_ids: Vec::new(),
+                },
+                rlogs_game_bpsr::SkillLevel {
+                    skill_id: 2_233,
+                    base_skill_id: None,
+                    level: Some(1),
+                    remodel_level: None,
+                    skin_id: None,
+                    replacement_skill_ids: Vec::new(),
+                    unlocked_skin_ids: Vec::new(),
+                },
+            ]);
+            profile.talents = Some(vec![rlogs_game_bpsr::TalentLevel {
+                talent_id: 1_129,
+                node_id: Some(1_129_002),
+                level: Some(1),
+            }]);
+        });
+        let receipt = registry
+            .publish(
+                project_five,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+        let project_six = mutate_package(package(30, "1000001", 7), |profile| {
+            profile.current_profession_project_id = Some(6);
+            profile.class_id = Some(13);
+            profile.specialization_id = Some(119);
+            profile.combat_power = Some(600);
+            profile.active_skills = Some(vec![rlogs_game_bpsr::SkillLevel {
+                skill_id: 2_306,
+                base_skill_id: None,
+                level: Some(1),
+                remodel_level: None,
+                skin_id: None,
+                replacement_skill_ids: Vec::new(),
+                unlocked_skin_ids: Vec::new(),
+            }]);
+        });
+        registry
+            .publish(
+                project_six,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                40,
+            )
+            .unwrap();
+        let switch_back = mutate_package(package(50, "1000001", 3), |profile| {
+            profile.current_profession_project_id = Some(5);
+            profile.class_id = Some(11);
+            profile.specialization_id = None;
+            profile.combat_power = None;
+            profile.active_skills = None;
+        });
+        registry
+            .publish(
+                switch_back,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                60,
+            )
+            .unwrap();
+
+        let public = registry.get(&receipt.profile_id).unwrap();
+        assert_eq!(public.envelope.body["current_profession_project_id"], 5);
+        assert_eq!(public.envelope.body["class_id"], 11);
+        assert_eq!(public.envelope.body["specialization_id"], 117);
+        assert_eq!(public.envelope.body["combat_power"], 500);
+        assert_eq!(public.envelope.body["active_skills"][0]["skill_id"], 2_220);
+        assert_eq!(public.envelope.body["active_skills"][1]["skill_id"], 2_233);
+        assert_eq!(public.loadouts[0].specialization_id, Some(117));
+        let project_six = registry.get_loadout(&receipt.profile_id, 6).unwrap();
+        assert_eq!(project_six.envelope.body["class_id"], 13);
+        assert_eq!(project_six.envelope.body["specialization_id"], 119);
+        assert_eq!(project_six.envelope.body["combat_power"], 600);
+    }
+
+    #[test]
+    fn current_build_saved_loadout_identity_prefers_selected_talent_root() {
+        let mut profile = validate_bpsr_package(&package(10, "1000001", 3)).unwrap();
+        profile.class_id = Some(11);
+        profile.specialization_id = None;
+        profile.active_skills = Some(vec![
+            rlogs_game_bpsr::SkillLevel {
+                skill_id: 2_220,
+                base_skill_id: None,
+                level: Some(1),
+                remodel_level: None,
+                skin_id: None,
+                replacement_skill_ids: Vec::new(),
+                unlocked_skin_ids: Vec::new(),
+            },
+            rlogs_game_bpsr::SkillLevel {
+                skill_id: 2_233,
+                base_skill_id: None,
+                level: Some(1),
+                remodel_level: None,
+                skin_id: None,
+                replacement_skill_ids: Vec::new(),
+                unlocked_skin_ids: Vec::new(),
+            },
+        ]);
+        profile.talents = Some(vec![rlogs_game_bpsr::TalentLevel {
+            talent_id: 1_129,
+            node_id: Some(1_129_002),
+            level: Some(1),
+        }]);
+
+        resolve_saved_loadout_identity(&mut profile, SPECIALIZATION_DETECTION_GAME_BUILD);
+
+        assert_eq!(
+            (profile.class_id, profile.specialization_id),
+            (Some(11), Some(117))
+        );
+    }
+
+    #[test]
+    fn registry_startup_repairs_legacy_cross_loadout_current_build_bleed() {
+        let root = tempfile::tempdir().unwrap();
+        let registry =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let package = mutate_package(package(10, "1000001", 3), |profile| {
+            profile.current_profession_project_id = Some(5);
+            profile.class_id = Some(11);
+            profile.specialization_id = None;
+            profile.combat_power = Some(500);
+            profile.active_skills = Some(vec![
+                rlogs_game_bpsr::SkillLevel {
+                    skill_id: 2_220,
+                    base_skill_id: None,
+                    level: Some(1),
+                    remodel_level: None,
+                    skin_id: None,
+                    replacement_skill_ids: Vec::new(),
+                    unlocked_skin_ids: Vec::new(),
+                },
+                rlogs_game_bpsr::SkillLevel {
+                    skill_id: 2_233,
+                    base_skill_id: None,
+                    level: Some(1),
+                    remodel_level: None,
+                    skin_id: None,
+                    replacement_skill_ids: Vec::new(),
+                    unlocked_skin_ids: Vec::new(),
+                },
+            ]);
+            profile.talents = Some(vec![rlogs_game_bpsr::TalentLevel {
+                talent_id: 1_129,
+                node_id: Some(1_129_002),
+                level: Some(1),
+            }]);
+        });
+        let receipt = registry
+            .publish(
+                package,
+                Some("user-one"),
+                Some(TEST_DEVICE_ID),
+                TEST_DEVICE_TOKEN,
+                20,
+            )
+            .unwrap();
+        let public_path = root.path().join(&receipt.profile_id).join("public.json");
+        let mut contaminated = registry.get(&receipt.profile_id).unwrap();
+        contaminated.envelope.body["specialization_id"] = serde_json::json!(119);
+        contaminated.envelope.body["combat_power"] = serde_json::json!(600);
+        write_json_atomic(&public_path, &contaminated).unwrap();
+        drop(registry);
+
+        let reopened =
+            ProfileRegistry::open(root.path().into(), "https://site.test".into()).unwrap();
+        let repaired = reopened.get(&receipt.profile_id).unwrap();
+        assert_eq!(repaired.envelope.body["specialization_id"], 117);
+        assert_eq!(repaired.envelope.body["combat_power"], 500);
+        assert_eq!(repaired.envelope.body["current_profession_project_id"], 5);
     }
 
     #[test]
@@ -1866,7 +2302,7 @@ mod tests {
                 },
             ]);
             profile.class_id = Some(11);
-            profile.specialization_id = Some(2);
+            profile.specialization_id = Some(117);
         });
         let receipt = registry
             .publish(
@@ -1901,7 +2337,7 @@ mod tests {
         );
         let active = reopened.get_loadout(&receipt.profile_id, 5).unwrap();
         assert_eq!(active.class_id, Some(11));
-        assert_eq!(active.specialization_id, Some(2));
+        assert_eq!(active.specialization_id, Some(117));
         assert_eq!(active.module_inventory_count, 3);
         assert_eq!(active.envelope.body["current_profession_project_id"], 5);
         drop(reopened);
@@ -1931,7 +2367,7 @@ mod tests {
                 },
             ]);
             profile.class_id = Some(11);
-            profile.specialization_id = Some(2);
+            profile.specialization_id = Some(117);
         });
         let legacy = registry
             .publish(
@@ -1951,7 +2387,7 @@ mod tests {
         let canonical_package = mutate_package(package(30, "1000001", 7), |profile| {
             profile.current_profession_project_id = Some(5);
             profile.class_id = Some(11);
-            profile.specialization_id = Some(2);
+            profile.specialization_id = Some(117);
         });
         let mut canonical_public = registry.get(&legacy.profile_id).unwrap();
         canonical_public.profile_id.clone_from(&canonical_id);

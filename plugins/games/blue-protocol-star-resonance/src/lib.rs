@@ -76,7 +76,7 @@ pub use action_correlation::{
 };
 pub use actor_presentation::{
     ActorCombatIdentity, ActorCombatPresentation, resolve_actor_combat_identity,
-    resolve_actor_combat_presentation,
+    resolve_actor_combat_presentation, resolve_actor_profile_identity,
 };
 pub use auxiliary_action_presentation::{
     AuxiliaryActionPresentation, auxiliary_action_presentation, localized_auxiliary_action_name,
@@ -272,8 +272,8 @@ pub use skill_speed::{
     singing_stage_speed, skill_stage_speed,
 };
 pub use specialization_detection::{
-    specialization_from_observed_abilities, specialization_identity_from_observed_abilities,
-    specialization_talent_node_ids,
+    SPECIALIZATION_DETECTION_GAME_BUILD, specialization_from_observed_abilities,
+    specialization_identity_from_observed_abilities, specialization_talent_node_ids,
 };
 pub use state_formula::{
     AdditiveFixedPointPairCandidate, BPSR_FIXED_POINT_SCALE, CriticalDamageFactorInterpretation,

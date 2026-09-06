@@ -5,7 +5,8 @@ use crate::class_localization::{
     specialization_accent, specialization_class_id, specialization_icon_path, specialization_role,
 };
 use crate::specialization_detection::{
-    specialization_from_observed_abilities, specialization_identity_from_observed_abilities,
+    specialization_from_evidence, specialization_from_observed_abilities,
+    specialization_identity_from_observed_abilities,
 };
 
 /// One game-owned identity decision shared by History, the live overlay, and
@@ -74,6 +75,35 @@ pub fn resolve_actor_combat_identity(
         class_id,
         specialization_id,
     })
+}
+
+/// Resolves a profile/loadout identity from its exact saved-build evidence.
+///
+/// Character containers can retain unlocked skills from both specializations,
+/// while the selected talent root remains unambiguous. Profile consumers must
+/// therefore prefer that root and use the combat-only resolver only when no
+/// selected talent evidence is present.
+pub fn resolve_actor_profile_identity(
+    class_id: Option<i32>,
+    specialization_id: Option<i32>,
+    ability_ids: impl IntoIterator<Item = i64>,
+    talent_root_ids: impl IntoIterator<Item = i64>,
+) -> Result<ActorCombatIdentity, String> {
+    let ability_ids = ability_ids.into_iter().collect::<BTreeSet<_>>();
+    let talent_root_ids = talent_root_ids.into_iter().collect::<BTreeSet<_>>();
+    if let Some(class_id) = class_id
+        && let Some(specialization_id) = specialization_from_evidence(
+            class_id,
+            ability_ids.iter().copied(),
+            talent_root_ids.iter().copied(),
+        )?
+    {
+        return Ok(ActorCombatIdentity {
+            class_id: Some(class_id),
+            specialization_id: Some(specialization_id),
+        });
+    }
+    resolve_actor_combat_identity(class_id, specialization_id, ability_ids)
 }
 
 pub fn resolve_actor_combat_presentation(
@@ -157,5 +187,15 @@ mod tests {
         let identity = resolve_actor_combat_identity(Some(11), Some(119), []).unwrap();
         assert_eq!(identity.class_id, Some(11));
         assert_eq!(identity.specialization_id, None);
+    }
+
+    #[test]
+    fn selected_profile_talent_root_outranks_retained_cross_spec_skills() {
+        let identity =
+            resolve_actor_profile_identity(Some(11), None, [2_220, 2_233, 2_234], [1_129]).unwrap();
+        assert_eq!(
+            (identity.class_id, identity.specialization_id),
+            (Some(11), Some(117))
+        );
     }
 }

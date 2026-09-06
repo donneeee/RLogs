@@ -1126,6 +1126,7 @@ fn compact_live_overlay_run_projection(run: &CombatRunHistory) -> serde_json::Va
                     .and_then(serde_json::Value::as_array_mut)
                 {
                     for ability in abilities {
+                        enrich_bpsr_live_ability_presentation(ability);
                         retain_json_object_keys(
                             ability,
                             &[
@@ -1242,10 +1243,13 @@ fn compact_live_overlay_snapshot(snapshot: &CombatTimelineSnapshot) -> serde_jso
                 .and_then(serde_json::Value::as_array_mut)
             {
                 for ability in abilities {
+                    enrich_bpsr_live_ability_presentation(ability);
                     retain_json_object_keys(
                         ability,
                         &[
                             "ability_id",
+                            "presentation_name",
+                            "icon_asset_path",
                             "casts",
                             "hits",
                             "critical_hits",
@@ -1272,6 +1276,35 @@ fn compact_live_overlay_snapshot(snapshot: &CombatTimelineSnapshot) -> serde_jso
         }
     }
     value
+}
+
+/// Applies the same exact-build action presentation used by Combat History to
+/// the compact live-overlay payload. Live timeline summaries intentionally do
+/// not own localized strings, so presentation belongs at this desktop API
+/// boundary rather than in the reducer or in each browser consumer.
+fn enrich_bpsr_live_ability_presentation(ability: &mut serde_json::Value) {
+    let Some(object) = ability.as_object_mut() else {
+        return;
+    };
+    let Some(ability_id) = object
+        .get("ability_id")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| value.parse::<i64>().ok())
+    else {
+        return;
+    };
+    let Ok(Some(presentation)) = combat_action_presentation(ability_id) else {
+        return;
+    };
+    if let Ok(Some(name)) = localized_combat_action_name(ability_id, "en-US") {
+        object.insert("presentation_name".into(), name.into());
+    }
+    if let Some(icon) = presentation.icon.as_deref() {
+        object.insert(
+            "icon_asset_path".into(),
+            format!("/game-assets/blue-protocol-star-resonance/shared/{icon}").into(),
+        );
+    }
 }
 
 fn present_live_combat_update(update: LiveCombatUpdate) -> PresentedLiveCombatUpdate {
@@ -14976,6 +15009,47 @@ mod tests {
                 ),
             }]
         );
+    }
+
+    #[test]
+    fn live_overlay_ability_rows_share_exact_build_action_presentation() {
+        // Representative packet-observed actions from different class/spec
+        // families. The game catalog owns their actual names; this regression
+        // verifies the live boundary retains those names and icons rather than
+        // making every overlay row fall through to its generic label.
+        for ability_id in [1_502_i64, 1_903, 2_233, 2_302, 3_524, 2_203_521] {
+            let mut ability = serde_json::json!({
+                "ability_id": ability_id.to_string(),
+                "hits": 1,
+                "reported_damage": 100
+            });
+
+            enrich_bpsr_live_ability_presentation(&mut ability);
+
+            assert!(
+                ability["presentation_name"]
+                    .as_str()
+                    .is_some_and(|name| !name.trim().is_empty()),
+                "live action {ability_id} lost its localized name"
+            );
+            if combat_action_presentation(ability_id)
+                .unwrap()
+                .and_then(|presentation| presentation.icon.as_ref())
+                .is_some()
+            {
+                assert!(
+                    ability["icon_asset_path"]
+                        .as_str()
+                        .is_some_and(|path| path.ends_with(".png")),
+                    "live action {ability_id} lost its available game icon"
+                );
+            }
+        }
+
+        let mut unknown = serde_json::json!({ "ability_id": "999999999" });
+        enrich_bpsr_live_ability_presentation(&mut unknown);
+        assert!(unknown.get("presentation_name").is_none());
+        assert!(unknown.get("icon_asset_path").is_none());
     }
 
     #[test]
