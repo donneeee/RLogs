@@ -11,6 +11,8 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   let update: MechanicsMapUpdate | null = null;
   let rotateWithPlayer = true;
   let showMonsters = true;
+  let mapAssetUrl: string | null = null;
+  let mapAssetState: "none" | "loading" | "ready" | "missing" = "none";
 
   const root = el("div", "plugin-surface overlay-workspace-surface mechanics-map-surface");
   const header = el("section", "content-card overlay-workspace-intro");
@@ -78,7 +80,9 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     mapMeta.textContent = [snapshot.map_id === null ? null : `Map ${snapshot.map_id}`, snapshot.encounter_pack ?? "No reviewed encounter pack", sceneMap ? "Game scene map" : `${snapshot.world_radius}u radius`].filter(Boolean).join(" · ");
     radar.dataset.model = snapshot.map_model;
     rotate.hidden = sceneMap;
-    radar.style.setProperty("--mechanics-map-background", snapshot.background_asset_url === null ? "none" : `url(${JSON.stringify(snapshot.background_asset_url)})`);
+    prepareMapAsset(snapshot.background_asset_url);
+    radar.dataset.assetState = mapAssetState;
+    radar.style.setProperty("--mechanics-map-background", mapAssetState === "ready" && mapAssetUrl !== null ? `url(${JSON.stringify(mapAssetUrl)})` : "none");
     points.replaceChildren();
     for (const entity of projected) {
       const point = el("span", "mechanics-map-point");
@@ -87,10 +91,11 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
       point.dataset.dead = String(entity.dead);
       point.dataset.stale = String(entity.stale);
       point.dataset.mechanic = String(mechanic !== undefined);
+      if (entity.mechanic_role !== null) point.dataset.mechanicRole = entity.mechanic_role;
       point.style.left = `${entity.mapX}%`;
       point.style.top = `${entity.mapY}%`;
       if (mechanic !== undefined) point.style.setProperty("--point-color", mechanicColor(mechanic.effect_id));
-      point.title = entity.display_name ?? (entity.monster_id === null ? entity.kind : `${entity.kind} ${entity.monster_id}`);
+      point.title = entity.display_name ?? mechanicRoleLabel(entity.mechanic_role) ?? (entity.monster_id === null ? entity.kind : `${entity.kind} ${entity.monster_id}`);
       if (entity.facing_radians !== null) point.style.setProperty("--facing", `${entity.facing_radians}rad`);
       points.append(point);
     }
@@ -107,19 +112,42 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     empty.hidden = snapshot.local_position_observed;
     signals.replaceChildren();
     if (snapshot.data_gap !== null) signals.append(notice("Data gap", snapshot.data_gap, "error"));
+    if (sceneMap && mapAssetState === "missing") signals.append(notice("Game map asset", "The exact local texture has not been compiled for this build. Packet positions remain available on the coordinate canvas.", "waiting"));
     if (!snapshot.encounter_pack_reviewed) signals.append(notice("Encounter pack", "No reviewed pack matches this exact scene. Positions remain exact; guidance stays disabled.", "waiting"));
     else signals.append(notice(snapshot.encounter_pack ?? "Encounter pack", "Current-build effect identities are enabled. No safe-area geometry is inferred.", "live"));
     for (const signal of snapshot.mechanics) {
       const target = snapshot.entities.find((entity) => entity.actor_id === signal.target_actor_id);
       const row = el("article", "mechanics-signal-row");
-      const identity = signal.presentation_name ?? (signal.effect_id < 0 ? `Cast ${-signal.effect_id}` : `Effect ${signal.effect_id}`);
+      const identity = mechanicKindLabel(signal.mechanic_kind) ?? signal.presentation_name ?? (signal.effect_id < 0 ? `Cast ${-signal.effect_id}` : `Effect ${signal.effect_id}`);
       row.append(text("strong", identity), text("span", `${target?.display_name ?? `Actor ${signal.target_actor_id}`}${signal.stacks === null ? "" : ` · ${signal.stacks} stacks`}${signal.duration_millis === null ? "" : ` · ${(signal.duration_millis / 1000).toFixed(1)}s`}`));
       signals.append(row);
     }
     if (snapshot.mechanics.length === 0 && snapshot.data_gap === null) signals.append(text("p", "No active reviewed mechanic effects or targeted casts.", "runtime-empty-result"));
   }
 
-  return { dispose() { alive = false; root.remove(); } };
+  function prepareMapAsset(url: string | null): void {
+    if (url === mapAssetUrl) return;
+    mapAssetUrl = url;
+    if (url === null) {
+      mapAssetState = "none";
+      return;
+    }
+    mapAssetState = "loading";
+    const image = new Image();
+    image.onload = () => {
+      if (!alive || mapAssetUrl !== url) return;
+      mapAssetState = "ready";
+      render();
+    };
+    image.onerror = () => {
+      if (!alive || mapAssetUrl !== url) return;
+      mapAssetState = "missing";
+      render();
+    };
+    image.src = url;
+  }
+
+  return { dispose() { alive = false; mapAssetUrl = null; root.remove(); } };
 }
 
 function notice(title: string, detail: string, state: string): HTMLElement { const item = el("article", "mechanics-signal-row"); item.dataset.state = state; item.append(text("strong", title), text("span", detail)); return item; }
@@ -129,6 +157,21 @@ function mechanicColor(effectId: number): string {
     884162: "#5fa8ff", 884163: "#f2c36b", 884168: "#ff6f83", 884169: "#80e09b", 884170: "#ff9d5c",
   };
   return colors[Math.abs(effectId)] ?? "#ff6f83";
+}
+function mechanicRoleLabel(role: MechanicsMapUpdate["snapshot"]["entities"][number]["mechanic_role"]): string | null {
+  const labels = { boss: "Cursed Tomb boss", tower: "Mechanic tower", left_clone: "Left-charge clone", right_clone: "Right-charge clone" } as const;
+  return role === null ? null : labels[role];
+}
+function mechanicKindLabel(kind: string | null): string | null {
+  if (kind === null) return null;
+  const labels: Record<string, string> = {
+    tower_activating: "Tower activating", tower_blue_complete: "Blue tower complete", tower_gold_complete: "Gold tower complete",
+    energy_pillar: "Energy pillar", energy_pillar_short: "Short energy pillar",
+    charge_target_left: "Left-side charge target", charge_target_right: "Right-side charge target", charge_target_random: "Random charge target",
+    puzzle_piece_one: "Puzzle piece 1", puzzle_piece_two: "Puzzle piece 2",
+    clone_charge_left: "Left clone charge", clone_charge_right: "Right clone charge",
+  };
+  return labels[kind] ?? null;
 }
 function check(label: string, checked: boolean, changed: (checked: boolean) => void): HTMLLabelElement { const wrapper = el("label", "mechanics-map-check") as HTMLLabelElement; const input = document.createElement("input"); input.type = "checkbox"; input.checked = checked; input.addEventListener("change", () => changed(input.checked)); wrapper.append(input, document.createTextNode(label)); return wrapper; }
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] { const value = document.createElement(tag); if (className !== undefined) value.className = className; return value; }

@@ -11,8 +11,8 @@ function snapshot(): MechanicsMapSnapshot {
     encounter_pack_reviewed: true, mechanics: [], markers: [], data_gap: null,
     last_event_sequence: 4, last_observed_micros: 4_000,
     entities: [
-      { actor_id: 1, entity_uuid: 1, kind: "local", display_name: "Me", monster_id: null, x: 10, y: 0, z: 10, facing_radians: 0, dead: false, stale: false, last_observed_micros: 4_000 },
-      { actor_id: 2, entity_uuid: 2, kind: "boss", display_name: "Boss", monster_id: 4701, x: 150, y: 0, z: 10, facing_radians: null, dead: false, stale: false, last_observed_micros: 4_000 },
+      { actor_id: 1, entity_uuid: 1, kind: "local", display_name: "Me", monster_id: null, mechanic_role: null, x: 10, y: 0, z: 10, facing_radians: 0, dead: false, stale: false, last_observed_micros: 4_000 },
+      { actor_id: 2, entity_uuid: 2, kind: "boss", display_name: "Boss", monster_id: 4701, mechanic_role: "boss", x: 150, y: 0, z: 10, facing_radians: null, dead: false, stale: false, last_observed_micros: 4_000 },
     ],
   };
 }

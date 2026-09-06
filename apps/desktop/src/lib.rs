@@ -157,9 +157,9 @@ const FUTURE_OVERLAY_PLUGIN_ID: &str = "app.rlogs.overlay";
 const CUSTOM_TRIGGERS_PLUGIN_ID: &str = "app.rlogs.custom-triggers";
 /// Bundled features that are not production-ready yet.
 ///
-/// Removing an ID from this single registry promotes that feature back into
-/// the ordinary catalog. Do not add checks for individual unfinished features
-/// elsewhere; the registry must remain the auditable release boundary.
+/// Removing an ID from this registry promotes a wholly unfinished plug-in back
+/// into the ordinary catalog. Mixed plug-ins declare unfinished tabs with the
+/// manifest's `developer_only` field so the release boundary stays auditable.
 const DEVELOPER_ONLY_PLUGIN_IDS: [&str; 3] = [
     SESSION_RECORDER_PLUGIN_ID,
     FUTURE_OVERLAY_PLUGIN_ID,
@@ -4768,6 +4768,32 @@ impl DesktopPluginManager {
                 } else {
                     "Installed"
                 };
+                let tabs = workspace
+                    .tabs
+                    .into_iter()
+                    .filter(|tab| developer_mode || !tab.developer_only)
+                    .map(|tab| PluginWorkspaceTabView {
+                        entrypoint: format!(
+                            "{}://{}/{}",
+                            if self.bundled_plugin_ids.contains(&tab.contributor_plugin_id) {
+                                "builtin"
+                            } else {
+                                "installed"
+                            },
+                            tab.contributor_plugin_id,
+                            tab.local_id
+                        ),
+                        id: tab.id,
+                        label: tab.label,
+                        kind: tab.kind,
+                        section_id: tab.section_id,
+                        default_order: tab.default_order,
+                        contributor_plugin_id: tab.contributor_plugin_id,
+                    })
+                    .collect::<Vec<_>>();
+                if tabs.is_empty() {
+                    return None;
+                }
                 Some(PluginWorkspaceView {
                     id: workspace.owner_plugin_id,
                     name: workspace.name,
@@ -4779,34 +4805,14 @@ impl DesktopPluginManager {
                     icon_url: None,
                     icon_fallback: icon_fallback(&manifest.name),
                     default_order: workspace.default_order,
-                    tabs: workspace
-                        .tabs
-                        .into_iter()
-                        .map(|tab| PluginWorkspaceTabView {
-                            entrypoint: format!(
-                                "{}://{}/{}",
-                                if self.bundled_plugin_ids.contains(&tab.contributor_plugin_id) {
-                                    "builtin"
-                                } else {
-                                    "installed"
-                                },
-                                tab.contributor_plugin_id,
-                                tab.local_id
-                            ),
-                            id: tab.id,
-                            label: tab.label,
-                            kind: tab.kind,
-                            section_id: tab.section_id,
-                            default_order: tab.default_order,
-                            contributor_plugin_id: tab.contributor_plugin_id,
-                        })
-                        .collect(),
+                    tabs,
                 })
             })
             .collect();
         let settings_tabs = resolution
             .settings_tabs
             .into_iter()
+            .filter(|tab| developer_mode || !tab.developer_only)
             .map(|tab| PluginSettingsTabView {
                 entrypoint: format!(
                     "{}://{}/{}",
@@ -4883,6 +4889,7 @@ impl DesktopPluginManager {
         &self,
         plugin_id: &str,
         surface_id: &str,
+        developer_mode: bool,
     ) -> Result<PathBuf, String> {
         let resolution = resolve_active_plugins(&self.report.packages, &self.enabled_plugin_ids);
         if !resolution.active_plugin_ids.contains(plugin_id) {
@@ -4895,27 +4902,30 @@ impl DesktopPluginManager {
             .find(|package| package.manifest().id == plugin_id)
             .ok_or_else(|| format!("plug-in {plugin_id} was not found"))?;
         let manifest = package.manifest();
-        let relative = manifest
+        let (relative, developer_only) = manifest
             .workspace
             .iter()
             .flat_map(|workspace| workspace.tabs.iter())
             .find(|tab| tab.id == surface_id)
-            .map(|tab| tab.entrypoint.as_str())
+            .map(|tab| (tab.entrypoint.as_str(), tab.developer_only))
             .or_else(|| {
                 manifest
                     .workspace_tab_contributions
                     .iter()
                     .find(|tab| tab.id == surface_id)
-                    .map(|tab| tab.entrypoint.as_str())
+                    .map(|tab| (tab.entrypoint.as_str(), tab.developer_only))
             })
             .or_else(|| {
                 manifest
                     .settings_tab_contributions
                     .iter()
                     .find(|tab| tab.id == surface_id)
-                    .map(|tab| tab.entrypoint.as_str())
+                    .map(|tab| (tab.entrypoint.as_str(), tab.developer_only))
             })
             .ok_or_else(|| format!("plug-in {plugin_id} did not publish surface {surface_id}"))?;
+        if developer_only && !developer_mode {
+            return Err("Developer mode is required for this unfinished surface.".into());
+        }
         let path = std::fs::canonicalize(package.root().join(relative))
             .map_err(|error| format!("could not resolve plug-in surface: {error}"))?;
         if !path.starts_with(package.root()) || !path.is_file() {
@@ -7022,13 +7032,14 @@ impl RuntimeController {
         plugin_id: &str,
         surface_id: &str,
     ) -> Result<PathBuf, String> {
-        if is_developer_only_plugin(plugin_id) && !self.developer_mode_enabled() {
+        let developer_mode = self.developer_mode_enabled();
+        if is_developer_only_plugin(plugin_id) && !developer_mode {
             return Err("Developer mode is required for this unfinished plug-in.".into());
         }
         self.plugins
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .active_surface_entrypoint(plugin_id, surface_id)
+            .active_surface_entrypoint(plugin_id, surface_id, developer_mode)
     }
 
     fn event_viewer_page(
@@ -16886,6 +16897,61 @@ kind = "content"
             );
         }
 
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn developer_only_tabs_are_hidden_and_reject_direct_surface_requests() {
+        let root = temporary_root();
+        write_workspace_plugin(&root, "mixed-surfaces", "dev.rlogs.mixed-surfaces", None);
+        let package = root.join("plugins/installed/mixed-surfaces");
+        std::fs::write(package.join("web/developer.html"), "<p>developer</p>").unwrap();
+        let manifest_path = package.join("plugin.toml");
+        let mut manifest = std::fs::read_to_string(&manifest_path).unwrap();
+        manifest.push_str(
+            r#"
+
+[[workspace.tabs]]
+id = "developer"
+label = "Developer"
+entrypoint = "web/developer.html"
+developer_only = true
+"#,
+        );
+        std::fs::write(&manifest_path, manifest).unwrap();
+        let mut manager = DesktopPluginManager::new_with_developer_tools(&root, false).unwrap();
+        manager
+            .set_enabled("dev.rlogs.mixed-surfaces", true)
+            .unwrap();
+
+        assert!(
+            manager
+                .active_surface_entrypoint("dev.rlogs.mixed-surfaces", "developer", false)
+                .is_err()
+        );
+        assert!(
+            manager
+                .active_surface_entrypoint("dev.rlogs.mixed-surfaces", "developer", true)
+                .unwrap()
+                .ends_with("developer.html")
+        );
+        let ordinary = manager.snapshot(false);
+        let ordinary_workspace = ordinary
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.id == "dev.rlogs.mixed-surfaces")
+            .unwrap();
+        assert_eq!(ordinary_workspace.tabs.len(), 1);
+        assert_eq!(ordinary_workspace.tabs[0].label, "Main");
+        let developer = manager.snapshot(true);
+        let developer_workspace = developer
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.id == "dev.rlogs.mixed-surfaces")
+            .unwrap();
+        assert_eq!(developer_workspace.tabs.len(), 2);
+
+        drop(manager);
         std::fs::remove_dir_all(root).unwrap();
     }
 

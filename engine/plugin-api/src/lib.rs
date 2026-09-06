@@ -69,6 +69,11 @@ pub struct PluginWorkspaceTab {
     /// moved as one block. Omitted tabs belong to the owner's `main` section.
     #[serde(default)]
     pub section: Option<String>,
+    /// Keeps an unfinished surface out of the ordinary catalog. The desktop
+    /// host must also reject direct surface requests unless Developer Mode is
+    /// enabled.
+    #[serde(default)]
+    pub developer_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,6 +103,8 @@ pub struct PluginWorkspaceTabContribution {
     /// default to that plug-in's `main` section.
     #[serde(default)]
     pub section: Option<String>,
+    #[serde(default)]
+    pub developer_only: bool,
     /// Owner tabs occupy their declared order starting at zero. Contributions
     /// default after them but can request a deliberate relative position.
     #[serde(default = "default_workspace_tab_contribution_order")]
@@ -115,6 +122,8 @@ pub struct PluginSettingsTabContribution {
     /// Stable section slug within the contributing plug-in.
     #[serde(default)]
     pub section: Option<String>,
+    #[serde(default)]
+    pub developer_only: bool,
     /// Settings is the only host-owned UI target. Plug-ins choose their own
     /// placement within it instead of being named by Core.
     #[serde(default = "default_workspace_tab_contribution_order")]
@@ -952,6 +961,7 @@ resource = "aliases"
                     entrypoint: "ui/profile.html".into(),
                     kind: PluginWorkspaceTabKind::Content,
                     section: None,
+                    developer_only: false,
                 },
                 PluginWorkspaceTab {
                     id: "options".into(),
@@ -959,6 +969,7 @@ resource = "aliases"
                     entrypoint: "ui/options.html".into(),
                     kind: PluginWorkspaceTabKind::Options,
                     section: None,
+                    developer_only: false,
                 },
             ],
         });
@@ -978,6 +989,7 @@ resource = "aliases"
                 entrypoint: "web/live.html".into(),
                 kind: PluginWorkspaceTabKind::Content,
                 section: None,
+                developer_only: false,
             }],
         });
 
@@ -1003,6 +1015,7 @@ resource = "aliases"
                     entrypoint: "web/live.html".into(),
                     kind: PluginWorkspaceTabKind::Content,
                     section: None,
+                    developer_only: false,
                 },
                 PluginWorkspaceTab {
                     id: "live".into(),
@@ -1010,6 +1023,7 @@ resource = "aliases"
                     entrypoint: "../options.html".into(),
                     kind: PluginWorkspaceTabKind::Options,
                     section: None,
+                    developer_only: false,
                 },
             ],
         });
@@ -1049,6 +1063,7 @@ resource = "aliases"
                 entrypoint: "ui/profile-modules.html".into(),
                 kind: PluginWorkspaceTabKind::Content,
                 section: None,
+                developer_only: false,
                 default_order: 200,
             });
 
@@ -1070,6 +1085,7 @@ resource = "aliases"
                 entrypoint: "web/extra.html".into(),
                 kind: PluginWorkspaceTabKind::Content,
                 section: None,
+                developer_only: false,
                 default_order: 1_000,
             });
 
@@ -1095,6 +1111,7 @@ resource = "aliases"
                 label: "Appearance".into(),
                 entrypoint: "ui/settings.html".into(),
                 section: Some("theme".into()),
+                developer_only: false,
                 default_order: 200,
             });
 

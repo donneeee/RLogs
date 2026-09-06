@@ -54,6 +54,14 @@ id = "options"
 label = "Options"
 entrypoint = "ui/options.html"
 kind = "options"
+
+[[workspace.tabs]]
+id = "preview"
+label = "Preview"
+entrypoint = "ui/preview.html"
+# Optional per-tab release gate. The host omits this tab and rejects direct
+# surface requests until Developer Mode is enabled. Remove it when finished.
+developer_only = true
 ```
 
 The host validates every icon and tab entrypoint as a package-relative path.

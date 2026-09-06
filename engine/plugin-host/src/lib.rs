@@ -60,6 +60,7 @@ pub struct ResolvedWorkspaceTab {
     pub section_id: String,
     pub entrypoint: PathBuf,
     pub default_order: i32,
+    pub developer_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,6 +82,7 @@ pub struct ResolvedSettingsTab {
     pub section_id: String,
     pub entrypoint: PathBuf,
     pub default_order: i32,
+    pub developer_only: bool,
 }
 
 #[derive(Debug)]
@@ -379,6 +381,7 @@ pub fn resolve_plugin_workspaces(
                 section_id: namespaced_section_id(&package.manifest.id, tab.section.as_deref()),
                 entrypoint: package.root.join(&tab.entrypoint),
                 default_order: i32::try_from(index).unwrap_or(i32::MAX),
+                developer_only: tab.developer_only,
             })
             .collect();
         workspaces.insert(
@@ -427,6 +430,7 @@ pub fn resolve_plugin_workspaces(
                 ),
                 entrypoint: package.root.join(&contribution.entrypoint),
                 default_order: contribution.default_order,
+                developer_only: contribution.developer_only,
             });
         }
     }
@@ -471,6 +475,7 @@ pub fn resolve_plugin_settings_tabs(packages: &[PluginPackage]) -> Vec<ResolvedS
                     ),
                     entrypoint: package.root.join(&contribution.entrypoint),
                     default_order: contribution.default_order,
+                    developer_only: contribution.developer_only,
                 })
         })
         .collect::<Vec<_>>();

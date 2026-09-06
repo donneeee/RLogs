@@ -119,6 +119,15 @@ stale. Encounter signals are limited to exact numeric identities selected by a
 matching reviewed scene pack. A matching pack never implies safe-area geometry
 unless that geometry receives its own current-build evidence.
 
+The Cursed Tomb pack also classifies the packet-observed boss, towers, and
+left/right clones and presents reviewed tower activation/completion, energy
+pillar, charge-target, puzzle-piece, and clone-charge signals. These identities
+remain scoped to scenes `6513`-`6515` on `global/steam-24687926`; a different
+scene or build gets no inferred mechanic role. Mechanics Map remains a
+`developer_only` workspace tab until the local game-asset compiler and live
+replay coverage are ready for ordinary installs. Removing that one manifest
+field is the explicit graduation step.
+
 The official map-paper fallback can be compiled locally from an installed game
 without committing or uploading it:
 

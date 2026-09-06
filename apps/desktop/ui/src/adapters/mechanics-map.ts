@@ -4,6 +4,7 @@ export interface MechanicsMapEntity {
   kind: "local" | "party" | "boss" | "player" | "monster" | "pet" | "npc" | "object";
   display_name: string | null;
   monster_id: number | null;
+  mechanic_role: "boss" | "tower" | "left_clone" | "right_clone" | null;
   x: number;
   y: number;
   z: number;
@@ -15,6 +16,7 @@ export interface MechanicsMapEntity {
 
 export interface MechanicsMapSignal {
   effect_id: number;
+  mechanic_kind: string | null;
   presentation_name: string | null;
   instance_id: number | null;
   target_actor_id: number;
@@ -136,13 +138,15 @@ function snapshot(value: unknown): value is MechanicsMapSnapshot {
 function entity(value: unknown): boolean {
   return record(value) && nonnegativeInteger(value.actor_id) && Number.isSafeInteger(value.entity_uuid) &&
     ["local", "party", "boss", "player", "monster", "pet", "npc", "object"].includes(String(value.kind)) &&
-    nullableString(value.display_name) && nullableInteger(value.monster_id) && finite(value.x) && finite(value.y) && finite(value.z) &&
+    nullableString(value.display_name) && nullableInteger(value.monster_id) &&
+    (value.mechanic_role === null || ["boss", "tower", "left_clone", "right_clone"].includes(String(value.mechanic_role))) &&
+    finite(value.x) && finite(value.y) && finite(value.z) &&
     (value.facing_radians === null || finite(value.facing_radians)) && typeof value.dead === "boolean" &&
     typeof value.stale === "boolean" && nonnegativeInteger(value.last_observed_micros);
 }
 
 function signal(value: unknown): boolean {
-  return record(value) && Number.isSafeInteger(value.effect_id) && nullableString(value.presentation_name) && nullableInteger(value.instance_id) &&
+  return record(value) && Number.isSafeInteger(value.effect_id) && nullableString(value.mechanic_kind) && nullableString(value.presentation_name) && nullableInteger(value.instance_id) &&
     nonnegativeInteger(value.target_actor_id) && nullableInteger(value.source_actor_id) && nullableInteger(value.stacks) &&
     nullableInteger(value.duration_millis) && nonnegativeInteger(value.applied_at_micros);
 }

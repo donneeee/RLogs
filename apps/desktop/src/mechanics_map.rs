@@ -83,6 +83,7 @@ pub struct MechanicsMapEntity {
     pub kind: &'static str,
     pub display_name: Option<String>,
     pub monster_id: Option<i64>,
+    pub mechanic_role: Option<&'static str>,
     pub x: f32,
     pub y: f32,
     pub z: f32,
@@ -95,6 +96,7 @@ pub struct MechanicsMapEntity {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MechanicsMapSignal {
     pub effect_id: i64,
+    pub mechanic_kind: Option<&'static str>,
     pub presentation_name: Option<String>,
     pub instance_id: Option<i64>,
     pub target_actor_id: u64,
@@ -479,6 +481,11 @@ impl MechanicsMapProjector {
                     kind: self.entity_kind(entity, local_actor_id),
                     display_name: entity.display_name.clone(),
                     monster_id: entity.monster_id,
+                    mechanic_role: reviewed_mechanic_entity_role(
+                        self.client_build.as_deref(),
+                        self.scene_id,
+                        entity.monster_id,
+                    ),
                     x,
                     y,
                     z,
@@ -513,6 +520,11 @@ impl MechanicsMapProjector {
             })
             .map(|signal| MechanicsMapSignal {
                 effect_id: signal.effect_id,
+                mechanic_kind: reviewed_mechanic_signal_kind(
+                    self.client_build.as_deref(),
+                    self.scene_id,
+                    signal.effect_id,
+                ),
                 presentation_name: if signal.effect_id < 0 {
                     rlogs_game_bpsr::localized_combat_action_name(-signal.effect_id, "en-US")
                         .ok()
@@ -709,8 +721,8 @@ fn is_reviewed_mechanic_effect(
     }
     let ids: &[i64] = match scene_id {
         Some(6513..=6515) => &[
-            884101, 884102, 884103, 884104, 884106, 884122, 884129, 884141, 884162, 884163, 884166,
-            884168, 884169, 884170,
+            884101, 884102, 884103, 884106, 884122, 884129, 884141, 884162, 884163, 884168, 884169,
+            884170,
         ],
         Some(1150..=1152) => &[821076],
         Some(13021..=13023) => &[
@@ -729,6 +741,48 @@ fn is_reviewed_mechanic_effect(
         _ => &[],
     };
     ids.contains(&effect_id)
+}
+
+fn reviewed_mechanic_entity_role(
+    client_build: Option<&str>,
+    scene_id: Option<i32>,
+    monster_id: Option<i64>,
+) -> Option<&'static str> {
+    if client_build != Some("global/steam-24687926") || !matches!(scene_id, Some(6513..=6515)) {
+        return None;
+    }
+    match monster_id? {
+        33901 => Some("boss"),
+        33904 | 33905 => Some("tower"),
+        33908 | 33921 => Some("left_clone"),
+        33909 | 33922 => Some("right_clone"),
+        _ => None,
+    }
+}
+
+fn reviewed_mechanic_signal_kind(
+    client_build: Option<&str>,
+    scene_id: Option<i32>,
+    effect_id: i64,
+) -> Option<&'static str> {
+    if client_build != Some("global/steam-24687926") || !matches!(scene_id, Some(6513..=6515)) {
+        return None;
+    }
+    match effect_id {
+        884101 | 884106 | 884122 => Some("tower_activating"),
+        884102 => Some("tower_blue_complete"),
+        884103 => Some("tower_gold_complete"),
+        884129 => Some("energy_pillar"),
+        884141 => Some("energy_pillar_short"),
+        884162 => Some("charge_target_left"),
+        884163 => Some("charge_target_right"),
+        884168 => Some("charge_target_random"),
+        884169 => Some("puzzle_piece_one"),
+        884170 => Some("puzzle_piece_two"),
+        -3390117 | -3390123 => Some("clone_charge_left"),
+        -3390118 | -3390124 => Some("clone_charge_right"),
+        _ => None,
+    }
 }
 
 fn is_reviewed_mechanic_cast(
@@ -941,6 +995,35 @@ mod tests {
             Some(6513),
             3390117,
         ));
+    }
+
+    #[test]
+    fn cursed_tomb_semantics_are_exact_build_and_scene_scoped() {
+        let build = Some("global/steam-24687926");
+        assert_eq!(
+            reviewed_mechanic_entity_role(build, Some(6513), Some(33904)),
+            Some("tower")
+        );
+        assert_eq!(
+            reviewed_mechanic_entity_role(build, Some(6513), Some(33922)),
+            Some("right_clone")
+        );
+        assert_eq!(
+            reviewed_mechanic_signal_kind(build, Some(6513), 884102),
+            Some("tower_blue_complete")
+        );
+        assert_eq!(
+            reviewed_mechanic_signal_kind(build, Some(6513), -3390117),
+            Some("clone_charge_left")
+        );
+        assert_eq!(
+            reviewed_mechanic_signal_kind(Some("global/steam-newer"), Some(6513), 884102),
+            None
+        );
+        assert_eq!(
+            reviewed_mechanic_entity_role(build, Some(6615), Some(33904)),
+            None
+        );
     }
 
     #[test]
