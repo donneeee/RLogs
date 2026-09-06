@@ -707,6 +707,15 @@ fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMap
         return None;
     }
     match scene_id? {
+        // SceneTable -> SceneResource 1150 resolves this exact S3 tower file.
+        // Its paired region_data provides the non-rounded world transform.
+        1150..=1152 => Some(SceneMapSpec {
+            asset_file: "scene-1150-towering-ruin.png",
+            origin_x: -275.674,
+            origin_z: -472.974,
+            span_x: 297.348,
+            span_z: 297.348,
+        }),
         // Exact texture: dng_main_1001_tina. The paired game-owned region_data
         // stores the lower-left world origin and 800 x 800 span.
         1631..=1633 => Some(SceneMapSpec {
@@ -1011,6 +1020,12 @@ mod tests {
 
     #[test]
     fn full_scene_map_is_exact_build_and_scene_scoped() {
+        let tower = scene_map_spec(Some("global/steam-24687926"), Some(1151))
+            .expect("reviewed Towering Ruin map");
+        assert_eq!(tower.asset_file, "scene-1150-towering-ruin.png");
+        assert_eq!((tower.origin_x, tower.origin_z), (-275.674, -472.974));
+        assert_eq!((tower.span_x, tower.span_z), (297.348, 297.348));
+
         let tina = scene_map_spec(Some("global/steam-24687926"), Some(1632))
             .expect("reviewed Tina Mindrealm map");
         assert_eq!(tina.asset_file, "scene-1631-tina-mindrealm.png");

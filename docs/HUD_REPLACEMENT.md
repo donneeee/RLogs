@@ -152,6 +152,20 @@ python tools/bpsr-local-map-asset.py `
   --region-address ui/textures/scenemaps/dng_branch_6501_godvault/dng_branch_6501_godvault_region_data
 ```
 
+Towering Ruin (`1150`-`1152`) is tied by the current game tables to
+`dng_hero_1121_tower_s3`, rather than either similarly named older tower map:
+
+```powershell
+python tools/bpsr-local-map-asset.py `
+  --container "C:\Program Files (x86)\Steam\steamapps\common\Blue Protocol Star Resonance\bpsr\BPSR_STEAM_Data\StreamingAssets\container" `
+  --runtime-root runtime-data/game-assets `
+  --build global/steam-24687926 `
+  --address ui/textures/scenemaps/dng_hero_1121_tower_s3/dng_hero_1121_tower_s3_dng_hero_1121_tower_s3 `
+  --object-name dng_hero_1121_tower_s3_dng_hero_1121_tower_s3 `
+  --asset scene-1150-towering-ruin.png `
+  --region-address ui/textures/scenemaps/dng_hero_1121_tower_s3/dng_hero_1121_tower_s3_region_data
+```
+
 Tina's Mindrealm (`1631`-`1633`) uses the current-build
 `dng_main_1001_tina` texture and its paired `800 x 800` region transform:
 
