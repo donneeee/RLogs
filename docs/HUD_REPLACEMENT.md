@@ -152,6 +152,20 @@ python tools/bpsr-local-map-asset.py `
   --region-address ui/textures/scenemaps/dng_branch_6501_godvault/dng_branch_6501_godvault_region_data
 ```
 
+Tina's Mindrealm (`1631`-`1633`) uses the current-build
+`dng_main_1001_tina` texture and its paired `800 x 800` region transform:
+
+```powershell
+python tools/bpsr-local-map-asset.py `
+  --container "C:\Program Files (x86)\Steam\steamapps\common\Blue Protocol Star Resonance\bpsr\BPSR_STEAM_Data\StreamingAssets\container" `
+  --runtime-root runtime-data/game-assets `
+  --build global/steam-24687926 `
+  --address ui/textures/scenemaps/dng_main_1001_tina/dng_main_1001_tina_dng_main_1001_tina `
+  --object-name dng_main_1001_tina_dng_main_1001_tina `
+  --asset scene-1631-tina-mindrealm.png `
+  --region-address ui/textures/scenemaps/dng_main_1001_tina/dng_main_1001_tina_region_data
+```
+
 The compiler requires one exact address row, one exact Unity bundle entry, and
 one `Texture2D` object. It writes a local catalog with the build, package,
 bundle hash, dimensions, and SHA-256 digest. If that asset is missing or the

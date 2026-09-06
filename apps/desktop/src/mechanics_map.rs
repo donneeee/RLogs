@@ -707,6 +707,15 @@ fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMap
         return None;
     }
     match scene_id? {
+        // Exact texture: dng_main_1001_tina. The paired game-owned region_data
+        // stores the lower-left world origin and 800 x 800 span.
+        1631..=1633 => Some(SceneMapSpec {
+            asset_file: "scene-1631-tina-mindrealm.png",
+            origin_x: -640.0,
+            origin_z: -523.0,
+            span_x: 800.0,
+            span_z: 800.0,
+        }),
         // Exact texture: dng_branch_6501_godvault. The paired game-owned
         // region_data stores the lower-left world origin and 450 x 450 span.
         6513..=6515 => Some(SceneMapSpec {
@@ -993,6 +1002,12 @@ mod tests {
 
     #[test]
     fn full_scene_map_is_exact_build_and_scene_scoped() {
+        let tina = scene_map_spec(Some("global/steam-24687926"), Some(1632))
+            .expect("reviewed Tina Mindrealm map");
+        assert_eq!(tina.asset_file, "scene-1631-tina-mindrealm.png");
+        assert_eq!((tina.origin_x, tina.origin_z), (-640.0, -523.0));
+        assert_eq!((tina.span_x, tina.span_z), (800.0, 800.0));
+
         let map = scene_map_spec(Some("global/steam-24687926"), Some(6513))
             .expect("reviewed Cursed Tomb map");
         assert_eq!(map.asset_file, "scene-6513-cursed-tomb.png");
