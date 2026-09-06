@@ -712,10 +712,8 @@ impl SubmissionService {
                 .runs
                 .iter()
                 .flat_map(|run| &run.participants)
-                .any(|p| {
-                    p.display_name
-                        .as_deref()
-                        .is_none_or(|name| name.trim().is_empty())
+                .any(|participant| {
+                    public_display_name_needs_verified_identity(participant.display_name.as_deref())
                 })
             {
                 return Ok(report);
@@ -816,10 +814,7 @@ impl SubmissionService {
             .iter()
             .flat_map(|run| &run.participants)
             .any(|participant| {
-                participant
-                    .display_name
-                    .as_deref()
-                    .is_none_or(|name| name.trim().is_empty())
+                public_display_name_needs_verified_identity(participant.display_name.as_deref())
             })
         {
             return Ok(false);
@@ -5408,11 +5403,7 @@ fn restore_verified_names(
 ) -> bool {
     let mut changed = false;
     for participant in report.runs.iter_mut().flat_map(|run| &mut run.participants) {
-        if participant
-            .display_name
-            .as_deref()
-            .is_some_and(|name| !name.trim().is_empty())
-        {
+        if !public_display_name_needs_verified_identity(participant.display_name.as_deref()) {
             continue;
         }
         let Some(uid) = identities.get(&participant.actor_id) else {
@@ -5447,6 +5438,20 @@ fn restore_verified_names(
         }
     }
     changed
+}
+
+fn public_display_name_needs_verified_identity(name: Option<&str>) -> bool {
+    let Some(name) = name.map(str::trim).filter(|name| !name.is_empty()) else {
+        return true;
+    };
+    let folded = name.to_ascii_lowercase();
+    ["player", "actor", "uid", "unknown"].iter().any(|prefix| {
+        folded == *prefix
+            || folded.strip_prefix(prefix).is_some_and(|suffix| {
+                let suffix = suffix.trim();
+                !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+            })
+    })
 }
 
 fn apply_verified_character_keys(
@@ -7936,6 +7941,59 @@ mod tests {
                 .as_deref(),
             Some("MarieRose")
         );
+    }
+
+    #[test]
+    fn numbered_player_placeholder_uses_sealed_uid_and_verified_owner_profile() {
+        let mut report = fixture_public_report("identity-placeholder", "5", 0);
+        report.region_id = "north-america".into();
+        report.runs[0].participants.truncate(1);
+        report.runs[0].participants[0].actor_id = "5".into();
+        report.runs[0].participants[0].character_id = None;
+        report.runs[0].participants[0].display_name = Some("Player 5".into());
+        let identities = BTreeMap::from([("5".into(), "3296036".into())]);
+        let profile = PublicProfileCatalogEntry {
+            profile_id: "profile".into(),
+            claimed: true,
+            package_id: "package".into(),
+            updated_unix_millis: 1,
+            source_client_build: "build".into(),
+            deployment: "global".into(),
+            region: "north-america".into(),
+            realm: None,
+            world: None,
+            character_id: "3296036".into(),
+            display_name: Some("MarieRose".into()),
+            module_inventory_count: 0,
+            equipped_module_count: 0,
+        };
+
+        assert!(restore_verified_names(&mut report, &identities, &[profile]));
+        assert_eq!(
+            report.runs[0].participants[0].display_name.as_deref(),
+            Some("MarieRose")
+        );
+    }
+
+    #[test]
+    fn verified_identity_name_detection_preserves_real_names() {
+        for placeholder in [
+            None,
+            Some(""),
+            Some("Player 5"),
+            Some("player5"),
+            Some("UID 3296036"),
+            Some("Unknown 4"),
+        ] {
+            assert!(public_display_name_needs_verified_identity(placeholder));
+        }
+        for name in [
+            Some("MarieRose"),
+            Some("Player One"),
+            Some("Unknown Soldier"),
+        ] {
+            assert!(!public_display_name_needs_verified_identity(name));
+        }
     }
 
     #[test]
