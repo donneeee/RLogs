@@ -56,8 +56,8 @@ describe("Combat History generated skill ownership", () => {
       amount: string,
       criticalHits: number,
     ) => ({
-      effect_id: "55333", attribution_component: "Encore standalone generated damage",
-      complete_effect: true, provider_actor_id: provider.actor_id,
+      effect_id: "55333", attribution_component: "Encore (55333) standalone generated damage (actions 230401/230501)",
+      complete_effect: false, provider_actor_id: provider.actor_id,
       provider_entity_uuid: provider.entity_uuid, recipient_actor_id: damage.actor_id,
       recipient_entity_uuid: damage.entity_uuid, affected_ability_id: action,
       target_actor_id: "boss", target_entity_uuid: "boss-entity",
@@ -107,6 +107,53 @@ describe("Combat History generated skill ownership", () => {
       actors: [raw], targets: [], damage_influences: [], rdps_effect_presentations: [],
     } as CombatHistoryView;
     expect(historyOwnedSkillActors(view)[0]?.abilities[0]?.damage).toBe(100);
+  });
+
+  it("splits exact partial Encore evidence and combines the healer's wire rows", () => {
+    const ability = (abilityId: string, damage: number, hits: number) => ({
+      ability_id: abilityId, presentation_name: "Encore",
+      presentation_kind: "support-generated-damage", presentation_resolution: "localized",
+      icon_asset_path: null, presentation_recount_group_id: null,
+      presentation_recount_group_name: null, casts: 0, hits, critical_hits: 0,
+      critical_hits_observed: false, damage, effective_damage: damage,
+      healing: 0, effective_healing: 0, shielding: 0, dps: damage,
+      encounter_dps: damage, hps: 0, targets: [],
+    });
+    const recipient = {
+      actor_id: "damage", entity_uuid: "damage-entity", effects: [],
+      abilities: [ability("230401", 100, 2)],
+    } as unknown as HistoryActorSummary;
+    const healer = {
+      actor_id: "healer", entity_uuid: "healer-entity", effects: [],
+      abilities: [ability("230501", 30, 1)],
+    } as unknown as HistoryActorSummary;
+    const view = {
+      id: "all", label: "Entire run", kind: "entire_run", segment_indices: [],
+      elapsed_micros: 1_000_000, active_combat_micros: 1_000_000,
+      actors: [healer, recipient], targets: [],
+      damage_influences: [{
+        effect_id: "55333",
+        attribution_component: "Encore (55333) standalone generated damage (actions 230401/230501)",
+        complete_effect: false, provider_actor_id: healer.actor_id,
+        provider_entity_uuid: healer.entity_uuid, recipient_actor_id: recipient.actor_id,
+        recipient_entity_uuid: recipient.entity_uuid, affected_ability_id: "230401",
+        target_actor_id: "boss", target_entity_uuid: "boss-entity",
+        first_observed_micros: 1, last_observed_micros: 2, damage_event_count: 1,
+        critical_hit_count: null, observed_damage: "60", exact_integer_delta: "60",
+        exact_rational_deltas: [], attributed_rdps: "60", damage_context_complete: true,
+      }],
+      rdps_effect_presentations: [],
+    } as CombatHistoryView;
+
+    const projected = historyOwnedSkillActors(view);
+    expect(projected.find((entry) => entry.actor_id === "damage")?.abilities[0]).toMatchObject({
+      damage: 40, hits: 1, critical_hits_observed: false,
+    });
+    expect(projected.find((entry) => entry.actor_id === "healer")?.abilities).toHaveLength(1);
+    expect(projected.find((entry) => entry.actor_id === "healer")?.abilities[0]).toMatchObject({
+      ability_id: "support-effect:55333", damage: 90, hits: 2,
+      critical_hits_observed: false,
+    });
   });
 
   it("moves legacy exact Encore ownership without presenting an invented zero critical count", () => {

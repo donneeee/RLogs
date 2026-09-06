@@ -251,13 +251,16 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
   for (const influence of view.damage_influences) {
     if (
       influence.effect_id !== ENCORE_EFFECT_ID ||
-      !influence.complete_effect ||
       !influence.damage_context_complete ||
       influence.provider_actor_id === influence.recipient_actor_id ||
       !influence.affected_ability_id ||
       !ENCORE_DAMAGE_ACTION_IDS.has(influence.affected_ability_id) ||
+      !isExactEncoreDamageComponent(influence.attribution_component) ||
       influence.attributed_rdps === null ||
-      !/^\d+$/u.test(influence.attributed_rdps)
+      !/^\d+$/u.test(influence.attributed_rdps) ||
+      influence.observed_damage !== influence.attributed_rdps ||
+      influence.exact_integer_delta !== influence.attributed_rdps ||
+      influence.exact_rational_deltas.length > 0
     ) continue;
     const amount = BigInt(influence.attributed_rdps);
     if (amount <= 0n) continue;
@@ -309,8 +312,49 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
     const ability = recipient?.abilities.find((candidate) => candidate.ability_id === actionId);
     if (!ability || !Number.isSafeInteger(ability.damage)) continue;
     const moved = [...providers.values()].reduce((sum, movement) => sum + movement.damage, 0n);
-    if (moved !== BigInt(ability.damage)) continue;
-    recipient!.abilities = recipient!.abilities.filter((candidate) => candidate !== ability);
+    if (moved > BigInt(ability.damage)) continue;
+    const movedEvents = [...providers.values()].reduce((sum, movement) => sum + movement.events, 0);
+    if (movedEvents > ability.hits) continue;
+    const movedDamage = Number(moved);
+    if (!Number.isSafeInteger(movedDamage)) continue;
+    if (movedDamage === ability.damage) {
+      recipient!.abilities = recipient!.abilities.filter((candidate) => candidate !== ability);
+    } else {
+      const exactCriticals = [...providers.values()].every((movement) => movement.criticalHits !== null);
+      const movedCriticals = exactCriticals
+        ? [...providers.values()].reduce((sum, movement) => sum + (movement.criticalHits ?? 0), 0)
+        : 0;
+      ability.damage -= movedDamage;
+      ability.effective_damage = Math.max(0, ability.effective_damage - movedDamage);
+      ability.hits -= movedEvents;
+      if (exactCriticals && movedCriticals <= ability.critical_hits) {
+        ability.critical_hits -= movedCriticals;
+      } else {
+        ability.critical_hits = 0;
+        ability.critical_hits_observed = false;
+      }
+      ability.dps = perSecond(ability.damage, view.elapsed_micros);
+      ability.encounter_dps = perSecond(ability.damage, view.active_combat_micros);
+      for (const movement of providers.values()) for (const movedTarget of movement.targets.values()) {
+        const target = ability.targets.find((candidate) =>
+          candidate.actor_id === movedTarget.actorId &&
+          candidate.entity_uuid === movedTarget.entityUuid
+        );
+        if (!target) continue;
+        const targetDamage = Number(movedTarget.damage);
+        if (!Number.isSafeInteger(targetDamage) || targetDamage > target.damage || movedTarget.events > target.hits) continue;
+        target.damage -= targetDamage;
+        target.effective_damage = Math.max(0, target.effective_damage - targetDamage);
+        target.hits -= movedTarget.events;
+        if (movedTarget.criticalHits !== null && movedTarget.criticalHits <= target.critical_hits) {
+          target.critical_hits -= movedTarget.criticalHits;
+        } else {
+          target.critical_hits = 0;
+          target.critical_hits_observed = false;
+        }
+      }
+      ability.targets = ability.targets.filter((target) => target.damage > 0 || target.hits > 0);
+    }
     for (const movement of providers.values()) {
       const key = `${movement.providerActorId}\0${movement.providerEntityUuid}`;
       const rows = providerMovements.get(key) ?? [];
@@ -325,12 +369,22 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
     if (!providerActorId || providerEntityUuid === undefined) continue;
     const provider = exactActor(providerActorId, providerEntityUuid);
     if (!provider) continue;
-    const damage = rows.reduce((sum, row) => sum + row.damage, 0n);
-    const events = rows.reduce((sum, row) => sum + row.events, 0);
+    const existingEncore = provider.abilities.filter((ability) =>
+      ENCORE_DAMAGE_ACTION_IDS.has(ability.ability_id) &&
+      ability.presentation_kind === "support-generated-damage"
+    );
+    const damage = rows.reduce((sum, row) => sum + row.damage, 0n) +
+      BigInt(existingEncore.reduce((sum, ability) => sum + ability.damage, 0));
+    const events = rows.reduce((sum, row) => sum + row.events, 0) +
+      existingEncore.reduce((sum, ability) => sum + ability.hits, 0);
     const criticalHits = rows.reduce<number | null>(
       (sum, row) => sum === null || row.criticalHits === null ? null : sum + row.criticalHits,
       0,
     );
+    const existingCriticalsObserved = existingEncore.every((ability) => ability.critical_hits_observed !== false);
+    const combinedCriticalHits = criticalHits === null || !existingCriticalsObserved
+      ? null
+      : criticalHits + existingEncore.reduce((sum, ability) => sum + ability.critical_hits, 0);
     const numericDamage = Number(damage);
     if (!Number.isSafeInteger(numericDamage)) continue;
     const targets = new Map<string, {
@@ -349,6 +403,23 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
         : target.criticalHits + incoming.criticalHits;
       targets.set(key, target);
     }
+    for (const ability of existingEncore) for (const incoming of ability.targets) {
+      const key = `${incoming.actor_id}\0${incoming.entity_uuid}`;
+      const target = targets.get(key) ?? {
+        actorId: incoming.actor_id,
+        entityUuid: incoming.entity_uuid,
+        damage: 0n,
+        events: 0,
+        criticalHits: 0,
+      };
+      target.damage += BigInt(incoming.damage);
+      target.events += incoming.hits;
+      target.criticalHits = target.criticalHits === null || incoming.critical_hits_observed === false
+        ? null
+        : target.criticalHits + incoming.critical_hits;
+      targets.set(key, target);
+    }
+    provider.abilities = provider.abilities.filter((ability) => !existingEncore.includes(ability));
     provider.abilities.push({
       ability_id: `support-effect:${ENCORE_EFFECT_ID}`,
       presentation_name: effect?.presentation_name ?? "Encore",
@@ -359,8 +430,8 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
       presentation_recount_group_name: null,
       casts: 0,
       hits: events,
-      critical_hits: criticalHits ?? 0,
-      critical_hits_observed: criticalHits !== null,
+      critical_hits: combinedCriticalHits ?? 0,
+      critical_hits_observed: combinedCriticalHits !== null,
       damage: numericDamage,
       effective_damage: numericDamage,
       healing: 0,
@@ -387,6 +458,17 @@ export function historyOwnedSkillActors(view: CombatHistoryView): HistoryActorSu
     });
   }
   return actors;
+}
+
+function isExactEncoreDamageComponent(component: string | null | undefined): boolean {
+  if (!component) return false;
+  return component
+    .replace(/\s*\((?:actions?\s*)?\d+(?:[\s/,]+\d+)*\)/giu, "")
+    .replace(/\b(?:effect|action)\s+\d+(?:[\s/,]+\d+)*\b/giu, "")
+    .replace(/[-_]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .toLocaleLowerCase() === "encore standalone generated damage";
 }
 
 export function incomingDamageSourceGroups(
