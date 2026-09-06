@@ -125,3 +125,15 @@ Workers Paid/Containers (or approving and validating an equivalent hosted
 verifier) is therefore the remaining account-level prerequisite. The local
 receiver remains a development fixture and migration source only, never a
 production dependency.
+
+The verifier capacity decision is backed by the repository's read-only
+`--benchmark-replay` command, which invokes the same two-pass attribution and
+encounter reconstruction used by finalization. On the 2026-09-06 Windows
+release build, a 16,590,766-byte sealed artifact containing 448,546 canonical
+events produced one schema-12 report (1,625,658 JSON bytes) in 8,407 ms. A
+3,799,658-byte artifact containing 96,641 events produced one report (471,252
+JSON bytes) in 2,331 ms. A 39,998,055-byte interrupted artifact containing
+32,254 events replayed in 662 ms and then failed closed with `NoCompletedRun`.
+These figures are local reference measurements, not a Cloudflare runtime
+benchmark; paid hosted compute still requires an end-to-end WASM or Container
+measurement before write routes can be enabled.
