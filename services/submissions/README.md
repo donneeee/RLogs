@@ -23,14 +23,14 @@ Only the desktop's separately sealed privacy export is accepted. PCAPs,
 connection evidence, link/IP/TCP headers, IP and MAC addresses, chat, and
 account/contact/authentication fields are excluded. The receiver replays every
 artifact through the same privacy validator and rejects an outdated or unknown
-privacy-policy digest before writing accepted state or creating a GitHub
-archive job. Character names/UIDs and gameplay/profile evidence remain because
+privacy-policy digest before writing accepted state. Character names/UIDs and
+gameplay/profile evidence remain because
 they are required for run correlation and rDPS research.
 
 The application does not persist or emit a contributor's transport IP address.
 The HTTPS platform still processes it transiently to deliver the connection,
 as every Internet host must, but it is not part of the rLogs evidence package,
-catalog, projection, or private GitHub archive.
+catalog, or projection.
 
 ## Run locally
 
@@ -108,48 +108,6 @@ public runs and keeps the first M20-or-higher dungeon clear or Nightmare raid
 clear for each character and exact scene. Requests read the cached catalog and
 never rescan sealed artifacts or all projections.
 
-## Private GitHub research archive
-
-The receiver can copy every accepted evidence package into a private GitHub
-repository after validation. GitHub is a secondary research archive, not the
-ingest endpoint: contributors authenticate only to the receiver and never
-receive the repository credential.
-
-```powershell
-$env:RLOGS_GITHUB_ARCHIVE_REPOSITORY = "owner/private-evidence-repository"
-$env:RLOGS_GITHUB_ARCHIVE_TOKEN = "server-only-fine-grained-token"
-cargo run -p rlogs-submission-service
-```
-
-Use a fine-grained token restricted to that single private repository with
-Contents write access. Keep the token in the receiver host's secret store; do
-not place it in a plug-in, `.env` file committed to Git, projection, or tester
-instructions.
-
-Each sealed artifact gets one prerelease tagged with its full SHA-256 digest.
-The release contains a server-produced projection, a digest-named evidence
-manifest, and one or more digest-named binary artifact parts. Parts default to
-512 MiB so large captures do not exceed GitHub's per-asset limit or need to be
-loaded into RAM. `RLOGS_GITHUB_ARCHIVE_PART_BYTES` can set a value from 8 MiB
-through 1 GiB. `RLOGS_GITHUB_API_URL` exists only for GitHub Enterprise or
-loopback tests and otherwise defaults to `https://api.github.com/`.
-
-Archiving is asynchronous and idempotent. A failed attempt leaves its job in
-`archive-outbox/` and is retried without invalidating the already accepted
-report. An `archive-receipts/` record is written only after every expected
-release asset is present with the correct byte length. Starting the receiver
-also reconciles older accepted projections into the outbox, so enabling the
-archive later does not require hand-authored jobs.
-
-An operator can drain the archive without opening the HTTP listener:
-
-```powershell
-cargo run -p rlogs-submission-service -- --archive-once
-```
-
-This is useful for deployment jobs and for verifying the private archive
-credential before enabling the background worker.
-
 An operator can also apply the receiver's exact privacy and integrity checks to
 an existing sealed artifact without starting the HTTP listener:
 
@@ -169,7 +127,7 @@ cargo run -p rlogs-submission-service -- --prepare-submission `
 ```
 
 The resulting manifest defaults to unlisted visibility. This command prepares
-local files only; it does not transmit them or expose a GitHub credential.
+local files only; it does not transmit them.
 
 ## Run correlation
 
@@ -371,7 +329,7 @@ released as one.
 The gateway is deliberately a narrow streaming reverse proxy. It exposes only
 the documented health, ingest, parse, and reconciliation routes; it cannot
 serve the private artifact store. The receiver still owns authentication,
-privacy validation, deterministic replay, persistence, and GitHub archiving.
+privacy validation, deterministic replay, and persistence.
 This bridge is for local development only. A quick tunnel has a changing
 hostname, no uptime guarantee, and depends on the workstation process staying
 online. The public rLogs service must not depend on it. Production must use the
@@ -411,8 +369,6 @@ profiles/<profile-id>/public.json        public current character profile and mo
 profiles/catalog.v1.json                 rebuildable public profile catalog
 profiles/<profile-id>/photo-wall/        validated images, upload metadata, and hashed like records
 uploads/<upload-id>/                     resumable temporary chunks
-archive-outbox/<report-id>.json           retryable private archive jobs
-archive-receipts/<report-id>.json         completed private archive receipts
 catalog.v1.json                           compact rebuildable discovery index
 community-milestones.v1.json              compact rebuildable first-clear activity index
 ```

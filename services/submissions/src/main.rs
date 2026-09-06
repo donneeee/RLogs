@@ -88,9 +88,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         return Ok(());
     }
-    let archive_once = arguments
-        .iter()
-        .any(|argument| argument == "--archive-once");
+    if !arguments.is_empty() {
+        return Err("unknown command-line argument".into());
+    }
     let data_root = std::env::var_os("RLOGS_SUBMISSION_DATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("runtime-data/submission-service"));
@@ -124,31 +124,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let service = SubmissionService::open_with_environment_github_archive(
-        data_root,
-        public_site_url,
-        authentication,
-    )?;
-    if archive_once {
-        let repository = service.github_archive_repository().ok_or(
-            "--archive-once requires RLOGS_GITHUB_ARCHIVE_REPOSITORY and RLOGS_GITHUB_ARCHIVE_TOKEN",
-        )?;
-        let archived = service.drain_github_archive_once()?;
-        println!("archived {archived} pending evidence package(s) to {repository}");
-        return Ok(());
-    }
-    if let Some(repository) = service.github_archive_repository() {
-        println!("private GitHub research archive enabled for {repository}");
-        let archive_service = service.clone();
-        std::thread::spawn(move || {
-            loop {
-                if let Err(error) = archive_service.drain_github_archive_once() {
-                    eprintln!("GitHub research archive retry remains pending: {error}");
-                }
-                std::thread::sleep(std::time::Duration::from_secs(30));
-            }
-        });
-    }
+    let service =
+        SubmissionService::open_with_authentication(data_root, public_site_url, authentication)?;
     let server_service = service.clone();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

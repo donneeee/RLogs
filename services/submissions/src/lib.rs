@@ -55,14 +55,12 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use uuid::Uuid;
 
 mod accounts;
-mod github_archive;
 mod profiles;
 
 use accounts::{
     AccountError, AccountStore, AccountView, AppTokenReceipt, DiscordConfiguration,
     PublicAccountIdentity, WebSessionReceipt,
 };
-use github_archive::{ArchiveJob, GithubArchive};
 use profiles::{
     PhotoAssetContent, PhotoAssetReceipt, PhotoCatalogQuery, PhotoLikeReceipt,
     ProfilePublishReceipt, ProfileRegistry, ProfileRegistryError, PublicPhotoCatalog,
@@ -167,7 +165,6 @@ struct ServiceInner {
     root: PathBuf,
     public_site_url: String,
     authentication: SubmissionAuthentication,
-    github_archive: Option<GithubArchive>,
     accounts: AccountStore,
     profiles: ProfileRegistry,
     writes: Mutex<()>,
@@ -399,34 +396,6 @@ impl SubmissionService {
         public_site_url: String,
         authentication: SubmissionAuthentication,
     ) -> Result<Self, ServiceError> {
-        Self::open_with_optional_github_archive(root, public_site_url, authentication, None)
-    }
-
-    /// Opens the receiver and enables the optional private GitHub research
-    /// archive when `RLOGS_GITHUB_ARCHIVE_REPOSITORY` is configured. The
-    /// repository token remains process-only and is never written to an
-    /// outbox job, public projection, or API response.
-    pub fn open_with_environment_github_archive(
-        root: PathBuf,
-        public_site_url: String,
-        authentication: SubmissionAuthentication,
-    ) -> Result<Self, ServiceError> {
-        let github_archive =
-            GithubArchive::from_environment().map_err(ServiceError::InvalidConfiguration)?;
-        Self::open_with_optional_github_archive(
-            root,
-            public_site_url,
-            authentication,
-            github_archive,
-        )
-    }
-
-    fn open_with_optional_github_archive(
-        root: PathBuf,
-        public_site_url: String,
-        authentication: SubmissionAuthentication,
-        github_archive: Option<GithubArchive>,
-    ) -> Result<Self, ServiceError> {
         if public_site_url.trim().is_empty() {
             return Err(ServiceError::InvalidConfiguration(
                 "public site URL cannot be empty".into(),
@@ -438,8 +407,6 @@ impl SubmissionService {
             "projections",
             "memberships",
             "reconciliations",
-            "archive-outbox",
-            "archive-receipts",
             "profiles",
         ] {
             std::fs::create_dir_all(root.join(relative))?;
@@ -453,7 +420,6 @@ impl SubmissionService {
                 root,
                 public_site_url,
                 authentication,
-                github_archive,
                 accounts,
                 profiles,
                 writes: Mutex::new(()),
@@ -466,7 +432,6 @@ impl SubmissionService {
         } else {
             service.ensure_catalog()?;
         }
-        service.reconcile_github_archive_outbox()?;
         Ok(service)
     }
 
@@ -640,7 +605,6 @@ impl SubmissionService {
         write_json_atomic(&self.membership_path(&report_id)?, &membership)?;
         self.restore_submitter_name(&artifact_path, &mut report)?;
         write_json_atomic(&self.projection_path(&report_id)?, &report)?;
-        self.enqueue_github_archive_locked(&report)?;
         self.rebuild_catalog_locked()?;
         let _ = std::fs::remove_dir_all(self.upload_directory(upload_id)?);
         Ok(self.finalize_response(&report_id, &sealed_digest, false))
@@ -1689,89 +1653,6 @@ impl SubmissionService {
         )
     }
 
-    /// Uploads all currently pending evidence jobs. A failure leaves the job
-    /// intact for a later retry and never rolls back an already accepted log.
-    pub fn drain_github_archive_once(&self) -> Result<usize, ServiceError> {
-        let Some(archive) = self.inner.github_archive.as_ref() else {
-            return Ok(0);
-        };
-        let mut paths = std::fs::read_dir(self.github_archive_outbox_path())?
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
-            .collect::<Vec<_>>();
-        paths.sort();
-        let mut archived = 0_usize;
-        for path in paths {
-            let job: ArchiveJob = read_json(&path)?;
-            validate_identifier(&job.report_id, "report ID")?;
-            let digest = Sha256Digest::parse(job.artifact_sha256.clone())?;
-            let receipt_path = self.github_archive_receipt_path(&job.report_id)?;
-            if receipt_path.exists() {
-                std::fs::remove_file(&path)?;
-                continue;
-            }
-            let receipt = archive
-                .archive(
-                    &job,
-                    &self.artifact_path(&digest)?,
-                    &self.projection_path(&job.report_id)?,
-                    unix_millis()?,
-                )
-                .map_err(ServiceError::GithubArchive)?;
-            write_json_atomic(&receipt_path, &receipt)?;
-            std::fs::remove_file(&path)?;
-            archived += 1;
-        }
-        Ok(archived)
-    }
-
-    pub fn github_archive_repository(&self) -> Option<&str> {
-        self.inner
-            .github_archive
-            .as_ref()
-            .map(GithubArchive::repository)
-    }
-
-    fn reconcile_github_archive_outbox(&self) -> Result<(), ServiceError> {
-        if self.inner.github_archive.is_none() {
-            return Ok(());
-        }
-        let _write = self.write_guard();
-        for file in std::fs::read_dir(self.inner.root.join("projections"))? {
-            let path = file?.path();
-            if path.extension().and_then(|value| value.to_str()) != Some("json") {
-                continue;
-            }
-            let report: PublicParseReport = read_json(&path)?;
-            self.enqueue_github_archive_locked(&report)?;
-        }
-        Ok(())
-    }
-
-    fn enqueue_github_archive_locked(
-        &self,
-        report: &PublicParseReport,
-    ) -> Result<(), ServiceError> {
-        if self.inner.github_archive.is_none() {
-            return Ok(());
-        }
-        let receipt = self.github_archive_receipt_path(&report.report_id)?;
-        let outbox = self.github_archive_outbox_job_path(&report.report_id)?;
-        if receipt.exists() || outbox.exists() {
-            return Ok(());
-        }
-        write_json_atomic(
-            &outbox,
-            &ArchiveJob {
-                schema_version: 1,
-                report_id: report.report_id.clone(),
-                artifact_sha256: report.verification.artifact_sha256.clone(),
-                created_unix_millis: report.created_unix_millis,
-            },
-        )
-    }
-
     fn report_id_for_digest(&self, digest: &Sha256Digest) -> Result<Option<String>, ServiceError> {
         let id = report_id(digest);
         Ok(self.projection_path(&id)?.exists().then_some(id))
@@ -1882,26 +1763,6 @@ impl SubmissionService {
             .root
             .join("reconciliations")
             .join(format!("{run_group_id}.json")))
-    }
-
-    fn github_archive_outbox_path(&self) -> PathBuf {
-        self.inner.root.join("archive-outbox")
-    }
-
-    fn github_archive_outbox_job_path(&self, report_id: &str) -> Result<PathBuf, ServiceError> {
-        validate_identifier(report_id, "report ID")?;
-        Ok(self
-            .github_archive_outbox_path()
-            .join(format!("{report_id}.json")))
-    }
-
-    fn github_archive_receipt_path(&self, report_id: &str) -> Result<PathBuf, ServiceError> {
-        validate_identifier(report_id, "report ID")?;
-        Ok(self
-            .inner
-            .root
-            .join("archive-receipts")
-            .join(format!("{report_id}.json")))
     }
 }
 
@@ -5596,8 +5457,6 @@ pub enum ServiceError {
     CatalogTooLarge,
     #[error("private parse membership index failed integrity validation")]
     InvalidMembershipIndex,
-    #[error("private GitHub research archive failed: {0}")]
-    GithubArchive(String),
     #[error(transparent)]
     Account(#[from] AccountError),
     #[error(transparent)]
