@@ -87,15 +87,21 @@ Backend production deployment is blocked unless all of the following are true:
 
 ## Current migration state
 
-As of 2026-09-06, the Cloudflare account contains only the manually deployed
-`rlogs-submissions` Pages gateway. It has no Git provider, proxies to an expired
-quick tunnel, and is not production-ready. There is no dedicated rLogs D1
-database, and R2 is not enabled on the account. The gateway's explicit 503
-response is outage containment only; it is not the hosted backend.
+As of 2026-09-06, `rlogs-submissions` is a Cloudflare Pages API gateway with an
+authoritative service binding to the private `rlogs-backend` Worker. Production
+contains no loopback or `trycloudflare.com` origin. Cloudflare KV contains the
+digest-audited public read model, profile/loadout/photo assets, account hashes,
+UID claims, memberships, projections, and reconciliation records migrated from
+the former receiver. A SQLite-backed Durable Object owns Discord OAuth, new web
+sessions and app tokens, account updates, parse visibility, and serialized
+profile publication. Profile publication reproduces the Rust package digest
+and device-bound HMAC contracts before updating a UID claim.
 
-The migration order is: enable durable storage, provision isolated rLogs
-resources, port the API/storage contracts, deploy hosted verification, migrate
-the existing reviewed records with digest reconciliation, run a canary upload,
-then point the GitHub Pages website and released desktop client at the hosted
-API. The local receiver remains a development fixture and import/migration
-tool only.
+Parse upload creation, chunk ingestion, and finalization remain fail-closed with
+HTTP 503. They must not be enabled until a hosted pinned Rust replay succeeds
+end-to-end. The current Cloudflare account is on Workers Free; Containers are a
+Workers Paid feature, and R2 has not been enabled. Enabling those account
+capabilities (or approving an equivalent hosted verifier) is therefore a
+deployment prerequisite for the remaining parse-write path. The local receiver
+remains a development fixture and migration source only, never a production
+dependency.

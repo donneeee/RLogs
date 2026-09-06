@@ -1,3 +1,5 @@
+import { publishProfilePackage } from "./profile.js";
+
 const encoder = new TextEncoder();
 const WEB_SESSION_LIFETIME_MILLIS = 30 * 24 * 60 * 60 * 1000;
 const OAUTH_STATE_LIFETIME_MILLIS = 10 * 60 * 1000;
@@ -124,6 +126,9 @@ export class RLogsAuthState {
     }
     if (request.method === "GET" && path === "/v1/auth/profiles") {
       return this.ownedProfiles(request, now);
+    }
+    if (request.method === "POST" && path === "/v1/games/blue-protocol-star-resonance/profiles") {
+      return this.publishProfile(request, now);
     }
     if (request.method === "GET" && path === "/v1/auth/parses") {
       return this.myParses(request, now, url);
@@ -280,6 +285,16 @@ export class RLogsAuthState {
       if (claim?.submitter_id === account.submitter_id) profiles.push(profile);
     }
     return json({ schema_version: 1, profiles });
+  }
+
+  async publishProfile(request, now) {
+    const deviceToken = bearer(request);
+    const identity = await this.authenticateDevice(request);
+    if (!identity) return error("write authorization failed", 401);
+    const packageValue = await parseBody(request);
+    if (!packageValue) return error("profile package is invalid: malformed JSON", 400);
+    const result = await publishProfilePackage(this.env, packageValue, identity, deviceToken, now);
+    return result.error ? error(result.error, result.status) : json(result.value);
   }
 
   async myParses(request, now, url) {

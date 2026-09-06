@@ -129,6 +129,10 @@ async function route(request, env) {
     const id = env.AUTH_STATE.idFromName("global");
     return env.AUTH_STATE.get(id).fetch(request);
   }
+  if (path === "/v1/games/blue-protocol-star-resonance/profiles") {
+    const id = env.AUTH_STATE.idFromName("global");
+    return env.AUTH_STATE.get(id).fetch(request);
+  }
   if (request.method !== "GET") {
     return json(
       { error: "hosted write service is not enabled yet", retryable: true },

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { accountView, RLogsAuthState, tokenHash } from "../src/auth.js";
+import { canonicalJson, liveCaptureProof } from "../src/profile.js";
 
 function authFixture() {
   const durable = new Map();
@@ -27,6 +28,7 @@ function authFixture() {
       async list({ prefix }) {
         return { keys: [...kv.keys()].filter((key) => key.startsWith(prefix)).map((name) => ({ name })), list_complete: true };
       },
+      async put(key, value) { kv.set(key, JSON.parse(value)); },
     },
   };
   const auth = new RLogsAuthState({ storage }, env);
@@ -38,6 +40,38 @@ test("token hashes remain compatible with the Rust authentication domain separat
   assert.equal(
     await tokenHash("web-session", "rlw_example", "0123456789abcdef0123456789abcdef"),
     "e338255bf6b06636cebe145525ead0d3a0ef95891ca6fe2cb606d9bddf155b9c",
+  );
+});
+
+test("profile package digest and live-capture proof match the Rust implementation", async () => {
+  const request = {
+    relative_endpoint: "/v1/games/blue-protocol-star-resonance/profiles",
+    payload: {
+      schema_version: 1,
+      game_plugin_id: "app.rlogs.game.blue-protocol-star-resonance",
+      payload_kind: "character-profile",
+      payload_schema_id: "app.rlogs.bpsr.character-profile",
+      payload_schema_version: 1,
+      routing: { "character-id": "3296036", deployment: "global", region: "north-america" },
+      body: { character: { character_id: "3296036", region: { deployment_id: "global", realm_id: null, region_id: "north-america", world_id: null } }, display_name: "MarieRose" },
+    },
+  };
+  const packageValue = {
+    schema_version: 2,
+    package_id: "7a62005bd2e7243b05ea6fd1e8d3be3868f4b478c8aaa607a0609580c841c2b5",
+    created_unix_millis: 100,
+    source: {
+      session_id: "session-one", client_build: "24687926",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+      canonical_content_sha256: `sha256:${"b".repeat(64)}`,
+      observation_count: 2, last_event_sequence: 3,
+    },
+    request,
+  };
+  assert.equal(await digest(canonicalJson(request)), packageValue.package_id);
+  assert.equal(
+    await liveCaptureProof(packageValue, "dev_device", "rld_device-secret"),
+    "hmac-sha256:55c4ebc91d72d6ba25909fbc7c6ac3c4d15a28dcecf1c47b422e1c9e4a98983a",
   );
 });
 
@@ -101,6 +135,76 @@ test("only the uploader can change visibility and the override changes authorize
   assert.equal((await report.json()).visibility, "private");
 });
 
+test("a device-bound profile package claims and publishes a profile in Cloudflare storage", async () => {
+  const { auth, kv } = authFixture();
+  const deviceToken = "rld_device-secret";
+  const deviceId = "dev_device";
+  auth.authenticateDevice = async () => ({ submitter_id: "usr_owner", device_id: deviceId });
+  kv.set("fs:profiles/catalog.v1.json", { schema_version: 1, profiles: [] });
+  const request = {
+    relative_endpoint: "/v1/games/blue-protocol-star-resonance/profiles",
+    payload: {
+      schema_version: 1,
+      game_plugin_id: "app.rlogs.game.blue-protocol-star-resonance",
+      payload_kind: "character-profile",
+      payload_schema_id: "app.rlogs.bpsr.character-profile",
+      payload_schema_version: 1,
+      routing: { deployment: "global", region: "north-america", "character-id": "3296036" },
+      body: {
+        character: { character_id: "3296036", region: { deployment_id: "global", region_id: "north-america", realm_id: null, world_id: null } },
+        display_name: "MarieRose",
+        class_id: 4,
+        specialization_id: 2,
+        modules: { inventory: [{ instance_id: "1" }], equipped_slots: { 1: "1" } },
+        current_profession_project_id: 5,
+        profession_projects: [{ project_id: 5, project_name: "Falc-DS", profession_id: 4 }],
+      },
+    },
+  };
+  const packageValue = {
+    schema_version: 2,
+    package_id: await digest(canonicalJson(request)),
+    created_unix_millis: 100,
+    source: {
+      session_id: "session-one",
+      client_build: "24687926",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+      canonical_content_sha256: `sha256:${"b".repeat(64)}`,
+      observation_count: 2,
+      last_event_sequence: 3,
+      live_capture: { capture_kind: "continuous_process_owned_capture", device_id: deviceId, proof: "" },
+    },
+    request,
+  };
+  packageValue.source.live_capture.proof = await liveCaptureProof(packageValue, deviceId, deviceToken);
+  const response = await auth.publishProfile(new Request("https://backend/v1/games/blue-protocol-star-resonance/profiles", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${deviceToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(packageValue),
+  }), 200);
+  assert.equal(response.status, 200);
+  const receipt = await response.json();
+  assert.equal(receipt.character_id, "3296036");
+  assert.equal(receipt.claimed, true);
+  assert.equal(receipt.module_inventory_count, 1);
+  const published = kv.get(`fs:profiles/${receipt.profile_id}/public.json`);
+  assert.equal(published.display_name, "MarieRose");
+  assert.equal(published.loadouts[0].project_name, "Falc-DS");
+  assert.equal(kv.get("fs:profiles/catalog.v1.json").profiles.length, 1);
+});
+
+test("profile publication rejects a proof copied from another device", async () => {
+  const { auth, kv } = authFixture();
+  auth.authenticateDevice = async () => ({ submitter_id: "usr_owner", device_id: "dev_actual" });
+  kv.set("fs:profiles/catalog.v1.json", { schema_version: 1, profiles: [] });
+  const response = await auth.publishProfile(new Request("https://backend/v1/games/blue-protocol-star-resonance/profiles", {
+    method: "POST",
+    headers: { Authorization: "Bearer rld_secret", "Content-Type": "application/json" },
+    body: JSON.stringify({ schema_version: 2 }),
+  }), 200);
+  assert.equal(response.status, 400);
+});
+
 function reportFixture(reportId, visibility, submitterId, createdUnixMillis) {
   return {
     schema_version: 12,
@@ -126,4 +230,9 @@ function reportFixture(reportId, visibility, submitterId, createdUnixMillis) {
       local_profile_character_ids: [],
     }],
   };
+}
+
+async function digest(value) {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
