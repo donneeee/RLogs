@@ -69,6 +69,22 @@ async function metadataDatabaseHealth(env) {
   }
 }
 
+function serviceCapabilities(env, publicReadsReady) {
+  const discordAuth = Boolean(
+    env.DISCORD_CLIENT_ID && env.DISCORD_CLIENT_SECRET && env.AUTH_TOKEN_PEPPER && env.AUTH_STATE,
+  );
+  const artifactStorage = Boolean(env.RLOGS_ARTIFACTS);
+  const hostedVerification = Boolean(env.RLOGS_VERIFIER);
+  return {
+    public_reads: publicReadsReady,
+    discord_auth: discordAuth,
+    profile_sync: publicReadsReady && discordAuth,
+    artifact_storage: artifactStorage,
+    hosted_verification: hostedVerification,
+    parse_uploads: publicReadsReady && discordAuth && artifactStorage && hostedVerification,
+  };
+}
+
 async function profileCatalog(env, url) {
   const catalog = await env.RLOGS_DATA.get("fs:profiles/catalog.v1.json", "json");
   if (!catalog || !Array.isArray(catalog.profiles)) return notFound();
@@ -162,6 +178,7 @@ async function route(request, env) {
       storage: "cloudflare-kv+d1",
       metadata_schema_version: metadata.schemaVersion,
       public_profile_count: Array.isArray(catalog?.profiles) ? catalog.profiles.length : 0,
+      capabilities: serviceCapabilities(env, ready),
     }, ready ? 200 : 503);
   }
   if (path === "/v1/profiles") return profileCatalog(env, url);

@@ -7,6 +7,9 @@ function environment(values = {}) {
   const store = new Map(Object.entries(values));
   return {
     BACKEND_RELEASE: "test-release",
+    DISCORD_CLIENT_ID: "discord-client",
+    DISCORD_CLIENT_SECRET: "discord-secret",
+    AUTH_TOKEN_PEPPER: "test-pepper",
     RLOGS_DATA: {
       async get(key, type) {
         const value = store.get(key);
@@ -55,6 +58,14 @@ test("health proves that Cloudflare storage is populated", async () => {
     storage: "cloudflare-kv+d1",
     metadata_schema_version: 1,
     public_profile_count: 1,
+    capabilities: {
+      public_reads: true,
+      discord_auth: true,
+      profile_sync: true,
+      artifact_storage: false,
+      hosted_verification: false,
+      parse_uploads: false,
+    },
   });
 });
 
@@ -75,6 +86,32 @@ test("health fails closed when the production metadata schema is unavailable", a
     storage: "cloudflare-kv+d1",
     metadata_schema_version: null,
     public_profile_count: 0,
+    capabilities: {
+      public_reads: false,
+      discord_auth: true,
+      profile_sync: false,
+      artifact_storage: false,
+      hosted_verification: false,
+      parse_uploads: false,
+    },
+  });
+});
+
+test("health exposes parse upload readiness only when storage and hosted verification are bound", async () => {
+  const env = environment({
+    "fs:profiles/catalog.v1.json": JSON.stringify({ schema_version: 1, profiles: [] }),
+  });
+  env.RLOGS_ARTIFACTS = {};
+  env.RLOGS_VERIFIER = {};
+  const response = await backend.fetch(new Request("https://backend/health"), env);
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).capabilities, {
+    public_reads: true,
+    discord_auth: true,
+    profile_sync: true,
+    artifact_storage: true,
+    hosted_verification: true,
+    parse_uploads: true,
   });
 });
 
