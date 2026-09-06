@@ -326,15 +326,24 @@ export class RLogsAuthState {
       viewer = await this.authenticateWeb(request, now);
       if (!viewer) return error("account authentication failed", 401);
     }
-    const entries = [];
-    for (const key of await this.listKvKeys("fs:profiles/")) {
-      if (!/\/photo-wall\/photo-[1-9][0-9]*\.json$/.test(key)) continue;
+    const metadataKeys = (await this.listKvKeys("fs:profiles/"))
+      .filter((key) => /\/photo-wall\/photo-[1-9][0-9]*\.json$/.test(key));
+    const profileRequests = new Map();
+    const entries = (await Promise.all(metadataKeys.map(async (key) => {
       const metadata = await this.env.RLOGS_DATA.get(key, "json");
-      if (!metadata?.profile_id || !Number.isSafeInteger(metadata.photo_id)) continue;
-      const profile = await this.env.RLOGS_DATA.get(`fs:profiles/${metadata.profile_id}/public.json`, "json");
-      if (!profile) continue;
-      const likeState = await this.photoLikeState(metadata.profile_id, metadata.photo_id, viewer?.submitter_id);
-      entries.push({
+      if (!metadata?.profile_id || !Number.isSafeInteger(metadata.photo_id)) return null;
+      if (!profileRequests.has(metadata.profile_id)) {
+        profileRequests.set(
+          metadata.profile_id,
+          this.env.RLOGS_DATA.get(`fs:profiles/${metadata.profile_id}/public.json`, "json"),
+        );
+      }
+      const [profile, likeState] = await Promise.all([
+        profileRequests.get(metadata.profile_id),
+        this.photoLikeState(metadata.profile_id, metadata.photo_id, viewer?.submitter_id),
+      ]);
+      if (!profile) return null;
+      return {
         profile_id: metadata.profile_id,
         character_id: profile.character_id,
         display_name: profile.display_name ?? null,
@@ -343,8 +352,8 @@ export class RLogsAuthState {
         uploaded_unix_millis: metadata.uploaded_unix_millis || profile.updated_unix_millis,
         like_count: likeState.count,
         viewer_liked: likeState.viewerLiked,
-      });
-    }
+      };
+    }))).filter(Boolean);
     const sort = url.searchParams.get("sort") === "popular" ? "popular" : "newest";
     entries.sort((left, right) => sort === "popular"
       ? right.like_count - left.like_count || right.uploaded_unix_millis - left.uploaded_unix_millis || left.profile_id.localeCompare(right.profile_id) || left.photo_id - right.photo_id
