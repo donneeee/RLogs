@@ -911,8 +911,8 @@ fn reviewed_mechanic_signal_kind(
         (13021..=13023, 829106) => Some("electromagnetic_pulse_c"),
         (13021..=13023, 829115) => Some("share"),
         (13021..=13023, 829116) => Some("mirage_share"),
-        (13021..=13023, 829214) => Some("phase_corner"),
-        (13021..=13023, 829215) => Some("phase_edge"),
+        (13021..=13023, 829214) => Some("phase_edge"),
+        (13021..=13023, 829215) => Some("phase_corner"),
         (13021..=13023, 829217) => Some("normal_target"),
         (13021..=13023, 829245) => Some("decay_target"),
         (13021..=13023, 829226) => Some("hit_order_one"),
@@ -1294,6 +1294,8 @@ mod tests {
             (1151, 821076, "sticky_bomb"),
             (1632, 841519, "void_corruption_binding"),
             (6565, 883603, "double_echo_water"),
+            (13023, 829214, "phase_edge"),
+            (13023, 829215, "phase_corner"),
             (13023, 829228, "hit_order_three"),
         ] {
             assert_eq!(

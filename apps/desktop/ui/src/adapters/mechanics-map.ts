@@ -83,6 +83,12 @@ export interface MechanicsMapViewPoint {
   visible: boolean;
 }
 
+export interface MechanicsMapProjectedRegion {
+  kind: string;
+  points: MechanicsMapViewPoint[];
+  label?: string;
+}
+
 export interface MechanicsMapTransform {
   scale: number;
   panX: number;
@@ -233,6 +239,53 @@ function projectSector(
     points.push({ x: x + Math.sin(angle) * radius, z: z + Math.cos(angle) * radius });
   }
   return points.flatMap((point) => {
+    const projected = projectMechanicsMapPoint(value, point.x, point.z, false);
+    return projected === null ? [] : [projected];
+  });
+}
+
+export function projectRaidFloorRegions(value: MechanicsMapSnapshot): MechanicsMapProjectedRegion[] {
+  if (value.map_layout !== "raid_grid") return [];
+  const cells = {
+    top_left: [-20, 15], top_middle: [0, 15], top_right: [20, 15],
+    middle_left: [-20, 0], middle_right: [20, 0],
+    bottom_left: [-20, -15], bottom_middle: [0, -15], bottom_right: [20, -15],
+  } as const;
+  const effectCells: Record<string, readonly (keyof typeof cells)[]> = {
+    phase_edge: ["top_middle", "middle_left", "middle_right", "bottom_middle"],
+    phase_corner: ["top_left", "top_right", "bottom_left", "bottom_right"],
+    return_top_left: ["top_left"], return_middle_left: ["middle_left"], return_bottom_left: ["bottom_left"],
+    return_top_right: ["top_right"], return_middle_right: ["middle_right"], return_bottom_right: ["bottom_right"],
+  };
+  const regions: MechanicsMapProjectedRegion[] = [];
+  for (const signal of value.mechanics) {
+    for (const cell of effectCells[signal.mechanic_kind ?? ""] ?? []) {
+      const center = cells[cell];
+      regions.push({ kind: signal.mechanic_kind ?? "raid_floor", points: projectWorldRect(value, center[0], center[1], 10, 7.5) });
+    }
+  }
+  for (const signal of value.mechanics) {
+    if (signal.mechanic_kind !== "floor_link" || signal.source_actor_id === null) continue;
+    const source = value.entities.find((entity) => entity.actor_id === signal.source_actor_id);
+    if (source === undefined) continue;
+    const nearest = Object.entries(cells).reduce<{ name: keyof typeof cells; distance: number } | null>((best, [name, center]) => {
+      const distance = (source.x - center[0]) ** 2 + (source.z - center[1]) ** 2;
+      return best === null || distance < best.distance ? { name: name as keyof typeof cells, distance } : best;
+    }, null);
+    if (nearest === null) continue;
+    const count = value.mechanics.find((candidate) => candidate.target_actor_id === signal.target_actor_id && candidate.mechanic_kind?.startsWith("return_count_"));
+    const label = count?.mechanic_kind === "return_count_one" ? "1" : count?.mechanic_kind === "return_count_two" ? "2" : count?.mechanic_kind === "return_count_three" ? "3" : undefined;
+    const center = cells[nearest.name];
+    regions.push({ kind: "floor_link", label, points: projectWorldRect(value, center[0], center[1], 10, 7.5) });
+  }
+  return regions;
+}
+
+function projectWorldRect(value: MechanicsMapSnapshot, x: number, z: number, halfX: number, halfZ: number): MechanicsMapViewPoint[] {
+  return [
+    { x: x - halfX, z: z - halfZ }, { x: x + halfX, z: z - halfZ },
+    { x: x + halfX, z: z + halfZ }, { x: x - halfX, z: z + halfZ },
+  ].flatMap((point) => {
     const projected = projectMechanicsMapPoint(value, point.x, point.z, false);
     return projected === null ? [] : [projected];
   });

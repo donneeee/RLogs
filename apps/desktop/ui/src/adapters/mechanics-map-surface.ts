@@ -1,5 +1,5 @@
 import type { MountedSurface } from "../shell/types";
-import { projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
+import { projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
 
 export interface MechanicsMapDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
@@ -163,6 +163,23 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
         polygon.dataset.kind = pizza.kind;
         regions.append(polygon);
       }
+      for (const floor of projectRaidFloorRegions(snapshot)) {
+        if (floor.points.length < 3) continue;
+        const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        polygon.setAttribute("points", floor.points.map((point) => `${point.mapX},${point.mapY}`).join(" "));
+        polygon.dataset.kind = floor.kind;
+        if (floor.label !== undefined) polygon.dataset.label = floor.label;
+        regions.append(polygon);
+        if (floor.label !== undefined) {
+          const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          label.textContent = floor.label;
+          label.setAttribute("x", String(floor.points.reduce((sum, point) => sum + point.mapX, 0) / floor.points.length));
+          label.setAttribute("y", String(floor.points.reduce((sum, point) => sum + point.mapY, 0) / floor.points.length));
+          label.dataset.kind = "floor_label";
+          regions.append(label);
+        }
+      }
+      renderRaidRings(regions, snapshot);
     }
     points.replaceChildren();
     for (const entity of projected) {
@@ -368,22 +385,46 @@ function mechanicKindLabel(kind: string | null): string | null {
 function renderArenaLayout(arena: SVGSVGElement, layout: MechanicsMapUpdate["snapshot"]["map_layout"]): void {
   arena.replaceChildren();
   if (layout === "raid_ring") {
-    const outer = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    outer.setAttribute("cx", "50"); outer.setAttribute("cy", "50"); outer.setAttribute("r", "44");
-    const inner = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    inner.setAttribute("cx", "50"); inner.setAttribute("cy", "50"); inner.setAttribute("r", "17");
-    arena.append(outer, inner);
+    for (const radius of [10.4545, 11.3636, 15.9091, 16.8182, 27.2727]) {
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("cx", "50"); circle.setAttribute("cy", "50"); circle.setAttribute("r", String(radius));
+      arena.append(circle);
+    }
+    for (const [x1, y1, x2, y2] of [[30.909, 30.718, 69.091, 69.282], [69.091, 30.718, 30.909, 69.282], [50, 50, 88.373, 50], [50, 50, 11.627, 50]]) {
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", String(x1)); line.setAttribute("y1", String(y1)); line.setAttribute("x2", String(x2)); line.setAttribute("y2", String(y2));
+      arena.append(line);
+    }
   } else if (layout === "raid_grid") {
     const boundary = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    boundary.setAttribute("x", "7"); boundary.setAttribute("y", "7"); boundary.setAttribute("width", "86"); boundary.setAttribute("height", "86"); boundary.setAttribute("rx", "3");
+    boundary.setAttribute("x", "0"); boundary.setAttribute("y", "8.3333"); boundary.setAttribute("width", "100"); boundary.setAttribute("height", "83.3334"); boundary.setAttribute("rx", "3");
     arena.append(boundary);
-    for (const offset of [28.5, 50, 71.5]) {
+    for (const [x, y] of [[33.3333, 36.1111], [66.6667, 63.8889]]) {
       const vertical = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      vertical.setAttribute("x1", String(offset)); vertical.setAttribute("x2", String(offset)); vertical.setAttribute("y1", "7"); vertical.setAttribute("y2", "93");
+      vertical.setAttribute("x1", String(x)); vertical.setAttribute("x2", String(x)); vertical.setAttribute("y1", "8.3333"); vertical.setAttribute("y2", "91.6667");
       const horizontal = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      horizontal.setAttribute("x1", "7"); horizontal.setAttribute("x2", "93"); horizontal.setAttribute("y1", String(offset)); horizontal.setAttribute("y2", String(offset));
+      horizontal.setAttribute("x1", "0"); horizontal.setAttribute("x2", "100"); horizontal.setAttribute("y1", String(y)); horizontal.setAttribute("y2", String(y));
       arena.append(vertical, horizontal);
     }
+  }
+}
+function renderRaidRings(regions: SVGSVGElement, snapshot: MechanicsMapUpdate["snapshot"]): void {
+  if (snapshot.map_layout !== "raid_ring") return;
+  const bands = { ring_inner: [0, 12.5], ring_middle: [12.5, 17.5], ring_outer: [18.5, 30] } as const;
+  const active = snapshot.mechanics.filter((signal) => signal.mechanic_kind !== null && signal.mechanic_kind in bands).slice(-3);
+  for (const signal of active) {
+    const kind = signal.mechanic_kind as keyof typeof bands;
+    const [inner, outer] = bands[kind];
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", "50"); circle.setAttribute("cy", "50");
+    if (inner === 0) {
+      circle.setAttribute("r", String((outer / 110) * 100));
+    } else {
+      circle.setAttribute("r", String((((inner + outer) / 2) / 110) * 100));
+      circle.style.strokeWidth = String(((outer - inner) / 110) * 100);
+    }
+    circle.dataset.kind = kind;
+    regions.append(circle);
   }
 }
 function formatZoom(scale: number): string { return `${Math.round(scale * 100)}%`; }

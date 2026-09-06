@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
+import { parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
 
 function snapshot(): MechanicsMapSnapshot {
   return {
@@ -168,5 +168,24 @@ describe("Mechanics Map", () => {
     const purple = projectCoralPizzaRegions({ ...base, mechanics: [cast, { ...cast, effect_id: 883634, mechanic_kind: "pizza_purple" }] });
     expect(purple[0]?.kind).toBe("pizza_purple");
     expect(purple[0]?.points[7]?.mapX).toBeCloseTo(83.3333333333);
+  });
+
+  it("projects the raid's edge and corner patterns onto the true 3x3 floor", () => {
+    const base = {
+      ...snapshot(), scene_id: 13023, map_model: "absolute_scene_map" as const, map_layout: "raid_grid" as const,
+      map_origin_x: -30, map_origin_z: -27, map_span_x: 60, map_span_z: 54,
+    };
+    const signal = (effect_id: number, mechanic_kind: string): MechanicsMapSignal => ({
+      effect_id, mechanic_kind, presentation_name: null, instance_id: null, target_actor_id: 1, source_actor_id: null,
+      stacks: null, duration_millis: 5_000, origin_x: null, origin_z: null, facing_radians: null, applied_at_micros: 1,
+    });
+    const edge = projectRaidFloorRegions({ ...base, mechanics: [signal(829214, "phase_edge")] });
+    expect(edge).toHaveLength(4);
+    expect(edge.map((region) => region.kind)).toEqual(["phase_edge", "phase_edge", "phase_edge", "phase_edge"]);
+    const corner = projectRaidFloorRegions({ ...base, mechanics: [signal(829215, "phase_corner")] });
+    expect(corner).toHaveLength(4);
+    expect(corner[0]?.points[0]?.mapX).toBeCloseTo(0);
+    expect(corner[0]?.points[0]?.mapY).toBeCloseTo(36.11111111111111);
+    expect(projectRaidFloorRegions({ ...base, map_layout: "raid_ring" })).toEqual([]);
   });
 });

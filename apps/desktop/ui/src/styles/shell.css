@@ -5723,6 +5723,12 @@ body {
 .mechanics-map-regions polygon[data-kind="pizza_purple"] { fill: rgb(179 138 255 / 27%); stroke: rgb(197 167 255 / 88%); }
 .mechanics-map-regions polygon[data-kind="wave_safe"] { fill: rgb(92 228 212 / 17%); stroke: rgb(92 228 212 / 84%); }
 .mechanics-map-regions line[data-kind="matrix_callout"] { stroke: rgb(242 195 107 / 92%); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.mechanics-map-regions polygon[data-kind="phase_edge"], .mechanics-map-regions polygon[data-kind="phase_corner"] { fill: rgb(255 111 131 / 18%); stroke: rgb(255 111 131 / 88%); }
+.mechanics-map-regions polygon[data-kind^="return_"], .mechanics-map-regions polygon[data-kind="floor_link"] { fill: rgb(179 138 255 / 21%); stroke: rgb(197 167 255 / 90%); }
+.mechanics-map-regions circle[data-kind^="ring_"] { fill: rgb(255 111 131 / 18%); stroke: rgb(255 111 131 / 55%); vector-effect: non-scaling-stroke; }
+.mechanics-map-regions circle[data-kind="ring_middle"] { fill: none; stroke: rgb(242 195 107 / 32%); }
+.mechanics-map-regions circle[data-kind="ring_outer"] { fill: none; stroke: rgb(109 169 255 / 32%); }
+.mechanics-map-regions text[data-kind="floor_label"] { fill: var(--text); stroke: rgb(3 11 19 / 80%); stroke-width: 0.65; paint-order: stroke; text-anchor: middle; dominant-baseline: central; font-size: 5px; font-weight: 900; }
 .mechanics-ring { position: absolute; inset: 25%; border: 1px solid rgb(142 221 220 / 20%); border-radius: 50%; }
 .mechanics-ring.ring-two { inset: 8%; }
 .mechanics-crosshair::before, .mechanics-crosshair::after { position: absolute; content: ""; background: rgb(142 221 220 / 15%); }
