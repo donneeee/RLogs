@@ -64,9 +64,9 @@ use rlogs_bpsr_module_optimizer::{
 use rlogs_capture::{BoundedCaptureIngress, OfflineCapture};
 #[cfg(windows)]
 use rlogs_capture::{
-    DumpcapLiveConfig, OwnedProcessCaptureConfig, WindowsCaptureAdapter,
+    DumpcapLiveConfig, SignatureFlowCaptureConfig, WindowsCaptureAdapter,
     WindowsCaptureAdapterRecommendationSource, WindowsLiveCaptureStopHandle,
-    WindowsOwnedLiveCapture, npcap_device_name, npcap_diagnostic,
+    WindowsSignatureLiveCapture, npcap_device_name, npcap_diagnostic,
     recommend_windows_capture_adapter, windows_capture_adapters,
 };
 use rlogs_core::{GameConnection, ResearchConnectionFile};
@@ -87,17 +87,19 @@ use rlogs_game_bpsr::{
     ResolvedRegion, RouteKey, SealedDungeonRunLog, ServerRealmCatalog,
     auxiliary_action_presentation, battle_imagine_presentation, bundled_gauntlet_scene_ids,
     bundled_run_reducer_config, bundled_scene_run_identities, bundled_terminal_boss_scene_ids,
-    character_id_from_entity_uuid, combat_action_presentation, combat_breakdown_ability_id,
-    confirmed_damage_contribution_rules, fight_attribute_presentation_catalog, is_boss_monster,
-    is_localized_class_name, localized_auxiliary_action_name, localized_battle_imagine_name,
-    localized_class_identities, localized_combat_action_name, localized_monster_name,
-    localized_recount_group_name, localized_scene_name, localized_specialization_identities,
-    localized_status_effect_name, project_local_profile_packages,
-    proven_state_damage_contribution_effect_ids, rdps_attribution_effect_presentation,
-    record_offline_capture, resolve_actor_combat_identity, resolve_actor_combat_presentation,
-    resolve_live_protocol_pack, scene_boss_monster_ids, state_damage_contribution_formula_identity,
-    state_damage_contribution_target_matches, status_effect_presentation,
-    stimen_floor_encounter_kind, weapon_level_presentation, weapon_presentation,
+    character_id_from_entity_uuid, classify_bpsr_tcp_payload, combat_action_presentation,
+    combat_breakdown_ability_id, confirmed_damage_contribution_rules,
+    fight_attribute_presentation_catalog, is_boss_monster, is_localized_class_name,
+    localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
+    localized_combat_action_name, localized_monster_name, localized_recount_group_name,
+    localized_scene_name, localized_specialization_identities, localized_status_effect_name,
+    project_local_profile_packages, proven_state_damage_contribution_effect_ids,
+    rdps_attribution_effect_presentation, record_offline_capture, resolve_actor_combat_identity,
+    resolve_actor_combat_presentation, resolve_live_protocol_pack,
+    resolve_packet_detected_protocol_pack, scene_boss_monster_ids,
+    state_damage_contribution_formula_identity, state_damage_contribution_target_matches,
+    status_effect_presentation, stimen_floor_encounter_kind, weapon_level_presentation,
+    weapon_presentation,
 };
 use rlogs_log_format::{RlogHeader, RlogLimits, RlogReader, RlogReplaySummary};
 use rlogs_plugin_api::{PluginCapability, PluginDependency, PluginRuntime, PluginWorkspaceTabKind};
@@ -5808,9 +5810,15 @@ impl RuntimeController {
                         {
                             let _ = controller.stop_live();
                         }
-                    } else if controller.snapshot().phase != RuntimePhase::Processing
-                        && let Some(process) = processes.first()
-                    {
+                    } else if controller.snapshot().phase == RuntimePhase::Processing {
+                        // Packet-only monitoring remains active for an
+                        // unknown executable. Upgrade once a supported client
+                        // appears so its stronger local build/channel receipt
+                        // replaces the unverified bootstrap identity.
+                        if !processes.is_empty() {
+                            let _ = controller.stop_live();
+                        }
+                    } else {
                         let settings = controller.core_settings();
                         let dumpcap_path = settings
                             .dumpcap_path
@@ -5829,9 +5837,13 @@ impl RuntimeController {
                         )
                         .or(saved_interface);
                         if let Some(interface) = interface {
+                            let process_id = processes
+                                .first()
+                                .map(|process| process.process_id)
+                                .unwrap_or_default();
                             let request = LiveSessionRequest {
                                 session_id: format!("monitor-{}", unix_millis()),
-                                process_id: process.process_id,
+                                process_id,
                                 interface,
                                 dumpcap_path: dumpcap_path
                                     .as_deref()
@@ -7187,9 +7199,6 @@ impl RuntimeController {
         if let Some(region_id) = &request.region_id {
             validate_identifier("region_id", region_id)?;
         }
-        if request.process_id == 0 {
-            return Err("process_id must be greater than zero".into());
-        }
         let interface = request.interface.trim();
         if interface.is_empty() {
             return Err("capture interface cannot be empty".into());
@@ -7204,12 +7213,35 @@ impl RuntimeController {
             }
         }
 
-        let executable_path = process_executable_path(request.process_id)?;
         let plugin_root = self
             .install_root
             .join("plugins/games/blue-protocol-star-resonance");
-        let automatic_selection = resolve_live_protocol_pack(&plugin_root, &executable_path)
-            .map_err(|error| format!("could not select a BPSR live pack: {error}"))?;
+        let automatic_selection = if request.process_id == 0 {
+            resolve_packet_detected_protocol_pack(&plugin_root).map_err(|error| {
+                format!("could not select a BPSR packet bootstrap pack: {error}")
+            })?
+        } else {
+            let executable_path = process_executable_path(request.process_id);
+            let executable_name = discover_game_processes()
+                .unwrap_or_default()
+                .into_iter()
+                .find(|process| process.process_id == request.process_id)
+                .map(|process| process.executable_name);
+            match executable_path {
+                Ok(path) => resolve_live_protocol_pack(&plugin_root, &path)
+                    .map_err(|error| format!("could not select a BPSR live pack: {error}")),
+                Err(path_error) => {
+                    let Some(name) = executable_name else {
+                        return Err(path_error);
+                    };
+                    resolve_live_protocol_pack(&plugin_root, Path::new(&name)).map_err(|error| {
+                        format!(
+                            "could not select a BPSR live pack: {path_error}; executable-name bootstrap for {name} also failed: {error}"
+                        )
+                    })
+                }
+            }?
+        };
         let (pack_kind, pack_source_build, pack) = match &request.pack_path {
             Some(path) if !path.trim().is_empty() => {
                 let path = existing_file(path, "protocol pack")?;
@@ -7439,12 +7471,12 @@ impl RuntimeController {
             .and_then(|path| {
                 DumpcapLiveConfig::new(path, interface, request.duration_seconds).ok()
             });
-        let capture = WindowsOwnedLiveCapture::open(
-            request.process_id,
+        let capture = WindowsSignatureLiveCapture::open(
             interface,
             request.duration_seconds,
             dumpcap_fallback,
-            OwnedProcessCaptureConfig::default(),
+            classify_bpsr_tcp_payload,
+            SignatureFlowCaptureConfig::default(),
         )
         .map_err(|error| error.to_string())?;
         let stop_handle = capture.stop_handle();
@@ -7460,7 +7492,7 @@ impl RuntimeController {
                 .live_process_id
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *live_process_id = Some(request.process_id);
+            *live_process_id = (request.process_id != 0).then_some(request.process_id);
         }
         {
             let mut state = self
@@ -7588,7 +7620,7 @@ impl RuntimeController {
                     let mut capture = BoundedCaptureIngress::spawn(
                         capture,
                         LIVE_CAPTURE_INGRESS_QUEUE_CAPACITY,
-                        move |source: &WindowsOwnedLiveCapture| {
+                        move |source: &WindowsSignatureLiveCapture| {
                             let current = source.confirmed_connections();
                             if current == last_confirmed_connections {
                                 None

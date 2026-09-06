@@ -55,6 +55,7 @@ mod state_rdps;
 mod stream;
 mod swift_vortex_audit;
 mod talent_presentation;
+mod traffic_signature;
 mod use_skill_attr;
 mod weapon_presentation;
 mod website;
@@ -169,7 +170,7 @@ pub use framing::{
 pub use install::{
     BPSR_STEAM_APP_ID, LiveProtocolPackKind, LiveProtocolPackSelection,
     LiveProtocolPackSelectionError, resolve_live_protocol_pack, resolve_live_steam_protocol_pack,
-    steam_manifest_for_executable,
+    resolve_packet_detected_protocol_pack, steam_manifest_for_executable,
 };
 pub use journal::{CaptureSession, GameBuild, JournalError, ProtocolJournal};
 pub use loadout::{normalize_auxiliary_imagine_tier, project_actor_loadouts};
@@ -316,6 +317,7 @@ pub use swift_vortex_audit::{
     SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
     SwiftVortexMagnitudeReceipt,
 };
+pub use traffic_signature::classify_bpsr_tcp_payload;
 pub use use_skill_attr::{
     BPSR_CURRENT_USE_SKILL_ATTR_BUILD, BPSR_USE_SKILL_ATTR_BUILD, ClientSkillStageEndSnapshot,
     ClientSkillStageTriggerSnapshot, ServerSkillStageEndSnapshot, UseSkillActionDecodeError,

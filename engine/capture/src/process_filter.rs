@@ -44,13 +44,13 @@ impl TcpConnection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct ConnectionKey {
+pub(crate) struct ConnectionKey {
     first: TcpEndpoint,
     second: TcpEndpoint,
 }
 
 impl ConnectionKey {
-    fn new(first: TcpEndpoint, second: TcpEndpoint) -> Self {
+    pub(crate) fn new(first: TcpEndpoint, second: TcpEndpoint) -> Self {
         if first <= second {
             Self { first, second }
         } else {
@@ -63,15 +63,20 @@ impl ConnectionKey {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct DirectedTcpFlow {
-    source: TcpEndpoint,
-    destination: TcpEndpoint,
+pub(crate) struct DirectedTcpFlow {
+    pub(crate) source: TcpEndpoint,
+    pub(crate) destination: TcpEndpoint,
 }
 
 impl DirectedTcpFlow {
-    fn key(self) -> ConnectionKey {
+    pub(crate) fn key(self) -> ConnectionKey {
         ConnectionKey::new(self.source, self.destination)
     }
+}
+
+pub(crate) struct TcpFrameView<'a> {
+    pub(crate) flow: DirectedTcpFlow,
+    pub(crate) payload: &'a [u8],
 }
 
 /// Supplies exact TCP connections currently owned by one OS process.
@@ -337,11 +342,12 @@ impl<S: CaptureSource, O: ProcessSocketOwner> OwnedProcessCapture<S, O> {
             self.metadata.link_types.push(frame.link_type);
         }
 
-        let Some(flow) = extract_tcp_flow(&frame) else {
+        let Some(view) = extract_tcp_frame(&frame) else {
             self.metrics.non_tcp_frames_discarded =
                 self.metrics.non_tcp_frames_discarded.saturating_add(1);
             return Ok(());
         };
+        let flow = view.flow;
         self.enqueue(frame, flow);
 
         if self.refresh_due(self.last_observed_micros)
@@ -389,7 +395,7 @@ impl<S: CaptureSource, O: ProcessSocketOwner> CaptureSource for OwnedProcessCapt
     }
 }
 
-fn extract_tcp_flow(frame: &CapturedFrame) -> Option<DirectedTcpFlow> {
+pub(crate) fn extract_tcp_frame(frame: &CapturedFrame) -> Option<TcpFrameView<'_>> {
     let bytes = frame.bytes.as_ref();
     let parsed = match frame.link_type {
         CaptureLinkType::Ethernet => SlicedPacket::from_ethernet(bytes).ok()?,
@@ -422,9 +428,12 @@ fn extract_tcp_flow(frame: &CapturedFrame) -> Option<DirectedTcpFlow> {
     let TransportSlice::Tcp(tcp) = parsed.transport? else {
         return None;
     };
-    Some(DirectedTcpFlow {
-        source: TcpEndpoint::new(source_address, tcp.source_port()),
-        destination: TcpEndpoint::new(destination_address, tcp.destination_port()),
+    Some(TcpFrameView {
+        flow: DirectedTcpFlow {
+            source: TcpEndpoint::new(source_address, tcp.source_port()),
+            destination: TcpEndpoint::new(destination_address, tcp.destination_port()),
+        },
+        payload: tcp.payload(),
     })
 }
 

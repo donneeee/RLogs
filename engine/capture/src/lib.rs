@@ -10,6 +10,7 @@ mod pcap_writer;
 mod process_filter;
 #[cfg(windows)]
 mod recording;
+mod signature_filter;
 #[cfg(windows)]
 mod windows;
 
@@ -34,12 +35,17 @@ pub use process_filter::{
 pub use recording::{
     OwnedCaptureRecordingError, OwnedCaptureRecordingResult, record_owned_capture_to_files,
 };
+pub use signature_filter::{
+    SignatureFlowCapture, SignatureFlowCaptureConfig, SignatureFlowCaptureConfigError,
+    SignatureFlowCaptureMetrics, TcpPayloadDirection, TcpPayloadSignature,
+};
 #[cfg(windows)]
 pub use windows::{
     WindowsCaptureAdapter, WindowsCaptureAdapterRecommendation,
     WindowsCaptureAdapterRecommendationSource, WindowsLiveCaptureStopHandle,
     WindowsOwnedDumpcapCapture, WindowsOwnedLiveCapture, WindowsOwnedNpcapCapture,
-    WindowsProcessSocketOwner, recommend_windows_capture_adapter, windows_capture_adapters,
+    WindowsProcessSocketOwner, WindowsSignatureDumpcapCapture, WindowsSignatureLiveCapture,
+    WindowsSignatureNpcapCapture, recommend_windows_capture_adapter, windows_capture_adapters,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

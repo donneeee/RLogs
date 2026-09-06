@@ -133,6 +133,28 @@ pub fn resolve_live_protocol_pack(
     })
 }
 
+/// Starts packet-proven BPSR traffic when no executable receipt is available.
+///
+/// The protocol signature establishes only the game flow. Until a separate
+/// packet or installation receipt proves the deployment, channel, and exact
+/// build, this selection remains an explicit client bootstrap and therefore
+/// cannot authorize automatic submissions or exact-build calculations.
+pub fn resolve_packet_detected_protocol_pack(
+    plugin_root: &Path,
+) -> Result<LiveProtocolPackSelection, LiveProtocolPackSelectionError> {
+    let Some((path, pack_build_id)) = latest_bootstrap_pack(plugin_root)? else {
+        return Err(LiveProtocolPackSelectionError::NoBootstrapPack);
+    };
+    Ok(LiveProtocolPackSelection {
+        path,
+        build_id: "unverified".to_owned(),
+        pack_build_id,
+        deployment_id: "unknown".to_owned(),
+        channel: "unknown".to_owned(),
+        kind: LiveProtocolPackKind::ClientBootstrap,
+    })
+}
+
 fn supported_bootstrap_channel(executable_stem: &str) -> Option<&'static str> {
     if executable_stem.eq_ignore_ascii_case("BPSR") {
         Some("standalone")
@@ -656,6 +678,22 @@ mod tests {
                     && entry.reference.contains("client_deployment=unknown")
             }));
         }
+    }
+
+    #[test]
+    fn packet_detected_flow_bootstraps_without_inventing_client_identity() {
+        let plugin_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let selected = resolve_packet_detected_protocol_pack(plugin_root).unwrap();
+        assert_eq!(selected.kind, LiveProtocolPackKind::ClientBootstrap);
+        assert_eq!(selected.deployment_id, "unknown");
+        assert_eq!(selected.channel, "unknown");
+        assert_eq!(selected.build_id, "unverified");
+
+        let pack = selected.load_pack().unwrap();
+        assert_eq!(pack.definition().target.deployment_id, "unknown");
+        assert_eq!(pack.definition().target.region_id, None);
+        assert_eq!(pack.definition().target.channel, "unknown");
+        assert_eq!(pack.definition().target.build_id, "unverified");
     }
 
     #[test]

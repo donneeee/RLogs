@@ -25,8 +25,9 @@ use crate::npcap::NpcapLiveCapture;
 use crate::{
     CaptureError, CaptureSource, CaptureSourceMetadata, CapturedFrame, DumpcapLiveConfig,
     LiveCaptureStopHandle, NpcapLiveConfig, NpcapLiveStopHandle, OwnedProcessCapture,
-    OwnedProcessCaptureConfig, OwnedProcessCaptureMetrics, ProcessSocketOwner, TcpConnection,
-    TcpEndpoint,
+    OwnedProcessCaptureConfig, OwnedProcessCaptureMetrics, ProcessSocketOwner,
+    SignatureFlowCapture, SignatureFlowCaptureConfig, SignatureFlowCaptureMetrics, TcpConnection,
+    TcpEndpoint, TcpPayloadSignature,
 };
 
 const MAX_TABLE_QUERY_ATTEMPTS: usize = 4;
@@ -451,6 +452,161 @@ impl WindowsOwnedLiveCapture {
 }
 
 impl CaptureSource for WindowsOwnedLiveCapture {
+    fn metadata(&self) -> &CaptureSourceMetadata {
+        match self {
+            Self::Npcap(capture) => capture.metadata(),
+            Self::Dumpcap(capture) => capture.metadata(),
+        }
+    }
+
+    fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
+        match self {
+            Self::Npcap(capture) => capture.next_frame(),
+            Self::Dumpcap(capture) => capture.next_frame(),
+        }
+    }
+}
+
+/// Native Npcap ingress protected by an exact game-protocol signature gate.
+#[derive(Debug)]
+pub struct WindowsSignatureNpcapCapture {
+    inner: SignatureFlowCapture<NpcapLiveCapture>,
+}
+
+impl WindowsSignatureNpcapCapture {
+    pub fn open(
+        npcap: NpcapLiveConfig,
+        signature: TcpPayloadSignature,
+        filter: SignatureFlowCaptureConfig,
+    ) -> Result<Self, CaptureError> {
+        let source = NpcapLiveCapture::open(npcap)?;
+        Ok(Self {
+            inner: SignatureFlowCapture::new(source, signature, filter)?,
+        })
+    }
+
+    pub fn metrics(&self) -> &SignatureFlowCaptureMetrics {
+        self.inner.metrics()
+    }
+
+    pub fn confirmed_connections(&self) -> Vec<TcpConnection> {
+        self.inner.confirmed_connections()
+    }
+
+    pub fn stop_handle(&self) -> NpcapLiveStopHandle {
+        self.inner.source().stop_handle()
+    }
+}
+
+impl CaptureSource for WindowsSignatureNpcapCapture {
+    fn metadata(&self) -> &CaptureSourceMetadata {
+        self.inner.metadata()
+    }
+
+    fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
+        self.inner.next_frame()
+    }
+}
+
+/// Dumpcap compatibility ingress protected by the same protocol-signature
+/// privacy boundary as native Npcap.
+#[derive(Debug)]
+pub struct WindowsSignatureDumpcapCapture {
+    inner: SignatureFlowCapture<DumpcapLiveCapture>,
+}
+
+impl WindowsSignatureDumpcapCapture {
+    pub fn spawn(
+        dumpcap: DumpcapLiveConfig,
+        signature: TcpPayloadSignature,
+        filter: SignatureFlowCaptureConfig,
+    ) -> Result<Self, CaptureError> {
+        let source = DumpcapLiveCapture::spawn(dumpcap)?;
+        Ok(Self {
+            inner: SignatureFlowCapture::new(source, signature, filter)?,
+        })
+    }
+
+    pub fn metrics(&self) -> &SignatureFlowCaptureMetrics {
+        self.inner.metrics()
+    }
+
+    pub fn confirmed_connections(&self) -> Vec<TcpConnection> {
+        self.inner.confirmed_connections()
+    }
+
+    pub fn stop_handle(&self) -> LiveCaptureStopHandle {
+        self.inner.source().stop_handle()
+    }
+}
+
+impl CaptureSource for WindowsSignatureDumpcapCapture {
+    fn metadata(&self) -> &CaptureSourceMetadata {
+        self.inner.metadata()
+    }
+
+    fn next_frame(&mut self) -> Result<Option<CapturedFrame>, CaptureError> {
+        self.inner.next_frame()
+    }
+}
+
+/// Packet-first Windows live capture. It opens broad TCP ingress in memory,
+/// then exposes only exact connections proven by the supplied game signature.
+#[derive(Debug)]
+pub enum WindowsSignatureLiveCapture {
+    Npcap(WindowsSignatureNpcapCapture),
+    Dumpcap(WindowsSignatureDumpcapCapture),
+}
+
+impl WindowsSignatureLiveCapture {
+    pub fn open(
+        interface: &str,
+        duration_seconds: u32,
+        dumpcap_fallback: Option<DumpcapLiveConfig>,
+        signature: TcpPayloadSignature,
+        filter: SignatureFlowCaptureConfig,
+    ) -> Result<Self, CaptureError> {
+        let npcap_result = NpcapLiveConfig::new(interface, duration_seconds)
+            .and_then(|config| WindowsSignatureNpcapCapture::open(config, signature, filter));
+        match npcap_result {
+            Ok(capture) => Ok(Self::Npcap(capture)),
+            Err(npcap_error) => match dumpcap_fallback {
+                Some(config) => WindowsSignatureDumpcapCapture::spawn(config, signature, filter)
+                    .map(Self::Dumpcap)
+                    .map_err(|dumpcap_error| CaptureError::Adapter {
+                        adapter: "windows-signature-live-capture".into(),
+                        message: format!(
+                            "native Npcap failed ({npcap_error}); dumpcap fallback also failed ({dumpcap_error})"
+                        ),
+                    }),
+                None => Err(npcap_error),
+            },
+        }
+    }
+
+    pub fn metrics(&self) -> &SignatureFlowCaptureMetrics {
+        match self {
+            Self::Npcap(capture) => capture.metrics(),
+            Self::Dumpcap(capture) => capture.metrics(),
+        }
+    }
+
+    pub fn confirmed_connections(&self) -> Vec<TcpConnection> {
+        match self {
+            Self::Npcap(capture) => capture.confirmed_connections(),
+            Self::Dumpcap(capture) => capture.confirmed_connections(),
+        }
+    }
+
+    pub fn stop_handle(&self) -> WindowsLiveCaptureStopHandle {
+        match self {
+            Self::Npcap(capture) => WindowsLiveCaptureStopHandle::Npcap(capture.stop_handle()),
+            Self::Dumpcap(capture) => WindowsLiveCaptureStopHandle::Dumpcap(capture.stop_handle()),
+        }
+    }
+}
+
+impl CaptureSource for WindowsSignatureLiveCapture {
     fn metadata(&self) -> &CaptureSourceMetadata {
         match self {
             Self::Npcap(capture) => capture.metadata(),
