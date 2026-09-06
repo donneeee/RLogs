@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rlogs-backend",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-31",
+  "workers_dev": false,
+  "kv_namespaces": [
+    {
+      "binding": "RLOGS_DATA",
+      "id": "1a2a4d10731e4c7ebe31d568c87fe1c2"
+    }
+  ]
+}

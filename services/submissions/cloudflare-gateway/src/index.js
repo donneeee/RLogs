@@ -110,7 +110,16 @@ export default {
       return Response.json({ error: "route not found" }, { status: 404, headers: cors });
     }
 
+    let upstreamResponse;
+    if (env.BACKEND && typeof env.BACKEND.fetch === "function") {
+      try {
+        upstreamResponse = await env.BACKEND.fetch(request);
+      } catch {
+        return unavailableResponse(cors);
+      }
+    }
     let origin;
+    if (!upstreamResponse) {
     try {
       origin = configuredOrigin(env.ORIGIN_BASE_URL, {
         allowDevelopmentOrigin: env.ALLOW_DEVELOPMENT_ORIGIN === "true",
@@ -123,11 +132,11 @@ export default {
     }
     const upstreamUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, origin);
     const upstreamRequest = new Request(upstreamUrl, request);
-    let upstreamResponse;
     try {
       upstreamResponse = await fetch(upstreamRequest);
     } catch {
       return unavailableResponse(cors);
+    }
     }
     // Tunnel failures arrive as HTTP responses, not fetch exceptions. Never
     // expose their HTML or cache them as successful public photo responses.

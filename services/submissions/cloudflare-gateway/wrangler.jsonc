@@ -5,5 +5,11 @@
   "compatibility_date": "2026-08-31",
   "vars": {
     "ALLOWED_ORIGIN": "https://rlogs-app.github.io"
-  }
+  },
+  "services": [
+    {
+      "binding": "BACKEND",
+      "service": "rlogs-backend"
+    }
+  ]
 }

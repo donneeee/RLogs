@@ -215,6 +215,35 @@ test("gateway forwards allowed reads and applies constrained CORS", async () => 
   }
 });
 
+test("Cloudflare service binding is authoritative over the legacy origin", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("legacy public origin must not be contacted");
+  };
+  try {
+    const response = await gateway.fetch(
+      new Request("https://gateway.example/v1/profiles", {
+        headers: { Origin: "https://rlogs-app.github.io" },
+      }),
+      {
+        ALLOWED_ORIGIN: "https://rlogs-app.github.io",
+        ORIGIN_BASE_URL: "https://legacy-origin.example",
+        BACKEND: {
+          async fetch(request) {
+            assert.equal(request.url, "https://gateway.example/v1/profiles");
+            return Response.json({ schema_version: 1, profiles: [] });
+          },
+        },
+      },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("Access-Control-Allow-Origin"), "https://rlogs-app.github.io");
+    assert.deepEqual(await response.json(), { schema_version: 1, profiles: [] });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("unknown paths never reach the upstream", async () => {
   const response = await gateway.fetch(
     new Request("https://gateway.example/private/file"),
