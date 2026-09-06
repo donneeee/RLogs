@@ -270,6 +270,53 @@ describe("Combat Overlay plug-in settings", () => {
     expect(projected[0]?.abilities?.[0]?.rdps_support_effect).toBeUndefined();
   });
 
+  it("moves exact Encore damage to one provider-owned overlay row", () => {
+    const encore = (abilityId: string, damage: number, hits: number) => ({
+      ability_id: abilityId,
+      presentation_name: "Encore",
+      casts: 0,
+      hits,
+      critical_hits: 0,
+      reported_damage: damage,
+      effective_damage: damage,
+      reported_healing: 0,
+      effective_healing: 0,
+      shielding: 0,
+    });
+    const actors = [{
+      actor_id: "healer", display_name: "Healer", actor_kind: "player",
+      dps: 30, hps: 0, tps: 0, rdps: 90, reported_damage: 30,
+      abilities: [encore("230501", 30, 1)],
+    }, {
+      actor_id: "damage", display_name: "Damage", actor_kind: "player",
+      dps: 100, hps: 0, tps: 0, rdps: 40, reported_damage: 100,
+      abilities: [encore("230401", 100, 2)],
+    }];
+    const projected = applyOverlayRdpsSkillDetail(actors, [{
+      effect_id: "55333",
+      attribution_component: "Encore (55333) standalone generated damage (actions 230401/230501)",
+      provider_actor_id: "healer",
+      recipient_actor_id: "damage",
+      affected_ability_id: "230401",
+      damage_event_count: 1,
+      attributed_rdps: "60",
+      damage_context_complete: true,
+    }], [{ effect_id: "55333", presentation_name: "Encore" }], 1_000_000, false);
+
+    expect(projected.find((actor) => actor.actor_id === "damage")?.abilities?.[0]).toMatchObject({
+      ability_id: "230401", reported_damage: 40, hits: 1,
+      rdps_received_damage: "0",
+    });
+    expect(projected.find((actor) => actor.actor_id === "healer")?.abilities).toHaveLength(1);
+    expect(projected.find((actor) => actor.actor_id === "healer")?.abilities?.[0]).toMatchObject({
+      rdps_support_effect: true, rdps_effect_id: "55333",
+      presentation_name: "Encore", reported_damage: 90, hits: 2,
+      rdps_given_damage: "60",
+    });
+    expect(projected.find((actor) => actor.actor_id === "healer")?.reported_damage).toBe(30);
+    expect(projected.find((actor) => actor.actor_id === "damage")?.reported_damage).toBe(100);
+  });
+
   it("keeps projected metrics while applying the live capture-time identity and loadout", () => {
     const projected = {
       actor_id: "77",

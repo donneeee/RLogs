@@ -2875,7 +2875,7 @@ export function applyOverlayRdpsSkillDetail(
   const duration = influences.length > 0
     ? Math.max(1_000_000, activeCombatMicros)
     : Math.max(0, activeCombatMicros);
-  return actors.map((actor) => {
+  const projected = actors.map((actor) => {
     const abilities = (actor.abilities ?? []).map((ability) => {
       const rows = byRecipientAbility.get(`${actor.actor_id}\u0000${ability.ability_id}`) ?? [];
       const grouped = new Map<string, OverlayAbilityRdpsSource>();
@@ -2974,6 +2974,104 @@ export function applyOverlayRdpsSkillDetail(
       abilities,
     };
   });
+  return moveOverlayEncoreOwnedSkills(projected, influences);
+}
+
+const OVERLAY_ENCORE_EFFECT_ID = "55333";
+const OVERLAY_ENCORE_DAMAGE_ACTION_IDS = new Set(["230401", "230501"]);
+
+function moveOverlayEncoreOwnedSkills(
+  actors: OverlayActor[],
+  influences: readonly OverlayDamageInfluence[],
+): OverlayActor[] {
+  const byActor = new Map(actors.map((actor) => [actor.actor_id, actor]));
+  const movements = new Map<string, Map<string, { damage: bigint; hits: number }>>();
+  for (const influence of influences) {
+    if (
+      influence.effect_id !== OVERLAY_ENCORE_EFFECT_ID ||
+      !influence.damage_context_complete ||
+      influence.provider_actor_id === influence.recipient_actor_id ||
+      !influence.affected_ability_id ||
+      !OVERLAY_ENCORE_DAMAGE_ACTION_IDS.has(influence.affected_ability_id) ||
+      !influence.attribution_component ||
+      humanizeOverlayAttributionComponent(influence.attribution_component).toLocaleLowerCase() !==
+        "encore standalone generated damage" ||
+      influence.attributed_rdps == null ||
+      !/^\d+$/u.test(influence.attributed_rdps)
+    ) continue;
+    const key = `${influence.recipient_actor_id}\0${influence.affected_ability_id}`;
+    const providers = movements.get(key) ?? new Map();
+    const prior = providers.get(influence.provider_actor_id) ?? { damage: 0n, hits: 0 };
+    providers.set(influence.provider_actor_id, {
+      damage: prior.damage + BigInt(influence.attributed_rdps),
+      hits: prior.hits + influence.damage_event_count,
+    });
+    movements.set(key, providers);
+  }
+
+  const affectedProviders = new Set<string>();
+  for (const [key, providers] of movements) {
+    const separator = key.indexOf("\0");
+    const recipient = byActor.get(key.slice(0, separator));
+    const actionId = key.slice(separator + 1);
+    const ability = recipient?.abilities?.find((candidate) => candidate.ability_id === actionId);
+    if (!recipient || !ability) continue;
+    const moved = [...providers.values()].reduce((sum, value) => sum + value.damage, 0n);
+    const movedHits = [...providers.values()].reduce((sum, value) => sum + value.hits, 0);
+    const movedDamage = Number(moved);
+    if (
+      !Number.isSafeInteger(movedDamage) ||
+      movedDamage > ability.reported_damage ||
+      movedHits > ability.hits ||
+      [...providers.keys()].some((providerId) => !byActor.has(providerId))
+    ) continue;
+    if (movedDamage === ability.reported_damage) {
+      recipient.abilities = recipient.abilities?.filter((candidate) => candidate !== ability);
+    } else {
+      ability.reported_damage -= movedDamage;
+      ability.effective_damage = Math.max(0, ability.effective_damage - movedDamage);
+      ability.hits -= movedHits;
+      ability.critical_hits = Math.min(ability.critical_hits, ability.hits);
+      ability.rdps_received_damage = "0";
+      ability.rdps_received_rate = 0;
+      ability.rdps_sources = [];
+    }
+    for (const [providerId, value] of providers) {
+      const provider = byActor.get(providerId)!;
+      const support = provider.abilities?.find((candidate) =>
+        candidate.rdps_support_effect === true &&
+        candidate.rdps_effect_id === OVERLAY_ENCORE_EFFECT_ID
+      );
+      if (!support) continue;
+      const damage = Number(value.damage);
+      if (!Number.isSafeInteger(damage)) continue;
+      support.reported_damage += damage;
+      support.effective_damage += damage;
+      support.hits += value.hits;
+      affectedProviders.add(providerId);
+    }
+  }
+
+  for (const providerId of affectedProviders) {
+    const provider = byActor.get(providerId);
+    if (!provider?.abilities) continue;
+    const support = provider.abilities.find((ability) =>
+      ability.rdps_support_effect === true &&
+      ability.rdps_effect_id === OVERLAY_ENCORE_EFFECT_ID
+    );
+    if (!support) continue;
+    const nativeEncore = provider.abilities.filter((ability) =>
+      OVERLAY_ENCORE_DAMAGE_ACTION_IDS.has(ability.ability_id)
+    );
+    for (const ability of nativeEncore) {
+      support.reported_damage += ability.reported_damage;
+      support.effective_damage += ability.effective_damage;
+      support.hits += ability.hits;
+      support.critical_hits += ability.critical_hits;
+    }
+    provider.abilities = provider.abilities.filter((ability) => !nativeEncore.includes(ability));
+  }
+  return actors;
 }
 
 /**
