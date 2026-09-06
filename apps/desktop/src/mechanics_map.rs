@@ -716,6 +716,15 @@ fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMap
             span_x: 800.0,
             span_z: 800.0,
         }),
+        // Exact texture: dng_branch_6561_coral. Its paired region_data stores
+        // the lower-left world origin and 1000 x 1000 span.
+        6563..=6565 => Some(SceneMapSpec {
+            asset_file: "scene-6563-coral-sea.png",
+            origin_x: -600.0,
+            origin_z: -500.0,
+            span_x: 1000.0,
+            span_z: 1000.0,
+        }),
         // Exact texture: dng_branch_6501_godvault. The paired game-owned
         // region_data stores the lower-left world origin and 450 x 450 span.
         6513..=6515 => Some(SceneMapSpec {
@@ -1007,6 +1016,12 @@ mod tests {
         assert_eq!(tina.asset_file, "scene-1631-tina-mindrealm.png");
         assert_eq!((tina.origin_x, tina.origin_z), (-640.0, -523.0));
         assert_eq!((tina.span_x, tina.span_z), (800.0, 800.0));
+
+        let coral = scene_map_spec(Some("global/steam-24687926"), Some(6565))
+            .expect("reviewed Coral Sea map");
+        assert_eq!(coral.asset_file, "scene-6563-coral-sea.png");
+        assert_eq!((coral.origin_x, coral.origin_z), (-600.0, -500.0));
+        assert_eq!((coral.span_x, coral.span_z), (1000.0, 1000.0));
 
         let map = scene_map_spec(Some("global/steam-24687926"), Some(6513))
             .expect("reviewed Cursed Tomb map");

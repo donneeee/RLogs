@@ -166,6 +166,20 @@ python tools/bpsr-local-map-asset.py `
   --region-address ui/textures/scenemaps/dng_main_1001_tina/dng_main_1001_tina_region_data
 ```
 
+Coral Sea (`6563`-`6565`) uses the current-build `dng_branch_6561_coral`
+texture and paired `1000 x 1000` region transform:
+
+```powershell
+python tools/bpsr-local-map-asset.py `
+  --container "C:\Program Files (x86)\Steam\steamapps\common\Blue Protocol Star Resonance\bpsr\BPSR_STEAM_Data\StreamingAssets\container" `
+  --runtime-root runtime-data/game-assets `
+  --build global/steam-24687926 `
+  --address ui/textures/scenemaps/dng_branch_6561_coral/dng_branch_6561_coral_dng_branch_6561_coral `
+  --object-name dng_branch_6561_coral_dng_branch_6561_coral `
+  --asset scene-6563-coral-sea.png `
+  --region-address ui/textures/scenemaps/dng_branch_6561_coral/dng_branch_6561_coral_region_data
+```
+
 The compiler requires one exact address row, one exact Unity bundle entry, and
 one `Texture2D` object. It writes a local catalog with the build, package,
 bundle hash, dimensions, and SHA-256 digest. If that asset is missing or the
