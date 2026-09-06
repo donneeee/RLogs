@@ -33,6 +33,37 @@ for (const status of [500, 502, 503, 530, null]) {
   });
 }
 
+test("service binding preserves bounded backend errors without exposing arbitrary fields", async () => {
+  const response = await gateway.fetch(
+    new Request("https://gateway.example/v1/uploads", {
+      method: "POST",
+      headers: { Origin: "https://rlogs-app.github.io" },
+    }),
+    {
+      ALLOWED_ORIGIN: "https://rlogs-app.github.io",
+      BACKEND: {
+        async fetch() {
+          return Response.json(
+            {
+              error: "hosted write service is not enabled yet",
+              retryable: true,
+              private_detail: "must not cross the gateway",
+            },
+            { status: 503, headers: { "Retry-After": "45" } },
+          );
+        },
+      },
+    },
+  );
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("Retry-After"), "45");
+  assert.equal(response.headers.get("Access-Control-Allow-Origin"), "https://rlogs-app.github.io");
+  assert.deepEqual(await response.json(), {
+    error: "hosted write service is not enabled yet",
+    retryable: true,
+  });
+});
+
 test("missing photos are not shared-cacheable", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ error: "not found" }, { status: 404 });

@@ -93,6 +93,32 @@ function unavailableResponse(cors) {
   );
 }
 
+async function serviceFailureResponse(upstream, cors) {
+  let payload;
+  try {
+    payload = await upstream.json();
+  } catch {
+    return unavailableResponse(cors);
+  }
+  if (
+    !payload ||
+    typeof payload !== "object" ||
+    typeof payload.error !== "string" ||
+    payload.error.length === 0 ||
+    payload.error.length > 200
+  ) {
+    return unavailableResponse(cors);
+  }
+  const headers = new Headers(cors);
+  headers.set("Cache-Control", "no-store");
+  headers.set("Retry-After", upstream.headers.get("Retry-After") ?? "30");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return Response.json(
+    { error: payload.error, retryable: payload.retryable === true },
+    { status: upstream.status, headers },
+  );
+}
+
 export default {
   async fetch(request, env) {
     const requestUrl = new URL(request.url);
@@ -111,9 +137,11 @@ export default {
     }
 
     let upstreamResponse;
+    let usedServiceBinding = false;
     if (env.BACKEND && typeof env.BACKEND.fetch === "function") {
       try {
         upstreamResponse = await env.BACKEND.fetch(request);
+        usedServiceBinding = true;
       } catch {
         return unavailableResponse(cors);
       }
@@ -141,6 +169,9 @@ export default {
     // Tunnel failures arrive as HTTP responses, not fetch exceptions. Never
     // expose their HTML or cache them as successful public photo responses.
     if (upstreamResponse.status >= 500) {
+      if (usedServiceBinding) {
+        return serviceFailureResponse(upstreamResponse, cors);
+      }
       if (upstreamResponse.body) {
         await upstreamResponse.body.cancel().catch(() => {});
       }
