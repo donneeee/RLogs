@@ -83,6 +83,38 @@ if (-not ($observedVersions | Where-Object { $_ -eq $ExpectedVersion -or $_ -lik
     throw "Installed executable version '$($observedVersions -join ', ')' does not match expected version '$ExpectedVersion'"
 }
 
+# A valid PE header does not prove that the application can initialize. Keep
+# the installed binary alive long enough to create its real Tauri window so
+# startup stack overflows and other pre-WebView crashes fail the release.
+$applicationProcess = Start-Process `
+    -FilePath $application.FullName `
+    -WorkingDirectory $installRoot `
+    -PassThru
+$launchDeadline = [DateTime]::UtcNow.AddSeconds(20)
+$mainWindowObserved = $false
+try {
+    while ([DateTime]::UtcNow -lt $launchDeadline) {
+        Start-Sleep -Milliseconds 250
+        $applicationProcess.Refresh()
+        if ($applicationProcess.HasExited) {
+            throw "Installed $ApplicationName exited during startup with code $($applicationProcess.ExitCode)"
+        }
+        if ($applicationProcess.MainWindowHandle -ne 0 -and $applicationProcess.Responding) {
+            $mainWindowObserved = $true
+            break
+        }
+    }
+    if (-not $mainWindowObserved) {
+        throw "Installed $ApplicationName did not create a responsive main window within 20 seconds"
+    }
+}
+finally {
+    if (-not $applicationProcess.HasExited) {
+        Stop-Process -Id $applicationProcess.Id -Force -ErrorAction SilentlyContinue
+        $applicationProcess.WaitForExit(5000) | Out-Null
+    }
+}
+
 $uninstaller = Get-Item -LiteralPath (Join-Path $installRoot "uninstall.exe") -ErrorAction Stop
 if ($uninstaller.Length -le 0) {
     throw "Installed uninstaller is empty"
@@ -99,6 +131,7 @@ if ($uninstaller.Length -le 0) {
     product_version = $versionInfo.ProductVersion
     file_version = $versionInfo.FileVersion
     pe_signature = "MZ"
+    launch_result = "responsive_main_window"
     uninstaller = $uninstaller.Name
     uninstaller_bytes = $uninstaller.Length
     result = "passed"

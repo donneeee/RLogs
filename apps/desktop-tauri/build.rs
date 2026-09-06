@@ -1,4 +1,15 @@
 fn main() {
+    // The desktop host restores and validates several bounded runtime stores
+    // before Tauri creates its WebViews.  Windows PE executables otherwise use
+    // a 1 MiB main-thread stack, which is too small for that initialization and
+    // terminates with STATUS_STACK_OVERFLOW before an error can be displayed.
+    // Keep the UI event loop on the process main thread, but reserve enough
+    // address space for the startup path. Committed stack pages still grow on
+    // demand, so this does not add 8 MiB to normal working-set usage.
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        println!("cargo:rustc-link-arg=/STACK:8388608");
+    }
+
     ensure_placeholder_icon();
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
