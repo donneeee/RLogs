@@ -603,7 +603,7 @@ impl SubmissionService {
         }
         let membership = build_private_parse_membership(&artifact_path, &report)?;
         write_json_atomic(&self.membership_path(&report_id)?, &membership)?;
-        apply_verified_character_ids(
+        apply_verified_character_keys(
             &mut report,
             membership
                 .character_by_actor
@@ -750,7 +750,7 @@ impl SubmissionService {
         )?;
         let membership = build_private_parse_membership(&artifact_path, &refreshed)?;
         write_json_atomic(&self.membership_path(&refreshed.report_id)?, &membership)?;
-        apply_verified_character_ids(
+        apply_verified_character_keys(
             &mut refreshed,
             membership
                 .character_by_actor
@@ -2671,6 +2671,11 @@ pub struct PublicRunSegment {
 pub struct PublicParticipant {
     pub actor_id: String,
     pub character_id: Option<String>,
+    /// Stable, non-reversible identity derived by the verifier from the sealed
+    /// character UID. This links the same observed player across public parses
+    /// without exposing a remote participant's private UID.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_character_key: Option<String>,
     pub display_name: Option<String>,
     pub actor_kind: Option<String>,
     pub class_id: Option<i32>,
@@ -5130,7 +5135,7 @@ fn restore_verified_names(
     changed
 }
 
-fn apply_verified_character_ids(
+fn apply_verified_character_keys(
     report: &mut PublicParseReport,
     identities: &BTreeMap<String, String>,
 ) -> Result<bool, ServiceError> {
@@ -5147,10 +5152,12 @@ fn apply_verified_character_ids(
                 )));
             }
             Some(_) => {}
-            None => {
-                participant.character_id = Some(sealed_uid.clone());
-                changed = true;
-            }
+            None => {}
+        }
+        let observed_key = pseudonymous_identifier("chr", sealed_uid.as_bytes());
+        if participant.observed_character_key.as_deref() != Some(&observed_key) {
+            participant.observed_character_key = Some(observed_key);
+            changed = true;
         }
     }
     Ok(changed)
@@ -5199,6 +5206,7 @@ fn public_participant(actor: &HistoryActorSummary) -> PublicParticipant {
     PublicParticipant {
         actor_id: actor.actor_id.clone(),
         character_id: actor.character_id.clone(),
+        observed_character_key: None,
         display_name: actor
             .presentation_name
             .clone()
@@ -5855,6 +5863,7 @@ mod tests {
                 participants: vec![PublicParticipant {
                     actor_id: "1".into(),
                     character_id: Some("3296036".into()),
+                    observed_character_key: None,
                     display_name: Some("MarieRose".into()),
                     actor_kind: Some("player".into()),
                     class_id: None,
@@ -7568,19 +7577,21 @@ mod tests {
     }
 
     #[test]
-    fn sealed_actor_identity_is_published_with_the_participant() {
+    fn sealed_actor_identity_publishes_only_an_opaque_participant_key() {
         let mut report = fixture_public_report("identity", "3296036", 0);
         report.runs[0].participants.truncate(1);
         report.runs[0].participants[0].actor_id = "5".into();
         report.runs[0].participants[0].character_id = None;
         let identities = BTreeMap::from([("5".into(), "3296036".into())]);
 
-        assert!(apply_verified_character_ids(&mut report, &identities).unwrap());
+        assert!(apply_verified_character_keys(&mut report, &identities).unwrap());
+        let participant = &report.runs[0].participants[0];
+        assert_eq!(participant.character_id, None);
         assert_eq!(
-            report.runs[0].participants[0].character_id.as_deref(),
-            Some("3296036")
+            participant.observed_character_key.as_deref(),
+            Some(pseudonymous_identifier("chr", b"3296036").as_str())
         );
-        assert!(!apply_verified_character_ids(&mut report, &identities).unwrap());
+        assert!(!apply_verified_character_keys(&mut report, &identities).unwrap());
     }
 
     #[test]
@@ -7592,7 +7603,7 @@ mod tests {
         let identities = BTreeMap::from([("5".into(), "3296036".into())]);
 
         assert!(matches!(
-            apply_verified_character_ids(&mut report, &identities),
+            apply_verified_character_keys(&mut report, &identities),
             Err(ServiceError::Replay(_))
         ));
     }
@@ -7605,6 +7616,7 @@ mod tests {
         let participant = |character_id: &str| PublicParticipant {
             actor_id: character_id.into(),
             character_id: Some(character_id.into()),
+            observed_character_key: None,
             display_name: None,
             actor_kind: Some("player".into()),
             class_id: None,
