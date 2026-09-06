@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "builds": {
+    "global/steam-24687926": [
+      {
+        "scene_ids": [1150, 1151, 1152],
+        "address": "ui/textures/scenemaps/dng_hero_1121_tower_s3/dng_hero_1121_tower_s3_dng_hero_1121_tower_s3",
+        "object_name": "dng_hero_1121_tower_s3_dng_hero_1121_tower_s3",
+        "asset": "scene-1150-towering-ruin.png",
+        "region_address": "ui/textures/scenemaps/dng_hero_1121_tower_s3/dng_hero_1121_tower_s3_region_data",
+        "source_bundle_hash": 1999247523,
+        "region_bundle_hash": 3525241180,
+        "width": 4096,
+        "height": 4096,
+        "origin_x": -275.67401123046875,
+        "origin_z": -472.9739990234375,
+        "span_x": 297.3480224609375,
+        "span_z": 297.3480224609375
+      },
+      {
+        "scene_ids": [1631, 1632, 1633],
+        "address": "ui/textures/scenemaps/dng_main_1001_tina/dng_main_1001_tina_dng_main_1001_tina",
+        "object_name": "dng_main_1001_tina_dng_main_1001_tina",
+        "asset": "scene-1631-tina-mindrealm.png",
+        "region_address": "ui/textures/scenemaps/dng_main_1001_tina/dng_main_1001_tina_region_data",
+        "source_bundle_hash": 2853590401,
+        "region_bundle_hash": 3823346736,
+        "width": 4096,
+        "height": 4096,
+        "origin_x": -640.0,
+        "origin_z": -523.0,
+        "span_x": 800.0,
+        "span_z": 800.0
+      },
+      {
+        "scene_ids": [6513, 6514, 6515],
+        "address": "ui/textures/scenemaps/dng_branch_6501_godvault/dng_branch_6501_godvault_dng_branch_6501_godvault",
+        "object_name": "dng_branch_6501_godvault_dng_branch_6501_godvault",
+        "asset": "scene-6513-cursed-tomb.png",
+        "region_address": "ui/textures/scenemaps/dng_branch_6501_godvault/dng_branch_6501_godvault_region_data",
+        "source_bundle_hash": 3937407976,
+        "region_bundle_hash": 298526890,
+        "width": 4096,
+        "height": 4096,
+        "origin_x": -149.0,
+        "origin_z": -377.0,
+        "span_x": 450.0,
+        "span_z": 450.0
+      },
+      {
+        "scene_ids": [6563, 6564, 6565],
+        "address": "ui/textures/scenemaps/dng_branch_6561_coral/dng_branch_6561_coral_dng_branch_6561_coral",
+        "object_name": "dng_branch_6561_coral_dng_branch_6561_coral",
+        "asset": "scene-6563-coral-sea.png",
+        "region_address": "ui/textures/scenemaps/dng_branch_6561_coral/dng_branch_6561_coral_region_data",
+        "source_bundle_hash": 205250939,
+        "region_bundle_hash": 2991092652,
+        "width": 4096,
+        "height": 4096,
+        "origin_x": -600.0,
+        "origin_z": -500.0,
+        "span_x": 1000.0,
+        "span_z": 1000.0
+      }
+    ]
+  }
+}

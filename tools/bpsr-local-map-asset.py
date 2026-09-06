@@ -6,9 +6,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import struct
 from pathlib import Path
+from typing import Optional
 
 import UnityPy  # type: ignore
 from PIL import __version__ as pillow_version  # type: ignore
@@ -22,6 +24,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", action="store_true")
     parser.add_argument("--self-check", action="store_true")
+    parser.add_argument("--reviewed-manifest", type=Path)
     parser.add_argument("--container", type=Path)
     parser.add_argument("--runtime-root", type=Path)
     parser.add_argument("--build")
@@ -38,6 +41,15 @@ def main() -> None:
         return
     if args.container is None or args.runtime_root is None or args.build is None:
         parser.error("--container, --runtime-root, and --build are required for extraction")
+    if args.reviewed_manifest is not None:
+        compile_reviewed_manifest(
+            args.container, args.runtime_root, args.build, args.reviewed_manifest
+        )
+        return
+    compile_asset(args)
+
+
+def compile_asset(args: argparse.Namespace, expected: Optional[dict] = None) -> dict:
     if not is_safe_relative_identity(args.build, 128):
         raise SystemExit("build must be a safe exact client-build identity")
     if not re.fullmatch(r"[A-Za-z0-9._/-]{1,240}", args.address) or ".." in args.address:
@@ -60,6 +72,11 @@ def main() -> None:
     if len(hashes) != 1:
         raise SystemExit(f"expected one exact address row for {args.address}, observed {len(hashes)}")
     bundle_hash = hashes.pop()
+    if expected is not None and bundle_hash != expected["source_bundle_hash"]:
+        raise SystemExit(
+            f"reviewed source bundle changed for {args.asset}: "
+            f"expected {expected['source_bundle_hash']}, observed {bundle_hash}"
+        )
     entries = [entry for entry in read_meta_entries((args.container / "meta.pkg").read_bytes()) if entry[0] == bundle_hash]
     if len(entries) != 1:
         raise SystemExit(f"expected one meta entry for bundle {bundle_hash}, observed {len(entries)}")
@@ -82,6 +99,16 @@ def main() -> None:
         raise SystemExit(
             f"expected one Texture2D named {args.object_name}, observed {len(matches)}"
         )
+    image = matches[0].image
+    if expected is not None and (image.width, image.height) != (
+        expected["width"],
+        expected["height"],
+    ):
+        raise SystemExit(
+            f"reviewed texture dimensions changed for {args.asset}: "
+            f"expected {expected['width']}x{expected['height']}, "
+            f"observed {image.width}x{image.height}"
+        )
 
     runtime_root = args.runtime_root.resolve()
     output = (runtime_root / args.build / args.asset).resolve()
@@ -89,9 +116,6 @@ def main() -> None:
         output.relative_to(runtime_root)
     except ValueError:
         raise SystemExit("output must remain inside the local runtime root")
-    output.parent.mkdir(parents=True, exist_ok=True)
-    matches[0].image.save(output)
-    digest = hashlib.sha256(output.read_bytes()).hexdigest()
     manifest = {
         "schema_version": 1,
         "game_build": args.build,
@@ -100,15 +124,19 @@ def main() -> None:
         "source_bundle_hash": bundle_hash,
         "source_package": package.name,
         "asset": args.asset,
-        "sha256": digest,
-        "width": matches[0].image.width,
-        "height": matches[0].image.height,
+        "width": image.width,
+        "height": image.height,
         "upload_allowed": False,
     }
     if args.region_address:
         region_bundle_hash, region_package, region_bundle = read_address_bundle(
             args.container, args.region_address
         )
+        if expected is not None and region_bundle_hash != expected["region_bundle_hash"]:
+            raise SystemExit(
+                f"reviewed region bundle changed for {args.asset}: "
+                f"expected {expected['region_bundle_hash']}, observed {region_bundle_hash}"
+            )
         region_objects = [
             obj
             for obj in UnityPy.load(region_bundle).objects
@@ -124,6 +152,19 @@ def main() -> None:
         values = struct.unpack("<9f", raw[-36:])
         if values[7] <= 0 or values[8] <= 0:
             raise SystemExit("region-data map span must be positive")
+        if expected is not None:
+            observed_transform = (values[4], values[6], values[7], values[8])
+            expected_transform = tuple(expected[key] for key in (
+                "origin_x", "origin_z", "span_x", "span_z"
+            ))
+            if any(
+                abs(observed - reviewed) > 0.0001
+                for observed, reviewed in zip(observed_transform, expected_transform)
+            ):
+                raise SystemExit(
+                    f"reviewed region transform changed for {args.asset}: "
+                    f"expected {expected_transform!r}, observed {observed_transform!r}"
+                )
         manifest["region_transform"] = {
             "source_address": args.region_address,
             "source_bundle_hash": region_bundle_hash,
@@ -132,6 +173,12 @@ def main() -> None:
             "world_span": {"x": values[7], "z": values[8]},
             "raw_prefix_values": list(values[:4]),
         }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    pending = output.with_name(f".{output.name}.pending-{os.getpid()}")
+    image.save(pending, format="PNG")
+    digest = hashlib.sha256(pending.read_bytes()).hexdigest()
+    pending.replace(output)
+    manifest["sha256"] = digest
     manifest_path = (
         output.parent / "catalog.v1.json"
         if args.asset == "dungeon_map_bg.png"
@@ -140,6 +187,47 @@ def main() -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"{args.address} ({package.name}/{bundle_hash}) -> {output}")
     print(f"local catalog -> {manifest_path}")
+    return manifest
+
+
+def compile_reviewed_manifest(
+    container: Path, runtime_root: Path, build: str, manifest_path: Path
+) -> None:
+    if not is_safe_relative_identity(build, 128):
+        raise SystemExit("build must be a safe exact client-build identity")
+    if manifest_path.stat().st_size > 128 * 1024:
+        raise SystemExit("reviewed map manifest exceeds 128 KiB")
+    value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict) or set(value) != {"schema_version", "builds"}:
+        raise SystemExit("reviewed map manifest has an invalid root")
+    if value["schema_version"] != 1 or not isinstance(value["builds"], dict):
+        raise SystemExit("reviewed map manifest has an unsupported schema")
+    entries = value["builds"].get(build)
+    if not isinstance(entries, list) or not entries:
+        raise SystemExit(f"no reviewed local map assets match exact build {build}")
+    required = {
+        "address", "object_name", "asset", "region_address", "source_bundle_hash",
+        "region_bundle_hash", "width", "height", "origin_x", "origin_z", "span_x",
+        "span_z", "scene_ids",
+    }
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != required:
+            raise SystemExit("reviewed map manifest entry has invalid fields")
+        if not isinstance(entry["scene_ids"], list) or not entry["scene_ids"]:
+            raise SystemExit("reviewed map manifest entry has no scene IDs")
+        compile_asset(
+            argparse.Namespace(
+                container=container,
+                runtime_root=runtime_root,
+                build=build,
+                address=entry["address"],
+                object_name=entry["object_name"],
+                asset=entry["asset"],
+                region_address=entry["region_address"],
+            ),
+            entry,
+        )
+    print(f"prepared {len(entries)} reviewed map assets for {build}")
 
 
 def run_self_check() -> None:

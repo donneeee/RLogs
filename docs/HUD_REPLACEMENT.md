@@ -214,6 +214,19 @@ not game assets. Automatic discovery/invocation remains disabled while this
 workspace is developer-only, so an installed-client location and exact
 packet-observed build identity cannot be guessed or silently crossed.
 
+The checked-in `reviewed-map-assets.v1.json` allowlist can prepare every map
+reviewed for one exact build in a single command. Before writing each image,
+batch mode verifies its source and region bundle hashes, texture dimensions,
+and complete X/Z transform against that allowlist:
+
+```powershell
+python tools/bpsr-local-map-asset.py `
+  --container "C:\Program Files (x86)\Steam\steamapps\common\Blue Protocol Star Resonance\bpsr\BPSR_STEAM_Data\StreamingAssets\container" `
+  --runtime-root runtime-data/game-assets `
+  --build global/steam-24687926 `
+  --reviewed-manifest apps/desktop-tauri/resources/map-compiler/reviewed-map-assets.v1.json
+```
+
 ## Chat tabs
 
 The first chat milestone is a local display surface with reorderable tabs,

@@ -1048,6 +1048,40 @@ mod tests {
     }
 
     #[test]
+    fn scene_map_specs_match_the_packaged_review_manifest() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../desktop-tauri/resources/map-compiler/reviewed-map-assets.v1.json");
+        let value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).expect("reviewed map manifest"))
+                .expect("valid reviewed map manifest");
+        let entries = value["builds"]["global/steam-24687926"]
+            .as_array()
+            .expect("current build map entries");
+        assert_eq!(entries.len(), 4);
+        for entry in entries {
+            let asset = entry["asset"].as_str().expect("asset name");
+            let scene_ids = entry["scene_ids"].as_array().expect("scene IDs");
+            for scene_id in scene_ids {
+                let spec = scene_map_spec(
+                    Some("global/steam-24687926"),
+                    Some(scene_id.as_i64().expect("numeric scene ID") as i32),
+                )
+                .expect("manifest scene has a runtime map spec");
+                assert_eq!(spec.asset_file, asset);
+                for (observed, key) in [
+                    (spec.origin_x, "origin_x"),
+                    (spec.origin_z, "origin_z"),
+                    (spec.span_x, "span_x"),
+                    (spec.span_z, "span_z"),
+                ] {
+                    let reviewed = entry[key].as_f64().expect("numeric transform") as f32;
+                    assert!((observed - reviewed).abs() < 0.0001, "{asset} {key}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn mechanic_casts_are_exact_build_and_scene_scoped() {
         assert!(is_reviewed_mechanic_cast(
             Some("global/steam-24687926"),
