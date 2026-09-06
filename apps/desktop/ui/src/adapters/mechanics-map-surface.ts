@@ -1,5 +1,5 @@
 import type { MountedSurface } from "../shell/types";
-import { projectMechanicsMapEntities, projectMechanicsMapPoint, type MechanicsMapUpdate } from "./mechanics-map";
+import { projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, type MechanicsMapUpdate } from "./mechanics-map";
 
 export interface MechanicsMapDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
@@ -37,9 +37,13 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   radar.setAttribute("aria-label", "Live player-relative mechanics map");
   const fallback = el("div", "mechanics-radar-fallback");
   fallback.append(el("span", "mechanics-ring ring-one"), el("span", "mechanics-ring ring-two"), el("span", "mechanics-crosshair"));
+  const regions = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  regions.classList.add("mechanics-map-regions");
+  regions.setAttribute("viewBox", "0 0 100 100");
+  regions.setAttribute("aria-hidden", "true");
   const points = el("div", "mechanics-radar-points");
   const empty = text("p", "Waiting for a local player position.", "mechanics-map-empty");
-  radar.append(fallback, points, empty);
+  radar.append(fallback, regions, points, empty);
   mapCard.append(mapHeading, radar);
 
   const signalCard = el("article", "content-card mechanics-signal-card");
@@ -83,6 +87,17 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     prepareMapAsset(snapshot.background_asset_url);
     radar.dataset.assetState = mapAssetState;
     radar.style.setProperty("--mechanics-map-background", mapAssetState === "ready" && mapAssetUrl !== null ? `url(${JSON.stringify(mapAssetUrl)})` : "none");
+    regions.replaceChildren();
+    if (sceneMap) {
+      for (const signal of snapshot.mechanics) {
+        const polygonPoints = projectCursedTombChargeRegion(snapshot, signal);
+        if (polygonPoints.length < 3) continue;
+        const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        polygon.setAttribute("points", polygonPoints.map((point) => `${point.mapX},${point.mapY}`).join(" "));
+        polygon.dataset.side = signal.mechanic_kind === "clone_charge_left" ? "left" : "right";
+        regions.append(polygon);
+      }
+    }
     points.replaceChildren();
     for (const entity of projected) {
       const point = el("span", "mechanics-map-point");

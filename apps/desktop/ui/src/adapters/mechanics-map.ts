@@ -23,6 +23,9 @@ export interface MechanicsMapSignal {
   source_actor_id: number | null;
   stacks: number | null;
   duration_millis: number | null;
+  origin_x: number | null;
+  origin_z: number | null;
+  facing_radians: number | null;
   applied_at_micros: number;
 }
 
@@ -75,6 +78,45 @@ export interface MechanicsMapViewPoint {
   mapX: number;
   mapY: number;
   visible: boolean;
+}
+
+const CURSED_TOMB_ARENA = [
+  { x: 37, z: -337 }, { x: 101, z: -337 }, { x: 101, z: -277 }, { x: 37, z: -277 },
+] as const;
+
+export function projectCursedTombChargeRegion(
+  value: MechanicsMapSnapshot,
+  signal: MechanicsMapSignal,
+): MechanicsMapViewPoint[] {
+  const left = signal.mechanic_kind === "clone_charge_left";
+  const right = signal.mechanic_kind === "clone_charge_right";
+  if ((!left && !right) || signal.origin_x === null || signal.origin_z === null || signal.facing_radians === null) return [];
+  const forwardX = Math.sin(signal.facing_radians);
+  const forwardZ = Math.cos(signal.facing_radians);
+  const side = (point: { x: number; z: number }): number =>
+    forwardX * (point.z - signal.origin_z!) - forwardZ * (point.x - signal.origin_x!);
+  const inside = (point: { x: number; z: number }): boolean => left ? side(point) >= -0.0001 : side(point) <= 0.0001;
+  const clipped: { x: number; z: number }[] = [];
+  for (let index = 0; index < CURSED_TOMB_ARENA.length; index += 1) {
+    const current = CURSED_TOMB_ARENA[index]!;
+    const previous = CURSED_TOMB_ARENA[(index + CURSED_TOMB_ARENA.length - 1) % CURSED_TOMB_ARENA.length]!;
+    const currentInside = inside(current);
+    const previousInside = inside(previous);
+    if (currentInside !== previousInside) {
+      const previousSide = side(previous);
+      const currentSide = side(current);
+      const denominator = previousSide - currentSide;
+      if (Math.abs(denominator) > 0.0001) {
+        const ratio = previousSide / denominator;
+        clipped.push({ x: previous.x + (current.x - previous.x) * ratio, z: previous.z + (current.z - previous.z) * ratio });
+      }
+    }
+    if (currentInside) clipped.push(current);
+  }
+  return clipped.flatMap((point) => {
+    const projected = projectMechanicsMapPoint(value, point.x, point.z, false);
+    return projected === null ? [] : [projected];
+  });
 }
 
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
@@ -148,7 +190,8 @@ function entity(value: unknown): boolean {
 function signal(value: unknown): boolean {
   return record(value) && Number.isSafeInteger(value.effect_id) && nullableString(value.mechanic_kind) && nullableString(value.presentation_name) && nullableInteger(value.instance_id) &&
     nonnegativeInteger(value.target_actor_id) && nullableInteger(value.source_actor_id) && nullableInteger(value.stacks) &&
-    nullableInteger(value.duration_millis) && nonnegativeInteger(value.applied_at_micros);
+    nullableInteger(value.duration_millis) && nullableFinite(value.origin_x) && nullableFinite(value.origin_z) &&
+    nullableFinite(value.facing_radians) && nonnegativeInteger(value.applied_at_micros);
 }
 
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }

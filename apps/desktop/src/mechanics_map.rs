@@ -103,6 +103,9 @@ pub struct MechanicsMapSignal {
     pub source_actor_id: Option<u64>,
     pub stacks: Option<u32>,
     pub duration_millis: Option<u64>,
+    pub origin_x: Option<f32>,
+    pub origin_z: Option<f32>,
+    pub facing_radians: Option<f32>,
     pub applied_at_micros: u64,
 }
 
@@ -217,6 +220,9 @@ struct SignalState {
     source: Option<EntityRef>,
     stacks: Option<u32>,
     duration_millis: Option<u64>,
+    origin_x: Option<f32>,
+    origin_z: Option<f32>,
+    facing_radians: Option<f32>,
     applied_at_micros: u64,
 }
 
@@ -417,6 +423,9 @@ impl MechanicsMapProjector {
                                 source: status.source,
                                 stacks: status.stacks,
                                 duration_millis: status.duration_millis,
+                                origin_x: None,
+                                origin_z: None,
+                                facing_radians: None,
                                 applied_at_micros: envelope.time.observed_micros,
                             },
                         );
@@ -434,6 +443,15 @@ impl MechanicsMapProjector {
                     // Targetless arena casts remain useful mechanic evidence. Anchor those
                     // signals to their caster so the map can project packet-observed facing.
                     let target = cast.target.unwrap_or(cast.source);
+                    let (origin_x, origin_z, facing_radians) = self
+                        .entities
+                        .get(&cast.source.actor_id.0)
+                        .and_then(|entity| {
+                            entity
+                                .position
+                                .map(|(x, _, z)| (Some(x), Some(z), entity.facing_radians))
+                        })
+                        .unwrap_or((None, None, None));
                     self.signals.insert(
                         (target.actor_id.0, -cast.ability.0),
                         SignalState {
@@ -442,7 +460,10 @@ impl MechanicsMapProjector {
                             target,
                             source: Some(cast.source),
                             stacks: None,
-                            duration_millis: None,
+                            duration_millis: Some(10_000),
+                            origin_x,
+                            origin_z,
+                            facing_radians,
                             applied_at_micros: envelope.time.observed_micros,
                         },
                     );
@@ -541,6 +562,9 @@ impl MechanicsMapProjector {
                 source_actor_id: signal.source.map(|source| source.actor_id.0),
                 stacks: signal.stacks,
                 duration_millis: signal.duration_millis,
+                origin_x: signal.origin_x,
+                origin_z: signal.origin_z,
+                facing_radians: signal.facing_radians,
                 applied_at_micros: signal.applied_at_micros,
             })
             .collect::<Vec<_>>();

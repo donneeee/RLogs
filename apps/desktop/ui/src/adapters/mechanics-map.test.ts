@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMechanicsMapUpdate, projectMechanicsMapEntities, projectMechanicsMapPoint, type MechanicsMapSnapshot } from "./mechanics-map";
+import { parseMechanicsMapUpdate, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
 
 function snapshot(): MechanicsMapSnapshot {
   return {
@@ -49,5 +49,29 @@ describe("Mechanics Map", () => {
     expect(bossArena?.mapX).toBeCloseTo(48.44444444444444);
     expect(bossArena?.mapY).toBeCloseTo(84.44444444444444);
     expect(bossArena?.visible).toBe(true);
+  });
+
+  it("clips reviewed clone charges to the correct half of the Cursed Tomb arena", () => {
+    const value = {
+      ...snapshot(),
+      scene_id: 6513,
+      map_model: "absolute_scene_map" as const,
+      map_origin_x: -149,
+      map_origin_z: -377,
+      map_span_x: 450,
+      map_span_z: 450,
+    };
+    const signal: MechanicsMapSignal = {
+      effect_id: -3390117, mechanic_kind: "clone_charge_left", presentation_name: null,
+      instance_id: null, target_actor_id: 2, source_actor_id: 2, stacks: null,
+      duration_millis: 10_000, origin_x: 69, origin_z: -307, facing_radians: 0,
+      applied_at_micros: 1,
+    };
+    const left = projectCursedTombChargeRegion(value, signal);
+    const right = projectCursedTombChargeRegion(value, { ...signal, effect_id: -3390118, mechanic_kind: "clone_charge_right" });
+    expect(left).toHaveLength(4);
+    expect(right).toHaveLength(4);
+    expect(Math.max(...left.map((point) => point.mapX))).toBeCloseTo(48.44444444444444);
+    expect(Math.min(...right.map((point) => point.mapX))).toBeCloseTo(48.44444444444444);
   });
 });
