@@ -3,6 +3,52 @@ import test from "node:test";
 
 import gateway, { configuredOrigin, routeAllowed } from "../src/index.js";
 
+for (const status of [500, 502, 503, 530, null]) {
+  test(`origin failure ${status ?? "network"} is retryable and never cached`, async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      if (status === null) throw new Error("private origin hostname");
+      return new Response("<html>private origin hostname</html>", { status });
+    };
+    try {
+      for (const path of ["/health", "/v1/profiles/prf_0123456789abcdef/photo-wall/42"]) {
+        const response = await gateway.fetch(
+          new Request(`https://gateway.example${path}`, {
+            headers: { Origin: "https://rlogs-app.github.io" },
+          }),
+          { ALLOWED_ORIGIN: "https://rlogs-app.github.io", ORIGIN_BASE_URL: "https://origin.example" },
+        );
+        assert.equal(response.status, 503);
+        assert.equal(response.headers.get("Cache-Control"), "no-store");
+        assert.equal(response.headers.get("Retry-After"), "30");
+        assert.equal(response.headers.get("Access-Control-Allow-Origin"), "https://rlogs-app.github.io");
+        assert.deepEqual(await response.json(), { error: "submission origin is unavailable", retryable: true });
+      }
+      assert.equal(calls, 2, "gateway must not replay requests automatically");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+}
+
+test("missing photos are not shared-cacheable", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ error: "not found" }, { status: 404 });
+  try {
+    const response = await gateway.fetch(
+      new Request("https://gateway.example/v1/profiles/prf_0123456789abcdef/photo-wall/42"),
+      { ORIGIN_BASE_URL: "https://origin.example" },
+    );
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+    assert.deepEqual(await response.json(), { error: "not found" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("only the submission API surface is routable", () => {
   assert.equal(routeAllowed("GET", "/health"), true);
   assert.equal(routeAllowed("GET", "/v1/auth/config"), true);

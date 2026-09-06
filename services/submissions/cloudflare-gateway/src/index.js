@@ -73,6 +73,17 @@ function configuredOrigin(value) {
   return origin;
 }
 
+function unavailableResponse(cors) {
+  const headers = new Headers(cors);
+  headers.set("Cache-Control", "no-store");
+  headers.set("Retry-After", "30");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return Response.json(
+    { error: "submission origin is unavailable", retryable: true },
+    { status: 503, headers },
+  );
+}
+
 export default {
   async fetch(request, env) {
     const requestUrl = new URL(request.url);
@@ -105,10 +116,15 @@ export default {
     try {
       upstreamResponse = await fetch(upstreamRequest);
     } catch {
-      return Response.json(
-        { error: "submission origin is unavailable" },
-        { status: 502, headers: cors },
-      );
+      return unavailableResponse(cors);
+    }
+    // Tunnel failures arrive as HTTP responses, not fetch exceptions. Never
+    // expose their HTML or cache them as successful public photo responses.
+    if (upstreamResponse.status >= 500) {
+      if (upstreamResponse.body) {
+        await upstreamResponse.body.cancel().catch(() => {});
+      }
+      return unavailableResponse(cors);
     }
     const headers = new Headers(upstreamResponse.headers);
     for (const name of [
@@ -128,7 +144,7 @@ export default {
     const publicPhoto =
       request.method === "GET" &&
       /^\/v1\/profiles\/prf_[a-z0-9_]+\/photo-wall\/[1-9][0-9]*$/.test(requestUrl.pathname);
-    headers.set("Cache-Control", publicPhoto ? "public, max-age=300" : "no-store");
+    headers.set("Cache-Control", publicPhoto && upstreamResponse.ok ? "public, max-age=300" : "no-store");
     headers.set("X-Content-Type-Options", "nosniff");
     return new Response(upstreamResponse.body, {
       status: upstreamResponse.status,
