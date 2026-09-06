@@ -17,6 +17,7 @@ const PUBLIC_ROUTES = [
   ["GET", /^\/v1\/activity\/milestones$/],
   ["GET", /^\/v1\/run-groups\/[A-Za-z0-9_-]+\/reconciliation$/],
   ["GET", /^\/v1\/profiles$/],
+  ["GET", /^\/v1\/characters$/],
   ["GET", /^\/v1\/photos$/],
   ["GET", /^\/v1\/profiles\/prf_[a-z0-9_]+$/],
   ["GET", /^\/v1\/profiles\/prf_[a-z0-9_]+\/loadouts\/[1-9][0-9]*$/],
