@@ -5719,6 +5719,10 @@ body {
 .mechanics-map-regions polygon[data-side="right"] { fill: rgb(179 138 255 / 23%); stroke: rgb(197 167 255 / 84%); }
 .mechanics-map-regions polygon[data-kind="pizza_slow"] { fill: rgb(255 91 111 / 27%); stroke: rgb(255 111 131 / 88%); }
 .mechanics-map-regions polygon[data-kind="pizza_fast"] { fill: rgb(255 157 92 / 27%); stroke: rgb(255 177 111 / 88%); }
+.mechanics-map-regions polygon[data-kind="pizza_orange"] { fill: rgb(255 157 92 / 27%); stroke: rgb(255 177 111 / 88%); }
+.mechanics-map-regions polygon[data-kind="pizza_purple"] { fill: rgb(179 138 255 / 27%); stroke: rgb(197 167 255 / 88%); }
+.mechanics-map-regions polygon[data-kind="wave_safe"] { fill: rgb(92 228 212 / 17%); stroke: rgb(92 228 212 / 84%); }
+.mechanics-map-regions line[data-kind="matrix_callout"] { stroke: rgb(242 195 107 / 92%); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 .mechanics-ring { position: absolute; inset: 25%; border: 1px solid rgb(142 221 220 / 20%); border-radius: 50%; }
 .mechanics-ring.ring-two { inset: 8%; }
 .mechanics-crosshair::before, .mechanics-crosshair::after { position: absolute; content: ""; background: rgb(142 221 220 / 15%); }

@@ -163,6 +163,81 @@ export function projectTinaPizzaRegion(
   });
 }
 
+export function projectCoralWaveRegion(
+  value: MechanicsMapSnapshot,
+  entity: MechanicsMapEntity,
+): MechanicsMapViewPoint[] {
+  if (!["ice_wave", "water_wave"].includes(entity.mechanic_role ?? "") || entity.facing_radians === null) return [];
+  const normalized = ((entity.facing_radians % Math.PI) + Math.PI) % Math.PI;
+  const vertical = Math.min(normalized, Math.PI - normalized) <= Math.abs(normalized - Math.PI / 2);
+  const corners = vertical
+    ? [
+        { x: entity.x - 2, z: 101 - 27 }, { x: entity.x + 2, z: 101 - 27 },
+        { x: entity.x + 2, z: 101 + 27 }, { x: entity.x - 2, z: 101 + 27 },
+      ]
+    : [
+        { x: -330 - 33, z: entity.z - 2 }, { x: -330 + 33, z: entity.z - 2 },
+        { x: -330 + 33, z: entity.z + 2 }, { x: -330 - 33, z: entity.z + 2 },
+      ];
+  return corners.flatMap((point) => {
+    const projected = projectMechanicsMapPoint(value, point.x, point.z, false);
+    return projected === null ? [] : [projected];
+  });
+}
+
+export function projectCoralPizzaRegions(value: MechanicsMapSnapshot): { kind: "pizza_orange" | "pizza_purple" | "pizza"; points: MechanicsMapViewPoint[] }[] {
+  const cast = [...value.mechanics].reverse().find((signal) => signal.mechanic_kind === "pizza_indicator" && signal.origin_x !== null && signal.origin_z !== null && signal.facing_radians !== null);
+  if (cast?.origin_x === null || cast?.origin_z === null || cast?.facing_radians === null || cast === undefined) return [];
+  const purple = value.mechanics.some((signal) => signal.mechanic_kind === "pizza_purple");
+  const orange = value.mechanics.some((signal) => signal.mechanic_kind === "pizza_orange");
+  const kind = purple ? "pizza_purple" : orange ? "pizza_orange" : "pizza";
+  const offset = purple ? Math.PI / 2 : 0;
+  return [cast.facing_radians + offset, cast.facing_radians + offset + Math.PI].map((facing) => ({
+    kind,
+    points: projectSector(value, cast.origin_x!, cast.origin_z!, facing, 20, Math.PI / 4),
+  }));
+}
+
+export function projectCoralMatrixBeam(
+  value: MechanicsMapSnapshot,
+  signal: MechanicsMapSignal,
+): MechanicsMapViewPoint[] {
+  if (signal.mechanic_kind !== "matrix_callout" || signal.source_actor_id === null) return [];
+  const source = value.entities.find((entity) => entity.actor_id === signal.source_actor_id);
+  const target = value.entities.find((entity) => entity.actor_id === signal.target_actor_id);
+  if (source === undefined || target === undefined || source.mechanic_role !== "matrix_rune") return [];
+  const dx = target.x - source.x;
+  const dz = target.z - source.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance <= 0) return [];
+  return [
+    { x: source.x, z: source.z },
+    { x: source.x + (dx / distance) * 48, z: source.z + (dz / distance) * 48 },
+  ].flatMap((point) => {
+    const projected = projectMechanicsMapPoint(value, point.x, point.z, false);
+    return projected === null ? [] : [projected];
+  });
+}
+
+function projectSector(
+  value: MechanicsMapSnapshot,
+  x: number,
+  z: number,
+  facing: number,
+  radius: number,
+  halfAngle: number,
+): MechanicsMapViewPoint[] {
+  const points = [{ x, z }];
+  for (let step = 0; step <= 12; step += 1) {
+    const angle = facing - halfAngle + (step / 12) * halfAngle * 2;
+    points.push({ x: x + Math.sin(angle) * radius, z: z + Math.cos(angle) * radius });
+  }
+  return points.flatMap((point) => {
+    const projected = projectMechanicsMapPoint(value, point.x, point.z, false);
+    return projected === null ? [] : [projected];
+  });
+}
+
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
   if (!record(value) || value.schema_version !== 1 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");

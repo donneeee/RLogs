@@ -1,5 +1,5 @@
 import type { MountedSurface } from "../shell/types";
-import { projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
+import { projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
 
 export interface MechanicsMapDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
@@ -122,19 +122,45 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     if (sceneMap) {
       for (const signal of snapshot.mechanics) {
         const polygonPoints = projectCursedTombChargeRegion(snapshot, signal);
-        if (polygonPoints.length < 3) continue;
-        const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-        polygon.setAttribute("points", polygonPoints.map((point) => `${point.mapX},${point.mapY}`).join(" "));
-        polygon.dataset.side = signal.mechanic_kind === "clone_charge_left" ? "left" : "right";
-        regions.append(polygon);
+        if (polygonPoints.length >= 3) {
+          const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          polygon.setAttribute("points", polygonPoints.map((point) => `${point.mapX},${point.mapY}`).join(" "));
+          polygon.dataset.side = signal.mechanic_kind === "clone_charge_left" ? "left" : "right";
+          regions.append(polygon);
+        }
+
+        const beamPoints = projectCoralMatrixBeam(snapshot, signal);
+        if (beamPoints.length === 2) {
+          const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          line.setAttribute("x1", String(beamPoints[0]!.mapX)); line.setAttribute("y1", String(beamPoints[0]!.mapY));
+          line.setAttribute("x2", String(beamPoints[1]!.mapX)); line.setAttribute("y2", String(beamPoints[1]!.mapY));
+          line.dataset.kind = "matrix_callout";
+          regions.append(line);
+        }
       }
       for (const entity of snapshot.entities) {
         if (entity.stale) continue;
         const polygonPoints = projectTinaPizzaRegion(snapshot, entity);
-        if (polygonPoints.length < 3) continue;
+        if (polygonPoints.length >= 3) {
+          const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          polygon.setAttribute("points", polygonPoints.map((point) => `${point.mapX},${point.mapY}`).join(" "));
+          polygon.dataset.kind = entity.mechanic_role ?? "pizza";
+          regions.append(polygon);
+        }
+
+        const wavePoints = projectCoralWaveRegion(snapshot, entity);
+        if (wavePoints.length >= 3) {
+          const wave = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          wave.setAttribute("points", wavePoints.map((point) => `${point.mapX},${point.mapY}`).join(" "));
+          wave.dataset.kind = "wave_safe";
+          regions.append(wave);
+        }
+      }
+      for (const pizza of projectCoralPizzaRegions(snapshot)) {
+        if (pizza.points.length < 3) continue;
         const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-        polygon.setAttribute("points", polygonPoints.map((point) => `${point.mapX},${point.mapY}`).join(" "));
-        polygon.dataset.kind = entity.mechanic_role ?? "pizza";
+        polygon.setAttribute("points", pizza.points.map((point) => `${point.mapX},${point.mapY}`).join(" "));
+        polygon.dataset.kind = pizza.kind;
         regions.append(polygon);
       }
     }

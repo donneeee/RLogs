@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMechanicsMapUpdate, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
+import { parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
 
 function snapshot(): MechanicsMapSnapshot {
   return {
@@ -111,5 +111,62 @@ describe("Mechanics Map", () => {
     expect(wedge[5]?.mapX).toBeCloseTo(50);
     expect(wedge[5]?.mapY).toBeCloseTo(10);
     expect(projectTinaPizzaRegion(value, { ...pizza, facing_radians: null })).toEqual([]);
+  });
+
+  it("projects Coral's packet-oriented safe wave band", () => {
+    const value = {
+      ...snapshot(), scene_id: 6565, map_model: "absolute_scene_map" as const,
+      map_origin_x: -400, map_origin_z: 0, map_span_x: 200, map_span_z: 200,
+    };
+    const wave = {
+      ...value.entities[1]!, kind: "monster" as const, monster_id: 3340219,
+      mechanic_role: "ice_wave" as const, x: -330, z: 101, facing_radians: 0,
+    };
+    const vertical = projectCoralWaveRegion(value, wave);
+    expect(vertical).toHaveLength(4);
+    expect(vertical[0]?.mapX).toBeCloseTo(34);
+    expect(vertical[1]?.mapX).toBeCloseTo(36);
+    const horizontal = projectCoralWaveRegion(value, { ...wave, facing_radians: Math.PI / 2 });
+    expect(horizontal[0]?.mapX).toBeCloseTo(18.5);
+    expect(horizontal[1]?.mapX).toBeCloseTo(51.5);
+  });
+
+  it("projects Coral's matrix callout beam from its proven source", () => {
+    const value = {
+      ...snapshot(), scene_id: 6563, map_model: "absolute_scene_map" as const,
+      map_origin_x: -100, map_origin_z: -100, map_span_x: 200, map_span_z: 200,
+      entities: [
+        { ...snapshot().entities[0]!, actor_id: 10, mechanic_role: "matrix_rune" as const, x: 0, z: 0 },
+        { ...snapshot().entities[1]!, actor_id: 11, x: 3, z: 4 },
+      ],
+    };
+    const signal: MechanicsMapSignal = {
+      effect_id: 522602, mechanic_kind: "matrix_callout", presentation_name: null,
+      instance_id: null, target_actor_id: 11, source_actor_id: 10, stacks: null,
+      duration_millis: 5_000, origin_x: null, origin_z: null, facing_radians: null, applied_at_micros: 1,
+    };
+    const beam = projectCoralMatrixBeam(value, signal);
+    expect(beam).toHaveLength(2);
+    expect(beam[1]?.mapX).toBeCloseTo(64.4);
+    expect(beam[1]?.mapY).toBeCloseTo(30.8);
+  });
+
+  it("projects Coral's two opposing pizza sectors and honors the purple offset", () => {
+    const base = {
+      ...snapshot(), scene_id: 6565, map_model: "absolute_scene_map" as const,
+      map_origin_x: -30, map_origin_z: -30, map_span_x: 60, map_span_z: 60,
+    };
+    const cast: MechanicsMapSignal = {
+      effect_id: -3340245, mechanic_kind: "pizza_indicator", presentation_name: null,
+      instance_id: null, target_actor_id: 2, source_actor_id: 2, stacks: null,
+      duration_millis: null, origin_x: 0, origin_z: 0, facing_radians: 0, applied_at_micros: 1,
+    };
+    const orange = projectCoralPizzaRegions({ ...base, mechanics: [cast, { ...cast, effect_id: 883633, mechanic_kind: "pizza_orange" }] });
+    expect(orange).toHaveLength(2);
+    expect(orange[0]?.kind).toBe("pizza_orange");
+    expect(orange[0]?.points[7]?.mapY).toBeCloseTo(16.6666666667);
+    const purple = projectCoralPizzaRegions({ ...base, mechanics: [cast, { ...cast, effect_id: 883634, mechanic_kind: "pizza_purple" }] });
+    expect(purple[0]?.kind).toBe("pizza_purple");
+    expect(purple[0]?.points[7]?.mapX).toBeCloseTo(83.3333333333);
   });
 });
