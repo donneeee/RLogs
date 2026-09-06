@@ -3019,11 +3019,21 @@ function moveOverlayEncoreOwnedSkills(
     const moved = [...providers.values()].reduce((sum, value) => sum + value.damage, 0n);
     const movedHits = [...providers.values()].reduce((sum, value) => sum + value.hits, 0);
     const movedDamage = Number(moved);
+    const destinations = [...providers.entries()].map(([providerId, value]) => ({
+      providerId,
+      value,
+      support: byActor.get(providerId)?.abilities?.find((candidate) =>
+        candidate.rdps_support_effect === true &&
+        candidate.rdps_effect_id === OVERLAY_ENCORE_EFFECT_ID
+      ),
+    }));
     if (
       !Number.isSafeInteger(movedDamage) ||
       movedDamage > ability.reported_damage ||
       movedHits > ability.hits ||
-      [...providers.keys()].some((providerId) => !byActor.has(providerId))
+      destinations.some(({ value, support }) =>
+        support === undefined || !Number.isSafeInteger(Number(value.damage))
+      )
     ) continue;
     if (movedDamage === ability.reported_damage) {
       recipient.abilities = recipient.abilities?.filter((candidate) => candidate !== ability);
@@ -3036,18 +3046,11 @@ function moveOverlayEncoreOwnedSkills(
       ability.rdps_received_rate = 0;
       ability.rdps_sources = [];
     }
-    for (const [providerId, value] of providers) {
-      const provider = byActor.get(providerId)!;
-      const support = provider.abilities?.find((candidate) =>
-        candidate.rdps_support_effect === true &&
-        candidate.rdps_effect_id === OVERLAY_ENCORE_EFFECT_ID
-      );
-      if (!support) continue;
+    for (const { providerId, value, support } of destinations) {
       const damage = Number(value.damage);
-      if (!Number.isSafeInteger(damage)) continue;
-      support.reported_damage += damage;
-      support.effective_damage += damage;
-      support.hits += value.hits;
+      support!.reported_damage += damage;
+      support!.effective_damage += damage;
+      support!.hits += value.hits;
       affectedProviders.add(providerId);
     }
   }

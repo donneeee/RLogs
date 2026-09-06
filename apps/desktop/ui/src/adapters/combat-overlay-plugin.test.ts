@@ -317,6 +317,40 @@ describe("Combat Overlay plug-in settings", () => {
     expect(projected.find((actor) => actor.actor_id === "damage")?.reported_damage).toBe(100);
   });
 
+  it("keeps Encore on the recipient when no exact provider destination exists", () => {
+    const actors = [{
+      actor_id: "healer", display_name: "Healer", actor_kind: "player",
+      dps: 0, hps: 0, tps: 0, rdps: 0, abilities: [{
+        ability_id: "provider-cast", presentation_name: "Provider cast", casts: 1,
+        hits: 0, critical_hits: 0, reported_damage: 0, effective_damage: 0,
+        reported_healing: 0, effective_healing: 0, shielding: 0,
+      }],
+    }, {
+      actor_id: "damage", display_name: "Damage", actor_kind: "player",
+      dps: 100, hps: 0, tps: 0, rdps: 40, reported_damage: 100,
+      abilities: [{
+        ability_id: "230401", presentation_name: "Encore", casts: 0, hits: 2,
+        critical_hits: 0, reported_damage: 100, effective_damage: 100,
+        reported_healing: 0, effective_healing: 0, shielding: 0,
+      }],
+    }];
+    const projected = applyOverlayRdpsSkillDetail(actors, [{
+      effect_id: "55333",
+      attribution_component: "Encore standalone generated damage",
+      provider_actor_id: "healer",
+      provider_ability_id: "provider-cast",
+      recipient_actor_id: "damage",
+      affected_ability_id: "230401",
+      damage_event_count: 1,
+      attributed_rdps: "60",
+      damage_context_complete: true,
+    }], [{ effect_id: "55333", presentation_name: "Encore" }], 1_000_000, false);
+
+    expect(projected.find((actor) => actor.actor_id === "damage")?.abilities?.[0]).toMatchObject({
+      ability_id: "230401", reported_damage: 100, hits: 2,
+    });
+  });
+
   it("keeps projected metrics while applying the live capture-time identity and loadout", () => {
     const projected = {
       actor_id: "77",
