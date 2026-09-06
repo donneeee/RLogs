@@ -48,5 +48,6 @@ if (returnedKeys.length !== keys.length || keys.some((key) => !(key in values)))
   throw new Error(`Wrangler returned ${returnedKeys.length} of ${keys.length} requested keys`);
 }
 
-writeFileSync(outputPath, JSON.stringify(values), "utf8");
-console.log(JSON.stringify({ keys: keys.length, output: outputPath }));
+const restoreEntries = keys.map((key) => ({ key, value: values[key] }));
+writeFileSync(outputPath, JSON.stringify(restoreEntries), "utf8");
+console.log(JSON.stringify({ keys: keys.length, output: outputPath, format: "wrangler_bulk_put" }));
