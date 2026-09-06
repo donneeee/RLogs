@@ -203,6 +203,22 @@ function refresh(options) {
   ]);
 
   regenerateDamageEvidence({ build, buildRoot, extractorRoot, decodedRoot });
+  run("bpsr-cast-recount-relations.mjs", [
+    "--skill-table", path.join(decodedRoot, "SkillTable.json"),
+    "--skill-effect-table", path.join(decodedRoot, "SkillEffectTable.json"),
+    "--skill-fight-level-table", path.join(decodedRoot, "SkillFightLevelTable.json"),
+    "--recount-table", path.join(decodedRoot, "RecountTable.json"),
+    "--game-build", build,
+    "--output", path.join(
+      repoRoot,
+      "plugins",
+      "games",
+      "blue-protocol-star-resonance",
+      "game-data",
+      "runtime",
+      "combat-cast-recount-relations.v1.json",
+    ),
+  ]);
 
   const semanticConfig = resolvePath(options.semanticConfig || path.join(
     "plugins",

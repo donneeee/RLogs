@@ -279,6 +279,8 @@ interface OverlayAbility {
   ability_id: string;
   presentation_name?: string | null;
   icon_asset_path?: string | null;
+  presentation_recount_group_id?: string | null;
+  presentation_recount_group_name?: string | null;
   casts: number;
   hits: number;
   critical_hits: number;

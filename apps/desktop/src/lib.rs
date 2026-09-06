@@ -88,7 +88,7 @@ use rlogs_game_bpsr::{
     auxiliary_action_presentation, battle_imagine_presentation, bundled_gauntlet_scene_ids,
     bundled_run_reducer_config, bundled_scene_run_identities, bundled_terminal_boss_scene_ids,
     character_id_from_entity_uuid, classify_bpsr_tcp_payload, combat_action_presentation,
-    combat_breakdown_ability_id, confirmed_damage_contribution_rules,
+    combat_breakdown_ability_id, combat_recount_group_id, confirmed_damage_contribution_rules,
     fight_attribute_presentation_catalog, is_boss_monster, is_localized_class_name,
     localized_auxiliary_action_name, localized_battle_imagine_name, localized_class_identities,
     localized_combat_action_name, localized_monster_name, localized_recount_group_name,
@@ -1133,6 +1133,8 @@ fn compact_live_overlay_run_projection(run: &CombatRunHistory) -> serde_json::Va
                                 "ability_id",
                                 "presentation_name",
                                 "icon_asset_path",
+                                "presentation_recount_group_id",
+                                "presentation_recount_group_name",
                                 "casts",
                                 "hits",
                                 "critical_hits",
@@ -1250,6 +1252,8 @@ fn compact_live_overlay_snapshot(snapshot: &CombatTimelineSnapshot) -> serde_jso
                             "ability_id",
                             "presentation_name",
                             "icon_asset_path",
+                            "presentation_recount_group_id",
+                            "presentation_recount_group_name",
                             "casts",
                             "hits",
                             "critical_hits",
@@ -1293,17 +1297,25 @@ fn enrich_bpsr_live_ability_presentation(ability: &mut serde_json::Value) {
     else {
         return;
     };
-    let Ok(Some(presentation)) = combat_action_presentation(ability_id) else {
-        return;
-    };
-    if let Ok(Some(name)) = localized_combat_action_name(ability_id, "en-US") {
-        object.insert("presentation_name".into(), name.into());
+    if let Ok(Some(presentation)) = combat_action_presentation(ability_id) {
+        if let Ok(Some(name)) = localized_combat_action_name(ability_id, "en-US") {
+            object.insert("presentation_name".into(), name.into());
+        }
+        if let Some(icon) = presentation.icon.as_deref() {
+            object.insert(
+                "icon_asset_path".into(),
+                format!("/game-assets/blue-protocol-star-resonance/shared/{icon}").into(),
+            );
+        }
     }
-    if let Some(icon) = presentation.icon.as_deref() {
+    if let Ok(Some(group_id)) = combat_recount_group_id(ability_id) {
         object.insert(
-            "icon_asset_path".into(),
-            format!("/game-assets/blue-protocol-star-resonance/shared/{icon}").into(),
+            "presentation_recount_group_id".into(),
+            group_id.to_string().into(),
         );
+    }
+    if let Ok(Some(group_name)) = localized_recount_group_name(ability_id, "en-US") {
+        object.insert("presentation_recount_group_name".into(), group_name.into());
     }
 }
 
@@ -12040,22 +12052,20 @@ fn enrich_bpsr_actor_combat_presentation(
         let Ok(ability_id) = ability.ability_id.parse::<i64>() else {
             continue;
         };
-        let Some(presentation) = combat_action_presentation(ability_id)? else {
-            continue;
-        };
-        ability.presentation_name =
-            localized_combat_action_name(ability_id, locale)?.map(str::to_owned);
-        ability.presentation_kind = Some(presentation.kind.clone());
-        ability.presentation_resolution = Some(presentation.resolution.clone());
-        ability.icon_asset_path = presentation
-            .icon
-            .as_ref()
-            .map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}"));
-        ability.presentation_recount_group_id = presentation
-            .recount_group_id
-            .map(|group_id| group_id.to_string());
-        ability.presentation_recount_group_name =
-            localized_recount_group_name(ability_id, locale)?.map(str::to_owned);
+        if let Some(presentation) = combat_action_presentation(ability_id)? {
+            ability.presentation_name =
+                localized_combat_action_name(ability_id, locale)?.map(str::to_owned);
+            ability.presentation_kind = Some(presentation.kind.clone());
+            ability.presentation_resolution = Some(presentation.resolution.clone());
+            ability.icon_asset_path = presentation
+                .icon
+                .as_ref()
+                .map(|path| format!("/game-assets/blue-protocol-star-resonance/shared/{path}"));
+            ability.presentation_recount_group_name =
+                localized_recount_group_name(ability_id, locale)?.map(str::to_owned);
+        }
+        ability.presentation_recount_group_id =
+            combat_recount_group_id(ability_id)?.map(|group_id| group_id.to_string());
     }
     for effect in &mut actor.effects {
         let Ok(effect_id) = effect.effect_id.parse::<i64>() else {
@@ -15017,7 +15027,17 @@ mod tests {
         // families. The game catalog owns their actual names; this regression
         // verifies the live boundary retains those names and icons rather than
         // making every overlay row fall through to its generic label.
-        for ability_id in [1_502_i64, 1_903, 2_233, 2_302, 3_524, 2_203_521] {
+        for ability_id in [
+            1_502_i64,
+            1_903,
+            2_233,
+            2_302,
+            3_524,
+            2_203_521,
+            25_524_003,
+            122_330_103,
+            322_011_000,
+        ] {
             let mut ability = serde_json::json!({
                 "ability_id": ability_id.to_string(),
                 "hits": 1,
@@ -15045,6 +15065,13 @@ mod tests {
                 );
             }
         }
+
+        let mut powerdraw_request = serde_json::json!({ "ability_id": "2233" });
+        let mut powerdraw_damage = serde_json::json!({ "ability_id": "122330103" });
+        enrich_bpsr_live_ability_presentation(&mut powerdraw_request);
+        enrich_bpsr_live_ability_presentation(&mut powerdraw_damage);
+        assert_eq!(powerdraw_request["presentation_recount_group_id"], "84");
+        assert_eq!(powerdraw_damage["presentation_recount_group_id"], "84");
 
         let mut unknown = serde_json::json!({ "ability_id": "999999999" });
         enrich_bpsr_live_ability_presentation(&mut unknown);

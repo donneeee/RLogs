@@ -1,8 +1,9 @@
-use std::sync::OnceLock;
+use std::{collections::BTreeMap, sync::OnceLock};
 
 use serde::Deserialize;
 
 const MAXIMUM_COMBAT_ACTIONS: usize = 50_000;
+const MAXIMUM_CAST_RECOUNT_RELATIONS: usize = 10_000;
 const MAXIMUM_STATUS_EFFECTS: usize = 20_000;
 const MAXIMUM_RDPS_ATTRIBUTION_EFFECTS: usize = 256;
 
@@ -48,6 +49,24 @@ struct CombatActionPresentationCatalog {
     actions: Vec<CombatActionPresentation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CombatCastRecountRelation {
+    ability_id: i64,
+    recount_group_id: i64,
+    evidence_kind: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CombatCastRecountRelationCatalog {
+    schema_version: u16,
+    game_build: String,
+    generation_scope: String,
+    source_sha256: BTreeMap<String, String>,
+    relations: Vec<CombatCastRecountRelation>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StatusEffectPresentationCatalog {
@@ -87,6 +106,8 @@ static SUPPORT_GENERATED_ACTION_PRESENTATION: OnceLock<
     Result<CombatActionPresentationCatalog, String>,
 > = OnceLock::new();
 static REVIEWED_ACTION_PRESENTATION: OnceLock<Result<CombatActionPresentationCatalog, String>> =
+    OnceLock::new();
+static CAST_RECOUNT_RELATIONS: OnceLock<Result<CombatCastRecountRelationCatalog, String>> =
     OnceLock::new();
 static EFFECT_PRESENTATION: OnceLock<Result<StatusEffectPresentationCatalog, String>> =
     OnceLock::new();
@@ -138,6 +159,60 @@ fn reviewed_action_presentation_catalog() -> Result<&'static CombatActionPresent
                 format!("bundled BPSR reviewed combat action presentation is invalid: {error}")
             })?;
             validate_action_presentation(&catalog)?;
+            Ok(catalog)
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+fn cast_recount_relation_catalog() -> Result<&'static CombatCastRecountRelationCatalog, String> {
+    CAST_RECOUNT_RELATIONS
+        .get_or_init(|| {
+            let catalog: CombatCastRecountRelationCatalog = serde_json::from_str(include_str!(
+                "../game-data/runtime/combat-cast-recount-relations.v1.json"
+            ))
+            .map_err(|error| {
+                format!("bundled BPSR cast/Recount relation catalog is invalid: {error}")
+            })?;
+            if catalog.schema_version != 1
+                || catalog.game_build != "24687926"
+                || catalog.generation_scope
+                    != "all-exact-current-build-recount-damage-and-unambiguous-cast-relations"
+                || catalog.source_sha256.len() != 4
+                || [
+                    "SkillTable",
+                    "SkillEffectTable",
+                    "SkillFightLevelTable",
+                    "RecountTable",
+                ]
+                .into_iter()
+                .any(|source| {
+                    catalog.source_sha256.get(source).is_none_or(|digest| {
+                        digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    })
+                })
+                || catalog.relations.is_empty()
+                || catalog.relations.len() > MAXIMUM_CAST_RECOUNT_RELATIONS
+                || catalog
+                    .relations
+                    .windows(2)
+                    .any(|pair| pair[0].ability_id >= pair[1].ability_id)
+                || catalog.relations.iter().any(|relation| {
+                    relation.ability_id <= 0
+                        || relation.recount_group_id <= 0
+                        || !matches!(
+                            relation.evidence_kind.as_str(),
+                            "recount-damage-id"
+                                | "skill-effect-single-group"
+                                | "skill-effect-name-match"
+                                | "skill-next-chain"
+                        )
+                })
+            {
+                return Err(
+                    "bundled BPSR cast/Recount relation catalog has an unsupported shape".into(),
+                );
+            }
             Ok(catalog)
         })
         .as_ref()
@@ -475,6 +550,24 @@ pub fn combat_action_presentation(
         .map(|index| &catalog.actions[index]))
 }
 
+/// Returns the exact current-build Recount parent for a cast request or damage
+/// action. Reviewed presentation relations take precedence; the generated
+/// fallback is limited to direct RecountTable DamageIds and SkillEffectTable
+/// routes that resolve unambiguously. It never estimates casts from hits.
+pub fn combat_recount_group_id(ability_id: i64) -> Result<Option<i64>, String> {
+    if let Some(recount_group_id) = combat_action_presentation(ability_id)?
+        .and_then(|presentation| presentation.recount_group_id)
+    {
+        return Ok(Some(recount_group_id));
+    }
+    let catalog = cast_recount_relation_catalog()?;
+    Ok(catalog
+        .relations
+        .binary_search_by_key(&ability_id, |relation| relation.ability_id)
+        .ok()
+        .map(|index| catalog.relations[index].recount_group_id))
+}
+
 pub fn status_effect_presentation(
     effect_id: i64,
 ) -> Result<Option<&'static StatusEffectPresentation>, String> {
@@ -743,6 +836,38 @@ mod tests {
                 Some(expected_name)
             );
         }
+    }
+
+    #[test]
+    fn cast_requests_and_damage_rows_share_exact_current_build_recount_groups() {
+        let cases = [
+            (2_201, 322_010_100, 75),
+            (2_202, 322_010_100, 75),
+            (2_203, 322_010_100, 75),
+            (2_204, 322_010_100, 75),
+            (2_222, 322_010_600, 77),
+            (2_233, 122_330_103, 84),
+            (2_234, 25_524_003, 85),
+            (2_238, 322_011_000, 87),
+        ];
+
+        for (cast_ability_id, damage_ability_id, expected_recount_group_id) in cases {
+            assert_eq!(
+                combat_recount_group_id(cast_ability_id).unwrap(),
+                Some(expected_recount_group_id),
+                "cast request {cast_ability_id} lost its exact Recount parent"
+            );
+            assert_eq!(
+                combat_recount_group_id(damage_ability_id).unwrap(),
+                Some(expected_recount_group_id),
+                "damage action {damage_ability_id} lost its exact Recount parent"
+            );
+        }
+    }
+
+    #[test]
+    fn reviewed_recount_relations_override_generated_fallbacks() {
+        assert_eq!(combat_recount_group_id(1_735).unwrap(), Some(63));
     }
 
     #[test]

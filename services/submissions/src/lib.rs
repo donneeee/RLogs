@@ -33,9 +33,10 @@ use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
     BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
     CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
-    bundled_run_reducer_config, character_id_from_entity_uuid, combat_breakdown_ability_id,
-    confirmed_damage_contribution_rules, is_stat_resonance_status, localized_class_name,
-    localized_scene_name, localized_specialization_name,
+    bundled_run_reducer_config, character_id_from_entity_uuid, combat_action_presentation,
+    combat_breakdown_ability_id, combat_recount_group_id, confirmed_damage_contribution_rules,
+    is_stat_resonance_status, localized_class_name, localized_combat_action_name,
+    localized_recount_group_name, localized_scene_name, localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use rlogs_plugin_combat_meter::{
@@ -69,9 +70,9 @@ use profiles::{
 };
 use rlogs_profiles::LocalProfilePackage;
 
-pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 11;
+pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 12;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
-pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 11;
+pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 12;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
 const MAXIMUM_CATALOG_ENTRIES: usize = 100_000;
 const MAXIMUM_QUERY_LIMIT: usize = 250;
@@ -1200,9 +1201,10 @@ impl SubmissionService {
         let run_projection = encounter
             .live_snapshot()
             .map_err(|error| ServiceError::Replay(error.to_string()))?;
-        let history = meter
+        let mut history = meter
             .history_snapshot(&run_projection.runs)
             .map_err(|error| ServiceError::Replay(error.to_string()))?;
+        enrich_bpsr_history_ability_presentation(&mut history)?;
         let run = history
             .runs
             .iter()
@@ -3526,9 +3528,10 @@ fn build_public_report(
     let run_projection = encounter
         .live_snapshot()
         .map_err(|error| ServiceError::Replay(error.to_string()))?;
-    let history = meter
+    let mut history = meter
         .history_snapshot(&run_projection.runs)
         .map_err(|error| ServiceError::Replay(error.to_string()))?;
+    enrich_bpsr_history_ability_presentation(&mut history)?;
     if !run_projection
         .runs
         .iter()
@@ -3749,6 +3752,43 @@ fn public_runs(
             })
         })
         .collect()
+}
+
+fn enrich_bpsr_history_ability_presentation(
+    history: &mut CombatHistorySnapshot,
+) -> Result<(), ServiceError> {
+    for run in &mut history.runs {
+        for view in &mut run.views {
+            for actor in &mut view.actors {
+                for ability in &mut actor.abilities {
+                    let Ok(ability_id) = ability.ability_id.parse::<i64>() else {
+                        continue;
+                    };
+                    if let Some(presentation) =
+                        combat_action_presentation(ability_id).map_err(ServiceError::Replay)?
+                    {
+                        ability.presentation_name =
+                            localized_combat_action_name(ability_id, "en-US")
+                                .map_err(ServiceError::Replay)?
+                                .map(str::to_owned);
+                        ability.presentation_kind = Some(presentation.kind.clone());
+                        ability.presentation_resolution = Some(presentation.resolution.clone());
+                        ability.icon_asset_path = presentation.icon.as_ref().map(|path| {
+                            format!("/game-assets/blue-protocol-star-resonance/shared/{path}")
+                        });
+                        ability.presentation_recount_group_name =
+                            localized_recount_group_name(ability_id, "en-US")
+                                .map_err(ServiceError::Replay)?
+                                .map(str::to_owned);
+                    }
+                    ability.presentation_recount_group_id = combat_recount_group_id(ability_id)
+                        .map_err(ServiceError::Replay)?
+                        .map(|group_id| group_id.to_string());
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn local_profile_payload_digest(profile: &GameProfileEvent) -> Result<String, serde_json::Error> {
