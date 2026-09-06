@@ -107,6 +107,18 @@ try {
     if (-not $mainWindowObserved) {
         throw "Installed $ApplicationName did not create a responsive main window within 20 seconds"
     }
+
+    $stabilityDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    while ([DateTime]::UtcNow -lt $stabilityDeadline) {
+        Start-Sleep -Milliseconds 250
+        $applicationProcess.Refresh()
+        if ($applicationProcess.HasExited) {
+            throw "Installed $ApplicationName exited after opening its main window with code $($applicationProcess.ExitCode)"
+        }
+        if (-not $applicationProcess.Responding) {
+            throw "Installed $ApplicationName stopped responding during the startup stability window"
+        }
+    }
 }
 finally {
     if (-not $applicationProcess.HasExited) {
