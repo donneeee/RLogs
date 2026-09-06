@@ -197,6 +197,13 @@ UIDs to the public character manifest.
 
 ### Cross-vantage rDPS reconciliation
 
+Missing submitter names are repaired from the sealed actor-to-character UID
+mapping and that account's verified profile. A unique matching name is required;
+existing names and all combat values are retained. Legacy reports are repaired
+on access. The private membership index caches the verified actor mapping so
+an unresolved name does not repeatedly replay a large artifact. These mappings
+are not added to the public response.
+
 An exact-instance run group is also the server boundary for reconciling the
 same fight recorded by different local players. A player who is remote in one
 artifact can supply a privacy-reviewed local character-profile witness in a

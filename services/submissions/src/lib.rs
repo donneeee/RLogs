@@ -277,6 +277,10 @@ struct PrivateParseMembership {
     schema_version: u16,
     report_id: String,
     artifact_sha256: String,
+    /// Exact sealed actor joins, retained privately for display-name recovery.
+    /// None denotes a legacy index that has not cached these joins yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    character_by_actor: Option<BTreeMap<String, String>>,
     runs: Vec<PrivateRunMembership>,
 }
 
@@ -633,8 +637,8 @@ impl SubmissionService {
             std::fs::remove_file(&assembled)?;
         }
         let membership = build_private_parse_membership(&artifact_path, &report)?;
-        self.restore_submitter_name(&artifact_path, &mut report)?;
         write_json_atomic(&self.membership_path(&report_id)?, &membership)?;
+        self.restore_submitter_name(&artifact_path, &mut report)?;
         write_json_atomic(&self.projection_path(&report_id)?, &report)?;
         self.enqueue_github_archive_locked(&report)?;
         self.rebuild_catalog_locked()?;
@@ -774,8 +778,8 @@ impl SubmissionService {
             report.submission_provenance,
         )?;
         let membership = build_private_parse_membership(&artifact_path, &refreshed)?;
-        self.restore_submitter_name(&artifact_path, &mut refreshed)?;
         write_json_atomic(&self.membership_path(&refreshed.report_id)?, &membership)?;
+        self.restore_submitter_name(&artifact_path, &mut refreshed)?;
         write_json_atomic(&self.projection_path(&refreshed.report_id)?, &refreshed)?;
         Ok(refreshed)
     }
@@ -807,10 +811,18 @@ impl SubmissionService {
         if profiles.profiles.is_empty() {
             return Ok(false);
         }
-        let identities = sealed_character_identities(artifact_path)?;
+        let mut membership = self.read_membership(report)?;
+        if membership.character_by_actor.is_none() {
+            membership.character_by_actor = Some(sealed_character_identities(artifact_path)?);
+            write_json_atomic(&self.membership_path(&report.report_id)?, &membership)?;
+        }
+        let identities = membership
+            .character_by_actor
+            .as_ref()
+            .expect("initialized above");
         Ok(restore_verified_names(
             report,
-            &identities,
+            identities,
             &profiles.profiles,
         ))
     }
@@ -5246,6 +5258,7 @@ fn private_parse_membership(
         schema_version: PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION,
         report_id: report.report_id.clone(),
         artifact_sha256: report.verification.artifact_sha256.clone(),
+        character_by_actor: Some(character_by_actor.clone()),
         runs,
     })
 }
@@ -7447,6 +7460,7 @@ mod tests {
                     schema_version: PRIVATE_PARSE_MEMBERSHIP_SCHEMA_VERSION,
                     report_id: report.report_id.clone(),
                     artifact_sha256: report.verification.artifact_sha256.clone(),
+                    character_by_actor: None,
                     runs: vec![PrivateRunMembership {
                         run_index: 0,
                         character_ids,
