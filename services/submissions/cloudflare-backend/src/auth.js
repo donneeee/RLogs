@@ -1,4 +1,4 @@
-import { publishProfilePackage } from "./profile.js";
+import { publishProfilePackage, publishProfilePhoto } from "./profile.js";
 
 const encoder = new TextEncoder();
 const WEB_SESSION_LIFETIME_MILLIS = 30 * 24 * 60 * 60 * 1000;
@@ -130,10 +130,21 @@ export class RLogsAuthState {
     if (request.method === "POST" && path === "/v1/games/blue-protocol-star-resonance/profiles") {
       return this.publishProfile(request, now);
     }
+    let match = /^\/v1\/games\/blue-protocol-star-resonance\/profiles\/(prf_[a-z0-9_]{32})\/photo-wall\/([1-9][0-9]*)$/.exec(path);
+    if (request.method === "PUT" && match) {
+      return this.publishPhoto(request, now, match[1], Number(match[2]));
+    }
+    if (request.method === "GET" && path === "/v1/photos") {
+      return this.photoCatalog(request, now, url);
+    }
+    match = /^\/v1\/profiles\/(prf_[a-z0-9_]{32})\/photo-wall\/([1-9][0-9]*)\/like$/.exec(path);
+    if ((request.method === "PUT" || request.method === "DELETE") && match) {
+      return this.setPhotoLike(request, now, match[1], Number(match[2]), request.method === "PUT");
+    }
     if (request.method === "GET" && path === "/v1/auth/parses") {
       return this.myParses(request, now, url);
     }
-    let match = /^\/v1\/auth\/parses\/(rpt_[a-f0-9]{32})$/.exec(path);
+    match = /^\/v1\/auth\/parses\/(rpt_[a-f0-9]{32})$/.exec(path);
     if (request.method === "GET" && match) {
       return this.accountParse(request, now, match[1]);
     }
@@ -295,6 +306,73 @@ export class RLogsAuthState {
     if (!packageValue) return error("profile package is invalid: malformed JSON", 400);
     const result = await publishProfilePackage(this.env, packageValue, identity, deviceToken, now);
     return result.error ? error(result.error, result.status) : json(result.value);
+  }
+
+  async publishPhoto(request, now, profileId, photoId) {
+    const identity = await this.authenticateDevice(request);
+    if (!identity) return error("write authorization failed", 401);
+    const bytes = await request.arrayBuffer();
+    const result = await publishProfilePhoto(this.env, profileId, photoId, bytes, identity, now);
+    return result.error ? error(result.error, result.status) : json(result.value);
+  }
+
+  async photoCatalog(request, now, url) {
+    let viewer = null;
+    if (bearer(request)) {
+      viewer = await this.authenticateWeb(request, now);
+      if (!viewer) return error("account authentication failed", 401);
+    }
+    const entries = [];
+    for (const key of await this.listKvKeys("fs:profiles/")) {
+      if (!/\/photo-wall\/photo-[1-9][0-9]*\.json$/.test(key)) continue;
+      const metadata = await this.env.RLOGS_DATA.get(key, "json");
+      if (!metadata?.profile_id || !Number.isSafeInteger(metadata.photo_id)) continue;
+      const profile = await this.env.RLOGS_DATA.get(`fs:profiles/${metadata.profile_id}/public.json`, "json");
+      if (!profile) continue;
+      const likeState = await this.photoLikeState(metadata.profile_id, metadata.photo_id, viewer?.submitter_id);
+      entries.push({
+        profile_id: metadata.profile_id,
+        character_id: profile.character_id,
+        display_name: profile.display_name ?? null,
+        photo_id: metadata.photo_id,
+        image_path: metadata.image_path,
+        uploaded_unix_millis: metadata.uploaded_unix_millis || profile.updated_unix_millis,
+        like_count: likeState.count,
+        viewer_liked: likeState.viewerLiked,
+      });
+    }
+    const sort = url.searchParams.get("sort") === "popular" ? "popular" : "newest";
+    entries.sort((left, right) => sort === "popular"
+      ? right.like_count - left.like_count || right.uploaded_unix_millis - left.uploaded_unix_millis || left.profile_id.localeCompare(right.profile_id) || left.photo_id - right.photo_id
+      : right.uploaded_unix_millis - left.uploaded_unix_millis || right.like_count - left.like_count || left.profile_id.localeCompare(right.profile_id) || left.photo_id - right.photo_id);
+    const requested = Number.parseInt(url.searchParams.get("limit") ?? "24", 10);
+    const limit = Number.isSafeInteger(requested) ? Math.min(100, Math.max(1, requested)) : 24;
+    return json({ schema_version: 1, total_entries: entries.length, entries: entries.slice(0, limit) });
+  }
+
+  async setPhotoLike(request, now, profileId, photoId, liked) {
+    const account = await this.authenticateWeb(request, now);
+    if (!account) return error("account authentication failed", 401);
+    const metadata = await this.env.RLOGS_DATA.get(`fs:profiles/${profileId}/photo-wall/photo-${photoId}.json`, "json");
+    if (!metadata) return error("not found", 404);
+    const digest = await photoLikeDigest(account.submitter_id);
+    const key = `photo-like:${profileId}:${photoId}:${digest}`;
+    if (liked) await this.storage.put(key, { liked_unix_millis: now }); else await this.storage.delete(key);
+    const state = await this.photoLikeState(profileId, photoId, account.submitter_id);
+    return json({ schema_version: 1, profile_id: profileId, photo_id: photoId, liked, like_count: state.count });
+  }
+
+  async photoLikeState(profileId, photoId, viewerSubmitterId) {
+    const prefix = `photo-like:${profileId}:${photoId}:`;
+    const current = await this.storage.list({ prefix });
+    const legacyPrefix = `fs:profiles/${profileId}/photo-wall/likes/photo-${photoId}/`;
+    const legacy = await this.listKvKeys(legacyPrefix);
+    let viewerLiked = false;
+    if (viewerSubmitterId) {
+      const digest = await photoLikeDigest(viewerSubmitterId);
+      viewerLiked = current.has(`${prefix}${digest}`) || legacy.includes(`${legacyPrefix}${digest}.json`);
+    }
+    return { count: current.size + legacy.length, viewerLiked };
   }
 
   async myParses(request, now, url) {
@@ -537,6 +615,11 @@ function parseStringJson(value) {
   } catch {
     return null;
   }
+}
+
+async function photoLikeDigest(submitterId) {
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(`rlogs-photo-like-v1\0${submitterId}`));
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
 }
 
 function catalogEntry(report, run) {

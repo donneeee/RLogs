@@ -4,6 +4,7 @@ const BPSR_GAME_PLUGIN_ID = "app.rlogs.game.blue-protocol-star-resonance";
 const BPSR_PROFILE_SCHEMA_ID = "app.rlogs.bpsr.character-profile";
 const LIVE_CAPTURE_KIND = "continuous_process_owned_capture";
 const PROFILE_BODY_LIMIT = 8 * 1024 * 1024;
+const PHOTO_LIMIT = 8 * 1024 * 1024;
 const CURRENT_BUILD_FIELDS = [
   "class_id", "specialization_id", "combat_power", "combat_power_breakdown", "combat_stats",
   "season_strength", "equipment", "equipment_suit_entries", "modules", "battle_imagine_skills",
@@ -112,6 +113,48 @@ export async function publishProfilePackage(env, packageValue, identity, deviceT
       profile_url: `${String(env.WEBSITE_URL).replace(/\/$/, "")}/profiles/${encodeURIComponent(characterId)}/`,
     },
   };
+}
+
+export async function publishProfilePhoto(env, profileId, photoId, bytes, identity, now) {
+  if (!/^prf_[a-z0-9_]{32}$/.test(profileId) || !Number.isSafeInteger(photoId) || photoId <= 0) return invalidPhoto("profile or photo ID is invalid", 404);
+  if (!(bytes instanceof ArrayBuffer) || bytes.byteLength === 0 || bytes.byteLength > PHOTO_LIMIT) return invalidPhoto("image must contain 1 to 8388608 bytes", 400);
+  const prefix = `fs:profiles/${profileId}`;
+  const claim = await env.RLOGS_DATA.get(`${prefix}/claim.json`, "json");
+  if (!claim || claim.submitter_id !== identity.submitter_id) return invalidPhoto("profile ownership does not match", 404);
+  const profile = await env.RLOGS_DATA.get(`${prefix}/public.json`, "json");
+  if (!profile || !profileContainsPhoto(profile, photoId)) return invalidPhoto(`photo ${photoId} was not observed on this claimed profile`, 409);
+  const format = reviewedImageFormat(new Uint8Array(bytes));
+  if (!format) return invalidPhoto("only valid JPEG, PNG, and WebP raster images are accepted", 400);
+  const sha256 = await sha256Bytes(bytes);
+  const oldMetadata = await env.RLOGS_DATA.get(`${prefix}/photo-wall/photo-${photoId}.json`, "json");
+  const fileName = `photo-${photoId}-${sha256}.${format.extension}`;
+  const imagePath = `/v1/profiles/${profileId}/photo-wall/${photoId}`;
+  const uploadedUnixMillis = oldMetadata?.sha256 === sha256 ? oldMetadata.uploaded_unix_millis : now;
+  const metadata = {
+    schema_version: 1, profile_id: profileId, photo_id: photoId, byte_length: bytes.byteLength,
+    sha256, media_type: format.mediaType, file_name: fileName, image_path: imagePath,
+    uploaded_unix_millis: uploadedUnixMillis,
+  };
+  await env.RLOGS_DATA.put(`${prefix}/photo-wall/${fileName}`, bytes);
+  await env.RLOGS_DATA.put(`${prefix}/photo-wall/photo-${photoId}.json`, JSON.stringify(metadata));
+  profile.envelope.body.collection_summary.photo_assets ??= [];
+  profile.envelope.body.collection_summary.photo_assets = profile.envelope.body.collection_summary.photo_assets
+    .filter((asset) => Number(asset.photo_id) !== photoId);
+  profile.envelope.body.collection_summary.photo_assets.push({
+    photo_id: photoId, image_path: imagePath, sha256, media_type: format.mediaType,
+    byte_length: bytes.byteLength, uploaded_unix_millis: uploadedUnixMillis,
+  });
+  profile.envelope.body.collection_summary.photo_assets.sort((a, b) => Number(a.photo_id) - Number(b.photo_id));
+  profile.updated_unix_millis = now;
+  await env.RLOGS_DATA.put(`${prefix}/public.json`, JSON.stringify(profile));
+  const catalog = await env.RLOGS_DATA.get("fs:profiles/catalog.v1.json", "json");
+  if (Array.isArray(catalog?.profiles)) {
+    catalog.profiles = catalog.profiles.filter((entry) => entry.profile_id !== profileId);
+    catalog.profiles.push(catalogEntry(profile));
+    catalog.profiles.sort((left, right) => right.updated_unix_millis - left.updated_unix_millis || left.profile_id.localeCompare(right.profile_id));
+    await env.RLOGS_DATA.put("fs:profiles/catalog.v1.json", JSON.stringify(catalog));
+  }
+  return { value: { ...metadata, file_name: undefined } };
 }
 
 async function validatePackage(value, deviceId, deviceToken) {
@@ -301,8 +344,10 @@ function canonicalJson(value) {
 }
 
 async function sha256Hex(value) {
-  return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value))));
+  return sha256Bytes(encoder.encode(value));
 }
+
+async function sha256Bytes(value) { return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", value))); }
 
 function littleEndian64(value) {
   const bytes = new Uint8Array(8); new DataView(bytes.buffer).setBigUint64(0, BigInt(value), true); return bytes;
@@ -318,5 +363,35 @@ function nonempty(value) { return typeof value === "string" && value.trim().leng
 function positiveSafe(value) { return Number.isSafeInteger(value) && value > 0; }
 function positiveInteger(value) { return Number.isSafeInteger(value) && value > 0 ? value : null; }
 function nullable(value) { return value == null ? null : value; }
+function invalidPhoto(message, status) { return { error: `Photo Wall image is invalid: ${message}`, status }; }
+function profileContainsPhoto(profile, photoId) {
+  const collection = profile?.envelope?.body?.collection_summary;
+  return (collection?.photo_ids ?? []).some((id) => Number(id) === photoId) ||
+    Object.values(collection?.photo_wall ?? {}).some((id) => Number(id) === photoId);
+}
+function reviewedImageFormat(bytes) {
+  if (bytes.length >= 45 && equalBytes(bytes.slice(0, 8), [137, 80, 78, 71, 13, 10, 26, 10]) &&
+      equalBytes(bytes.slice(8, 16), [0, 0, 0, 13, 73, 72, 68, 82]) &&
+      equalBytes(bytes.slice(-12), [0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130])) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const width = view.getUint32(16); const height = view.getUint32(20);
+    if (width >= 1 && width <= 16384 && height >= 1 && height <= 16384) return { mediaType: "image/png", extension: "png" };
+  }
+  if (bytes.length >= 16 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff && bytes.at(-2) === 0xff && bytes.at(-1) === 0xd9) {
+    for (let index = 0; index + 1 < bytes.length; index += 1) {
+      if (bytes[index] === 0xff && ((bytes[index + 1] >= 0xc0 && bytes[index + 1] <= 0xc3) ||
+          (bytes[index + 1] >= 0xc5 && bytes[index + 1] <= 0xc7) ||
+          (bytes[index + 1] >= 0xc9 && bytes[index + 1] <= 0xcb) ||
+          (bytes[index + 1] >= 0xcd && bytes[index + 1] <= 0xcf))) return { mediaType: "image/jpeg", extension: "jpg" };
+    }
+  }
+  if (bytes.length >= 20 && text(bytes.slice(0, 4)) === "RIFF" && text(bytes.slice(8, 12)) === "WEBP") {
+    const declared = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4, true) + 8;
+    if (declared === bytes.length && ["VP8 ", "VP8L", "VP8X"].includes(text(bytes.slice(12, 16)))) return { mediaType: "image/webp", extension: "webp" };
+  }
+  return null;
+}
+function equalBytes(bytes, expected) { return bytes.length === expected.length && expected.every((value, index) => bytes[index] === value); }
+function text(bytes) { return new TextDecoder().decode(bytes); }
 
-export { canonicalJson, liveCaptureProof, mergeProfileBodies, validatePackage };
+export { canonicalJson, liveCaptureProof, mergeProfileBodies, reviewedImageFormat, validatePackage };

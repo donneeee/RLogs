@@ -28,7 +28,7 @@ function authFixture() {
       async list({ prefix }) {
         return { keys: [...kv.keys()].filter((key) => key.startsWith(prefix)).map((name) => ({ name })), list_complete: true };
       },
-      async put(key, value) { kv.set(key, JSON.parse(value)); },
+      async put(key, value) { kv.set(key, typeof value === "string" ? JSON.parse(value) : value); },
     },
   };
   const auth = new RLogsAuthState({ storage }, env);
@@ -203,6 +203,49 @@ test("profile publication rejects a proof copied from another device", async () 
     body: JSON.stringify({ schema_version: 2 }),
   }), 200);
   assert.equal(response.status, 400);
+});
+
+test("profile owners can publish an observed Photo Wall image", async () => {
+  const { auth, kv } = authFixture();
+  const profileId = `prf_${"a".repeat(32)}`;
+  auth.authenticateDevice = async () => ({ submitter_id: "usr_owner", device_id: "dev_one" });
+  kv.set(`fs:profiles/${profileId}/claim.json`, { submitter_id: "usr_owner" });
+  kv.set(`fs:profiles/${profileId}/public.json`, {
+    profile_id: profileId, character_id: "3296036", display_name: "MarieRose", updated_unix_millis: 1,
+    envelope: { body: { collection_summary: { photo_ids: [7] } } },
+  });
+  kv.set("fs:profiles/catalog.v1.json", { schema_version: 1, profiles: [] });
+  const png = new Uint8Array(45);
+  png.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
+  new DataView(png.buffer).setUint32(16, 1); new DataView(png.buffer).setUint32(20, 1);
+  png.set([0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130], 33);
+  const response = await auth.publishPhoto(new Request(`https://backend/v1/games/blue-protocol-star-resonance/profiles/${profileId}/photo-wall/7`, {
+    method: "PUT", headers: { Authorization: "Bearer rld_secret" }, body: png,
+  }), 500, profileId, 7);
+  assert.equal(response.status, 200);
+  const receipt = await response.json();
+  assert.equal(receipt.media_type, "image/png");
+  assert.equal(receipt.byte_length, 45);
+  assert.equal(kv.get(`fs:profiles/${profileId}/public.json`).envelope.body.collection_summary.photo_assets[0].photo_id, 7);
+});
+
+test("photo likes are idempotent and feed counts are viewer-aware", async () => {
+  const { auth, kv } = authFixture();
+  const profileId = `prf_${"b".repeat(32)}`;
+  kv.set(`fs:profiles/${profileId}/photo-wall/photo-7.json`, {
+    profile_id: profileId, photo_id: 7, image_path: `/v1/profiles/${profileId}/photo-wall/7`, uploaded_unix_millis: 10,
+  });
+  kv.set(`fs:profiles/${profileId}/public.json`, { character_id: "3296036", display_name: "MarieRose", updated_unix_millis: 10 });
+  const request = new Request(`https://backend/v1/profiles/${profileId}/photo-wall/7/like`, { method: "PUT" });
+  const first = await auth.setPhotoLike(request, 20, profileId, 7, true);
+  assert.equal((await first.json()).like_count, 1);
+  const second = await auth.setPhotoLike(request, 21, profileId, 7, true);
+  assert.equal((await second.json()).like_count, 1);
+  const feed = await auth.photoCatalog(new Request("https://backend/v1/photos?sort=popular", { headers: { Authorization: "Bearer rlw_test" } }), 22, new URL("https://backend/v1/photos?sort=popular"));
+  assert.deepEqual((await feed.json()).entries[0], {
+    profile_id: profileId, character_id: "3296036", display_name: "MarieRose", photo_id: 7,
+    image_path: `/v1/profiles/${profileId}/photo-wall/7`, uploaded_unix_millis: 10, like_count: 1, viewer_liked: true,
+  });
 });
 
 function reportFixture(reportId, visibility, submitterId, createdUnixMillis) {

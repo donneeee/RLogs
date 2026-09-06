@@ -129,7 +129,12 @@ async function route(request, env) {
     const id = env.AUTH_STATE.idFromName("global");
     return env.AUTH_STATE.get(id).fetch(request);
   }
-  if (path === "/v1/games/blue-protocol-star-resonance/profiles") {
+  if (
+    path === "/v1/games/blue-protocol-star-resonance/profiles" ||
+    path === "/v1/photos" ||
+    /^\/v1\/games\/blue-protocol-star-resonance\/profiles\/prf_[a-z0-9_]{32}\/photo-wall\/[1-9][0-9]*$/.test(path) ||
+    /^\/v1\/profiles\/prf_[a-z0-9_]{32}\/photo-wall\/[1-9][0-9]*\/like$/.test(path)
+  ) {
     const id = env.AUTH_STATE.idFromName("global");
     return env.AUTH_STATE.get(id).fetch(request);
   }
@@ -152,7 +157,6 @@ async function route(request, env) {
   }
   if (path === "/v1/profiles") return profileCatalog(env, url);
   if (path === "/v1/parses") return parseCatalog(env, url);
-  if (path === "/v1/photos") return photoCatalog(env, url, request);
   if (path === "/v1/activity/milestones") {
     return storedJson(env, "community-milestones.v1.json");
   }
