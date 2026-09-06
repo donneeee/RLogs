@@ -18,11 +18,9 @@ fn main() {
         json!({"character":{"character_id":"3296036","region":{"deployment_id":"global","realm_id":null,"region_id":"north-america","world_id":null}},"display_name":"MarieRose"}),
     )
     .unwrap();
-    let request = WebsitePayloadRequest::new(
-        "/v1/games/blue-protocol-star-resonance/profiles",
-        payload,
-    )
-    .unwrap();
+    let request =
+        WebsitePayloadRequest::new("/v1/games/blue-protocol-star-resonance/profiles", payload)
+            .unwrap();
     let source = ProfilePackageSource {
         session_id: "session-one".into(),
         client_build: "24687926".into(),
@@ -33,6 +31,8 @@ fn main() {
         live_capture: None,
     };
     let mut package = LocalProfilePackage::new(100, source, request).unwrap();
-    package.bind_live_capture("dev_device", "rld_device-secret").unwrap();
+    package
+        .bind_live_capture("dev_device", "rld_device-secret")
+        .unwrap();
     println!("{}", serde_json::to_string(&package).unwrap());
 }
