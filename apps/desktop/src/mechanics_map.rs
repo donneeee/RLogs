@@ -28,6 +28,10 @@ pub struct MechanicsMapSnapshot {
     pub scene_name: Option<String>,
     pub map_model: &'static str,
     pub world_radius: f32,
+    pub map_origin_x: Option<f32>,
+    pub map_origin_z: Option<f32>,
+    pub map_span_x: Option<f32>,
+    pub map_span_z: Option<f32>,
     pub background_asset_url: Option<String>,
     pub local_actor_id: Option<u64>,
     pub local_position_observed: bool,
@@ -53,6 +57,10 @@ impl Default for MechanicsMapSnapshot {
             scene_name: None,
             map_model: "player_relative_radar",
             world_radius: MINIMAP_WORLD_RADIUS,
+            map_origin_x: None,
+            map_origin_z: None,
+            map_span_x: None,
+            map_span_z: None,
             background_asset_url: None,
             local_actor_id: None,
             local_position_observed: false,
@@ -413,24 +421,30 @@ impl MechanicsMapProjector {
                         changed = true;
                     }
                 }
-                TimelineEventKind::Cast(cast) if cast.state == CastState::Started => {
-                    // Casts are represented as short-lived exact target signals. They are
-                    // not promoted into encounter instructions without a reviewed pack.
-                    if let Some(target) = cast.target {
-                        self.signals.insert(
-                            (target.actor_id.0, -cast.ability.0),
-                            SignalState {
-                                effect_id: -cast.ability.0,
-                                instance_id: None,
-                                target,
-                                source: Some(cast.source),
-                                stacks: None,
-                                duration_millis: None,
-                                applied_at_micros: envelope.time.observed_micros,
-                            },
-                        );
-                        changed = true;
-                    }
+                TimelineEventKind::Cast(cast)
+                    if cast.state == CastState::Started
+                        && is_reviewed_mechanic_cast(
+                            self.client_build.as_deref(),
+                            self.scene_id,
+                            cast.ability.0,
+                        ) =>
+                {
+                    // Targetless arena casts remain useful mechanic evidence. Anchor those
+                    // signals to their caster so the map can project packet-observed facing.
+                    let target = cast.target.unwrap_or(cast.source);
+                    self.signals.insert(
+                        (target.actor_id.0, -cast.ability.0),
+                        SignalState {
+                            effect_id: -cast.ability.0,
+                            instance_id: None,
+                            target,
+                            source: Some(cast.source),
+                            stacks: None,
+                            duration_millis: None,
+                            applied_at_micros: envelope.time.observed_micros,
+                        },
+                    );
+                    changed = true;
                 }
                 TimelineEventKind::DataGap(gap) => {
                     self.data_gap = Some(format!("{:?}: {}", gap.kind, gap.detail));
@@ -521,6 +535,7 @@ impl MechanicsMapProjector {
         mechanics.sort_by_key(|signal| (signal.target_actor_id, signal.effect_id));
         mechanics.truncate(MAX_MECHANICS);
         let pack = encounter_pack(self.client_build.as_deref(), self.scene_id);
+        let scene_map = scene_map_spec(self.client_build.as_deref(), self.scene_id);
         MechanicsMapSnapshot {
             schema_version: MECHANICS_MAP_SCHEMA_VERSION,
             revision: self.revision,
@@ -534,12 +549,25 @@ impl MechanicsMapProjector {
                     .flatten()
                     .map(str::to_owned)
             }),
-            map_model: "player_relative_radar",
+            map_model: if scene_map.is_some() {
+                "absolute_scene_map"
+            } else {
+                "player_relative_radar"
+            },
             world_radius: MINIMAP_WORLD_RADIUS,
-            background_asset_url: self
-                .client_build
-                .as_ref()
-                .map(|build| format!("/local-game-assets/{build}/dungeon_map_bg.png")),
+            map_origin_x: scene_map.map(|spec| spec.origin_x),
+            map_origin_z: scene_map.map(|spec| spec.origin_z),
+            map_span_x: scene_map.map(|spec| spec.span_x),
+            map_span_z: scene_map.map(|spec| spec.span_z),
+            background_asset_url: match (self.client_build.as_ref(), scene_map) {
+                (Some(build), Some(spec)) => {
+                    Some(format!("/local-game-assets/{build}/{}", spec.asset_file))
+                }
+                (Some(build), None) => {
+                    Some(format!("/local-game-assets/{build}/dungeon_map_bg.png"))
+                }
+                (None, _) => None,
+            },
             local_actor_id,
             local_position_observed,
             encounter_pack: pack,
@@ -629,6 +657,33 @@ impl MechanicsMapProjector {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SceneMapSpec {
+    asset_file: &'static str,
+    origin_x: f32,
+    origin_z: f32,
+    span_x: f32,
+    span_z: f32,
+}
+
+fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMapSpec> {
+    if build != Some("global/steam-24687926") {
+        return None;
+    }
+    match scene_id? {
+        // Exact texture: dng_branch_6501_godvault. The paired game-owned
+        // region_data stores the lower-left world origin and 450 x 450 span.
+        6513..=6515 => Some(SceneMapSpec {
+            asset_file: "scene-6513-cursed-tomb.png",
+            origin_x: -149.0,
+            origin_z: -377.0,
+            span_x: 450.0,
+            span_z: 450.0,
+        }),
+        _ => None,
+    }
+}
+
 fn encounter_pack(client_build: Option<&str>, scene_id: Option<i32>) -> Option<&'static str> {
     if client_build != Some("global/steam-24687926") {
         return None;
@@ -674,6 +729,21 @@ fn is_reviewed_mechanic_effect(
         _ => &[],
     };
     ids.contains(&effect_id)
+}
+
+fn is_reviewed_mechanic_cast(
+    client_build: Option<&str>,
+    scene_id: Option<i32>,
+    ability_id: i64,
+) -> bool {
+    if client_build != Some("global/steam-24687926") {
+        return false;
+    }
+    let ids: &[i64] = match scene_id {
+        Some(6513..=6515) => &[3390117, 3390118, 3390123, 3390124],
+        _ => &[],
+    };
+    ids.contains(&ability_id)
 }
 
 #[cfg(test)]
@@ -840,6 +910,36 @@ mod tests {
             Some("global/steam-newer"),
             Some(6615),
             884609,
+        ));
+    }
+
+    #[test]
+    fn full_scene_map_is_exact_build_and_scene_scoped() {
+        let map = scene_map_spec(Some("global/steam-24687926"), Some(6513))
+            .expect("reviewed Cursed Tomb map");
+        assert_eq!(map.asset_file, "scene-6513-cursed-tomb.png");
+        assert_eq!((map.origin_x, map.origin_z), (-149.0, -377.0));
+        assert_eq!((map.span_x, map.span_z), (450.0, 450.0));
+        assert!(scene_map_spec(Some("global/steam-newer"), Some(6513)).is_none());
+        assert!(scene_map_spec(Some("global/steam-24687926"), Some(6615)).is_none());
+    }
+
+    #[test]
+    fn mechanic_casts_are_exact_build_and_scene_scoped() {
+        assert!(is_reviewed_mechanic_cast(
+            Some("global/steam-24687926"),
+            Some(6513),
+            3390117,
+        ));
+        assert!(!is_reviewed_mechanic_cast(
+            Some("global/steam-24687926"),
+            Some(6513),
+            1701,
+        ));
+        assert!(!is_reviewed_mechanic_cast(
+            Some("global/steam-newer"),
+            Some(6513),
+            3390117,
         ));
     }
 

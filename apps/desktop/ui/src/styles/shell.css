@@ -5704,6 +5704,8 @@ body {
 .mechanics-map-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .mechanics-map-check { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--surface-soft); font-size: 10px; font-weight: 750; }
 .mechanics-radar { --mechanics-map-background: none; position: relative; width: min(100%, 620px); aspect-ratio: 1; margin-inline: auto; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 50%; background: linear-gradient(rgb(3 11 19 / 45%), rgb(3 11 19 / 45%)), var(--mechanics-map-background) center / cover no-repeat, radial-gradient(circle, rgb(49 84 96 / 30%), rgb(5 13 23 / 96%) 72%); box-shadow: inset 0 0 44px rgb(0 0 0 / 66%), 0 0 30px rgb(92 228 212 / 7%); }
+.mechanics-radar[data-model="absolute_scene_map"] { border-radius: 14px; background: linear-gradient(rgb(3 11 19 / 16%), rgb(3 11 19 / 16%)), var(--mechanics-map-background) center / contain no-repeat, rgb(5 13 23 / 96%); }
+.mechanics-radar[data-model="absolute_scene_map"] .mechanics-radar-fallback { display: none; }
 .mechanics-radar-fallback, .mechanics-radar-points { position: absolute; inset: 0; }
 .mechanics-ring { position: absolute; inset: 25%; border: 1px solid rgb(142 221 220 / 20%); border-radius: 50%; }
 .mechanics-ring.ring-two { inset: 8%; }
@@ -5716,8 +5718,12 @@ body {
 .mechanics-map-point[data-kind="boss"] { --point-color: #ff6f83; z-index: 3; width: 17px; height: 17px; border-radius: 3px; }
 .mechanics-map-point[data-kind="monster"] { --point-color: #f2c36b; }
 .mechanics-map-point[data-kind="pet"] { --point-color: #b38aff; }
+.mechanics-map-point[data-mechanic="true"] { width: 16px; height: 16px; z-index: 8; animation: mechanics-map-pulse 1.1s ease-in-out infinite alternate; }
 .mechanics-map-point[data-dead="true"] { filter: grayscale(1); opacity: 0.45; }
 .mechanics-map-point[data-stale="true"] { opacity: 0.3; }
+.mechanics-map-marker { position: absolute; z-index: 7; display: grid; place-items: center; width: 21px; height: 21px; border: 2px solid rgb(4 12 20 / 92%); border-radius: 50%; color: #061018; background: #f4d76b; box-shadow: 0 0 0 2px rgb(244 215 107 / 32%), 0 0 12px rgb(244 215 107 / 70%); transform: translate(-50%, -50%); font-size: 10px; font-weight: 900; }
+@keyframes mechanics-map-pulse { from { box-shadow: 0 0 0 2px color-mix(in srgb, var(--point-color) 38%, transparent), 0 0 8px var(--point-color); } to { box-shadow: 0 0 0 5px color-mix(in srgb, var(--point-color) 28%, transparent), 0 0 18px var(--point-color); } }
+@media (prefers-reduced-motion: reduce) { .mechanics-map-point[data-mechanic="true"] { animation: none; } }
 .mechanics-map-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 20%; color: var(--muted); background: rgb(4 11 20 / 40%); font-size: 12px; font-weight: 750; text-align: center; }
 .mechanics-signal-list { display: grid; gap: 8px; margin-top: 14px; }
 .mechanics-signal-row { display: grid; gap: 4px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }

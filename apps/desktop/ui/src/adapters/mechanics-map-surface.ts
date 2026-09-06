@@ -1,5 +1,5 @@
 import type { MountedSurface } from "../shell/types";
-import { projectMechanicsMapEntities, type MechanicsMapUpdate } from "./mechanics-map";
+import { projectMechanicsMapEntities, projectMechanicsMapPoint, type MechanicsMapUpdate } from "./mechanics-map";
 
 export interface MechanicsMapDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
@@ -70,22 +70,38 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   function render(): void {
     if (update === null) return;
     const snapshot = update.snapshot;
-    const projected = projectMechanicsMapEntities(snapshot, rotateWithPlayer).filter((entity) => entity.visible && (showMonsters || !["monster", "npc", "object"].includes(entity.kind)));
+    const sceneMap = snapshot.map_model === "absolute_scene_map";
+    const projected = projectMechanicsMapEntities(snapshot, sceneMap ? false : rotateWithPlayer).filter((entity) => entity.visible && (showMonsters || !["monster", "npc", "object"].includes(entity.kind)));
     badge.textContent = snapshot.local_position_observed ? "LIVE" : snapshot.scene_id === null ? "WAITING" : "POSITION NEEDED";
     badge.dataset.state = snapshot.local_position_observed ? "live" : "waiting";
     mapTitle.textContent = snapshot.scene_name ?? (snapshot.scene_id === null ? "Waiting for scene" : `Scene ${snapshot.scene_id}`);
-    mapMeta.textContent = [snapshot.map_id === null ? null : `Map ${snapshot.map_id}`, snapshot.encounter_pack ?? "No reviewed encounter pack", `${snapshot.world_radius}u radius`].filter(Boolean).join(" · ");
+    mapMeta.textContent = [snapshot.map_id === null ? null : `Map ${snapshot.map_id}`, snapshot.encounter_pack ?? "No reviewed encounter pack", sceneMap ? "Game scene map" : `${snapshot.world_radius}u radius`].filter(Boolean).join(" · ");
+    radar.dataset.model = snapshot.map_model;
+    rotate.hidden = sceneMap;
     radar.style.setProperty("--mechanics-map-background", snapshot.background_asset_url === null ? "none" : `url(${JSON.stringify(snapshot.background_asset_url)})`);
     points.replaceChildren();
     for (const entity of projected) {
       const point = el("span", "mechanics-map-point");
+      const mechanic = snapshot.mechanics.find((signal) => signal.target_actor_id === entity.actor_id);
       point.dataset.kind = entity.kind;
       point.dataset.dead = String(entity.dead);
       point.dataset.stale = String(entity.stale);
+      point.dataset.mechanic = String(mechanic !== undefined);
       point.style.left = `${entity.mapX}%`;
       point.style.top = `${entity.mapY}%`;
+      if (mechanic !== undefined) point.style.setProperty("--point-color", mechanicColor(mechanic.effect_id));
       point.title = entity.display_name ?? (entity.monster_id === null ? entity.kind : `${entity.kind} ${entity.monster_id}`);
       if (entity.facing_radians !== null) point.style.setProperty("--facing", `${entity.facing_radians}rad`);
+      points.append(point);
+    }
+    for (const marker of snapshot.markers) {
+      if (marker.x === null || marker.z === null) continue;
+      const projectedMarker = projectMechanicsMapPoint(snapshot, marker.x, marker.z, sceneMap ? false : rotateWithPlayer);
+      if (projectedMarker === null || !projectedMarker.visible) continue;
+      const point = text("span", marker.marker_id === null ? "•" : String(marker.marker_id), "mechanics-map-marker");
+      point.style.left = `${projectedMarker.mapX}%`;
+      point.style.top = `${projectedMarker.mapY}%`;
+      point.title = marker.related_actor_id === null ? "Packet-observed map marker" : `Marker for actor ${marker.related_actor_id}`;
       points.append(point);
     }
     empty.hidden = snapshot.local_position_observed;
@@ -107,6 +123,13 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
 }
 
 function notice(title: string, detail: string, state: string): HTMLElement { const item = el("article", "mechanics-signal-row"); item.dataset.state = state; item.append(text("strong", title), text("span", detail)); return item; }
+function mechanicColor(effectId: number): string {
+  const colors: Record<number, string> = {
+    884102: "#5fa8ff", 884103: "#f2c36b", 884129: "#b38aff", 884141: "#ff8fb8",
+    884162: "#5fa8ff", 884163: "#f2c36b", 884168: "#ff6f83", 884169: "#80e09b", 884170: "#ff9d5c",
+  };
+  return colors[Math.abs(effectId)] ?? "#ff6f83";
+}
 function check(label: string, checked: boolean, changed: (checked: boolean) => void): HTMLLabelElement { const wrapper = el("label", "mechanics-map-check") as HTMLLabelElement; const input = document.createElement("input"); input.type = "checkbox"; input.checked = checked; input.addEventListener("change", () => changed(input.checked)); wrapper.append(input, document.createTextNode(label)); return wrapper; }
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] { const value = document.createElement(tag); if (className !== undefined) value.className = className; return value; }
 function text<K extends keyof HTMLElementTagNameMap>(tag: K, value: string, className?: string): HTMLElementTagNameMap[K] { const node = el(tag, className); node.textContent = value; return node; }

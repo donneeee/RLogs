@@ -108,9 +108,10 @@ reference. Its source, license, event assumptions, and build compatibility
 must be audited before code or data is adapted; rLogs keeps its own canonical
 events, localization, permissions, and setup format.
 
-The first live milestone uses the game's current-build `MiniMapSizeScale=140`
-contract as a player-relative radar. It does not invent a world origin for
-dungeon scenes whose game tables omit one. The host projects exact actor,
+The safe fallback uses the game's current-build `MiniMapSizeScale=140`
+contract as a player-relative radar. A scene switches to the full in-game map
+only when its exact texture and paired `region_data` transform have both been
+reviewed for that client build. The host projects exact actor,
 party, position, facing, life, cast, status, map-marker, scene, and data-gap
 events into a bounded `/api/runtime/live/mechanics-map` feed. Scene changes
 clear all scene-scoped state; positions older than five seconds are visibly
@@ -118,8 +119,8 @@ stale. Encounter signals are limited to exact numeric identities selected by a
 matching reviewed scene pack. A matching pack never implies safe-area geometry
 unless that geometry receives its own current-build evidence.
 
-The official `ui/textures/map/dungeon_map_bg` texture can be compiled locally
-from an installed game without committing or uploading it:
+The official map-paper fallback can be compiled locally from an installed game
+without committing or uploading it:
 
 ```powershell
 python tools/bpsr-local-map-asset.py `
@@ -128,13 +129,29 @@ python tools/bpsr-local-map-asset.py `
   --build global/steam-24687926
 ```
 
+The first full-scene map is Cursed Tomb (`6513`-`6515`). Its current-build
+texture and paired world transform can be compiled with:
+
+```powershell
+python tools/bpsr-local-map-asset.py `
+  --container "C:\Program Files (x86)\Steam\steamapps\common\Blue Protocol Star Resonance\bpsr\BPSR_STEAM_Data\StreamingAssets\container" `
+  --runtime-root runtime-data/game-assets `
+  --build global/steam-24687926 `
+  --address ui/textures/scenemaps/dng_branch_6501_godvault/dng_branch_6501_godvault_dng_branch_6501_godvault `
+  --object-name dng_branch_6501_godvault_dng_branch_6501_godvault `
+  --asset scene-6513-cursed-tomb.png `
+  --region-address ui/textures/scenemaps/dng_branch_6501_godvault/dng_branch_6501_godvault_region_data
+```
+
 The compiler requires one exact address row, one exact Unity bundle entry, and
 one `Texture2D` object. It writes a local catalog with the build, package,
 bundle hash, dimensions, and SHA-256 digest. If that asset is missing or the
 build differs, the live map remains usable with the redistributable rLogs radar
-theme. The independent implementation was behaviorally cross-checked against
-Resonance Logs CN v0.2.3; no AGPL source code or hard-coded arena transform is
-copied into rLogs.
+theme. The Cursed Tomb transform is read from the game's paired region-data
+asset (world origin `-149, -377`, span `450 x 450`) and is build-gated
+alongside the texture. The independent implementation was behaviorally
+cross-checked against the newest locally audited Resonance Logs CN source; no
+AGPL source is copied into rLogs.
 
 ## Chat tabs
 

@@ -32,8 +32,12 @@ export interface MechanicsMapSnapshot {
   scene_id: number | null;
   map_id: number | null;
   scene_name: string | null;
-  map_model: "player_relative_radar";
+  map_model: "player_relative_radar" | "absolute_scene_map";
   world_radius: number;
+  map_origin_x: number | null;
+  map_origin_z: number | null;
+  map_span_x: number | null;
+  map_span_z: number | null;
   background_asset_url: string | null;
   local_actor_id: number | null;
   local_position_observed: boolean;
@@ -65,6 +69,12 @@ export interface MechanicsMapViewEntity extends MechanicsMapEntity {
   visible: boolean;
 }
 
+export interface MechanicsMapViewPoint {
+  mapX: number;
+  mapY: number;
+  visible: boolean;
+}
+
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
   if (!record(value) || value.schema_version !== 1 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
@@ -76,27 +86,46 @@ export function projectMechanicsMapEntities(
   value: MechanicsMapSnapshot,
   rotateWithPlayer: boolean,
 ): MechanicsMapViewEntity[] {
+  return value.entities.flatMap((entity) => {
+    const point = projectMechanicsMapPoint(value, entity.x, entity.z, rotateWithPlayer);
+    return point === null ? [] : [{ ...entity, ...point }];
+  });
+}
+
+export function projectMechanicsMapPoint(
+  value: MechanicsMapSnapshot,
+  x: number,
+  z: number,
+  rotateWithPlayer: boolean,
+): MechanicsMapViewPoint | null {
+  if (value.map_model === "absolute_scene_map") {
+    const { map_origin_x: originX, map_origin_z: originZ, map_span_x: spanX, map_span_z: spanZ } = value;
+    if (originX === null || originZ === null || spanX === null || spanZ === null) return null;
+    const mapX = ((x - originX) / spanX) * 100;
+    const mapY = (1 - (z - originZ) / spanZ) * 100;
+    return { mapX, mapY, visible: mapX >= 0 && mapX <= 100 && mapY >= 0 && mapY <= 100 };
+  }
   const local = value.entities.find((entity) => entity.actor_id === value.local_actor_id);
-  if (local === undefined) return [];
+  if (local === undefined) return null;
   const rotation = rotateWithPlayer ? -(local.facing_radians ?? 0) : 0;
   const cosine = Math.cos(rotation);
   const sine = Math.sin(rotation);
-  return value.entities.map((entity) => {
-    const dx = entity.x - local.x;
-    const dz = entity.z - local.z;
-    const x = dx * cosine - dz * sine;
-    const z = dx * sine + dz * cosine;
-    const mapX = 50 + (x / value.world_radius) * 50;
-    const mapY = 50 - (z / value.world_radius) * 50;
-    return { ...entity, mapX, mapY, visible: Math.hypot(x, z) <= value.world_radius };
-  });
+  const dx = x - local.x;
+  const dz = z - local.z;
+  const relativeX = dx * cosine - dz * sine;
+  const relativeZ = dx * sine + dz * cosine;
+  const mapX = 50 + (relativeX / value.world_radius) * 50;
+  const mapY = 50 - (relativeZ / value.world_radius) * 50;
+  return { mapX, mapY, visible: Math.hypot(relativeX, relativeZ) <= value.world_radius };
 }
 
 function snapshot(value: unknown): value is MechanicsMapSnapshot {
   return record(value) && value.schema_version === 1 &&
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
-    value.map_model === "player_relative_radar" && finitePositive(value.world_radius) &&
+    ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
+    nullableFinite(value.map_origin_x) && nullableFinite(value.map_origin_z) &&
+    nullablePositive(value.map_span_x) && nullablePositive(value.map_span_z) &&
     nullableString(value.background_asset_url) && nullableInteger(value.local_actor_id) &&
     typeof value.local_position_observed === "boolean" && nullableString(value.encounter_pack) &&
     typeof value.encounter_pack_reviewed === "boolean" && Array.isArray(value.entities) && value.entities.every(entity) &&
@@ -124,3 +153,5 @@ function nullableInteger(value: unknown): boolean { return value === null || Num
 function nonnegativeInteger(value: unknown): value is number { return Number.isSafeInteger(value) && (value as number) >= 0; }
 function finite(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value); }
 function finitePositive(value: unknown): value is number { return finite(value) && value > 0; }
+function nullableFinite(value: unknown): boolean { return value === null || finite(value); }
+function nullablePositive(value: unknown): boolean { return value === null || finitePositive(value); }
