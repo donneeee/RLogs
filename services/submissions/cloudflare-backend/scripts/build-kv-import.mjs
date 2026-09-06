@@ -4,13 +4,18 @@ import { basename, join, relative, resolve, sep } from "node:path";
 
 const source = resolve(process.argv[2] ?? "");
 const output = resolve(process.argv[3] ?? "");
+const parseOnly = process.argv.includes("--parse-only");
 if (!process.argv[2] || !process.argv[3]) {
-  throw new Error("usage: node build-kv-import.mjs <submission-service-root> <output-directory>");
+  throw new Error(
+    "usage: node build-kv-import.mjs <submission-service-root> <output-directory> [--parse-only]",
+  );
 }
 
 const maximumValueBytes = 25 * 1024 * 1024;
 const maximumBatchBytes = 18 * 1024 * 1024;
-const includeRoots = ["accounts", "characters", "memberships", "profiles", "projections", "reconciliations"];
+const includeRoots = parseOnly
+  ? ["memberships", "projections", "reconciliations"]
+  : ["accounts", "characters", "memberships", "profiles", "projections", "reconciliations"];
 const includeRootFiles = ["catalog.v1.json", "community-milestones.v1.json"];
 const excludedSegments = new Set(["login-codes", "oauth-states"]);
 
@@ -20,7 +25,7 @@ await mkdir(output, { recursive: true });
 const entries = [];
 for (const name of includeRootFiles) await addFile(join(source, name));
 for (const name of includeRoots) await walk(join(source, name));
-await addHttpSnapshots();
+if (!parseOnly) await addHttpSnapshots();
 
 entries.sort((left, right) => left.key.localeCompare(right.key));
 const batches = [];
@@ -50,6 +55,7 @@ for (const [index, values] of batches.entries()) {
 }
 const manifest = {
   schema_version: 1,
+  scope: parseOnly ? "parses" : "complete_read_model",
   source,
   generated_unix_millis: Date.now(),
   entry_count: entries.length,
@@ -59,6 +65,7 @@ const manifest = {
     .digest("hex"),
   batch_files: batchFiles,
 };
+await writeFile(join(output, "keys.json"), JSON.stringify(entries.map(({ key }) => key)), "utf8");
 await writeFile(join(output, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 process.stdout.write(`${JSON.stringify(manifest)}\n`);
 

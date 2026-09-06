@@ -751,6 +751,7 @@ impl SubmissionService {
         &self,
         report: PublicParseReport,
     ) -> Result<PublicParseReport, ServiceError> {
+        let prior_region_id = report.region_id.clone();
         let artifact_digest = Sha256Digest::parse(report.verification.artifact_sha256.clone())?;
         let artifact_path = self.artifact_path(&artifact_digest)?;
         let artifact_file = File::open(&artifact_path)?;
@@ -788,6 +789,7 @@ impl SubmissionService {
             report.created_unix_millis,
             report.submission_provenance,
         )?;
+        preserve_refined_region(&mut refreshed.region_id, &prior_region_id);
         let membership = build_private_parse_membership(&artifact_path, &refreshed)?;
         write_json_atomic(&self.membership_path(&refreshed.report_id)?, &membership)?;
         apply_verified_character_keys(
@@ -2548,6 +2550,12 @@ pub struct PublicParseReport {
 fn report_projection_is_current(report: &PublicParseReport) -> bool {
     report.schema_version >= PUBLIC_PARSE_SCHEMA_VERSION
         && report.projection_revision >= PUBLIC_PARSE_PROJECTION_REVISION
+}
+
+fn preserve_refined_region(replayed_region: &mut String, prior_region: &str) {
+    if replayed_region == "global" && !prior_region.is_empty() && prior_region != "global" {
+        *replayed_region = prior_region.to_owned();
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -5425,7 +5433,9 @@ fn restore_verified_names(
                     && profile.deployment == report.deployment_id
                     && (profile.region == report.region_id
                         || report.region_id == "global"
-                        || report.region_id == "unknown")
+                        || report.region_id == "unknown"
+                        || profile.region == "global"
+                        || profile.region == "unknown")
             })
             .filter_map(|profile| profile.display_name.as_deref())
             .map(str::trim)
@@ -5972,6 +5982,17 @@ mod tests {
         assert_eq!(legacy.projection_revision, 0);
         assert!(!report_projection_is_current(&legacy));
         assert!(report_projection_is_current(&report));
+    }
+
+    #[test]
+    fn replay_does_not_erase_a_server_refined_region() {
+        let mut replayed_region = "global".to_owned();
+        preserve_refined_region(&mut replayed_region, "north-america");
+        assert_eq!(replayed_region, "north-america");
+
+        let mut exact_region = "north-america".to_owned();
+        preserve_refined_region(&mut exact_region, "global");
+        assert_eq!(exact_region, "north-america");
     }
 
     #[test]
@@ -7889,10 +7910,30 @@ mod tests {
         assert!(!restore_verified_names(
             &mut report,
             &identities,
-            &[profile]
+            &[profile.clone()]
         ));
         assert_eq!(
             report.runs[0].participants[0].display_name.as_deref(),
+            Some("MarieRose")
+        );
+
+        let mut refined_report = fixture_public_report("identity-refined", "5", 0);
+        refined_report.region_id = "north-america".into();
+        refined_report.runs[0].participants.truncate(1);
+        refined_report.runs[0].participants[0].actor_id = "5".into();
+        refined_report.runs[0].participants[0].character_id = None;
+        let mut fallback_profile = profile;
+        fallback_profile.display_name = Some("MarieRose".into());
+        fallback_profile.region = "global".into();
+        assert!(restore_verified_names(
+            &mut refined_report,
+            &identities,
+            &[fallback_profile]
+        ));
+        assert_eq!(
+            refined_report.runs[0].participants[0]
+                .display_name
+                .as_deref(),
             Some("MarieRose")
         );
     }
