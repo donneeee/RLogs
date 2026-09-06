@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMechanicsMapUpdate, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
+import { parseMechanicsMapUpdate, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
 
 function snapshot(): MechanicsMapSnapshot {
   return {
@@ -84,5 +84,32 @@ describe("Mechanics Map", () => {
     expect(right).toHaveLength(4);
     expect(Math.max(...left.map((point) => point.mapX))).toBeCloseTo(48.44444444444444);
     expect(Math.min(...right.map((point) => point.mapX))).toBeCloseTo(48.44444444444444);
+  });
+
+  it("projects Tina's packet-facing pizza wedge without guessing a safe sector", () => {
+    const value = {
+      ...snapshot(),
+      scene_id: 1632,
+      map_model: "absolute_scene_map" as const,
+      map_origin_x: -20,
+      map_origin_z: -20,
+      map_span_x: 40,
+      map_span_z: 40,
+    };
+    const pizza = {
+      ...value.entities[1]!,
+      kind: "monster" as const,
+      monster_id: 300086,
+      mechanic_role: "pizza_slow" as const,
+      x: 0,
+      z: 0,
+      facing_radians: 0,
+    };
+    const wedge = projectTinaPizzaRegion(value, pizza);
+    expect(wedge).toHaveLength(10);
+    expect(wedge[0]).toMatchObject({ mapX: 50, mapY: 50 });
+    expect(wedge[5]?.mapX).toBeCloseTo(50);
+    expect(wedge[5]?.mapY).toBeCloseTo(10);
+    expect(projectTinaPizzaRegion(value, { ...pizza, facing_radians: null })).toEqual([]);
   });
 });

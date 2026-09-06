@@ -1,5 +1,5 @@
 import type { MountedSurface } from "../shell/types";
-import { projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
+import { projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapUpdate } from "./mechanics-map";
 
 export interface MechanicsMapDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
@@ -128,6 +128,15 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
         polygon.dataset.side = signal.mechanic_kind === "clone_charge_left" ? "left" : "right";
         regions.append(polygon);
       }
+      for (const entity of snapshot.entities) {
+        if (entity.stale) continue;
+        const polygonPoints = projectTinaPizzaRegion(snapshot, entity);
+        if (polygonPoints.length < 3) continue;
+        const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        polygon.setAttribute("points", polygonPoints.map((point) => `${point.mapX},${point.mapY}`).join(" "));
+        polygon.dataset.kind = entity.mechanic_role ?? "pizza";
+        regions.append(polygon);
+      }
     }
     points.replaceChildren();
     for (const entity of projected) {
@@ -140,7 +149,7 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
       if (entity.mechanic_role !== null) point.dataset.mechanicRole = entity.mechanic_role;
       point.style.left = `${entity.mapX}%`;
       point.style.top = `${entity.mapY}%`;
-      if (mechanic !== undefined) point.style.setProperty("--point-color", mechanicColor(mechanic.effect_id));
+      if (mechanic !== undefined) point.style.setProperty("--point-color", mechanicColor(mechanic.effect_id, mechanic.mechanic_kind));
       point.title = entity.display_name ?? mechanicRoleLabel(entity.mechanic_role) ?? (entity.monster_id === null ? entity.kind : `${entity.kind} ${entity.monster_id}`);
       if (entity.facing_radians !== null) point.style.setProperty("--facing", `${entity.facing_radians}rad`);
       points.append(point);
@@ -276,7 +285,13 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
 }
 
 function notice(title: string, detail: string, state: string): HTMLElement { const item = el("article", "mechanics-signal-row"); item.dataset.state = state; item.append(text("strong", title), text("span", detail)); return item; }
-function mechanicColor(effectId: number): string {
+function mechanicColor(effectId: number, kind: string | null): string {
+  if (kind?.includes("ice") || kind === "matrix_rune_a" || kind === "electromagnetic_pulse_a") return "#6da9ff";
+  if (kind?.includes("water") || kind === "matrix_rune_b" || kind === "electromagnetic_pulse_b") return "#5ce4d4";
+  if (kind?.includes("orange") || kind?.includes("sticky") || kind?.includes("pinball")) return "#ff9d5c";
+  if (kind?.includes("purple") || kind?.includes("mirage") || kind === "matrix_rune_d") return "#b38aff";
+  if (kind?.includes("gold") || kind?.includes("order") || kind?.includes("count") || kind === "matrix_rune_c") return "#f2c36b";
+  if (kind?.includes("correct") || kind?.includes("complete")) return "#80e09b";
   const colors: Record<number, string> = {
     884102: "#5fa8ff", 884103: "#f2c36b", 884129: "#b38aff", 884141: "#ff8fb8",
     884162: "#5fa8ff", 884163: "#f2c36b", 884168: "#ff6f83", 884169: "#80e09b", 884170: "#ff9d5c",
@@ -284,7 +299,12 @@ function mechanicColor(effectId: number): string {
   return colors[Math.abs(effectId)] ?? "#ff6f83";
 }
 function mechanicRoleLabel(role: MechanicsMapUpdate["snapshot"]["entities"][number]["mechanic_role"]): string | null {
-  const labels = { boss: "Cursed Tomb boss", tower: "Mechanic tower", left_clone: "Left-charge clone", right_clone: "Right-charge clone" } as const;
+  const labels = {
+    boss: "Encounter boss", tower: "Mechanic tower", left_clone: "Left-charge clone", right_clone: "Right-charge clone",
+    correct_portal: "Correct portal", other_portal: "Other portal", pizza_slow: "Slow pizza danger sector", pizza_fast: "Fast pizza danger sector",
+    matrix_rune: "Matrix rune", ice_wave: "Ice wave", water_wave: "Water wave", ice_orb: "Ice orb", water_orb: "Water orb",
+    pinball: "Pinball", ring_inner: "Inner electromagnetic ring", ring_middle: "Middle electromagnetic ring", ring_outer: "Outer electromagnetic ring",
+  } as const;
   return role === null ? null : labels[role];
 }
 function mechanicKindLabel(kind: string | null): string | null {
@@ -295,6 +315,27 @@ function mechanicKindLabel(kind: string | null): string | null {
     charge_target_left: "Left-side charge target", charge_target_right: "Right-side charge target", charge_target_random: "Random charge target",
     puzzle_piece_one: "Puzzle piece 1", puzzle_piece_two: "Puzzle piece 2",
     clone_charge_left: "Left clone charge", clone_charge_right: "Right clone charge",
+    sticky_bomb: "Sticky bomb", gravity_blast: "Gravity blast", heavy_wound: "Heavy wound",
+    void_corruption_binding: "Void Corruption Binding", wudi_slash_order: "Slash order",
+    matrix_rune_a: "Matrix rune A", matrix_rune_b: "Matrix rune B", matrix_rune_c: "Matrix rune C", matrix_rune_d: "Matrix rune D",
+    matrix_initializer: "Matrix initialization", death_sentence_target: "Death sentence target", matrix_callout: "Matrix callout",
+    double_echo_ice: "Double Echo — Ice", double_echo_water: "Double Echo — Water", dual_element_gravity: "Dual-element gravity",
+    ice_water_floor: "Ice/water floor",
+    pizza_orange: "Orange pizza sector", pizza_purple: "Purple pizza sector", pizza_indicator: "Pizza sectors",
+    electromagnetic_pulse_a: "Electromagnetic Pulse A", electromagnetic_pulse_b: "Electromagnetic Pulse B", electromagnetic_pulse_c: "Electromagnetic Pulse C",
+    share: "Share", mirage_share: "Mirage share", phase_corner: "Corner phase", phase_edge: "Edge phase",
+    normal_target: "Normal target", decay_target: "Decay target", hit_order_one: "Hit order 1", hit_order_two: "Hit order 2", hit_order_three: "Hit order 3",
+    normal_share: "Normal share", mirage_share_callout: "Mirage share", normal_decay: "Normal decay", mirage_decay: "Mirage decay",
+    normal_spread: "Normal spread", mirage_spread: "Mirage spread", pinball_countdown: "Pinball countdown", causal_jump: "Causal jump",
+    floor_link: "Floor link", divine_sentence: "Divine sentence", cumulative_sentence: "Cumulative Sentence", mirage_sentence: "Mirage sentence",
+    return_top_left: "Return — top left", return_middle_left: "Return — middle left", return_bottom_left: "Return — bottom left",
+    return_top_right: "Return — top right", return_middle_right: "Return — middle right", return_bottom_right: "Return — bottom right",
+    return_count_one: "Return count 1", return_count_two: "Return count 2", return_count_three: "Return count 3",
+    ring_inner: "Inner electromagnetic ring", ring_middle: "Middle electromagnetic ring", ring_outer: "Outer electromagnetic ring",
+    near_chain: "Near chain", far_chain: "Far chain", wheel_blue: "Blue wheel", wheel_red: "Red wheel", wheel_doom: "Doom wheel",
+    energy_target: "Energy target", pair_mark: "Pair mark", pair_settle: "Pair settle", pair_penalty: "Pair penalty", pair_swap: "Pair swap",
+    near_chain_cast: "Near-chain cast", far_chain_cast: "Far-chain cast", shadow_cast: "Shadow cast",
+    pair_settle_cast: "Pair-settle cast", pair_resolve_cast: "Pair-resolve cast",
   };
   return labels[kind] ?? null;
 }

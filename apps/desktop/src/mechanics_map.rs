@@ -841,14 +841,27 @@ fn reviewed_mechanic_entity_role(
     scene_id: Option<i32>,
     monster_id: Option<i64>,
 ) -> Option<&'static str> {
-    if client_build != Some("global/steam-24687926") || !matches!(scene_id, Some(6513..=6515)) {
+    if client_build != Some("global/steam-24687926") {
         return None;
     }
-    match monster_id? {
-        33901 => Some("boss"),
-        33904 | 33905 => Some("tower"),
-        33908 | 33921 => Some("left_clone"),
-        33909 | 33922 => Some("right_clone"),
+    match (scene_id?, monster_id?) {
+        (6513..=6515, 33901) | (1631..=1633, 33701) => Some("boss"),
+        (6513..=6515, 33904 | 33905) => Some("tower"),
+        (6513..=6515, 33908 | 33921) => Some("left_clone"),
+        (6513..=6515, 33909 | 33922) => Some("right_clone"),
+        (1150..=1152, 2106) => Some("correct_portal"),
+        (1150..=1152, 2107) => Some("other_portal"),
+        (1631..=1633, 300086) => Some("pizza_slow"),
+        (1631..=1633, 300089) => Some("pizza_fast"),
+        (6563..=6565, 4639) => Some("matrix_rune"),
+        (6563..=6565, 3340219) => Some("ice_wave"),
+        (6563..=6565, 3340220) => Some("water_wave"),
+        (6563..=6565, 4604) => Some("ice_orb"),
+        (6563..=6565, 4605) => Some("water_orb"),
+        (13021..=13023, 10330051) => Some("pinball"),
+        (13021..=13023, 10310062) => Some("ring_inner"),
+        (13021..=13023, 10310063) => Some("ring_middle"),
+        (13021..=13023, 10310064) => Some("ring_outer"),
         _ => None,
     }
 }
@@ -858,22 +871,92 @@ fn reviewed_mechanic_signal_kind(
     scene_id: Option<i32>,
     effect_id: i64,
 ) -> Option<&'static str> {
-    if client_build != Some("global/steam-24687926") || !matches!(scene_id, Some(6513..=6515)) {
+    if client_build != Some("global/steam-24687926") {
         return None;
     }
-    match effect_id {
-        884101 | 884106 | 884122 => Some("tower_activating"),
-        884102 => Some("tower_blue_complete"),
-        884103 => Some("tower_gold_complete"),
-        884129 => Some("energy_pillar"),
-        884141 => Some("energy_pillar_short"),
-        884162 => Some("charge_target_left"),
-        884163 => Some("charge_target_right"),
-        884168 => Some("charge_target_random"),
-        884169 => Some("puzzle_piece_one"),
-        884170 => Some("puzzle_piece_two"),
-        -3390117 | -3390123 => Some("clone_charge_left"),
-        -3390118 | -3390124 => Some("clone_charge_right"),
+    match (scene_id?, effect_id) {
+        (6513..=6515, 884101 | 884106 | 884122) => Some("tower_activating"),
+        (6513..=6515, 884102) => Some("tower_blue_complete"),
+        (6513..=6515, 884103) => Some("tower_gold_complete"),
+        (6513..=6515, 884129) => Some("energy_pillar"),
+        (6513..=6515, 884141) => Some("energy_pillar_short"),
+        (6513..=6515, 884162) => Some("charge_target_left"),
+        (6513..=6515, 884163) => Some("charge_target_right"),
+        (6513..=6515, 884168) => Some("charge_target_random"),
+        (6513..=6515, 884169) => Some("puzzle_piece_one"),
+        (6513..=6515, 884170) => Some("puzzle_piece_two"),
+        (6513..=6515, -3390117 | -3390123) => Some("clone_charge_left"),
+        (6513..=6515, -3390118 | -3390124) => Some("clone_charge_right"),
+        (1150..=1152, 821076) => Some("sticky_bomb"),
+        (1150..=1152, -111103) => Some("gravity_blast"),
+        (1631..=1633, 510571) => Some("heavy_wound"),
+        (1631..=1633, 841519) => Some("void_corruption_binding"),
+        (1631..=1633, 841509) => Some("wudi_slash_order"),
+        (6563..=6565, 883707) => Some("matrix_rune_a"),
+        (6563..=6565, 883708) => Some("matrix_rune_b"),
+        (6563..=6565, 883709) => Some("matrix_rune_c"),
+        (6563..=6565, 883710) => Some("matrix_rune_d"),
+        (6563..=6565, 883714) => Some("matrix_initializer"),
+        (6563..=6565, 883601) => Some("death_sentence_target"),
+        (6563..=6565, 522602) => Some("matrix_callout"),
+        (6563..=6565, 883602) => Some("double_echo_ice"),
+        (6563..=6565, 883603) => Some("double_echo_water"),
+        (6563..=6565, 883605) => Some("dual_element_gravity"),
+        (6563..=6565, 883631) => Some("ice_water_floor"),
+        (6563..=6565, 883633) => Some("pizza_orange"),
+        (6563..=6565, 883634) => Some("pizza_purple"),
+        (6563..=6565, -3340245) => Some("pizza_indicator"),
+        (13021..=13023, 829104) => Some("electromagnetic_pulse_a"),
+        (13021..=13023, 829105) => Some("electromagnetic_pulse_b"),
+        (13021..=13023, 829106) => Some("electromagnetic_pulse_c"),
+        (13021..=13023, 829115) => Some("share"),
+        (13021..=13023, 829116) => Some("mirage_share"),
+        (13021..=13023, 829214) => Some("phase_corner"),
+        (13021..=13023, 829215) => Some("phase_edge"),
+        (13021..=13023, 829217) => Some("normal_target"),
+        (13021..=13023, 829245) => Some("decay_target"),
+        (13021..=13023, 829226) => Some("hit_order_one"),
+        (13021..=13023, 829227) => Some("hit_order_two"),
+        (13021..=13023, 829228) => Some("hit_order_three"),
+        (13021..=13023, 829304) => Some("normal_share"),
+        (13021..=13023, 829305) => Some("mirage_share_callout"),
+        (13021..=13023, 829306) => Some("normal_decay"),
+        (13021..=13023, 829307) => Some("mirage_decay"),
+        (13021..=13023, 829308) => Some("normal_spread"),
+        (13021..=13023, 829309) => Some("mirage_spread"),
+        (13021..=13023, 829314) => Some("pinball_countdown"),
+        (13021..=13023, 829316) => Some("causal_jump"),
+        (13021..=13023, 829318) => Some("floor_link"),
+        (13021..=13023, 829323) => Some("divine_sentence"),
+        (13021..=13023, 829324) => Some("cumulative_sentence"),
+        (13021..=13023, 829326) => Some("mirage_sentence"),
+        (13021..=13023, 829327) => Some("return_top_left"),
+        (13021..=13023, 829328) => Some("return_middle_left"),
+        (13021..=13023, 829329) => Some("return_bottom_left"),
+        (13021..=13023, 829330) => Some("return_top_right"),
+        (13021..=13023, 829331) => Some("return_middle_right"),
+        (13021..=13023, 829332) => Some("return_bottom_right"),
+        (13021..=13023, 829372) => Some("return_count_one"),
+        (13021..=13023, 829373) => Some("return_count_two"),
+        (13021..=13023, 829374) => Some("return_count_three"),
+        (13021..=13023, -10310062) => Some("ring_inner"),
+        (13021..=13023, -10310063) => Some("ring_middle"),
+        (13021..=13023, -10310064) => Some("ring_outer"),
+        (6615, 884609) => Some("near_chain"),
+        (6615, 884610) => Some("far_chain"),
+        (6615, 884614) => Some("wheel_blue"),
+        (6615, 884615) => Some("wheel_red"),
+        (6615, 884616) => Some("wheel_doom"),
+        (6615, 884641) => Some("energy_target"),
+        (6615, 884659) => Some("pair_mark"),
+        (6615, 884660) => Some("pair_settle"),
+        (6615, 884661) => Some("pair_penalty"),
+        (6615, 884664) => Some("pair_swap"),
+        (6615, -470112) => Some("near_chain_cast"),
+        (6615, -470113) => Some("far_chain_cast"),
+        (6615, -470119) => Some("shadow_cast"),
+        (6615, -470125) => Some("pair_settle_cast"),
+        (6615, -470132) => Some("pair_resolve_cast"),
         _ => None,
     }
 }
@@ -888,6 +971,10 @@ fn is_reviewed_mechanic_cast(
     }
     let ids: &[i64] = match scene_id {
         Some(6513..=6515) => &[3390117, 3390118, 3390123, 3390124],
+        Some(1150..=1152) => &[111103],
+        Some(6563..=6565) => &[3340245],
+        Some(13021..=13023) => &[10310062, 10310063, 10310064],
+        Some(6615) => &[470112, 470113, 470119, 470125, 470132],
         _ => &[],
     };
     ids.contains(&ability_id)
@@ -1187,6 +1274,90 @@ mod tests {
             reviewed_mechanic_entity_role(build, Some(6615), Some(33904)),
             None
         );
+    }
+
+    #[test]
+    fn reviewed_scene_families_expose_named_roles_effects_and_casts() {
+        let build = Some("global/steam-24687926");
+        for (scene, monster, role) in [
+            (1151, 2106, "correct_portal"),
+            (1632, 300089, "pizza_fast"),
+            (6565, 3340219, "ice_wave"),
+            (13023, 10330051, "pinball"),
+        ] {
+            assert_eq!(
+                reviewed_mechanic_entity_role(build, Some(scene), Some(monster)),
+                Some(role)
+            );
+        }
+        for (scene, effect, kind) in [
+            (1151, 821076, "sticky_bomb"),
+            (1632, 841519, "void_corruption_binding"),
+            (6565, 883603, "double_echo_water"),
+            (13023, 829228, "hit_order_three"),
+        ] {
+            assert_eq!(
+                reviewed_mechanic_signal_kind(build, Some(scene), effect),
+                Some(kind)
+            );
+        }
+        for (scene, ability, kind) in [
+            (1151, 111103, "gravity_blast"),
+            (6565, 3340245, "pizza_indicator"),
+            (13023, 10310064, "ring_outer"),
+        ] {
+            assert!(is_reviewed_mechanic_cast(build, Some(scene), ability));
+            assert_eq!(
+                reviewed_mechanic_signal_kind(build, Some(scene), -ability),
+                Some(kind)
+            );
+        }
+        assert_eq!(
+            reviewed_mechanic_signal_kind(build, Some(1151), 841519),
+            None,
+            "known IDs stay scene-scoped"
+        );
+
+        for (scene, effects) in [
+            (
+                6513,
+                vec![
+                    884101, 884102, 884103, 884106, 884122, 884129, 884141, 884162, 884163, 884168,
+                    884169, 884170,
+                ],
+            ),
+            (1151, vec![821076]),
+            (1632, vec![510571, 841519, 841509]),
+            (
+                6565,
+                vec![
+                    883707, 883708, 883709, 883710, 883714, 883601, 883602, 883603, 883605, 883631,
+                    522602, 883633, 883634,
+                ],
+            ),
+            (
+                13023,
+                vec![
+                    829104, 829105, 829106, 829115, 829116, 829214, 829215, 829217, 829226, 829227,
+                    829228, 829245, 829304, 829305, 829306, 829307, 829308, 829309, 829314, 829316,
+                    829318, 829323, 829324, 829326, 829327, 829328, 829329, 829330, 829331, 829332,
+                    829372, 829373, 829374,
+                ],
+            ),
+            (
+                6615,
+                vec![
+                    884609, 884610, 884614, 884615, 884616, 884641, 884659, 884660, 884661, 884664,
+                ],
+            ),
+        ] {
+            for effect in effects {
+                assert!(
+                    reviewed_mechanic_signal_kind(build, Some(scene), effect).is_some(),
+                    "scene {scene} effect {effect} must never render anonymously"
+                );
+            }
+        }
     }
 
     #[test]

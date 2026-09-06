@@ -4,7 +4,9 @@ export interface MechanicsMapEntity {
   kind: "local" | "party" | "boss" | "player" | "monster" | "pet" | "npc" | "object";
   display_name: string | null;
   monster_id: number | null;
-  mechanic_role: "boss" | "tower" | "left_clone" | "right_clone" | null;
+  mechanic_role: "boss" | "tower" | "left_clone" | "right_clone" | "correct_portal" | "other_portal" |
+    "pizza_slow" | "pizza_fast" | "matrix_rune" | "ice_wave" | "water_wave" | "ice_orb" | "water_orb" |
+    "pinball" | "ring_inner" | "ring_middle" | "ring_outer" | null;
   x: number;
   y: number;
   z: number;
@@ -143,6 +145,24 @@ export function projectCursedTombChargeRegion(
   });
 }
 
+export function projectTinaPizzaRegion(
+  value: MechanicsMapSnapshot,
+  entity: MechanicsMapEntity,
+): MechanicsMapViewPoint[] {
+  if (!["pizza_slow", "pizza_fast"].includes(entity.mechanic_role ?? "") || entity.facing_radians === null) return [];
+  const radius = 16;
+  const halfAngle = Math.PI / 8;
+  const points = [{ x: entity.x, z: entity.z }];
+  for (let step = 0; step <= 8; step += 1) {
+    const angle = entity.facing_radians - halfAngle + (step / 8) * halfAngle * 2;
+    points.push({ x: entity.x + Math.sin(angle) * radius, z: entity.z + Math.cos(angle) * radius });
+  }
+  return points.flatMap((point) => {
+    const projected = projectMechanicsMapPoint(value, point.x, point.z, false);
+    return projected === null ? [] : [projected];
+  });
+}
+
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
   if (!record(value) || value.schema_version !== 1 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
@@ -206,7 +226,10 @@ function entity(value: unknown): boolean {
   return record(value) && nonnegativeInteger(value.actor_id) && Number.isSafeInteger(value.entity_uuid) &&
     ["local", "party", "boss", "player", "monster", "pet", "npc", "object"].includes(String(value.kind)) &&
     nullableString(value.display_name) && nullableInteger(value.monster_id) &&
-    (value.mechanic_role === null || ["boss", "tower", "left_clone", "right_clone"].includes(String(value.mechanic_role))) &&
+    (value.mechanic_role === null || [
+      "boss", "tower", "left_clone", "right_clone", "correct_portal", "other_portal", "pizza_slow", "pizza_fast",
+      "matrix_rune", "ice_wave", "water_wave", "ice_orb", "water_orb", "pinball", "ring_inner", "ring_middle", "ring_outer",
+    ].includes(String(value.mechanic_role))) &&
     finite(value.x) && finite(value.y) && finite(value.z) &&
     (value.facing_radians === null || finite(value.facing_radians)) && typeof value.dead === "boolean" &&
     typeof value.stale === "boolean" && nonnegativeInteger(value.last_observed_micros);
