@@ -87,7 +87,7 @@ async function addFile(path) {
 }
 
 async function addHttpSnapshots() {
-  const base = "http://127.0.0.1:8788";
+  const base = process.env.RLOGS_LOCAL_API_BASE ?? "http://127.0.0.1:8788";
   for (const sort of ["newest", "popular"]) {
     const response = await fetch(`${base}/v1/photos?sort=${sort}&limit=4`);
     if (!response.ok) throw new Error(`local ${sort} photo catalog returned HTTP ${response.status}`);

@@ -129,6 +129,20 @@ cargo run -p rlogs-submission-service -- --prepare-submission `
 The resulting manifest defaults to unlisted visibility. This command prepares
 local files only; it does not transmit them.
 
+Derived public reports carry a projection revision independently from their
+JSON schema version. After a replay-semantic correctness change, an operator
+can rebuild every stale projection from its immutable artifact before exporting
+the public read model:
+
+```powershell
+cargo run --release -p rlogs-submission-service -- `
+  --refresh-projections C:\path\to\submission-service-data
+```
+
+The command is idempotent, reports inspected/refreshed/current counts, and
+rebuilds the catalog only when at least one projection changed. Run it against
+an isolated copy while another receiver process owns the live data directory.
+
 ## Run correlation
 
 Reports from different observers are grouped only when their canonical run

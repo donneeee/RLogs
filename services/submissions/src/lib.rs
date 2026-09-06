@@ -69,6 +69,7 @@ use profiles::{
 use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 12;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 1;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
 pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 12;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
@@ -435,6 +436,45 @@ impl SubmissionService {
         Ok(service)
     }
 
+    /// Rebuild every stale derived report from its immutable artifact.
+    ///
+    /// This is an explicit maintenance operation: normal reads still refresh
+    /// one stale report lazily, while deployments can migrate a complete
+    /// projection store before exporting its public read model.
+    pub fn refresh_all_projections(&self) -> Result<ProjectionRefreshSummary, ServiceError> {
+        let _write = self.write_guard();
+        let projection_root = self.inner.root.join("projections");
+        let mut paths = std::fs::read_dir(&projection_root)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "json")
+            })
+            .collect::<Vec<_>>();
+        paths.sort();
+
+        let mut summary = ProjectionRefreshSummary {
+            inspected: 0,
+            refreshed: 0,
+            already_current: 0,
+        };
+        for path in paths {
+            let report: PublicParseReport = read_json(&path)?;
+            summary.inspected += 1;
+            if report_projection_is_current(&report) {
+                summary.already_current += 1;
+                continue;
+            }
+            self.refresh_projection_locked(report)?;
+            summary.refreshed += 1;
+        }
+        if summary.refreshed > 0 {
+            self.rebuild_catalog_locked()?;
+        }
+        Ok(summary)
+    }
+
     fn begin_upload(
         &self,
         manifest: UploadManifest,
@@ -667,7 +707,7 @@ impl SubmissionService {
         &self,
         report: PublicParseReport,
     ) -> Result<PublicParseReport, ServiceError> {
-        if report.schema_version >= PUBLIC_PARSE_SCHEMA_VERSION {
+        if report_projection_is_current(&report) {
             if !report
                 .runs
                 .iter()
@@ -697,7 +737,7 @@ impl SubmissionService {
         }
         let _write = self.write_guard();
         let current: PublicParseReport = read_json(&self.projection_path(&report.report_id)?)?;
-        if current.schema_version >= PUBLIC_PARSE_SCHEMA_VERSION {
+        if report_projection_is_current(&current) {
             return Ok(current);
         }
         let refreshed = self.refresh_projection_locked(current)?;
@@ -819,7 +859,7 @@ impl SubmissionService {
             // Do not disclose whether a report exists to a different account.
             return Err(ServiceError::NotFound);
         }
-        if report.schema_version < PUBLIC_PARSE_SCHEMA_VERSION {
+        if !report_projection_is_current(&report) {
             report = self.refresh_projection_locked(report)?;
         }
         report.visibility = visibility;
@@ -2485,6 +2525,11 @@ pub struct FinalizeUploadResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicParseReport {
     pub schema_version: u16,
+    /// Revision of the replay/projection semantics used to derive this report.
+    /// This advances independently from the JSON contract schema so stored
+    /// reports can be rebuilt after correctness fixes without client churn.
+    #[serde(default)]
+    pub projection_revision: u16,
     pub report_id: String,
     pub visibility: ReportVisibility,
     pub created_unix_millis: u64,
@@ -2498,6 +2543,18 @@ pub struct PublicParseReport {
     #[serde(default)]
     pub submission_provenance: PublicSubmissionProvenance,
     pub runs: Vec<PublicRun>,
+}
+
+fn report_projection_is_current(report: &PublicParseReport) -> bool {
+    report.schema_version >= PUBLIC_PARSE_SCHEMA_VERSION
+        && report.projection_revision >= PUBLIC_PARSE_PROJECTION_REVISION
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct ProjectionRefreshSummary {
+    pub inspected: usize,
+    pub refreshed: usize,
+    pub already_current: usize,
 }
 
 /// Identifies the uploader independently from every character in the log.
@@ -3854,6 +3911,7 @@ where
     }
     Ok(PublicParseReport {
         schema_version: PUBLIC_PARSE_SCHEMA_VERSION,
+        projection_revision: PUBLIC_PARSE_PROJECTION_REVISION,
         report_id: report_id.into(),
         visibility: manifest.metadata.visibility,
         created_unix_millis,
@@ -5900,6 +5958,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn legacy_report_without_projection_revision_is_stale() {
+        let report =
+            fixture_public_report("rpt_11111111111111111111111111111111", "character-a", 0);
+        let mut encoded = serde_json::to_value(&report).unwrap();
+        encoded
+            .as_object_mut()
+            .unwrap()
+            .remove("projection_revision");
+
+        let legacy: PublicParseReport = serde_json::from_value(encoded).unwrap();
+
+        assert_eq!(legacy.projection_revision, 0);
+        assert!(!report_projection_is_current(&legacy));
+        assert!(report_projection_is_current(&report));
+    }
+
+    #[test]
     fn account_opt_in_promotes_only_verified_projection_visibility() {
         assert_eq!(
             verified_report_visibility(ReportVisibility::Unlisted, true),
@@ -7882,6 +7957,7 @@ mod tests {
         };
         PublicParseReport {
             schema_version: PUBLIC_PARSE_SCHEMA_VERSION,
+            projection_revision: PUBLIC_PARSE_PROJECTION_REVISION,
             report_id: report_id.into(),
             visibility: ReportVisibility::Public,
             created_unix_millis: 1,

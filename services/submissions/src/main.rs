@@ -106,6 +106,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         benchmark_replay(&path)?;
         return Ok(());
     }
+    if let Some(index) = arguments
+        .iter()
+        .position(|argument| argument == "--refresh-projections")
+    {
+        let data_root = arguments
+            .get(index + 1)
+            .map(PathBuf::from)
+            .ok_or("--refresh-projections requires a submission-service data root")?;
+        if arguments.len() != 2 || index != 0 {
+            return Err(
+                "usage: rlogs-submission-service --refresh-projections <submission-service-data-root>"
+                    .into(),
+            );
+        }
+        let service =
+            SubmissionService::open(data_root, "https://rlogs-app.github.io".into(), None)?;
+        let summary = service.refresh_all_projections()?;
+        println!("{}", serde_json::to_string(&summary)?);
+        return Ok(());
+    }
     if !arguments.is_empty() {
         return Err("unknown command-line argument".into());
     }
@@ -215,12 +235,32 @@ fn benchmark_replay(path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let encoded = serde_json::to_vec(&report)?;
+    let observed_casts = report
+        .runs
+        .iter()
+        .flat_map(|run| &run.participants)
+        .flat_map(|participant| &participant.abilities)
+        .map(|ability| ability.casts)
+        .sum::<u64>();
+    let actors_with_observed_casts = report
+        .runs
+        .iter()
+        .flat_map(|run| &run.participants)
+        .filter(|participant| {
+            participant
+                .abilities
+                .iter()
+                .any(|ability| ability.casts > 0)
+        })
+        .count();
     println!(
         "{}",
         serde_json::json!({
+            "actors_with_observed_casts": actors_with_observed_casts,
             "artifact_bytes": artifact.file_byte_length,
             "canonical_events": artifact.rlog.event_count,
             "elapsed_millis": elapsed.as_millis(),
+            "observed_casts": observed_casts,
             "output_bytes": encoded.len(),
             "runs": report.runs.len(),
             "schema_version": report.schema_version,
