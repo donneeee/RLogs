@@ -1163,8 +1163,9 @@ pub struct CombatTimelinePlugin {
     /// portion begins at `first_combat_started`; failed retry time is never
     /// added to this accumulator.
     attempt_elapsed_micros: u64,
-    /// Completed player-damage clock retained at a phase checkpoint. The open
-    /// portion remains the first-to-latest damage span below.
+    /// Completed player-damage windows retained at a phase checkpoint. Gaps
+    /// beyond the reviewed combat inactivity timeout are excluded so aDPS
+    /// pauses while the party is idle and resumes without charging that gap.
     attempt_damage_elapsed_micros: u64,
     /// First and latest accepted player-owned damage timestamps for the
     /// current attempt. Phase transitions and wipes clear it for aDPS.
@@ -1439,6 +1440,20 @@ impl CombatTimelinePlugin {
     }
 
     fn observe_player_damage_clock(&mut self, observed_micros: u64) {
+        if let (Some(started), Some(latest)) = (
+            self.attempt_damage_started_micros,
+            self.attempt_last_damage_micros,
+        ) && observed_micros.saturating_sub(latest) >= COMBAT_INACTIVITY_TIMEOUT_MICROS
+        {
+            self.attempt_damage_elapsed_micros = self
+                .attempt_damage_elapsed_micros
+                .saturating_add(
+                    latest
+                        .saturating_sub(started)
+                        .saturating_add(DAMAGE_CLOCK_QUANTUM_MICROS),
+                );
+            self.attempt_damage_started_micros = Some(observed_micros);
+        }
         self.attempt_damage_started_micros
             .get_or_insert(observed_micros);
         self.attempt_last_damage_micros = Some(observed_micros);
@@ -2708,7 +2723,12 @@ impl CombatTimelinePlugin {
                 .zip(self.last_event_micros)
                 .map_or(0, |(started, ended)| ended.saturating_sub(started)),
         );
-        let attempt_damage_rate_duration = self.current_attempt_damage_elapsed_micros();
+        let attempt_damage_elapsed = self.current_attempt_damage_elapsed_micros();
+        let attempt_damage_rate_duration = if attempt_damage_elapsed > 0 {
+            attempt_damage_elapsed.max(MINIMUM_PERSONAL_ACTIVE_MICROS)
+        } else {
+            0
+        };
         let encounter_rate_duration =
             if encounter_duration > 0 || self.encounter_combat_started.is_some() {
                 encounter_duration.max(MINIMUM_PERSONAL_ACTIVE_MICROS)
@@ -4982,7 +5002,7 @@ mod tests {
     }
 
     #[test]
-    fn attempt_damage_rate_freezes_while_idle_and_includes_gap_when_damage_resumes() {
+    fn attempt_damage_rate_freezes_while_idle_and_excludes_gap_when_damage_resumes() {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../../tests/fixtures/replay/reference-combat.rlog");
         let reader = RlogReader::new(
@@ -5028,9 +5048,8 @@ mod tests {
         assert_eq!(while_idle.active_dps, before_idle.active_dps);
         assert!((while_idle.encounter_dps - (2_000.0 / 9.0)).abs() < 0.001);
 
-        // When combat resumes in the same attempt, the mechanic gap belongs
-        // to ordinary damage elapsed time. This is Resonance's DPS behavior;
-        // its separate True DPS clock is the one that excludes long gaps.
+        // When combat resumes in the same attempt, the reviewed inactivity
+        // gap remains excluded. aDPS resumes from its frozen denominator.
         plugin.begin_combat(20_000_000);
         plugin.observe_player_damage_clock(20_000_000);
         plugin.actor_mut(1, 100).damage_during_combat = 3_000;
@@ -5042,7 +5061,7 @@ mod tests {
             .into_iter()
             .find(|actor| actor.actor_id == "1")
             .unwrap();
-        assert!((resumed.active_dps - (3_000.0 / 19.001)).abs() < 0.001);
+        assert!((resumed.active_dps - (3_000.0 / 1.002)).abs() < 0.001);
         assert!((resumed.encounter_dps - (3_000.0 / 9.0)).abs() < 0.001);
     }
 
@@ -5775,6 +5794,8 @@ mod tests {
             .unwrap();
         assert_eq!(player.damage_during_combat, 9_000);
         assert_eq!(player.dps, 9_000.0);
+        assert_eq!(player.active_dps, 9_000.0);
+        assert_eq!(player.encounter_dps, 9_000.0);
         assert_eq!(player.hps, 0.0);
         assert_eq!(player.tps, 0.0);
         let target = snapshot
