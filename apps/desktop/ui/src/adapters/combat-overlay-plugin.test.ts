@@ -26,6 +26,8 @@ import {
   planCombatOverlayVisibility,
   preferredOverlayDisplayName,
   projectOverlayRatesForTimer,
+  runtimeOverlayNeedsRender,
+  runtimeOverlayRenderDelay,
   shouldIgnoreCombatOverlayCursor,
   shouldKeepCombatVisibilityTimer,
 } from "../../../../../plugins/builtin/desktop/combat-overlay/ui/combat-overlay";
@@ -894,6 +896,19 @@ describe("Combat Overlay plug-in settings", () => {
     expect(shouldKeepCombatVisibilityTimer("idle:5", "idle:6", false)).toBe(false);
     expect(shouldKeepCombatVisibilityTimer("combat:10:8:5", "idle:5", false)).toBe(true);
     expect(shouldKeepCombatVisibilityTimer("combat:10:8:5", "combat:11:8:5", true)).toBe(false);
+  });
+
+  it("does not repaint the native overlay for a no-op long-poll timeout", () => {
+    expect(runtimeOverlayNeedsRender(42, 42, false, false)).toBe(false);
+    expect(runtimeOverlayNeedsRender(42, 43, false, false)).toBe(true);
+    expect(runtimeOverlayNeedsRender(42, 42, true, false)).toBe(true);
+    expect(runtimeOverlayNeedsRender(42, 42, false, true)).toBe(true);
+  });
+
+  it("coalesces burst updates to the configured overlay refresh cadence", () => {
+    expect(runtimeOverlayRenderDelay(0, 100, 250)).toBe(0);
+    expect(runtimeOverlayRenderDelay(100, 175, 250)).toBe(175);
+    expect(runtimeOverlayRenderDelay(100, 350, 250)).toBe(0);
   });
 
   it("keeps automatic visibility separate from explicit click-through", () => {

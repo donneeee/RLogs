@@ -144,6 +144,30 @@ export interface CombatOverlaySettings {
   layers: OverlayLayer[];
 }
 
+/**
+ * Long-poll timeouts return the last published snapshot so renderer health can
+ * be confirmed without inventing a new feed revision. Those no-op responses
+ * must not rebuild the entire overlay DOM: doing so once per second makes the
+ * transparent WebView compositor visibly flash over the game.
+ */
+export function runtimeOverlayNeedsRender(
+  previousRevision: number,
+  nextRevision: number,
+  settingsChanged: boolean,
+  timerSettingsChanged: boolean,
+): boolean {
+  return nextRevision > previousRevision || settingsChanged || timerSettingsChanged;
+}
+
+export function runtimeOverlayRenderDelay(
+  lastRenderMillis: number,
+  nowMillis: number,
+  refreshIntervalMillis: number,
+): number {
+  if (lastRenderMillis <= 0) return 0;
+  return Math.max(0, refreshIntervalMillis - Math.max(0, nowMillis - lastRenderMillis));
+}
+
 interface OverlayGlobalTimerSettings {
   pauseOverlayTimersOutsideCombat: boolean;
   overlayTimerInactivitySeconds: number;
@@ -2273,6 +2297,8 @@ export async function mountCombatOverlayRuntimeApp(
   let forceResetPending = false;
   let stopResizeListener: (() => void) | null = null;
   let stopShowRequestListener: (() => void) | null = null;
+  let frameTimer: number | null = null;
+  let lastRenderMillis = 0;
   let settingsFingerprint = JSON.stringify(settings);
   let timerSettingsFingerprint = JSON.stringify(initialTimerSettings);
   let lastSettingsRefreshMillis = 0;
@@ -2398,6 +2424,11 @@ export async function mountCombatOverlayRuntimeApp(
   }).catch((error) => reportWindowSyncFailure("show tracking", error));
 
   const render = () => {
+    if (frameTimer !== null) {
+      window.clearTimeout(frameTimer);
+      frameTimer = null;
+    }
+    lastRenderMillis = performance.now();
     const scale = overlayScale(runtimeSettings);
     root.dataset.dynamicHeight = String(runtimeSettings.dynamicHeight);
     root.dataset.liveResize = String(runtimeSettings.allowLiveResize);
@@ -2502,7 +2533,10 @@ export async function mountCombatOverlayRuntimeApp(
     const desiredWidth = Math.round(runtimeSettings.canvasWidth * scale);
     nextCanvas.style.height = `${desiredHeight}px`;
     nextCanvas.style.removeProperty("visibility");
-    canvas.remove();
+    // Replace the measured frame atomically. Removing the visible canvas
+    // before adopting its successor can expose one transparent compositor
+    // frame on WebView2, especially while the game is presenting at high FPS.
+    canvas.replaceWith(nextCanvas);
     canvas = nextCanvas;
     if (desiredWidth !== lastWindowWidth || desiredHeight !== lastWindowHeight) {
       lastWindowWidth = desiredWidth;
@@ -2512,6 +2546,18 @@ export async function mountCombatOverlayRuntimeApp(
         pendingProgrammaticSize = null;
         reportWindowSyncFailure("resize", error);
       });
+    }
+  };
+  const requestFeedRender = () => {
+    const delay = runtimeOverlayRenderDelay(
+      lastRenderMillis,
+      performance.now(),
+      runtimeSettings.refreshIntervalMillis,
+    );
+    if (delay === 0) {
+      render();
+    } else if (frameTimer === null) {
+      frameTimer = window.setTimeout(render, delay);
     }
   };
   render();
@@ -2576,7 +2622,14 @@ export async function mountCombatOverlayRuntimeApp(
         );
         if (!active) return;
         lastSuccessfulUpdateUnixMillis = Date.now();
+        const previousRevision = revision;
         revision = Math.max(revision, update.revision);
+        let shouldRender = runtimeOverlayNeedsRender(
+          previousRevision,
+          update.revision,
+          false,
+          false,
+        );
         latestSnapshot = update.snapshot;
         encounterPresentation = update.encounter_presentation ?? null;
         const availableViewIds = new Set(
@@ -2600,6 +2653,7 @@ export async function mountCombatOverlayRuntimeApp(
           ? settingsFingerprint
           : JSON.stringify(refreshedSettings);
         if (refreshedSettings !== null && refreshedFingerprint !== settingsFingerprint) {
+          shouldRender = true;
           const alwaysOnTopChanged = refreshedSettings.alwaysOnTop !== runtimeSettings.alwaysOnTop;
           const clickThroughChanged = refreshedSettings.clickThrough !== runtimeSettings.clickThrough;
           const enabledChanged = refreshedSettings.liveOverlayEnabled !== runtimeSettings.liveOverlayEnabled;
@@ -2630,11 +2684,12 @@ export async function mountCombatOverlayRuntimeApp(
           refreshedTimerSettings !== null &&
           refreshedTimerFingerprint !== timerSettingsFingerprint
         ) {
+          shouldRender = true;
           timerSettings = refreshedTimerSettings;
           timerSettingsFingerprint = refreshedTimerFingerprint;
         }
         syncCombatVisibility();
-        render();
+        if (shouldRender) requestFeedRender();
         consecutiveRuntimeFailures = 0;
         delete root.dataset.runtimeError;
       } catch (error) {
@@ -2661,6 +2716,7 @@ export async function mountCombatOverlayRuntimeApp(
   window.addEventListener("beforeunload", () => {
     active = false;
     clearVisibilityTimer();
+    if (frameTimer !== null) window.clearTimeout(frameTimer);
     if (resizeSaveTimer !== null) window.clearTimeout(resizeSaveTimer);
     window.clearInterval(heartbeatTimer);
     stopResizeListener?.();

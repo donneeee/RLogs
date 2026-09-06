@@ -932,6 +932,39 @@ fn game_or_rlogs_is_foreground(_: &[String]) -> bool {
     true
 }
 
+#[derive(Debug, Default)]
+struct OverlayFocusPolicyDebounce {
+    applied_hidden: bool,
+    candidate_hidden: bool,
+    consecutive_samples: u8,
+}
+
+impl OverlayFocusPolicyDebounce {
+    fn observe(&mut self, desired_hidden: bool) -> Option<bool> {
+        if desired_hidden == self.applied_hidden {
+            self.candidate_hidden = desired_hidden;
+            self.consecutive_samples = 0;
+            return None;
+        }
+        if desired_hidden != self.candidate_hidden {
+            self.candidate_hidden = desired_hidden;
+            self.consecutive_samples = 1;
+        } else {
+            self.consecutive_samples = self.consecutive_samples.saturating_add(1);
+        }
+        // Windows can briefly report a shell/IME/helper window between game
+        // frames. Require a stable foreground transition before physically
+        // hiding or revealing every overlay window.
+        let required_samples = if desired_hidden { 4 } else { 2 };
+        if self.consecutive_samples < required_samples {
+            return None;
+        }
+        self.applied_hidden = desired_hidden;
+        self.consecutive_samples = 0;
+        Some(desired_hidden)
+    }
+}
+
 fn monitor_overlay_focus_policy(
     app: tauri::AppHandle,
     game_process_names: Vec<String>,
@@ -939,13 +972,16 @@ fn monitor_overlay_focus_policy(
     thread::Builder::new()
         .name("rlogs-overlay-focus".into())
         .spawn(move || {
+            let mut debounce = OverlayFocusPolicyDebounce::default();
             loop {
                 let enabled = app
                     .state::<EmbeddedLocalHost>()
                     .core_settings()
                     .hide_overlays_when_unfocused;
                 let hidden = enabled && !game_or_rlogs_is_foreground(&game_process_names);
-                set_overlay_windows_hidden_by_focus(&app, hidden);
+                if let Some(stable_hidden) = debounce.observe(hidden) {
+                    set_overlay_windows_hidden_by_focus(&app, stable_hidden);
+                }
                 thread::sleep(Duration::from_millis(150));
             }
         })
@@ -1031,7 +1067,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{
-        combat_overlay_damage_started, combat_overlay_health_status,
+        OverlayFocusPolicyDebounce, combat_overlay_damage_started, combat_overlay_health_status,
         combat_overlay_hostile_activity_started, combat_overlay_renderer_is_stale,
         combat_overlay_should_be_visible, is_overlay_window_label,
     };
@@ -1157,6 +1193,19 @@ mod tests {
         assert!(is_overlay_window_label("map-overlay"));
         assert!(!is_overlay_window_label("main"));
         assert!(!is_overlay_window_label("settings"));
+    }
+
+    #[test]
+    fn focus_policy_ignores_transient_foreground_misses() {
+        let mut debounce = OverlayFocusPolicyDebounce::default();
+        assert_eq!(debounce.observe(true), None);
+        assert_eq!(debounce.observe(false), None);
+        assert_eq!(debounce.observe(true), None);
+        assert_eq!(debounce.observe(true), None);
+        assert_eq!(debounce.observe(true), None);
+        assert_eq!(debounce.observe(true), Some(true));
+        assert_eq!(debounce.observe(false), None);
+        assert_eq!(debounce.observe(false), Some(false));
     }
 }
 
