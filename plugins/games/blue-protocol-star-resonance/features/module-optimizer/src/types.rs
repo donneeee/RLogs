@@ -200,6 +200,10 @@ pub struct OptimizerCatalog {
     pub scoring_revision: String,
     pub client_builds: Vec<String>,
     pub attributes: Vec<AttributeCatalogEntry>,
+    /// Reviewed total-Link score indexed by the combined Link value.
+    /// Presentation clients use this to score the equipped set without
+    /// starting a combinatorial optimizer search.
+    pub link_power: Vec<i32>,
     pub combination_sizes: Vec<usize>,
     pub default_max_solutions: usize,
 }

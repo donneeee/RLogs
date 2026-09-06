@@ -25,6 +25,7 @@ export interface OptimizerCatalog {
   scoring_revision: string;
   client_builds: readonly string[];
   attributes: readonly OptimizerAttribute[];
+  link_power: readonly number[];
   combination_sizes: readonly number[];
   default_max_solutions: number;
 }
@@ -186,6 +187,8 @@ export function parseOptimizerCatalog(value: unknown): OptimizerCatalog {
     !isStringArray(value.client_builds) ||
     !Array.isArray(value.attributes) ||
     !value.attributes.every(isAttribute) ||
+    !isIntegerArray(value.link_power) ||
+    value.link_power.length === 0 ||
     !isPositiveIntegerArray(value.combination_sizes) ||
     !positiveInteger(value.default_max_solutions)
   ) {

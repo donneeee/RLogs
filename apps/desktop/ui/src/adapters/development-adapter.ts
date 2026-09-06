@@ -251,6 +251,7 @@ const DEVELOPMENT_OPTIMIZER_CATALOG: OptimizerCatalog = {
   catalog_revision: "development-visual-fixture",
   scoring_revision: "reviewed-cn-formula",
   client_builds: ["24687926"],
+  link_power: Array.from({ length: 121 }, (_, link) => link * 4),
   combination_sizes: [4, 5],
   default_max_solutions: 10,
   attributes: [

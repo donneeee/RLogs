@@ -80,6 +80,33 @@ export function moduleSolutionScoreSummary(solution: ModuleSolution): string {
     : `Score ${score} · Priority ${solution.ranking_score.toLocaleString()}`;
 }
 
+export function scoreModuleSet(
+  modules: readonly ModuleCandidate[],
+  catalog: OptimizerCatalog,
+): number {
+  const totals = new Map<number, number>();
+  let totalLink = 0;
+  for (const module of modules) {
+    for (const part of module.parts) {
+      const link = Math.max(0, part.initial_link_points ?? 0);
+      totalLink += link;
+      totals.set(part.part_id, (totals.get(part.part_id) ?? 0) + link);
+    }
+  }
+  const linkIndex = Math.min(totalLink, catalog.link_power.length - 1);
+  let score = catalog.link_power[linkIndex] ?? 0;
+  for (const attribute of catalog.attributes) {
+    const total = totals.get(attribute.id) ?? 0;
+    for (let index = attribute.thresholds.length - 1; index >= 0; index -= 1) {
+      if (total >= (attribute.thresholds[index] ?? Number.POSITIVE_INFINITY)) {
+        score += attribute.fight_values[index] ?? 0;
+        break;
+      }
+    }
+  }
+  return score;
+}
+
 const GPU_PREFERENCE_KEY = "rlogs.module-optimizer.gpu";
 const PREFERENCE_KEY_PREFIX = "rlogs.module-optimizer.preferences.v1.";
 
@@ -693,6 +720,14 @@ function renderModuleLinkSummary(
         "module-score-summary",
       ),
     );
+  } else if (catalog) {
+    children.push(
+      text(
+        "strong",
+        `Score ${scoreModuleSet(modules, catalog).toLocaleString()}`,
+        "module-score-summary",
+      ),
+    );
   }
   container.replaceChildren(...children);
   container.hidden = effects.childElementCount === 0 && solution === null;
@@ -740,7 +775,7 @@ function compactModuleCard(
     text("strong", presentation.name),
     text(
       "small",
-      `${moduleQuality(value)} · ${moduleLinkTotal(value)} total Link`,
+      `${moduleQuality(value)} · ${moduleLinkTotal(value)} Link${catalog ? ` · Score ${scoreModuleSet([value], catalog).toLocaleString()}` : ""}`,
       "module-card-meta",
     ),
   );

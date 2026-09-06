@@ -186,6 +186,7 @@ pub fn load_catalog_from_path(
             .map(|build| build.client_build)
             .collect(),
         attributes,
+        link_power: rules.link_power().to_vec(),
         combination_sizes: vec![4, 5],
         default_max_solutions: 10,
     };

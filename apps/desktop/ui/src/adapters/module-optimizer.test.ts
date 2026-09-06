@@ -7,7 +7,7 @@ import {
   parseOptimizeResponse,
   parseOptimizerCatalog,
 } from "./module-optimizer";
-import { moduleSolutionScoreSummary, summarizeModuleLinks } from "./module-optimizer-surface";
+import { moduleSolutionScoreSummary, scoreModuleSet, summarizeModuleLinks } from "./module-optimizer-surface";
 
 describe("local module optimizer contracts", () => {
   it("shows the score and only adds a priority score when preferences change ranking", () => {
@@ -40,6 +40,7 @@ describe("local module optimizer contracts", () => {
         { id: 1110, name: "Strength Boost", official_name: null, icon: null, thresholds: [4], fight_values: [1] },
         { id: 1120, name: "Agility Boost", official_name: null, icon: null, thresholds: [4], fight_values: [1] },
       ],
+      link_power: Array.from({ length: 21 }, (_, link) => link * 5),
       combination_sizes: [5],
       default_max_solutions: 5,
     });
@@ -50,6 +51,25 @@ describe("local module optimizer contracts", () => {
       { attributeId: 1110, name: "Strength Boost", icon: null, totalLink: 15 },
       { attributeId: 1120, name: "Agility Boost", icon: null, totalLink: 4 },
     ]);
+  });
+
+  it("scores the current module set directly from the reviewed catalog", () => {
+    const catalog = parseOptimizerCatalog({
+      game_id: "blue-protocol-star-resonance",
+      catalog_revision: "sha256:test",
+      scoring_revision: "reviewed",
+      client_builds: ["24687926"],
+      attributes: [
+        { id: 1110, name: "Strength Boost", official_name: null, icon: null, thresholds: [1, 4, 8], fight_values: [7, 14, 29] },
+        { id: 1120, name: "Agility Boost", official_name: null, icon: null, thresholds: [1, 4, 8], fight_values: [7, 14, 29] },
+      ],
+      link_power: Array.from({ length: 21 }, (_, link) => link * 5),
+      combination_sizes: [4, 5],
+      default_max_solutions: 5,
+    });
+    expect(scoreModuleSet([
+      { instance_id: "1", config_id: 1, quality: 4, parts: [{ part_id: 1110, initial_link_points: 8 }, { part_id: 1120, initial_link_points: 4 }] },
+    ], catalog)).toBe(60 + 29 + 14);
   });
 
   it("keeps module instance IDs as strings beyond JavaScript's safe integer range", () => {
@@ -100,6 +120,7 @@ describe("local module optimizer contracts", () => {
           fight_values: [7, 14, 29, 44, 167, 254],
         },
       ],
+      link_power: [0, 5],
       combination_sizes: [4, 5],
       default_max_solutions: 10,
     });
