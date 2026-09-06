@@ -10,7 +10,7 @@ if (!process.argv[2] || !process.argv[3]) {
 
 const maximumValueBytes = 25 * 1024 * 1024;
 const maximumBatchBytes = 18 * 1024 * 1024;
-const includeRoots = ["accounts", "memberships", "profiles", "projections", "reconciliations"];
+const includeRoots = ["accounts", "characters", "memberships", "profiles", "projections", "reconciliations"];
 const includeRootFiles = ["catalog.v1.json", "community-milestones.v1.json"];
 const excludedSegments = new Set(["login-codes", "oauth-states"]);
 

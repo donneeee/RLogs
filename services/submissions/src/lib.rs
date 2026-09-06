@@ -1395,6 +1395,10 @@ impl SubmissionService {
         Ok(catalog)
     }
 
+    pub fn observed_characters(&self) -> Result<PublicObservedCharacterCatalog, ServiceError> {
+        read_json(&self.observed_character_catalog_path())
+    }
+
     fn finalize_response(
         &self,
         report_id: &str,
@@ -1450,6 +1454,7 @@ impl SubmissionService {
             .as_ref()
             .is_some_and(|catalog| catalog.schema_version == PUBLIC_CATALOG_SCHEMA_VERSION)
             || !self.community_milestone_catalog_path().is_file()
+            || !self.observed_character_catalog_path().is_file()
         {
             self.rebuild_catalog_locked()?;
         }
@@ -1661,6 +1666,15 @@ impl SubmissionService {
                 facets,
             },
         )?;
+        let observed_characters = build_observed_character_catalog(
+            &milestone_sources,
+            &self.inner.profiles.catalog(None)?.profiles,
+        );
+        std::fs::create_dir_all(self.inner.root.join("characters"))?;
+        write_json_atomic(
+            &self.observed_character_catalog_path(),
+            &observed_characters,
+        )?;
         write_json_atomic(
             &self.community_milestone_catalog_path(),
             &build_community_milestone_catalog(milestone_sources),
@@ -1729,6 +1743,10 @@ impl SubmissionService {
 
     fn community_milestone_catalog_path(&self) -> PathBuf {
         self.inner.root.join("community-milestones.v1.json")
+    }
+
+    fn observed_character_catalog_path(&self) -> PathBuf {
+        self.inner.root.join("characters").join("catalog.v1.json")
     }
 
     fn upload_directory(&self, upload_id: &str) -> Result<PathBuf, ServiceError> {
@@ -1824,6 +1842,7 @@ pub fn router(service: SubmissionService) -> Router {
         .route("/v1/uploads/{upload_id}/finalize", post(finalize_upload))
         .route("/v1/parses", get(list_parses))
         .route("/v1/activity/milestones", get(list_community_milestones))
+        .route("/v1/characters", get(list_observed_characters))
         .route("/v1/parses/{report_id}", get(get_parse))
         .route(
             "/v1/games/blue-protocol-star-resonance/profiles",
@@ -2112,6 +2131,12 @@ async fn list_community_milestones(
     Query(query): Query<CommunityMilestoneQuery>,
 ) -> Result<Json<PublicCommunityMilestoneCatalog>, ApiError> {
     Ok(Json(service.community_milestones(&query)?))
+}
+
+async fn list_observed_characters(
+    State(service): State<SubmissionService>,
+) -> Result<Json<PublicObservedCharacterCatalog>, ApiError> {
+    Ok(Json(service.observed_characters()?))
 }
 
 async fn get_parse(
@@ -2906,6 +2931,183 @@ fn catalog_activity_category(entry: &PublicParseCatalogEntry) -> Option<&str> {
     })
 }
 
+fn build_observed_character_catalog(
+    sources: &[MilestoneSource],
+    profiles: &[PublicProfileCatalogEntry],
+) -> PublicObservedCharacterCatalog {
+    let mut profiles_by_uid = BTreeMap::<String, &PublicProfileCatalogEntry>::new();
+    let mut profiles_by_key = BTreeMap::<String, &PublicProfileCatalogEntry>::new();
+    let mut profiles_by_name = BTreeMap::<String, Vec<&PublicProfileCatalogEntry>>::new();
+    for profile in profiles {
+        profiles_by_uid.insert(profile.character_id.clone(), profile);
+        profiles_by_key.insert(
+            pseudonymous_identifier("chr", profile.character_id.as_bytes()),
+            profile,
+        );
+        if let Some(name) = profile.display_name.as_deref() {
+            profiles_by_name
+                .entry(observed_name_identity(
+                    &profile.deployment,
+                    &profile.region,
+                    name,
+                ))
+                .or_default()
+                .push(profile);
+        }
+    }
+
+    let mut characters = BTreeMap::<String, PublicObservedCharacter>::new();
+    for source in sources {
+        for participant in &source.participants {
+            if participant.actor_kind.as_deref() != Some("player") {
+                continue;
+            }
+            let Some(display_name) = participant
+                .display_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+            else {
+                continue;
+            };
+            let name_identity = observed_name_identity(
+                &source.entry.deployment_id,
+                &source.entry.region_id,
+                display_name,
+            );
+            let unique_name_profile = profiles_by_name
+                .get(&name_identity)
+                .filter(|matches| matches.len() == 1)
+                .map(|matches| matches[0]);
+            let claimed = participant
+                .character_id
+                .as_ref()
+                .and_then(|uid| profiles_by_uid.get(uid).copied())
+                .or_else(|| {
+                    participant
+                        .observed_character_key
+                        .as_ref()
+                        .and_then(|key| profiles_by_key.get(key).copied())
+                })
+                .or(unique_name_profile);
+            let character_id = participant
+                .character_id
+                .clone()
+                .or_else(|| claimed.map(|profile| profile.character_id.clone()));
+            let observed_character_key = participant
+                .observed_character_key
+                .clone()
+                .or_else(|| {
+                    character_id
+                        .as_deref()
+                        .map(|uid| pseudonymous_identifier("chr", uid.as_bytes()))
+                })
+                .unwrap_or_else(|| legacy_observed_character_key(&name_identity));
+            let identity_kind =
+                if character_id.is_some() || participant.observed_character_key.is_some() {
+                    ObservedCharacterIdentityKind::VerifiedUid
+                } else {
+                    ObservedCharacterIdentityKind::LegacyNameObservation
+                };
+            let reference = PublicObservedCharacterReportReference {
+                report_id: source.entry.report_id.clone(),
+                run_index: source.entry.run_index,
+                created_unix_millis: source.entry.created_unix_millis,
+                scene_id: source.entry.scene_id,
+                scene_name: source.entry.scene_name.clone(),
+                terminal_state: source.entry.terminal_state.clone(),
+            };
+            let character = characters
+                .entry(observed_character_key.clone())
+                .or_insert_with(|| PublicObservedCharacter {
+                    observed_character_key,
+                    identity_kind,
+                    character_id: character_id.clone(),
+                    claimed_profile_id: claimed.map(|profile| profile.profile_id.clone()),
+                    display_name: display_name.to_owned(),
+                    deployment: source.entry.deployment_id.clone(),
+                    region: source.entry.region_id.clone(),
+                    class_id: participant.class_id,
+                    class_name: participant.class_name.clone(),
+                    specialization_id: participant.specialization_id,
+                    specialization_name: participant.specialization_name.clone(),
+                    first_seen_unix_millis: source.entry.created_unix_millis,
+                    last_seen_unix_millis: source.entry.created_unix_millis,
+                    report_count: 0,
+                    reports: Vec::new(),
+                });
+            let latest = source.entry.created_unix_millis >= character.last_seen_unix_millis;
+            character.first_seen_unix_millis = character
+                .first_seen_unix_millis
+                .min(source.entry.created_unix_millis);
+            character.last_seen_unix_millis = character
+                .last_seen_unix_millis
+                .max(source.entry.created_unix_millis);
+            if latest {
+                character.display_name = display_name.to_owned();
+                character.class_id = participant.class_id.or(character.class_id);
+                character.class_name = participant
+                    .class_name
+                    .clone()
+                    .or_else(|| character.class_name.clone());
+                character.specialization_id = participant
+                    .specialization_id
+                    .or(character.specialization_id);
+                character.specialization_name = participant
+                    .specialization_name
+                    .clone()
+                    .or_else(|| character.specialization_name.clone());
+            }
+            if !character.reports.iter().any(|existing| {
+                existing.report_id == reference.report_id
+                    && existing.run_index == reference.run_index
+            }) {
+                character.reports.push(reference);
+            }
+        }
+    }
+
+    let mut characters = characters.into_values().collect::<Vec<_>>();
+    for character in &mut characters {
+        character
+            .reports
+            .sort_by_key(|reference| std::cmp::Reverse(reference.created_unix_millis));
+        character.report_count = character.reports.len();
+    }
+    characters.sort_by(|left, right| {
+        right
+            .last_seen_unix_millis
+            .cmp(&left.last_seen_unix_millis)
+            .then_with(|| left.display_name.cmp(&right.display_name))
+    });
+    PublicObservedCharacterCatalog {
+        schema_version: 1,
+        generated_unix_millis: characters
+            .iter()
+            .map(|character| character.last_seen_unix_millis)
+            .max()
+            .unwrap_or(1),
+        total_characters: characters.len(),
+        characters,
+    }
+}
+
+fn observed_name_identity(deployment: &str, region: &str, display_name: &str) -> String {
+    format!(
+        "{}\0{}\0{}",
+        deployment,
+        region,
+        display_name.to_lowercase()
+    )
+}
+
+fn legacy_observed_character_key(name_identity: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"rlogs-observed-character-name-v1\0");
+    hasher.update(name_identity.as_bytes());
+    format!("obs_{:x}", hasher.finalize())[..36].to_owned()
+}
+
 fn build_community_milestone_catalog(
     sources: Vec<MilestoneSource>,
 ) -> PublicCommunityMilestoneCatalog {
@@ -2996,6 +3198,50 @@ pub struct PublicParseCatalog {
     pub next_offset: Option<usize>,
     pub entries: Vec<PublicParseCatalogEntry>,
     pub facets: CatalogFacets,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicObservedCharacterCatalog {
+    pub schema_version: u16,
+    pub generated_unix_millis: u64,
+    pub total_characters: usize,
+    pub characters: Vec<PublicObservedCharacter>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ObservedCharacterIdentityKind {
+    VerifiedUid,
+    LegacyNameObservation,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicObservedCharacter {
+    pub observed_character_key: String,
+    pub identity_kind: ObservedCharacterIdentityKind,
+    pub character_id: Option<String>,
+    pub claimed_profile_id: Option<String>,
+    pub display_name: String,
+    pub deployment: String,
+    pub region: String,
+    pub class_id: Option<i32>,
+    pub class_name: Option<String>,
+    pub specialization_id: Option<i32>,
+    pub specialization_name: Option<String>,
+    pub first_seen_unix_millis: u64,
+    pub last_seen_unix_millis: u64,
+    pub report_count: usize,
+    pub reports: Vec<PublicObservedCharacterReportReference>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicObservedCharacterReportReference {
+    pub report_id: String,
+    pub run_index: u32,
+    pub created_unix_millis: u64,
+    pub scene_id: Option<i32>,
+    pub scene_name: Option<String>,
+    pub terminal_state: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -7708,6 +7954,94 @@ mod tests {
                 rdps_effects: Vec::new(),
             }],
         }
+    }
+
+    #[test]
+    fn observed_character_catalog_merges_opaque_identity_and_claims_profile() {
+        let character_id = "3296036";
+        let observed_key = pseudonymous_identifier("chr", character_id.as_bytes());
+        let participant = |name: &str| PublicParticipant {
+            actor_id: "actor-1".into(),
+            character_id: None,
+            observed_character_key: Some(observed_key.clone()),
+            display_name: Some(name.into()),
+            actor_kind: Some("player".into()),
+            class_id: Some(4),
+            class_name: Some("Marksman".into()),
+            specialization_id: Some(2),
+            specialization_name: Some("Falconry Spec".into()),
+            damage: 1,
+            dps: 1.0,
+            encounter_dps: 1.0,
+            hps: 0.0,
+            tps: 0.0,
+            rdps: None,
+            deaths: 0,
+            death_seconds: Vec::new(),
+            abilities: Vec::new(),
+            series: Vec::new(),
+        };
+        let source = |index: u32, created: u64, name: &str| MilestoneSource {
+            entry: PublicParseCatalogEntry {
+                report_id: format!("rpt_{index:032x}"),
+                report_ids: vec![format!("rpt_{index:032x}")],
+                run_index: index,
+                run_group_id: format!("run_{index:032x}"),
+                contribution_count: 1,
+                distinct_submitter_count: 1,
+                local_profile_witness_character_count: 0,
+                attribution_reconciliation_status:
+                    RunAttributionReconciliationStatus::SingleVantage,
+                created_unix_millis: created,
+                submitter_id: None,
+                deployment_id: "global".into(),
+                region_id: "north-america".into(),
+                activity_id: None,
+                activity_family_id: None,
+                activity_category_id: None,
+                scene_id: Some(1),
+                scene_name: Some("Test scene".into()),
+                difficulty_family: None,
+                difficulty_tier: None,
+                terminal_state: "completed".into(),
+                total_run_time_micros: Some(1),
+                participant_count: 1,
+            },
+            authoritative_completion: true,
+            participants: vec![participant(name)],
+        };
+        let profile = PublicProfileCatalogEntry {
+            profile_id: "3296036".into(),
+            claimed: true,
+            package_id: "pkg_test".into(),
+            updated_unix_millis: 3,
+            source_client_build: "test".into(),
+            deployment: "global".into(),
+            region: "north-america".into(),
+            realm: None,
+            world: None,
+            character_id: character_id.into(),
+            display_name: Some("MarieRose".into()),
+            module_inventory_count: 0,
+            equipped_module_count: 0,
+        };
+
+        let catalog = build_observed_character_catalog(
+            &[source(1, 10, "MarieRose"), source(2, 20, "MarieRose")],
+            &[profile],
+        );
+
+        assert_eq!(catalog.total_characters, 1);
+        let character = &catalog.characters[0];
+        assert_eq!(character.observed_character_key, observed_key);
+        assert_eq!(character.character_id.as_deref(), Some(character_id));
+        assert_eq!(character.claimed_profile_id.as_deref(), Some("3296036"));
+        assert_eq!(
+            character.identity_kind,
+            ObservedCharacterIdentityKind::VerifiedUid
+        );
+        assert_eq!(character.report_count, 2);
+        assert_eq!(character.reports[0].created_unix_millis, 20);
     }
 
     #[test]
