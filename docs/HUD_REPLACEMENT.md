@@ -1,8 +1,9 @@
 # Modular HUD replacement
 
-Status: planned product track. This document records the accepted direction;
-individual modules remain disabled until their authoritative event and asset
-contracts pass the gates below.
+Status: active product track. The screen-sized native Overlay Canvas and its
+first packet-backed Mechanics Map module are implemented; additional HUD
+modules remain disabled until their authoritative event and asset contracts
+pass the gates below.
 
 ## Product goal
 
@@ -91,6 +92,17 @@ This extends the inventory rules in [`GAME_FILE_RESEARCH.md`](GAME_FILE_RESEARCH
 and the namespaced asset ownership rules in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Mechanics map
+
+Mechanics Map is the first module on the shared Overlay Canvas. The native
+canvas covers the active display at its actual resolution, while its backing
+HTML canvas scales by the display pixel ratio so high-DPI displays retain full
+pixel detail. The map module moves and resizes inside that transparent surface;
+its position, dimensions, free zoom, pan, rotation, monster filter, and lock
+state persist locally. Locking makes the entire native canvas click-through;
+opening the canvas again from Mechanics Map is the recovery path that restores
+editing. The same canvas/window contract is reserved for future target,
+status, action, party, objective, and chat modules rather than creating a new
+native window for each feature.
 
 The map uses the locally compiled in-game map as the visual base and keeps
 mechanic knowledge in separate toggleable layers. Required foundations are an

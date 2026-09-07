@@ -677,6 +677,10 @@ function createLocalHostAdapter(): DesktopHostAdapter {
                 method: "POST",
               });
             },
+            async openOverlay() {
+              await invoke("set_overlay_canvas_interactive", { interactive: true });
+              await invoke("show_overlay_canvas");
+            },
           });
         case `builtin://${OVERLAY_PLUGIN_ID}/trackers`:
           return mountOverlayStatsTrackerSurface(container, {

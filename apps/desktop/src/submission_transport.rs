@@ -78,6 +78,17 @@ struct DeviceAuthenticationResponse {
     authentication: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct ServiceHealthResponse {
+    schema_version: u16,
+    capabilities: ServiceCapabilities,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ServiceCapabilities {
+    parse_uploads: bool,
+}
+
 impl SubmissionTransport {
     pub fn from_environment() -> Result<Option<Self>, String> {
         let endpoint = match std::env::var(ENDPOINT_ENVIRONMENT_VARIABLE) {
@@ -204,6 +215,7 @@ impl SubmissionTransport {
         entry
             .validate()
             .map_err(|error| format!("submission draft is invalid: {error}"))?;
+        self.require_parse_upload_service()?;
         let begin: BeginUploadResponse = self
             .authorized(
                 self.client
@@ -337,6 +349,31 @@ impl SubmissionTransport {
             resumed,
             finalized.duplicate,
         ))
+    }
+
+    fn require_parse_upload_service(&self) -> Result<(), String> {
+        let response = self
+            .client
+            .get(self.url("health")?)
+            .timeout(Duration::from_secs(20))
+            .send()
+            .map_err(|error| format!("submission service health check failed: {error}"))?;
+        let health: ServiceHealthResponse = response.json().map_err(|error| {
+            format!("submission service returned an invalid health response: {error}")
+        })?;
+        if health.schema_version != 1 {
+            return Err(format!(
+                "submission service uses unsupported health schema {}",
+                health.schema_version
+            ));
+        }
+        if !health.capabilities.parse_uploads {
+            return Err(
+                "Cloudflare parse uploads are not enabled yet; this verified draft remains safely queued on this PC and rLogs will retry automatically"
+                    .into(),
+            );
+        }
+        Ok(())
     }
 
     pub fn publish_profile(
@@ -614,6 +651,23 @@ mod tests {
         (format!("http://{address}"), handle)
     }
 
+    fn mock_health_response(body: &'static str) -> (String, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 4096];
+            let read = std::io::Read::read(&mut stream, &mut request).unwrap();
+            assert!(String::from_utf8_lossy(&request[..read]).starts_with("GET /health HTTP/1.1"));
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            std::io::Write::write_all(&mut stream, response.as_bytes()).unwrap();
+        });
+        (format!("http://{address}"), handle)
+    }
+
     #[test]
     fn identifiers_reject_paths_and_empty_values() {
         assert!(validate_identifier("upload_0123-ab", "upload ID").is_ok());
@@ -670,6 +724,26 @@ mod tests {
             .validate_device_authentication()
             .unwrap_err();
         assert!(error.contains("rejected the app token"));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn upload_preflight_preserves_local_drafts_when_cloudflare_uploads_are_disabled() {
+        let (endpoint, server) =
+            mock_health_response(r#"{"schema_version":1,"capabilities":{"parse_uploads":false}}"#);
+        let error = SubmissionTransport::new(&endpoint, Some("rld_test"))
+            .unwrap()
+            .require_parse_upload_service()
+            .unwrap_err();
+        assert!(error.contains("remains safely queued"));
+        server.join().unwrap();
+
+        let (endpoint, server) =
+            mock_health_response(r#"{"schema_version":1,"capabilities":{"parse_uploads":true}}"#);
+        SubmissionTransport::new(&endpoint, Some("rld_test"))
+            .unwrap()
+            .require_parse_upload_service()
+            .unwrap();
         server.join().unwrap();
     }
 }

@@ -146,6 +146,12 @@ struct CombatOverlayWindowState {
 }
 
 #[derive(Default)]
+struct OverlayCanvasWindowState {
+    ready: AtomicBool,
+    requested: AtomicBool,
+}
+
+#[derive(Default)]
 struct OverlayFocusWindowState {
     hidden: AtomicBool,
     restore_labels: Mutex<BTreeSet<String>>,
@@ -255,6 +261,66 @@ fn hide_combat_overlay(
         .get_webview_window("combat-overlay")
         .ok_or_else(|| "Combat Overlay window is unavailable; restart rLogs".to_owned())?;
     hide_combat_overlay_window(&window)
+}
+
+#[tauri::command]
+fn show_overlay_canvas(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, OverlayCanvasWindowState>,
+    focus_state: tauri::State<'_, OverlayFocusWindowState>,
+) -> Result<(), String> {
+    state.requested.store(true, Ordering::Release);
+    if state.ready.load(Ordering::Acquire) && focus_state.allows_visibility() {
+        let window = app
+            .get_webview_window("overlay-canvas")
+            .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
+        show_combat_overlay_without_activation(&window)?;
+        window
+            .emit("overlay-canvas-show-requested", ())
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn hide_overlay_canvas(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, OverlayCanvasWindowState>,
+) -> Result<(), String> {
+    state.requested.store(false, Ordering::Release);
+    let window = app
+        .get_webview_window("overlay-canvas")
+        .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
+    hide_combat_overlay_window(&window)
+}
+
+#[tauri::command]
+fn overlay_canvas_ready(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, OverlayCanvasWindowState>,
+    focus_state: tauri::State<'_, OverlayFocusWindowState>,
+) -> Result<(), String> {
+    state.ready.store(true, Ordering::Release);
+    if state.requested.load(Ordering::Acquire) && focus_state.allows_visibility() {
+        let window = app
+            .get_webview_window("overlay-canvas")
+            .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
+        show_combat_overlay_without_activation(&window)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn set_overlay_canvas_interactive(app: tauri::AppHandle, interactive: bool) -> Result<(), String> {
+    let window = app
+        .get_webview_window("overlay-canvas")
+        .ok_or_else(|| "Overlay Canvas is unavailable; restart rLogs".to_owned())?;
+    window
+        .set_ignore_cursor_events(!interactive)
+        .map_err(|error| error.to_string())?;
+    window
+        .emit("overlay-canvas-interactivity", interactive)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -441,6 +507,34 @@ fn build_combat_overlay_window(
         .inner_size(460.0, 520.0)
         .min_inner_size(160.0, 80.0)
         .resizable(true)
+        .build()
+        .map(|_| ())?;
+    Ok(())
+}
+
+fn build_overlay_canvas_window(
+    app: &mut tauri::App,
+    host: &rlogs_desktop_host::EmbeddedLocalHost,
+) -> tauri::Result<()> {
+    let url = format!(
+        "http://{}/?surface=overlay-canvas&module=mechanics-map",
+        host.address()
+    )
+    .parse()
+    .map_err(tauri::Error::InvalidUrl)?;
+    WebviewWindowBuilder::new(app, "overlay-canvas", WebviewUrl::External(url))
+        .title("rLogs Overlay Canvas")
+        .decorations(false)
+        .shadow(false)
+        .transparent(true)
+        .background_color(Color(11, 21, 34, 0))
+        .visible(false)
+        .focusable(false)
+        .focused(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .fullscreen(true)
+        .resizable(false)
         .build()
         .map(|_| ())?;
     Ok(())
@@ -819,7 +913,7 @@ fn monitor_combat_overlay_activity(
 }
 
 fn is_overlay_window_label(label: &str) -> bool {
-    label.ends_with("-overlay")
+    label == "overlay-canvas" || label.ends_with("-overlay")
 }
 
 fn set_overlay_windows_hidden_by_focus(app: &tauri::AppHandle, hidden: bool) {
@@ -859,11 +953,19 @@ fn set_overlay_windows_hidden_by_focus(app: &tauri::AppHandle, hidden: bool) {
             .unwrap_or_else(std::sync::PoisonError::into_inner),
     );
     for label in restore_labels {
-        if label == "combat-overlay" {
-            continue;
-        }
         if let Some(window) = app.get_webview_window(&label) {
-            let _ = window.show();
+            if label == "combat-overlay" {
+                continue;
+            }
+            if label == "overlay-canvas" {
+                let state = app.state::<OverlayCanvasWindowState>();
+                if state.requested.load(Ordering::Acquire) && state.ready.load(Ordering::Acquire) {
+                    let _ = show_combat_overlay_without_activation(&window);
+                    let _ = window.emit("overlay-canvas-show-requested", ());
+                }
+            } else {
+                let _ = window.show();
+            }
         }
     }
     let combat = app.state::<CombatOverlayWindowState>();
@@ -1029,8 +1131,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 overlay_auto_hide,
             ));
             app.manage(OverlayFocusWindowState::default());
+            app.manage(OverlayCanvasWindowState::default());
             app.manage(HotkeyRuntimeState::default());
             build_combat_overlay_window(app, &host)?;
+            build_overlay_canvas_window(app, &host)?;
             let game_process_names = host.foreground_game_process_names();
             let combat_observer = host.live_combat_activity_observer();
             app.manage(host);
@@ -1052,6 +1156,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             show_combat_overlay,
             set_combat_overlay_enabled,
             hide_combat_overlay,
+            show_overlay_canvas,
+            hide_overlay_canvas,
+            overlay_canvas_ready,
+            set_overlay_canvas_interactive,
             show_combat_overlay_if_requested,
             set_combat_overlay_automatically_hidden,
             combat_overlay_ready,
@@ -1190,7 +1298,7 @@ mod tests {
     fn focus_policy_recognizes_present_and_future_overlay_windows() {
         assert!(is_overlay_window_label("combat-overlay"));
         assert!(is_overlay_window_label("cooldown-overlay"));
-        assert!(is_overlay_window_label("map-overlay"));
+        assert!(is_overlay_window_label("overlay-canvas"));
         assert!(!is_overlay_window_label("main"));
         assert!(!is_overlay_window_label("settings"));
     }

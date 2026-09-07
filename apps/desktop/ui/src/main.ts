@@ -10,6 +10,8 @@ import { DesktopShell } from "./shell/desktop-shell";
 import { installInterfaceZoom } from "./shell/ui-zoom";
 import { dispatchCombatOverlayHide } from "./shell/combat-overlay-hide";
 import { mountCombatOverlayRuntimeApp } from "../../../../plugins/builtin/desktop/combat-overlay/ui/combat-overlay";
+import { mountMechanicsMapOverlay } from "./adapters/mechanics-map-overlay";
+import { parseMechanicsMapUpdate } from "./adapters/mechanics-map";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
@@ -26,6 +28,9 @@ const isCombatOverlayRuntime =
 const isEventInspectorRuntime =
   window.location.pathname === "/event-inspector-runtime" ||
   query.get("surface") === "event-inspector";
+const isOverlayCanvasRuntime =
+  window.location.pathname === "/overlay-canvas-runtime" ||
+  query.get("surface") === "overlay-canvas";
 
 if (isCombatOverlayRuntime) {
   const appWindow = getCurrentWindow();
@@ -107,6 +112,40 @@ if (isCombatOverlayRuntime) {
     // native surface if initialization fails after navigation succeeds.
     await invoke("combat_overlay_ready").catch(() => undefined);
   }
+} else if (isOverlayCanvasRuntime) {
+  await loadAndApplyThemeSettings();
+  document.body.dataset.surface = "overlay-canvas";
+  const appWindow = getCurrentWindow();
+  try {
+    mountMechanicsMapOverlay(root, {
+      loadSnapshot: async () => parseMechanicsMapUpdate(await runtimeJson("/api/runtime/live/mechanics-map")),
+      waitForSnapshot: async (afterRevision) => parseMechanicsMapUpdate(await runtimeJson(
+        "/api/runtime/live/mechanics-map/wait",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ after_revision: afterRevision, timeout_millis: 30_000 }),
+        },
+      )),
+      prepareLocalMaps: async () => { await runtimeJson("/api/runtime/local-game-assets/prepare", { method: "POST" }); },
+      hide: async () => { await invoke("hide_overlay_canvas"); },
+      setInteractive: async (interactive) => {
+        await appWindow.setIgnoreCursorEvents(!interactive);
+        await invoke("set_overlay_canvas_interactive", { interactive });
+      },
+      onInteractivity: async (handler) => appWindow.listen<boolean>(
+        "overlay-canvas-interactivity",
+        ({ payload }) => handler(payload),
+      ),
+    });
+    await invoke("overlay_canvas_ready");
+  } catch (error) {
+    const failure = document.createElement("main");
+    failure.className = "mechanics-map-overlay-failure";
+    failure.textContent = `Mechanics Map overlay could not start: ${error instanceof Error ? error.message : String(error)}`;
+    root.replaceChildren(failure);
+    await invoke("overlay_canvas_ready").catch(() => undefined);
+  }
 } else if (isEventInspectorRuntime) {
   await loadAndApplyThemeSettings();
   installInterfaceZoom();
@@ -153,4 +192,10 @@ if (isCombatOverlayRuntime) {
   const applicationVersion = await getVersion().catch(() => "development");
   const shell = new DesktopShell(root, adapter, applicationVersion);
   void shell.start();
+}
+
+async function runtimeJson(path: string, init?: RequestInit): Promise<unknown> {
+  const response = await fetch(path, { cache: "no-store", ...init });
+  if (!response.ok) throw new Error(`rLogs host returned HTTP ${response.status} for ${path}`);
+  return response.json();
 }

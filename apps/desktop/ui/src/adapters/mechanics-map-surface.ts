@@ -5,6 +5,7 @@ export interface MechanicsMapDependencies {
   loadSnapshot(): Promise<MechanicsMapUpdate>;
   waitForSnapshot(afterRevision: number): Promise<MechanicsMapUpdate>;
   prepareLocalMaps(): Promise<LocalMapPreparationResult>;
+  openOverlay(): Promise<void>;
 }
 
 export interface LocalMapPreparationResult {
@@ -43,12 +44,18 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   const mapMeta = text("p", "No packet-observed world context yet.", "card-copy");
   const mapCopy = el("div"); mapCopy.append(mapTitle, mapMeta);
   const controls = el("div", "mechanics-map-controls");
+  const openOverlay = text("button", "Open overlay", "primary-button mechanics-map-open-overlay");
+  openOverlay.type = "button";
+  openOverlay.addEventListener("click", () => {
+    openOverlay.disabled = true;
+    void dependencies.openOverlay().finally(() => { openOverlay.disabled = false; });
+  });
   const rotate = check("Rotate with player", true, (checked) => { rotateWithPlayer = checked; render(); });
   const monsters = check("Monsters", true, (checked) => { showMonsters = checked; render(); });
   const resetView = text("button", "Reset view", "quiet-button mechanics-map-reset-view");
   resetView.type = "button";
   resetView.addEventListener("click", resetMapView);
-  controls.append(rotate, monsters, resetView);
+  controls.append(openOverlay, rotate, monsters, resetView);
   mapHeading.append(mapCopy, controls);
   const radar = el("div", "mechanics-radar");
   radar.setAttribute("role", "img");
