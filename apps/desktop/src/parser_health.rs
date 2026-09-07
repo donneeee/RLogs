@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{read_json_with_limit, write_json_atomic_with_limit};
 
-const PARSER_HEALTH_SCHEMA_VERSION: u16 = 1;
+const PARSER_HEALTH_SCHEMA_VERSION: u16 = 2;
 const MAXIMUM_PARSER_HEALTH_BYTES: u64 = 128 * 1024;
 const MAXIMUM_RETAINED_SESSIONS: usize = 32;
 const MAXIMUM_SESSION_ID_BYTES: usize = 256;
@@ -35,6 +35,14 @@ pub struct ParserHealthSession {
     pub sealed_run_count: u64,
     pub recoverable_error_count: u64,
     pub capture_queue_saturation_count: u64,
+    #[serde(default)]
+    pub local_skill_request_count: u64,
+    #[serde(default)]
+    pub local_skill_request_decoded_count: u64,
+    #[serde(default)]
+    pub local_skill_request_decode_failure_count: u64,
+    #[serde(default)]
+    pub canonical_cast_start_count: u64,
     pub last_progress_unix_millis: Option<u64>,
     pub last_recoverable_error: Option<String>,
     pub detail: String,
@@ -63,6 +71,10 @@ pub struct ParserHealthObservation {
     pub sealed_run_count: u64,
     pub recoverable_error_count: u64,
     pub capture_queue_saturation_count: u64,
+    pub local_skill_request_count: u64,
+    pub local_skill_request_decoded_count: u64,
+    pub local_skill_request_decode_failure_count: u64,
+    pub canonical_cast_start_count: u64,
     pub last_progress_unix_millis: Option<u64>,
     pub last_recoverable_error: Option<String>,
     pub detail: String,
@@ -96,6 +108,19 @@ impl ParserHealthStore {
                 return Err(format!("could not inspect parser health history: {error}"));
             }
         };
+        let migrated = match history.schema_version {
+            1 => {
+                history.schema_version = PARSER_HEALTH_SCHEMA_VERSION;
+                true
+            }
+            PARSER_HEALTH_SCHEMA_VERSION => false,
+            _ => {
+                return Err(format!(
+                    "unsupported parser health history schema {}",
+                    history.schema_version
+                ));
+            }
+        };
         validate_history(&history)?;
 
         let mut recovered_interruption = false;
@@ -118,7 +143,7 @@ impl ParserHealthStore {
             history,
             last_checkpoint_unix_millis: now_unix_millis,
         };
-        if recovered_interruption {
+        if migrated || recovered_interruption {
             store.persist()?;
         }
         Ok(store)
@@ -162,6 +187,11 @@ impl ParserHealthStore {
                 sealed_run_count: observation.sealed_run_count,
                 recoverable_error_count: observation.recoverable_error_count,
                 capture_queue_saturation_count: observation.capture_queue_saturation_count,
+                local_skill_request_count: observation.local_skill_request_count,
+                local_skill_request_decoded_count: observation.local_skill_request_decoded_count,
+                local_skill_request_decode_failure_count: observation
+                    .local_skill_request_decode_failure_count,
+                canonical_cast_start_count: observation.canonical_cast_start_count,
                 last_progress_unix_millis: observation.last_progress_unix_millis,
                 last_recoverable_error: observation.last_recoverable_error,
                 detail: bounded_detail(&observation.detail),
@@ -238,6 +268,11 @@ fn apply_observation(session: &mut ParserHealthSession, observation: ParserHealt
     session.sealed_run_count = observation.sealed_run_count;
     session.recoverable_error_count = observation.recoverable_error_count;
     session.capture_queue_saturation_count = observation.capture_queue_saturation_count;
+    session.local_skill_request_count = observation.local_skill_request_count;
+    session.local_skill_request_decoded_count = observation.local_skill_request_decoded_count;
+    session.local_skill_request_decode_failure_count =
+        observation.local_skill_request_decode_failure_count;
+    session.canonical_cast_start_count = observation.canonical_cast_start_count;
     session.last_progress_unix_millis = observation.last_progress_unix_millis;
     session.last_recoverable_error = observation.last_recoverable_error;
     session.detail = bounded_detail(&observation.detail);
@@ -330,6 +365,10 @@ mod tests {
             sealed_run_count: 1,
             recoverable_error_count: 0,
             capture_queue_saturation_count: 0,
+            local_skill_request_count: frames,
+            local_skill_request_decoded_count: frames.saturating_sub(1),
+            local_skill_request_decode_failure_count: u64::from(frames > 0),
+            canonical_cast_start_count: frames.saturating_sub(1),
             last_progress_unix_millis: Some(1_000 + frames),
             last_recoverable_error: None,
             detail: format!("healthy at {frames} frames"),
@@ -361,7 +400,54 @@ mod tests {
         assert_eq!(session.outcome, ParserHealthOutcome::Complete);
         assert_eq!(session.monitored_frame_count, 75);
         assert_eq!(session.decoded_event_count, 150);
+        assert_eq!(session.local_skill_request_count, 75);
+        assert_eq!(session.local_skill_request_decoded_count, 74);
+        assert_eq!(session.local_skill_request_decode_failure_count, 1);
+        assert_eq!(session.canonical_cast_start_count, 74);
         assert_eq!(session.completed_unix_millis, Some(17_000));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn schema_one_history_migrates_with_zero_cast_observability_counters() {
+        let path = test_path("schema-one-migration");
+        let _ = std::fs::remove_file(&path);
+        std::fs::write(
+            &path,
+            r#"{
+              "schema_version": 1,
+              "sessions": [{
+                "session_id": "legacy-monitor",
+                "application_version": "0.1.104",
+                "client_build": "steam-24687926",
+                "started_unix_millis": 1000,
+                "completed_unix_millis": 2000,
+                "outcome": "complete",
+                "monitored_frame_count": 10,
+                "decoded_event_count": 20,
+                "sealed_run_count": 1,
+                "recoverable_error_count": 0,
+                "capture_queue_saturation_count": 0,
+                "last_progress_unix_millis": 1900,
+                "last_recoverable_error": null,
+                "detail": "legacy health"
+              }]
+            }"#,
+        )
+        .unwrap();
+
+        let store = ParserHealthStore::open(path.clone(), 3_000).unwrap();
+        let history = store.snapshot();
+        assert_eq!(history.schema_version, PARSER_HEALTH_SCHEMA_VERSION);
+        let session = &history.sessions[0];
+        assert_eq!(session.local_skill_request_count, 0);
+        assert_eq!(session.local_skill_request_decoded_count, 0);
+        assert_eq!(session.local_skill_request_decode_failure_count, 0);
+        assert_eq!(session.canonical_cast_start_count, 0);
+
+        let persisted: ParserHealthHistory =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(persisted.schema_version, PARSER_HEALTH_SCHEMA_VERSION);
         let _ = std::fs::remove_file(path);
     }
 

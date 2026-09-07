@@ -30,6 +30,7 @@ import {
   type CaptureEnvironment,
 } from "./capture-interface";
 import { engineStateFromRuntime } from "./engine-state";
+import { castObservabilityStatus } from "./parser-health";
 import {
   loadHotkeySettings,
   mountHotkeyBinding,
@@ -198,6 +199,10 @@ interface RuntimeSnapshot {
   last_recoverable_error?: string | null;
   last_progress_unix_millis?: number | null;
   capture_queue_saturation_count?: number;
+  local_skill_request_count?: number;
+  local_skill_request_decoded_count?: number;
+  local_skill_request_decode_failure_count?: number;
+  canonical_cast_start_count?: number;
   last_result: RuntimeResult | null;
 }
 
@@ -218,6 +223,10 @@ interface ParserHealthSession {
   sealed_run_count: number;
   recoverable_error_count: number;
   capture_queue_saturation_count: number;
+  local_skill_request_count?: number;
+  local_skill_request_decoded_count?: number;
+  local_skill_request_decode_failure_count?: number;
+  canonical_cast_start_count?: number;
   last_progress_unix_millis: number | null;
   last_recoverable_error: string | null;
   detail: string;
@@ -4295,6 +4304,23 @@ function parserHealthCard(
       "Capture queue saturation",
       (snapshot.capture_queue_saturation_count ?? 0).toLocaleString(),
     ),
+    fileRow("Cast observation", castObservabilityStatus(snapshot)),
+    fileRow(
+      "Local skill requests",
+      (snapshot.local_skill_request_count ?? 0).toLocaleString(),
+    ),
+    fileRow(
+      "Decoded local skill requests",
+      (snapshot.local_skill_request_decoded_count ?? 0).toLocaleString(),
+    ),
+    fileRow(
+      "Local skill decode failures",
+      (snapshot.local_skill_request_decode_failure_count ?? 0).toLocaleString(),
+    ),
+    fileRow(
+      "Canonical cast starts",
+      (snapshot.canonical_cast_start_count ?? 0).toLocaleString(),
+    ),
     fileRow(
       "Last parser progress",
       lastProgress === null
@@ -4372,7 +4398,7 @@ function parserHealthCard(
         title.textContent = `${titleCase(session.outcome)} · rLogs ${session.application_version}`;
         const counters = text(
           "span",
-          `${session.monitored_frame_count.toLocaleString()} frames · ${session.decoded_event_count.toLocaleString()} events · ${session.sealed_run_count.toLocaleString()} sealed · ${session.recoverable_error_count.toLocaleString()} recovered`,
+          `${session.monitored_frame_count.toLocaleString()} frames · ${session.decoded_event_count.toLocaleString()} events · ${(session.local_skill_request_count ?? 0).toLocaleString()} skill requests · ${(session.canonical_cast_start_count ?? 0).toLocaleString()} casts · ${session.sealed_run_count.toLocaleString()} sealed · ${session.recoverable_error_count.toLocaleString()} recovered`,
         );
         const identity = text(
           "code",

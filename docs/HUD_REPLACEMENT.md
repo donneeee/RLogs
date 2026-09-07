@@ -68,6 +68,14 @@ clears the projected shield instead of leaving stale state visible. Target cast
 state remains gated until its actor identity and duration presentation contract
 are both proven for the current build.
 
+Parser Health separately retains the current-build local skill-request route
+count, successful decodes, decode failures, and emitted canonical cast starts.
+This is a diagnostic boundary, not an inferred cast count: it distinguishes no
+observed `World.UseSlot` traffic from a decoder failure and from a decoded
+request that failed to become a canonical cast. The counters survive an
+unclean parser stop so cast-vs-hit gaps can be audited from the failed session
+instead of being reported as an unexplained zero.
+
 The overlay may preserve the last target briefly only as an explicitly styled
 stale state. It must never imply that an old packet value is still live.
 Reference behavior already present in Resonance Logs Global may be adapted only

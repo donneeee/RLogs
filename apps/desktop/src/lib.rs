@@ -71,15 +71,15 @@ use rlogs_capture::{
 };
 use rlogs_core::{GameConnection, ResearchConnectionFile};
 use rlogs_events::{
-    ActorLoadoutSlot, CanonicalEvent, DataGapKind, DungeonEventKind, EntityRef, EventEnvelope,
-    EventTopic, EvidenceSource, RegionContext, RegionEvidence, RegionEvidenceKind, RegionIdentity,
-    RunState, TimelineEventKind,
+    ActorLoadoutSlot, CanonicalEvent, CastState, DataGapKind, DungeonEventKind, EntityRef,
+    EventEnvelope, EventTopic, EvidenceSource, RegionContext, RegionEvidence, RegionEvidenceKind,
+    RegionIdentity, RunState, TimelineEventKind,
 };
 use rlogs_game_bpsr::{
     AllowedDataDomain, BPSR_GAME_PLUGIN_ID, BpsrRemoteFactorLearner, BpsrRemoteFactorTimeline,
     BpsrSceneRunIdentity, BpsrStateDamageContributionProjector, CaptureRecord, CaptureRecordKind,
     ContinuousBpsrRecorder, ContinuousRecordingConfig, ContinuousResearchJournalConfig,
-    DecodeDisposition, GameBuild, LiveCharacterStatsSnapshot, LiveProfileProjection,
+    DecodeDisposition, DecoderKind, GameBuild, LiveCharacterStatsSnapshot, LiveProfileProjection,
     LiveProtocolPackKind, LocalPhotoAssetReference, NetworkEndpoint, OfflineRecordingConfig,
     OfflineRecordingLimits, OfflineRecordingReport, ProtocolDecodeStatus, ProtocolPack,
     ProtocolPackRouteDisposition, ProtocolRuntimeConfig, RDPS_VALIDATION_REPORT_SCHEMA_VERSION,
@@ -628,13 +628,17 @@ struct RuntimeSnapshot {
     last_recoverable_error: Option<String>,
     last_progress_unix_millis: Option<u64>,
     capture_queue_saturation_count: u64,
+    local_skill_request_count: u64,
+    local_skill_request_decoded_count: u64,
+    local_skill_request_decode_failure_count: u64,
+    canonical_cast_start_count: u64,
     last_result: Option<SessionResult>,
 }
 
 impl Default for RuntimeSnapshot {
     fn default() -> Self {
         Self {
-            schema_version: 3,
+            schema_version: 4,
             phase: RuntimePhase::Idle,
             active_session_id: None,
             detail: "Ready for a safe replay or offline capture.".into(),
@@ -649,8 +653,83 @@ impl Default for RuntimeSnapshot {
             last_recoverable_error: None,
             last_progress_unix_millis: None,
             capture_queue_saturation_count: 0,
+            local_skill_request_count: 0,
+            local_skill_request_decoded_count: 0,
+            local_skill_request_decode_failure_count: 0,
+            canonical_cast_start_count: 0,
             last_result: None,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct CastObservabilityCounters {
+    local_skill_requests: u64,
+    decoded_local_skill_requests: u64,
+    local_skill_request_decode_failures: u64,
+    canonical_cast_starts: u64,
+}
+
+impl CastObservabilityCounters {
+    fn observe_protocol(
+        &mut self,
+        pack: &ProtocolPack,
+        record: &CaptureRecord,
+        status: ProtocolDecodeStatus,
+    ) {
+        let CaptureRecordKind::Packet(packet) = &record.kind else {
+            return;
+        };
+        let Some(route) = packet.route else {
+            return;
+        };
+        if pack.decoder(&route.key) != Some(DecoderKind::WorldUseSlotV1) {
+            return;
+        }
+        self.local_skill_requests = self.local_skill_requests.saturating_add(1);
+        match status {
+            ProtocolDecodeStatus::Decoded => {
+                self.decoded_local_skill_requests =
+                    self.decoded_local_skill_requests.saturating_add(1);
+            }
+            ProtocolDecodeStatus::DecodeFailed
+            | ProtocolDecodeStatus::MissingApplicationPayload => {
+                self.local_skill_request_decode_failures =
+                    self.local_skill_request_decode_failures.saturating_add(1);
+            }
+            ProtocolDecodeStatus::CaptureGap
+            | ProtocolDecodeStatus::Unrouted
+            | ProtocolDecodeStatus::OpaqueLocalOnly
+            | ProtocolDecodeStatus::Prohibited(_) => {}
+        }
+    }
+
+    fn observe_event(&mut self, event: &EventEnvelope) {
+        if matches!(
+            &event.event,
+            CanonicalEvent::Timeline(timeline)
+                if matches!(
+                    &timeline.kind,
+                    TimelineEventKind::Cast(cast) if cast.state == CastState::Started
+                )
+        ) {
+            self.canonical_cast_starts = self.canonical_cast_starts.saturating_add(1);
+        }
+    }
+
+    fn add(&mut self, observation: Self) {
+        self.local_skill_requests = self
+            .local_skill_requests
+            .saturating_add(observation.local_skill_requests);
+        self.decoded_local_skill_requests = self
+            .decoded_local_skill_requests
+            .saturating_add(observation.decoded_local_skill_requests);
+        self.local_skill_request_decode_failures = self
+            .local_skill_request_decode_failures
+            .saturating_add(observation.local_skill_request_decode_failures);
+        self.canonical_cast_starts = self
+            .canonical_cast_starts
+            .saturating_add(observation.canonical_cast_starts);
     }
 }
 
@@ -677,6 +756,10 @@ fn parser_health_observation(snapshot: &RuntimeSnapshot) -> ParserHealthObservat
         sealed_run_count: snapshot.sealed_run_count,
         recoverable_error_count: snapshot.recoverable_error_count,
         capture_queue_saturation_count: snapshot.capture_queue_saturation_count,
+        local_skill_request_count: snapshot.local_skill_request_count,
+        local_skill_request_decoded_count: snapshot.local_skill_request_decoded_count,
+        local_skill_request_decode_failure_count: snapshot.local_skill_request_decode_failure_count,
+        canonical_cast_start_count: snapshot.canonical_cast_start_count,
         last_progress_unix_millis: snapshot.last_progress_unix_millis,
         last_recoverable_error: snapshot.last_recoverable_error.clone(),
         detail: snapshot.detail.clone(),
@@ -7798,6 +7881,10 @@ impl RuntimeController {
             state.last_recoverable_error = None;
             state.last_progress_unix_millis = Some(unix_millis());
             state.capture_queue_saturation_count = 0;
+            state.local_skill_request_count = 0;
+            state.local_skill_request_decoded_count = 0;
+            state.local_skill_request_decode_failure_count = 0;
+            state.canonical_cast_start_count = 0;
         }
         let initial_health_snapshot = self.snapshot();
         if let Err(error) = self
@@ -8018,6 +8105,7 @@ impl RuntimeController {
                     let mut checkpointed_validation_event_count = 0;
                     let mut validation_checkpoint_failed = false;
                     let mut burst_metrics = LiveCaptureBurstMetrics::default();
+                    let mut cast_observability = CastObservabilityCounters::default();
                     // Keep pending changes across capture frames. A frame can
                     // arrive inside the configured presentation interval;
                     // dropping its dirty bit would leave profile/loadout
@@ -8113,10 +8201,14 @@ impl RuntimeController {
                         let mut live_damage_activity = Vec::new();
                         let mut local_photo_assets = Vec::new();
                         let mut mechanics_map_dirty = false;
+                        let mut frame_protocol_observability =
+                            CastObservabilityCounters::default();
+                        let mut frame_event_observability = CastObservabilityCounters::default();
                         let decoded_events_before = recorder.metrics().decoded_event_count;
                         let ordered_reduction_started = Instant::now();
                         let mut sealed = recorder
                             .process_frame_with_inspection(frame, |event| {
+                                frame_event_observability.observe_event(event);
                                 mechanics_map_dirty |= live_mechanics_map.observe(event);
                                 // Region identity is established from the
                                 // early world-entry packet stream, before a
@@ -8320,6 +8412,8 @@ impl RuntimeController {
                             }, |photo| {
                                 local_photo_assets.push(photo.clone());
                             }, |record, status| {
+                                frame_protocol_observability
+                                    .observe_protocol(&pack, record, status);
                                 if live_event_inspector_active
                                     && let Some(protocol) =
                                         LiveProtocolRecord::from_capture(&pack, record, status)
@@ -8328,6 +8422,8 @@ impl RuntimeController {
                                 }
                             })
                             .map_err(|error| format!("live BPSR decoding failed: {error}"))?;
+                        cast_observability.add(frame_protocol_observability);
+                        cast_observability.add(frame_event_observability);
                         if live_header.region != *recorder.region_context() {
                             live_header.region = recorder.region_context().clone();
                         }
@@ -8754,6 +8850,14 @@ impl RuntimeController {
                             snapshot.last_progress_unix_millis = Some(unix_millis());
                             snapshot.capture_queue_saturation_count =
                                 capture_ingress_metrics.queue_saturations;
+                            snapshot.local_skill_request_count =
+                                cast_observability.local_skill_requests;
+                            snapshot.local_skill_request_decoded_count =
+                                cast_observability.decoded_local_skill_requests;
+                            snapshot.local_skill_request_decode_failure_count =
+                                cast_observability.local_skill_request_decode_failures;
+                            snapshot.canonical_cast_start_count =
+                                cast_observability.canonical_cast_starts;
                             let provisional_prefix = worker_pack_warning
                                 .as_deref()
                                 .map(|warning| format!("{warning} "))
@@ -8938,6 +9042,7 @@ impl RuntimeController {
                         validation_result,
                         capture_ingress_metrics,
                         burst_metrics,
+                        cast_observability,
                     ))
                 })();
                 {
@@ -8971,6 +9076,7 @@ impl RuntimeController {
                         validation_result,
                         capture_ingress_metrics,
                         burst_metrics,
+                        cast_observability,
                     )) => {
                         state.phase = RuntimePhase::Complete;
                         state.monitored_frame_count = metrics.frame_count;
@@ -8979,6 +9085,12 @@ impl RuntimeController {
                         state.sealed_run_count = metrics
                             .completed_run_count
                             .saturating_add(metrics.incomplete_run_count);
+                        state.local_skill_request_count = cast_observability.local_skill_requests;
+                        state.local_skill_request_decoded_count =
+                            cast_observability.decoded_local_skill_requests;
+                        state.local_skill_request_decode_failure_count =
+                            cast_observability.local_skill_request_decode_failures;
+                        state.canonical_cast_start_count = cast_observability.canonical_cast_starts;
                         let validation_detail = if let Some((
                             validation_summary,
                             validation_is_provisional,
@@ -13782,6 +13894,71 @@ mod tests {
                 .iter()
                 .any(|route| { route.service_id == 103_198_054 && route.method_id == 4_098 })
         );
+    }
+
+    #[test]
+    fn cast_observability_counts_only_the_promoted_local_skill_route() {
+        let pack = ProtocolPack::from_json(include_bytes!(
+            "../../../plugins/games/blue-protocol-star-resonance/protocol-packs/global/steam-24687926/pack.json"
+        ))
+        .expect("bundled current-build protocol pack");
+        let skill_route = RouteKey::new(
+            rlogs_game_bpsr::PacketDirection::ClientToServer,
+            rlogs_game_bpsr::FragmentKind::Call,
+            103_198_054,
+            249_858,
+        );
+        let unrelated_route = RouteKey::new(
+            rlogs_game_bpsr::PacketDirection::ServerToClient,
+            rlogs_game_bpsr::FragmentKind::Notify,
+            1_664_308_034,
+            1,
+        );
+        let record = |sequence, route: RouteKey| CaptureRecord {
+            sequence,
+            observed_micros: sequence,
+            wall_clock_unix_micros: None,
+            kind: CaptureRecordKind::Packet(rlogs_game_bpsr::PacketEnvelope {
+                connection_id: 1,
+                stream_id: 2,
+                source: None,
+                destination: None,
+                direction: route.direction,
+                fragment: Some(route.fragment),
+                route: Some(rlogs_game_bpsr::RoutedMessage {
+                    key: route,
+                    stub_id: 1,
+                    call_id: Some(1),
+                }),
+                compression: rlogs_game_bpsr::CompressionState::NotCompressed,
+                payload: rlogs_game_bpsr::PacketPayload {
+                    wire_bytes: Vec::new(),
+                    application_bytes: Some(Vec::new()),
+                },
+            }),
+        };
+
+        let mut counters = CastObservabilityCounters::default();
+        counters.observe_protocol(
+            &pack,
+            &record(1, unrelated_route),
+            ProtocolDecodeStatus::Decoded,
+        );
+        counters.observe_protocol(
+            &pack,
+            &record(2, skill_route),
+            ProtocolDecodeStatus::Decoded,
+        );
+        counters.observe_protocol(
+            &pack,
+            &record(3, skill_route),
+            ProtocolDecodeStatus::MissingApplicationPayload,
+        );
+
+        assert_eq!(counters.local_skill_requests, 2);
+        assert_eq!(counters.decoded_local_skill_requests, 1);
+        assert_eq!(counters.local_skill_request_decode_failures, 1);
+        assert_eq!(counters.canonical_cast_starts, 0);
     }
 
     #[test]
