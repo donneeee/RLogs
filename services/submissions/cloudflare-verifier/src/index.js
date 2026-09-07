@@ -1,6 +1,7 @@
 import { Container, ContainerProxy } from "@cloudflare/containers";
 import {
-  catalogEntry, compatibleProfileName, sameChunkCommitments, validateOutput, validateWakeup,
+  catalogEntry, compatibleProfileName, runOneShotVerifier, sameChunkCommitments, validateOutput,
+  validateWakeup,
 } from "./core.js";
 
 // Cloudflare requires this named export whenever a Container class installs
@@ -80,14 +81,14 @@ async function verifyJob(request, env) {
   };
   const container = env.RLOGS_VERIFIER_CONTAINER.getByName(wakeup.upload_id);
   let response;
+  let result;
   try {
-    response = await container.fetch(new Request("http://container/internal/v1/verify", {
+    ({ response, result } = await runOneShotVerifier(container, new Request("http://container/internal/v1/verify", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(containerRequest),
-    }));
+    })));
   } catch (cause) {
     return retryJob(env, wakeup.upload_id, "container_unavailable", String(cause?.message ?? cause));
   }
-  const result = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = String(result?.error ?? `verifier returned HTTP ${response.status}`).slice(0, 2000);
     return response.status === 422
@@ -185,6 +186,14 @@ export class RLogsVerifierContainer extends Container {
   // Each upload has its own stateless verifier instance. Keep it alive only
   // long enough to absorb an immediate retry, then stop billing idle memory.
   sleepAfter = "10s";
+
+  async onActivityExpired() {
+    // The SDK default sends SIGTERM, which the verifier server may not exit on
+    // quickly enough to release the very small production instance pool.
+    // Verification is stateless and all durable inputs live in R2/D1, so an
+    // idle instance is always safe to force-destroy.
+    await this.destroy();
+  }
 }
 
 RLogsVerifierContainer.outboundByHost = {

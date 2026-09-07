@@ -3,7 +3,7 @@ import test from "node:test";
 
 import {
   catalogEntry, compatibleProfileName, expectedReportId, sameChunkCommitments,
-  validateOutput, validateWakeup,
+  runOneShotVerifier, validateOutput, validateWakeup,
 } from "../src/core.js";
 
 const digest = "a".repeat(64);
@@ -68,4 +68,32 @@ test("verified runs materialize the public catalog contract", () => {
   assert.equal(entry.participant_count, 2);
   assert.equal(entry.submitter_id, "usr_fixture");
   assert.equal(entry.attribution_reconciliation_status, "single_vantage");
+});
+
+test("one-shot verifier consumes its response before destroying the container", async () => {
+  const calls = [];
+  const container = {
+    async fetch() {
+      calls.push("fetch");
+      return Response.json({ accepted: true });
+    },
+    async destroy() { calls.push("destroy"); },
+  };
+  const { response, result } = await runOneShotVerifier(container, new Request("http://container/verify"));
+  assert.equal(response.status, 200);
+  assert.deepEqual(result, { accepted: true });
+  assert.deepEqual(calls, ["fetch", "destroy"]);
+});
+
+test("one-shot verifier destroys a container whose request fails", async () => {
+  let destroyed = false;
+  const container = {
+    async fetch() { throw new Error("container slot failed"); },
+    async destroy() { destroyed = true; },
+  };
+  await assert.rejects(
+    runOneShotVerifier(container, new Request("http://container/verify")),
+    /container slot failed/,
+  );
+  assert.equal(destroyed, true);
 });

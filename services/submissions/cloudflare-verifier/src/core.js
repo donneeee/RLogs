@@ -43,6 +43,21 @@ export function validateOutput(value, wakeup) {
     value.report.runs.length > 0 && Array.isArray(value.membership?.runs);
 }
 
+export async function runOneShotVerifier(container, request) {
+  try {
+    const response = await container.fetch(request);
+    const result = await response.json().catch(() => null);
+    return { response, result };
+  } finally {
+    // The verifier is stateless and each upload receives a dedicated instance.
+    // Always release that instance after consuming its response so a process
+    // that ignores SIGTERM cannot exhaust the bounded production pool.
+    await container.destroy().catch((cause) => {
+      console.error("could not destroy completed verifier container", cause);
+    });
+  }
+}
+
 export function catalogEntry(report, run) {
   const runGroupId = run.run_group_id || `legacy_${report.report_id}_${run.run_index}`;
   return {
