@@ -1,9 +1,9 @@
 # Modular HUD replacement
 
-Status: active product track. The screen-sized native Overlay Canvas and its
-first packet-backed Mechanics Map module are implemented; additional HUD
-modules remain disabled until their authoritative event and asset contracts
-pass the gates below.
+Status: active product track. The screen-sized native Overlay Canvas, its
+packet-backed Mechanics Map, and the first current-target frame are
+implemented; additional HUD modules remain disabled until their authoritative
+event and asset contracts pass the gates below.
 
 ## Product goal
 
@@ -54,13 +54,14 @@ HUD modules consume the shared resolved model described in
 [`ARCHITECTURE.md`](ARCHITECTURE.md). They never rescan packets or invent an
 independent BPSR interpretation.
 
-The target frame is the first gameplay-state milestone. It must retain the
-observed target entity identity and show current/max HP, shield/break state,
-cast state, and each reviewed debuff's localized identity, owner, stacks, and
-remaining duration when those fields are authoritative. Target change,
-despawn, death, scene change, capture loss, and stale-data timeout each have a
-tested lifecycle. Missing max HP, duration, ownership, or localization is shown
-as unavailable or unknown; absence is never converted to zero.
+The target frame retains the exact `AttrTargetId` selected by the local actor;
+it never substitutes a recent damage recipient. Its first production stage
+shows packet-observed current/max HP, death/stale state, and effects whose
+reviewed game presentation explicitly classifies them as debuffs. Names and
+icons use the bundled exact-ID presentation catalog, and missing HP or
+localization remains unavailable rather than becoming zero. Shield/break,
+target cast state, debuff ownership, and live duration countdown remain gated
+until their complete presentation contracts are implemented.
 
 The overlay may preserve the last target briefly only as an explicitly styled
 stale state. It must never imply that an old packet value is still live.
@@ -103,6 +104,12 @@ opening the canvas again from Mechanics Map is the recovery path that restores
 editing. The same canvas/window contract is reserved for future target,
 status, action, party, objective, and chat modules rather than creating a new
 native window for each feature.
+
+The target frame is the second module on that same canvas. It has independent
+persisted position and width, while canvas edit/click-through lock remains a
+single recovery-safe setting for the transparent native window. Target select
+and clear, HP state, debuff lifecycle, actor despawn, scene changes, and stale
+state are projected from the same bounded live feed as the map.
 
 The map uses the locally compiled in-game map as the visual base and keeps
 mechanic knowledge in separate toggleable layers. Required foundations are an

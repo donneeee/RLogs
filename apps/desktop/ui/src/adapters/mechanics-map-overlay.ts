@@ -37,6 +37,9 @@ export interface MechanicsMapCanvasPreferences {
   moduleY: number;
   moduleWidth: number;
   moduleHeight: number;
+  targetX: number;
+  targetY: number;
+  targetWidth: number;
 }
 
 const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
@@ -50,6 +53,9 @@ const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
   moduleY: 120,
   moduleWidth: 520,
   moduleHeight: 520,
+  targetX: 580,
+  targetY: 48,
+  targetWidth: 420,
 };
 
 export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMapCanvasPreferences {
@@ -68,6 +74,9 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
     moduleY: finiteBounded(value.moduleY) ? value.moduleY : 120,
     moduleWidth: finitePositive(value.moduleWidth) ? Math.max(260, value.moduleWidth) : 520,
     moduleHeight: finitePositive(value.moduleHeight) ? Math.max(260, value.moduleHeight) : 520,
+    targetX: finiteBounded(value.targetX) ? value.targetX : 580,
+    targetY: finiteBounded(value.targetY) ? value.targetY : 48,
+    targetWidth: finitePositive(value.targetWidth) ? Math.max(280, value.targetWidth) : 420,
   };
 }
 
@@ -81,6 +90,8 @@ export function mountMechanicsMapOverlay(
   let drag: { pointerId: number; x: number; y: number } | null = null;
   let moduleDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
   let moduleResize: { pointerId: number; x: number; y: number; width: number; height: number } | null = null;
+  let targetDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
+  let targetResize: { pointerId: number; x: number; width: number } | null = null;
   let frame: number | null = null;
   let image: HTMLImageElement | null = null;
   let imageUrl: string | null = null;
@@ -91,7 +102,6 @@ export function mountMechanicsMapOverlay(
   const root = element("main", "overlay-canvas-runtime");
   const panel = element("section", "mechanics-map-overlay-runtime");
   panel.dataset.locked = String(preferences.locked);
-  applyModuleGeometry();
   const toolbar = element("header", "mechanics-map-overlay-toolbar");
   const identity = element("div", "mechanics-map-overlay-identity");
   const title = text("strong", "Waiting for scene");
@@ -143,8 +153,20 @@ export function mountMechanicsMapOverlay(
     resize.setPointerCapture(event.pointerId);
   });
   panel.append(toolbar, viewport, resize);
-  root.append(panel);
+  const targetPanel = element("section", "target-frame-overlay-runtime");
+  const targetToolbar = element("header", "target-frame-overlay-toolbar");
+  const targetTitle = text("strong", "Current target");
+  const targetStatus = text("span", "NO TARGET");
+  targetToolbar.append(targetTitle, targetStatus);
+  const targetBody = element("section", "target-frame-overlay-body");
+  const targetResizeHandle = element("button", "target-frame-overlay-resize");
+  targetResizeHandle.type = "button";
+  targetResizeHandle.title = "Resize target frame";
+  targetResizeHandle.setAttribute("aria-label", "Resize target frame");
+  targetPanel.append(targetToolbar, targetBody, targetResizeHandle);
+  root.append(panel, targetPanel);
   container.replaceChildren(root);
+  applyModuleGeometry();
 
   toolbar.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || (event.target as Element).closest("button")) return;
@@ -160,6 +182,25 @@ export function mountMechanicsMapOverlay(
   resize.addEventListener("pointermove", resizeModule);
   resize.addEventListener("pointerup", endModuleResize);
   resize.addEventListener("pointercancel", endModuleResize);
+  targetToolbar.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    targetDrag = {
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+      left: preferences.targetX, top: preferences.targetY,
+    };
+    targetToolbar.setPointerCapture(event.pointerId);
+  });
+  targetToolbar.addEventListener("pointermove", moveTarget);
+  targetToolbar.addEventListener("pointerup", endTargetDrag);
+  targetToolbar.addEventListener("pointercancel", endTargetDrag);
+  targetResizeHandle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    targetResize = { pointerId: event.pointerId, x: event.clientX, width: preferences.targetWidth };
+    targetResizeHandle.setPointerCapture(event.pointerId);
+  });
+  targetResizeHandle.addEventListener("pointermove", resizeTarget);
+  targetResizeHandle.addEventListener("pointerup", endTargetResize);
+  targetResizeHandle.addEventListener("pointercancel", endTargetResize);
   canvas.addEventListener("wheel", onWheel, { passive: false });
   canvas.addEventListener("pointerdown", beginPan);
   canvas.addEventListener("pointermove", continuePan);
@@ -207,7 +248,48 @@ export function mountMechanicsMapOverlay(
     notice.hidden = snapshot.local_position_observed && snapshot.data_gap === null;
     notice.textContent = snapshot.data_gap ?? "Waiting for packet-observed position…";
     loadBackground(snapshot.background_asset_url);
+    renderTarget(snapshot);
     scheduleDraw();
+  }
+
+  function renderTarget(snapshot: MechanicsMapSnapshot): void {
+    const target = snapshot.target;
+    targetPanel.dataset.stale = String(target?.stale ?? false);
+    if (target === null) {
+      targetStatus.textContent = "NO TARGET";
+      targetStatus.dataset.state = "waiting";
+      targetBody.replaceChildren(text("p", "Select a target in game.", "target-frame-overlay-empty"));
+      return;
+    }
+    targetStatus.textContent = target.dead ? "DEFEATED" : target.stale ? "STALE" : "LIVE";
+    targetStatus.dataset.state = target.dead ? "dead" : target.stale ? "waiting" : "live";
+    const identity = element("div", "target-frame-overlay-identity");
+    const name = text("strong", target.display_name ?? (target.monster_id === null ? "Unknown target" : `Monster ${target.monster_id}`));
+    const health = text("span", formatTargetHealth(target.current_hp, target.max_hp));
+    identity.append(name, health);
+    const track = element("div", "target-frame-overlay-health");
+    const fill = element("span");
+    fill.style.width = `${target.hp_percent ?? 0}%`;
+    track.dataset.observed = String(target.hp_percent !== null);
+    track.append(fill);
+    const debuffs = element("div", "target-frame-overlay-debuffs");
+    debuffs.setAttribute("aria-label", "Target debuffs");
+    for (const effect of target.debuffs) {
+      const item = element("span", "target-frame-overlay-debuff");
+      item.title = effect.presentation_name ?? `Effect ${effect.effect_id}`;
+      if (effect.icon_asset_path) {
+        const icon = document.createElement("img");
+        icon.src = effect.icon_asset_path;
+        icon.alt = "";
+        item.append(icon);
+      } else {
+        item.append(text("span", "?"));
+      }
+      if ((effect.stacks ?? 0) > 1) item.append(text("b", String(effect.stacks)));
+      debuffs.append(item);
+    }
+    if (target.debuffs.length === 0) debuffs.append(text("span", "No packet-classified debuffs", "target-frame-overlay-no-debuffs"));
+    targetBody.replaceChildren(identity, track, debuffs);
   }
 
   function loadBackground(url: string | null): void {
@@ -333,6 +415,12 @@ export function mountMechanicsMapOverlay(
     panel.style.top = `${preferences.moduleY}px`;
     panel.style.width = `${Math.min(window.innerWidth, preferences.moduleWidth)}px`;
     panel.style.height = `${Math.min(window.innerHeight, preferences.moduleHeight)}px`;
+    const targetWidth = Math.min(window.innerWidth, preferences.targetWidth);
+    preferences.targetX = Math.min(Math.max(0, window.innerWidth - targetWidth), Math.max(0, preferences.targetX));
+    preferences.targetY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.targetY));
+    targetPanel.style.left = `${preferences.targetX}px`;
+    targetPanel.style.top = `${preferences.targetY}px`;
+    targetPanel.style.width = `${targetWidth}px`;
   }
 
   function moveModule(event: PointerEvent): void {
@@ -358,6 +446,31 @@ export function mountMechanicsMapOverlay(
   function endModuleResize(event: PointerEvent): void {
     if (moduleResize?.pointerId !== event.pointerId) return;
     moduleResize = null;
+    savePreferences();
+  }
+
+  function moveTarget(event: PointerEvent): void {
+    if (targetDrag?.pointerId !== event.pointerId) return;
+    preferences.targetX = targetDrag.left + event.clientX - targetDrag.x;
+    preferences.targetY = targetDrag.top + event.clientY - targetDrag.y;
+    applyModuleGeometry();
+  }
+
+  function endTargetDrag(event: PointerEvent): void {
+    if (targetDrag?.pointerId !== event.pointerId) return;
+    targetDrag = null;
+    savePreferences();
+  }
+
+  function resizeTarget(event: PointerEvent): void {
+    if (targetResize?.pointerId !== event.pointerId) return;
+    preferences.targetWidth = Math.max(280, targetResize.width + event.clientX - targetResize.x);
+    applyModuleGeometry();
+  }
+
+  function endTargetResize(event: PointerEvent): void {
+    if (targetResize?.pointerId !== event.pointerId) return;
+    targetResize = null;
     savePreferences();
   }
 
@@ -593,6 +706,14 @@ function loadPreferences(): MechanicsMapCanvasPreferences {
   } catch {
     return { ...DEFAULT_PREFERENCES };
   }
+}
+
+function formatTargetHealth(current: number | null, maximum: number | null): string {
+  const format = (value: number): string => Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value);
+  if (current !== null && maximum !== null) return `${format(current)} / ${format(maximum)}`;
+  if (current !== null) return format(current);
+  if (maximum !== null) return `— / ${format(maximum)}`;
+  return "HP not observed";
 }
 
 function button(label: string, active: boolean, action: () => void): HTMLButtonElement {

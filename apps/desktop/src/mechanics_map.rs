@@ -5,17 +5,24 @@ use std::{
 };
 
 use rlogs_events::{
-    ActorKind, ActorState, CanonicalEvent, CastState, EntityRef, EventEnvelope, LifeState,
-    MapEventKind, PartyRosterObservation, StatusState, TimelineEventKind,
+    ActorKind, ActorState, CanonicalEvent, CastState, EntityAttributeUpdateKind,
+    EntityAttributeValue, EntityRef, EventEnvelope, LifeState, MapEventKind,
+    PartyRosterObservation, StatusState, TimelineEventKind,
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 1;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 2;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
 const MAX_MECHANICS: usize = 96;
+const MAX_TARGET_DEBUFFS: usize = 24;
+const MAX_TARGET_STATUSES: usize = 4_096;
 const MINIMAP_WORLD_RADIUS: f32 = 140.0;
+// Exact build-locked `EAttrType` IDs decoded by the BPSR integration.
+const ATTR_TARGET_ID: i32 = 0x1e;
+const ATTR_CURRENT_HP: i32 = 11310;
+const ATTR_MAX_HP_FINAL: i32 = 11320;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MechanicsMapSnapshot {
@@ -38,6 +45,10 @@ pub struct MechanicsMapSnapshot {
     pub local_position_observed: bool,
     pub encounter_pack: Option<&'static str>,
     pub encounter_pack_reviewed: bool,
+    /// Packet-selected target for the local character. `None` means the
+    /// protocol has not selected a target (or the target is not present in the
+    /// current scene), never an inferred damage recipient.
+    pub target: Option<TargetFrameSnapshot>,
     pub entities: Vec<MechanicsMapEntity>,
     pub mechanics: Vec<MechanicsMapSignal>,
     pub markers: Vec<MechanicsMapMarker>,
@@ -68,6 +79,7 @@ impl Default for MechanicsMapSnapshot {
             local_position_observed: false,
             encounter_pack: None,
             encounter_pack_reviewed: false,
+            target: None,
             entities: Vec::new(),
             mechanics: Vec::new(),
             markers: Vec::new(),
@@ -118,6 +130,32 @@ pub struct MechanicsMapMarker {
     pub x: Option<f32>,
     pub y: Option<f32>,
     pub z: Option<f32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TargetFrameSnapshot {
+    pub actor_id: u64,
+    pub entity_uuid: i64,
+    pub display_name: Option<String>,
+    pub monster_id: Option<i64>,
+    pub current_hp: Option<i64>,
+    pub max_hp: Option<i64>,
+    pub hp_percent: Option<f64>,
+    pub dead: bool,
+    pub stale: bool,
+    pub debuffs: Vec<TargetFrameDebuff>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TargetFrameDebuff {
+    pub effect_id: i64,
+    pub instance_id: Option<i64>,
+    pub presentation_name: Option<String>,
+    pub icon_asset_path: Option<String>,
+    pub source_actor_id: Option<u64>,
+    pub stacks: Option<u32>,
+    pub duration_millis: Option<u64>,
+    pub applied_at_micros: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -208,10 +246,23 @@ struct EntityState {
     character_id: Option<String>,
     display_name: Option<String>,
     monster_id: Option<i64>,
+    current_hp: Option<i64>,
+    max_hp: Option<i64>,
     position: Option<(f32, f32, f32)>,
     facing_radians: Option<f32>,
     dead: bool,
     last_observed_micros: u64,
+}
+
+#[derive(Debug, Clone)]
+struct TargetStatusState {
+    effect_id: i64,
+    instance_id: Option<i64>,
+    target: EntityRef,
+    source: Option<EntityRef>,
+    stacks: Option<u32>,
+    duration_millis: Option<u64>,
+    applied_at_micros: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -238,6 +289,8 @@ pub struct MechanicsMapProjector {
     local_character_id: Option<String>,
     party_character_ids: BTreeSet<String>,
     entities: BTreeMap<u64, EntityState>,
+    attack_targets: BTreeMap<u64, i64>,
+    target_statuses: BTreeMap<(u64, i64), TargetStatusState>,
     signals: BTreeMap<(u64, i64), SignalState>,
     markers: BTreeMap<Option<i64>, MechanicsMapMarker>,
     data_gap: Option<String>,
@@ -269,6 +322,8 @@ impl MechanicsMapProjector {
                 if self.scene_id != next_scene {
                     self.scene_id = next_scene;
                     self.entities.clear();
+                    self.attack_targets.clear();
+                    self.target_statuses.clear();
                     self.signals.clear();
                     self.markers.clear();
                     self.data_gap = None;
@@ -338,6 +393,22 @@ impl MechanicsMapProjector {
                 TimelineEventKind::Actor(event) => {
                     if event.state == ActorState::Despawned {
                         changed |= self.entities.remove(&event.actor.actor_id.0).is_some();
+                        changed |= self
+                            .attack_targets
+                            .remove(&event.actor.actor_id.0)
+                            .is_some();
+                        let status_count = self.target_statuses.len();
+                        self.target_statuses.retain(|_, status| {
+                            status.target.actor_id != event.actor.actor_id
+                                && status.source.map(|source| source.actor_id)
+                                    != Some(event.actor.actor_id)
+                        });
+                        changed |= status_count != self.target_statuses.len();
+                        let target_uuid = event.actor.entity_uuid.0;
+                        let target_count = self.attack_targets.len();
+                        self.attack_targets
+                            .retain(|_, selected_uuid| *selected_uuid != target_uuid);
+                        changed |= target_count != self.attack_targets.len();
                         self.signals
                             .retain(|_, signal| signal.target.actor_id != event.actor.actor_id);
                     } else {
@@ -350,6 +421,8 @@ impl MechanicsMapProjector {
                                     character_id: event.character_id.clone(),
                                     display_name: event.display_name.clone(),
                                     monster_id: event.monster_id.map(|id| id.0),
+                                    current_hp: None,
+                                    max_hp: None,
                                     position: None,
                                     facing_radians: None,
                                     dead: false,
@@ -370,6 +443,49 @@ impl MechanicsMapProjector {
                         changed = true;
                     }
                 }
+                TimelineEventKind::EntityAttributes(attributes) => {
+                    let actor_id = attributes.actor.actor_id.0;
+                    let entry = self.entities.entry(actor_id).or_insert(EntityState {
+                        actor: attributes.actor,
+                        kind: ActorKind::Unknown(-1),
+                        character_id: None,
+                        display_name: None,
+                        monster_id: None,
+                        current_hp: None,
+                        max_hp: None,
+                        position: None,
+                        facing_radians: None,
+                        dead: false,
+                        last_observed_micros: envelope.time.observed_micros,
+                    });
+                    entry.actor = attributes.actor;
+                    entry.last_observed_micros = envelope.time.observed_micros;
+                    if attributes.update_kind == EntityAttributeUpdateKind::Snapshot {
+                        entry.current_hp = None;
+                        entry.max_hp = None;
+                    }
+                    for attribute in &attributes.attributes {
+                        let Some(EntityAttributeValue::Integer(value)) = attribute.decoded else {
+                            continue;
+                        };
+                        match attribute.attribute_id {
+                            ATTR_TARGET_ID if value > 0 => {
+                                self.attack_targets.insert(actor_id, value);
+                            }
+                            ATTR_TARGET_ID => {
+                                self.attack_targets.remove(&actor_id);
+                            }
+                            ATTR_CURRENT_HP => {
+                                entry.current_hp = Some(value);
+                            }
+                            ATTR_MAX_HP_FINAL => {
+                                entry.max_hp = Some(value);
+                            }
+                            _ => {}
+                        }
+                    }
+                    changed = true;
+                }
                 TimelineEventKind::Position(position) => {
                     if let Some(entity) = self.entities.get_mut(&position.actor.actor_id.0) {
                         entity.position = Some((position.x, position.y, position.z));
@@ -384,6 +500,8 @@ impl MechanicsMapProjector {
                                 character_id: None,
                                 display_name: None,
                                 monster_id: None,
+                                current_hp: None,
+                                max_hp: None,
                                 position: Some((position.x, position.y, position.z)),
                                 facing_radians: position.facing_radians,
                                 dead: false,
@@ -401,36 +519,55 @@ impl MechanicsMapProjector {
                         entity.last_observed_micros = envelope.time.observed_micros;
                     }
                 }
-                TimelineEventKind::Status(status)
-                    if is_reviewed_mechanic_effect(
-                        self.client_build.as_deref(),
-                        self.scene_id,
-                        status.effect.0,
-                    ) =>
-                {
+                TimelineEventKind::Status(status) => {
                     let key = (
                         status.target.actor_id.0,
                         status.instance_id.map_or(status.effect.0, |id| id.0),
                     );
                     if status.state == StatusState::Removed || status.state == StatusState::Consumed
                     {
-                        changed |= self.signals.remove(&key).is_some();
+                        changed |= self.target_statuses.remove(&key).is_some();
+                        if is_reviewed_mechanic_effect(
+                            self.client_build.as_deref(),
+                            self.scene_id,
+                            status.effect.0,
+                        ) {
+                            changed |= self.signals.remove(&key).is_some();
+                        }
                     } else {
-                        self.signals.insert(
+                        self.target_statuses.insert(
                             key,
-                            SignalState {
+                            TargetStatusState {
                                 effect_id: status.effect.0,
                                 instance_id: status.instance_id.map(|id| id.0),
                                 target: status.target,
                                 source: status.source,
                                 stacks: status.stacks,
                                 duration_millis: status.duration_millis,
-                                origin_x: None,
-                                origin_z: None,
-                                facing_radians: None,
                                 applied_at_micros: envelope.time.observed_micros,
                             },
                         );
+                        if is_reviewed_mechanic_effect(
+                            self.client_build.as_deref(),
+                            self.scene_id,
+                            status.effect.0,
+                        ) {
+                            self.signals.insert(
+                                key,
+                                SignalState {
+                                    effect_id: status.effect.0,
+                                    instance_id: status.instance_id.map(|id| id.0),
+                                    target: status.target,
+                                    source: status.source,
+                                    stacks: status.stacks,
+                                    duration_millis: status.duration_millis,
+                                    origin_x: None,
+                                    origin_z: None,
+                                    facing_radians: None,
+                                    applied_at_micros: envelope.time.observed_micros,
+                                },
+                            );
+                        }
                         changed = true;
                     }
                 }
@@ -574,6 +711,92 @@ impl MechanicsMapProjector {
         mechanics.truncate(MAX_MECHANICS);
         let pack = encounter_pack(self.client_build.as_deref(), self.scene_id);
         let scene_map = scene_map_spec(self.client_build.as_deref(), self.scene_id);
+        let target = local_actor_id
+            .and_then(|actor_id| self.attack_targets.get(&actor_id).copied())
+            .and_then(|entity_uuid| {
+                self.entities
+                    .values()
+                    .find(|entity| entity.actor.entity_uuid.0 == entity_uuid)
+            })
+            .map(|entity| {
+                let mut debuffs = self
+                    .target_statuses
+                    .values()
+                    .filter(|status| status.target.actor_id == entity.actor.actor_id)
+                    .filter(|status| {
+                        status
+                            .duration_millis
+                            .filter(|duration| *duration > 0)
+                            .is_none_or(|duration| {
+                                now.saturating_sub(status.applied_at_micros)
+                                    <= duration.saturating_mul(1_000)
+                            })
+                    })
+                    .filter_map(|status| {
+                        let presentation =
+                            rlogs_game_bpsr::status_effect_presentation(status.effect_id)
+                                .ok()
+                                .flatten()?;
+                        let icon = presentation.icon.as_deref()?;
+                        // The reviewed game asset path distinguishes the
+                        // debuff atlas from recipient/self buff atlases. Fail
+                        // closed when the game data does not classify it.
+                        if !icon.replace('\\', "/").contains("/debuff/") {
+                            return None;
+                        }
+                        Some(TargetFrameDebuff {
+                            effect_id: status.effect_id,
+                            instance_id: status.instance_id,
+                            presentation_name: rlogs_game_bpsr::localized_status_effect_name(
+                                status.effect_id,
+                                "en-US",
+                            )
+                            .ok()
+                            .flatten()
+                            .map(str::to_owned)
+                            .or_else(|| presentation.technical_name.clone()),
+                            icon_asset_path: Some(format!(
+                                "/game-assets/blue-protocol-star-resonance/shared/{icon}"
+                            )),
+                            source_actor_id: status.source.map(|source| source.actor_id.0),
+                            stacks: status.stacks,
+                            duration_millis: status.duration_millis,
+                            applied_at_micros: status.applied_at_micros,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                debuffs.sort_by_key(|status| (status.effect_id, status.instance_id));
+                debuffs.truncate(MAX_TARGET_DEBUFFS);
+                let hp_percent =
+                    entity
+                        .current_hp
+                        .zip(entity.max_hp)
+                        .and_then(|(current, maximum)| {
+                            (maximum > 0).then(|| {
+                                ((current.max(0) as f64 / maximum as f64) * 100.0).clamp(0.0, 100.0)
+                            })
+                        });
+                TargetFrameSnapshot {
+                    actor_id: entity.actor.actor_id.0,
+                    entity_uuid: entity.actor.entity_uuid.0,
+                    display_name: entity.display_name.clone().or_else(|| {
+                        entity.monster_id.and_then(|monster_id| {
+                            rlogs_game_bpsr::localized_monster_name(monster_id, "en-US")
+                                .ok()
+                                .flatten()
+                                .map(str::to_owned)
+                        })
+                    }),
+                    monster_id: entity.monster_id,
+                    current_hp: entity.current_hp,
+                    max_hp: entity.max_hp,
+                    hp_percent,
+                    dead: entity.dead,
+                    stale: now.saturating_sub(entity.last_observed_micros)
+                        > ENTITY_STALE_AFTER_MICROS,
+                    debuffs,
+                }
+            });
         let local_y = local_actor_id.and_then(|actor_id| {
             entities
                 .iter()
@@ -621,6 +844,7 @@ impl MechanicsMapProjector {
             local_position_observed,
             encounter_pack: pack,
             encounter_pack_reviewed: pack.is_some(),
+            target,
             entities,
             mechanics,
             markers: self.markers.values().take(64).cloned().collect(),
@@ -682,9 +906,23 @@ impl MechanicsMapProjector {
             oldest.sort_by_key(|(_, observed)| *observed);
             for (actor_id, _) in oldest.into_iter().take(self.entities.len() - MAX_ENTITIES) {
                 self.entities.remove(&actor_id);
+                self.attack_targets.remove(&actor_id);
+                self.target_statuses
+                    .retain(|_, status| status.target.actor_id.0 != actor_id);
                 self.signals
                     .retain(|_, signal| signal.target.actor_id.0 != actor_id);
             }
+        }
+        while self.target_statuses.len() > MAX_TARGET_STATUSES {
+            let Some(oldest) = self
+                .target_statuses
+                .iter()
+                .min_by_key(|(_, status)| status.applied_at_micros)
+                .map(|(key, _)| *key)
+            else {
+                break;
+            };
+            self.target_statuses.remove(&oldest);
         }
         while self.signals.len() > MAX_MECHANICS {
             let Some(oldest) = self
@@ -1010,9 +1248,10 @@ fn is_reviewed_mechanic_cast(
 mod tests {
     use super::*;
     use rlogs_events::{
-        ActorEvent, ActorId, ActorLoadoutObservation, CharacterIdentity, EntityUuid,
-        EventProvenance, EventSensitivity, EventTime, EvidenceConfidence, EvidenceSource,
-        GameProfileEvent, RegionContext, RegionIdentity, SceneId, TimelineEvent,
+        ActorEvent, ActorId, ActorLoadoutObservation, CharacterIdentity, EntityAttribute,
+        EntityAttributeEvent, EntityUuid, EventProvenance, EventSensitivity, EventTime,
+        EvidenceConfidence, EvidenceSource, GameProfileEvent, RegionContext, RegionIdentity,
+        SceneId, StatusEffectId, StatusEffectInstanceId, StatusEvent, TimelineEvent,
     };
 
     fn envelope(sequence: u64, event: CanonicalEvent) -> EventEnvelope {
@@ -1052,6 +1291,28 @@ mod tests {
         EntityRef {
             actor_id: ActorId(actor_id),
             entity_uuid: EntityUuid(uuid),
+        }
+    }
+
+    fn actor_event(actor: EntityRef, kind: ActorKind, character_id: Option<&str>) -> ActorEvent {
+        ActorEvent {
+            actor,
+            state: ActorState::Spawned,
+            entity_type_id: if kind == ActorKind::Player { 10 } else { 11 },
+            kind,
+            monster_id: (kind == ActorKind::Monster).then_some(rlogs_events::MonsterId(123)),
+            character_id: character_id.map(str::to_owned),
+            display_name: (kind == ActorKind::Player).then(|| "Local".into()),
+            class_id: None,
+            specialization_id: None,
+            level: None,
+            ability_score: None,
+            weapon_item_id: None,
+            weapon_breakthrough_count: None,
+            seasonal_score: None,
+            primary_loadout: vec![],
+            auxiliary_loadout: vec![],
+            loadout_observation: ActorLoadoutObservation::default(),
         }
     }
 
@@ -1157,6 +1418,233 @@ mod tests {
             projector.snapshot().encounter_pack,
             Some("Wasteland encounter")
         );
+    }
+
+    #[test]
+    fn target_frame_uses_selected_target_hp_and_packet_classified_debuffs() {
+        let mut projector = MechanicsMapProjector::default();
+        let identity = CharacterIdentity {
+            region: RegionIdentity {
+                deployment_id: "global".into(),
+                region_id: "north-america".into(),
+                realm_id: None,
+                world_id: None,
+            },
+            character_id: "42".into(),
+        };
+        projector.observe(&envelope(
+            1,
+            CanonicalEvent::CharacterProfileObserved {
+                profile: Box::new(GameProfileEvent {
+                    game_plugin_id: "game.rlogs.blue-protocol-star-resonance".into(),
+                    payload_schema_id: "test".into(),
+                    payload_schema_version: 1,
+                    character: identity,
+                    payload: serde_json::json!({}),
+                }),
+            },
+        ));
+        let local = entity(7, 42 << 16);
+        let target = entity(8, 800);
+        for (sequence, actor) in [
+            (2, actor_event(local, ActorKind::Player, Some("42"))),
+            (3, actor_event(target, ActorKind::Monster, None)),
+        ] {
+            projector.observe(&envelope(
+                sequence,
+                CanonicalEvent::Timeline(TimelineEvent {
+                    sequence,
+                    time: EventTime {
+                        observed_micros: sequence * 1_000,
+                        game_time_millis: None,
+                    },
+                    provenance: EventProvenance {
+                        confidence: EvidenceConfidence::Exact,
+                        source: EvidenceSource::Wire {
+                            capture_sequence: sequence,
+                            connection_id: 1,
+                            stream_id: 1,
+                        },
+                    },
+                    kind: TimelineEventKind::Actor(actor),
+                }),
+            ));
+        }
+        projector.observe(&envelope(
+            4,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 4,
+                time: EventTime {
+                    observed_micros: 4_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 4,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::EntityAttributes(EntityAttributeEvent {
+                    actor: local,
+                    update_kind: EntityAttributeUpdateKind::Delta,
+                    ownership: None,
+                    attributes: vec![EntityAttribute {
+                        attribute_id: ATTR_TARGET_ID,
+                        raw_value: vec![0xa0, 0x06],
+                        decoded: Some(EntityAttributeValue::Integer(800)),
+                    }],
+                }),
+            }),
+        ));
+        projector.observe(&envelope(
+            5,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 5,
+                time: EventTime {
+                    observed_micros: 5_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 5,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::EntityAttributes(EntityAttributeEvent {
+                    actor: target,
+                    update_kind: EntityAttributeUpdateKind::Delta,
+                    ownership: None,
+                    attributes: vec![
+                        EntityAttribute {
+                            attribute_id: ATTR_CURRENT_HP,
+                            raw_value: vec![],
+                            decoded: Some(EntityAttributeValue::Integer(500)),
+                        },
+                        EntityAttribute {
+                            attribute_id: ATTR_MAX_HP_FINAL,
+                            raw_value: vec![],
+                            decoded: Some(EntityAttributeValue::Integer(1_000)),
+                        },
+                    ],
+                }),
+            }),
+        ));
+        projector.observe(&envelope(
+            6,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 6,
+                time: EventTime {
+                    observed_micros: 6_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 6,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::Status(StatusEvent {
+                    source: Some(local),
+                    target,
+                    effect: StatusEffectId(4_501),
+                    instance_id: Some(StatusEffectInstanceId(99)),
+                    origin: None,
+                    state: StatusState::Applied,
+                    stacks: Some(2),
+                    duration_millis: Some(5_000),
+                    level: Some(1),
+                    part_id: None,
+                    count: None,
+                    created_at_millis: None,
+                }),
+            }),
+        ));
+
+        let selected = projector.snapshot().target.expect("selected target");
+        assert_eq!(selected.actor_id, 8);
+        assert_eq!(selected.current_hp, Some(500));
+        assert_eq!(selected.max_hp, Some(1_000));
+        assert_eq!(selected.hp_percent, Some(50.0));
+        assert_eq!(selected.debuffs.len(), 1);
+        assert_eq!(selected.debuffs[0].effect_id, 4_501);
+        assert_eq!(selected.debuffs[0].stacks, Some(2));
+
+        projector.observe(&envelope(
+            7,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 7,
+                time: EventTime {
+                    observed_micros: 7_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 7,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::Status(StatusEvent {
+                    source: Some(local),
+                    target,
+                    effect: StatusEffectId(4_501),
+                    instance_id: Some(StatusEffectInstanceId(99)),
+                    origin: None,
+                    state: StatusState::Removed,
+                    stacks: None,
+                    duration_millis: None,
+                    level: Some(1),
+                    part_id: None,
+                    count: None,
+                    created_at_millis: None,
+                }),
+            }),
+        ));
+        assert!(
+            projector
+                .snapshot()
+                .target
+                .expect("target remains selected")
+                .debuffs
+                .is_empty()
+        );
+
+        projector.observe(&envelope(
+            8,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 8,
+                time: EventTime {
+                    observed_micros: 8_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 8,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::EntityAttributes(EntityAttributeEvent {
+                    actor: local,
+                    update_kind: EntityAttributeUpdateKind::Delta,
+                    ownership: None,
+                    attributes: vec![EntityAttribute {
+                        attribute_id: ATTR_TARGET_ID,
+                        raw_value: vec![],
+                        decoded: Some(EntityAttributeValue::Integer(0)),
+                    }],
+                }),
+            }),
+        ));
+        assert!(projector.snapshot().target.is_none());
     }
 
     #[test]

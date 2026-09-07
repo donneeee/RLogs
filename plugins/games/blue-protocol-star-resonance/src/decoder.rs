@@ -47,6 +47,11 @@ use crate::{
 
 const ATTR_NAME: i32 = 0x01;
 const ATTR_MONSTER_ID: i32 = 0x0a;
+// Exact current-build `Zproto.EAttrType::AttrTargetId`. Entity snapshots and
+// sparse deltas use this field for the actor's selected attack target; zero is
+// an authoritative target clear. Retaining the decoded UUID lets presentation
+// projectors build a target frame without guessing from damage recipients.
+const ATTR_TARGET_ID: i32 = 0x1e;
 const ATTR_POSITION: i32 = 0x34;
 // Exact build 24687926 `Zproto.EAttrType::AttrTargetPos`. The numeric ID is
 // authoritative; the native enum name is retained only as build-locked
@@ -5992,6 +5997,7 @@ fn decode_attribute_value(id: i32, raw: &[u8]) -> Option<EntityAttributeValue> {
         | ATTR_MAGICAL_DEFENSE
         | 11361..=11365 => decode_int32_varint(raw).map(EntityAttributeValue::Integer),
         ATTR_MONSTER_ID
+        | ATTR_TARGET_ID
         | ATTR_CLASS_ID
         | ATTR_LEVEL
         | ATTR_COMBAT_POWER
@@ -10964,6 +10970,14 @@ mod tests {
 
     #[test]
     fn hp_and_resource_formula_attributes_are_decoded_without_changing_their_ids() {
+        assert_eq!(
+            decode_attribute_value(ATTR_TARGET_ID, &[0xc0, 0xc4, 0x07]),
+            Some(EntityAttributeValue::Integer(123_456))
+        );
+        assert_eq!(
+            decode_attribute_value(ATTR_TARGET_ID, &[]),
+            Some(EntityAttributeValue::Integer(0))
+        );
         assert_eq!(
             decode_attribute_value(ATTR_CURRENT_HP, &[]),
             Some(EntityAttributeValue::Integer(0))

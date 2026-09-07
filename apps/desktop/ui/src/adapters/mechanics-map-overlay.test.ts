@@ -15,6 +15,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       moduleY: 180,
       moduleWidth: 640,
       moduleHeight: 480,
+      targetX: 720,
+      targetY: 64,
+      targetWidth: 460,
     })).toEqual({
       scale: 37.5,
       panX: -184,
@@ -26,6 +29,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       moduleY: 180,
       moduleWidth: 640,
       moduleHeight: 480,
+      targetX: 720,
+      targetY: 64,
+      targetWidth: 460,
     });
   });
 
@@ -41,6 +47,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       moduleY: -10_000_001,
       moduleWidth: -1,
       moduleHeight: 0,
+      targetX: Number.POSITIVE_INFINITY,
+      targetY: Number.NaN,
+      targetWidth: 0,
     })).toEqual({
       scale: 1,
       panX: 0,
@@ -52,6 +61,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       moduleY: 120,
       moduleWidth: 520,
       moduleHeight: 520,
+      targetX: 580,
+      targetY: 48,
+      targetWidth: 420,
     });
   });
 });
