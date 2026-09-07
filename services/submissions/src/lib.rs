@@ -55,6 +55,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use uuid::Uuid;
 
 mod accounts;
+pub mod hosted;
 mod profiles;
 
 use accounts::{
@@ -271,22 +272,22 @@ struct SelectedArtifactWitnesses {
 /// Character UIDs in this file are never added to the public parse catalog.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PrivateParseMembership {
-    schema_version: u16,
-    report_id: String,
-    artifact_sha256: String,
+pub struct PrivateParseMembership {
+    pub schema_version: u16,
+    pub report_id: String,
+    pub artifact_sha256: String,
     /// Exact sealed actor joins, retained privately for display-name recovery.
     /// None denotes a legacy index that has not cached these joins yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    character_by_actor: Option<BTreeMap<String, String>>,
-    runs: Vec<PrivateRunMembership>,
+    pub character_by_actor: Option<BTreeMap<String, String>>,
+    pub runs: Vec<PrivateRunMembership>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct PrivateRunMembership {
-    run_index: u32,
-    character_ids: Vec<String>,
+pub struct PrivateRunMembership {
+    pub run_index: u32,
+    pub character_ids: Vec<String>,
 }
 
 struct CrossVantageReplayResult {
@@ -2569,6 +2570,16 @@ pub struct PublicSubmissionProvenance {
     pub authentication: String,
 }
 
+/// Complete deterministic output produced by the hosted replay container.
+/// The report is safe for its requested visibility; membership remains a
+/// private server-side index and must never be returned by a public endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostedVerificationOutput {
+    pub schema_version: u16,
+    pub report: PublicParseReport,
+    pub membership: PrivateParseMembership,
+}
+
 impl Default for PublicSubmissionProvenance {
     fn default() -> Self {
         Self {
@@ -3595,6 +3606,49 @@ fn build_public_report(
         created_unix_millis,
         submission_provenance,
     )
+}
+
+/// Verifies and replays an already assembled immutable upload for the hosted
+/// Cloudflare pipeline. This deliberately performs the same manifest,
+/// privacy, metadata, replay, and actor-identity checks as the filesystem
+/// receiver; only persistence and account policy remain in the edge Worker.
+pub fn verify_hosted_submission_path(
+    path: &Path,
+    manifest: &UploadManifest,
+    report_id: &str,
+    created_unix_millis: u64,
+    submission_provenance: PublicSubmissionProvenance,
+    verified_names_by_character: &BTreeMap<String, String>,
+) -> Result<HostedVerificationOutput, ServiceError> {
+    validate_identifier(report_id, "report ID")?;
+    validate_manifest(manifest)?;
+    let artifact = build_privacy_verified_submission_artifact(
+        File::open(path)?,
+        ArtifactBuildLimits::default(),
+        RlogLimits::default(),
+    )
+    .map_err(std::io::Error::other)?;
+    verify_artifact_metadata(manifest, &artifact)?;
+    let mut report = build_public_report(
+        path,
+        manifest,
+        &artifact,
+        report_id,
+        created_unix_millis,
+        submission_provenance,
+    )?;
+    let membership = build_private_parse_membership(path, &report)?;
+    let identities = membership
+        .character_by_actor
+        .as_ref()
+        .expect("hosted memberships always include sealed actor identities");
+    apply_verified_character_keys(&mut report, identities)?;
+    restore_hosted_verified_names(&mut report, identities, verified_names_by_character);
+    Ok(HostedVerificationOutput {
+        schema_version: 1,
+        report,
+        membership,
+    })
 }
 
 /// Reconstructs the authoritative public report from two independent reads of
@@ -5436,6 +5490,40 @@ fn restore_verified_names(
             participant.display_name = names.first().map(|name| (*name).to_owned());
             changed = true;
         }
+    }
+    changed
+}
+
+fn restore_hosted_verified_names(
+    report: &mut PublicParseReport,
+    identities: &BTreeMap<String, String>,
+    verified_names_by_character: &BTreeMap<String, String>,
+) -> bool {
+    let mut changed = false;
+    for participant in report.runs.iter_mut().flat_map(|run| &mut run.participants) {
+        if !public_display_name_needs_verified_identity(participant.display_name.as_deref()) {
+            continue;
+        }
+        let Some(character_id) = identities.get(&participant.actor_id) else {
+            continue;
+        };
+        if participant
+            .character_id
+            .as_ref()
+            .is_some_and(|value| value != character_id)
+        {
+            continue;
+        }
+        let Some(name) = verified_names_by_character
+            .get(character_id)
+            .map(String::as_str)
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+        else {
+            continue;
+        };
+        participant.display_name = Some(name.to_owned());
+        changed = true;
     }
     changed
 }

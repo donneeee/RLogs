@@ -8,7 +8,9 @@
     "DISCORD_CLIENT_ID": "1544125568461709353",
     "DISCORD_CALLBACK_URL": "https://rlogs-app.github.io/account/",
     "WEBSITE_URL": "https://rlogs-app.github.io",
-    "DEVELOPER_DISCORD_USER_IDS": "51782792098349056"
+    "DEVELOPER_DISCORD_USER_IDS": "51782792098349056",
+    "RLOGS_PARSE_UPLOADS_ENABLED": "false",
+    "VERIFIER_RELEASE": "hosted-rust-v1"
   },
   "kv_namespaces": [
     {
@@ -21,6 +23,18 @@
       "binding": "RLOGS_DB",
       "database_name": "rlogs-production",
       "database_id": "e957a66e-5ca9-4fc9-a1e2-9c004d23cdb6"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "RLOGS_ARTIFACTS",
+      "bucket_name": "rlogs-production-artifacts"
+    }
+  ],
+  "services": [
+    {
+      "binding": "RLOGS_VERIFIER",
+      "service": "rlogs-verifier"
     }
   ],
   "durable_objects": {

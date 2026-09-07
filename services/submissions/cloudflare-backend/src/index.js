@@ -30,12 +30,78 @@ async function visibilityOverrides(env) {
   return response.ok ? response.json() : {};
 }
 
+async function hostedReport(env, reportId) {
+  if (!env.RLOGS_DB || !env.RLOGS_ARTIFACTS) return null;
+  try {
+    const row = await env.RLOGS_DB.prepare(
+      "SELECT visibility, projection_object_key FROM reports WHERE report_id=?1",
+    ).bind(reportId).first();
+    if (!row || row.visibility === "private") return null;
+    const object = await env.RLOGS_ARTIFACTS.get(row.projection_object_key);
+    if (!object) return null;
+    const report = await object.json();
+    return { ...report, visibility: row.visibility };
+  } catch (cause) {
+    console.error("rLogs hosted report read failed", cause);
+    return null;
+  }
+}
+
 async function publicReport(env, reportId) {
+  const hosted = await hostedReport(env, reportId);
+  if (hosted) return json(hosted);
   const report = await env.RLOGS_DATA.get(`fs:projections/${reportId}.json`, "json");
   if (!report) return notFound();
   const overrides = await visibilityOverrides(env);
   const visibility = overrides[reportId] ?? report.visibility;
   return visibility === "private" ? notFound() : json({ ...report, visibility });
+}
+
+async function hostedCatalogEntries(env) {
+  if (!env.RLOGS_DB) return [];
+  try {
+    const result = await env.RLOGS_DB.prepare(`SELECT rr.catalog_entry_json
+      FROM report_runs rr JOIN reports r ON r.report_id=rr.report_id
+      WHERE r.visibility='public'
+      ORDER BY rr.created_unix_millis DESC, rr.report_id, rr.run_index
+      LIMIT 100000`).all();
+    return (result.results ?? []).flatMap((row) => {
+      try { return [JSON.parse(row.catalog_entry_json)]; } catch { return []; }
+    });
+  } catch (cause) {
+    console.error("rLogs hosted parse catalog read failed", cause);
+    return [];
+  }
+}
+
+function facetValues(entries, field) {
+  const counts = new Map();
+  for (const entry of entries) {
+    const value = entry[field];
+    if (value != null && value !== "") counts.set(String(value), (counts.get(String(value)) ?? 0) + 1);
+  }
+  return [...counts].sort(([left], [right]) => left.localeCompare(right))
+    .map(([id, count]) => ({ id, count }));
+}
+
+function catalogFacets(entries) {
+  const scenes = new Map();
+  for (const entry of entries) {
+    if (entry.scene_id == null) continue;
+    const id = String(entry.scene_id);
+    const current = scenes.get(id) ?? { id: Number(entry.scene_id), label: entry.scene_name ?? null, count: 0 };
+    current.count += 1;
+    current.label ??= entry.scene_name ?? null;
+    scenes.set(id, current);
+  }
+  return {
+    deployments: facetValues(entries, "deployment_id"),
+    regions: facetValues(entries, "region_id"),
+    activities: facetValues(entries, "activity_category_id"),
+    scenes: [...scenes.values()].sort((left, right) => left.id - right.id),
+    difficulties: facetValues(entries, "difficulty_family"),
+    terminal_states: facetValues(entries, "terminal_state"),
+  };
 }
 
 async function storedPhoto(env, profileId, photoId) {
@@ -106,10 +172,21 @@ async function profileCatalog(env, url) {
 }
 
 async function parseCatalog(env, url) {
-  const catalog = await env.RLOGS_DATA.get("fs:catalog.v1.json", "json");
-  if (!catalog || !Array.isArray(catalog.entries)) return notFound();
+  const storedCatalog = await env.RLOGS_DATA.get("fs:catalog.v1.json", "json");
+  const catalog = storedCatalog && Array.isArray(storedCatalog.entries)
+    ? storedCatalog
+    : { schema_version: 6, entries: [], facets: catalogFacets([]) };
   const overrides = await visibilityOverrides(env);
-  let entries = catalog.entries.filter((entry) => overrides[entry.report_id] !== "private");
+  const hosted = await hostedCatalogEntries(env);
+  const merged = new Map();
+  for (const entry of catalog.entries) {
+    if (overrides[entry.report_id] !== "private") merged.set(`${entry.report_id}:${entry.run_index}`, entry);
+  }
+  for (const entry of hosted) merged.set(`${entry.report_id}:${entry.run_index}`, entry);
+  let entries = [...merged.values()].sort((left, right) =>
+    Number(right.created_unix_millis) - Number(left.created_unix_millis) ||
+    String(left.report_id).localeCompare(String(right.report_id)) ||
+    Number(left.run_index) - Number(right.run_index));
   const scalarFilters = [
     ["deployment", "deployment_id"],
     ["region", "region_id"],
@@ -136,7 +213,13 @@ async function parseCatalog(env, url) {
   const page = entries.slice(offset, offset + limit);
   const submitterIds = [...new Set(page.map((entry) => entry.submitter_id).filter(Boolean))];
   const submitterNames = new Map(await Promise.all(submitterIds.map(async (submitterId) => {
-    const account = await env.RLOGS_DATA.get(`fs:accounts/users/${submitterId}.json`, "json");
+    let account = null;
+    try {
+      account = await env.RLOGS_DB.prepare(
+        "SELECT username, discord_global_name FROM accounts WHERE submitter_id=?1",
+      ).bind(submitterId).first();
+    } catch {}
+    account ??= await env.RLOGS_DATA.get(`fs:accounts/users/${submitterId}.json`, "json");
     const name = account?.discord_global_name || account?.username || null;
     return [submitterId, name];
   })));
@@ -148,6 +231,7 @@ async function parseCatalog(env, url) {
   }));
   return json({
     ...catalog,
+    facets: catalogFacets(entries),
     total_entries: entries.length,
     offset,
     next_offset: offset + page.length < entries.length ? offset + page.length : null,

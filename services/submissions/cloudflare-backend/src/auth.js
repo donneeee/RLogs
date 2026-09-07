@@ -462,6 +462,34 @@ export class RLogsAuthState {
         entries.push({ ...parse, visibility, submitted_by_you: submittedByYou, matched_character_ids: matchedCharacterIds });
       }
     }
+    try {
+      const hosted = await this.env.RLOGS_DB.prepare(`SELECT rr.catalog_entry_json,
+          r.visibility, u.submitter_id
+        FROM report_runs rr
+        JOIN reports r ON r.report_id=rr.report_id
+        JOIN upload_sessions u ON u.upload_id=r.upload_id
+        ORDER BY rr.created_unix_millis DESC, rr.report_id, rr.run_index`).all();
+      for (const row of hosted.results ?? []) {
+        const parse = JSON.parse(row.catalog_entry_json);
+        const submittedByYou = row.submitter_id === account.submitter_id;
+        const membership = await this.env.RLOGS_DB.prepare(
+          "SELECT character_id FROM report_memberships WHERE report_id=?1",
+        ).bind(parse.report_id).all();
+        const matchedCharacterIds = (membership.results ?? [])
+          .map((value) => String(value.character_id))
+          .filter((characterId) => claimedCharacterIds.has(characterId));
+        if (!submittedByYou && (row.visibility === "private" || matchedCharacterIds.length === 0)) continue;
+        const key = `${parse.report_id}:${parse.run_index}`;
+        const replacement = {
+          ...parse, visibility: row.visibility, submitted_by_you: submittedByYou,
+          matched_character_ids: matchedCharacterIds,
+        };
+        const existing = entries.findIndex((entry) => `${entry.report_id}:${entry.run_index}` === key);
+        if (existing >= 0) entries[existing] = replacement; else entries.push(replacement);
+      }
+    } catch (cause) {
+      if (this.env.RLOGS_DB) console.error("rLogs hosted My Parses read failed", cause);
+    }
     entries.sort((left, right) =>
       right.created_unix_millis - left.created_unix_millis ||
       left.report_id.localeCompare(right.report_id) ||
@@ -489,17 +517,25 @@ export class RLogsAuthState {
   async accountParse(request, now, reportId) {
     const account = await this.authenticateWeb(request, now);
     if (!account) return error("account authentication failed", 401);
-    const report = await this.env.RLOGS_DATA.get(`fs:projections/${reportId}.json`, "json");
+    const hosted = await this.hostedReport(reportId);
+    const report = hosted?.report ?? await this.env.RLOGS_DATA.get(`fs:projections/${reportId}.json`, "json");
     if (!report) return error("not found", 404);
-    const visibility = await this.reportVisibility(report);
-    const submittedByYou = report.submission_provenance?.submitter_id === account.submitter_id;
+    const visibility = hosted?.visibility ?? await this.reportVisibility(report);
+    const submittedByYou = (hosted?.submitterId ?? report.submission_provenance?.submitter_id) === account.submitter_id;
     if (!submittedByYou) {
       if (visibility === "private") return error("not found", 404);
       const claimedCharacterIds = await this.claimedCharacterIds(account.submitter_id);
-      const membership = await this.env.RLOGS_DATA.get(`fs:memberships/${reportId}.json`, "json");
-      const participates = (membership?.runs ?? []).some((run) =>
-        (run.character_ids ?? []).some((characterId) => claimedCharacterIds.has(String(characterId))),
-      );
+      let participates = false;
+      if (hosted) {
+        const membership = await this.env.RLOGS_DB.prepare(
+          "SELECT character_id FROM report_memberships WHERE report_id=?1",
+        ).bind(reportId).all();
+        participates = (membership.results ?? []).some((row) => claimedCharacterIds.has(String(row.character_id)));
+      } else {
+        const membership = await this.env.RLOGS_DATA.get(`fs:memberships/${reportId}.json`, "json");
+        participates = (membership?.runs ?? []).some((run) =>
+          (run.character_ids ?? []).some((characterId) => claimedCharacterIds.has(String(characterId))));
+      }
       if (!participates) return error("not found", 404);
     }
     return json({ ...report, visibility });
@@ -508,15 +544,22 @@ export class RLogsAuthState {
   async updateParseVisibility(request, now, reportId) {
     const account = await this.authenticateWeb(request, now);
     if (!account) return error("account authentication failed", 401);
-    const report = await this.env.RLOGS_DATA.get(`fs:projections/${reportId}.json`, "json");
-    if (!report || report.submission_provenance?.submitter_id !== account.submitter_id) {
+    const hosted = await this.hostedReport(reportId);
+    const report = hosted?.report ?? await this.env.RLOGS_DATA.get(`fs:projections/${reportId}.json`, "json");
+    if (!report || (hosted?.submitterId ?? report.submission_provenance?.submitter_id) !== account.submitter_id) {
       return error("not found", 404);
     }
     const body = await parseBody(request);
     if (!body || Object.keys(body).length !== 1 || !VISIBILITIES.has(body.visibility)) {
       return error("invalid visibility", 400);
     }
-    await this.storage.put(`visibility:${reportId}`, body.visibility);
+    if (hosted) {
+      await this.env.RLOGS_DB.prepare(`UPDATE reports SET visibility=?2,
+        published_unix_millis=CASE WHEN ?2='public' THEN COALESCE(published_unix_millis,?3) ELSE NULL END
+        WHERE report_id=?1`).bind(reportId, body.visibility, now).run();
+    } else {
+      await this.storage.put(`visibility:${reportId}`, body.visibility);
+    }
     return json({
       schema_version: 1,
       report_id: reportId,
@@ -534,7 +577,33 @@ export class RLogsAuthState {
       const claim = await this.env.RLOGS_DATA.get(`fs:profiles/${profile.profile_id}/claim.json`, "json");
       if (claim?.submitter_id === submitterId) claimed.add(String(profile.character_id));
     }
+    try {
+      if (!this.env.RLOGS_DB) return claimed;
+      const hosted = await this.env.RLOGS_DB.prepare(
+        "SELECT character_id FROM uid_claims WHERE submitter_id=?1",
+      ).bind(submitterId).all();
+      for (const row of hosted.results ?? []) claimed.add(String(row.character_id));
+    } catch (cause) {
+      console.error("rLogs hosted UID claim read failed", cause);
+    }
     return claimed;
+  }
+
+  async hostedReport(reportId) {
+    if (!this.env.RLOGS_DB || !this.env.RLOGS_ARTIFACTS) return null;
+    try {
+      const row = await this.env.RLOGS_DB.prepare(`SELECT r.visibility,
+          r.projection_object_key, u.submitter_id
+        FROM reports r JOIN upload_sessions u ON u.upload_id=r.upload_id
+        WHERE r.report_id=?1`).bind(reportId).first();
+      if (!row) return null;
+      const object = await this.env.RLOGS_ARTIFACTS.get(row.projection_object_key);
+      if (!object) return null;
+      return { report: await object.json(), visibility: row.visibility, submitterId: row.submitter_id };
+    } catch (cause) {
+      console.error("rLogs hosted account report read failed", cause);
+      return null;
+    }
   }
 
   async reportVisibility(report) {

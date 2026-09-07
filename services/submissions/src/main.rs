@@ -15,7 +15,7 @@ use rlogs_submission::{
 };
 use rlogs_submission_service::{
     PublicSubmissionProvenance, SubmissionAuthentication, SubmissionService,
-    build_public_report_from_readers, router,
+    build_public_report_from_readers, hosted, router,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -128,6 +128,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if !arguments.is_empty() {
         return Err("unknown command-line argument".into());
+    }
+    if std::env::var_os("RLOGS_HOSTED_VERIFIER").is_some_and(|value| value == "1") {
+        let listen: SocketAddr = std::env::var("RLOGS_SUBMISSION_LISTEN")
+            .unwrap_or_else(|_| "0.0.0.0:8080".into())
+            .parse()?;
+        let state = hosted::HostedVerifierState::from_environment()?;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        println!("rLogs hosted verifier listening on http://{listen}");
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::bind(listen).await?;
+            axum::serve(listener, hosted::router(state)).await
+        })?;
+        return Ok(());
     }
     let data_root = std::env::var_os("RLOGS_SUBMISSION_DATA")
         .map(PathBuf::from)

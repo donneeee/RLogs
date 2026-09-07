@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rlogs-verifier",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-06",
+  "workers_dev": false,
+  "containers": [
+    {
+      "class_name": "RLogsVerifierContainer",
+      "image": "../Dockerfile.hosted-verifier",
+      "image_build_context": "../../..",
+      "instance_type": "standard-1",
+      "max_instances": 2
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "RLOGS_VERIFIER_CONTAINER",
+        "class_name": "RLogsVerifierContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RLogsVerifierContainer"]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "RLOGS_DB",
+      "database_name": "rlogs-production",
+      "database_id": "e957a66e-5ca9-4fc9-a1e2-9c004d23cdb6"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "RLOGS_ARTIFACTS",
+      "bucket_name": "rlogs-production-artifacts"
+    }
+  ]
+}

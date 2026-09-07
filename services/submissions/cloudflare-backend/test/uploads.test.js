@@ -139,6 +139,7 @@ function environment(onVerify = async () => new Response(null, { status: 202 }))
             discord_username: "Fixture",
             discord_global_name: null,
             discord_avatar_url: null,
+            publish_verified_parses: true,
             created_unix_millis: 1,
             updated_unix_millis: 1,
           },

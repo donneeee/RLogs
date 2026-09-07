@@ -1,0 +1,15 @@
+{
+  "name": "rlogs-cloudflare-verifier",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7"
+  },
+  "devDependencies": {
+    "wrangler": "4.127.1"
+  }
+}

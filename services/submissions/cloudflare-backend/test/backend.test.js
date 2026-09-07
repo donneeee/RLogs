@@ -33,6 +33,15 @@ function environment(values = {}) {
     },
     RLOGS_DB: {
       prepare(query) {
+        if (query.includes("FROM report_runs")) {
+          return { async all() { return { results: [] }; } };
+        }
+        if (query.includes("FROM reports WHERE report_id")) {
+          return { bind() { return { async first() { return null; } }; } };
+        }
+        if (query.includes("FROM accounts WHERE submitter_id")) {
+          return { bind() { return { async first() { return null; } }; } };
+        }
         assert.match(query, /service_metadata/u);
         return {
           bind(component) {
@@ -202,6 +211,32 @@ test("private visibility overrides disappear from public catalogs and reports", 
   assert.deepEqual((await catalogResponse.json()).entries, []);
   const reportResponse = await backend.fetch(new Request(`https://backend/v1/parses/${reportId}`), env);
   assert.equal(reportResponse.status, 404);
+});
+
+test("new hosted reports and catalog rows are read from D1 and R2", async () => {
+  const reportId = `rpt_${"b".repeat(32)}`;
+  const report = { report_id: reportId, visibility: "public", runs: [{ run_index: 0 }] };
+  const entry = {
+    report_id: reportId, run_index: 0, created_unix_millis: 10,
+    region_id: "north-america", terminal_state: "completed",
+  };
+  const env = environment({ "fs:catalog.v1.json": JSON.stringify({ schema_version: 6, entries: [], facets: {} }) });
+  env.RLOGS_DB.prepare = (query) => {
+    if (query.includes("FROM report_runs")) return { async all() { return { results: [{ catalog_entry_json: JSON.stringify(entry) }] }; } };
+    if (query.includes("FROM reports WHERE report_id")) return { bind() { return { async first() {
+      return { visibility: "public", projection_object_key: "reports/new.json" };
+    } }; } };
+    if (query.includes("FROM accounts WHERE submitter_id")) return { bind() { return { async first() { return null; } }; } };
+    throw new Error(`unexpected query: ${query}`);
+  };
+  env.RLOGS_ARTIFACTS = { async get(key) {
+    assert.equal(key, "reports/new.json");
+    return { async json() { return report; } };
+  } };
+  const catalog = await backend.fetch(new Request("https://backend/v1/parses"), env);
+  assert.deepEqual((await catalog.json()).entries, [entry]);
+  const projection = await backend.fetch(new Request(`https://backend/v1/parses/${reportId}`), env);
+  assert.deepEqual(await projection.json(), report);
 });
 
 test("write routes fail closed until hosted verification is enabled", async () => {

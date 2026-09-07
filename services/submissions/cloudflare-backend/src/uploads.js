@@ -152,21 +152,25 @@ async function synchronizeIdentity(env, identity) {
   const account = identity.account;
   if (!Number.isSafeInteger(account.account_id) || !nonempty(account.username, 64) ||
       !DIGEST.test(account.discord_user_hash ?? "") || !nonempty(account.discord_username, 128) ||
+      typeof account.publish_verified_parses !== "boolean" ||
       !Number.isSafeInteger(account.created_unix_millis) || !Number.isSafeInteger(account.updated_unix_millis) ||
       !Number.isSafeInteger(identity.device_created_unix_millis)) {
     throw new Error("authentication service returned invalid account metadata");
   }
   await run(env, `INSERT INTO accounts (
       submitter_id, account_id, username, discord_user_hash, discord_username,
-      discord_global_name, discord_avatar_url, created_unix_millis, updated_unix_millis
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+      discord_global_name, discord_avatar_url, publish_verified_parses,
+      created_unix_millis, updated_unix_millis
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
     ON CONFLICT(submitter_id) DO UPDATE SET
       account_id=excluded.account_id, username=excluded.username,
       discord_user_hash=excluded.discord_user_hash, discord_username=excluded.discord_username,
       discord_global_name=excluded.discord_global_name, discord_avatar_url=excluded.discord_avatar_url,
+      publish_verified_parses=excluded.publish_verified_parses,
       updated_unix_millis=excluded.updated_unix_millis`,
   identity.submitter_id, String(account.account_id), account.username, account.discord_user_hash,
   account.discord_username, account.discord_global_name, account.discord_avatar_url,
+  account.publish_verified_parses ? 1 : 0,
   account.created_unix_millis, account.updated_unix_millis);
   await run(env, `INSERT INTO device_tokens (
       token_hash, submitter_id, device_id, created_unix_millis, revoked_unix_millis
