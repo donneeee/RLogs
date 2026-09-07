@@ -177,7 +177,9 @@ async function retryJob(env, uploadId, code, detail) {
 
 export class RLogsVerifierContainer extends Container {
   defaultPort = 8080;
-  sleepAfter = "10m";
+  // Each upload has its own stateless verifier instance. Keep it alive only
+  // long enough to absorb an immediate retry, then stop billing idle memory.
+  sleepAfter = "10s";
 }
 
 RLogsVerifierContainer.outboundByHost = {
