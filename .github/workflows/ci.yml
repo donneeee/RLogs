@@ -27,6 +27,25 @@ jobs:
           cargo check -p rlogs-plugin-combat-meter --target wasm32-unknown-unknown
           cargo check -p rlogs-plugin-encounter-recorder --target wasm32-unknown-unknown
 
+  hosted-verifier-container:
+    name: Hosted verifier container
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/submissions/cloudflare-verifier/package-lock.json
+      - name: Test and bundle the verifier Worker
+        working-directory: services/submissions/cloudflare-verifier
+        run: |
+          npm ci --ignore-scripts
+          npm test
+          npx wrangler deploy --dry-run --containers-rollout=none --outdir "${{ runner.temp }}/rlogs-verifier-worker"
+      - name: Build the exact Linux replay image
+        run: docker build --file services/submissions/Dockerfile.hosted-verifier --tag rlogs-hosted-verifier:ci .
+
   rust:
     runs-on: windows-latest
     steps:
@@ -37,7 +56,9 @@ jobs:
           cache: npm
           cache-dependency-path: |
             apps/desktop/ui/package-lock.json
+            services/submissions/cloudflare-backend/package-lock.json
             services/submissions/cloudflare-gateway/package-lock.json
+            services/submissions/cloudflare-verifier/package-lock.json
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
