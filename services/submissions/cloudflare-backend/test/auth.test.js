@@ -75,6 +75,7 @@ test("the internal upload identity binds a device token to its current account",
   assert.equal(value.account.username, "fixture");
   assert.equal(value.account.discord_user_hash,
     await tokenHash("discord-user", "123456789", auth.env.AUTH_TOKEN_PEPPER));
+  assert.equal(value.account.publish_verified_parses, false);
   assert.equal("discord_user_id" in value.account, false);
 });
 

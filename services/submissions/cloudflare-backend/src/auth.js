@@ -181,6 +181,7 @@ export class RLogsAuthState {
           discord_username: account.discord_username,
           discord_global_name: account.discord_global_name ?? null,
           discord_avatar_url: account.discord_avatar_url ?? null,
+          publish_verified_parses: account.publish_verified_parses === true,
           created_unix_millis: account.created_unix_millis,
           updated_unix_millis: account.updated_unix_millis,
         },
