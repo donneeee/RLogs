@@ -75,13 +75,23 @@ function serviceCapabilities(env, publicReadsReady) {
   );
   const artifactStorage = Boolean(env.RLOGS_ARTIFACTS);
   const hostedVerification = Boolean(env.RLOGS_VERIFIER);
+  // Bindings prove that dependencies exist, not that this deployed revision
+  // implements the authenticated resumable upload and replay transaction.
+  // Keep the public contract fail-closed until those routes are promoted with
+  // their own end-to-end canary; otherwise adding R2 could falsely tell the
+  // desktop to upload into the current unconditional 503 boundary.
+  const parseUploadRoutesImplemented = false;
   return {
     public_reads: publicReadsReady,
     discord_auth: discordAuth,
     profile_sync: publicReadsReady && discordAuth,
     artifact_storage: artifactStorage,
     hosted_verification: hostedVerification,
-    parse_uploads: publicReadsReady && discordAuth && artifactStorage && hostedVerification,
+    parse_uploads: parseUploadRoutesImplemented
+      && publicReadsReady
+      && discordAuth
+      && artifactStorage
+      && hostedVerification,
   };
 }
 

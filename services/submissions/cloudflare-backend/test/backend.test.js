@@ -97,7 +97,7 @@ test("health fails closed when the production metadata schema is unavailable", a
   });
 });
 
-test("health exposes parse upload readiness only when storage and hosted verification are bound", async () => {
+test("health does not advertise unimplemented uploads when storage and verifier bindings appear", async () => {
   const env = environment({
     "fs:profiles/catalog.v1.json": JSON.stringify({ schema_version: 1, profiles: [] }),
   });
@@ -111,7 +111,7 @@ test("health exposes parse upload readiness only when storage and hosted verific
     profile_sync: true,
     artifact_storage: true,
     hosted_verification: true,
-    parse_uploads: true,
+    parse_uploads: false,
   });
 });
 
