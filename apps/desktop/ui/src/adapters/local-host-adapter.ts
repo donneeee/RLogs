@@ -3927,6 +3927,40 @@ function mountSubmissionQueueSurface(container: HTMLElement): MountedSurface {
       report.append(text("span", "Last accepted report"), link);
       uploaderRows.append(report);
     }
+    if (
+      uploader.pendingEligibleCount > 0 &&
+      policy.log_uploader.enabled &&
+      policy.transport_mode === "http" &&
+      (uploader.state === "retrying" || uploader.state === "waiting_for_service")
+    ) {
+      const retryActions = document.createElement("div");
+      retryActions.className = "runtime-card-actions";
+      const retryButton = button("Retry now", "primary-button");
+      const retryMessage = text(
+        "span",
+        "Cancels the current backoff and immediately rechecks the hosted service.",
+        "runtime-action-message",
+      );
+      retryButton.addEventListener("click", async () => {
+        retryButton.disabled = true;
+        retryMessage.classList.remove("error");
+        retryMessage.textContent = "Requesting an immediate retry…";
+        try {
+          await apiJson<unknown>("/api/submissions/automatic-status/retry", {
+            method: "POST",
+          });
+          retryMessage.textContent = "Retry requested.";
+          await refresh(true, false);
+        } catch (error) {
+          retryMessage.textContent = errorMessage(error);
+          retryMessage.classList.add("error");
+        } finally {
+          retryButton.disabled = false;
+        }
+      });
+      retryActions.append(retryButton, retryMessage);
+      uploaderRows.append(retryActions);
+    }
     uploaderPanel.append(uploaderHeader, uploaderRows);
 
     const children: HTMLElement[] = [metrics, location, uploaderPanel];

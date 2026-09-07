@@ -2312,6 +2312,14 @@ impl AutomaticSubmissionStatus {
         self.view.last_error = None;
     }
 
+    fn retry_requested(&mut self) {
+        if self.view.pending_eligible_count > 0 {
+            self.view.state = "queued".into();
+        }
+        self.clear_retry();
+        self.view.last_activity_unix_millis = Some(unix_millis());
+    }
+
     fn snapshot(&self) -> AutomaticSubmissionStatusView {
         self.view.clone()
     }
@@ -6827,6 +6835,19 @@ impl RuntimeController {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .snapshot()
+    }
+
+    fn retry_automatic_submission_now(&self) -> AutomaticSubmissionStatusView {
+        self.automatic_submission_status
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retry_requested();
+        // The uploader already treats a connection revision as a reason to
+        // clear every local backoff deadline. Reuse that wake-up path so a
+        // user-requested retry does not need a second synchronization channel.
+        self.submission_connection_revision
+            .fetch_add(1, Ordering::AcqRel);
+        self.automatic_submission_status()
     }
 
     fn update_submission_connection(
@@ -12701,6 +12722,13 @@ fn handle_connection(
         ("GET", "/api/submissions/automatic-status") => {
             write_json(&mut stream, 200, &controller.automatic_submission_status())?;
         }
+        ("POST", "/api/submissions/automatic-status/retry") => {
+            write_json(
+                &mut stream,
+                200,
+                &controller.retry_automatic_submission_now(),
+            )?;
+        }
         ("GET", "/api/submissions/connection") => match controller.submission_connection() {
             Ok(connection) => write_json(&mut stream, 200, &connection)?,
             Err(error) => write_api_error(&mut stream, 409, error)?,
@@ -13525,6 +13553,28 @@ mod tests {
         assert_eq!(status.snapshot().state, "waiting_for_service");
         status.configure(true, true, true, 1);
         assert_eq!(status.snapshot().state, "waiting_for_service");
+    }
+
+    #[test]
+    fn automatic_submission_retry_request_clears_the_backoff() {
+        let entry = automatic_queue_entry("queue-1", SubmissionState::Draft);
+        let mut status = AutomaticSubmissionStatus::default();
+        status.configure(true, true, true, 1);
+        status.uploading(&entry, 1);
+        status.retryable_failure(
+            &entry,
+            "temporary hosted-service failure",
+            Duration::from_secs(300),
+            1,
+        );
+
+        status.retry_requested();
+
+        let retried = status.snapshot();
+        assert_eq!(retried.state, "queued");
+        assert_eq!(retried.consecutive_failures, 0);
+        assert!(retried.next_retry_unix_millis.is_none());
+        assert!(retried.last_error.is_none());
     }
 
     #[test]
