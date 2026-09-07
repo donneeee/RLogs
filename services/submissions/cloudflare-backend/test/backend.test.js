@@ -97,7 +97,7 @@ test("health fails closed when the production metadata schema is unavailable", a
   });
 });
 
-test("health does not advertise unimplemented uploads when storage and verifier bindings appear", async () => {
+test("health does not advertise uploads when bindings appear without explicit promotion", async () => {
   const env = environment({
     "fs:profiles/catalog.v1.json": JSON.stringify({ schema_version: 1, profiles: [] }),
   });
@@ -113,6 +113,18 @@ test("health does not advertise unimplemented uploads when storage and verifier 
     hosted_verification: true,
     parse_uploads: false,
   });
+});
+
+test("health advertises upload readiness only with promotion and every dependency", async () => {
+  const env = environment({
+    "fs:profiles/catalog.v1.json": JSON.stringify({ schema_version: 1, profiles: [] }),
+  });
+  env.RLOGS_ARTIFACTS = {};
+  env.RLOGS_VERIFIER = {};
+  env.RLOGS_PARSE_UPLOADS_ENABLED = "true";
+  const response = await backend.fetch(new Request("https://backend/health"), env);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).capabilities.parse_uploads, true);
 });
 
 test("profiles come only from bound Cloudflare storage", async () => {

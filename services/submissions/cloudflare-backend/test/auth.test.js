@@ -43,6 +43,41 @@ test("token hashes remain compatible with the Rust authentication domain separat
   );
 });
 
+test("the internal upload identity binds a device token to its current account", async () => {
+  const { auth, durable } = authFixture();
+  const token = "rld_upload-fixture";
+  const deviceHash = await tokenHash("device-token", token, auth.env.AUTH_TOKEN_PEPPER);
+  durable.set(`device:${deviceHash}`, {
+    submitter_id: "usr_owner",
+    device_id: "dev_upload",
+    created_unix_millis: 100,
+    revoked_unix_millis: null,
+  });
+  durable.set("user:usr_owner", {
+    submitter_id: "usr_owner",
+    account_id: 100000000001,
+    username: "fixture",
+    discord_user_id: "123456789",
+    discord_username: "Fixture",
+    discord_global_name: "Fixture User",
+    discord_avatar_url: null,
+    created_unix_millis: 50,
+    updated_unix_millis: 90,
+  });
+  const response = await auth.fetch(new Request("https://auth.internal/internal/device-identity", {
+    headers: { Authorization: `Bearer ${token}` },
+  }));
+  assert.equal(response.status, 200);
+  const value = await response.json();
+  assert.equal(value.submitter_id, "usr_owner");
+  assert.equal(value.device_id, "dev_upload");
+  assert.equal(value.device_token_hash, deviceHash);
+  assert.equal(value.account.username, "fixture");
+  assert.equal(value.account.discord_user_hash,
+    await tokenHash("discord-user", "123456789", auth.env.AUTH_TOKEN_PEPPER));
+  assert.equal("discord_user_id" in value.account, false);
+});
+
 test("profile package digest and live-capture proof match the Rust implementation", async () => {
   const request = {
     relative_endpoint: "/v1/games/blue-protocol-star-resonance/profiles",

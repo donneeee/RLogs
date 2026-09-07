@@ -159,6 +159,34 @@ export class RLogsAuthState {
     if (request.method === "GET" && path === "/internal/visibility-overrides") {
       return json(await this.visibilityOverrides());
     }
+    if (request.method === "GET" && path === "/internal/device-identity") {
+      const device = await this.authenticateDevice(request);
+      if (!device) return error("write authorization failed", 401);
+      const account = await this.account(device.submitter_id);
+      if (!account) return error("account authentication failed", 401);
+      const bearerToken = bearer(request);
+      return json({
+        schema_version: 1,
+        submitter_id: device.submitter_id,
+        device_id: device.device_id,
+        device_token_hash: await tokenHash("device-token", bearerToken, this.env.AUTH_TOKEN_PEPPER),
+        account: {
+          account_id: account.account_id,
+          username: account.username,
+          discord_user_hash: await tokenHash(
+            "discord-user",
+            account.discord_user_id,
+            this.env.AUTH_TOKEN_PEPPER,
+          ),
+          discord_username: account.discord_username,
+          discord_global_name: account.discord_global_name ?? null,
+          discord_avatar_url: account.discord_avatar_url ?? null,
+          created_unix_millis: account.created_unix_millis,
+          updated_unix_millis: account.updated_unix_millis,
+        },
+        device_created_unix_millis: device.created_unix_millis,
+      });
+    }
     return error("route not found", 404);
   }
 
@@ -554,7 +582,11 @@ export class RLogsAuthState {
     let record = await this.storage.get(`device:${hash}`);
     record ??= await legacyJson(this.env, `device-tokens/${hash}.json`);
     if (!record || record.revoked_unix_millis != null) return null;
-    return { submitter_id: record.submitter_id, device_id: record.device_id };
+    return {
+      submitter_id: record.submitter_id,
+      device_id: record.device_id,
+      created_unix_millis: record.created_unix_millis,
+    };
   }
 
   async account(submitterId) {

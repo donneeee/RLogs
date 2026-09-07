@@ -116,15 +116,31 @@ publication. Profile publication reproduces the Rust package digest and
 device-bound HMAC contracts before updating a UID claim.
 
 Parse upload creation, chunk ingestion, and finalization remain fail-closed with
-HTTP 503. They must not be enabled until private artifact storage and a hosted
-pinned Rust replay succeed end-to-end. R2 is not enabled on the current account,
-so the Worker cannot yet durably assemble the retained `.rlog` artifacts. The
-account is also on Workers Free, whose ordinary Worker CPU allowance is not a
-safe execution budget for replaying a multi-megabyte sealed log. Enabling R2 and
-Workers Paid/Containers (or approving and validating an equivalent hosted
-verifier) is therefore the remaining account-level prerequisite. The local
-receiver remains a development fixture and migration source only, never a
-production dependency.
+HTTP 503 in production. The Worker now implements the authenticated resumable
+ingress contract behind `RLOGS_PARSE_UPLOADS_ENABLED=true`: it validates the
+sealed manifest, binds the session to the authenticated app token, stores each
+digest-addressed client chunk in private R2, persists lifecycle metadata in D1,
+and resumes by returning only missing chunks. Client chunks are separate R2
+objects rather than R2 multipart parts because the installed desktop contract
+uses 4 MiB chunks while non-final R2 multipart parts require at least 5 MiB.
+
+Finalization is deliberately asymmetric: it queues the pinned verifier and
+returns no successful receipt merely because the verifier answered HTTP 200.
+The edge returns an accepted report only after the hosted verifier has replayed
+the artifact and committed both the accepted upload state and report metadata
+to shared D1. Thus an incomplete or compromised wake-up response cannot publish
+unverified client data. The promotion flag is absent from production and health
+continues to report `parse_uploads: false` until the flag, R2 binding, verifier
+binding, D1 schema, and public-read model are all present and an end-to-end
+canary passes.
+
+R2 is not enabled on the current account, so the Worker cannot yet retain the
+`.rlog` chunks. The account is also on Workers Free, whose ordinary Worker CPU
+allowance is not a safe execution budget for replaying a multi-megabyte sealed
+log. Enabling R2 and Workers Paid/Containers (or approving and validating an
+equivalent hosted verifier) is therefore the remaining account-level
+prerequisite. The local receiver remains a development fixture and migration
+source only, never a production dependency.
 
 The verifier capacity decision is backed by the repository's read-only
 `--benchmark-replay` command, which invokes the same two-pass attribution and

@@ -1,3 +1,5 @@
+import { routeUpload, uploadsEnabled } from "./uploads.js";
+
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
@@ -75,12 +77,10 @@ function serviceCapabilities(env, publicReadsReady) {
   );
   const artifactStorage = Boolean(env.RLOGS_ARTIFACTS);
   const hostedVerification = Boolean(env.RLOGS_VERIFIER);
-  // Bindings prove that dependencies exist, not that this deployed revision
-  // implements the authenticated resumable upload and replay transaction.
-  // Keep the public contract fail-closed until those routes are promoted with
-  // their own end-to-end canary; otherwise adding R2 could falsely tell the
-  // desktop to upload into the current unconditional 503 boundary.
-  const parseUploadRoutesImplemented = false;
+  // The upload routes remain unavailable until an operator deliberately sets
+  // the promotion flag and all storage/verifier bindings exist. Merely adding
+  // R2 cannot advertise a half-configured submission service.
+  const parseUploadRoutesImplemented = uploadsEnabled(env);
   return {
     public_reads: publicReadsReady,
     discord_auth: discordAuth,
@@ -179,6 +179,18 @@ async function route(request, env) {
     const id = env.AUTH_STATE.idFromName("global");
     return env.AUTH_STATE.get(id).fetch(request);
   }
+  let uploadResponse;
+  try {
+    uploadResponse = await routeUpload(request, env, path);
+  } catch (cause) {
+    console.error("rLogs upload service failure", cause);
+    uploadResponse = json(
+      { error: "hosted upload service is temporarily unavailable", retryable: true },
+      503,
+      { "Retry-After": "30" },
+    );
+  }
+  if (uploadResponse) return uploadResponse;
   if (request.method !== "GET") {
     return json(
       { error: "hosted write service is not enabled yet", retryable: true },
