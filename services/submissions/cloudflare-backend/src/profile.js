@@ -191,6 +191,42 @@ export async function persistProfileMetadata(env, profile, claim, loadout = null
       profile.updated_unix_millis,
     ),
   ];
+  const leaderboard = profileLeaderboardProjection(profile);
+  statements.push(
+    env.RLOGS_DB.prepare("DELETE FROM profile_season_rankings WHERE profile_id=?1")
+      .bind(profile.profile_id),
+    env.RLOGS_DB.prepare("DELETE FROM profile_dungeon_records WHERE profile_id=?1")
+      .bind(profile.profile_id),
+  );
+  if (leaderboard.ranking) {
+    statements.push(env.RLOGS_DB.prepare(`INSERT INTO profile_season_rankings (
+      profile_id, season_id, master_score, observed_unix_millis
+    ) VALUES (?1, ?2, ?3, ?4)`).bind(
+      profile.profile_id,
+      leaderboard.ranking.season_id,
+      leaderboard.ranking.master_score,
+      profile.updated_unix_millis,
+    ));
+  }
+  if (leaderboard.records.length > 0) {
+    statements.push(env.RLOGS_DB.prepare(`INSERT INTO profile_dungeon_records (
+      profile_id, season_id, activity_id, tier, score, pass_time_seconds,
+      completion_count, observed_unix_millis
+    )
+    SELECT ?1,
+      CAST(json_extract(value, '$.season_id') AS INTEGER),
+      CAST(json_extract(value, '$.activity_id') AS INTEGER),
+      CAST(json_extract(value, '$.tier') AS INTEGER),
+      CAST(json_extract(value, '$.score') AS INTEGER),
+      CAST(json_extract(value, '$.pass_time_seconds') AS INTEGER),
+      CAST(json_extract(value, '$.completion_count') AS INTEGER),
+      ?2
+    FROM json_each(?3)`).bind(
+      profile.profile_id,
+      profile.updated_unix_millis,
+      JSON.stringify(leaderboard.records),
+    ));
+  }
   if (loadout) {
     const summary = profile.loadouts?.find((entry) => entry.project_id === loadout.project_id);
     statements.push(env.RLOGS_DB.prepare(`INSERT INTO profile_loadouts (
@@ -211,6 +247,38 @@ export async function persistProfileMetadata(env, profile, claim, loadout = null
     ));
   }
   await env.RLOGS_DB.batch(statements);
+}
+
+export function profileLeaderboardProjection(profile) {
+  const body = profile?.envelope?.body;
+  const seasonId = positiveInteger(body?.season?.season_id);
+  const masterScore = nonnegativeInteger(body?.master_score);
+  const ranking = seasonId != null && masterScore != null
+    ? { season_id: seasonId, master_score: masterScore }
+    : null;
+  const records = [];
+  const seen = new Set();
+  for (const entry of body?.activity_progress?.master_mode_dungeons ?? []) {
+    const recordSeasonId = positiveInteger(entry?.season_id);
+    const activityId = positiveInteger(entry?.difficulty_id);
+    const tier = positiveInteger(entry?.dungeon?.dungeon_id);
+    const passTimeSeconds = positiveInteger(entry?.dungeon?.pass_time);
+    if (recordSeasonId == null || activityId == null || tier == null || tier > 20 || passTimeSeconds == null) continue;
+    const key = `${recordSeasonId}:${activityId}:${tier}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    records.push({
+      season_id: recordSeasonId,
+      activity_id: activityId,
+      tier,
+      score: nonnegativeInteger(entry?.dungeon?.score),
+      pass_time_seconds: passTimeSeconds,
+      completion_count: nonnegativeInteger(entry?.dungeon?.completion_count),
+    });
+  }
+  records.sort((left, right) => left.season_id - right.season_id ||
+    left.activity_id - right.activity_id || left.tier - right.tier);
+  return { ranking, records };
 }
 
 function profileVerifierProjection(profile) {
@@ -235,6 +303,11 @@ function loadoutMetadataProjection(loadout, summary) {
     equipped_module_count: loadout.equipped_module_count ?? 0,
     updated_unix_millis: loadout.updated_unix_millis,
   };
+}
+
+function nonnegativeInteger(value) {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 0 ? number : null;
 }
 
 export function reconcilePublishedRouting(existing, incoming) {

@@ -155,6 +155,33 @@ test("profiles come only from bound Cloudflare storage", async () => {
   assert.deepEqual((await response.json()).profiles, [{ profile_id: "prf_b", character_id: "2" }]);
 });
 
+test("profile leaderboard ranks scores and exact dungeon-tier times from D1", async () => {
+  const env = environment();
+  const queries = [];
+  env.RLOGS_DB.prepare = (query) => ({
+    bind(...bindings) {
+      queries.push({ query, bindings });
+      return { async all() {
+        if (query.includes("profile_season_rankings")) return { results: [{ display_name: "MarieRose", master_score: 3784 }] };
+        return { results: [{ display_name: "MarieRose", activity_id: 6545, tier: 20, pass_time_seconds: 418 }] };
+      } };
+    },
+  });
+  const response = await backend.fetch(new Request(
+    "https://backend/v1/leaderboards/profiles?season=3&region=north-america&activity=6545&tier=20",
+  ), env);
+  assert.equal(response.status, 200);
+  const value = await response.json();
+  assert.equal(value.season_id, 3);
+  assert.equal(value.region_id, "north-america");
+  assert.deepEqual(value.master_scores, [{ display_name: "MarieRose", master_score: 3784 }]);
+  assert.deepEqual(value.dungeon_times, [{ display_name: "MarieRose", activity_id: 6545, tier: 20, pass_time_seconds: 418 }]);
+  assert.deepEqual(queries.map((entry) => entry.bindings), [
+    [3, "north-america", 100],
+    [3, 6545, 20, "north-america", 100],
+  ]);
+});
+
 test("observed character directory comes only from its materialized Cloudflare catalog", async () => {
   const catalog = {
     schema_version: 1,

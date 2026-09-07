@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { accountView, RLogsAuthState, tokenHash } from "../src/auth.js";
-import { canonicalJson, liveCaptureProof, reconcileCatalog, reconcilePublishedRouting } from "../src/profile.js";
+import { canonicalJson, liveCaptureProof, profileLeaderboardProjection, reconcileCatalog, reconcilePublishedRouting } from "../src/profile.js";
 
 function authFixture() {
   const durable = new Map();
@@ -145,6 +145,27 @@ test("profile package digest and live-capture proof match the Rust implementatio
     await liveCaptureProof(packageValue, "dev_device", "rld_device-secret"),
     "hmac-sha256:55c4ebc91d72d6ba25909fbc7c6ac3c4d15a28dcecf1c47b422e1c9e4a98983a",
   );
+});
+
+test("profile leaderboard projection distinguishes seasonal activities from Master tiers", () => {
+  const projection = profileLeaderboardProjection({
+    envelope: { body: {
+      season: { season_id: 3 },
+      master_score: 3784,
+      activity_progress: { master_mode_dungeons: [
+        { season_id: 3, difficulty_id: 6545, dungeon: { dungeon_id: 20, pass_time: 418, score: 700, completion_count: 2 } },
+        { season_id: 3, difficulty_id: 6545, dungeon: { dungeon_id: 21, pass_time: 300, score: 701 } },
+        { season_id: 3, difficulty_id: 6565, dungeon: { dungeon_id: 20, pass_time: null, score: 700 } },
+      ] },
+    } },
+  });
+  assert.deepEqual(projection, {
+    ranking: { season_id: 3, master_score: 3784 },
+    records: [{
+      season_id: 3, activity_id: 6545, tier: 20, score: 700,
+      pass_time_seconds: 418, completion_count: 2,
+    }],
+  });
 });
 
 test("profile catalog reconciliation collapses legacy IDs for the same observed UID", () => {
@@ -380,7 +401,7 @@ test("a device-bound profile package claims and publishes a profile in Cloudflar
   assert.equal(published.display_name, "MarieRose");
   assert.equal(published.loadouts[0].project_name, "Falc-DS");
   assert.equal(kv.get("fs:profiles/catalog.v1.json").profiles.length, 1);
-  assert.equal(d1.length, 5);
+  assert.equal(d1.length, 7);
   const claimStatement = d1.find((statement) => /INSERT INTO uid_claims/u.test(statement.query));
   const profileStatement = d1.find((statement) => /INSERT INTO profiles/u.test(statement.query));
   const loadoutStatement = d1.find((statement) => /INSERT INTO profile_loadouts/u.test(statement.query));

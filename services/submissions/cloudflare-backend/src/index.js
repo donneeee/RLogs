@@ -211,6 +211,66 @@ async function profileCatalog(env, url) {
   return json({ ...catalog, profiles });
 }
 
+async function profileLeaderboards(env, url) {
+  if (!env.RLOGS_DB) return json({ error: "leaderboard storage is unavailable" }, 503);
+  const requestedSeason = Number.parseInt(url.searchParams.get("season") ?? "3", 10);
+  const season = Number.isSafeInteger(requestedSeason) && requestedSeason > 0 ? requestedSeason : 3;
+  const region = url.searchParams.get("region")?.trim() || null;
+  const requestedActivity = Number.parseInt(url.searchParams.get("activity") ?? "0", 10);
+  const activity = Number.isSafeInteger(requestedActivity) && requestedActivity > 0 ? requestedActivity : null;
+  const requestedTier = Number.parseInt(url.searchParams.get("tier") ?? "20", 10);
+  const tier = Number.isSafeInteger(requestedTier) && requestedTier >= 1 && requestedTier <= 20 ? requestedTier : 20;
+  const requestedLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
+  const limit = Number.isSafeInteger(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 100;
+  const regionClause = region ? " AND p.region_id=?2" : "";
+  const scoreBindings = region ? [season, region, limit] : [season, limit];
+  const scoreLimitParameter = region ? "?3" : "?2";
+  const scoreQuery = env.RLOGS_DB.prepare(`SELECT
+      r.profile_id, p.character_id, json_extract(p.public_projection_json, '$.display_name') AS display_name,
+      p.deployment_id, p.region_id, p.realm_id, r.master_score, r.observed_unix_millis
+    FROM profile_season_rankings r
+    JOIN profiles p ON p.profile_id=r.profile_id
+    WHERE r.season_id=?1${regionClause}
+    ORDER BY r.master_score DESC, r.observed_unix_millis, r.profile_id
+    LIMIT ${scoreLimitParameter}`).bind(...scoreBindings);
+
+  let timeQuery = null;
+  if (activity != null) {
+    const bindings = region
+      ? [season, activity, tier, region, limit]
+      : [season, activity, tier, limit];
+    const timeRegionClause = region ? " AND p.region_id=?4" : "";
+    const timeLimitParameter = region ? "?5" : "?4";
+    timeQuery = env.RLOGS_DB.prepare(`SELECT
+        d.profile_id, p.character_id, json_extract(p.public_projection_json, '$.display_name') AS display_name,
+        p.deployment_id, p.region_id, p.realm_id, d.activity_id, d.tier, d.score,
+        d.pass_time_seconds, d.completion_count, d.observed_unix_millis
+      FROM profile_dungeon_records d
+      JOIN profiles p ON p.profile_id=d.profile_id
+      WHERE d.season_id=?1 AND d.activity_id=?2 AND d.tier=?3${timeRegionClause}
+      ORDER BY d.pass_time_seconds, d.score DESC, d.observed_unix_millis, d.profile_id
+      LIMIT ${timeLimitParameter}`).bind(...bindings);
+  }
+  try {
+    const [scores, times] = await Promise.all([
+      scoreQuery.all(),
+      timeQuery ? timeQuery.all() : Promise.resolve({ results: [] }),
+    ]);
+    return json({
+      schema_version: 1,
+      season_id: season,
+      region_id: region,
+      activity_id: activity,
+      tier,
+      master_scores: scores.results ?? [],
+      dungeon_times: times.results ?? [],
+    }, 200, { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" });
+  } catch (cause) {
+    console.error("rLogs profile leaderboard read failed", cause);
+    return json({ error: "profile leaderboard is temporarily unavailable" }, 503);
+  }
+}
+
 async function parseCatalog(env, url) {
   const storedCatalog = await env.RLOGS_DATA.get("fs:catalog.v1.json", "json");
   const catalog = storedCatalog && Array.isArray(storedCatalog.entries)
@@ -340,6 +400,7 @@ async function route(request, env) {
     }, ready ? 200 : 503);
   }
   if (path === "/v1/profiles") return profileCatalog(env, url);
+  if (path === "/v1/leaderboards/profiles") return profileLeaderboards(env, url);
   if (path === "/v1/characters") return storedJson(env, "characters/catalog.v1.json");
   if (path === "/v1/parses") return parseCatalog(env, url);
   if (path === "/v1/activity/milestones") {
