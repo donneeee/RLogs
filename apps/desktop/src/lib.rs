@@ -2237,7 +2237,10 @@ impl AutomaticSubmissionStatus {
             self.view.current_queue_id = None;
             self.view.current_capture_session_id = None;
             self.clear_retry();
-        } else if self.view.state != "uploading" && self.view.state != "retrying" {
+        } else if self.view.state != "uploading"
+            && self.view.state != "retrying"
+            && self.view.state != "waiting_for_service"
+        {
             self.view.state = "queued".into();
         }
     }
@@ -2266,7 +2269,13 @@ impl AutomaticSubmissionStatus {
         delay: Duration,
         pending_eligible_count: usize,
     ) {
-        self.view.state = "retrying".into();
+        let error = error.into();
+        self.view.state = if error.contains("Cloudflare parse uploads are not enabled yet") {
+            "waiting_for_service"
+        } else {
+            "retrying"
+        }
+        .into();
         self.view.pending_eligible_count = pending_eligible_count;
         self.view.current_queue_id = Some(entry.queue_id.clone());
         self.view.current_capture_session_id = Some(entry.capture_session_id.clone());
@@ -2275,7 +2284,7 @@ impl AutomaticSubmissionStatus {
         self.view.next_retry_unix_millis =
             Some(unix_millis().saturating_add(delay.as_millis().min(u64::MAX as u128) as u64));
         self.view.last_activity_unix_millis = Some(unix_millis());
-        self.view.last_error = Some(error.into());
+        self.view.last_error = Some(error);
     }
 
     fn submitted(
@@ -13500,6 +13509,22 @@ mod tests {
         assert_eq!(failed.attempt_count, 1);
         assert_eq!(failed.retryable_failure_count, 1);
         assert!(failed.next_retry_unix_millis.is_some());
+    }
+
+    #[test]
+    fn automatic_submission_status_distinguishes_disabled_hosted_service() {
+        let entry = automatic_queue_entry("queue-1", SubmissionState::Draft);
+        let mut status = AutomaticSubmissionStatus::default();
+        status.uploading(&entry, 1);
+        status.retryable_failure(
+            &entry,
+            "Cloudflare parse uploads are not enabled yet; this verified draft remains safely queued on this PC and rLogs will retry automatically",
+            Duration::from_secs(60),
+            1,
+        );
+        assert_eq!(status.snapshot().state, "waiting_for_service");
+        status.configure(true, true, true, 1);
+        assert_eq!(status.snapshot().state, "waiting_for_service");
     }
 
     #[test]

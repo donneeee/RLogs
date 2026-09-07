@@ -3678,6 +3678,9 @@ function automaticSubmissionSummary(status: AutomaticSubmissionStatusView): stri
   if (status.state === "waiting_for_account_connection") {
     return "Waiting for this PC to reconnect to your rLogs account.";
   }
+  if (status.state === "waiting_for_service") {
+    return "Cloudflare uploads are not active yet. Verified drafts remain safely queued and will resume automatically.";
+  }
   if (status.state === "uploading") {
     return "Uploading one verified draft now.";
   }

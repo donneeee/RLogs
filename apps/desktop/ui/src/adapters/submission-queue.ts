@@ -36,6 +36,7 @@ export type AutomaticSubmissionState =
   | "starting"
   | "disabled"
   | "waiting_for_account_connection"
+  | "waiting_for_service"
   | "idle"
   | "queued"
   | "uploading"
@@ -233,6 +234,7 @@ function isAutomaticSubmissionState(value: unknown): value is AutomaticSubmissio
     value === "starting" ||
     value === "disabled" ||
     value === "waiting_for_account_connection" ||
+    value === "waiting_for_service" ||
     value === "idle" ||
     value === "queued" ||
     value === "uploading" ||

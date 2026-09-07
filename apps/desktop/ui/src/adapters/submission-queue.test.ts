@@ -50,6 +50,28 @@ describe("local submission queue", () => {
     expect(status.lastError).toBe("server rejected the draft");
   });
 
+  it("accepts the fail-closed hosted service wait state", () => {
+    const status = parseAutomaticSubmissionStatus({
+      schemaVersion: 1,
+      state: "waiting_for_service",
+      pendingEligibleCount: 1,
+      currentQueueId: null,
+      currentCaptureSessionId: null,
+      attemptCount: 1,
+      successfulCount: 0,
+      retryableFailureCount: 1,
+      consecutiveFailures: 1,
+      nextRetryUnixMillis: 1_700_000_005_000,
+      lastActivityUnixMillis: null,
+      lastError: "Cloudflare parse uploads are not enabled yet",
+      lastReportId: null,
+      lastShareUrl: null,
+    });
+
+    expect(status.state).toBe("waiting_for_service");
+    expect(status.pendingEligibleCount).toBe(1);
+  });
+
   it("rejects malformed automatic uploader status", () => {
     expect(() => parseAutomaticSubmissionStatus({
       schemaVersion: 1,
