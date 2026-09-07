@@ -62,8 +62,11 @@ icons use the bundled exact-ID presentation catalog, and missing HP or
 localization remains unavailable rather than becoming zero. Each displayed
 debuff now carries its exact packet source when that actor can be resolved and
 its packet duration counts down locally without inventing a duration for
-effects that do not provide one. Shield/break and target cast state remain
-gated until their complete presentation contracts are implemented.
+effects that do not provide one. The target's packet-provided shield list and
+`EBreakingStage` value are also displayed, and an undecodable replacement
+clears the projected shield instead of leaving stale state visible. Target cast
+state remains gated until its actor identity and duration presentation contract
+are both proven for the current build.
 
 The overlay may preserve the last target briefly only as an explicitly styled
 stale state. It must never imply that an old packet value is still live.

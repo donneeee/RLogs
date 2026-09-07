@@ -489,11 +489,19 @@ impl MechanicsMapProjector {
                     }
                     for attribute in &attributes.attributes {
                         if attribute.attribute_id == ATTR_SHIELD_LIST {
-                            if let Ok(shields) =
-                                rlogs_game_bpsr::decode_shield_list(&attribute.raw_value)
-                            {
-                                entry.current_shield = shields.current_value_total();
-                                entry.max_shield = shields.max_value_total();
+                            match rlogs_game_bpsr::decode_shield_list(&attribute.raw_value) {
+                                Ok(shields) => {
+                                    entry.current_shield = shields.current_value_total();
+                                    entry.max_shield = shields.max_value_total();
+                                }
+                                Err(_) => {
+                                    // An observed but malformed replacement cannot leave an
+                                    // earlier value looking current. Preserve the undecoded
+                                    // packet in the canonical log, but fail this projection
+                                    // closed until a later valid shield list arrives.
+                                    entry.current_shield = None;
+                                    entry.max_shield = None;
+                                }
                             }
                             continue;
                         }
@@ -1684,6 +1692,42 @@ mod tests {
                         stream_id: 1,
                     },
                 },
+                kind: TimelineEventKind::EntityAttributes(EntityAttributeEvent {
+                    actor: target,
+                    update_kind: EntityAttributeUpdateKind::Delta,
+                    ownership: None,
+                    attributes: vec![EntityAttribute {
+                        attribute_id: ATTR_SHIELD_LIST,
+                        raw_value: vec![0x0a, 0x02, 0x08],
+                        decoded: None,
+                    }],
+                }),
+            }),
+        ));
+        let malformed_shield = projector
+            .snapshot()
+            .target
+            .expect("target remains selected");
+        assert_eq!(malformed_shield.current_shield, None);
+        assert_eq!(malformed_shield.max_shield, None);
+        assert_eq!(malformed_shield.shield_percent, None);
+
+        projector.observe(&envelope(
+            8,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 8,
+                time: EventTime {
+                    observed_micros: 8_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 8,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
                 kind: TimelineEventKind::Status(StatusEvent {
                     source: Some(local),
                     target,
@@ -1710,17 +1754,17 @@ mod tests {
         );
 
         projector.observe(&envelope(
-            8,
+            9,
             CanonicalEvent::Timeline(TimelineEvent {
-                sequence: 8,
+                sequence: 9,
                 time: EventTime {
-                    observed_micros: 8_000,
+                    observed_micros: 9_000,
                     game_time_millis: None,
                 },
                 provenance: EventProvenance {
                     confidence: EvidenceConfidence::Exact,
                     source: EvidenceSource::Wire {
-                        capture_sequence: 8,
+                        capture_sequence: 9,
                         connection_id: 1,
                         stream_id: 1,
                     },
