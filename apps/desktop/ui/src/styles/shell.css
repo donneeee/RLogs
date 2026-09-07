@@ -5711,9 +5711,9 @@ body {
 .mechanics-radar[data-model="absolute_scene_map"]:not([data-asset-state="ready"]) .mechanics-ring { border-radius: 10px; }
 .mechanics-radar-fallback, .mechanics-map-arena, .mechanics-map-regions, .mechanics-radar-points { position: absolute; inset: 0; }
 .mechanics-map-arena { width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.mechanics-map-arena circle, .mechanics-map-arena rect, .mechanics-map-arena line { fill: none; stroke: rgb(92 228 212 / 48%); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
-.mechanics-map-arena circle + circle { stroke: rgb(179 138 255 / 46%); stroke-dasharray: 3 2; }
-.mechanics-radar[data-layout="raid_ring"] .mechanics-map-plane, .mechanics-radar[data-layout="raid_grid"] .mechanics-map-plane { background: radial-gradient(circle at center, rgb(31 76 91 / 42%), rgb(5 13 23 / 97%) 72%); }
+.mechanics-map-arena ellipse, .mechanics-map-arena rect, .mechanics-map-arena line { fill: none; stroke: rgb(92 228 212 / 48%); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.mechanics-map-arena ellipse + ellipse { stroke: rgb(179 138 255 / 46%); stroke-dasharray: 3 2; }
+.mechanics-radar[data-layout="raid_ring"]:not([data-asset-state="ready"]) .mechanics-map-plane, .mechanics-radar[data-layout="raid_grid"]:not([data-asset-state="ready"]) .mechanics-map-plane { background: radial-gradient(circle at center, rgb(31 76 91 / 42%), rgb(5 13 23 / 97%) 72%); }
 .mechanics-map-regions { width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .mechanics-map-regions polygon { fill: rgb(255 91 111 / 23%); stroke: rgb(255 111 131 / 82%); stroke-width: 0.55; vector-effect: non-scaling-stroke; }
 .mechanics-map-regions polygon[data-side="right"] { fill: rgb(179 138 255 / 23%); stroke: rgb(197 167 255 / 84%); }
@@ -5725,9 +5725,9 @@ body {
 .mechanics-map-regions line[data-kind="matrix_callout"] { stroke: rgb(242 195 107 / 92%); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 .mechanics-map-regions polygon[data-kind="phase_edge"], .mechanics-map-regions polygon[data-kind="phase_corner"] { fill: rgb(255 111 131 / 18%); stroke: rgb(255 111 131 / 88%); }
 .mechanics-map-regions polygon[data-kind^="return_"], .mechanics-map-regions polygon[data-kind="floor_link"] { fill: rgb(179 138 255 / 21%); stroke: rgb(197 167 255 / 90%); }
-.mechanics-map-regions circle[data-kind^="ring_"] { fill: rgb(255 111 131 / 18%); stroke: rgb(255 111 131 / 55%); vector-effect: non-scaling-stroke; }
-.mechanics-map-regions circle[data-kind="ring_middle"] { fill: none; stroke: rgb(242 195 107 / 32%); }
-.mechanics-map-regions circle[data-kind="ring_outer"] { fill: none; stroke: rgb(109 169 255 / 32%); }
+.mechanics-map-regions ellipse[data-kind^="ring_"] { fill: rgb(255 111 131 / 18%); stroke: rgb(255 111 131 / 55%); vector-effect: non-scaling-stroke; }
+.mechanics-map-regions ellipse[data-kind="ring_middle"] { fill: none; stroke: rgb(242 195 107 / 32%); }
+.mechanics-map-regions ellipse[data-kind="ring_outer"] { fill: none; stroke: rgb(109 169 255 / 32%); }
 .mechanics-map-regions text[data-kind="floor_label"] { fill: var(--text); stroke: rgb(3 11 19 / 80%); stroke-width: 0.65; paint-order: stroke; text-anchor: middle; dominant-baseline: central; font-size: 5px; font-weight: 900; }
 .mechanics-ring { position: absolute; inset: 25%; border: 1px solid rgb(142 221 220 / 20%); border-radius: 50%; }
 .mechanics-ring.ring-two { inset: 8%; }

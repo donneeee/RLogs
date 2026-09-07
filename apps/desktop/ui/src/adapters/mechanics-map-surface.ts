@@ -113,7 +113,7 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     radar.dataset.model = snapshot.map_model;
     radar.dataset.layout = snapshot.map_layout ?? "none";
     rotate.hidden = sceneMap;
-    renderArenaLayout(arena, snapshot.map_layout);
+    renderArenaLayout(arena, snapshot);
     prepareMapAsset(snapshot.background_asset_url);
     radar.dataset.assetState = mapAssetState;
     plane.style.setProperty("--mechanics-map-background", mapAssetState === "ready" && mapAssetUrl !== null ? `url(${JSON.stringify(mapAssetUrl)})` : "none");
@@ -382,29 +382,53 @@ function mechanicKindLabel(kind: string | null): string | null {
   };
   return labels[kind] ?? null;
 }
-function renderArenaLayout(arena: SVGSVGElement, layout: MechanicsMapUpdate["snapshot"]["map_layout"]): void {
+function renderArenaLayout(arena: SVGSVGElement, snapshot: MechanicsMapUpdate["snapshot"]): void {
   arena.replaceChildren();
-  if (layout === "raid_ring") {
-    for (const radius of [10.4545, 11.3636, 15.9091, 16.8182, 27.2727]) {
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", "50"); circle.setAttribute("cy", "50"); circle.setAttribute("r", String(radius));
-      arena.append(circle);
+  if (snapshot.map_layout === "raid_ring") {
+    const center = projectMechanicsMapPoint(snapshot, 0, 0, false);
+    if (center === null || snapshot.map_span_x === null || snapshot.map_span_z === null) return;
+    for (const radius of [11.5, 12.5, 17.5, 18.5, 30]) {
+      const ellipse = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+      ellipse.setAttribute("cx", String(center.mapX)); ellipse.setAttribute("cy", String(center.mapY));
+      ellipse.setAttribute("rx", String((radius / snapshot.map_span_x) * 100));
+      ellipse.setAttribute("ry", String((radius / snapshot.map_span_z) * 100));
+      arena.append(ellipse);
     }
-    for (const [x1, y1, x2, y2] of [[30.909, 30.718, 69.091, 69.282], [69.091, 30.718, 30.909, 69.282], [50, 50, 88.373, 50], [50, 50, 11.627, 50]]) {
+    for (const [x1, z1, x2, z2] of [[-21, 21.21, 21, -21.21], [21, 21.21, -21, -21.21], [0, 0, 42.21, 0], [0, 0, -42.21, 0]] as const) {
+      const start = projectMechanicsMapPoint(snapshot, x1, z1, false);
+      const end = projectMechanicsMapPoint(snapshot, x2, z2, false);
+      if (start === null || end === null) continue;
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", String(x1)); line.setAttribute("y1", String(y1)); line.setAttribute("x2", String(x2)); line.setAttribute("y2", String(y2));
+      line.setAttribute("x1", String(start.mapX)); line.setAttribute("y1", String(start.mapY));
+      line.setAttribute("x2", String(end.mapX)); line.setAttribute("y2", String(end.mapY));
       arena.append(line);
     }
-  } else if (layout === "raid_grid") {
+  } else if (snapshot.map_layout === "raid_grid") {
+    const topLeft = projectMechanicsMapPoint(snapshot, -30, 22.5, false);
+    const bottomRight = projectMechanicsMapPoint(snapshot, 30, -22.5, false);
+    if (topLeft === null || bottomRight === null) return;
     const boundary = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    boundary.setAttribute("x", "0"); boundary.setAttribute("y", "8.3333"); boundary.setAttribute("width", "100"); boundary.setAttribute("height", "83.3334"); boundary.setAttribute("rx", "3");
+    boundary.setAttribute("x", String(topLeft.mapX)); boundary.setAttribute("y", String(topLeft.mapY));
+    boundary.setAttribute("width", String(bottomRight.mapX - topLeft.mapX));
+    boundary.setAttribute("height", String(bottomRight.mapY - topLeft.mapY)); boundary.setAttribute("rx", "0.3");
     arena.append(boundary);
-    for (const [x, y] of [[33.3333, 36.1111], [66.6667, 63.8889]]) {
+    for (const x of [-10, 10]) {
+      const start = projectMechanicsMapPoint(snapshot, x, 22.5, false);
+      const end = projectMechanicsMapPoint(snapshot, x, -22.5, false);
+      if (start === null || end === null) continue;
       const vertical = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      vertical.setAttribute("x1", String(x)); vertical.setAttribute("x2", String(x)); vertical.setAttribute("y1", "8.3333"); vertical.setAttribute("y2", "91.6667");
+      vertical.setAttribute("x1", String(start.mapX)); vertical.setAttribute("x2", String(end.mapX));
+      vertical.setAttribute("y1", String(start.mapY)); vertical.setAttribute("y2", String(end.mapY));
+      arena.append(vertical);
+    }
+    for (const z of [-7.5, 7.5]) {
+      const start = projectMechanicsMapPoint(snapshot, -30, z, false);
+      const end = projectMechanicsMapPoint(snapshot, 30, z, false);
+      if (start === null || end === null) continue;
       const horizontal = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      horizontal.setAttribute("x1", "0"); horizontal.setAttribute("x2", "100"); horizontal.setAttribute("y1", String(y)); horizontal.setAttribute("y2", String(y));
-      arena.append(vertical, horizontal);
+      horizontal.setAttribute("x1", String(start.mapX)); horizontal.setAttribute("x2", String(end.mapX));
+      horizontal.setAttribute("y1", String(start.mapY)); horizontal.setAttribute("y2", String(end.mapY));
+      arena.append(horizontal);
     }
   }
 }
@@ -412,16 +436,18 @@ function renderRaidRings(regions: SVGSVGElement, snapshot: MechanicsMapUpdate["s
   if (snapshot.map_layout !== "raid_ring") return;
   const bands = { ring_inner: [0, 12.5], ring_middle: [12.5, 17.5], ring_outer: [18.5, 30] } as const;
   const active = snapshot.mechanics.filter((signal) => signal.mechanic_kind !== null && signal.mechanic_kind in bands).slice(-3);
+  const center = projectMechanicsMapPoint(snapshot, 0, 0, false);
+  if (center === null || snapshot.map_span_x === null || snapshot.map_span_z === null) return;
   for (const signal of active) {
     const kind = signal.mechanic_kind as keyof typeof bands;
     const [inner, outer] = bands[kind];
-    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    circle.setAttribute("cx", "50"); circle.setAttribute("cy", "50");
-    if (inner === 0) {
-      circle.setAttribute("r", String((outer / 110) * 100));
-    } else {
-      circle.setAttribute("r", String((((inner + outer) / 2) / 110) * 100));
-      circle.style.strokeWidth = String(((outer - inner) / 110) * 100);
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+    circle.setAttribute("cx", String(center.mapX)); circle.setAttribute("cy", String(center.mapY));
+    const radius = inner === 0 ? outer : (inner + outer) / 2;
+    circle.setAttribute("rx", String((radius / snapshot.map_span_x) * 100));
+    circle.setAttribute("ry", String((radius / snapshot.map_span_z) * 100));
+    if (inner !== 0) {
+      circle.style.strokeWidth = String(((outer - inner) / snapshot.map_span_x) * 100);
     }
     circle.dataset.kind = kind;
     regions.append(circle);

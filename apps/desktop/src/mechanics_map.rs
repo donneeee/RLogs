@@ -600,7 +600,12 @@ impl MechanicsMapProjector {
             } else {
                 "player_relative_radar"
             },
-            map_layout: absolute_map.and_then(|spec| spec.layout),
+            // The raid's packet height still selects its mechanic layout, but
+            // positions use the full game-owned scene map transform when that
+            // texture is available.
+            map_layout: raid_arena
+                .and_then(|spec| spec.layout)
+                .or_else(|| scene_map.and_then(|spec| spec.layout)),
             world_radius: MINIMAP_WORLD_RADIUS,
             map_origin_x: absolute_map.map(|spec| spec.origin_x),
             map_origin_z: absolute_map.map(|spec| spec.origin_z),
@@ -784,6 +789,27 @@ fn scene_map_spec(build: Option<&str>, scene_id: Option<i32>) -> Option<SceneMap
             origin_z: -377.0,
             span_x: 450.0,
             span_z: 450.0,
+        }),
+        // SceneResource 13021-13023 resolves dng_raid_001. The game texture
+        // contains every vertically separated raid arena; packet Y selects
+        // the active mechanic layout while this transform remains exact.
+        13021..=13023 => Some(SceneMapSpec {
+            asset_file: Some("scene-13021-s3-raid.png"),
+            layout: None,
+            origin_x: -500.0,
+            origin_z: -400.0,
+            span_x: 1000.0,
+            span_z: 1000.0,
+        }),
+        // The current-build Boyce branch resources back Desolate/Wasteland
+        // Court scene 6615 and provide this exact world transform.
+        6615 => Some(SceneMapSpec {
+            asset_file: Some("scene-6615-wasteland-court.png"),
+            layout: None,
+            origin_x: -180.0,
+            origin_z: -250.0,
+            span_x: 500.0,
+            span_z: 500.0,
         }),
         _ => None,
     }
@@ -1173,7 +1199,17 @@ mod tests {
         assert_eq!((map.origin_x, map.origin_z), (-149.0, -377.0));
         assert_eq!((map.span_x, map.span_z), (450.0, 450.0));
         assert!(scene_map_spec(Some("global/steam-newer"), Some(6513)).is_none());
-        assert!(scene_map_spec(Some("global/steam-24687926"), Some(6615)).is_none());
+        let raid = scene_map_spec(Some("global/steam-24687926"), Some(13023))
+            .expect("reviewed Season 3 raid map");
+        assert_eq!(raid.asset_file, Some("scene-13021-s3-raid.png"));
+        assert_eq!((raid.origin_x, raid.origin_z), (-500.0, -400.0));
+        assert_eq!((raid.span_x, raid.span_z), (1000.0, 1000.0));
+
+        let wasteland = scene_map_spec(Some("global/steam-24687926"), Some(6615))
+            .expect("reviewed Wasteland Court map");
+        assert_eq!(wasteland.asset_file, Some("scene-6615-wasteland-court.png"));
+        assert_eq!((wasteland.origin_x, wasteland.origin_z), (-180.0, -250.0));
+        assert_eq!((wasteland.span_x, wasteland.span_z), (500.0, 500.0));
     }
 
     #[test]
@@ -1204,7 +1240,7 @@ mod tests {
         let entries = value["builds"]["global/steam-24687926"]
             .as_array()
             .expect("current build map entries");
-        assert_eq!(entries.len(), 4);
+        assert_eq!(entries.len(), 6);
         for entry in entries {
             let asset = entry["asset"].as_str().expect("asset name");
             let scene_ids = entry["scene_ids"].as_array().expect("scene IDs");
