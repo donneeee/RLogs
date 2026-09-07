@@ -26,6 +26,7 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   let mapScale = 1;
   let mapPanX = 0;
   let mapPanY = 0;
+  const automaticPreparationAttempts = new Set<string>();
   let dragging: { pointerId: number; x: number; y: number } | null = null;
 
   const root = el("div", "plugin-surface overlay-workspace-surface mechanics-map-surface");
@@ -295,7 +296,11 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
     image.onerror = () => {
       if (!alive || mapAssetUrl !== url) return;
       mapAssetState = "missing";
-      render();
+      if (claimAutomaticMapPreparation(url, automaticPreparationAttempts)) {
+        void prepareReviewedMaps();
+      } else {
+        render();
+      }
     };
     image.src = url;
   }
@@ -325,6 +330,12 @@ export function mountMechanicsMapSurface(container: HTMLElement, dependencies: M
   }
 
   return { dispose() { alive = false; mapAssetUrl = null; root.remove(); } };
+}
+
+export function claimAutomaticMapPreparation(url: string, attempts: Set<string>): boolean {
+  if (attempts.has(url)) return false;
+  attempts.add(url);
+  return true;
 }
 
 function notice(title: string, detail: string, state: string): HTMLElement { const item = el("article", "mechanics-signal-row"); item.dataset.state = state; item.append(text("strong", title), text("span", detail)); return item; }

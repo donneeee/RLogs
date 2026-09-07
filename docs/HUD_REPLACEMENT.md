@@ -123,10 +123,12 @@ The Cursed Tomb pack also classifies the packet-observed boss, towers, and
 left/right clones and presents reviewed tower activation/completion, energy
 pillar, charge-target, puzzle-piece, and clone-charge signals. These identities
 remain scoped to scenes `6513`-`6515` on `global/steam-24687926`; a different
-scene or build gets no inferred mechanic role. Mechanics Map remains a
-`developer_only` workspace tab until the local game-asset compiler and live
-replay coverage are ready for ordinary installs. Removing that one manifest
-field is the explicit graduation step.
+scene or build gets no inferred mechanic role. Mechanics Map is available in
+ordinary installs. When an exact reviewed map is absent, its surface invokes
+the packaged local compiler once for that asset URL after a packet-observed
+build and attached game process identify the matching user-owned container. A
+failed or unsupported preparation remains visible and retryable; it never
+substitutes another build's texture.
 
 The official map-paper fallback can be compiled locally from an installed game
 without committing or uploading it:
@@ -210,9 +212,10 @@ packaged helper's synthetic binary-parser/import self-check on every change,
 using the exact dependency versions in
 `tools/bpsr-map-compiler-requirements.txt`; the release workflow repeats that
 gate before constructing the installer. The installer contains the compiler,
-not game assets. Automatic discovery/invocation remains disabled while this
-workspace is developer-only, so an installed-client location and exact
-packet-observed build identity cannot be guessed or silently crossed.
+not game assets. Automatic discovery follows the attached game executable only
+after the packet-observed build selects an exact reviewed manifest entry. The
+compiler cannot guess or silently cross an installed-client location or build
+identity.
 
 The checked-in `reviewed-map-assets.v1.json` allowlist can prepare every map
 reviewed for one exact build in a single command. Before writing each image,

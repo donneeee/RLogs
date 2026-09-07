@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { claimAutomaticMapPreparation } from "./mechanics-map-surface";
 import { parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegions, projectCoralWaveRegion, projectCursedTombChargeRegion, projectMechanicsMapEntities, projectMechanicsMapPoint, projectRaidFloorRegions, projectTinaPizzaRegion, zoomMechanicsMapAt, type MechanicsMapSignal, type MechanicsMapSnapshot } from "./mechanics-map";
 
 function snapshot(): MechanicsMapSnapshot {
@@ -18,6 +19,14 @@ function snapshot(): MechanicsMapSnapshot {
 }
 
 describe("Mechanics Map", () => {
+  it("automatically prepares each missing exact-build map only once", () => {
+    const attempts = new Set<string>();
+    const map = "/local-game-assets/global/steam-24687926/scene-6513-cursed-tomb.png";
+    expect(claimAutomaticMapPreparation(map, attempts)).toBe(true);
+    expect(claimAutomaticMapPreparation(map, attempts)).toBe(false);
+    expect(claimAutomaticMapPreparation(`${map}?revision=2`, attempts)).toBe(true);
+  });
+
   it("zooms around the cursor without imposing a product cap", () => {
     const zoomedIn = zoomMechanicsMapAt({ scale: 1, panX: 0, panY: 0 }, 100, 50, -10_000);
     expect(zoomedIn.scale).toBeGreaterThan(1_000_000);

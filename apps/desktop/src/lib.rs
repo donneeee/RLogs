@@ -13066,7 +13066,6 @@ fn is_developer_mode_route(method: &str, route: &str) -> bool {
         (method, route),
         ("POST", "/api/custom-triggers/event-inspector/live/wait")
             | ("POST", "/api/custom-triggers/event-inspector/live/detail")
-            | ("POST", "/api/runtime/local-game-assets/prepare")
     )
 }
 
@@ -17201,7 +17200,7 @@ developer_only = true
             "POST",
             "/api/custom-triggers/event-inspector/live/detail"
         ));
-        assert!(is_developer_mode_route(
+        assert!(!is_developer_mode_route(
             "POST",
             "/api/runtime/local-game-assets/prepare"
         ));

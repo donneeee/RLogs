@@ -46,7 +46,6 @@ label = "Mechanics Map"
 entrypoint = "ui/mechanics-map.html"
 section = "tools"
 default_order = 210
-developer_only = true
 
 [[workspace.tabs]]
 id = "settings"
