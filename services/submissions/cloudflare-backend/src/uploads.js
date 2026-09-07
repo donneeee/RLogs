@@ -148,7 +148,7 @@ async function all(env, sql, ...values) {
   return result.results ?? [];
 }
 
-async function synchronizeIdentity(env, identity) {
+export async function synchronizeIdentity(env, identity) {
   const account = identity.account;
   if (!Number.isSafeInteger(account.account_id) || !nonempty(account.username, 64) ||
       !DIGEST.test(account.discord_user_hash ?? "") || !nonempty(account.discord_username, 128) ||

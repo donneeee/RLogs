@@ -1,4 +1,5 @@
 import { publishProfilePackage, publishProfilePhoto } from "./profile.js";
+import { synchronizeIdentity } from "./uploads.js";
 
 const encoder = new TextEncoder();
 const WEB_SESSION_LIFETIME_MILLIS = 30 * 24 * 60 * 60 * 1000;
@@ -335,6 +336,38 @@ export class RLogsAuthState {
     const deviceToken = bearer(request);
     const identity = await this.authenticateDevice(request);
     if (!identity) return error("write authorization failed", 401);
+    const account = await this.account(identity.submitter_id);
+    if (!account) return error("account authentication failed", 401);
+    try {
+      await synchronizeIdentity(this.env, {
+        submitter_id: identity.submitter_id,
+        device_id: identity.device_id,
+        device_token_hash: await tokenHash(
+          "device-token",
+          deviceToken,
+          this.env.AUTH_TOKEN_PEPPER,
+        ),
+        device_created_unix_millis: identity.created_unix_millis,
+        account: {
+          account_id: account.account_id,
+          username: account.username,
+          discord_user_hash: await tokenHash(
+            "discord-user",
+            account.discord_user_id,
+            this.env.AUTH_TOKEN_PEPPER,
+          ),
+          discord_username: account.discord_username,
+          discord_global_name: account.discord_global_name ?? null,
+          discord_avatar_url: account.discord_avatar_url ?? null,
+          publish_verified_parses: account.publish_verified_parses ?? false,
+          created_unix_millis: account.created_unix_millis,
+          updated_unix_millis: account.updated_unix_millis,
+        },
+      });
+    } catch (cause) {
+      console.error("rLogs profile account metadata synchronization failed", cause);
+      return error("profile account metadata synchronization is temporarily unavailable", 503);
+    }
     const packageValue = await parseBody(request);
     if (!packageValue) return error("profile package is invalid: malformed JSON", 400);
     const result = await publishProfilePackage(this.env, packageValue, identity, deviceToken, now);

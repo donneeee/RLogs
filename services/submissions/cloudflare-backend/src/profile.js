@@ -108,6 +108,15 @@ export async function publishProfilePackage(env, packageValue, identity, deviceT
   await env.RLOGS_DATA.put(`${prefix}/public.json`, JSON.stringify(published));
   reconcileCatalog(catalog, published);
   await env.RLOGS_DATA.put("fs:profiles/catalog.v1.json", JSON.stringify(catalog));
+  try {
+    await persistProfileMetadata(env, published, claim, loadout);
+  } catch (cause) {
+    console.error("rLogs profile metadata synchronization failed", cause);
+    return {
+      error: "profile metadata synchronization is temporarily unavailable; the safely stored profile will retry",
+      status: 503,
+    };
+  }
   return {
     value: {
       schema_version: 1, profile_id: profileId, character_id: characterId,
@@ -116,6 +125,115 @@ export async function publishProfilePackage(env, packageValue, identity, deviceT
       equipped_module_count: published.equipped_module_count,
       profile_url: `${String(env.WEBSITE_URL).replace(/\/$/, "")}/profiles/${encodeURIComponent(characterId)}/`,
     },
+  };
+}
+
+export async function persistProfileMetadata(env, profile, claim, loadout = null) {
+  if (!env.RLOGS_DB) throw new Error("the production metadata database is unavailable");
+  const gameId = BPSR_GAME_PLUGIN_ID;
+  const characterId = String(profile.character_id);
+  const priorClaim = await env.RLOGS_DB.prepare(
+    "SELECT submitter_id FROM uid_claims WHERE game_id=?1 AND character_id=?2",
+  ).bind(gameId, characterId).first();
+  if (priorClaim && priorClaim.submitter_id !== claim.submitter_id) {
+    throw new Error(`UID ${characterId} has conflicting D1 ownership`);
+  }
+
+  const statements = [
+    env.RLOGS_DB.prepare(`INSERT INTO uid_claims (
+      game_id, character_id, profile_id, submitter_id, deployment_id, region_id, realm_id,
+      claimed_unix_millis
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+    ON CONFLICT(game_id, character_id) DO UPDATE SET
+      profile_id=excluded.profile_id,
+      deployment_id=excluded.deployment_id,
+      region_id=excluded.region_id,
+      realm_id=excluded.realm_id
+    WHERE uid_claims.submitter_id=excluded.submitter_id`).bind(
+      gameId,
+      characterId,
+      profile.profile_id,
+      claim.submitter_id,
+      profile.deployment,
+      profile.region,
+      profile.realm ?? null,
+      claim.claimed_unix_millis,
+    ),
+    env.RLOGS_DB.prepare(`INSERT INTO profiles (
+      profile_id, game_id, character_id, submitter_id, current_package_id,
+      source_client_build, deployment_id, region_id, realm_id, public_projection_json,
+      created_unix_millis, updated_unix_millis
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+    ON CONFLICT(profile_id) DO UPDATE SET
+      current_package_id=excluded.current_package_id,
+      source_client_build=excluded.source_client_build,
+      deployment_id=excluded.deployment_id,
+      region_id=excluded.region_id,
+      realm_id=excluded.realm_id,
+      public_projection_json=excluded.public_projection_json,
+      created_unix_millis=min(profiles.created_unix_millis, excluded.created_unix_millis),
+      updated_unix_millis=excluded.updated_unix_millis
+    WHERE profiles.submitter_id=excluded.submitter_id
+      AND profiles.game_id=excluded.game_id
+      AND profiles.character_id=excluded.character_id
+      AND excluded.updated_unix_millis >= profiles.updated_unix_millis`).bind(
+      profile.profile_id,
+      gameId,
+      characterId,
+      claim.submitter_id,
+      profile.package_id,
+      profile.source_client_build,
+      profile.deployment,
+      profile.region,
+      profile.realm ?? null,
+      JSON.stringify(profileVerifierProjection(profile)),
+      profile.created_unix_millis,
+      profile.updated_unix_millis,
+    ),
+  ];
+  if (loadout) {
+    const summary = profile.loadouts?.find((entry) => entry.project_id === loadout.project_id);
+    statements.push(env.RLOGS_DB.prepare(`INSERT INTO profile_loadouts (
+      profile_id, project_id, package_id, display_name, projection_json, updated_unix_millis
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+    ON CONFLICT(profile_id, project_id) DO UPDATE SET
+      package_id=excluded.package_id,
+      display_name=excluded.display_name,
+      projection_json=excluded.projection_json,
+      updated_unix_millis=excluded.updated_unix_millis
+    WHERE excluded.updated_unix_millis >= profile_loadouts.updated_unix_millis`).bind(
+      profile.profile_id,
+      loadout.project_id,
+      profile.package_id,
+      summary?.project_name ?? null,
+      JSON.stringify(loadoutMetadataProjection(loadout, summary)),
+      loadout.updated_unix_millis,
+    ));
+  }
+  await env.RLOGS_DB.batch(statements);
+}
+
+function profileVerifierProjection(profile) {
+  return {
+    schema_version: 1,
+    profile_id: profile.profile_id,
+    character_id: String(profile.character_id),
+    display_name: profile.display_name ?? profile.envelope?.body?.display_name ?? null,
+  };
+}
+
+function loadoutMetadataProjection(loadout, summary) {
+  return {
+    schema_version: 1,
+    profile_id: loadout.profile_id,
+    project_id: loadout.project_id,
+    project_name: summary?.project_name ?? null,
+    source_client_build: loadout.source_client_build,
+    class_id: loadout.class_id ?? null,
+    specialization_id: loadout.specialization_id ?? null,
+    module_inventory_count: loadout.module_inventory_count ?? 0,
+    equipped_module_count: loadout.equipped_module_count ?? 0,
+    updated_unix_millis: loadout.updated_unix_millis,
   };
 }
 

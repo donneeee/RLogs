@@ -36,8 +36,11 @@ function environment(values = {}) {
         if (query.includes("FROM report_runs")) {
           return { async all() { return { results: [] }; } };
         }
-        if (query.includes("FROM reports WHERE report_id")) {
+        if (query.includes("FROM reports r JOIN upload_sessions")) {
           return { bind() { return { async first() { return null; } }; } };
+        }
+        if (query.includes("FROM report_memberships")) {
+          return { bind() { return { async all() { return { results: [] }; } }; } };
         }
         if (query.includes("FROM accounts WHERE submitter_id")) {
           return { bind() { return { async first() { return null; } }; } };
@@ -215,7 +218,14 @@ test("private visibility overrides disappear from public catalogs and reports", 
 
 test("new hosted reports and catalog rows are read from D1 and R2", async () => {
   const reportId = `rpt_${"b".repeat(32)}`;
-  const report = { report_id: reportId, visibility: "public", runs: [{ run_index: 0 }] };
+  const report = {
+    report_id: reportId,
+    visibility: "public",
+    runs: [{ run_index: 0, participants: [
+      { actor_id: "2", character_id: null, display_name: null },
+      { actor_id: "3", character_id: null, display_name: "Remote Player" },
+    ] }],
+  };
   const entry = {
     report_id: reportId, run_index: 0, created_unix_millis: 10,
     region_id: "north-america", terminal_state: "completed",
@@ -223,9 +233,17 @@ test("new hosted reports and catalog rows are read from D1 and R2", async () => 
   const env = environment({ "fs:catalog.v1.json": JSON.stringify({ schema_version: 6, entries: [], facets: {} }) });
   env.RLOGS_DB.prepare = (query) => {
     if (query.includes("FROM report_runs")) return { async all() { return { results: [{ catalog_entry_json: JSON.stringify(entry) }] }; } };
-    if (query.includes("FROM reports WHERE report_id")) return { bind() { return { async first() {
-      return { visibility: "public", projection_object_key: "reports/new.json" };
+    if (query.includes("FROM reports r JOIN upload_sessions")) return { bind() { return { async first() {
+      return { visibility: "public", projection_object_key: "reports/new.json", submitter_id: "usr_owner" };
     } }; } };
+    if (query.includes("FROM report_memberships")) return { bind(actualReportId, submitterId) {
+      assert.equal(actualReportId, reportId);
+      assert.equal(submitterId, "usr_owner");
+      return { async all() { return { results: [{
+        actor_id: "2",
+        public_projection_json: JSON.stringify({ display_name: "MarieRose" }),
+      }] }; } };
+    } };
     if (query.includes("FROM accounts WHERE submitter_id")) return { bind() { return { async first() { return null; } }; } };
     throw new Error(`unexpected query: ${query}`);
   };
@@ -236,7 +254,35 @@ test("new hosted reports and catalog rows are read from D1 and R2", async () => 
   const catalog = await backend.fetch(new Request("https://backend/v1/parses"), env);
   assert.deepEqual((await catalog.json()).entries, [entry]);
   const projection = await backend.fetch(new Request(`https://backend/v1/parses/${reportId}`), env);
-  assert.deepEqual(await projection.json(), report);
+  assert.deepEqual(await projection.json(), {
+    ...report,
+    runs: [{ run_index: 0, participants: [
+      { actor_id: "2", character_id: null, display_name: "MarieRose" },
+      { actor_id: "3", character_id: null, display_name: "Remote Player" },
+    ] }],
+  });
+});
+
+test("hosted name enrichment rejects placeholders and malformed profile projections", async () => {
+  const reportId = `rpt_${"c".repeat(32)}`;
+  const report = { report_id: reportId, runs: [{ participants: [
+    { actor_id: "2", display_name: null },
+    { actor_id: "3", display_name: null },
+  ] }] };
+  const env = environment();
+  env.RLOGS_DB.prepare = (query) => {
+    if (query.includes("FROM reports r JOIN upload_sessions")) return { bind() { return { async first() {
+      return { visibility: "public", projection_object_key: "reports/placeholders.json", submitter_id: "usr_owner" };
+    } }; } };
+    if (query.includes("FROM report_memberships")) return { bind() { return { async all() { return { results: [
+      { actor_id: "2", public_projection_json: JSON.stringify({ display_name: "Player 5" }) },
+      { actor_id: "3", public_projection_json: "not-json" },
+    ] }; } }; } };
+    throw new Error(`unexpected query: ${query}`);
+  };
+  env.RLOGS_ARTIFACTS = { async get() { return { async json() { return report; } }; } };
+  const response = await backend.fetch(new Request(`https://backend/v1/parses/${reportId}`), env);
+  assert.deepEqual(await response.json(), { ...report, visibility: "public" });
 });
 
 test("write routes fail closed until hosted verification is enabled", async () => {

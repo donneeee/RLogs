@@ -7,6 +7,19 @@ import { canonicalJson, liveCaptureProof, reconcileCatalog, reconcilePublishedRo
 function authFixture() {
   const durable = new Map();
   const kv = new Map();
+  const d1 = [];
+  durable.set("user:usr_owner", {
+    submitter_id: "usr_owner",
+    account_id: 100000000001,
+    username: "fixture",
+    discord_user_id: "123456789",
+    discord_username: "Fixture",
+    discord_global_name: "Fixture User",
+    discord_avatar_url: null,
+    publish_verified_parses: false,
+    created_unix_millis: 50,
+    updated_unix_millis: 90,
+  });
   const storage = {
     async get(key) { return durable.get(key); },
     async put(key, value) {
@@ -30,10 +43,33 @@ function authFixture() {
       },
       async put(key, value) { kv.set(key, typeof value === "string" ? JSON.parse(value) : value); },
     },
+    RLOGS_DB: {
+      prepare(query) {
+        return {
+          async all() { return { results: [] }; },
+          bind(...bindings) {
+            return {
+              query,
+              bindings,
+              async first() { return null; },
+              async all() { return { results: [] }; },
+              async run() {
+                d1.push({ query, bindings });
+                return { success: true };
+              },
+            };
+          },
+        };
+      },
+      async batch(statements) {
+        d1.push(...statements);
+        return statements.map(() => ({ success: true }));
+      },
+    },
   };
   const auth = new RLogsAuthState({ storage }, env);
   auth.authenticateWeb = async () => ({ submitter_id: "usr_owner" });
-  return { auth, durable, kv };
+  return { auth, durable, kv, d1 };
 }
 
 test("token hashes remain compatible with the Rust authentication domain separator", async () => {
@@ -238,10 +274,12 @@ test("only the uploader can change visibility and the override changes authorize
 });
 
 test("a device-bound profile package claims and publishes a profile in Cloudflare storage", async () => {
-  const { auth, kv } = authFixture();
+  const { auth, kv, d1 } = authFixture();
   const deviceToken = "rld_device-secret";
   const deviceId = "dev_device";
-  auth.authenticateDevice = async () => ({ submitter_id: "usr_owner", device_id: deviceId });
+  auth.authenticateDevice = async () => ({
+    submitter_id: "usr_owner", device_id: deviceId, created_unix_millis: 40,
+  });
   kv.set("fs:profiles/catalog.v1.json", { schema_version: 1, profiles: [] });
   const request = {
     relative_endpoint: "/v1/games/blue-protocol-star-resonance/profiles",
@@ -293,11 +331,80 @@ test("a device-bound profile package claims and publishes a profile in Cloudflar
   assert.equal(published.display_name, "MarieRose");
   assert.equal(published.loadouts[0].project_name, "Falc-DS");
   assert.equal(kv.get("fs:profiles/catalog.v1.json").profiles.length, 1);
+  assert.equal(d1.length, 5);
+  const claimStatement = d1.find((statement) => /INSERT INTO uid_claims/u.test(statement.query));
+  const profileStatement = d1.find((statement) => /INSERT INTO profiles/u.test(statement.query));
+  const loadoutStatement = d1.find((statement) => /INSERT INTO profile_loadouts/u.test(statement.query));
+  assert.deepEqual(claimStatement.bindings.slice(0, 4), [
+    "app.rlogs.game.blue-protocol-star-resonance",
+    "3296036",
+    receipt.profile_id,
+    "usr_owner",
+  ]);
+  assert.equal(JSON.parse(profileStatement.bindings[9]).display_name, "MarieRose");
+  assert.equal(loadoutStatement.bindings[3], "Falc-DS");
+});
+
+test("profile publication remains retryable when its D1 verifier mirror fails", async () => {
+  const { auth, kv } = authFixture();
+  const deviceToken = "rld_device-secret";
+  const deviceId = "dev_device";
+  auth.authenticateDevice = async () => ({
+    submitter_id: "usr_owner", device_id: deviceId, created_unix_millis: 40,
+  });
+  auth.env.RLOGS_DB.batch = async () => { throw new Error("D1 unavailable"); };
+  kv.set("fs:profiles/catalog.v1.json", { schema_version: 1, profiles: [] });
+  const request = {
+    relative_endpoint: "/v1/games/blue-protocol-star-resonance/profiles",
+    payload: {
+      schema_version: 1,
+      game_plugin_id: "app.rlogs.game.blue-protocol-star-resonance",
+      payload_kind: "character-profile",
+      payload_schema_id: "app.rlogs.bpsr.character-profile",
+      payload_schema_version: 1,
+      routing: { deployment: "global", region: "north-america", "character-id": "3296036" },
+      body: {
+        character: { character_id: "3296036", region: { deployment_id: "global", region_id: "north-america", realm_id: null, world_id: null } },
+        display_name: "MarieRose",
+      },
+    },
+  };
+  const packageValue = {
+    schema_version: 2,
+    package_id: await digest(canonicalJson(request)),
+    created_unix_millis: 100,
+    source: {
+      session_id: "session-one", client_build: "24687926",
+      protocol_pack_digest: `sha256:${"a".repeat(64)}`,
+      canonical_content_sha256: `sha256:${"b".repeat(64)}`,
+      observation_count: 2, last_event_sequence: 3,
+      live_capture: { capture_kind: "continuous_process_owned_capture", device_id: deviceId, proof: "" },
+    },
+    request,
+  };
+  packageValue.source.live_capture.proof = await liveCaptureProof(packageValue, deviceId, deviceToken);
+  const originalError = console.error;
+  console.error = () => {};
+  let response;
+  try {
+    response = await auth.publishProfile(new Request("https://backend/v1/games/blue-protocol-star-resonance/profiles", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${deviceToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(packageValue),
+    }), 200);
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /safely stored profile will retry/u);
+  assert.equal(kv.get("fs:profiles/catalog.v1.json").profiles.length, 1);
 });
 
 test("profile publication rejects a proof copied from another device", async () => {
   const { auth, kv } = authFixture();
-  auth.authenticateDevice = async () => ({ submitter_id: "usr_owner", device_id: "dev_actual" });
+  auth.authenticateDevice = async () => ({
+    submitter_id: "usr_owner", device_id: "dev_actual", created_unix_millis: 40,
+  });
   kv.set("fs:profiles/catalog.v1.json", { schema_version: 1, profiles: [] });
   const response = await auth.publishProfile(new Request("https://backend/v1/games/blue-protocol-star-resonance/profiles", {
     method: "POST",

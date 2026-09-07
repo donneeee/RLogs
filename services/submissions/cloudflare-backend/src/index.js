@@ -34,17 +34,57 @@ async function hostedReport(env, reportId) {
   if (!env.RLOGS_DB || !env.RLOGS_ARTIFACTS) return null;
   try {
     const row = await env.RLOGS_DB.prepare(
-      "SELECT visibility, projection_object_key FROM reports WHERE report_id=?1",
+      `SELECT r.visibility, r.projection_object_key, u.submitter_id
+       FROM reports r JOIN upload_sessions u ON u.upload_id=r.upload_id
+       WHERE r.report_id=?1`,
     ).bind(reportId).first();
     if (!row || row.visibility === "private") return null;
     const object = await env.RLOGS_ARTIFACTS.get(row.projection_object_key);
     if (!object) return null;
     const report = await object.json();
-    return { ...report, visibility: row.visibility };
+    const names = await env.RLOGS_DB.prepare(`SELECT rm.actor_id, p.public_projection_json
+      FROM report_memberships rm
+      JOIN profiles p ON p.game_id=rm.game_id AND p.character_id=rm.character_id
+      WHERE rm.report_id=?1 AND p.submitter_id=?2 AND rm.actor_id IS NOT NULL`)
+      .bind(reportId, row.submitter_id).all();
+    return applyVerifiedSubmitterNames(
+      { ...report, visibility: row.visibility },
+      names.results ?? [],
+    );
   } catch (cause) {
     console.error("rLogs hosted report read failed", cause);
     return null;
   }
+}
+
+function compatibleProfileName(profile) {
+  const value = profile?.display_name ?? profile?.envelope?.body?.display_name;
+  if (typeof value !== "string") return null;
+  const name = value.trim();
+  if (!name || name.length > 128 || /^player(?:\s+\d+)?$/iu.test(name) || /^unknown$/iu.test(name)) {
+    return null;
+  }
+  return name;
+}
+
+export function applyVerifiedSubmitterNames(report, rows) {
+  const names = new Map();
+  for (const row of rows) {
+    if (row.actor_id == null || typeof row.public_projection_json !== "string") continue;
+    try {
+      const name = compatibleProfileName(JSON.parse(row.public_projection_json));
+      if (name) names.set(String(row.actor_id), name);
+    } catch {}
+  }
+  if (names.size === 0) return report;
+  const enriched = structuredClone(report);
+  for (const run of enriched.runs ?? []) {
+    for (const participant of run.participants ?? []) {
+      const name = names.get(String(participant.actor_id));
+      if (name) participant.display_name = name;
+    }
+  }
+  return enriched;
 }
 
 async function publicReport(env, reportId) {
