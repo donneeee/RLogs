@@ -4,6 +4,9 @@
   "main": "src/index.js",
   "compatibility_date": "2026-09-06",
   "workers_dev": false,
+  "observability": {
+    "enabled": true
+  },
   "containers": [
     {
       "class_name": "RLogsVerifierContainer",

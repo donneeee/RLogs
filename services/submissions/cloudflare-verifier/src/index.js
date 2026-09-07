@@ -1,7 +1,12 @@
-import { Container } from "@cloudflare/containers";
+import { Container, ContainerProxy } from "@cloudflare/containers";
 import {
   catalogEntry, compatibleProfileName, sameChunkCommitments, validateOutput, validateWakeup,
 } from "./core.js";
+
+// Cloudflare requires this named export whenever a Container class installs
+// outbound handlers. It keeps the R2 binding in the trusted Worker while the
+// Rust verifier reads chunks through the virtual rlogs-artifacts.r2 host.
+export { ContainerProxy };
 
 function json(value, status = 200) {
   return Response.json(value, {

@@ -23,6 +23,16 @@ pub struct QueuedSubmission {
     pub file_byte_length: u64,
     pub canonical_content_sha256: Sha256Digest,
     pub session: SubmissionSession,
+    /// A deterministic server-side verification rejection. Rejected artifacts
+    /// remain available for diagnostics, but automatic upload must not retry them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejection: Option<SubmissionRejection>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct SubmissionRejection {
+    pub rejected_unix_millis: u64,
+    pub reason: String,
 }
 
 impl QueuedSubmission {
@@ -41,6 +51,7 @@ impl QueuedSubmission {
             file_byte_length: artifact.file_byte_length,
             canonical_content_sha256,
             session: SubmissionSession::new_post_run_artifact(metadata, artifact)?,
+            rejection: None,
         };
         value.validate()?;
         Ok(value)
@@ -65,6 +76,11 @@ impl QueuedSubmission {
         }
         if self.file_byte_length == 0 {
             return Err(QueuedSubmissionValidationError::EmptyArtifact);
+        }
+        if self.rejection.as_ref().is_some_and(|rejection| {
+            rejection.rejected_unix_millis == 0 || rejection.reason.trim().is_empty()
+        }) {
+            return Err(QueuedSubmissionValidationError::InvalidRejection);
         }
 
         self.session.validate()?;
@@ -167,6 +183,8 @@ struct QueuedSubmissionData {
     file_byte_length: u64,
     canonical_content_sha256: Sha256Digest,
     session: SubmissionSession,
+    #[serde(default)]
+    rejection: Option<SubmissionRejection>,
 }
 
 impl<'de> Deserialize<'de> for QueuedSubmission {
@@ -183,6 +201,7 @@ impl<'de> Deserialize<'de> for QueuedSubmission {
             file_byte_length: data.file_byte_length,
             canonical_content_sha256: data.canonical_content_sha256,
             session: data.session,
+            rejection: data.rejection,
         };
         value.validate().map_err(de::Error::custom)?;
         Ok(value)
@@ -211,6 +230,8 @@ pub enum QueuedSubmissionValidationError {
     InvalidLocalArtifactPath,
     #[error("queued submission artifact is empty")]
     EmptyArtifact,
+    #[error("queued submission rejection is missing its timestamp or reason")]
+    InvalidRejection,
     #[error("queued submission must contain a post-run session")]
     NotPostRun,
     #[error("queued submission is missing its sealed log digest")]

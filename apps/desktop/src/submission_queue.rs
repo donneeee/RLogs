@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use rlogs_submission::{
     QUEUED_SUBMISSION_SCHEMA_VERSION, QueuedSubmission, ReportVisibility, ServerReportReceipt,
-    Sha256Digest, SubmissionState,
+    Sha256Digest, SubmissionRejection, SubmissionState,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -220,6 +220,23 @@ impl LocalSubmissionQueue {
         persist_replacement(&self.directory, entry)
     }
 
+    pub fn mark_rejected(
+        &mut self,
+        queue_id: &str,
+        rejected_unix_millis: u64,
+        reason: String,
+    ) -> Result<(), String> {
+        let entry = self
+            .entries
+            .get_mut(queue_id)
+            .ok_or_else(|| format!("submission draft {queue_id} was not found"))?;
+        entry.rejection = Some(SubmissionRejection {
+            rejected_unix_millis,
+            reason,
+        });
+        persist_replacement(&self.directory, entry)
+    }
+
     pub fn snapshot(&self) -> SubmissionQueueView {
         let mut entries = self
             .entries
@@ -370,6 +387,7 @@ pub struct QueuedSubmissionView {
     pub game_plugin_id: String,
     pub game_region: String,
     pub client_build: String,
+    pub rejection_reason: Option<String>,
 }
 
 impl From<&QueuedSubmission> for QueuedSubmissionView {
@@ -395,6 +413,10 @@ impl From<&QueuedSubmission> for QueuedSubmissionView {
             game_plugin_id: metadata.game_plugin_id.clone(),
             game_region: metadata.game_region.clone(),
             client_build: metadata.client_build.clone(),
+            rejection_reason: entry
+                .rejection
+                .as_ref()
+                .map(|rejection| rejection.reason.clone()),
         }
     }
 }
@@ -758,6 +780,40 @@ mod tests {
         assert_eq!(
             restored.snapshot().entries[0].state,
             SubmissionState::Submitted
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn deterministic_rejection_is_persisted_without_discarding_the_artifact() {
+        let root = temporary_directory();
+        let artifact_path = root.join("capture-1.rlog");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(&artifact_path, vec![0_u8; 12]).unwrap();
+        let entry = queued_submission(&artifact_path);
+        let queue_id = entry.queue_id.to_string();
+        let queue_path = root.join("queue");
+        let mut queue = LocalSubmissionQueue::open(queue_path.clone()).unwrap();
+        queue.enqueue(entry).unwrap();
+
+        queue
+            .mark_rejected(
+                &queue_id,
+                1_700_000_000_001,
+                "the sealed log does not contain a completed run".into(),
+            )
+            .unwrap();
+
+        let restored = LocalSubmissionQueue::open(queue_path).unwrap();
+        let restored_entry = restored.entry(&queue_id).unwrap();
+        assert!(artifact_path.is_file());
+        assert_eq!(
+            restored_entry.rejection.unwrap().reason,
+            "the sealed log does not contain a completed run"
+        );
+        assert_eq!(
+            restored.snapshot().entries[0].rejection_reason.as_deref(),
+            Some("the sealed log does not contain a completed run")
         );
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -136,7 +136,10 @@ use submission_policy::{SubmissionPolicy, SubmissionPolicyStore, SubmissionPolic
 use submission_queue::{
     LocalSubmissionQueue, QueueInsertOutcome, QueuedSubmissionView, SubmissionQueueView,
 };
-use submission_transport::{ProfilePublishResult, SubmissionTransport, SubmissionTransportResult};
+use submission_transport::{
+    PERMANENT_SUBMISSION_REJECTION_PREFIX, ProfilePublishResult, SubmissionTransport,
+    SubmissionTransportResult,
+};
 use theme_settings::{ThemeSettings, ThemeSettingsStore};
 #[cfg(windows)]
 use windows_sys::Win32::{
@@ -215,6 +218,7 @@ fn next_automatic_upload_candidate(
         .into_iter()
         .filter(|entry| {
             entry.state == SubmissionState::Draft
+                && entry.rejection_reason.is_none()
                 && entry.artifact_exists
                 && entry.artifact_byte_length_matches
         })
@@ -2233,6 +2237,10 @@ impl AutomaticSubmissionStatus {
             self.view.state = "waiting_for_account_connection".into();
             self.clear_retry();
         } else if pending_eligible_count == 0 {
+            if self.view.state == "rejected" {
+                self.view.pending_eligible_count = 0;
+                return;
+            }
             self.view.state = "idle".into();
             self.view.current_queue_id = None;
             self.view.current_capture_session_id = None;
@@ -2260,6 +2268,22 @@ impl AutomaticSubmissionStatus {
         self.view.state = "queued".into();
         self.view.pending_eligible_count = pending_eligible_count;
         self.view.next_retry_unix_millis = None;
+    }
+
+    fn rejected(
+        &mut self,
+        entry: &QueuedSubmissionView,
+        error: impl Into<String>,
+        pending_eligible_count: usize,
+    ) {
+        self.view.state = "rejected".into();
+        self.view.pending_eligible_count = pending_eligible_count.saturating_sub(1);
+        self.view.current_queue_id = Some(entry.queue_id.clone());
+        self.view.current_capture_session_id = Some(entry.capture_session_id.clone());
+        self.view.consecutive_failures = 0;
+        self.view.next_retry_unix_millis = None;
+        self.view.last_activity_unix_millis = Some(unix_millis());
+        self.view.last_error = Some(error.into());
     }
 
     fn retryable_failure(
@@ -5483,6 +5507,7 @@ impl RuntimeController {
                     .iter()
                     .filter(|entry| {
                         entry.state == SubmissionState::Draft
+                            && entry.rejection_reason.is_none()
                             && entry.artifact_exists
                             && entry.artifact_byte_length_matches
                     })
@@ -5535,6 +5560,54 @@ impl RuntimeController {
                                     .lock()
                                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                                     .deferred(pending_eligible_count);
+                            }
+                            Err(error)
+                                if error.starts_with(PERMANENT_SUBMISSION_REJECTION_PREFIX) => {
+                                let reason = error
+                                    .trim_start_matches(PERMANENT_SUBMISSION_REJECTION_PREFIX)
+                                    .to_owned();
+                                let persistence = controller
+                                    .submission_queue
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                    .mark_rejected(&entry.queue_id, unix_millis(), reason.clone());
+                                let displayed = match persistence {
+                                    Ok(()) => reason,
+                                    Err(queue_error) => {
+                                        submission_failures = submission_failures.saturating_add(1);
+                                        let delay =
+                                            automatic_upload_retry_interval(submission_failures);
+                                        submission_retry_after = Some(Instant::now() + delay);
+                                        let displayed = format!(
+                                            "{reason}; rLogs could not persist the rejection: {queue_error}"
+                                        );
+                                        controller
+                                            .automatic_submission_status
+                                            .lock()
+                                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                            .retryable_failure(
+                                                &entry,
+                                                displayed.clone(),
+                                                delay,
+                                                pending_eligible_count,
+                                            );
+                                        eprintln!(
+                                            "automatic research submission will retry in {} seconds because its permanent rejection could not be saved: {displayed}",
+                                            delay.as_secs()
+                                        );
+                                        continue;
+                                    }
+                                };
+                                controller
+                                    .automatic_submission_status
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                                    .rejected(&entry, displayed.clone(), pending_eligible_count);
+                                submission_failures = 0;
+                                submission_retry_after = None;
+                                last_attempted_queue_id = None;
+                                eprintln!("automatic research submission stopped: {displayed}");
+                                continue;
                             }
                             Err(error) => {
                                 submission_failures = submission_failures.saturating_add(1);
@@ -13482,6 +13555,7 @@ mod tests {
             game_plugin_id: BPSR_GAME_PLUGIN_ID.into(),
             game_region: "global".into(),
             client_build: "test-build".into(),
+            rejection_reason: None,
         }
     }
 

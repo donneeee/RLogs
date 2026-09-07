@@ -31,7 +31,7 @@ pub use privacy::{
 pub use queue::{
     MAXIMUM_LOCAL_ARTIFACT_PATH_BYTES, QUEUED_SUBMISSION_SCHEMA_VERSION,
     QueuedArtifactVerificationError, QueuedSubmission, QueuedSubmissionError,
-    QueuedSubmissionValidationError,
+    QueuedSubmissionValidationError, SubmissionRejection,
 };
 pub use session::{SubmissionError, SubmissionSession, SubmissionValidationError};
 pub use website::{

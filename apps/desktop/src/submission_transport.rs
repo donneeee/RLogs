@@ -7,8 +7,8 @@ use std::{
 };
 
 use reqwest::{
-    Url,
-    blocking::{Client, RequestBuilder},
+    StatusCode, Url,
+    blocking::{Client, RequestBuilder, Response},
     redirect::Policy,
 };
 use rlogs_profiles::LocalProfilePackage;
@@ -22,6 +22,7 @@ const ENDPOINT_ENVIRONMENT_VARIABLE: &str = "RLOGS_SUBMISSION_API_URL";
 const TOKEN_ENVIRONMENT_VARIABLE: &str = "RLOGS_SUBMISSION_DEVICE_TOKEN";
 const MAXIMUM_UPLOAD_CHUNK_BYTES: usize = 16 * 1024 * 1024;
 const MAXIMUM_PHOTO_WALL_IMAGE_BYTES: usize = 8 * 1024 * 1024;
+pub const PERMANENT_SUBMISSION_REJECTION_PREFIX: &str = "permanent submission rejection: ";
 
 #[derive(Clone)]
 pub struct SubmissionTransport {
@@ -305,17 +306,21 @@ impl SubmissionTransport {
             uploaded_chunk_count += 1;
             uploaded_bytes = uploaded_bytes.saturating_add(chunk.byte_length);
         }
-        let finalized: FinalizeUploadResponse = self
+        let finalized_response = self
             .authorized(
                 self.client
                     .post(self.url(&format!("v1/uploads/{upload_id}/finalize"))?),
             )
             .send()
-            .map_err(|error| format!("submission receiver could not finalize the upload: {error}"))?
-            .error_for_status()
-            .map_err(|error| format!("submission receiver rejected finalization: {error}"))?
-            .json()
-            .map_err(|error| format!("submission receiver returned an invalid receipt: {error}"))?;
+            .map_err(|error| {
+                format!("submission receiver could not finalize the upload: {error}")
+            })?;
+        let finalized: FinalizeUploadResponse =
+            submission_response(finalized_response, "finalization")?
+                .json()
+                .map_err(|error| {
+                    format!("submission receiver returned an invalid receipt: {error}")
+                })?;
         if finalized.schema_version != 1 || finalized.accepted_log_digest != entry.queue_id {
             return Err("submission receipt did not match the sealed artifact".into());
         }
@@ -535,6 +540,33 @@ impl SubmissionTransport {
     }
 }
 
+fn submission_response(response: Response, operation: &str) -> Result<Response, String> {
+    if response.status().is_success() {
+        return Ok(response);
+    }
+    let status = response.status();
+    let body = response.text().unwrap_or_default();
+    let detail = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("detail")
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| value.get("error").and_then(serde_json::Value::as_str))
+                .map(str::to_owned)
+        })
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| format!("HTTP {status}"));
+    let prefix = if status == StatusCode::UNPROCESSABLE_ENTITY {
+        PERMANENT_SUBMISSION_REJECTION_PREFIX
+    } else {
+        ""
+    };
+    Err(format!(
+        "{prefix}submission receiver rejected {operation}: {detail}"
+    ))
+}
+
 fn validate_profile_id(profile_id: &str) -> Result<(), String> {
     if profile_id.len() == 36
         && profile_id.starts_with("prf_")
@@ -744,6 +776,23 @@ mod tests {
             .unwrap()
             .require_parse_upload_service()
             .unwrap();
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn unprocessable_replay_is_a_permanent_error_with_server_detail() {
+        let (endpoint, server) = mock_device_auth_response(
+            422,
+            r#"{"error":"replay_rejected","detail":"the sealed log does not contain a completed run"}"#,
+        );
+        let response = Client::new()
+            .get(format!("{endpoint}/v1/auth/device"))
+            .bearer_auth("rld_test")
+            .send()
+            .unwrap();
+        let error = submission_response(response, "finalization").unwrap_err();
+        assert!(error.starts_with(PERMANENT_SUBMISSION_REJECTION_PREFIX));
+        assert!(error.contains("the sealed log does not contain a completed run"));
         server.join().unwrap();
     }
 }
