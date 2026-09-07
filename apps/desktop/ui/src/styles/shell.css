@@ -5734,10 +5734,13 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .target-frame-overlay-health { height: 9px; overflow: hidden; border: 1px solid rgb(255 111 131 / 34%); border-radius: 999px; background: rgb(44 20 31 / 82%); }
 .target-frame-overlay-health span { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #ff6f83, #ff9ca9); transition: width 120ms linear; }
 .target-frame-overlay-health[data-observed="false"] span { display: none; }
-.target-frame-overlay-debuffs { display: flex; flex-wrap: wrap; gap: 5px; min-height: 28px; }
-.target-frame-overlay-debuff { position: relative; display: grid; place-items: center; width: 28px; height: 28px; overflow: hidden; border: 1px solid rgb(255 111 131 / 46%); border-radius: 5px; color: #eef6fb; background: rgb(28 17 29 / 92%); }
+.target-frame-overlay-debuffs { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 5px; min-height: 28px; }
+.target-frame-overlay-debuff-entry { display: grid; justify-items: center; gap: 2px; width: 36px; min-width: 0; }
+.target-frame-overlay-debuff { position: relative; display: grid; place-items: center; width: 30px; height: 30px; overflow: hidden; border: 1px solid rgb(255 111 131 / 46%); border-radius: 5px; color: #eef6fb; background: rgb(28 17 29 / 92%); }
 .target-frame-overlay-debuff img { width: 100%; height: 100%; object-fit: cover; }
-.target-frame-overlay-debuff b { position: absolute; right: 1px; bottom: 0; padding: 1px 2px; border-radius: 2px; color: #fff; background: rgb(2 7 12 / 82%); font-size: 8px; line-height: 1; }
+.target-frame-overlay-debuff b { position: absolute; top: 0; right: 0; padding: 1px 2px; border-radius: 0 3px 0 2px; color: #fff; background: rgb(2 7 12 / 86%); font-size: 8px; line-height: 1; }
+.target-frame-overlay-debuff-time { position: absolute; right: 0; bottom: 0; left: 0; padding: 1px 0; color: #fff; background: rgb(2 7 12 / 82%); font-size: 7px; font-variant-numeric: tabular-nums; font-weight: 900; line-height: 1; text-align: center; }
+.target-frame-overlay-debuff-owner { display: block; overflow: hidden; width: 100%; color: #9fb0c3; font-size: 7px; font-weight: 750; line-height: 1; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 .target-frame-overlay-no-debuffs, .target-frame-overlay-empty { margin: 0; color: #8ca3ba; font-size: 9px; font-weight: 650; }
 .target-frame-overlay-resize { position: absolute; right: 1px; bottom: 1px; width: 14px; height: 14px; padding: 0; border: 0; background: linear-gradient(135deg, transparent 50%, rgb(255 111 131 / 68%) 51% 61%, transparent 62% 71%, rgb(255 111 131 / 68%) 72% 82%, transparent 83%); cursor: ew-resize; }
 .mechanics-map-card, .mechanics-signal-card { min-width: 0; padding: 18px; }

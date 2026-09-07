@@ -32,7 +32,7 @@ export interface MechanicsMapSignal {
 }
 
 export interface MechanicsMapSnapshot {
-  schema_version: 2;
+  schema_version: 3;
   revision: number;
   session_id: string | null;
   client_build: string | null;
@@ -67,7 +67,7 @@ export interface MechanicsMapSnapshot {
 }
 
 export interface MechanicsMapUpdate {
-  schema_version: 2;
+  schema_version: 3;
   revision: number;
   snapshot: MechanicsMapSnapshot;
 }
@@ -78,8 +78,10 @@ export interface TargetFrameDebuff {
   presentation_name: string | null;
   icon_asset_path: string | null;
   source_actor_id: number | null;
+  source_display_name: string | null;
   stacks: number | null;
   duration_millis: number | null;
+  remaining_millis: number | null;
   applied_at_micros: number;
 }
 
@@ -317,10 +319,19 @@ function projectWorldRect(value: MechanicsMapSnapshot, x: number, z: number, hal
 }
 
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
-  if (!record(value) || value.schema_version !== 2 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
+  if (!record(value) || value.schema_version !== 3 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
   }
   return value as unknown as MechanicsMapUpdate;
+}
+
+export function targetDebuffRemainingMillis(
+  effect: Pick<TargetFrameDebuff, "remaining_millis">,
+  elapsedSinceSnapshotMillis: number,
+): number | null {
+  if (effect.remaining_millis === null) return null;
+  if (!Number.isFinite(elapsedSinceSnapshotMillis)) return effect.remaining_millis;
+  return Math.max(0, effect.remaining_millis - Math.max(0, elapsedSinceSnapshotMillis));
 }
 
 export function projectMechanicsMapEntities(
@@ -361,7 +372,7 @@ export function projectMechanicsMapPoint(
 }
 
 function snapshot(value: unknown): value is MechanicsMapSnapshot {
-  return record(value) && value.schema_version === 2 &&
+  return record(value) && value.schema_version === 3 &&
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
     ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
@@ -387,8 +398,9 @@ function target(value: unknown): value is TargetFrameSnapshot {
 function debuff(value: unknown): value is TargetFrameDebuff {
   return record(value) && Number.isSafeInteger(value.effect_id) && nullableInteger(value.instance_id) &&
     nullableString(value.presentation_name) && nullableString(value.icon_asset_path) &&
-    nullableInteger(value.source_actor_id) && nullableInteger(value.stacks) &&
-    nullableInteger(value.duration_millis) && nonnegativeInteger(value.applied_at_micros);
+    nullableInteger(value.source_actor_id) && nullableString(value.source_display_name) && nullableNonnegativeInteger(value.stacks) &&
+    nullableNonnegativeInteger(value.duration_millis) && nullableNonnegativeInteger(value.remaining_millis) &&
+    nonnegativeInteger(value.applied_at_micros);
 }
 
 function entity(value: unknown): boolean {
@@ -414,6 +426,7 @@ function signal(value: unknown): boolean {
 function record(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function nullableString(value: unknown): boolean { return value === null || typeof value === "string"; }
 function nullableInteger(value: unknown): boolean { return value === null || Number.isSafeInteger(value); }
+function nullableNonnegativeInteger(value: unknown): boolean { return value === null || nonnegativeInteger(value); }
 function nonnegativeInteger(value: unknown): value is number { return Number.isSafeInteger(value) && (value as number) >= 0; }
 function finite(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value); }
 function finitePositive(value: unknown): value is number { return finite(value) && value > 0; }

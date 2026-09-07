@@ -59,9 +59,11 @@ it never substitutes a recent damage recipient. Its first production stage
 shows packet-observed current/max HP, death/stale state, and effects whose
 reviewed game presentation explicitly classifies them as debuffs. Names and
 icons use the bundled exact-ID presentation catalog, and missing HP or
-localization remains unavailable rather than becoming zero. Shield/break,
-target cast state, debuff ownership, and live duration countdown remain gated
-until their complete presentation contracts are implemented.
+localization remains unavailable rather than becoming zero. Each displayed
+debuff now carries its exact packet source when that actor can be resolved and
+its packet duration counts down locally without inventing a duration for
+effects that do not provide one. Shield/break and target cast state remain
+gated until their complete presentation contracts are implemented.
 
 The overlay may preserve the last target briefly only as an explicitly styled
 stale state. It must never imply that an old packet value is still live.
@@ -110,6 +112,8 @@ persisted position and width, while canvas edit/click-through lock remains a
 single recovery-safe setting for the transparent native window. Target select
 and clear, HP state, debuff lifecycle, actor despawn, scene changes, and stale
 state are projected from the same bounded live feed as the map.
+Long-poll timeouts that carry no new revision do not rebuild either module, so
+their DOM, countdown anchors, and native overlay remain visually stable.
 
 The map uses the locally compiled in-game map as the visual base and keeps
 mechanic knowledge in separate toggleable layers. Required foundations are an

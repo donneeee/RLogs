@@ -8,6 +8,7 @@ import {
   projectMechanicsMapPoint,
   projectRaidFloorRegions,
   projectTinaPizzaRegion,
+  targetDebuffRemainingMillis,
   zoomMechanicsMapAt,
   type MechanicsMapProjectedRegion,
   type MechanicsMapSnapshot,
@@ -80,6 +81,13 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
   };
 }
 
+export function shouldRenderMechanicsMapUpdate(
+  current: Pick<MechanicsMapUpdate, "revision">,
+  next: Pick<MechanicsMapUpdate, "revision">,
+): boolean {
+  return next.revision !== current.revision;
+}
+
 export function mountMechanicsMapOverlay(
   container: HTMLElement,
   dependencies: MechanicsMapOverlayDependencies,
@@ -98,6 +106,8 @@ export function mountMechanicsMapOverlay(
   let imageReady = false;
   let preparingAsset = false;
   let removeInteractivityListener: (() => void) | null = null;
+  let targetTimer: number | null = null;
+  let targetRenderedAtMillis = 0;
 
   const root = element("main", "overlay-canvas-runtime");
   const panel = element("section", "mechanics-map-overlay-runtime");
@@ -226,8 +236,10 @@ export function mountMechanicsMapOverlay(
       if (!alive) return;
       renderState();
       while (alive) {
-        update = await dependencies.waitForSnapshot(update.revision);
+        const next = await dependencies.waitForSnapshot(update.revision);
         if (!alive) return;
+        if (!shouldRenderMechanicsMapUpdate(update, next)) continue;
+        update = next;
         renderState();
       }
     } catch (cause) {
@@ -253,6 +265,7 @@ export function mountMechanicsMapOverlay(
   }
 
   function renderTarget(snapshot: MechanicsMapSnapshot): void {
+    stopTargetTimer();
     const target = snapshot.target;
     targetPanel.dataset.stale = String(target?.stale ?? false);
     if (target === null) {
@@ -275,8 +288,11 @@ export function mountMechanicsMapOverlay(
     const debuffs = element("div", "target-frame-overlay-debuffs");
     debuffs.setAttribute("aria-label", "Target debuffs");
     for (const effect of target.debuffs) {
+      const entry = element("span", "target-frame-overlay-debuff-entry");
       const item = element("span", "target-frame-overlay-debuff");
-      item.title = effect.presentation_name ?? `Effect ${effect.effect_id}`;
+      const effectName = effect.presentation_name ?? `Effect ${effect.effect_id}`;
+      const sourceName = effect.source_display_name ?? (effect.source_actor_id === null ? "not supplied" : "unresolved actor");
+      entry.title = `${effectName}\nSource: ${sourceName}`;
       if (effect.icon_asset_path) {
         const icon = document.createElement("img");
         icon.src = effect.icon_asset_path;
@@ -286,10 +302,50 @@ export function mountMechanicsMapOverlay(
         item.append(text("span", "?"));
       }
       if ((effect.stacks ?? 0) > 1) item.append(text("b", String(effect.stacks)));
-      debuffs.append(item);
+      if (effect.remaining_millis !== null) {
+        const timer = text("span", formatDebuffRemaining(effect.remaining_millis), "target-frame-overlay-debuff-time");
+        timer.dataset.targetDebuffRemaining = String(effect.remaining_millis);
+        item.append(timer);
+      }
+      const owner = text("small", effect.source_display_name ?? "—", "target-frame-overlay-debuff-owner");
+      entry.append(item, owner);
+      debuffs.append(entry);
     }
-    if (target.debuffs.length === 0) debuffs.append(text("span", "No packet-classified debuffs", "target-frame-overlay-no-debuffs"));
+    const noDebuffs = text("span", "No packet-classified debuffs", "target-frame-overlay-no-debuffs");
+    noDebuffs.hidden = target.debuffs.length > 0;
+    debuffs.append(noDebuffs);
     targetBody.replaceChildren(identity, track, debuffs);
+    targetRenderedAtMillis = performance.now();
+    updateTargetTimers();
+    if (target.debuffs.some((effect) => effect.remaining_millis !== null)) {
+      targetTimer = window.setInterval(updateTargetTimers, 100);
+    }
+  }
+
+  function updateTargetTimers(): void {
+    const elapsed = performance.now() - targetRenderedAtMillis;
+    let visible = 0;
+    for (const entry of targetBody.querySelectorAll<HTMLElement>(".target-frame-overlay-debuff-entry")) {
+      const timer = entry.querySelector<HTMLElement>("[data-target-debuff-remaining]");
+      if (timer === null) {
+        entry.hidden = false;
+        visible += 1;
+        continue;
+      }
+      const base = Number(timer.dataset.targetDebuffRemaining);
+      const remaining = targetDebuffRemainingMillis({ remaining_millis: base }, elapsed) ?? 0;
+      entry.hidden = remaining <= 0;
+      if (!entry.hidden) visible += 1;
+      timer.textContent = formatDebuffRemaining(remaining);
+    }
+    const empty = targetBody.querySelector<HTMLElement>(".target-frame-overlay-no-debuffs");
+    if (empty) empty.hidden = visible > 0;
+  }
+
+  function stopTargetTimer(): void {
+    if (targetTimer === null) return;
+    window.clearInterval(targetTimer);
+    targetTimer = null;
   }
 
   function loadBackground(url: string | null): void {
@@ -478,6 +534,7 @@ export function mountMechanicsMapOverlay(
     dispose() {
       alive = false;
       if (frame !== null) cancelAnimationFrame(frame);
+      stopTargetTimer();
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleScreenResize);
       removeInteractivityListener?.();
@@ -714,6 +771,11 @@ function formatTargetHealth(current: number | null, maximum: number | null): str
   if (current !== null) return format(current);
   if (maximum !== null) return `— / ${format(maximum)}`;
   return "HP not observed";
+}
+
+function formatDebuffRemaining(value: number): string {
+  const seconds = Math.max(0, value) / 1_000;
+  return seconds >= 10 ? `${Math.ceil(seconds)}s` : `${Math.ceil(seconds * 10) / 10}s`;
 }
 
 function button(label: string, active: boolean, action: () => void): HTMLButtonElement {

@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { parseMechanicsMapCanvasPreferences } from "./mechanics-map-overlay";
+import { parseMechanicsMapCanvasPreferences, shouldRenderMechanicsMapUpdate } from "./mechanics-map-overlay";
 
 describe("Mechanics Map overlay canvas preferences", () => {
+  it("does not rebuild the overlay after an unchanged long-poll timeout", () => {
+    const current = { revision: 12 };
+    expect(shouldRenderMechanicsMapUpdate(current, current)).toBe(false);
+    expect(shouldRenderMechanicsMapUpdate(current, { revision: 13 })).toBe(true);
+  });
+
   it("restores valid free zoom, pan, filter, rotation, and lock state", () => {
     expect(parseMechanicsMapCanvasPreferences({
       scale: 37.5,

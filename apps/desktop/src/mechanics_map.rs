@@ -11,7 +11,7 @@ use rlogs_events::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 2;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 3;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
@@ -153,8 +153,10 @@ pub struct TargetFrameDebuff {
     pub presentation_name: Option<String>,
     pub icon_asset_path: Option<String>,
     pub source_actor_id: Option<u64>,
+    pub source_display_name: Option<String>,
     pub stacks: Option<u32>,
     pub duration_millis: Option<u64>,
+    pub remaining_millis: Option<u64>,
     pub applied_at_micros: u64,
 }
 
@@ -759,8 +761,27 @@ impl MechanicsMapProjector {
                                 "/game-assets/blue-protocol-star-resonance/shared/{icon}"
                             )),
                             source_actor_id: status.source.map(|source| source.actor_id.0),
+                            source_display_name: status.source.and_then(|source| {
+                                self.entities.get(&source.actor_id.0).and_then(|entity| {
+                                    entity.display_name.clone().or_else(|| {
+                                        entity.monster_id.and_then(|monster_id| {
+                                            rlogs_game_bpsr::localized_monster_name(
+                                                monster_id, "en-US",
+                                            )
+                                            .ok()
+                                            .flatten()
+                                            .map(str::to_owned)
+                                        })
+                                    })
+                                })
+                            }),
                             stacks: status.stacks,
                             duration_millis: status.duration_millis,
+                            remaining_millis: status.duration_millis.map(|duration| {
+                                duration.saturating_sub(
+                                    now.saturating_sub(status.applied_at_micros) / 1_000,
+                                )
+                            }),
                             applied_at_micros: status.applied_at_micros,
                         })
                     })
@@ -1573,7 +1594,14 @@ mod tests {
         assert_eq!(selected.hp_percent, Some(50.0));
         assert_eq!(selected.debuffs.len(), 1);
         assert_eq!(selected.debuffs[0].effect_id, 4_501);
+        assert_eq!(selected.debuffs[0].source_actor_id, Some(7));
+        assert_eq!(
+            selected.debuffs[0].source_display_name.as_deref(),
+            Some("Local")
+        );
         assert_eq!(selected.debuffs[0].stacks, Some(2));
+        assert_eq!(selected.debuffs[0].duration_millis, Some(5_000));
+        assert_eq!(selected.debuffs[0].remaining_millis, Some(5_000));
 
         projector.observe(&envelope(
             7,
