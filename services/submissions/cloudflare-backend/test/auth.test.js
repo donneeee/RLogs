@@ -252,6 +252,55 @@ test("My Parses includes uploader reports and non-private claimed-character repo
   assert.deepEqual(value.entries[1].matched_character_ids, ["3296036"]);
 });
 
+test("My Parses filters hosted reports in D1 without a per-report membership query", async () => {
+  const { auth, kv } = authFixture();
+  const reportId = `rpt_${"9".repeat(32)}`;
+  kv.set("fs:profiles/catalog.v1.json", { profiles: [{ profile_id: "prf_one", character_id: "3296036" }] });
+  kv.set("fs:profiles/prf_one/claim.json", { submitter_id: "usr_owner" });
+  kv.set("fs:catalog.v1.json", { entries: [] });
+  const queries = [];
+  auth.env.RLOGS_DB = {
+    prepare(query) {
+      queries.push(query);
+      return {
+        bind(...bindings) {
+          return {
+            async first() { return { total: 1 }; },
+            async all() {
+              return { results: [{
+                catalog_entry_json: JSON.stringify({
+                  report_id: reportId, run_index: 0, created_unix_millis: 10,
+                  deployment_id: "global", region_id: "north-america",
+                  scene_id: 1, scene_name: "Dungeon", terminal_state: "completed",
+                }),
+                visibility: "unlisted",
+                submitter_id: "usr_other",
+                matched_character_ids: "3296036",
+              }] };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const response = await auth.myParses(
+    new Request("https://backend/v1/auth/parses?limit=50"),
+    Date.now(),
+    new URL("https://backend/v1/auth/parses?limit=50"),
+  );
+  const value = await response.json();
+
+  assert.equal(value.total_entries, 1);
+  assert.deepEqual(value.entries.map((entry) => entry.report_id), [reportId]);
+  assert.deepEqual(value.entries[0].matched_character_ids, ["3296036"]);
+  const reportQueries = queries.filter((query) => query.includes("FROM report_runs"));
+  assert.equal(reportQueries.length, 2);
+  assert.match(reportQueries[0], /EXISTS \(/u);
+  assert.match(reportQueries[1], /GROUP_CONCAT/u);
+  assert.ok(reportQueries.every((query) => !query.includes("SELECT character_id FROM report_memberships WHERE report_id=?1")));
+});
+
 test("only the uploader can change visibility and the override changes authorized reads", async () => {
   const { auth, durable, kv } = authFixture();
   const reportId = `rpt_${"d".repeat(32)}`;

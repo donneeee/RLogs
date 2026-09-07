@@ -471,47 +471,93 @@ export class RLogsAuthState {
   async myParses(request, now, url) {
     const account = await this.authenticateWeb(request, now);
     if (!account) return error("account authentication failed", 401);
+    const requestedOffset = Number.parseInt(url.searchParams.get("offset") ?? "0", 10);
+    const requestedLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
+    const offset = Number.isSafeInteger(requestedOffset) && requestedOffset > 0
+      ? requestedOffset
+      : 0;
+    const limit = Number.isSafeInteger(requestedLimit)
+      ? Math.min(MAXIMUM_QUERY_LIMIT, Math.max(1, requestedLimit))
+      : 100;
     const claimedCharacterIds = await this.claimedCharacterIds(account.submitter_id);
     const baseCatalog = await this.env.RLOGS_DATA.get("fs:catalog.v1.json", "json");
     const catalogEntries = Array.isArray(baseCatalog?.entries) ? baseCatalog.entries : [];
     const byRun = new Map(catalogEntries.map((entry) => [`${entry.report_id}:${entry.run_index}`, entry]));
-    const entries = [];
-    for (const key of await this.listKvKeys("fs:projections/")) {
-      if (!key.endsWith(".json")) continue;
+    // KV contains the fixed legacy import only. Fetch those immutable objects
+    // concurrently; new reports live in indexed D1/R2 and never increase this
+    // scan. The previous serial projection + membership walk made a small
+    // account wait once for every report in the entire service.
+    const legacyKeys = (await this.listKvKeys("fs:projections/"))
+      .filter((key) => key.endsWith(".json"));
+    const legacyRows = await Promise.all(legacyKeys.map(async (key) => {
       const report = await this.env.RLOGS_DATA.get(key, "json");
-      if (!report || !REPORT_ID_PATTERN.test(report.report_id) || !Array.isArray(report.runs)) continue;
-      const visibility = await this.reportVisibility(report);
+      if (!report || !REPORT_ID_PATTERN.test(report.report_id) || !Array.isArray(report.runs)) return [];
+      const [visibility, membership] = await Promise.all([
+        this.reportVisibility(report),
+        this.env.RLOGS_DATA.get(`fs:memberships/${report.report_id}.json`, "json"),
+      ]);
       const submittedByYou = report.submission_provenance?.submitter_id === account.submitter_id;
-      if (visibility === "private" && !submittedByYou) continue;
-      const membership = await this.env.RLOGS_DATA.get(`fs:memberships/${report.report_id}.json`, "json");
-      for (const run of report.runs) {
+      if (visibility === "private" && !submittedByYou) return [];
+      return report.runs.flatMap((run) => {
         const runMembership = Array.isArray(membership?.runs)
           ? membership.runs.find((candidate) => candidate.run_index === run.run_index)
           : null;
         const matchedCharacterIds = (runMembership?.character_ids ?? [])
           .filter((characterId) => claimedCharacterIds.has(String(characterId)))
           .map(String);
-        if (!submittedByYou && matchedCharacterIds.length === 0) continue;
+        if (!submittedByYou && matchedCharacterIds.length === 0) return [];
         const parse = byRun.get(`${report.report_id}:${run.run_index}`) ?? catalogEntry(report, run);
-        entries.push({ ...parse, visibility, submitted_by_you: submittedByYou, matched_character_ids: matchedCharacterIds });
-      }
-    }
+        return [{ ...parse, visibility, submitted_by_you: submittedByYou, matched_character_ids: matchedCharacterIds }];
+      });
+    }));
+    const legacyEntries = legacyRows.flat();
+    const entries = [...legacyEntries];
+    let hostedTotal = 0;
+    let hostedLoaded = 0;
     try {
-      const hosted = await this.env.RLOGS_DB.prepare(`SELECT rr.catalog_entry_json,
-          r.visibility, u.submitter_id
+      const claimed = [...claimedCharacterIds];
+      const claimPlaceholders = claimed.map((_, index) => `?${index + 2}`).join(",");
+      const claimMatch = claimed.length === 0
+        ? ""
+        : ` OR (r.visibility <> 'private' AND EXISTS (
+            SELECT 1 FROM report_memberships cm
+            WHERE cm.report_id=r.report_id
+              AND cm.game_id='app.rlogs.game.blue-protocol-star-resonance'
+              AND cm.character_id IN (${claimPlaceholders})
+          ))`;
+      const matchedProjection = claimed.length === 0
+        ? "NULL"
+        : `(SELECT GROUP_CONCAT(DISTINCT mm.character_id)
+            FROM report_memberships mm
+            WHERE mm.report_id=r.report_id
+              AND mm.game_id='app.rlogs.game.blue-protocol-star-resonance'
+              AND mm.character_id IN (${claimPlaceholders}))`;
+      const bindings = [account.submitter_id, ...claimed];
+      const total = await this.env.RLOGS_DB.prepare(`SELECT COUNT(*) AS total
         FROM report_runs rr
         JOIN reports r ON r.report_id=rr.report_id
         JOIN upload_sessions u ON u.upload_id=r.upload_id
-        ORDER BY rr.created_unix_millis DESC, rr.report_id, rr.run_index`).all();
+        WHERE u.submitter_id=?1${claimMatch}`).bind(...bindings).first();
+      hostedTotal = Number(total?.total ?? 0);
+      // Pull only enough newest hosted rows to determine this merged page.
+      // Legacy rows are bounded and fixed, so offset growth is proportional
+      // only to the requested account rather than every report on rLogs.
+      const hostedLimit = Math.min(100_000, offset + limit + entries.length + 1);
+      const hosted = await this.env.RLOGS_DB.prepare(`SELECT rr.catalog_entry_json,
+          r.visibility, u.submitter_id, ${matchedProjection} AS matched_character_ids
+        FROM report_runs rr
+        JOIN reports r ON r.report_id=rr.report_id
+        JOIN upload_sessions u ON u.upload_id=r.upload_id
+        WHERE u.submitter_id=?1${claimMatch}
+        ORDER BY rr.created_unix_millis DESC, rr.report_id, rr.run_index
+        LIMIT ${hostedLimit}`).bind(...bindings).all();
       for (const row of hosted.results ?? []) {
+        hostedLoaded += 1;
         const parse = JSON.parse(row.catalog_entry_json);
         const submittedByYou = row.submitter_id === account.submitter_id;
-        const membership = await this.env.RLOGS_DB.prepare(
-          "SELECT character_id FROM report_memberships WHERE report_id=?1",
-        ).bind(parse.report_id).all();
-        const matchedCharacterIds = (membership.results ?? [])
-          .map((value) => String(value.character_id))
-          .filter((characterId) => claimedCharacterIds.has(characterId));
+        const matchedCharacterIds = typeof row.matched_character_ids === "string"
+          ? row.matched_character_ids.split(",").filter(Boolean)
+          : [];
         if (!submittedByYou && (row.visibility === "private" || matchedCharacterIds.length === 0)) continue;
         const key = `${parse.report_id}:${parse.run_index}`;
         const replacement = {
@@ -529,20 +575,24 @@ export class RLogsAuthState {
       left.report_id.localeCompare(right.report_id) ||
       left.run_index - right.run_index,
     );
-    const requestedOffset = Number.parseInt(url.searchParams.get("offset") ?? "0", 10);
-    const requestedLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
-    const offset = Number.isSafeInteger(requestedOffset) && requestedOffset > 0
-      ? Math.min(requestedOffset, entries.length)
-      : 0;
-    const limit = Number.isSafeInteger(requestedLimit)
-      ? Math.min(MAXIMUM_QUERY_LIMIT, Math.max(1, requestedLimit))
-      : 100;
-    const page = entries.slice(offset, offset + limit);
+    const uniqueEntries = [...new Map(entries.map((entry) => [
+      `${entry.report_id}:${entry.run_index}`,
+      entry,
+    ])).values()];
+    const boundedOffset = Math.min(offset, uniqueEntries.length);
+    const page = uniqueEntries.slice(boundedOffset, boundedOffset + limit);
+    // Hosted reports can overlap the one-time KV migration. The loaded prefix
+    // contains every hosted row that can enter this page; use the merged size
+    // when complete, otherwise retain the conservative source totals.
+    const hostedPrefixComplete = hostedTotal <= hostedLoaded;
+    const totalEntries = hostedPrefixComplete
+      ? uniqueEntries.length
+      : Math.max(uniqueEntries.length, legacyEntries.length + hostedTotal);
     return json({
       schema_version: 1,
-      total_entries: entries.length,
-      offset,
-      next_offset: offset + page.length < entries.length ? offset + page.length : null,
+      total_entries: totalEntries,
+      offset: boundedOffset,
+      next_offset: boundedOffset + page.length < totalEntries ? boundedOffset + page.length : null,
       claimed_character_ids: [...claimedCharacterIds].sort(),
       entries: page,
     });
