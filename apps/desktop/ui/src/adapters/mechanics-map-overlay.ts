@@ -285,6 +285,23 @@ export function mountMechanicsMapOverlay(
     fill.style.width = `${target.hp_percent ?? 0}%`;
     track.dataset.observed = String(target.hp_percent !== null);
     track.append(fill);
+    const vitals = element("div", "target-frame-overlay-vitals");
+    vitals.append(track);
+    if (target.current_shield !== null) {
+      const shield = element("div", "target-frame-overlay-shield");
+      const shieldFill = element("span");
+      shieldFill.style.width = `${target.shield_percent ?? (target.current_shield > 0 ? 100 : 0)}%`;
+      shield.dataset.observed = String(target.shield_percent !== null);
+      shield.title = `Shield ${formatTargetHealth(target.current_shield, target.max_shield)}`;
+      shield.append(shieldFill);
+      const shieldLabel = text("small", `SHIELD ${formatTargetHealth(target.current_shield, target.max_shield)}`, "target-frame-overlay-shield-label");
+      vitals.append(shield, shieldLabel);
+    }
+    if (target.breaking_stage !== null) {
+      const breaking = text("small", formatBreakingStage(target.breaking_stage), "target-frame-overlay-breaking");
+      breaking.dataset.stage = String(target.breaking_stage);
+      vitals.append(breaking);
+    }
     const debuffs = element("div", "target-frame-overlay-debuffs");
     debuffs.setAttribute("aria-label", "Target debuffs");
     for (const effect of target.debuffs) {
@@ -314,12 +331,18 @@ export function mountMechanicsMapOverlay(
     const noDebuffs = text("span", "No packet-classified debuffs", "target-frame-overlay-no-debuffs");
     noDebuffs.hidden = target.debuffs.length > 0;
     debuffs.append(noDebuffs);
-    targetBody.replaceChildren(identity, track, debuffs);
+    targetBody.replaceChildren(identity, vitals, debuffs);
     targetRenderedAtMillis = performance.now();
     updateTargetTimers();
     if (target.debuffs.some((effect) => effect.remaining_millis !== null)) {
       targetTimer = window.setInterval(updateTargetTimers, 100);
     }
+  }
+
+  function formatBreakingStage(stage: number): string {
+    if (stage === 0) return "BREAKING";
+    if (stage === 1) return "BREAK ENDED";
+    return `BREAK STAGE ${stage}`;
   }
 
   function updateTargetTimers(): void {

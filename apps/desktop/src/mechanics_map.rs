@@ -11,7 +11,7 @@ use rlogs_events::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 3;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 4;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
@@ -21,8 +21,10 @@ const MAX_TARGET_STATUSES: usize = 4_096;
 const MINIMAP_WORLD_RADIUS: f32 = 140.0;
 // Exact build-locked `EAttrType` IDs decoded by the BPSR integration.
 const ATTR_TARGET_ID: i32 = 0x1e;
+const ATTR_BREAKING_STAGE: i32 = 455;
 const ATTR_CURRENT_HP: i32 = 11310;
 const ATTR_MAX_HP_FINAL: i32 = 11320;
+const ATTR_SHIELD_LIST: i32 = 60050;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MechanicsMapSnapshot {
@@ -141,6 +143,13 @@ pub struct TargetFrameSnapshot {
     pub current_hp: Option<i64>,
     pub max_hp: Option<i64>,
     pub hp_percent: Option<f64>,
+    pub current_shield: Option<i64>,
+    pub max_shield: Option<i64>,
+    pub shield_percent: Option<f64>,
+    /// Exact current-build `EBreakingStage` integer: `0 = Breaking`,
+    /// `1 = BreakEnd`. Unknown future values remain numeric and are never
+    /// coerced into either state.
+    pub breaking_stage: Option<i64>,
     pub dead: bool,
     pub stale: bool,
     pub debuffs: Vec<TargetFrameDebuff>,
@@ -250,6 +259,9 @@ struct EntityState {
     monster_id: Option<i64>,
     current_hp: Option<i64>,
     max_hp: Option<i64>,
+    current_shield: Option<i64>,
+    max_shield: Option<i64>,
+    breaking_stage: Option<i64>,
     position: Option<(f32, f32, f32)>,
     facing_radians: Option<f32>,
     dead: bool,
@@ -425,6 +437,9 @@ impl MechanicsMapProjector {
                                     monster_id: event.monster_id.map(|id| id.0),
                                     current_hp: None,
                                     max_hp: None,
+                                    current_shield: None,
+                                    max_shield: None,
+                                    breaking_stage: None,
                                     position: None,
                                     facing_radians: None,
                                     dead: false,
@@ -455,6 +470,9 @@ impl MechanicsMapProjector {
                         monster_id: None,
                         current_hp: None,
                         max_hp: None,
+                        current_shield: None,
+                        max_shield: None,
+                        breaking_stage: None,
                         position: None,
                         facing_radians: None,
                         dead: false,
@@ -465,25 +483,39 @@ impl MechanicsMapProjector {
                     if attributes.update_kind == EntityAttributeUpdateKind::Snapshot {
                         entry.current_hp = None;
                         entry.max_hp = None;
+                        entry.current_shield = None;
+                        entry.max_shield = None;
+                        entry.breaking_stage = None;
                     }
                     for attribute in &attributes.attributes {
-                        let Some(EntityAttributeValue::Integer(value)) = attribute.decoded else {
+                        if attribute.attribute_id == ATTR_SHIELD_LIST {
+                            if let Ok(shields) =
+                                rlogs_game_bpsr::decode_shield_list(&attribute.raw_value)
+                            {
+                                entry.current_shield = shields.current_value_total();
+                                entry.max_shield = shields.max_value_total();
+                            }
                             continue;
-                        };
-                        match attribute.attribute_id {
-                            ATTR_TARGET_ID if value > 0 => {
-                                self.attack_targets.insert(actor_id, value);
+                        }
+                        if let Some(EntityAttributeValue::Integer(value)) = attribute.decoded {
+                            match attribute.attribute_id {
+                                ATTR_TARGET_ID if value > 0 => {
+                                    self.attack_targets.insert(actor_id, value);
+                                }
+                                ATTR_TARGET_ID => {
+                                    self.attack_targets.remove(&actor_id);
+                                }
+                                ATTR_CURRENT_HP => {
+                                    entry.current_hp = Some(value);
+                                }
+                                ATTR_MAX_HP_FINAL => {
+                                    entry.max_hp = Some(value);
+                                }
+                                ATTR_BREAKING_STAGE => {
+                                    entry.breaking_stage = Some(value);
+                                }
+                                _ => {}
                             }
-                            ATTR_TARGET_ID => {
-                                self.attack_targets.remove(&actor_id);
-                            }
-                            ATTR_CURRENT_HP => {
-                                entry.current_hp = Some(value);
-                            }
-                            ATTR_MAX_HP_FINAL => {
-                                entry.max_hp = Some(value);
-                            }
-                            _ => {}
                         }
                     }
                     changed = true;
@@ -504,6 +536,9 @@ impl MechanicsMapProjector {
                                 monster_id: None,
                                 current_hp: None,
                                 max_hp: None,
+                                current_shield: None,
+                                max_shield: None,
+                                breaking_stage: None,
                                 position: Some((position.x, position.y, position.z)),
                                 facing_radians: position.facing_radians,
                                 dead: false,
@@ -797,6 +832,15 @@ impl MechanicsMapProjector {
                                 ((current.max(0) as f64 / maximum as f64) * 100.0).clamp(0.0, 100.0)
                             })
                         });
+                let shield_percent =
+                    entity
+                        .current_shield
+                        .zip(entity.max_shield)
+                        .and_then(|(current, maximum)| {
+                            (maximum > 0).then(|| {
+                                ((current.max(0) as f64 / maximum as f64) * 100.0).clamp(0.0, 100.0)
+                            })
+                        });
                 TargetFrameSnapshot {
                     actor_id: entity.actor.actor_id.0,
                     entity_uuid: entity.actor.entity_uuid.0,
@@ -812,6 +856,10 @@ impl MechanicsMapProjector {
                     current_hp: entity.current_hp,
                     max_hp: entity.max_hp,
                     hp_percent,
+                    current_shield: entity.current_shield,
+                    max_shield: entity.max_shield,
+                    shield_percent,
+                    breaking_stage: entity.breaking_stage,
                     dead: entity.dead,
                     stale: now.saturating_sub(entity.last_observed_micros)
                         > ENTITY_STALE_AFTER_MICROS,
@@ -1550,6 +1598,19 @@ mod tests {
                             raw_value: vec![],
                             decoded: Some(EntityAttributeValue::Integer(1_000)),
                         },
+                        EntityAttribute {
+                            attribute_id: ATTR_SHIELD_LIST,
+                            raw_value: vec![
+                                10, 17, 8, 240, 1, 16, 12, 24, 144, 147, 2, 32, 190, 201, 1, 40,
+                                208, 141, 19,
+                            ],
+                            decoded: None,
+                        },
+                        EntityAttribute {
+                            attribute_id: ATTR_BREAKING_STAGE,
+                            raw_value: vec![],
+                            decoded: Some(EntityAttributeValue::Integer(0)),
+                        },
                     ],
                 }),
             }),
@@ -1592,6 +1653,10 @@ mod tests {
         assert_eq!(selected.current_hp, Some(500));
         assert_eq!(selected.max_hp, Some(1_000));
         assert_eq!(selected.hp_percent, Some(50.0));
+        assert_eq!(selected.current_shield, Some(35_216));
+        assert_eq!(selected.max_shield, Some(313_040));
+        assert_eq!(selected.shield_percent, Some(11.249680552006133));
+        assert_eq!(selected.breaking_stage, Some(0));
         assert_eq!(selected.debuffs.len(), 1);
         assert_eq!(selected.debuffs[0].effect_id, 4_501);
         assert_eq!(selected.debuffs[0].source_actor_id, Some(7));

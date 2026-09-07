@@ -4,7 +4,7 @@ import { parseMechanicsMapUpdate, projectCoralMatrixBeam, projectCoralPizzaRegio
 
 function snapshot(): MechanicsMapSnapshot {
   return {
-    schema_version: 3, revision: 3, session_id: "s", client_build: "global/steam-24687926",
+    schema_version: 4, revision: 3, session_id: "s", client_build: "global/steam-24687926",
     scene_id: 6615, map_id: 6615, scene_name: null, map_model: "player_relative_radar", map_layout: null,
     world_radius: 140, background_asset_url: "/local-game-assets/global/steam-24687926/dungeon_map_bg.png",
     map_origin_x: null, map_origin_z: null, map_span_x: null, map_span_z: null,
@@ -39,23 +39,28 @@ describe("Mechanics Map", () => {
   });
 
   it("accepts the bounded host contract", () => {
-    expect(parseMechanicsMapUpdate({ schema_version: 3, revision: 3, snapshot: snapshot() }).snapshot.scene_id).toBe(6615);
+    expect(parseMechanicsMapUpdate({ schema_version: 4, revision: 3, snapshot: snapshot() }).snapshot.scene_id).toBe(6615);
   });
 
   it("accepts exact target HP and bounded debuff presentation", () => {
     const value = snapshot();
     value.target = {
       actor_id: 2, entity_uuid: 2, display_name: "Boss", monster_id: 4701,
-      current_hp: 500, max_hp: 1_000, hp_percent: 50, dead: false, stale: false,
+      current_hp: 500, max_hp: 1_000, hp_percent: 50,
+      current_shield: 200, max_shield: 400, shield_percent: 50, breaking_stage: 0,
+      dead: false, stale: false,
       debuffs: [{
         effect_id: 4501, instance_id: 99, presentation_name: "Burning", icon_asset_path: "/game-assets/debuff.png",
         source_actor_id: 1, source_display_name: "Me", stacks: 2, duration_millis: 5_000,
         remaining_millis: 4_500, applied_at_micros: 4_000,
       }],
     };
-    const target = parseMechanicsMapUpdate({ schema_version: 3, revision: 3, snapshot: value }).snapshot.target;
+    const target = parseMechanicsMapUpdate({ schema_version: 4, revision: 3, snapshot: value }).snapshot.target;
     expect(target?.hp_percent).toBe(50);
     expect(target?.debuffs[0]?.source_display_name).toBe("Me");
+    expect(target?.current_shield).toBe(200);
+    expect(target?.shield_percent).toBe(50);
+    expect(target?.breaking_stage).toBe(0);
     expect(targetDebuffRemainingMillis(target!.debuffs[0]!, 1_250)).toBe(3_250);
     expect(targetDebuffRemainingMillis(target!.debuffs[0]!, 9_000)).toBe(0);
   });
@@ -64,14 +69,16 @@ describe("Mechanics Map", () => {
     const value = snapshot();
     value.target = {
       actor_id: 2, entity_uuid: 2, display_name: "Boss", monster_id: 4701,
-      current_hp: 500, max_hp: 1_000, hp_percent: 50, dead: false, stale: false,
+      current_hp: 500, max_hp: 1_000, hp_percent: 50,
+      current_shield: null, max_shield: null, shield_percent: null, breaking_stage: null,
+      dead: false, stale: false,
       debuffs: [{
         effect_id: 4501, instance_id: 99, presentation_name: "Burning", icon_asset_path: null,
         source_actor_id: null, source_display_name: null, stacks: null, duration_millis: 5_000,
         remaining_millis: -1, applied_at_micros: 4_000,
       }],
     };
-    expect(() => parseMechanicsMapUpdate({ schema_version: 3, revision: 3, snapshot: value })).toThrow();
+    expect(() => parseMechanicsMapUpdate({ schema_version: 4, revision: 3, snapshot: value })).toThrow();
   });
 
   it("uses the exact player-relative 140-unit projection", () => {

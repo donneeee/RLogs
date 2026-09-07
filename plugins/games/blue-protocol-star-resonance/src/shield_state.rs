@@ -39,6 +39,26 @@ impl ShieldListSnapshot {
         });
         observed.then_some(total)
     }
+
+    /// Sums every packet-provided maximum shield value.
+    ///
+    /// This follows the same presence policy as [`Self::current_value_total`]:
+    /// an explicit empty list proves zero, while a non-empty list with no
+    /// maximum values remains unresolved.
+    pub fn max_value_total(&self) -> Option<i64> {
+        if self.shields.is_empty() {
+            return Some(0);
+        }
+        let mut observed = false;
+        let total = self.shields.iter().fold(0_i64, |total, shield| {
+            let Some(max_value) = shield.max_value else {
+                return total;
+            };
+            observed = true;
+            total.saturating_add(max_value)
+        });
+        observed.then_some(total)
+    }
 }
 
 /// Decodes entity attribute 60050 without interpreting or dropping any shield
@@ -83,6 +103,7 @@ mod tests {
             }]
         );
         assert_eq!(decoded.current_value_total(), Some(35_216));
+        assert_eq!(decoded.max_value_total(), Some(313_040));
     }
 
     #[test]
@@ -105,6 +126,7 @@ mod tests {
         assert_eq!(decoded.shields[1].initial_value, Some(24_800));
         assert_eq!(decoded.shields[1].max_value, Some(303_127));
         assert_eq!(decoded.current_value_total(), Some(628_201));
+        assert_eq!(decoded.max_value_total(), Some(1_201_604));
     }
 
     #[test]
@@ -112,5 +134,6 @@ mod tests {
         let decoded = decode_shield_list(&[]).expect("empty protobuf is an empty shield list");
         assert!(decoded.shields.is_empty());
         assert_eq!(decoded.current_value_total(), Some(0));
+        assert_eq!(decoded.max_value_total(), Some(0));
     }
 }

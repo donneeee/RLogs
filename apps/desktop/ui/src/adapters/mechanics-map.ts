@@ -32,7 +32,7 @@ export interface MechanicsMapSignal {
 }
 
 export interface MechanicsMapSnapshot {
-  schema_version: 3;
+  schema_version: 4;
   revision: number;
   session_id: string | null;
   client_build: string | null;
@@ -67,7 +67,7 @@ export interface MechanicsMapSnapshot {
 }
 
 export interface MechanicsMapUpdate {
-  schema_version: 3;
+  schema_version: 4;
   revision: number;
   snapshot: MechanicsMapSnapshot;
 }
@@ -93,6 +93,10 @@ export interface TargetFrameSnapshot {
   current_hp: number | null;
   max_hp: number | null;
   hp_percent: number | null;
+  current_shield: number | null;
+  max_shield: number | null;
+  shield_percent: number | null;
+  breaking_stage: number | null;
   dead: boolean;
   stale: boolean;
   debuffs: readonly TargetFrameDebuff[];
@@ -319,7 +323,7 @@ function projectWorldRect(value: MechanicsMapSnapshot, x: number, z: number, hal
 }
 
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
-  if (!record(value) || value.schema_version !== 3 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
+  if (!record(value) || value.schema_version !== 4 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
   }
   return value as unknown as MechanicsMapUpdate;
@@ -372,7 +376,7 @@ export function projectMechanicsMapPoint(
 }
 
 function snapshot(value: unknown): value is MechanicsMapSnapshot {
-  return record(value) && value.schema_version === 3 &&
+  return record(value) && value.schema_version === 4 &&
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
     ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
@@ -390,7 +394,9 @@ function snapshot(value: unknown): value is MechanicsMapSnapshot {
 function target(value: unknown): value is TargetFrameSnapshot {
   return record(value) && nonnegativeInteger(value.actor_id) && Number.isSafeInteger(value.entity_uuid) &&
     nullableString(value.display_name) && nullableInteger(value.monster_id) && nullableInteger(value.current_hp) &&
-    nullableInteger(value.max_hp) && nullableFinite(value.hp_percent) && typeof value.dead === "boolean" &&
+    nullableInteger(value.max_hp) && nullableFinite(value.hp_percent) && nullableInteger(value.current_shield) &&
+    nullableInteger(value.max_shield) && nullableFinite(value.shield_percent) && nullableInteger(value.breaking_stage) &&
+    typeof value.dead === "boolean" &&
     typeof value.stale === "boolean" && Array.isArray(value.debuffs) && value.debuffs.length <= 24 &&
     value.debuffs.every(debuff);
 }

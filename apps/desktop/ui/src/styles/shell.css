@@ -5734,6 +5734,14 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .target-frame-overlay-health { height: 9px; overflow: hidden; border: 1px solid rgb(255 111 131 / 34%); border-radius: 999px; background: rgb(44 20 31 / 82%); }
 .target-frame-overlay-health span { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #ff6f83, #ff9ca9); transition: width 120ms linear; }
 .target-frame-overlay-health[data-observed="false"] span { display: none; }
+.target-frame-overlay-vitals { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px 7px; }
+.target-frame-overlay-health { grid-column: 1 / -1; width: 100%; }
+.target-frame-overlay-shield { height: 5px; overflow: hidden; border: 1px solid rgb(83 182 255 / 40%); border-radius: 999px; background: rgb(13 31 48 / 88%); }
+.target-frame-overlay-shield span { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #4da8ff, #8bdcff); transition: width 120ms linear; }
+.target-frame-overlay-shield[data-observed="false"] span { opacity: .72; }
+.target-frame-overlay-shield-label { color: #91cfff; font-size: 7px; font-variant-numeric: tabular-nums; font-weight: 850; letter-spacing: .06em; white-space: nowrap; }
+.target-frame-overlay-breaking { grid-column: 1 / -1; justify-self: start; padding: 2px 5px; border: 1px solid rgb(255 196 75 / 45%); border-radius: 999px; color: #ffd57a; background: rgb(55 38 9 / 72%); font-size: 7px; font-weight: 900; letter-spacing: .1em; }
+.target-frame-overlay-breaking[data-stage="1"] { border-color: rgb(121 143 164 / 40%); color: #9eb0c0; background: rgb(24 33 42 / 72%); }
 .target-frame-overlay-debuffs { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 5px; min-height: 28px; }
 .target-frame-overlay-debuff-entry { display: grid; justify-items: center; gap: 2px; width: 36px; min-width: 0; }
 .target-frame-overlay-debuff { position: relative; display: grid; place-items: center; width: 30px; height: 30px; overflow: hidden; border: 1px solid rgb(255 111 131 / 46%); border-radius: 5px; color: #eef6fb; background: rgb(28 17 29 / 92%); }
