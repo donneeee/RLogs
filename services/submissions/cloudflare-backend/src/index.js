@@ -222,14 +222,13 @@ async function profileLeaderboards(env, url) {
   const tier = Number.isSafeInteger(requestedTier) && requestedTier >= 1 && requestedTier <= 20 ? requestedTier : 20;
   const requestedLimit = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
   const limit = Number.isSafeInteger(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 100;
-  const regionClause = region ? " AND p.region_id=?2" : "";
+  const regionClause = region ? " AND r.region_id=?2" : "";
   const scoreBindings = region ? [season, region, limit] : [season, limit];
   const scoreLimitParameter = region ? "?3" : "?2";
   const scoreQuery = env.RLOGS_DB.prepare(`SELECT
-      r.profile_id, p.character_id, json_extract(p.public_projection_json, '$.display_name') AS display_name,
-      p.deployment_id, p.region_id, p.realm_id, r.master_score, r.observed_unix_millis
+      r.profile_id, r.character_id, r.display_name, r.deployment_id, r.region_id,
+      r.realm_id, r.master_score, r.observed_unix_millis
     FROM profile_season_rankings r
-    JOIN profiles p ON p.profile_id=r.profile_id
     WHERE r.season_id=?1${regionClause}
     ORDER BY r.master_score DESC, r.observed_unix_millis, r.profile_id
     LIMIT ${scoreLimitParameter}`).bind(...scoreBindings);
@@ -239,14 +238,13 @@ async function profileLeaderboards(env, url) {
     const bindings = region
       ? [season, activity, tier, region, limit]
       : [season, activity, tier, limit];
-    const timeRegionClause = region ? " AND p.region_id=?4" : "";
+    const timeRegionClause = region ? " AND d.region_id=?4" : "";
     const timeLimitParameter = region ? "?5" : "?4";
     timeQuery = env.RLOGS_DB.prepare(`SELECT
-        d.profile_id, p.character_id, json_extract(p.public_projection_json, '$.display_name') AS display_name,
-        p.deployment_id, p.region_id, p.realm_id, d.activity_id, d.tier, d.score,
+        d.profile_id, d.character_id, d.display_name, d.deployment_id, d.region_id,
+        d.realm_id, d.activity_id, d.tier, d.score,
         d.pass_time_seconds, d.completion_count, d.observed_unix_millis
       FROM profile_dungeon_records d
-      JOIN profiles p ON p.profile_id=d.profile_id
       WHERE d.season_id=?1 AND d.activity_id=?2 AND d.tier=?3${timeRegionClause}
       ORDER BY d.pass_time_seconds, d.score DESC, d.observed_unix_millis, d.profile_id
       LIMIT ${timeLimitParameter}`).bind(...bindings);

@@ -412,6 +412,8 @@ test("a device-bound profile package claims and publishes a profile in Cloudflar
     "usr_owner",
   ]);
   assert.equal(JSON.parse(profileStatement.bindings[9]).display_name, "MarieRose");
+  const rankingStatement = d1.find((statement) => /INSERT INTO profile_season_rankings/u.test(statement.query));
+  assert.equal(rankingStatement, undefined);
   assert.equal(loadoutStatement.bindings[3], "Falc-DS");
 });
 

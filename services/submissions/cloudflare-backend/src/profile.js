@@ -200,9 +200,15 @@ export async function persistProfileMetadata(env, profile, claim, loadout = null
   );
   if (leaderboard.ranking) {
     statements.push(env.RLOGS_DB.prepare(`INSERT INTO profile_season_rankings (
-      profile_id, season_id, master_score, observed_unix_millis
-    ) VALUES (?1, ?2, ?3, ?4)`).bind(
+      profile_id, character_id, display_name, deployment_id, region_id, realm_id,
+      season_id, master_score, observed_unix_millis
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`).bind(
       profile.profile_id,
+      characterId,
+      profile.display_name ?? profile.envelope?.body?.display_name ?? null,
+      profile.deployment,
+      profile.region,
+      profile.realm ?? null,
       leaderboard.ranking.season_id,
       leaderboard.ranking.master_score,
       profile.updated_unix_millis,
@@ -210,19 +216,25 @@ export async function persistProfileMetadata(env, profile, claim, loadout = null
   }
   if (leaderboard.records.length > 0) {
     statements.push(env.RLOGS_DB.prepare(`INSERT INTO profile_dungeon_records (
-      profile_id, season_id, activity_id, tier, score, pass_time_seconds,
-      completion_count, observed_unix_millis
+      profile_id, character_id, display_name, deployment_id, region_id, realm_id,
+      season_id, activity_id, tier, score, pass_time_seconds, completion_count,
+      observed_unix_millis
     )
-    SELECT ?1,
+    SELECT ?1, ?2, ?3, ?4, ?5, ?6,
       CAST(json_extract(value, '$.season_id') AS INTEGER),
       CAST(json_extract(value, '$.activity_id') AS INTEGER),
       CAST(json_extract(value, '$.tier') AS INTEGER),
       CAST(json_extract(value, '$.score') AS INTEGER),
       CAST(json_extract(value, '$.pass_time_seconds') AS INTEGER),
       CAST(json_extract(value, '$.completion_count') AS INTEGER),
-      ?2
-    FROM json_each(?3)`).bind(
+      ?7
+    FROM json_each(?8)`).bind(
       profile.profile_id,
+      characterId,
+      profile.display_name ?? profile.envelope?.body?.display_name ?? null,
+      profile.deployment,
+      profile.region,
+      profile.realm ?? null,
       profile.updated_unix_millis,
       JSON.stringify(leaderboard.records),
     ));
