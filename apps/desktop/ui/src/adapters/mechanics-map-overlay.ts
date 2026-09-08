@@ -41,6 +41,9 @@ export interface MechanicsMapCanvasPreferences {
   targetX: number;
   targetY: number;
   targetWidth: number;
+  playerX: number;
+  playerY: number;
+  playerWidth: number;
 }
 
 const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
@@ -57,6 +60,9 @@ const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
   targetX: 580,
   targetY: 48,
   targetWidth: 420,
+  playerX: 24,
+  playerY: 48,
+  playerWidth: 420,
 };
 
 export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMapCanvasPreferences {
@@ -78,6 +84,9 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
     targetX: finiteBounded(value.targetX) ? value.targetX : 580,
     targetY: finiteBounded(value.targetY) ? value.targetY : 48,
     targetWidth: finitePositive(value.targetWidth) ? Math.max(280, value.targetWidth) : 420,
+    playerX: finiteBounded(value.playerX) ? value.playerX : 24,
+    playerY: finiteBounded(value.playerY) ? value.playerY : 48,
+    playerWidth: finitePositive(value.playerWidth) ? Math.max(280, value.playerWidth) : 420,
   };
 }
 
@@ -100,6 +109,8 @@ export function mountMechanicsMapOverlay(
   let moduleResize: { pointerId: number; x: number; y: number; width: number; height: number } | null = null;
   let targetDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
   let targetResize: { pointerId: number; x: number; width: number } | null = null;
+  let playerDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
+  let playerResize: { pointerId: number; x: number; width: number } | null = null;
   let frame: number | null = null;
   let image: HTMLImageElement | null = null;
   let imageUrl: string | null = null;
@@ -163,6 +174,17 @@ export function mountMechanicsMapOverlay(
     resize.setPointerCapture(event.pointerId);
   });
   panel.append(toolbar, viewport, resize);
+  const playerPanel = element("section", "player-frame-overlay-runtime");
+  const playerToolbar = element("header", "player-frame-overlay-toolbar");
+  const playerTitle = text("strong", "Player");
+  const playerStatus = text("span", "WAITING");
+  playerToolbar.append(playerTitle, playerStatus);
+  const playerBody = element("section", "player-frame-overlay-body");
+  const playerResizeHandle = element("button", "player-frame-overlay-resize");
+  playerResizeHandle.type = "button";
+  playerResizeHandle.title = "Resize player frame";
+  playerResizeHandle.setAttribute("aria-label", "Resize player frame");
+  playerPanel.append(playerToolbar, playerBody, playerResizeHandle);
   const targetPanel = element("section", "target-frame-overlay-runtime");
   const targetToolbar = element("header", "target-frame-overlay-toolbar");
   const targetTitle = text("strong", "Current target");
@@ -174,7 +196,7 @@ export function mountMechanicsMapOverlay(
   targetResizeHandle.title = "Resize target frame";
   targetResizeHandle.setAttribute("aria-label", "Resize target frame");
   targetPanel.append(targetToolbar, targetBody, targetResizeHandle);
-  root.append(panel, targetPanel);
+  root.append(panel, playerPanel, targetPanel);
   container.replaceChildren(root);
   applyModuleGeometry();
 
@@ -192,6 +214,25 @@ export function mountMechanicsMapOverlay(
   resize.addEventListener("pointermove", resizeModule);
   resize.addEventListener("pointerup", endModuleResize);
   resize.addEventListener("pointercancel", endModuleResize);
+  playerToolbar.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    playerDrag = {
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+      left: preferences.playerX, top: preferences.playerY,
+    };
+    playerToolbar.setPointerCapture(event.pointerId);
+  });
+  playerToolbar.addEventListener("pointermove", movePlayer);
+  playerToolbar.addEventListener("pointerup", endPlayerDrag);
+  playerToolbar.addEventListener("pointercancel", endPlayerDrag);
+  playerResizeHandle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    playerResize = { pointerId: event.pointerId, x: event.clientX, width: preferences.playerWidth };
+    playerResizeHandle.setPointerCapture(event.pointerId);
+  });
+  playerResizeHandle.addEventListener("pointermove", resizePlayer);
+  playerResizeHandle.addEventListener("pointerup", endPlayerResize);
+  playerResizeHandle.addEventListener("pointercancel", endPlayerResize);
   targetToolbar.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     targetDrag = {
@@ -260,8 +301,49 @@ export function mountMechanicsMapOverlay(
     notice.hidden = snapshot.local_position_observed && snapshot.data_gap === null;
     notice.textContent = snapshot.data_gap ?? "Waiting for packet-observed position…";
     loadBackground(snapshot.background_asset_url);
+    renderPlayer(snapshot);
     renderTarget(snapshot);
     scheduleDraw();
+  }
+
+  function renderPlayer(snapshot: MechanicsMapSnapshot): void {
+    const player = snapshot.player;
+    playerPanel.dataset.stale = String(player?.stale ?? false);
+    if (player === null) {
+      playerTitle.textContent = "Player";
+      playerStatus.textContent = "WAITING";
+      playerStatus.dataset.state = "waiting";
+      playerBody.replaceChildren(text("p", "Waiting for packet-observed player vitals…", "player-frame-overlay-empty"));
+      return;
+    }
+    playerTitle.textContent = player.display_name ?? `Player ${player.actor_id}`;
+    playerStatus.textContent = player.dead ? "DEFEATED" : player.stale ? "STALE" : "LIVE";
+    playerStatus.dataset.state = player.dead ? "dead" : player.stale ? "waiting" : "live";
+    const identity = element("div", "player-frame-overlay-identity");
+    identity.append(
+      text("strong", "HP"),
+      text("span", formatTargetHealth(player.current_hp, player.max_hp)),
+    );
+    const vitals = element("div", "player-frame-overlay-vitals");
+    const health = element("div", "player-frame-overlay-health");
+    const healthFill = element("span");
+    healthFill.style.width = `${player.hp_percent ?? 0}%`;
+    health.dataset.observed = String(player.hp_percent !== null);
+    health.append(healthFill);
+    vitals.append(health);
+    if (player.current_shield !== null) {
+      const shield = element("div", "player-frame-overlay-shield");
+      const shieldFill = element("span");
+      shieldFill.style.width = `${player.shield_percent ?? (player.current_shield > 0 ? 100 : 0)}%`;
+      shield.dataset.observed = String(player.shield_percent !== null);
+      shield.title = `Shield ${formatTargetHealth(player.current_shield, player.max_shield)}`;
+      shield.append(shieldFill);
+      vitals.append(
+        shield,
+        text("small", `SHIELD ${formatTargetHealth(player.current_shield, player.max_shield)}`, "player-frame-overlay-shield-label"),
+      );
+    }
+    playerBody.replaceChildren(identity, vitals);
   }
 
   function renderTarget(snapshot: MechanicsMapSnapshot): void {
@@ -500,6 +582,12 @@ export function mountMechanicsMapOverlay(
     targetPanel.style.left = `${preferences.targetX}px`;
     targetPanel.style.top = `${preferences.targetY}px`;
     targetPanel.style.width = `${targetWidth}px`;
+    const playerWidth = Math.min(window.innerWidth, preferences.playerWidth);
+    preferences.playerX = Math.min(Math.max(0, window.innerWidth - playerWidth), Math.max(0, preferences.playerX));
+    preferences.playerY = Math.min(Math.max(0, window.innerHeight - 80), Math.max(0, preferences.playerY));
+    playerPanel.style.left = `${preferences.playerX}px`;
+    playerPanel.style.top = `${preferences.playerY}px`;
+    playerPanel.style.width = `${playerWidth}px`;
   }
 
   function moveModule(event: PointerEvent): void {
@@ -525,6 +613,31 @@ export function mountMechanicsMapOverlay(
   function endModuleResize(event: PointerEvent): void {
     if (moduleResize?.pointerId !== event.pointerId) return;
     moduleResize = null;
+    savePreferences();
+  }
+
+  function movePlayer(event: PointerEvent): void {
+    if (playerDrag?.pointerId !== event.pointerId) return;
+    preferences.playerX = playerDrag.left + event.clientX - playerDrag.x;
+    preferences.playerY = playerDrag.top + event.clientY - playerDrag.y;
+    applyModuleGeometry();
+  }
+
+  function endPlayerDrag(event: PointerEvent): void {
+    if (playerDrag?.pointerId !== event.pointerId) return;
+    playerDrag = null;
+    savePreferences();
+  }
+
+  function resizePlayer(event: PointerEvent): void {
+    if (playerResize?.pointerId !== event.pointerId) return;
+    preferences.playerWidth = Math.max(280, playerResize.width + event.clientX - playerResize.x);
+    applyModuleGeometry();
+  }
+
+  function endPlayerResize(event: PointerEvent): void {
+    if (playerResize?.pointerId !== event.pointerId) return;
+    playerResize = null;
     savePreferences();
   }
 

@@ -11,7 +11,7 @@ use rlogs_events::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 4;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 5;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
@@ -45,6 +45,10 @@ pub struct MechanicsMapSnapshot {
     pub background_asset_url: Option<String>,
     pub local_actor_id: Option<u64>,
     pub local_position_observed: bool,
+    /// Packet-observed state for the local character. This deliberately uses
+    /// the same entity-attribute lifecycle as the target frame; absent packet
+    /// values remain unavailable instead of being filled from a profile.
+    pub player: Option<PlayerFrameSnapshot>,
     pub encounter_pack: Option<&'static str>,
     pub encounter_pack_reviewed: bool,
     /// Packet-selected target for the local character. `None` means the
@@ -79,6 +83,7 @@ impl Default for MechanicsMapSnapshot {
             background_asset_url: None,
             local_actor_id: None,
             local_position_observed: false,
+            player: None,
             encounter_pack: None,
             encounter_pack_reviewed: false,
             target: None,
@@ -153,6 +158,21 @@ pub struct TargetFrameSnapshot {
     pub dead: bool,
     pub stale: bool,
     pub debuffs: Vec<TargetFrameDebuff>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PlayerFrameSnapshot {
+    pub actor_id: u64,
+    pub entity_uuid: i64,
+    pub display_name: Option<String>,
+    pub current_hp: Option<i64>,
+    pub max_hp: Option<i64>,
+    pub hp_percent: Option<f64>,
+    pub current_shield: Option<i64>,
+    pub max_shield: Option<i64>,
+    pub shield_percent: Option<f64>,
+    pub dead: bool,
+    pub stale: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -675,6 +695,21 @@ impl MechanicsMapProjector {
             .and_then(|actor_id| self.entities.get(&actor_id))
             .and_then(|entity| entity.position)
             .is_some();
+        let player = local_actor_id
+            .and_then(|actor_id| self.entities.get(&actor_id))
+            .map(|entity| PlayerFrameSnapshot {
+                actor_id: entity.actor.actor_id.0,
+                entity_uuid: entity.actor.entity_uuid.0,
+                display_name: entity.display_name.clone(),
+                current_hp: entity.current_hp,
+                max_hp: entity.max_hp,
+                hp_percent: observed_percent(entity.current_hp, entity.max_hp),
+                current_shield: entity.current_shield,
+                max_shield: entity.max_shield,
+                shield_percent: observed_percent(entity.current_shield, entity.max_shield),
+                dead: entity.dead,
+                stale: now.saturating_sub(entity.last_observed_micros) > ENTITY_STALE_AFTER_MICROS,
+            });
         let mut entities = self
             .entities
             .values()
@@ -831,24 +866,8 @@ impl MechanicsMapProjector {
                     .collect::<Vec<_>>();
                 debuffs.sort_by_key(|status| (status.effect_id, status.instance_id));
                 debuffs.truncate(MAX_TARGET_DEBUFFS);
-                let hp_percent =
-                    entity
-                        .current_hp
-                        .zip(entity.max_hp)
-                        .and_then(|(current, maximum)| {
-                            (maximum > 0).then(|| {
-                                ((current.max(0) as f64 / maximum as f64) * 100.0).clamp(0.0, 100.0)
-                            })
-                        });
-                let shield_percent =
-                    entity
-                        .current_shield
-                        .zip(entity.max_shield)
-                        .and_then(|(current, maximum)| {
-                            (maximum > 0).then(|| {
-                                ((current.max(0) as f64 / maximum as f64) * 100.0).clamp(0.0, 100.0)
-                            })
-                        });
+                let hp_percent = observed_percent(entity.current_hp, entity.max_hp);
+                let shield_percent = observed_percent(entity.current_shield, entity.max_shield);
                 TargetFrameSnapshot {
                     actor_id: entity.actor.actor_id.0,
                     entity_uuid: entity.actor.entity_uuid.0,
@@ -919,6 +938,7 @@ impl MechanicsMapProjector {
             },
             local_actor_id,
             local_position_observed,
+            player,
             encounter_pack: pack,
             encounter_pack_reviewed: pack.is_some(),
             target,
@@ -1019,6 +1039,12 @@ impl MechanicsMapProjector {
             self.markers.remove(&key);
         }
     }
+}
+
+fn observed_percent(current: Option<i64>, maximum: Option<i64>) -> Option<f64> {
+    current.zip(maximum).and_then(|(current, maximum)| {
+        (maximum > 0).then(|| ((current.max(0) as f64 / maximum as f64) * 100.0).clamp(0.0, 100.0))
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1567,11 +1593,31 @@ mod tests {
                     actor: local,
                     update_kind: EntityAttributeUpdateKind::Delta,
                     ownership: None,
-                    attributes: vec![EntityAttribute {
-                        attribute_id: ATTR_TARGET_ID,
-                        raw_value: vec![0xa0, 0x06],
-                        decoded: Some(EntityAttributeValue::Integer(800)),
-                    }],
+                    attributes: vec![
+                        EntityAttribute {
+                            attribute_id: ATTR_TARGET_ID,
+                            raw_value: vec![0xa0, 0x06],
+                            decoded: Some(EntityAttributeValue::Integer(800)),
+                        },
+                        EntityAttribute {
+                            attribute_id: ATTR_CURRENT_HP,
+                            raw_value: vec![],
+                            decoded: Some(EntityAttributeValue::Integer(900)),
+                        },
+                        EntityAttribute {
+                            attribute_id: ATTR_MAX_HP_FINAL,
+                            raw_value: vec![],
+                            decoded: Some(EntityAttributeValue::Integer(1_000)),
+                        },
+                        EntityAttribute {
+                            attribute_id: ATTR_SHIELD_LIST,
+                            raw_value: vec![
+                                10, 17, 8, 240, 1, 16, 12, 24, 144, 147, 2, 32, 190, 201, 1, 40,
+                                208, 141, 19,
+                            ],
+                            decoded: None,
+                        },
+                    ],
                 }),
             }),
         ));
@@ -1656,7 +1702,15 @@ mod tests {
             }),
         ));
 
-        let selected = projector.snapshot().target.expect("selected target");
+        let snapshot = projector.snapshot();
+        let player = snapshot.player.expect("local player frame");
+        assert_eq!(player.actor_id, 7);
+        assert_eq!(player.current_hp, Some(900));
+        assert_eq!(player.max_hp, Some(1_000));
+        assert_eq!(player.hp_percent, Some(90.0));
+        assert_eq!(player.current_shield, Some(35_216));
+        assert_eq!(player.max_shield, Some(313_040));
+        let selected = snapshot.target.expect("selected target");
         assert_eq!(selected.actor_id, 8);
         assert_eq!(selected.current_hp, Some(500));
         assert_eq!(selected.max_hp, Some(1_000));

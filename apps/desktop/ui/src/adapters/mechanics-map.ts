@@ -32,7 +32,7 @@ export interface MechanicsMapSignal {
 }
 
 export interface MechanicsMapSnapshot {
-  schema_version: 4;
+  schema_version: 5;
   revision: number;
   session_id: string | null;
   client_build: string | null;
@@ -49,6 +49,7 @@ export interface MechanicsMapSnapshot {
   background_asset_url: string | null;
   local_actor_id: number | null;
   local_position_observed: boolean;
+  player: PlayerFrameSnapshot | null;
   encounter_pack: string | null;
   encounter_pack_reviewed: boolean;
   target: TargetFrameSnapshot | null;
@@ -67,9 +68,23 @@ export interface MechanicsMapSnapshot {
 }
 
 export interface MechanicsMapUpdate {
-  schema_version: 4;
+  schema_version: 5;
   revision: number;
   snapshot: MechanicsMapSnapshot;
+}
+
+export interface PlayerFrameSnapshot {
+  actor_id: number;
+  entity_uuid: number;
+  display_name: string | null;
+  current_hp: number | null;
+  max_hp: number | null;
+  hp_percent: number | null;
+  current_shield: number | null;
+  max_shield: number | null;
+  shield_percent: number | null;
+  dead: boolean;
+  stale: boolean;
 }
 
 export interface TargetFrameDebuff {
@@ -323,7 +338,7 @@ function projectWorldRect(value: MechanicsMapSnapshot, x: number, z: number, hal
 }
 
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
-  if (!record(value) || value.schema_version !== 4 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
+  if (!record(value) || value.schema_version !== 5 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
   }
   return value as unknown as MechanicsMapUpdate;
@@ -376,7 +391,7 @@ export function projectMechanicsMapPoint(
 }
 
 function snapshot(value: unknown): value is MechanicsMapSnapshot {
-  return record(value) && value.schema_version === 4 &&
+  return record(value) && value.schema_version === 5 &&
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
     ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
@@ -384,11 +399,19 @@ function snapshot(value: unknown): value is MechanicsMapSnapshot {
     nullableFinite(value.map_origin_x) && nullableFinite(value.map_origin_z) &&
     nullablePositive(value.map_span_x) && nullablePositive(value.map_span_z) &&
     nullableString(value.background_asset_url) && nullableInteger(value.local_actor_id) &&
-    typeof value.local_position_observed === "boolean" && nullableString(value.encounter_pack) &&
+    typeof value.local_position_observed === "boolean" && (value.player === null || player(value.player)) &&
+    nullableString(value.encounter_pack) &&
     typeof value.encounter_pack_reviewed === "boolean" && (value.target === null || target(value.target)) &&
     Array.isArray(value.entities) && value.entities.every(entity) &&
     Array.isArray(value.mechanics) && value.mechanics.every(signal) && Array.isArray(value.markers) &&
     nullableString(value.data_gap) && nullableInteger(value.last_event_sequence) && nullableInteger(value.last_observed_micros);
+}
+
+function player(value: unknown): value is PlayerFrameSnapshot {
+  return record(value) && nonnegativeInteger(value.actor_id) && Number.isSafeInteger(value.entity_uuid) &&
+    nullableString(value.display_name) && nullableInteger(value.current_hp) && nullableInteger(value.max_hp) &&
+    nullableFinite(value.hp_percent) && nullableInteger(value.current_shield) && nullableInteger(value.max_shield) &&
+    nullableFinite(value.shield_percent) && typeof value.dead === "boolean" && typeof value.stale === "boolean";
 }
 
 function target(value: unknown): value is TargetFrameSnapshot {

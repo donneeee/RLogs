@@ -24,6 +24,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       targetX: 720,
       targetY: 64,
       targetWidth: 460,
+      playerX: 32,
+      playerY: 72,
+      playerWidth: 440,
     })).toEqual({
       scale: 37.5,
       panX: -184,
@@ -38,6 +41,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       targetX: 720,
       targetY: 64,
       targetWidth: 460,
+      playerX: 32,
+      playerY: 72,
+      playerWidth: 440,
     });
   });
 
@@ -56,6 +62,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       targetX: Number.POSITIVE_INFINITY,
       targetY: Number.NaN,
       targetWidth: 0,
+      playerX: Number.NEGATIVE_INFINITY,
+      playerY: Number.NaN,
+      playerWidth: -20,
     })).toEqual({
       scale: 1,
       panX: 0,
@@ -70,6 +79,9 @@ describe("Mechanics Map overlay canvas preferences", () => {
       targetX: 580,
       targetY: 48,
       targetWidth: 420,
+      playerX: 24,
+      playerY: 48,
+      playerWidth: 420,
     });
   });
 });
