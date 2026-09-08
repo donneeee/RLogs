@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use rlogs_events::{
     ActorId, ActorKind, ActorOwnershipUpdate, CanonicalEvent, EntityUuid, EventEnvelope,
-    StatusEffectId, StatusState, TimelineEventKind,
+    EventSensitivity, StatusEffectId, StatusState, TimelineEventKind,
 };
 use serde::Serialize;
 
@@ -118,6 +118,7 @@ pub struct TrainingDummyController {
     actor_by_entity_uuid: HashMap<EntityUuid, ActorId>,
     owner_entity_by_actor: HashMap<ActorId, EntityUuid>,
     active_statuses: HashSet<(ActorId, ActorId, StatusEffectId)>,
+    local_character_id: Option<String>,
     observed_party_size: Option<usize>,
     locked_player: Option<ActorId>,
     locked_target: Option<ActorId>,
@@ -131,6 +132,7 @@ impl Default for TrainingDummyController {
             actor_by_entity_uuid: HashMap::new(),
             owner_entity_by_actor: HashMap::new(),
             active_statuses: HashSet::new(),
+            local_character_id: None,
             observed_party_size: None,
             locked_player: None,
             locked_target: None,
@@ -188,6 +190,17 @@ impl TrainingDummyController {
 
         let CanonicalEvent::Timeline(timeline) = &event.event else {
             let party_size = match &event.event {
+                CanonicalEvent::CharacterProfileObserved { profile }
+                    if event.sensitivity == EventSensitivity::PersonalGameplay =>
+                {
+                    if self.local_character_id.as_deref()
+                        != Some(profile.character.character_id.as_str())
+                    {
+                        self.local_character_id = Some(profile.character.character_id.clone());
+                        observation.changed = true;
+                    }
+                    None
+                }
                 CanonicalEvent::PartyRosterObserved(roster) => match &roster.observation {
                     rlogs_events::PartyRosterObservation::FullSnapshot { members, .. } => {
                         Some(members.len())
@@ -293,13 +306,13 @@ impl TrainingDummyController {
                             || !target
                                 .monster_id
                                 .is_some_and(|id| ELITE_DUMMY_MONSTER_IDS.contains(&id))
-                            || self.player_owner(damage.source.actor_id).is_none()
+                            || self.local_player_owner(damage.source.actor_id).is_none()
                         {
                             return observation;
                         }
                         let monster_id = target.monster_id.expect("validated dummy monster id");
                         self.start(
-                            self.player_owner(damage.source.actor_id)
+                            self.local_player_owner(damage.source.actor_id)
                                 .expect("validated player owner"),
                             damage.target.actor_id,
                             monster_id,
@@ -360,6 +373,12 @@ impl TrainingDummyController {
             current = owner;
         }
         None
+    }
+
+    fn local_player_owner(&self, actor_id: ActorId) -> Option<ActorId> {
+        let owner = self.player_owner(actor_id)?;
+        let character_id = self.actors.get(&owner)?.character_id.as_deref()?;
+        (Some(character_id) == self.local_character_id.as_deref()).then_some(owner)
     }
 
     fn start(&mut self, player: ActorId, target: ActorId, monster_id: i64, now: u64) {
@@ -463,10 +482,10 @@ mod tests {
     use super::*;
     use rlogs_events::{
         ActorEvent, ActorLoadoutObservation, ActorState, CanonicalEventDraft,
-        CanonicalEventDraftKind, DamageEvent, DamageFlags, EntityAttributeEvent,
+        CanonicalEventDraftKind, CharacterIdentity, DamageEvent, DamageFlags, EntityAttributeEvent,
         EntityAttributeUpdateKind, EntityRef, EntityUuid, EventEnvelopeFactory, EventProvenance,
-        EventSensitivity, EventTime, MonsterId, RegionContext, RegionIdentity, SceneId,
-        StatusEvent, WorldContext,
+        EventSensitivity, EventTime, GameProfileEvent, MonsterId, RegionContext, RegionIdentity,
+        SceneId, StatusEvent, WorldContext,
     };
 
     fn entity(id: u64) -> EntityRef {
@@ -507,6 +526,40 @@ mod tests {
                 provenance: EventProvenance::wire(1, 1, 1),
                 sensitivity: EventSensitivity::PublicGameplay,
                 kind,
+            })
+            .unwrap()
+    }
+
+    fn emit_local_profile(
+        factory: &mut EventEnvelopeFactory,
+        micros: u64,
+        character_id: &str,
+    ) -> EventEnvelope {
+        factory
+            .emit(CanonicalEventDraft {
+                time: EventTime {
+                    observed_micros: micros,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance::wire(1, 1, 1),
+                sensitivity: EventSensitivity::PersonalGameplay,
+                kind: CanonicalEventDraftKind::CharacterProfileObserved {
+                    profile: Box::new(GameProfileEvent {
+                        game_plugin_id: "rlogs.test".into(),
+                        payload_schema_id: "rlogs.test.profile".into(),
+                        payload_schema_version: 1,
+                        character: CharacterIdentity {
+                            character_id: character_id.into(),
+                            region: RegionIdentity {
+                                deployment_id: "global".into(),
+                                region_id: "north-america".into(),
+                                realm_id: Some("asteria".into()),
+                                world_id: Some("asteria".into()),
+                            },
+                        },
+                        payload: serde_json::json!({}),
+                    }),
+                },
             })
             .unwrap()
     }
@@ -585,6 +638,7 @@ mod tests {
             3,
             actor(2, ActorKind::TrainingDummy, Some(115)),
         ));
+        controller.observe(&emit_local_profile(&mut factory, 4, "1"));
         controller.arm();
 
         let first = controller.observe(&emit(&mut factory, 10, damage(1, 2, 1_000)));
@@ -605,6 +659,47 @@ mod tests {
         assert_eq!(state.phase, TrainingDummyPhase::Finished);
         assert_eq!(state.total_damage, 1_500);
         assert_eq!(state.dps, 1_500.0 / 180.0);
+    }
+
+    #[test]
+    fn nearby_players_cannot_open_or_enter_the_local_dummy_window() {
+        let mut factory = factory();
+        let mut controller = TrainingDummyController::default();
+        for event in [
+            emit(
+                &mut factory,
+                1,
+                CanonicalEventDraftKind::WorldChanged(WorldContext {
+                    scene_id: Some(SceneId(GUILD_HALL_SCENE_ID)),
+                    map_id: None,
+                    line_id: None,
+                    scene_instance_id: None,
+                    dungeon_instance_id: None,
+                }),
+            ),
+            emit(&mut factory, 2, actor(1, ActorKind::Player, None)),
+            emit(&mut factory, 3, actor(3, ActorKind::Player, None)),
+            emit(
+                &mut factory,
+                4,
+                actor(2, ActorKind::TrainingDummy, Some(115)),
+            ),
+        ] {
+            controller.observe(&event);
+        }
+        controller.observe(&emit_local_profile(&mut factory, 5, "1"));
+        controller.arm();
+
+        let nearby = controller.observe(&emit(&mut factory, 6, damage(3, 2, 50_000)));
+        assert!(!nearby.reset_meter);
+        assert!(!nearby.accept_damage);
+        assert_eq!(controller.state().phase, TrainingDummyPhase::Armed);
+
+        let local = controller.observe(&emit(&mut factory, 7, damage(1, 2, 1_000)));
+        assert!(local.reset_meter && local.accept_damage);
+        assert_eq!(controller.state().phase, TrainingDummyPhase::Running);
+        assert_eq!(controller.state().player_character_id.as_deref(), Some("1"));
+        assert_eq!(controller.state().total_damage, 1_000);
     }
 
     #[test]
@@ -633,6 +728,7 @@ mod tests {
         ] {
             controller.observe(&event);
         }
+        controller.observe(&emit_local_profile(&mut factory, 5, "1"));
         controller.arm();
         controller.observe(&emit(&mut factory, 10, damage(1, 2, 1_000)));
         controller.observe(&emit(
@@ -705,6 +801,7 @@ mod tests {
             controller.observe(&event);
         }
 
+        controller.observe(&emit_local_profile(&mut factory, 6, "1"));
         controller.arm();
         let opener = controller.observe(&emit(&mut factory, 10, damage(1, 2, 1_000)));
 
@@ -748,6 +845,7 @@ mod tests {
         ] {
             controller.observe(&event);
         }
+        controller.observe(&emit_local_profile(&mut factory, 9, "1"));
         controller.arm();
 
         let first = controller.observe(&emit(&mut factory, 10, damage(3, 2, 1_000)));
@@ -825,6 +923,7 @@ mod tests {
         ] {
             controller.observe(&event);
         }
+        controller.observe(&emit_local_profile(&mut factory, 4, "1"));
         controller.arm();
         controller.observe(&emit(&mut factory, 10, damage(1, 2, 1_000)));
         controller.observe(&emit(
