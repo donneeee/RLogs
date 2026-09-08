@@ -110,6 +110,11 @@ test("only the submission API surface is routable", () => {
   assert.equal(routeAllowed("GET", "/v1/profiles?character_id=1000001"), false);
   assert.equal(routeAllowed("GET", "/v1/profiles"), true);
   assert.equal(routeAllowed("GET", "/v1/leaderboards/profiles"), true);
+  assert.equal(routeAllowed("GET", "/v1/leaderboards/training-dummy"), true);
+  assert.equal(
+    routeAllowed("GET", "/v1/training-dummy/rpt_0123456789abcdef0123456789abcdef"),
+    true,
+  );
   assert.equal(routeAllowed("GET", "/v1/characters"), true);
   assert.equal(routeAllowed("GET", "/v1/photos"), true);
   assert.equal(routeAllowed("GET", "/v1/profiles/prf_0123456789abcdef0123456789abcdef"), true);
