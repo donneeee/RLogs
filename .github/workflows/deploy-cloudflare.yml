@@ -50,13 +50,6 @@ jobs:
         working-directory: services/submissions/cloudflare-verifier
         run: npm ci --ignore-scripts
 
-      - name: Require hosted artifact storage
-        working-directory: services/submissions/cloudflare-verifier
-        shell: bash
-        run: |
-          npx wrangler r2 bucket create rlogs-production-artifacts || \
-            npx wrangler r2 bucket list | grep -q rlogs-production-artifacts
-
       - name: Test and deploy the private replay verifier
         working-directory: services/submissions/cloudflare-verifier
         run: |
