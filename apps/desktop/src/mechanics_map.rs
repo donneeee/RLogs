@@ -11,13 +11,14 @@ use rlogs_events::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 5;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 6;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
 const MAX_MECHANICS: usize = 96;
 const MAX_TARGET_DEBUFFS: usize = 24;
 const MAX_TARGET_STATUSES: usize = 4_096;
+const MAX_LOCAL_COOLDOWNS: usize = 48;
 const MINIMAP_WORLD_RADIUS: f32 = 140.0;
 // Exact build-locked `EAttrType` IDs decoded by the BPSR integration.
 const ATTR_TARGET_ID: i32 = 0x1e;
@@ -49,6 +50,10 @@ pub struct MechanicsMapSnapshot {
     /// the same entity-attribute lifecycle as the target frame; absent packet
     /// values remain unavailable instead of being filled from a profile.
     pub player: Option<PlayerFrameSnapshot>,
+    /// Latest packet-observed skill cooldown state for the local character.
+    /// These are HUD controls only: they do not synthesize input or infer a
+    /// cooldown from damage hits.
+    pub action_controls: Vec<ActionControlSnapshot>,
     pub encounter_pack: Option<&'static str>,
     pub encounter_pack_reviewed: bool,
     /// Packet-selected target for the local character. `None` means the
@@ -84,6 +89,7 @@ impl Default for MechanicsMapSnapshot {
             local_actor_id: None,
             local_position_observed: false,
             player: None,
+            action_controls: Vec::new(),
             encounter_pack: None,
             encounter_pack_reviewed: false,
             target: None,
@@ -173,6 +179,22 @@ pub struct PlayerFrameSnapshot {
     pub shield_percent: Option<f64>,
     pub dead: bool,
     pub stale: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ActionControlSnapshot {
+    /// Exact `SkillCDInfo.skill_level_id` carried by the packet.
+    pub skill_level_id: i64,
+    /// Presentation-only base action selected from the exact ID or its
+    /// reviewed SkillLevel -> Skill relation.
+    pub presentation_ability_id: Option<i64>,
+    pub presentation_name: Option<String>,
+    pub icon_asset_path: Option<String>,
+    pub duration_millis: Option<i32>,
+    pub remaining_millis: Option<u64>,
+    pub cooldown_type: Option<i32>,
+    pub charge_count: Option<i32>,
+    pub observed_at_micros: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -313,6 +335,15 @@ struct SignalState {
     applied_at_micros: u64,
 }
 
+#[derive(Debug, Clone)]
+struct CooldownState {
+    skill_level_id: i64,
+    duration_millis: Option<i32>,
+    cooldown_type: Option<i32>,
+    charge_count: Option<i32>,
+    observed_at_micros: u64,
+}
+
 #[derive(Debug, Default)]
 pub struct MechanicsMapProjector {
     revision: u64,
@@ -325,6 +356,7 @@ pub struct MechanicsMapProjector {
     entities: BTreeMap<u64, EntityState>,
     attack_targets: BTreeMap<u64, i64>,
     target_statuses: BTreeMap<(u64, i64), TargetStatusState>,
+    cooldowns: BTreeMap<(u64, i64), CooldownState>,
     signals: BTreeMap<(u64, i64), SignalState>,
     markers: BTreeMap<Option<i64>, MechanicsMapMarker>,
     data_gap: Option<String>,
@@ -445,6 +477,8 @@ impl MechanicsMapProjector {
                         changed |= target_count != self.attack_targets.len();
                         self.signals
                             .retain(|_, signal| signal.target.actor_id != event.actor.actor_id);
+                        self.cooldowns
+                            .retain(|(actor_id, _), _| *actor_id != event.actor.actor_id.0);
                     } else {
                         let entry =
                             self.entities
@@ -584,6 +618,23 @@ impl MechanicsMapProjector {
                         entity.last_observed_micros = envelope.time.observed_micros;
                     }
                 }
+                TimelineEventKind::Cooldown(cooldown) => {
+                    let skill_level_id = cooldown.ability.0;
+                    if skill_level_id > 0 {
+                        let key = (cooldown.actor.actor_id.0, skill_level_id);
+                        self.cooldowns.insert(
+                            key,
+                            CooldownState {
+                                skill_level_id,
+                                duration_millis: cooldown.duration_millis,
+                                cooldown_type: cooldown.cooldown_type,
+                                charge_count: cooldown.charge_count,
+                                observed_at_micros: envelope.time.observed_micros,
+                            },
+                        );
+                        changed = true;
+                    }
+                }
                 TimelineEventKind::Status(status) => {
                     let key = (
                         status.target.actor_id.0,
@@ -710,6 +761,16 @@ impl MechanicsMapProjector {
                 dead: entity.dead,
                 stale: now.saturating_sub(entity.last_observed_micros) > ENTITY_STALE_AFTER_MICROS,
             });
+        let mut action_controls = local_actor_id
+            .into_iter()
+            .flat_map(|actor_id| {
+                self.cooldowns
+                    .range((actor_id, i64::MIN)..=(actor_id, i64::MAX))
+                    .map(|(_, cooldown)| action_control_snapshot(cooldown, now))
+            })
+            .collect::<Vec<_>>();
+        action_controls.sort_by_key(|control| control.skill_level_id);
+        action_controls.truncate(MAX_LOCAL_COOLDOWNS);
         let mut entities = self
             .entities
             .values()
@@ -939,6 +1000,7 @@ impl MechanicsMapProjector {
             local_actor_id,
             local_position_observed,
             player,
+            action_controls,
             encounter_pack: pack,
             encounter_pack_reviewed: pack.is_some(),
             target,
@@ -1021,6 +1083,17 @@ impl MechanicsMapProjector {
             };
             self.target_statuses.remove(&oldest);
         }
+        while self.cooldowns.len() > MAX_LOCAL_COOLDOWNS.saturating_mul(MAX_ENTITIES) {
+            let Some(oldest) = self
+                .cooldowns
+                .iter()
+                .min_by_key(|(_, cooldown)| cooldown.observed_at_micros)
+                .map(|(key, _)| *key)
+            else {
+                break;
+            };
+            self.cooldowns.remove(&oldest);
+        }
         while self.signals.len() > MAX_MECHANICS {
             let Some(oldest) = self
                 .signals
@@ -1045,6 +1118,52 @@ fn observed_percent(current: Option<i64>, maximum: Option<i64>) -> Option<f64> {
     current.zip(maximum).and_then(|(current, maximum)| {
         (maximum > 0).then(|| ((current.max(0) as f64 / maximum as f64) * 100.0).clamp(0.0, 100.0))
     })
+}
+
+fn action_control_snapshot(cooldown: &CooldownState, now_micros: u64) -> ActionControlSnapshot {
+    let presentation_ability_id = [
+        cooldown.skill_level_id,
+        cooldown.skill_level_id.checked_div(100).unwrap_or_default(),
+    ]
+    .into_iter()
+    .filter(|ability_id| *ability_id > 0)
+    .find(|ability_id| {
+        rlogs_game_bpsr::combat_action_presentation(*ability_id)
+            .ok()
+            .flatten()
+            .is_some()
+    });
+    let presentation = presentation_ability_id.and_then(|ability_id| {
+        rlogs_game_bpsr::combat_action_presentation(ability_id)
+            .ok()
+            .flatten()
+    });
+    let elapsed_millis = now_micros.saturating_sub(cooldown.observed_at_micros) / 1_000;
+    let remaining_millis = cooldown
+        .duration_millis
+        .filter(|duration| *duration >= 0)
+        .map(|duration| (duration as u64).saturating_sub(elapsed_millis));
+    ActionControlSnapshot {
+        skill_level_id: cooldown.skill_level_id,
+        presentation_ability_id,
+        presentation_name: presentation_ability_id.and_then(|ability_id| {
+            rlogs_game_bpsr::localized_combat_action_name(ability_id, "en-US")
+                .ok()
+                .flatten()
+                .map(str::to_owned)
+        }),
+        icon_asset_path: presentation.and_then(|presentation| {
+            presentation
+                .icon
+                .as_deref()
+                .map(|icon| format!("/game-assets/blue-protocol-star-resonance/shared/{icon}"))
+        }),
+        duration_millis: cooldown.duration_millis,
+        remaining_millis,
+        cooldown_type: cooldown.cooldown_type,
+        charge_count: cooldown.charge_count,
+        observed_at_micros: cooldown.observed_at_micros,
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1836,6 +1955,28 @@ mod tests {
             }),
         ));
         assert!(projector.snapshot().target.is_none());
+    }
+
+    #[test]
+    fn action_control_preserves_packet_cooldown_and_uses_reviewed_skill_presentation() {
+        let control = action_control_snapshot(
+            &CooldownState {
+                skill_level_id: 12_301,
+                duration_millis: Some(10_000),
+                cooldown_type: Some(2),
+                charge_count: Some(1),
+                observed_at_micros: 2_000_000,
+            },
+            4_500_000,
+        );
+
+        assert_eq!(control.skill_level_id, 12_301);
+        assert_eq!(control.presentation_ability_id, Some(123));
+        assert_eq!(control.duration_millis, Some(10_000));
+        assert_eq!(control.remaining_millis, Some(7_500));
+        assert_eq!(control.cooldown_type, Some(2));
+        assert_eq!(control.charge_count, Some(1));
+        assert_eq!(control.observed_at_micros, 2_000_000);
     }
 
     #[test]

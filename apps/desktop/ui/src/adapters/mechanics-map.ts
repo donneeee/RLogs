@@ -32,7 +32,7 @@ export interface MechanicsMapSignal {
 }
 
 export interface MechanicsMapSnapshot {
-  schema_version: 5;
+  schema_version: 6;
   revision: number;
   session_id: string | null;
   client_build: string | null;
@@ -50,6 +50,7 @@ export interface MechanicsMapSnapshot {
   local_actor_id: number | null;
   local_position_observed: boolean;
   player: PlayerFrameSnapshot | null;
+  action_controls: readonly ActionControlSnapshot[];
   encounter_pack: string | null;
   encounter_pack_reviewed: boolean;
   target: TargetFrameSnapshot | null;
@@ -68,9 +69,21 @@ export interface MechanicsMapSnapshot {
 }
 
 export interface MechanicsMapUpdate {
-  schema_version: 5;
+  schema_version: 6;
   revision: number;
   snapshot: MechanicsMapSnapshot;
+}
+
+export interface ActionControlSnapshot {
+  skill_level_id: number;
+  presentation_ability_id: number | null;
+  presentation_name: string | null;
+  icon_asset_path: string | null;
+  duration_millis: number | null;
+  remaining_millis: number | null;
+  cooldown_type: number | null;
+  charge_count: number | null;
+  observed_at_micros: number;
 }
 
 export interface PlayerFrameSnapshot {
@@ -338,7 +351,7 @@ function projectWorldRect(value: MechanicsMapSnapshot, x: number, z: number, hal
 }
 
 export function parseMechanicsMapUpdate(value: unknown): MechanicsMapUpdate {
-  if (!record(value) || value.schema_version !== 5 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
+  if (!record(value) || value.schema_version !== 6 || !nonnegativeInteger(value.revision) || !snapshot(value.snapshot)) {
     throw new Error("The local host returned an invalid Mechanics Map update.");
   }
   return value as unknown as MechanicsMapUpdate;
@@ -351,6 +364,14 @@ export function targetDebuffRemainingMillis(
   if (effect.remaining_millis === null) return null;
   if (!Number.isFinite(elapsedSinceSnapshotMillis)) return effect.remaining_millis;
   return Math.max(0, effect.remaining_millis - Math.max(0, elapsedSinceSnapshotMillis));
+}
+
+export function actionControlRemainingMillis(
+  control: Pick<ActionControlSnapshot, "remaining_millis">,
+  elapsedMillis: number,
+): number | null {
+  if (control.remaining_millis === null) return null;
+  return Math.max(0, control.remaining_millis - Math.max(0, elapsedMillis));
 }
 
 export function projectMechanicsMapEntities(
@@ -391,7 +412,7 @@ export function projectMechanicsMapPoint(
 }
 
 function snapshot(value: unknown): value is MechanicsMapSnapshot {
-  return record(value) && value.schema_version === 5 &&
+  return record(value) && value.schema_version === 6 &&
     nonnegativeInteger(value.revision) && nullableString(value.session_id) && nullableString(value.client_build) &&
     nullableInteger(value.scene_id) && nullableInteger(value.map_id) && nullableString(value.scene_name) &&
     ["player_relative_radar", "absolute_scene_map"].includes(String(value.map_model)) && finitePositive(value.world_radius) &&
@@ -400,11 +421,20 @@ function snapshot(value: unknown): value is MechanicsMapSnapshot {
     nullablePositive(value.map_span_x) && nullablePositive(value.map_span_z) &&
     nullableString(value.background_asset_url) && nullableInteger(value.local_actor_id) &&
     typeof value.local_position_observed === "boolean" && (value.player === null || player(value.player)) &&
+    Array.isArray(value.action_controls) && value.action_controls.length <= 48 && value.action_controls.every(actionControl) &&
     nullableString(value.encounter_pack) &&
     typeof value.encounter_pack_reviewed === "boolean" && (value.target === null || target(value.target)) &&
     Array.isArray(value.entities) && value.entities.every(entity) &&
     Array.isArray(value.mechanics) && value.mechanics.every(signal) && Array.isArray(value.markers) &&
     nullableString(value.data_gap) && nullableInteger(value.last_event_sequence) && nullableInteger(value.last_observed_micros);
+}
+
+function actionControl(value: unknown): value is ActionControlSnapshot {
+  return record(value) && Number.isSafeInteger(value.skill_level_id) && (value.skill_level_id as number) > 0 &&
+    nullableInteger(value.presentation_ability_id) && nullableString(value.presentation_name) &&
+    nullableString(value.icon_asset_path) && nullableInteger(value.duration_millis) &&
+    nullableNonnegativeInteger(value.remaining_millis) && nullableInteger(value.cooldown_type) &&
+    nullableInteger(value.charge_count) && nonnegativeInteger(value.observed_at_micros);
 }
 
 function player(value: unknown): value is PlayerFrameSnapshot {

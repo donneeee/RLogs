@@ -1,5 +1,6 @@
 import type { MountedSurface } from "../shell/types";
 import {
+  actionControlRemainingMillis,
   projectCoralMatrixBeam,
   projectCoralPizzaRegions,
   projectCoralWaveRegion,
@@ -44,6 +45,9 @@ export interface MechanicsMapCanvasPreferences {
   playerX: number;
   playerY: number;
   playerWidth: number;
+  actionsX: number;
+  actionsY: number;
+  actionsWidth: number;
 }
 
 const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
@@ -63,6 +67,9 @@ const DEFAULT_PREFERENCES: MechanicsMapCanvasPreferences = {
   playerX: 24,
   playerY: 48,
   playerWidth: 420,
+  actionsX: 24,
+  actionsY: 680,
+  actionsWidth: 520,
 };
 
 export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMapCanvasPreferences {
@@ -87,6 +94,9 @@ export function parseMechanicsMapCanvasPreferences(value: unknown): MechanicsMap
     playerX: finiteBounded(value.playerX) ? value.playerX : 24,
     playerY: finiteBounded(value.playerY) ? value.playerY : 48,
     playerWidth: finitePositive(value.playerWidth) ? Math.max(280, value.playerWidth) : 420,
+    actionsX: finiteBounded(value.actionsX) ? value.actionsX : 24,
+    actionsY: finiteBounded(value.actionsY) ? value.actionsY : 680,
+    actionsWidth: finitePositive(value.actionsWidth) ? Math.max(280, value.actionsWidth) : 520,
   };
 }
 
@@ -111,6 +121,8 @@ export function mountMechanicsMapOverlay(
   let targetResize: { pointerId: number; x: number; width: number } | null = null;
   let playerDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
   let playerResize: { pointerId: number; x: number; width: number } | null = null;
+  let actionsDrag: { pointerId: number; x: number; y: number; left: number; top: number } | null = null;
+  let actionsResize: { pointerId: number; x: number; width: number } | null = null;
   let frame: number | null = null;
   let image: HTMLImageElement | null = null;
   let imageUrl: string | null = null;
@@ -119,6 +131,8 @@ export function mountMechanicsMapOverlay(
   let removeInteractivityListener: (() => void) | null = null;
   let targetTimer: number | null = null;
   let targetRenderedAtMillis = 0;
+  let actionsTimer: number | null = null;
+  let actionsRenderedAtMillis = 0;
 
   const root = element("main", "overlay-canvas-runtime");
   const panel = element("section", "mechanics-map-overlay-runtime");
@@ -185,6 +199,17 @@ export function mountMechanicsMapOverlay(
   playerResizeHandle.title = "Resize player frame";
   playerResizeHandle.setAttribute("aria-label", "Resize player frame");
   playerPanel.append(playerToolbar, playerBody, playerResizeHandle);
+  const actionsPanel = element("section", "action-controls-overlay-runtime");
+  const actionsToolbar = element("header", "action-controls-overlay-toolbar");
+  const actionsTitle = text("strong", "Action cooldowns");
+  const actionsStatus = text("span", "WAITING");
+  actionsToolbar.append(actionsTitle, actionsStatus);
+  const actionsBody = element("section", "action-controls-overlay-body");
+  const actionsResizeHandle = element("button", "action-controls-overlay-resize");
+  actionsResizeHandle.type = "button";
+  actionsResizeHandle.title = "Resize action cooldowns";
+  actionsResizeHandle.setAttribute("aria-label", "Resize action cooldowns");
+  actionsPanel.append(actionsToolbar, actionsBody, actionsResizeHandle);
   const targetPanel = element("section", "target-frame-overlay-runtime");
   const targetToolbar = element("header", "target-frame-overlay-toolbar");
   const targetTitle = text("strong", "Current target");
@@ -196,7 +221,7 @@ export function mountMechanicsMapOverlay(
   targetResizeHandle.title = "Resize target frame";
   targetResizeHandle.setAttribute("aria-label", "Resize target frame");
   targetPanel.append(targetToolbar, targetBody, targetResizeHandle);
-  root.append(panel, playerPanel, targetPanel);
+  root.append(panel, playerPanel, actionsPanel, targetPanel);
   container.replaceChildren(root);
   applyModuleGeometry();
 
@@ -233,6 +258,25 @@ export function mountMechanicsMapOverlay(
   playerResizeHandle.addEventListener("pointermove", resizePlayer);
   playerResizeHandle.addEventListener("pointerup", endPlayerResize);
   playerResizeHandle.addEventListener("pointercancel", endPlayerResize);
+  actionsToolbar.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    actionsDrag = {
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+      left: preferences.actionsX, top: preferences.actionsY,
+    };
+    actionsToolbar.setPointerCapture(event.pointerId);
+  });
+  actionsToolbar.addEventListener("pointermove", moveActions);
+  actionsToolbar.addEventListener("pointerup", endActionsDrag);
+  actionsToolbar.addEventListener("pointercancel", endActionsDrag);
+  actionsResizeHandle.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    actionsResize = { pointerId: event.pointerId, x: event.clientX, width: preferences.actionsWidth };
+    actionsResizeHandle.setPointerCapture(event.pointerId);
+  });
+  actionsResizeHandle.addEventListener("pointermove", resizeActions);
+  actionsResizeHandle.addEventListener("pointerup", endActionsResize);
+  actionsResizeHandle.addEventListener("pointercancel", endActionsResize);
   targetToolbar.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     targetDrag = {
@@ -302,8 +346,76 @@ export function mountMechanicsMapOverlay(
     notice.textContent = snapshot.data_gap ?? "Waiting for packet-observed position…";
     loadBackground(snapshot.background_asset_url);
     renderPlayer(snapshot);
+    renderActions(snapshot);
     renderTarget(snapshot);
     scheduleDraw();
+  }
+
+  function renderActions(snapshot: MechanicsMapSnapshot): void {
+    stopActionsTimer();
+    actionsBody.replaceChildren();
+    actionsStatus.textContent = snapshot.action_controls.length === 0
+      ? "WAITING"
+      : `${snapshot.action_controls.length} OBSERVED`;
+    actionsStatus.dataset.state = snapshot.action_controls.length === 0 ? "waiting" : "live";
+    if (snapshot.action_controls.length === 0) {
+      actionsBody.append(text("p", "Waiting for packet-observed cooldown state…", "action-controls-overlay-empty"));
+      return;
+    }
+    for (const control of snapshot.action_controls) {
+      const entry = element("span", "action-controls-overlay-entry");
+      entry.dataset.remainingMillis = control.remaining_millis === null ? "" : String(control.remaining_millis);
+      entry.dataset.durationMillis = control.duration_millis === null ? "" : String(control.duration_millis);
+      entry.title = `${control.presentation_name ?? `Skill ${control.skill_level_id}`}\nPacket SkillLevel ID: ${control.skill_level_id}`;
+      const icon = element("span", "action-controls-overlay-icon");
+      if (control.icon_asset_path) {
+        const image = document.createElement("img");
+        image.src = control.icon_asset_path;
+        image.alt = "";
+        icon.append(image);
+      } else {
+        icon.append(text("span", "?"));
+      }
+      icon.append(element("span", "action-controls-overlay-sweep"));
+      const timer = text("b", formatActionRemaining(control.remaining_millis), "action-controls-overlay-time");
+      icon.append(timer);
+      if (control.charge_count !== null) {
+        icon.append(text("small", String(control.charge_count), "action-controls-overlay-charges"));
+      }
+      const label = text("small", control.presentation_name ?? `Skill ${control.skill_level_id}`, "action-controls-overlay-label");
+      entry.append(icon, label);
+      actionsBody.append(entry);
+    }
+    actionsRenderedAtMillis = performance.now();
+    updateActionTimers();
+    if (snapshot.action_controls.some((control) => (control.remaining_millis ?? 0) > 0)) {
+      actionsTimer = window.setInterval(updateActionTimers, 100);
+    }
+  }
+
+  function updateActionTimers(): void {
+    const elapsed = performance.now() - actionsRenderedAtMillis;
+    let active = false;
+    for (const entry of actionsBody.querySelectorAll<HTMLElement>(".action-controls-overlay-entry")) {
+      const base = entry.dataset.remainingMillis === "" ? null : Number(entry.dataset.remainingMillis);
+      const remaining = actionControlRemainingMillis({ remaining_millis: base }, elapsed);
+      const timer = entry.querySelector<HTMLElement>(".action-controls-overlay-time");
+      if (timer) timer.textContent = formatActionRemaining(remaining);
+      const duration = entry.dataset.durationMillis === "" ? null : Number(entry.dataset.durationMillis);
+      const ratio = remaining !== null && duration !== null && duration > 0
+        ? Math.min(1, remaining / duration)
+        : 0;
+      entry.style.setProperty("--cooldown-turn", `${ratio}turn`);
+      entry.dataset.ready = String(remaining === 0);
+      active ||= (remaining ?? 0) > 0;
+    }
+    if (!active) stopActionsTimer();
+  }
+
+  function stopActionsTimer(): void {
+    if (actionsTimer === null) return;
+    window.clearInterval(actionsTimer);
+    actionsTimer = null;
   }
 
   function renderPlayer(snapshot: MechanicsMapSnapshot): void {
@@ -588,6 +700,12 @@ export function mountMechanicsMapOverlay(
     playerPanel.style.left = `${preferences.playerX}px`;
     playerPanel.style.top = `${preferences.playerY}px`;
     playerPanel.style.width = `${playerWidth}px`;
+    const actionsWidth = Math.min(window.innerWidth, preferences.actionsWidth);
+    preferences.actionsX = Math.min(Math.max(0, window.innerWidth - actionsWidth), Math.max(0, preferences.actionsX));
+    preferences.actionsY = Math.min(Math.max(0, window.innerHeight - 96), Math.max(0, preferences.actionsY));
+    actionsPanel.style.left = `${preferences.actionsX}px`;
+    actionsPanel.style.top = `${preferences.actionsY}px`;
+    actionsPanel.style.width = `${actionsWidth}px`;
   }
 
   function moveModule(event: PointerEvent): void {
@@ -641,6 +759,31 @@ export function mountMechanicsMapOverlay(
     savePreferences();
   }
 
+  function moveActions(event: PointerEvent): void {
+    if (actionsDrag?.pointerId !== event.pointerId) return;
+    preferences.actionsX = actionsDrag.left + event.clientX - actionsDrag.x;
+    preferences.actionsY = actionsDrag.top + event.clientY - actionsDrag.y;
+    applyModuleGeometry();
+  }
+
+  function endActionsDrag(event: PointerEvent): void {
+    if (actionsDrag?.pointerId !== event.pointerId) return;
+    actionsDrag = null;
+    savePreferences();
+  }
+
+  function resizeActions(event: PointerEvent): void {
+    if (actionsResize?.pointerId !== event.pointerId) return;
+    preferences.actionsWidth = Math.max(280, actionsResize.width + event.clientX - actionsResize.x);
+    applyModuleGeometry();
+  }
+
+  function endActionsResize(event: PointerEvent): void {
+    if (actionsResize?.pointerId !== event.pointerId) return;
+    actionsResize = null;
+    savePreferences();
+  }
+
   function moveTarget(event: PointerEvent): void {
     if (targetDrag?.pointerId !== event.pointerId) return;
     preferences.targetX = targetDrag.left + event.clientX - targetDrag.x;
@@ -671,6 +814,7 @@ export function mountMechanicsMapOverlay(
       alive = false;
       if (frame !== null) cancelAnimationFrame(frame);
       stopTargetTimer();
+      stopActionsTimer();
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleScreenResize);
       removeInteractivityListener?.();
@@ -912,6 +1056,13 @@ function formatTargetHealth(current: number | null, maximum: number | null): str
 function formatDebuffRemaining(value: number): string {
   const seconds = Math.max(0, value) / 1_000;
   return seconds >= 10 ? `${Math.ceil(seconds)}s` : `${Math.ceil(seconds * 10) / 10}s`;
+}
+
+function formatActionRemaining(value: number | null): string {
+  if (value === null) return "•";
+  if (value <= 0) return "";
+  const seconds = value / 1_000;
+  return seconds >= 10 ? String(Math.ceil(seconds)) : (Math.ceil(seconds * 10) / 10).toFixed(1);
 }
 
 function button(label: string, active: boolean, action: () => void): HTMLButtonElement {
