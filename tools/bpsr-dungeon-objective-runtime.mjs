@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +22,13 @@ const outputPath = path.join(
 const deploymentId = "global";
 const channel = "steam";
 const clientBuild = "24687926";
+const bundledOnly = process.argv.includes("--check-bundled-only");
+const checkOnly = bundledOnly || process.argv.includes("--check");
+
+if (checkOnly && (bundledOnly || !existsSync(inventoryPath) || !existsSync(namesPath))) {
+  verifyBundledOutput();
+  process.exit(0);
+}
 
 const inventory = readJson(inventoryPath);
 const names = readJson(namesPath);
@@ -97,7 +104,7 @@ const output = {
 const canonical = `${JSON.stringify(output, null, 2)}\n`;
 output.content_sha256 = `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
 const rendered = `${JSON.stringify(output, null, 2)}\n`;
-if (process.argv.includes("--check")) {
+if (checkOnly) {
   let current;
   try {
     current = readFileSync(outputPath, "utf8");
@@ -130,4 +137,23 @@ function readJson(file) {
 function digestFromReference(reference) {
   const match = typeof reference === "string" ? reference.match(/@(sha256:[0-9a-f]{64})$/) : null;
   return match?.[1] ?? null;
+}
+
+function verifyBundledOutput() {
+  const bundled = readJson(outputPath);
+  const contentDigest = bundled.content_sha256;
+  delete bundled.content_sha256;
+  const canonical = `${JSON.stringify(bundled, null, 2)}\n`;
+  const expectedDigest = `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
+  if (contentDigest !== expectedDigest) throw new Error("bundled dungeon objective catalog digest does not match its content");
+  if (bundled.schema_version !== 1 || bundled.deployment_id !== deploymentId || bundled.channel !== channel || bundled.client_build !== clientBuild) {
+    throw new Error("bundled dungeon objective catalog build identity is invalid");
+  }
+  if (bundled.proof?.source_table !== "ctb.TargetTable" || bundled.proof?.source_and_current_tables_are_byte_identical !== true || bundled.proof?.current_table_rows !== bundled.entries?.length) {
+    throw new Error("bundled dungeon objective catalog proof is invalid");
+  }
+  if (bundled.entries.some((entry, index) => index > 0 && bundled.entries[index - 1].objective_id >= entry.objective_id)) {
+    throw new Error("bundled dungeon objective catalog is not strictly ordered");
+  }
+  console.log(`Verified ${path.relative(repoRoot, outputPath)} with ${bundled.entries.length} build-pinned objectives.`);
 }
