@@ -8613,6 +8613,30 @@ impl RuntimeController {
                                     live_dungeon_active = false;
                                     live_dungeon_scene_id = None;
                                     live_boundary_changed = true;
+                                    if departed_live_dungeon {
+                                        // The terminal projection above is
+                                        // immutable and already queued for
+                                        // history/submission. Clear the live
+                                        // presentation before town renders so
+                                        // the completed party and timer cannot
+                                        // remain on top of the overworld.
+                                        begin_live_combat_preserving_world(
+                                            &mut live_meter,
+                                            &live_header,
+                                            last_world_context_event.as_ref(),
+                                        );
+                                        if let Err(error) = begin_live_encounter_preserving_world(
+                                            &mut live_encounter,
+                                            &live_header,
+                                            last_world_context_event.as_ref(),
+                                        ) {
+                                            live_snapshot_error = Some(error);
+                                        }
+                                        live_run_projection = None;
+                                        completed_run_identities = None;
+                                        freeze_history = false;
+                                        live_dirty = true;
+                                    }
                                     if live_rdps_validation_enabled {
                                         rdps_validation.clear_transient_context();
                                     }
@@ -10043,12 +10067,12 @@ fn closes_live_run_history(event: &CanonicalEvent) -> bool {
     match event {
         CanonicalEvent::Dungeon(dungeon) => matches!(
             dungeon.kind,
-            DungeonEventKind::Completed | DungeonEventKind::Failed | DungeonEventKind::Exited
+            DungeonEventKind::Failed | DungeonEventKind::Exited
         ),
         CanonicalEvent::Timeline(timeline) => matches!(
             timeline.kind,
             TimelineEventKind::RunBoundary {
-                state: RunState::Completed | RunState::Failed | RunState::Exited,
+                state: RunState::Failed | RunState::Exited,
                 ..
             }
         ),
@@ -14886,8 +14910,8 @@ mod tests {
     }
 
     #[test]
-    fn canonical_run_terminal_events_freeze_local_history() {
-        for state in [RunState::Completed, RunState::Failed, RunState::Exited] {
+    fn canonical_failure_and_exit_events_freeze_local_history() {
+        for state in [RunState::Failed, RunState::Exited] {
             let event = CanonicalEvent::Timeline(TimelineEvent {
                 sequence: 1,
                 time: EventTime {
@@ -14903,6 +14927,24 @@ mod tests {
             });
             assert!(closes_live_run_history(&event));
         }
+
+        let completed = CanonicalEvent::Timeline(TimelineEvent {
+            sequence: 1,
+            time: EventTime {
+                observed_micros: 1,
+                game_time_millis: None,
+            },
+            provenance: EventProvenance::wire(1, 1, 1),
+            kind: TimelineEventKind::RunBoundary {
+                state: RunState::Completed,
+                scene_id: None,
+                reason: BoundaryReason::AuthoritativePacket,
+            },
+        });
+        assert!(
+            !closes_live_run_history(&completed),
+            "completion freezes scoring but reward/summary packets remain in the RLOG until departure"
+        );
 
         let nonterminal = CanonicalEvent::Timeline(TimelineEvent {
             sequence: 1,

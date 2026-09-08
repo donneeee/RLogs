@@ -434,9 +434,14 @@ mod tests {
         let sealed = writer
             .consume_batch([completed, completion_boundary])
             .unwrap();
+        assert!(sealed.is_empty());
+        let exited = envelopes
+            .emit(dungeon_draft(4, DungeonEventKind::Exited))
+            .unwrap();
+        let sealed = writer.consume_batch([exited]).unwrap();
         assert_eq!(sealed.len(), 1);
         assert!(sealed[0].is_completed());
-        assert_eq!(sealed[0].seal.event_count, 5);
+        assert_eq!(sealed[0].seal.event_count, 6);
 
         let file = File::open(&sealed[0].path).unwrap();
         let mut reader = RlogReader::new(BufReader::new(file), RlogLimits::default()).unwrap();
@@ -485,6 +490,15 @@ mod tests {
             panic!("expected completion timeline");
         };
         assert_eq!(timeline.sequence, 2);
+        let sixth = reader.next_event().unwrap().unwrap();
+        assert_eq!(sixth.sequence, 6);
+        assert!(matches!(
+            sixth.event,
+            CanonicalEvent::Dungeon(DungeonEvent {
+                kind: DungeonEventKind::Exited,
+                ..
+            })
+        ));
         assert!(reader.next_event().unwrap().is_none());
 
         std::fs::remove_file(&sealed[0].path).unwrap();

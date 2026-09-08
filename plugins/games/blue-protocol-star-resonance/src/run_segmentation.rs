@@ -62,9 +62,10 @@ struct ActiveDungeonSegment {
 ///
 /// Events observed before a dungeon entry are intentionally ignored. An
 /// `Entered` packet is the preferred opening boundary; `Started` is a safe
-/// fallback for captures that attach after entry. A successful completion is
-/// sealed only after the whole decode batch has been recorded, retaining the
-/// companion `RunBoundary::Completed` emitted by the same packet.
+/// fallback for captures that attach after entry. A successful completion
+/// remains open through the reward/summary flow and is sealed only when the
+/// client leaves the instance. This keeps settlement evidence in the same
+/// RLOG without allowing later town traffic to leak into it.
 #[derive(Debug, Default)]
 pub struct DungeonRunSegmenter {
     active: Option<ActiveDungeonSegment>,
@@ -129,11 +130,16 @@ impl DungeonRunSegmenter {
                     distinct_instances(active.instance_id.as_deref(), instance_id.as_deref())
                 });
                 if replaces_active {
-                    self.seal_active(
-                        DungeonSegmentEndReason::ReplacedByEntry,
-                        event.time,
-                        &mut actions,
-                    );
+                    let reason = if self
+                        .active
+                        .as_ref()
+                        .is_some_and(|active| active.completion_pending)
+                    {
+                        DungeonSegmentEndReason::Completed
+                    } else {
+                        DungeonSegmentEndReason::ReplacedByEntry
+                    };
+                    self.seal_active(reason, event.time, &mut actions);
                 }
                 if self.active.is_none() {
                     self.active = Some(ActiveDungeonSegment {
@@ -219,24 +225,21 @@ impl DungeonRunSegmenter {
             }
         }
 
-        if self
-            .active
-            .as_ref()
-            .is_some_and(|active| active.completion_pending)
-        {
-            let time = self.active.as_ref().expect("checked above").last_time;
-            self.seal_active(DungeonSegmentEndReason::Completed, time, &mut actions);
-        }
         actions
     }
 
     /// Finalizes an in-progress run when ingress ends or the game process
-    /// exits. This is retained for local history but is not a completed
-    /// leaderboard submission.
+    /// exits. A run with packet-proven completion remains completed; every
+    /// other interrupted capture is retained as incomplete local history.
     pub fn finish(&mut self) -> Option<DungeonSegmentAction> {
         let active = self.active.take()?;
+        let reason = if active.completion_pending || active.inferred_completion_source.is_some() {
+            DungeonSegmentEndReason::Completed
+        } else {
+            DungeonSegmentEndReason::CaptureEnded
+        };
         Some(DungeonSegmentAction::Seal {
-            reason: DungeonSegmentEndReason::CaptureEnded,
+            reason,
             boundary: DungeonSegmentBoundary {
                 instance_id: active.instance_id,
                 time: active.last_time,
@@ -384,10 +387,12 @@ fn terminal_boundary(event: &EventEnvelope) -> Option<DungeonSegmentEndReason> {
             _ => None,
         },
         CanonicalEvent::Timeline(timeline) => match timeline.kind {
+            // Completion freezes the scoring clock, but the capture stays
+            // open for reward/summary packets until Exited or scene departure.
             TimelineEventKind::RunBoundary {
                 state: RunState::Completed,
                 ..
-            } => Some(DungeonSegmentEndReason::Completed),
+            } => None,
             TimelineEventKind::RunBoundary {
                 state: RunState::Failed,
                 ..
@@ -664,9 +669,10 @@ mod tests {
     }
 
     #[test]
-    fn successful_packet_batch_records_both_completion_events_before_sealing() {
+    fn successful_packet_batch_records_completion_and_waits_for_scene_departure() {
         let mut factory = factory();
         let mut segmenter = DungeonRunSegmenter::default();
+        segmenter.observe_batch([world(&mut factory, 1, 1_633)]);
         let entry = dungeon(&mut factory, 1, DungeonEventKind::Entered, "run-1");
         segmenter.observe_batch([entry]);
 
@@ -674,15 +680,18 @@ mod tests {
         let boundary = run_boundary(&mut factory, 2, RunState::Completed);
         let actions = segmenter.observe_batch([completed, boundary]);
 
-        assert_eq!(actions.len(), 3);
+        assert_eq!(actions.len(), 2);
         assert!(matches!(actions[0], DungeonSegmentAction::Record(_)));
         assert!(matches!(actions[1], DungeonSegmentAction::Record(_)));
+        assert!(segmenter.is_recording());
+
+        let actions = segmenter.observe_batch([world(&mut factory, 3, 8)]);
         assert!(matches!(
-            actions[2],
-            DungeonSegmentAction::Seal {
+            actions.last(),
+            Some(DungeonSegmentAction::Seal {
                 reason: DungeonSegmentEndReason::Completed,
                 ..
-            }
+            })
         ));
         assert!(!segmenter.is_recording());
     }
@@ -719,7 +728,7 @@ mod tests {
     }
 
     #[test]
-    fn completion_event_alone_still_seals_at_end_of_decode_batch() {
+    fn completion_event_alone_stays_open_for_settlement_packets() {
         let mut factory = factory();
         let mut segmenter = DungeonRunSegmenter::default();
         segmenter.observe_batch([dungeon(&mut factory, 1, DungeonEventKind::Entered, "run-1")]);
@@ -731,14 +740,24 @@ mod tests {
             "run-1",
         )]);
 
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], DungeonSegmentAction::Record(_)));
+        assert!(segmenter.is_recording());
+
+        let settlement = profile(&mut factory, 3, "1000001");
+        assert_eq!(segmenter.observe_batch([settlement]).len(), 1);
+        assert!(segmenter.is_recording());
+
+        let seal = segmenter
+            .finish()
+            .expect("completed capture can seal on shutdown");
         assert!(matches!(
-            actions.last(),
-            Some(DungeonSegmentAction::Seal {
+            seal,
+            DungeonSegmentAction::Seal {
                 reason: DungeonSegmentEndReason::Completed,
                 ..
-            })
+            }
         ));
-        assert!(!segmenter.is_recording());
     }
 
     #[test]

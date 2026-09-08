@@ -1303,6 +1303,13 @@ mod tests {
                 envelopes.emit(event(DungeonEventKind::Completed)).unwrap(),
             ])
             .unwrap();
+        assert!(sealed.is_empty());
+        assert!(writer.is_recording());
+        let sealed = writer
+            .consume_batch(vec![
+                envelopes.emit(event(DungeonEventKind::Exited)).unwrap(),
+            ])
+            .unwrap();
         assert_eq!(sealed.len(), 1);
         assert!(sealed[0].is_completed());
         assert!(!writer.is_recording());

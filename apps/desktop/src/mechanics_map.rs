@@ -1147,6 +1147,13 @@ impl MechanicsMapProjector {
                     .target_statuses
                     .values()
                     .filter(|status| status.target.actor_id == entity.actor.actor_id)
+                    // This panel intentionally mirrors the local player's
+                    // target frame, not a raid-wide debuff inspector.
+                    .filter(|status| {
+                        status
+                            .source
+                            .is_some_and(|source| Some(source.actor_id.0) == local_actor_id)
+                    })
                     .filter(|status| {
                         status
                             .duration_millis
@@ -1800,9 +1807,8 @@ struct PackagedSceneMapEntry<'a> {
     span_z: f32,
 }
 
-const PACKAGED_SCENE_MAP_MANIFEST: &str = include_str!(
-    "../../desktop-tauri/resources/map-compiler/reviewed-map-assets.v1.json"
-);
+const PACKAGED_SCENE_MAP_MANIFEST: &str =
+    include_str!("../../desktop-tauri/resources/map-compiler/reviewed-map-assets.v1.json");
 
 fn packaged_scene_maps() -> &'static PackagedSceneMapManifest<'static> {
     static MANIFEST: OnceLock<PackagedSceneMapManifest<'static>> = OnceLock::new();
@@ -1810,7 +1816,10 @@ fn packaged_scene_maps() -> &'static PackagedSceneMapManifest<'static> {
         let manifest: PackagedSceneMapManifest<'static> =
             serde_json::from_str(PACKAGED_SCENE_MAP_MANIFEST)
                 .expect("packaged reviewed-map-assets.v1.json must be valid");
-        assert_eq!(manifest.schema_version, 1, "unsupported packaged map manifest");
+        assert_eq!(
+            manifest.schema_version, 1,
+            "unsupported packaged map manifest"
+        );
         manifest
     })
 }
@@ -2326,9 +2335,11 @@ mod tests {
         ));
         let local = entity(7, 42 << 16);
         let target = entity(8, 800);
+        let teammate = entity(9, 900);
         for (sequence, actor) in [
             (2, actor_event(local, ActorKind::Player, Some("42"))),
             (3, actor_event(target, ActorKind::Monster, None)),
+            (4, actor_event(teammate, ActorKind::Player, Some("43"))),
         ] {
             projector.observe(&envelope(
                 sequence,
@@ -2512,6 +2523,39 @@ mod tests {
             }),
         ));
 
+        projector.observe(&envelope(
+            8,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 8,
+                time: EventTime {
+                    observed_micros: 6_500,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 8,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::Status(StatusEvent {
+                    source: Some(teammate),
+                    target,
+                    effect: StatusEffectId(4_501),
+                    instance_id: Some(StatusEffectInstanceId(101)),
+                    origin: None,
+                    state: StatusState::Applied,
+                    stacks: Some(1),
+                    duration_millis: Some(5_000),
+                    level: Some(1),
+                    part_id: None,
+                    count: None,
+                    created_at_millis: None,
+                }),
+            }),
+        ));
+
         let snapshot = projector.snapshot();
         let player = snapshot.player.expect("local player frame");
         assert_eq!(player.actor_id, 7);
@@ -2533,6 +2577,12 @@ mod tests {
         assert_eq!(selected.shield_percent, Some(11.249680552006133));
         assert_eq!(selected.breaking_stage, Some(0));
         assert_eq!(selected.debuffs.len(), 1);
+        assert!(
+            selected
+                .debuffs
+                .iter()
+                .all(|effect| effect.source_actor_id == Some(7))
+        );
         assert_eq!(selected.debuffs[0].effect_id, 4_501);
         assert_eq!(selected.debuffs[0].source_actor_id, Some(7));
         assert_eq!(
@@ -2541,7 +2591,7 @@ mod tests {
         );
         assert_eq!(selected.debuffs[0].stacks, Some(2));
         assert_eq!(selected.debuffs[0].duration_millis, Some(5_000));
-        assert_eq!(selected.debuffs[0].remaining_millis, Some(4_999));
+        assert_eq!(selected.debuffs[0].remaining_millis, Some(4_998));
 
         projector.observe(&envelope(
             7,
