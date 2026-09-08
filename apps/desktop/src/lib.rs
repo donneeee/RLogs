@@ -8276,6 +8276,21 @@ impl RuntimeController {
                         LiveCharacterIdentityAuthority::PersistentFallback,
                     );
                     live_combat_feed.publish(Some(initial_live_snapshot));
+                    let objective_catalog =
+                        match rlogs_game_bpsr::BundledObjectiveCatalog::open_for_game_build(&build) {
+                            Ok(catalog) => Some(
+                                Arc::new(catalog)
+                                    as Arc<dyn rlogs_game_bpsr::ObjectiveCatalogResolver>,
+                            ),
+                            Err(rlogs_game_bpsr::ObjectiveCatalogError::UnsupportedBuild {
+                                ..
+                            }) => None,
+                            Err(error) => {
+                                return Err(format!(
+                                    "could not load bundled dungeon objective catalog: {error}"
+                                ));
+                            }
+                        };
                     let mut recorder = ContinuousBpsrRecorder::new(
                         &pack,
                         ContinuousRecordingConfig {
@@ -8285,6 +8300,7 @@ impl RuntimeController {
                             region,
                             region_evidence,
                             decoder: ProtocolRuntimeConfig::default(),
+                            objective_catalog,
                             output_directory,
                             persist_dungeon_logs: true,
                             research_journal: research_journal_path.map(|path| {

@@ -124,6 +124,8 @@ describe("Mechanics Map overlay canvas preferences", () => {
   it("shows exact packet values without inventing an objective threshold", () => {
     expect(formatDungeonObjectiveValue(275, false)).toBe("275");
     expect(formatDungeonObjectiveValue(400, true)).toBe("400 ✓");
+    expect(formatDungeonObjectiveValue(275, false, 400)).toBe("275 / 400");
+    expect(formatDungeonObjectiveValue(400, true, 400)).toBe("400 / 400 ✓");
     expect(formatDungeonObjectiveValue(null, false)).toBe("Observed");
   });
 });

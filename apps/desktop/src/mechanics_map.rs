@@ -11,7 +11,7 @@ use rlogs_events::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 8;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 9;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
@@ -240,6 +240,8 @@ pub struct DungeonObjectiveSnapshot {
     pub objective_map_key: Option<i32>,
     pub value: Option<i64>,
     pub complete: Option<bool>,
+    pub presentation_name: Option<String>,
+    pub required_count: Option<i64>,
     pub catalog_resolution: &'static str,
     pub activity_target_key: Option<String>,
     pub scene_event_keys: Vec<String>,
@@ -527,6 +529,15 @@ impl MechanicsMapProjector {
                             state.objectives.remove(&objective_id);
                         } else if event.kind == DungeonEventKind::ObjectiveUpdated {
                             let catalog = event.objective_catalog.as_ref();
+                            let presentation = self.client_build.as_deref().and_then(|build| {
+                                rlogs_game_bpsr::bundled_dungeon_objective_presentation(
+                                    build,
+                                    objective_id,
+                                    "en-US",
+                                )
+                                .ok()
+                                .flatten()
+                            });
                             state.objectives.insert(
                                 objective_id,
                                 DungeonObjectiveSnapshot {
@@ -534,11 +545,24 @@ impl MechanicsMapProjector {
                                     objective_map_key: event.objective_map_key,
                                     value: event.objective_value,
                                     complete: event.objective_complete,
+                                    presentation_name: presentation
+                                        .as_ref()
+                                        .and_then(|value| value.name.clone()),
+                                    required_count: catalog
+                                        .and_then(|value| value.required_count)
+                                        .or_else(|| {
+                                            presentation.as_ref().map(|value| value.required_count)
+                                        }),
                                     catalog_resolution: objective_resolution(
                                         catalog.map(|value| value.resolution),
                                     ),
                                     activity_target_key: catalog
-                                        .and_then(|value| value.activity_target_key.clone()),
+                                        .and_then(|value| value.activity_target_key.clone())
+                                        .or_else(|| {
+                                            presentation
+                                                .as_ref()
+                                                .map(|value| value.stable_key.clone())
+                                        }),
                                     scene_event_keys: catalog
                                         .map(|value| value.scene_event_keys.clone())
                                         .unwrap_or_default(),
@@ -2606,6 +2630,8 @@ mod tests {
                 objective_catalog: Some(DungeonObjectiveCatalogReference {
                     resolution: DungeonObjectiveCatalogResolution::UnresolvedCurrentBuild,
                     activity_target_key: None,
+                    localization_key: None,
+                    required_count: None,
                     scene_event_keys: vec![],
                 }),
                 flow: None,

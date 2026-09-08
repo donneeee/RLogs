@@ -219,7 +219,7 @@ test("a deployment fallback cannot erase a previously observed specific region",
     {
       deployment: "global",
       region: "north-america",
-      realm: "na-realm",
+      realm: "asteria",
       world: "7",
     },
   );
@@ -250,9 +250,29 @@ test("published routing supplies reviewed Global realms and omits unresolved opt
     deployment: "global", region: "north-america", realm: "asteria",
   });
   assert.deepEqual(canonicalPublishedRouting({
+    deployment: "GLOBAL", region: "global", realm: null, world: "Asteria",
+  }), {
+    deployment: "global", region: "north-america", realm: "asteria", world: "Asteria",
+  });
+  assert.deepEqual(canonicalPublishedRouting({
+    deployment: "global", region: "unknown", realm: "BAHAMAR", world: null,
+  }), {
+    deployment: "global", region: "europe", realm: "bahamar",
+  });
+  assert.deepEqual(canonicalPublishedRouting({
     deployment: "sea", region: "unknown", realm: null, world: "  ",
   }), {
     deployment: "sea", region: "unknown",
+  });
+});
+
+test("a legacy broad route with Asteria evidence protects later fallback snapshots", () => {
+  assert.deepEqual(reconcilePublishedRouting({
+    deployment: "global", region: "global", realm: null, world: "asteria",
+  }, {
+    deployment: "global", region: "global", realm: null, world: null,
+  }), {
+    deployment: "global", region: "north-america", realm: "asteria", world: "asteria",
   });
 });
 

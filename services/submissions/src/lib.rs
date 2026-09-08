@@ -26,17 +26,18 @@ use rlogs_combat::{
 };
 use rlogs_events::{
     ActorKind, CanonicalEvent, EntityAttributeUpdateKind, EntityRef, EventEnvelope,
-    EventProvenance, EventSensitivity, EvidenceSource, GameProfileEvent, RunState, StatusState,
-    TimelineEventKind,
+    EventProvenance, EventSensitivity, EvidenceSource, GameProfileEvent, RegionIdentity, RunState,
+    StatusState, TimelineEventKind,
 };
 use rlogs_game_bpsr::{
     BPSR_GAME_PLUGIN_ID, BpsrLifeWaveTriggerLearner, BpsrRemoteFactorLearner,
     BpsrStatResonanceTransitionLearner, BpsrStateDamageContributionProjector,
     CharacterProfilePatch, SwiftVortexCandidateAuditAnalyzer, SwiftVortexCandidateAuditReport,
-    bundled_run_reducer_config, character_id_from_entity_uuid, combat_action_presentation,
-    combat_breakdown_ability_id, combat_recount_group_id, confirmed_damage_contribution_rules,
-    is_stat_resonance_status, localized_class_name, localized_combat_action_name,
-    localized_recount_group_name, localized_scene_name, localized_specialization_name,
+    bundled_run_reducer_config, canonicalize_bpsr_region_identity, character_id_from_entity_uuid,
+    combat_action_presentation, combat_breakdown_ability_id, combat_recount_group_id,
+    confirmed_damage_contribution_rules, is_stat_resonance_status, localized_class_name,
+    localized_combat_action_name, localized_recount_group_name, localized_scene_name,
+    localized_specialization_name,
 };
 use rlogs_log_format::{RlogLimits, RlogReader};
 use rlogs_plugin_combat_meter::{
@@ -70,7 +71,7 @@ use profiles::{
 use rlogs_profiles::LocalProfilePackage;
 
 pub const PUBLIC_PARSE_SCHEMA_VERSION: u16 = 12;
-pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 1;
+pub const PUBLIC_PARSE_PROJECTION_REVISION: u16 = 2;
 pub const PUBLIC_CATALOG_SCHEMA_VERSION: u16 = 6;
 pub const PUBLIC_RECONCILIATION_SCHEMA_VERSION: u16 = 12;
 pub const UPLOAD_RESPONSE_SCHEMA_VERSION: u16 = 1;
@@ -3966,7 +3967,7 @@ where
     if runs.is_empty() {
         return Err(ServiceError::NoCompletedRun);
     }
-    Ok(PublicParseReport {
+    let mut report = PublicParseReport {
         schema_version: PUBLIC_PARSE_SCHEMA_VERSION,
         projection_revision: PUBLIC_PARSE_PROJECTION_REVISION,
         report_id: report_id.into(),
@@ -3987,7 +3988,25 @@ where
         },
         submission_provenance,
         runs,
-    })
+    };
+    canonicalize_public_report_region(&mut report);
+    Ok(report)
+}
+
+fn canonicalize_public_report_region(report: &mut PublicParseReport) {
+    if report.game_plugin_id != BPSR_GAME_PLUGIN_ID {
+        return;
+    }
+    let mut identity = RegionIdentity {
+        deployment_id: report.deployment_id.clone(),
+        region_id: report.region_id.clone(),
+        realm_id: None,
+        world_id: report.world_id.clone(),
+    };
+    canonicalize_bpsr_region_identity(&mut identity);
+    report.deployment_id = identity.deployment_id;
+    report.region_id = identity.region_id;
+    report.world_id = identity.world_id;
 }
 
 fn public_runs(
@@ -6086,6 +6105,20 @@ mod tests {
         let mut exact_region = "north-america".to_owned();
         preserve_refined_region(&mut exact_region, "global");
         assert_eq!(exact_region, "north-america");
+    }
+
+    #[test]
+    fn asteria_world_evidence_repairs_a_broad_global_parse_region() {
+        let mut report = fixture_public_report("asteria-region", "5", 0);
+        report.deployment_id = "global".into();
+        report.region_id = "global".into();
+        report.world_id = Some("Asteria".into());
+
+        canonicalize_public_report_region(&mut report);
+
+        assert_eq!(report.deployment_id, "global");
+        assert_eq!(report.region_id, "north-america");
+        assert_eq!(report.world_id.as_deref(), Some("Asteria"));
     }
 
     #[test]

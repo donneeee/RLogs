@@ -272,12 +272,14 @@ pub fn region_identity_for_scene_host(host: &str) -> Option<RegionIdentity> {
         "bpm-kr-gamesvra.xdg.com" => "korea",
         _ => return None,
     };
-    Some(RegionIdentity {
+    let mut identity = RegionIdentity {
         deployment_id: "global".into(),
         region_id: region_id.into(),
         realm_id: None,
         world_id: None,
-    })
+    };
+    crate::canonicalize_bpsr_region_identity(&mut identity);
+    Some(identity)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -621,6 +623,8 @@ impl<'a> ProtocolRuntime<'a> {
             None => DungeonObjectiveCatalogReference {
                 resolution: DungeonObjectiveCatalogResolution::CatalogNotConfigured,
                 activity_target_key: None,
+                localization_key: None,
+                required_count: None,
                 scene_event_keys: Vec::new(),
             },
             Some(catalog) => match catalog.resolve(objective_id) {
@@ -628,11 +632,15 @@ impl<'a> ProtocolRuntime<'a> {
                 Ok(None) => DungeonObjectiveCatalogReference {
                     resolution: DungeonObjectiveCatalogResolution::UnresolvedCurrentBuild,
                     activity_target_key: None,
+                    localization_key: None,
+                    required_count: None,
                     scene_event_keys: Vec::new(),
                 },
                 Err(_) => DungeonObjectiveCatalogReference {
                     resolution: DungeonObjectiveCatalogResolution::CatalogUnavailable,
                     activity_target_key: None,
+                    localization_key: None,
+                    required_count: None,
                     scene_event_keys: Vec::new(),
                 },
             },
@@ -6522,6 +6530,8 @@ mod tests {
                 .then(|| DungeonObjectiveCatalogReference {
                     resolution: DungeonObjectiveCatalogResolution::ResolvedCurrentBuild,
                     activity_target_key: Some(format!("activity-target.{objective_id}")),
+                    localization_key: None,
+                    required_count: None,
                     scene_event_keys: vec!["scene-event.77".into()],
                 }))
         }

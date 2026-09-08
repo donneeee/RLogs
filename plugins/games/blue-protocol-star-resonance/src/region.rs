@@ -61,6 +61,54 @@ pub struct ResolvedRegion {
     pub evidence: Vec<RegionEvidence>,
 }
 
+/// Canonicalizes the reviewed Global service identity at the game boundary.
+///
+/// Global is the product deployment, not a geographic region or server. The
+/// game and older captures can expose Asteria/Bahamar through either the realm
+/// or world slot while leaving `region_id` at the broad `global` fallback.
+/// Normalize that evidence once here so profiles, parses, and leaderboards do
+/// not fork or regress when a later snapshot uses the less-specific shape.
+pub fn canonicalize_bpsr_region_identity(identity: &mut RegionIdentity) {
+    if !identity.deployment_id.eq_ignore_ascii_case("global") {
+        return;
+    }
+    identity.deployment_id = "global".into();
+
+    let observed_server = identity
+        .realm_id
+        .as_deref()
+        .or(identity.world_id.as_deref())
+        .map(str::trim);
+    let inferred = observed_server.and_then(|server| {
+        if server.eq_ignore_ascii_case("asteria") {
+            Some(("north-america", "asteria"))
+        } else if server.eq_ignore_ascii_case("bahamar") {
+            Some(("europe", "bahamar"))
+        } else {
+            None
+        }
+    });
+
+    let fallback_region = identity.region_id.trim().is_empty()
+        || identity.region_id.eq_ignore_ascii_case("global")
+        || identity.region_id.eq_ignore_ascii_case("unknown");
+    if fallback_region {
+        if let Some((region, realm)) = inferred {
+            identity.region_id = region.into();
+            identity.realm_id = Some(realm.into());
+        }
+        return;
+    }
+
+    if identity.region_id.eq_ignore_ascii_case("north-america") {
+        identity.region_id = "north-america".into();
+        identity.realm_id = Some("asteria".into());
+    } else if identity.region_id.eq_ignore_ascii_case("europe") {
+        identity.region_id = "europe".into();
+        identity.realm_id = Some("bahamar".into());
+    }
+}
+
 impl RegionResolver {
     pub fn build(rules: Vec<RegionEndpointRule>) -> Result<Self, RegionResolverError> {
         let mut ids = BTreeSet::new();
@@ -232,7 +280,9 @@ impl ServerRealmCatalog {
         &self,
         endpoint: &NetworkEndpoint,
     ) -> Result<ResolvedRegion, RegionResolverError> {
-        self.resolver.resolve(endpoint)
+        let mut resolved = self.resolver.resolve(endpoint)?;
+        canonicalize_bpsr_region_identity(&mut resolved.identity);
+        Ok(resolved)
     }
 }
 
@@ -432,7 +482,7 @@ mod tests {
         let resolved = catalog
             .resolve(&endpoint("43.174.232.118", 10_099))
             .unwrap();
-        assert_eq!(resolved.identity.region_id, "unknown");
+        assert_eq!(resolved.identity.region_id, "north-america");
         assert_eq!(resolved.identity.realm_id.as_deref(), Some("asteria"));
         assert_eq!(
             resolved.evidence[0].reference,
@@ -442,6 +492,36 @@ mod tests {
             catalog.resolve(&endpoint("43.174.232.118", 10_098)),
             Err(RegionResolverError::NoMatch { .. })
         ));
+    }
+
+    #[test]
+    fn global_server_identity_repairs_broad_region_fallbacks() {
+        for (server, expected_region, expected_realm) in [
+            ("Asteria", "north-america", "asteria"),
+            ("BAHAMAR", "europe", "bahamar"),
+        ] {
+            let mut identity = RegionIdentity {
+                deployment_id: "GLOBAL".into(),
+                region_id: "global".into(),
+                realm_id: None,
+                world_id: Some(server.into()),
+            };
+            canonicalize_bpsr_region_identity(&mut identity);
+            assert_eq!(identity.deployment_id, "global");
+            assert_eq!(identity.region_id, expected_region);
+            assert_eq!(identity.realm_id.as_deref(), Some(expected_realm));
+        }
+    }
+
+    #[test]
+    fn reviewed_global_region_supplies_its_canonical_server() {
+        let mut north_america = identity("north-america");
+        canonicalize_bpsr_region_identity(&mut north_america);
+        assert_eq!(north_america.realm_id.as_deref(), Some("asteria"));
+
+        let mut europe = identity("europe");
+        canonicalize_bpsr_region_identity(&mut europe);
+        assert_eq!(europe.realm_id.as_deref(), Some("bahamar"));
     }
 
     #[test]

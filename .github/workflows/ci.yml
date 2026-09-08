@@ -73,6 +73,8 @@ jobs:
         run: node tools/bpsr-promotion-frontier-audit.mjs verify
       - name: Verify BPSR Imagine role-action identities
         run: node tools/bpsr-auxiliary-action-identity-audit.mjs verify
+      - name: Verify current-build dungeon objective runtime catalog
+        run: node tools/bpsr-dungeon-objective-runtime.mjs --check
       - name: Verify Blade Sweep inverse-defense proof
         run: |
           node tools/bpsr-blade-sweep-inverse-defense-proof.mjs self-test

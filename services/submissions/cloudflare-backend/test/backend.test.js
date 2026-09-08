@@ -192,6 +192,35 @@ test("legacy profiles are normalized to their reviewed server at the public boun
   assert.equal(value.envelope.body.character.region.world_id, null);
 });
 
+test("legacy Asteria world evidence repairs a broad Global region at the public boundary", async () => {
+  const profileId = `prf_${"d".repeat(32)}`;
+  const profile = {
+    profile_id: profileId,
+    deployment: "global",
+    region: "global",
+    realm: null,
+    world: "Asteria",
+    envelope: {
+      routing: {
+        deployment: "global", region: "global", "character-id": "3296036",
+        realm: null, world: "Asteria",
+      },
+      body: { character: { character_id: "3296036", region: {
+        deployment_id: "global", region_id: "global", realm_id: null, world_id: "Asteria",
+      } } },
+    },
+  };
+  const response = await backend.fetch(
+    new Request(`https://backend/v1/profiles/${profileId}`),
+    environment({ [`fs:profiles/${profileId}/public.json`]: JSON.stringify(profile) }),
+  );
+  assert.equal(response.status, 200);
+  const value = await response.json();
+  assert.equal(value.region, "north-america");
+  assert.equal(value.realm, "asteria");
+  assert.equal(value.envelope.body.character.region.region_id, "north-america");
+});
+
 test("profile leaderboard ranks scores and exact dungeon-tier times from D1", async () => {
   const env = environment();
   const queries = [];

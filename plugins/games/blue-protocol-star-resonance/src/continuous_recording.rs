@@ -21,9 +21,9 @@ use thiserror::Error;
 use crate::{
     BpsrFramerSetConfig, BpsrFramerSetConfigError, CaptureAdapter, CaptureRecord,
     CaptureRecordDraft, CaptureRecordKind, CaptureSession, GameBuild, JsonlJournalError,
-    JsonlJournalWriter, LocalPhotoAssetReference, ProtocolPack, ProtocolRuntime,
-    ProtocolRuntimeConfig, ProtocolRuntimeError, ResearchPipeline, RouteKey, SealedDungeonRunLog,
-    SegmentedDungeonLogWriter, SegmentedRecordingError,
+    JsonlJournalWriter, LocalPhotoAssetReference, ObjectiveCatalogResolver, ProtocolPack,
+    ProtocolRuntime, ProtocolRuntimeConfig, ProtocolRuntimeError, ResearchPipeline, RouteKey,
+    SealedDungeonRunLog, SegmentedDungeonLogWriter, SegmentedRecordingError,
 };
 
 #[derive(Debug, Clone)]
@@ -42,6 +42,7 @@ pub struct ContinuousRecordingConfig {
     pub region: RegionIdentity,
     pub region_evidence: Vec<RegionEvidence>,
     pub decoder: ProtocolRuntimeConfig,
+    pub objective_catalog: Option<Arc<dyn ObjectiveCatalogResolver>>,
     pub output_directory: PathBuf,
     pub persist_dungeon_logs: bool,
     pub research_journal: Option<ContinuousResearchJournalConfig>,
@@ -103,7 +104,7 @@ impl<'a> ContinuousBpsrRecorder<'a> {
     ) -> Result<Self, ContinuousRecordingError> {
         let mut framing = BpsrFramerSetConfig::default();
         framing.stream.frame_up_layout = pack.definition().acquisition.frame_up_layout;
-        let runtime = ProtocolRuntime::new(
+        let mut runtime = ProtocolRuntime::new(
             pack,
             config.base_session_id.clone(),
             &config.build,
@@ -111,6 +112,9 @@ impl<'a> ContinuousBpsrRecorder<'a> {
             config.region_evidence,
             config.decoder,
         )?;
+        if let Some(objective_catalog) = config.objective_catalog.clone() {
+            runtime = runtime.with_objective_catalog(objective_catalog);
+        }
         let segments = config
             .persist_dungeon_logs
             .then(|| {
@@ -955,6 +959,7 @@ mod tests {
                 },
                 region_evidence: Vec::new(),
                 decoder: ProtocolRuntimeConfig::default(),
+                objective_catalog: None,
                 output_directory: directory.clone(),
                 persist_dungeon_logs: false,
                 research_journal: None,
@@ -1115,6 +1120,7 @@ mod tests {
                 region: region.clone(),
                 region_evidence: Vec::new(),
                 decoder: ProtocolRuntimeConfig::default(),
+                objective_catalog: None,
                 output_directory: directory.clone(),
                 persist_dungeon_logs: false,
                 research_journal: Some(ContinuousResearchJournalConfig {
@@ -1355,6 +1361,7 @@ mod tests {
                 region: region.clone(),
                 region_evidence: Vec::new(),
                 decoder: ProtocolRuntimeConfig::default(),
+                objective_catalog: None,
                 output_directory: directory.clone(),
                 persist_dungeon_logs: true,
                 research_journal: None,

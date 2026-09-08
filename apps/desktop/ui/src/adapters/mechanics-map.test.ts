@@ -4,7 +4,7 @@ import { actionControlRemainingMillis, parseMechanicsMapUpdate, projectCoralMatr
 
 function snapshot(): MechanicsMapSnapshot {
   return {
-    schema_version: 8, revision: 3, session_id: "s", client_build: "global/steam-24687926",
+    schema_version: 9, revision: 3, session_id: "s", client_build: "global/steam-24687926",
     scene_id: 6615, map_id: 6615, scene_name: null, map_model: "player_relative_radar", map_layout: null,
     world_radius: 140, background_asset_url: "/local-game-assets/global/steam-24687926/dungeon_map_bg.png",
     map_origin_x: null, map_origin_z: null, map_span_x: null, map_span_z: null,
@@ -55,7 +55,7 @@ describe("Mechanics Map", () => {
   });
 
   it("accepts the bounded host contract", () => {
-    const parsed = parseMechanicsMapUpdate({ schema_version: 8, revision: 3, snapshot: snapshot() }).snapshot;
+    const parsed = parseMechanicsMapUpdate({ schema_version: 9, revision: 3, snapshot: snapshot() }).snapshot;
     expect(parsed.scene_id).toBe(6615);
     expect(parsed.action_controls[0]?.skill_level_id).toBe(12_301);
     expect(parsed.party[0]?.display_name).toBe("Party");
@@ -78,12 +78,14 @@ describe("Mechanics Map", () => {
         objective_map_key: 7,
         value: 275,
         complete: false,
+        presentation_name: "Complete the spatial investigation to unlock the boss battle",
+        required_count: 400,
         catalog_resolution: "unresolved_current_build",
         activity_target_key: null,
         scene_event_keys: [],
       }],
     };
-    const dungeon = parseMechanicsMapUpdate({ schema_version: 8, revision: 3, snapshot: value }).snapshot.dungeon;
+    const dungeon = parseMechanicsMapUpdate({ schema_version: 9, revision: 3, snapshot: value }).snapshot.dungeon;
     expect(dungeon?.objectives[0]).toMatchObject({ objective_id: 651103, value: 275, complete: false });
   });
 
@@ -100,7 +102,7 @@ describe("Mechanics Map", () => {
         remaining_millis: 4_500, applied_at_micros: 4_000,
       }],
     };
-    const target = parseMechanicsMapUpdate({ schema_version: 8, revision: 3, snapshot: value }).snapshot.target;
+    const target = parseMechanicsMapUpdate({ schema_version: 9, revision: 3, snapshot: value }).snapshot.target;
     expect(target?.hp_percent).toBe(50);
     expect(target?.debuffs[0]?.source_display_name).toBe("Me");
     expect(target?.current_shield).toBe(200);
@@ -123,7 +125,7 @@ describe("Mechanics Map", () => {
         remaining_millis: -1, applied_at_micros: 4_000,
       }],
     };
-    expect(() => parseMechanicsMapUpdate({ schema_version: 8, revision: 3, snapshot: value })).toThrow();
+    expect(() => parseMechanicsMapUpdate({ schema_version: 9, revision: 3, snapshot: value })).toThrow();
   });
 
   it("rejects an unbounded party frame payload", () => {
@@ -131,7 +133,7 @@ describe("Mechanics Map", () => {
     value.party = Array.from({ length: 40 }, (_, index) => ({
       ...value.party[0]!, actor_id: index + 10, entity_uuid: index + 10,
     }));
-    expect(() => parseMechanicsMapUpdate({ schema_version: 8, revision: 3, snapshot: value })).toThrow();
+    expect(() => parseMechanicsMapUpdate({ schema_version: 9, revision: 3, snapshot: value })).toThrow();
   });
 
   it("uses the exact player-relative 140-unit projection", () => {

@@ -4,7 +4,8 @@ use rlogs_submission::{WebsitePayloadEnvelope, WebsitePayloadError, WebsitePaylo
 use thiserror::Error;
 
 use crate::{
-    BPSR_GAME_PLUGIN_ID, BPSR_PROFILE_SCHEMA_ID, BPSR_PROFILE_SCHEMA_VERSION, CharacterProfilePatch,
+    BPSR_GAME_PLUGIN_ID, BPSR_PROFILE_SCHEMA_ID, BPSR_PROFILE_SCHEMA_VERSION,
+    CharacterProfilePatch, canonicalize_bpsr_region_identity,
 };
 
 pub const BPSR_PROFILE_ENDPOINT: &str = "/v1/games/blue-protocol-star-resonance/profiles";
@@ -15,7 +16,7 @@ pub fn website_profile_request(
     profile: &CharacterProfilePatch,
 ) -> Result<WebsitePayloadRequest, BpsrWebsiteProfileError> {
     let mut profile = profile.clone();
-    apply_reviewed_global_realm(&mut profile);
+    canonicalize_bpsr_region_identity(&mut profile.character.region);
     let mut routing = BTreeMap::from([
         (
             "deployment".into(),
@@ -52,18 +53,6 @@ pub fn website_profile_request(
         body,
     )?;
     Ok(WebsitePayloadRequest::new(BPSR_PROFILE_ENDPOINT, payload)?)
-}
-
-fn apply_reviewed_global_realm(profile: &mut CharacterProfilePatch) {
-    let region = &mut profile.character.region;
-    if region.deployment_id != "global" || region.realm_id.is_some() {
-        return;
-    }
-    region.realm_id = match region.region_id.as_str() {
-        "north-america" => Some("asteria".into()),
-        "europe" => Some("bahamar".into()),
-        _ => None,
-    };
 }
 
 #[derive(Debug, Error)]
@@ -170,5 +159,17 @@ mod tests {
         );
         assert_eq!(request.payload.body["talent_progress"]["total_points"], 10);
         assert!(request.payload.body.get("account_id").is_none());
+
+        let mut broad_global = profile;
+        broad_global.character.region.region_id = "global".into();
+        broad_global.character.region.realm_id = None;
+        broad_global.character.region.world_id = Some("Asteria".into());
+        let repaired = website_profile_request(&broad_global).unwrap();
+        assert_eq!(repaired.payload.routing["region"], "north-america");
+        assert_eq!(repaired.payload.routing["realm"], "asteria");
+        assert_eq!(
+            repaired.payload.body["character"]["region"]["region_id"],
+            "north-america"
+        );
     }
 }

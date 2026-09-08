@@ -82,6 +82,10 @@ pub struct DungeonObjectiveCatalogReference {
     pub resolution: DungeonObjectiveCatalogResolution,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub activity_target_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub localization_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_count: Option<i64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scene_event_keys: Vec<String>,
 }

@@ -324,26 +324,33 @@ function nonnegativeInteger(value) {
 
 export function reconcilePublishedRouting(existing, incoming) {
   const routing = canonicalPublishedRouting(incoming);
-  if (!existing || existing.deployment !== routing.deployment) return routing;
+  const prior = existing ? canonicalPublishedRouting(existing) : null;
+  if (!prior || prior.deployment !== routing.deployment) return routing;
   const incomingRegion = String(routing.region ?? "").trim();
-  const existingRegion = String(existing.region ?? "").trim();
+  const existingRegion = String(prior.region ?? "").trim();
   const incomingIsDeploymentFallback = incomingRegion === routing.deployment || incomingRegion === "unknown";
-  const existingIsSpecific = existingRegion && existingRegion !== existing.deployment && existingRegion !== "unknown";
+  const existingIsSpecific = existingRegion && existingRegion !== prior.deployment && existingRegion !== "unknown";
   if (incomingIsDeploymentFallback && existingIsSpecific) {
     routing.region = existingRegion;
-    routing.realm = optionalRoutingValue(existing.realm) ?? routing.realm;
-    routing.world = optionalRoutingValue(existing.world) ?? routing.world;
+    routing.realm = optionalRoutingValue(prior.realm) ?? routing.realm;
+    routing.world = optionalRoutingValue(prior.world) ?? routing.world;
   }
   return canonicalPublishedRouting(routing);
 }
 
 export function canonicalPublishedRouting(value) {
   const routing = structuredClone(value);
-  routing.deployment = String(routing.deployment ?? "").trim();
-  routing.region = String(routing.region ?? "").trim();
-  const realm = optionalRoutingValue(routing.realm)
-    ?? reviewedGlobalRealm(routing.deployment, routing.region);
+  routing.deployment = String(routing.deployment ?? "").trim().toLowerCase();
+  routing.region = String(routing.region ?? "").trim().toLowerCase();
+  let realm = optionalRoutingValue(routing.realm);
   const world = optionalRoutingValue(routing.world);
+  if (routing.deployment === "global") {
+    const observedServer = realm ?? world;
+    const inferredRegion = reviewedGlobalRegion(observedServer);
+    const fallbackRegion = !routing.region || routing.region === "global" || routing.region === "unknown";
+    if (fallbackRegion && inferredRegion) routing.region = inferredRegion;
+    realm = reviewedGlobalRealm(routing.deployment, routing.region) ?? realm;
+  }
   if (realm) routing.realm = realm;
   else delete routing.realm;
   if (world) routing.world = world;
@@ -379,6 +386,13 @@ function reviewedGlobalRealm(deployment, region) {
   if (deployment !== "global") return null;
   if (region === "north-america") return "asteria";
   if (region === "europe") return "bahamar";
+  return null;
+}
+
+function reviewedGlobalRegion(server) {
+  if (typeof server !== "string") return null;
+  if (server.trim().toLowerCase() === "asteria") return "north-america";
+  if (server.trim().toLowerCase() === "bahamar") return "europe";
   return null;
 }
 

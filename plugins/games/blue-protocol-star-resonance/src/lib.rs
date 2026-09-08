@@ -84,7 +84,10 @@ pub use auxiliary_action_presentation::{
 pub use battle_imagine_presentation::{
     BattleImaginePresentation, battle_imagine_presentation, localized_battle_imagine_name,
 };
-pub use behavior::{GameDataObjectiveCatalog, ObjectiveCatalogError, ObjectiveCatalogResolver};
+pub use behavior::{
+    BundledObjectiveCatalog, DungeonObjectivePresentation, GameDataObjectiveCatalog,
+    ObjectiveCatalogError, ObjectiveCatalogResolver, bundled_dungeon_objective_presentation,
+};
 pub use boss_presentation::{is_boss_monster, scene_boss_monster_ids};
 pub use catalog::{
     MappingConfidence, MappingProvenance, RouteCatalog, RouteCatalogError, RouteDefinition,
@@ -250,7 +253,7 @@ pub use rdps_validation::{
 pub use region::{
     RegionEndpointRule, RegionResolver, RegionResolverError, ResolvedRegion,
     SERVER_REALM_CATALOG_SCHEMA_VERSION, ServerRealmCatalog, ServerRealmCatalogDefinition,
-    ServerRealmCatalogError, ServerRealmDefinition,
+    ServerRealmCatalogError, ServerRealmDefinition, canonicalize_bpsr_region_identity,
 };
 pub use route::{FragmentKind, PacketDirection, RouteKey, RoutedMessage};
 pub use run_rules::{

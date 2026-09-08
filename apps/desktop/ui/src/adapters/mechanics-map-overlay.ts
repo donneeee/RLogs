@@ -126,7 +126,14 @@ export function shouldRenderMechanicsMapUpdate(
   return next.revision !== current.revision;
 }
 
-export function formatDungeonObjectiveValue(value: number | null, complete: boolean | null): string {
+export function formatDungeonObjectiveValue(
+  value: number | null,
+  complete: boolean | null,
+  requiredCount: number | null = null,
+): string {
+  if (value !== null && requiredCount !== null) {
+    return `${value.toLocaleString()} / ${requiredCount.toLocaleString()}${complete === true ? " ✓" : ""}`;
+  }
   if (value !== null) return `${value.toLocaleString()}${complete === true ? " ✓" : ""}`;
   return complete === true ? "Complete" : "Observed";
 }
@@ -484,10 +491,21 @@ export function mountMechanicsMapOverlay(
       ].filter((value): value is string => value !== null).join("\n");
       const identity = element("span", "dungeon-objectives-overlay-identity");
       identity.append(
-        text("strong", objective.activity_target_key ?? `Objective ${objective.objective_id}`),
+        text("strong", objective.presentation_name ?? objective.activity_target_key ?? `Objective ${objective.objective_id}`),
         text("small", objective.complete === true ? "COMPLETE" : "PACKET OBSERVED"),
       );
-      row.append(identity, text("b", formatDungeonObjectiveValue(objective.value, objective.complete)));
+      row.append(identity, text("b", formatDungeonObjectiveValue(
+        objective.value,
+        objective.complete,
+        objective.required_count,
+      )));
+      if (objective.value !== null && objective.required_count !== null && objective.required_count > 0) {
+        const progress = document.createElement("progress");
+        progress.className = "dungeon-objectives-overlay-progress";
+        progress.max = objective.required_count;
+        progress.value = Math.max(0, Math.min(objective.value, objective.required_count));
+        row.append(progress);
+      }
       objectivesBody.append(row);
     }
   }

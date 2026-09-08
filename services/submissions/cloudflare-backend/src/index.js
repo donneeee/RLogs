@@ -48,10 +48,10 @@ async function hostedReport(env, reportId) {
       JOIN profiles p ON p.game_id=rm.game_id AND p.character_id=rm.character_id
       WHERE rm.report_id=?1 AND p.submitter_id=?2 AND rm.actor_id IS NOT NULL`)
       .bind(reportId, row.submitter_id).all();
-    return applyVerifiedSubmitterNames(
+    return normalizePublishedParseRouting(applyVerifiedSubmitterNames(
       { ...report, visibility: row.visibility },
       names.results ?? [],
-    );
+    ));
   } catch (cause) {
     console.error("rLogs hosted report read failed", cause);
     return null;
@@ -95,7 +95,26 @@ async function publicReport(env, reportId) {
   if (!report) return notFound();
   const overrides = await visibilityOverrides(env);
   const visibility = overrides[reportId] ?? report.visibility;
-  return visibility === "private" ? notFound() : json({ ...report, visibility });
+  return visibility === "private"
+    ? notFound()
+    : json(normalizePublishedParseRouting({ ...report, visibility }));
+}
+
+export function normalizePublishedParseRouting(value) {
+  const normalized = structuredClone(value);
+  const hasDeployment = typeof normalized.deployment_id === "string" && normalized.deployment_id.trim() !== "";
+  const hasRegion = typeof normalized.region_id === "string" && normalized.region_id.trim() !== "";
+  if (!hasDeployment && !hasRegion) return normalized;
+  const routing = canonicalPublishedRouting({
+    deployment: normalized.deployment_id,
+    region: normalized.region_id,
+    world: normalized.world_id,
+  });
+  if (routing.deployment) normalized.deployment_id = routing.deployment;
+  if (routing.region) normalized.region_id = routing.region;
+  if (routing.world) normalized.world_id = routing.world;
+  else delete normalized.world_id;
+  return normalized;
 }
 
 async function hostedCatalogEntries(env) {
@@ -107,7 +126,7 @@ async function hostedCatalogEntries(env) {
       ORDER BY rr.created_unix_millis DESC, rr.report_id, rr.run_index
       LIMIT 100000`).all();
     return (result.results ?? []).flatMap((row) => {
-      try { return [JSON.parse(row.catalog_entry_json)]; } catch { return []; }
+      try { return [normalizePublishedParseRouting(JSON.parse(row.catalog_entry_json))]; } catch { return []; }
     });
   } catch (cause) {
     console.error("rLogs hosted parse catalog read failed", cause);
