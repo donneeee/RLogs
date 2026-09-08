@@ -1,8 +1,8 @@
 # Modular HUD replacement
 
 Status: active product track. The screen-sized native Overlay Canvas, its
-packet-backed Mechanics Map, current-target frame, local-player frame, action
-cooldowns, and party frames are implemented; additional HUD modules remain
+packet-backed Mechanics Map, current-target frame, local-player frame with
+packet-backed status effects, action cooldowns, and party frames are implemented; additional HUD modules remain
 disabled until their authoritative event and asset contracts pass the gates
 below.
 
@@ -75,6 +75,12 @@ effects that do not provide one. The target's packet-provided shield list and
 clears the projected shield instead of leaving stale state visible. Target cast
 state remains gated until its actor identity and duration presentation contract
 are both proven for the current build.
+
+The local-player frame projects the same canonical status lifecycle, but only
+renders effects whose exact current-build game icon belongs to a buff atlas.
+It shows the game icon, localized name, stack count, packet source, and a local
+countdown derived from the packet duration. Debuff-atlas and unknown effects
+remain absent rather than being mislabeled as player buffs.
 
 Parser Health separately retains the current-build local skill-request route
 count, successful decodes, decode failures, and emitted canonical cast starts.

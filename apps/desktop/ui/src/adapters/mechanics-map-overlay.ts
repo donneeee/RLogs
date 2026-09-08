@@ -171,6 +171,8 @@ export function mountMechanicsMapOverlay(
   let removeFocusHeldListener: (() => void) | null = null;
   let targetTimer: number | null = null;
   let targetRenderedAtMillis = 0;
+  let playerTimer: number | null = null;
+  let playerRenderedAtMillis = 0;
   let actionsTimer: number | null = null;
   let actionsRenderedAtMillis = 0;
 
@@ -613,6 +615,7 @@ export function mountMechanicsMapOverlay(
   }
 
   function renderPlayer(snapshot: MechanicsMapSnapshot): void {
+    stopPlayerTimer();
     const player = snapshot.player;
     playerPanel.dataset.stale = String(player?.stale ?? false);
     if (player === null) {
@@ -649,7 +652,56 @@ export function mountMechanicsMapOverlay(
         text("small", `SHIELD ${formatTargetHealth(player.current_shield, player.max_shield)}`, "player-frame-overlay-shield-label"),
       );
     }
-    playerBody.replaceChildren(identity, vitals);
+    const statuses = element("div", "player-frame-overlay-statuses");
+    statuses.setAttribute("aria-label", "Player status effects");
+    for (const effect of player.statuses) {
+      const entry = element("span", "player-frame-overlay-status-entry");
+      const item = element("span", "player-frame-overlay-status");
+      const effectName = effect.presentation_name ?? `Effect ${effect.effect_id}`;
+      const sourceName = effect.source_display_name ??
+        (effect.source_actor_id === null ? "not supplied" : "unresolved actor");
+      entry.title = `${effectName}\nSource: ${sourceName}`;
+      if (effect.icon_asset_path) {
+        const icon = document.createElement("img");
+        icon.src = effect.icon_asset_path;
+        icon.alt = "";
+        item.append(icon);
+      } else {
+        item.append(text("span", "?"));
+      }
+      if ((effect.stacks ?? 0) > 1) item.append(text("b", String(effect.stacks)));
+      if (effect.remaining_millis !== null) {
+        const timer = text("span", formatDebuffRemaining(effect.remaining_millis), "player-frame-overlay-status-time");
+        timer.dataset.playerStatusRemaining = String(effect.remaining_millis);
+        item.append(timer);
+      }
+      entry.append(item);
+      statuses.append(entry);
+    }
+    playerBody.replaceChildren(identity, vitals, statuses);
+    playerRenderedAtMillis = performance.now();
+    updatePlayerTimers();
+    if (player.statuses.some((effect) => effect.remaining_millis !== null)) {
+      playerTimer = window.setInterval(updatePlayerTimers, 100);
+    }
+  }
+
+  function updatePlayerTimers(): void {
+    const elapsed = performance.now() - playerRenderedAtMillis;
+    for (const entry of playerBody.querySelectorAll<HTMLElement>(".player-frame-overlay-status-entry")) {
+      const timer = entry.querySelector<HTMLElement>("[data-player-status-remaining]");
+      if (timer === null) continue;
+      const base = Number(timer.dataset.playerStatusRemaining);
+      const remaining = targetDebuffRemainingMillis({ remaining_millis: base }, elapsed) ?? 0;
+      entry.hidden = remaining <= 0;
+      timer.textContent = formatDebuffRemaining(remaining);
+    }
+  }
+
+  function stopPlayerTimer(): void {
+    if (playerTimer === null) return;
+    window.clearInterval(playerTimer);
+    playerTimer = null;
   }
 
   function renderTarget(snapshot: MechanicsMapSnapshot): void {
@@ -1073,6 +1125,7 @@ export function mountMechanicsMapOverlay(
       alive = false;
       if (frame !== null) cancelAnimationFrame(frame);
       stopTargetTimer();
+      stopPlayerTimer();
       stopActionsTimer();
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleScreenResize);

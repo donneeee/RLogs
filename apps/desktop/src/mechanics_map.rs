@@ -11,12 +11,13 @@ use rlogs_events::{
 };
 use serde::{Deserialize, Serialize};
 
-pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 9;
+pub const MECHANICS_MAP_SCHEMA_VERSION: u16 = 10;
 const ENTITY_STALE_AFTER_MICROS: u64 = 5_000_000;
 const CAST_STALE_AFTER_MICROS: u64 = 8_000_000;
 const MAX_ENTITIES: usize = 192;
 const MAX_MECHANICS: usize = 96;
 const MAX_TARGET_DEBUFFS: usize = 24;
+const MAX_PLAYER_STATUSES: usize = 24;
 const MAX_TARGET_STATUSES: usize = 4_096;
 const MAX_LOCAL_COOLDOWNS: usize = 48;
 const MAX_PARTY_FRAMES: usize = 39;
@@ -190,6 +191,10 @@ pub struct PlayerFrameSnapshot {
     pub shield_percent: Option<f64>,
     pub dead: bool,
     pub stale: bool,
+    /// Packet-observed local-recipient effects whose exact current-build game
+    /// asset classifies them as buffs. Unknown and debuff-atlas effects are
+    /// deliberately excluded instead of being guessed into the player HUD.
+    pub statuses: Vec<TargetFrameDebuff>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -897,6 +902,12 @@ impl MechanicsMapProjector {
                 shield_percent: observed_percent(entity.current_shield, entity.max_shield),
                 dead: entity.dead,
                 stale: now.saturating_sub(entity.last_observed_micros) > ENTITY_STALE_AFTER_MICROS,
+                statuses: self.presented_statuses_for_actor(
+                    entity.actor.actor_id.0,
+                    now,
+                    "/buff/",
+                    MAX_PLAYER_STATUSES,
+                ),
             });
         let mut party = self
             .entities
@@ -920,6 +931,7 @@ impl MechanicsMapProjector {
                 shield_percent: observed_percent(entity.current_shield, entity.max_shield),
                 dead: entity.dead,
                 stale: now.saturating_sub(entity.last_observed_micros) > ENTITY_STALE_AFTER_MICROS,
+                statuses: Vec::new(),
             })
             .collect::<Vec<_>>();
         party.sort_by(|left, right| {
@@ -1198,6 +1210,76 @@ impl MechanicsMapProjector {
             .values()
             .find(|entity| entity.character_id.as_deref() == Some(local))
             .map(|entity| entity.actor.actor_id.0)
+    }
+
+    fn presented_statuses_for_actor(
+        &self,
+        actor_id: u64,
+        now: u64,
+        required_icon_segment: &str,
+        limit: usize,
+    ) -> Vec<TargetFrameDebuff> {
+        let mut statuses = self
+            .target_statuses
+            .values()
+            .filter(|status| status.target.actor_id.0 == actor_id)
+            .filter(|status| {
+                status
+                    .duration_millis
+                    .filter(|duration| *duration > 0)
+                    .is_none_or(|duration| {
+                        now.saturating_sub(status.applied_at_micros)
+                            <= duration.saturating_mul(1_000)
+                    })
+            })
+            .filter_map(|status| {
+                let presentation = rlogs_game_bpsr::status_effect_presentation(status.effect_id)
+                    .ok()
+                    .flatten()?;
+                let icon = presentation.icon.as_deref()?;
+                if !icon.replace('\\', "/").contains(required_icon_segment) {
+                    return None;
+                }
+                Some(TargetFrameDebuff {
+                    effect_id: status.effect_id,
+                    instance_id: status.instance_id,
+                    presentation_name: rlogs_game_bpsr::localized_status_effect_name(
+                        status.effect_id,
+                        "en-US",
+                    )
+                    .ok()
+                    .flatten()
+                    .map(str::to_owned)
+                    .or_else(|| presentation.technical_name.clone()),
+                    icon_asset_path: Some(format!(
+                        "/game-assets/blue-protocol-star-resonance/shared/{icon}"
+                    )),
+                    source_actor_id: status.source.map(|source| source.actor_id.0),
+                    source_display_name: status.source.and_then(|source| {
+                        self.entities.get(&source.actor_id.0).and_then(|entity| {
+                            entity.display_name.clone().or_else(|| {
+                                entity.monster_id.and_then(|monster_id| {
+                                    rlogs_game_bpsr::localized_monster_name(monster_id, "en-US")
+                                        .ok()
+                                        .flatten()
+                                        .map(str::to_owned)
+                                })
+                            })
+                        })
+                    }),
+                    stacks: status.stacks,
+                    duration_millis: status.duration_millis,
+                    remaining_millis: status.duration_millis.map(|duration| {
+                        duration
+                            .saturating_sub(now.saturating_sub(status.applied_at_micros) / 1_000)
+                    }),
+                    applied_at_micros: status.applied_at_micros,
+                })
+            })
+            .collect::<Vec<_>>();
+        statuses.sort_by_key(|status| (status.effect_id, status.instance_id));
+        statuses.truncate(limit);
+        statuses
     }
 
     fn entity_kind(&self, entity: &EntityState, local_actor_id: Option<u64>) -> &'static str {
@@ -2065,6 +2147,39 @@ mod tests {
             }),
         ));
 
+        projector.observe(&envelope(
+            7,
+            CanonicalEvent::Timeline(TimelineEvent {
+                sequence: 7,
+                time: EventTime {
+                    observed_micros: 6_000,
+                    game_time_millis: None,
+                },
+                provenance: EventProvenance {
+                    confidence: EvidenceConfidence::Exact,
+                    source: EvidenceSource::Wire {
+                        capture_sequence: 7,
+                        connection_id: 1,
+                        stream_id: 1,
+                    },
+                },
+                kind: TimelineEventKind::Status(StatusEvent {
+                    source: Some(local),
+                    target: local,
+                    effect: StatusEffectId(21_412),
+                    instance_id: Some(StatusEffectInstanceId(100)),
+                    origin: None,
+                    state: StatusState::Applied,
+                    stacks: Some(3),
+                    duration_millis: Some(8_000),
+                    level: Some(1),
+                    part_id: None,
+                    count: None,
+                    created_at_millis: None,
+                }),
+            }),
+        ));
+
         let snapshot = projector.snapshot();
         let player = snapshot.player.expect("local player frame");
         assert_eq!(player.actor_id, 7);
@@ -2073,6 +2188,9 @@ mod tests {
         assert_eq!(player.hp_percent, Some(90.0));
         assert_eq!(player.current_shield, Some(35_216));
         assert_eq!(player.max_shield, Some(313_040));
+        assert_eq!(player.statuses.len(), 1);
+        assert_eq!(player.statuses[0].effect_id, 21_412);
+        assert_eq!(player.statuses[0].stacks, Some(3));
         let selected = snapshot.target.expect("selected target");
         assert_eq!(selected.actor_id, 8);
         assert_eq!(selected.current_hp, Some(500));
@@ -2091,7 +2209,7 @@ mod tests {
         );
         assert_eq!(selected.debuffs[0].stacks, Some(2));
         assert_eq!(selected.debuffs[0].duration_millis, Some(5_000));
-        assert_eq!(selected.debuffs[0].remaining_millis, Some(5_000));
+        assert_eq!(selected.debuffs[0].remaining_millis, Some(4_999));
 
         projector.observe(&envelope(
             7,

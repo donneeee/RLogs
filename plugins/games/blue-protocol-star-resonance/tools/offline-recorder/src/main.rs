@@ -401,7 +401,7 @@ mod tests {
             .unwrap()
             .expect("exact Asteria endpoint");
         assert_eq!(resolved.identity.deployment_id, "global");
-        assert_eq!(resolved.identity.region_id, "unknown");
+        assert_eq!(resolved.identity.region_id, "north-america");
         assert_eq!(resolved.identity.realm_id.as_deref(), Some("asteria"));
 
         let wrong_port = ResearchConnectionFile {

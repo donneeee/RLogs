@@ -5770,6 +5770,12 @@ body[data-surface="overlay-canvas"] #app, .overlay-canvas-runtime { width: 100vw
 .player-frame-overlay-shield span { display: block; width: 0; height: 100%; background: linear-gradient(90deg, #4da8ff, #8bdcff); transition: width 120ms linear; }
 .player-frame-overlay-shield[data-observed="false"] span { opacity: .72; }
 .player-frame-overlay-shield-label { color: #91cfff; font-size: 7px; font-variant-numeric: tabular-nums; font-weight: 850; letter-spacing: .06em; white-space: nowrap; }
+.player-frame-overlay-statuses { display: flex; flex-wrap: wrap; gap: 5px; min-height: 30px; }
+.player-frame-overlay-status-entry { display: block; width: 30px; height: 30px; }
+.player-frame-overlay-status { position: relative; display: grid; place-items: center; width: 30px; height: 30px; overflow: hidden; border: 1px solid rgb(92 228 212 / 46%); border-radius: 5px; color: #eef6fb; background: rgb(8 35 36 / 94%); }
+.player-frame-overlay-status img { width: 100%; height: 100%; object-fit: cover; }
+.player-frame-overlay-status b { position: absolute; top: 0; right: 0; padding: 1px 2px; border-radius: 0 3px 0 2px; color: #fff; background: rgb(2 7 12 / 86%); font-size: 8px; line-height: 1; }
+.player-frame-overlay-status-time { position: absolute; right: 0; bottom: 0; left: 0; padding: 1px 0; color: #fff; background: rgb(2 7 12 / 82%); font-size: 7px; font-variant-numeric: tabular-nums; font-weight: 900; line-height: 1; text-align: center; }
 .player-frame-overlay-empty { margin: 0; color: #8ca3ba; font-size: 9px; font-weight: 650; }
 .player-frame-overlay-resize { position: absolute; right: 1px; bottom: 1px; width: 14px; height: 14px; padding: 0; border: 0; background: linear-gradient(135deg, transparent 50%, rgb(92 228 212 / 68%) 51% 61%, transparent 62% 71%, rgb(92 228 212 / 68%) 72% 82%, transparent 83%); cursor: ew-resize; }
 .action-controls-overlay-runtime { position: absolute; box-sizing: border-box; overflow: hidden; border: 1px solid rgb(100 178 255 / 46%); border-radius: 10px; color: #eef6fb; background: rgb(5 13 23 / 88%); box-shadow: 0 8px 28px rgb(0 0 0 / 38%); transition: transform 90ms ease-out, border-color 90ms ease-out, box-shadow 90ms ease-out; }
